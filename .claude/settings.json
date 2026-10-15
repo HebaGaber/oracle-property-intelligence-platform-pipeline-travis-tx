@@ -1,7 +1,10 @@
 {
   "extraKnownMarketplaces": {
     "soofi-xyz": {
-      "source": { "source": "github", "repo": "soofi-xyz/soofi-xyz-team-kit" }
+      "source": {
+        "source": "github",
+        "repo": "soofi-xyz/soofi-xyz-team-kit"
+      }
     }
   },
   "enabledPlugins": {
