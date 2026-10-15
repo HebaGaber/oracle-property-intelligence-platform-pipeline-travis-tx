@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+cdk.out/
+.turbo/
+coverage/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.example
+.DS_Store
+.claude/settings.local.json
+# raw source downloads and local pipeline state (never commit)
+pipeline/data/
+*.car
