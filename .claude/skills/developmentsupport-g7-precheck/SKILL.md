@@ -28,7 +28,7 @@ If an input is missing, report it as FAIL on the first check it affects and cont
 | --- | --- | --- |
 | C-01 | Tasks done | Every task in tasks.md is checked |
 | C-02 | Unit tests | Unit test report attached, all green in CI; coverage of new code is 80% or more |
-| C-03 | Code review | CR log exists; zero open Critical findings |
+| C-03 | Code review | CR log exists with /code-review findings and a 0–100 score from every agents.reviewers agent; every score is 75 or more, or the gap is justified; zero open Critical findings (constitution XVI) |
 | C-04 | TC executed on hosted URL | Every TC has a result recorded against the hosted URL and a build sha; none ran on localhost |
 | C-05 | Defects closed | Every failing TC has an ERR record that is Closed with a re-test, or is a documented gap-linked case |
 | C-06 | No open Critical | No Critical defect is open |

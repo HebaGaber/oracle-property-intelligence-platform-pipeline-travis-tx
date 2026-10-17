@@ -10,7 +10,7 @@ Fill `assessment-guide/templates/plan.md` and save it as `docs/plan.md`.
 ## Inputs
 
 - `docs/feature-list.md` (G1 approved) and `docs/01-intent.md`.
-- The task guide's architecture section, critical path and timeline (`06-walkthrough.md`, "Suggested timeline").
+- The task guide's architecture section, critical path and timeline (`../assessment-guide/reference/A-oracle.md` § 6 or `B-roofing-crm.md` § 5, and the timeline in the task playbook `../assessment-guide/PLAYBOOK-A-oracle.md` or `PLAYBOOK-B-roofing-crm.md`).
 
 If the feature list is missing, ask for it. Do not invent features.
 

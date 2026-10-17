@@ -22,7 +22,7 @@ If an input is missing, report it as FAIL on the first check it affects and cont
 
 | Check | Criterion | What PASS requires |
 | --- | --- | --- |
-| C-01 | Front matter | id, parent FEAT, eval_point, priority, moscow, branch, depends_on, status are filled |
+| C-01 | Front matter | id, parent FEAT, eval_point, priority, moscow, branch, depends_on, status are filled; agents.design, agents.builder, agents.reviewers, agents.verify and skills are filled and match the story's row in ../assessment-guide/AGENT-MAP.md (constitution XIII) |
 | C-02 | User story form | 'As a / I want / So that' present, plus an independent test |
 | C-03 | GWT | Every AC is Given / When / Then |
 | C-04 | Observable and real | Every AC is observable on the hosted runtime (UI, agent, MCP or public CID) and uses real Travis County data or numbers |

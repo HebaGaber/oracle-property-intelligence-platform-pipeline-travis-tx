@@ -29,7 +29,7 @@ If an input is missing, report it as FAIL on the first check it affects and cont
 | C-05 | NFRs measurable | Each NFR has a threshold and a verification method on the hosted runtime |
 | C-06 | Deploy and rollback | Deployment strategy and rollback steps are recorded |
 | C-07 | P0 violations | P0 rules listed, including the task's access boundary |
-| C-08 | Golden Path conformance | No conflict with .specify/memory/constitution.md (TypeScript, CDK us-east-2, tRPC + Zod, Vercel AI SDK, Powertools, queued external calls) |
+| C-08 | Golden Path conformance | No conflict with .specify/memory/constitution.md (TypeScript, CDK with region from config (default us-east-2, demo eu-north-1), tRPC + Zod, Vercel AI SDK, Powertools, queued external calls) |
 | C-09 | No open questions | No [NEEDS CLARIFICATION] markers remain |
 
 Judge strictly but specifically: every FAIL must quote the offending text or name the missing item, and say what would fix it. Checks are also run against `.specify/memory/constitution.md` where it applies.

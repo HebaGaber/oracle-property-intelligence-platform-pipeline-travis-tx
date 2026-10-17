@@ -9,7 +9,9 @@ description: "Task list template for feature implementation"
 
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
+**Tests**: MANDATORY (constitution X, XXI, XXII). Test tasks come first in every phase and must fail before the implementation tasks run. Every phase ends with the Phase Z tasks below.
+
+**Builder**: every implementation task is delegated to the story's `agents.builder` subagent (constitution XV).
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -80,7 +82,7 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 1 (MANDATORY, write first) ⚠️
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
@@ -106,7 +108,7 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 2 (MANDATORY, write first) ⚠️
 
 - [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
 - [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
@@ -128,7 +130,7 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 3 (MANDATORY, write first) ⚠️
 
 - [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
 - [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
@@ -147,6 +149,19 @@ Examples of foundational tasks (adjust based on your project):
 
 ---
 
+## Phase Z: Prove on the hosted runtime (mandatory, always last)
+
+**Purpose**: Constitution I, XVI, XXII. The story is not done until these pass.
+
+- [ ] TZ01 Run the reviewer agents from the story front matter read-only; record scores in docs/reviews/CR-[ID].md (each ≥ 75 or justified)
+- [ ] TZ02 Deploy to the hosted runtime (CDK + Amplify branch); record the URL
+- [ ] TZ03 Run the Playwright scenario tests (one per TC in testplans/[ID]-test-cases.md, tagged @scenario:[ID]-TC-nnn) against RUNTIME_URL; screenshots to docs/evidence/img/
+- [ ] TZ04 [UI stories] Run smeargle responsive-design-tests at 390 / 768 / 1440 on the hosted URL
+- [ ] TZ05 Run the story's `agents.verify` check (for example verify-manifest, golden queries, coverage SQL)
+- [ ] TZ06 Write docs/reports/TR-[ID].md, docs/evidence/[ID].md, the docs/traceability.md row and one docs/kit-usage.md line
+
+---
+
 ## Phase N: Polish & Cross-Cutting Concerns
 
 **Purpose**: Improvements that affect multiple user stories
@@ -154,7 +169,7 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] TXXX [P] Documentation updates in docs/
 - [ ] TXXX Code cleanup and refactoring
 - [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
+- [ ] TXXX [P] Additional unit tests in tests/unit/
 - [ ] TXXX Security hardening
 - [ ] TXXX Run quickstart.md validation
 

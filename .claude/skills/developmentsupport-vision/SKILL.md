@@ -10,7 +10,7 @@ Produce `docs/01-intent.md` from `assessment-guide/templates/intent.md`. That te
 ## Inputs
 
 1. `README.md` of the task repo (the assignment, `BN-A` or `BN-B`). Record its commit sha.
-2. The task guide: `../assessment-guide/02-oracle-pipeline.md` (Task A) or `03-roofing-crm.md` (Task B), sections 1–2 (draft intent, evaluation points).
+2. The task guide: `../assessment-guide/reference/A-oracle.md` (Task A) or `../assessment-guide/reference/B-roofing-crm.md` (Task B), sections 1–2 (draft intent, evaluation points).
 3. Anything the user pastes: notes, assessor answers, the `arceus` routing output.
 
 If the README cannot be found, ask for it. Do not fabricate an assignment.

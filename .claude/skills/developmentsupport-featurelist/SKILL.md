@@ -10,7 +10,7 @@ Fill `assessment-guide/templates/feature-list.md` and save it as `docs/feature-l
 ## Inputs
 
 - `docs/01-intent.md` (VIS). If its G0 decision is not "Approved", say so and ask whether to continue.
-- `README.md`, plus the task guide's story backlog: `02-oracle-pipeline.md` § 6 or `03-roofing-crm.md` § 5.
+- `README.md`, plus the task guide's story backlog: `../assessment-guide/reference/A-oracle.md` § 6 or `../assessment-guide/reference/B-roofing-crm.md` § 5, plus the agents per story in `../assessment-guide/AGENT-MAP.md`.
 - `docs/traceability.md`, if it exists.
 
 ## Steps

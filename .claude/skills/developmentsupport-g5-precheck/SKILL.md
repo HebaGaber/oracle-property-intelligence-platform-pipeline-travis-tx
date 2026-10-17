@@ -26,10 +26,10 @@ If an input is missing, report it as FAIL on the first check it affects and cont
 | C-02 | Phase structure | tasks.md runs Setup → Foundational → story phases (P1 → P2 → P3) → Polish |
 | C-03 | Task format | Every task has a T### ID, [P] where parallel, a story link, and an exact file path |
 | C-04 | Tests first | Unit/contract test tasks precede the implementation tasks they cover |
-| C-05 | Live verification last | Final tasks are: deploy, Playwright against RUNTIME_URL (not localhost), write docs/evidence/{ID}.md, update traceability and kit-usage |
+| C-05 | Live verification last | tasks.md ends with the Phase Z tasks TZ01–TZ06: reviewer agents, deploy, Playwright against RUNTIME_URL (not localhost), smeargle for UI stories, the agents.verify check, evidence + traceability + kit-usage |
 | C-06 | LLD complete | plan.md documents components, data flow, integration points and test approach |
 | C-07 | Architecture conformance | No deviation from the architecture constitution, or each deviation is justified and flagged |
-| C-08 | Kit usage | plan.md names the kit agent and skills from the story's Kit field |
+| C-08 | Kit usage | specs/{NNN-slug}/agent-design.md exists with one verbatim answer per agents.design agent; plan.md has a filled Kit Agent Ownership section citing it, names the builder's skills and lists the builder patterns that must appear in code (constitution XIV–XV) |
 | C-09 | Coverage | Every FR in spec.md is implemented by at least one task |
 | C-10 | Analyze | speckit-analyze reports no CRITICAL or HIGH findings |
 

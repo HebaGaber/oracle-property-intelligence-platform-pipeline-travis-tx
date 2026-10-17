@@ -36,11 +36,36 @@
 
 **Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
 
+## Kit Agent Ownership *(mandatory, constitution XIII–XVII)*
+
+Copied from the story front matter (`stories/{ID}-*.md`) and `specs/[###-feature-name]/agent-design.md`.
+
+| Role | Agent(s) | Skills loaded | What it decided (cite agent-design.md) |
+|------|----------|---------------|----------------------------------------|
+| Design consult | [agents.design] | [skills] | [components, contracts, risks] |
+| Builder | [agents.builder] | [skills] + apply-engineering-guidelines | [patterns that must be visible in the code] |
+| Reviewer(s) | [agents.reviewers] | — | [what they will score] |
+| Verify | [agents.verify] | — | [how the story is proven on the hosted URL] |
+
+**Patterns the code must show** (from the builder's answer): [list, each mapped to a file path in Project Structure]
+
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design. Mark each ✅ / ❌ / N/A; every ❌ needs a row in Complexity Tracking.*
 
-[Gates determined based on constitution file]
+| # | Article | Check for this plan | Status |
+|---|---------|---------------------|--------|
+| I | Outcome first | Verified on the hosted URL with real Travis County data | |
+| II–IV | Stack | TypeScript; CDK with region from config (demo eu-north-1), tagged; Turborepo layout; one api-client | |
+| V–VI | Contracts and LLM | Zod on every input; LLM calls only through the Vercel AI SDK + Bedrock | |
+| VII–IX | Operations | Queued boundaries + DLQ + alarm; Powertools + X-Ray; alerting path | |
+| X | Quality gates | Vitest + Playwright on the hosted URL + lint/tsc in CI | |
+| XI | Data honesty | Provenance shown; missing data labelled; assumptions stated | |
+| XII | Secrets | None in Git, logs or PR | |
+| XIII–XV | Owner agents | Kit Agent Ownership filled; agent-design.md exists; builder patterns listed | |
+| XVI | Owner review | Reviewer agents and the 75 threshold planned | |
+| XVIII–XXIII | Delivery | Gates G4–G6 passed; tests first; branch `NNN-slug`; defects as records | |
+| Addendum | Task A (A1–A8) or Task B (B1–B3) | List each that applies and how the plan satisfies it | |
 
 ## Project Structure
 

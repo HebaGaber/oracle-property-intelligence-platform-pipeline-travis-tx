@@ -8,6 +8,12 @@
 
 **Input**: User description: "$ARGUMENTS"
 
+**Story**: `stories/[ID]-[slug].md` | **Evaluation point**: [A1–A6 / B1–B6] | **Demo line(s)**: [n]
+
+**Owner agents** (from the story front matter; used by the plan, not by this spec): design [agents.design] · builder [agents.builder] · reviewers [agents.reviewers] · verify [agents.verify]
+
+> Every story acceptance criterion becomes at least one FR below. No technology choices in this file; they belong in plan.md.
+
 ## User Scenarios & Testing *(mandatory)*
 
 <!--

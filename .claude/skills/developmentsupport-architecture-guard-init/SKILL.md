@@ -11,7 +11,7 @@ Fill `assessment-guide/templates/architecture-constitution.md` and save it as `d
 
 - `docs/plan.md` (G2 approved) and `docs/feature-list.md` (its NFRs).
 - `.specify/memory/constitution.md` (project-wide Golden Path rules).
-- The task guide: `02-oracle-pipeline.md` § 3, or `03-roofing-crm.md` § 3 (architecture and key decisions).
+- The task guide: `../assessment-guide/reference/A-oracle.md` § 3, or `../assessment-guide/reference/B-roofing-crm.md` § 3 (architecture and key decisions).
 - A kit design review. Ask the kit agent for it, read-only:
   - Task A: `soofi-xyz-team-kit:oracle` for ingestion and publication, `soofi-xyz-team-kit:metagross` for the app.
   - Task B: `soofi-xyz-team-kit:metagross` for the app, `soofi-xyz-team-kit:alakazam` for the index and RAG.
