@@ -1,6 +1,7 @@
 <!--
 Sync Impact Report
-- Version: 2.0.0 → 3.0.0 (2026-10-17): Article VI redefined. Model provider is a setting: Bedrock (default) or Vercel AI Gateway (demo: embeddings now, Claude until the Bedrock quota is raised).
+- Version: 3.0.0 → 3.0.1 (2026-10-17): Article VI wording (PATCH). The Bedrock quota was raised, so the demo uses Bedrock for Claude; the Gateway stays the fallback and serves embeddings.
+- Earlier: 2.0.0 → 3.0.0 (2026-10-17): Article VI redefined. Model provider is a setting: Bedrock (default) or Vercel AI Gateway (demo: embeddings now, Claude until the Bedrock quota is raised).
 - Earlier: 1.0.0 → 2.0.0 (2026-10-16): Article III redefined. Region comes from config; demo deploys to eu-north-1 (region-locked AWS project), company default us-east-2.
 - Earlier: 0.0.0 (template placeholders) → 1.0.0
 - Added: Parts 1–3 (articles I–XXIII), Task A addendum (A1–A8), agent roster
@@ -31,7 +32,7 @@ CDK is the only infrastructure as code. The region is never hard-coded: CDK read
 Every tRPC procedure, agent tool and MCP tool validates input with Zod. No `any`.
 
 ### VI. Vercel AI SDK for every LLM call
-Use `ai` with Zod tool schemas. The model provider is a setting (`AI_PROVIDER=bedrock|gateway`), never hard-coded in agent code: `bedrock` uses `@ai-sdk/amazon-bedrock` with `eu.` inference profiles (the default and Golden Path); `gateway` uses the Vercel AI Gateway built into `ai`, with `AI_GATEWAY_API_KEY` read from Secrets Manager. The demo uses the Gateway for embeddings (`amazon/titan-embed-text-v2`) and for Claude until the new account's Bedrock quota is raised. Direct provider SDKs (`openai`, `@anthropic-ai/sdk`, `@aws-sdk/client-bedrock-runtime`) are forbidden.
+Use `ai` with Zod tool schemas. The model provider is a setting (`AI_PROVIDER=bedrock|gateway`), never hard-coded in agent code: `bedrock` uses `@ai-sdk/amazon-bedrock` with `eu.` inference profiles (the default and Golden Path); `gateway` uses the Vercel AI Gateway built into `ai`, with `AI_GATEWAY_API_KEY` read from Secrets Manager. The demo uses Bedrock for Claude (`eu.anthropic.claude-sonnet-4-6`; quota raised and confirmed by a live call on 2026-10-17) and the Gateway for embeddings (`amazon/titan-embed-text-v2`); the Gateway stays the fallback for Claude. Direct provider SDKs (`openai`, `@anthropic-ai/sdk`, `@aws-sdk/client-bedrock-runtime`) are forbidden.
 
 ### VII. Queued external boundaries
 Source fetches use bounded concurrency, idempotency keys, exponential backoff, a DLQ and one self-resolving CloudWatch alarm per DLQ (the kit runtime's Restate workflows satisfy this locally).
@@ -118,4 +119,4 @@ Every failing hosted test gets `docs/defects/ERR-{n}.md`. No Critical defect is 
 
 This constitution overrides other practices. A plan that breaks an article either changes or records a justification in its Complexity Tracking table, which you approve. Amendments: edit this file and `../assessment-guide/templates/constitution.md` together, bump the version (MAJOR = article removed or redefined, MINOR = article added, PATCH = wording), and update the Sync Impact Report.
 
-**Version**: 3.0.0 | **Ratified**: 2026-10-15 | **Last Amended**: 2026-10-17
+**Version**: 3.0.1 | **Ratified**: 2026-10-15 | **Last Amended**: 2026-10-17
