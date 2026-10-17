@@ -86,7 +86,7 @@ flowchart TB
     P2["2nd pin + CARs on GitHub Release"]
     GW["ipfs.io + dweb.link<br/>(independent verification)"]
   end
-  subgraph AWS["5 · Hosted on AWS (CDK, region from config; scales to zero) · explorer.aldarraj.com"]
+  subgraph AWS["5 · Hosted on AWS (CDK, region from config; scales to zero) · countylens.aldarraj.com"]
     direction LR
     WEB["Explorer UI, Amplify<br/>React + DuckDB-WASM"]
     API["tRPC API, Lambda<br/>agent (Vercel AI SDK → Bedrock)"]
@@ -415,7 +415,7 @@ Each story runs the six-stage loop (playbook Part 2). The kit agent named in the
 | EXT-01 | External | AWS demo account (`eu-north-1`), CDK bootstrap | Phase 0 | Available |
 | EXT-02 | External | Bedrock model quota (`eu.` profiles) | Phase 4 | Available (confirmed 2026-10-17) |
 | EXT-03 | External | Filebase account; plan limits measured in the spike | Phase 0 | Account available; limits unmeasured |
-| EXT-04 | External | Domain `aldarraj.com` for `explorer.aldarraj.com` | Phase 0 (A-03) | Owned by the PO; DNS on Namecheap (records added in A-03) |
+| EXT-04 | External | Domain `aldarraj.com` for `countylens.aldarraj.com` | Phase 0 (A-03) | Owned by the PO; DNS on Namecheap (records added in A-03) |
 | EXT-05 | External | TCAD export download path within its terms | Phase 1 | At risk (403 on 2026-10-17; RISK-03) |
 | EXT-06 | External | BBB official API key | Phase 2 | Not requested; bounded harvest with stop-on-403 instead |
 | EXT-07 | External | Atlas access | Phase 3 | Not requested; listed as pending |
@@ -604,12 +604,13 @@ Every branch is created from `feature/oracle-pipeline` and merged back with `--n
 | # | Question / gap | Raised to | Status |
 | --- | --- | --- | --- |
 | Q-01 | Calendar date of build Day 1 (planning steps P5–P8 still come first) | PO | Open |
-| Q-02 | Where the DNS for `aldarraj.com` is hosted, to point `explorer.aldarraj.com` at Amplify | PO | Resolved: Namecheap. In A-03, add the Amplify certificate-validation CNAME and the `explorer` CNAME there |
+| Q-02 | Where the DNS for `aldarraj.com` is hosted, to point `countylens.aldarraj.com` at Amplify | PO | Resolved: Namecheap. In A-03, add the Amplify certificate-validation CNAME and the `explorer` CNAME there |
 | Q-03 | Filebase plan limits for the full county | Read-path spike | Open: measured before A-03 Stage 3 |
 | Q-04 | G1 decision on the feature list | PO | Resolved: approved 2026-10-17 |
 | Q-05 | Update constitution VI, `CLAUDE.md` and `PUBLISHING.md` § 1.6, which still say Bedrock is blocked | PO | Partly resolved: constitution VI amended (v3.0.1, 2026-10-17); `CLAUDE.md` and `PUBLISHING.md` still to update |
-| Q-06 | UX and market research on comparable apps, then the Claude Design prompt script | PO + Claude | Resolved: [Travis Explorer UX Research and Design Brief](https://claude.ai/code/artifact/6d43751b-f645-449d-bfc9-0ff3a5af0e70) (2026-10-17) |
-| Q-07 | How many real queries before "Most searched" chips replace "Suggested starting points" (suggested 50) | PO | Open |
+| Q-06 | UX and market research on comparable apps, then the Claude Design prompt script | PO + Claude | Resolved: [CountyLens UX Research and Design Brief](https://claude.ai/code/artifact/6d43751b-f645-449d-bfc9-0ff3a5af0e70) (2026-10-17) |
+| Q-07 | How many real queries before "Most searched" chips replace "Suggested starting points" | PO | Resolved: 5 (2026-10-17) |
+| Q-08 | Hosted address after the rename to CountyLens | PO | Resolved: `countylens.aldarraj.com` (2026-10-17) |
 
 ## 14. Change log
 

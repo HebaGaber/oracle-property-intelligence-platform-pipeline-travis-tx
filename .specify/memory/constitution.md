@@ -1,6 +1,7 @@
 <!--
 Sync Impact Report
-- Version: 3.0.0 → 3.0.1 (2026-10-17): Article VI wording (PATCH). The Bedrock quota was raised, so the demo uses Bedrock for Claude; the Gateway stays the fallback and serves embeddings.
+- Version: 3.0.1 → 3.0.2 (2026-10-17): Article I wording (PATCH). The hosted runtime is countylens.{domain} (app renamed CountyLens).
+- Earlier: 3.0.0 → 3.0.1 (2026-10-17): Article VI wording (PATCH). The Bedrock quota was raised, so the demo uses Bedrock for Claude; the Gateway stays the fallback and serves embeddings.
 - Earlier: 2.0.0 → 3.0.0 (2026-10-17): Article VI redefined. Model provider is a setting: Bedrock (default) or Vercel AI Gateway (demo: embeddings now, Claude until the Bedrock quota is raised).
 - Earlier: 1.0.0 → 2.0.0 (2026-10-16): Article III redefined. Region comes from config; demo deploys to eu-north-1 (region-locked AWS project), company default us-east-2.
 - Earlier: 0.0.0 (template placeholders) → 1.0.0
@@ -17,7 +18,7 @@ The binding rules for every spec, plan, task, line of code and review in this re
 ## Part 1: Engineering
 
 ### I. Outcome first
-A feature is done only when it works on the **hosted** runtime (`https://explorer.{domain}` or its Amplify branch URL) with real Travis County data. Working on localhost does not count as done or as evidence.
+A feature is done only when it works on the **hosted** runtime (`https://countylens.{domain}` or its Amplify branch URL) with real Travis County data. Working on localhost does not count as done or as evidence.
 
 ### II. TypeScript everywhere
 Apps, Lambdas, CDK and scripts are TypeScript. Python is forbidden except PySpark/Glue. The vendored kit runtime (`pipeline/oracle-runtime`) runs as provided.
@@ -119,4 +120,4 @@ Every failing hosted test gets `docs/defects/ERR-{n}.md`. No Critical defect is 
 
 This constitution overrides other practices. A plan that breaks an article either changes or records a justification in its Complexity Tracking table, which you approve. Amendments: edit this file and `../assessment-guide/templates/constitution.md` together, bump the version (MAJOR = article removed or redefined, MINOR = article added, PATCH = wording), and update the Sync Impact Report.
 
-**Version**: 3.0.1 | **Ratified**: 2026-10-15 | **Last Amended**: 2026-10-17
+**Version**: 3.0.2 | **Ratified**: 2026-10-15 | **Last Amended**: 2026-10-17

@@ -157,7 +157,7 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 | A-1 | Assumption | The TCAD certified roll count is the property denominator; it is measured in A-01 (intent ASM-6). | ⬜ Unconfirmed |
 | A-2 | Assumption | "All available" means public, reachable within terms and free; exclusions are recorded with evidence (ASM-7). | ✅ Agreed |
 | A-3 | Assumption | BBB coverage may be partial or zero; that is a documented gap, not a failure (ASM-5). | ✅ Agreed |
-| A-4 | Assumption | The explorer runs on `explorer.aldarraj.com` (domain owned by the PO; DNS set up in A-03), with its Amplify URL as the fallback (ASM-8). | ✅ Agreed |
+| A-4 | Assumption | The explorer runs on `countylens.aldarraj.com` (domain owned by the PO; DNS set up in A-03), with its Amplify URL as the fallback (ASM-8). | ✅ Agreed |
 | A-5 | Assumption | The agent uses Bedrock `eu.` inference profiles; the quota was confirmed by a live call on 2026-10-17 (ASM-9). | ✅ Agreed |
 | A-6 | Assumption | A TCAD download path within its terms exists. Today `traviscad.org/publicinformation` returned 403 from this machine; A-01 confirms it, with a US runner as fallback. | ⬜ Unconfirmed |
 | C-1 | Constraint | AWS with the region from config (demo `eu-north-1`), CDK only, TypeScript only; Python only for PySpark/Glue (constitution II, III). | ✅ Agreed |
