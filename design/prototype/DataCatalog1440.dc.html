@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data catalog, 1440</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/atlas/tokens.css">
+<link rel="stylesheet" href="ds/atlas/components/bundle.css">
+<link rel="stylesheet" href="ds/countylens/a11y.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--md-sys-color-primary)}a:hover{color:var(--md-sys-color-on-primary-container)}
+.atlas-table td:last-child,.atlas-table th:last-child{white-space:nowrap}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 1100px; overflow: hidden; background: var(--md-sys-color-surface-container-low); font-family: var(--font-plain); color: var(--md-sys-color-on-surface)">
+
+<header class="atlas-top-app-bar" style="position: absolute; left: 0; top: 0; width: 1440px; box-sizing: border-box; padding: 0 24px; gap: 12px; background: var(--md-sys-color-surface); border-bottom: 1px solid var(--md-sys-color-outline-variant)">
+<h1 class="atlas-top-app-bar__title" style="margin: 0 8px 0 0; flex: none">CountyLens</h1>
+<button class="atlas-chip" aria-label="Location: Travis County, TX. Change location" onClick="{{__say.k1}}"><span class="material-symbols-rounded" aria-hidden="true">location_on</span>Travis County, TX<span class="material-symbols-rounded" aria-hidden="true">arrow_drop_down</span></button>
+<span style="flex: 1"></span>
+<span class="atlas-pill atlas-pill--success"><span class="material-symbols-rounded" aria-hidden="true">cloud_done</span>Run 3 · Oct 17</span>
+<a class="atlas-icon-btn" aria-label="Help" style="text-decoration: none; display: grid; place-items: center; color: var(--md-sys-color-on-surface)" href="Shell1440.dc.html"><span class="material-symbols-rounded" aria-hidden="true">help</span></a>
+<a class="atlas-btn atlas-btn--tonal" style="text-decoration: none" href="ExploreQ-ai.dc.html"><span class="material-symbols-rounded" aria-hidden="true">smart_toy</span>Ask</a>
+<a class="atlas-icon-btn" aria-label="Apps" style="text-decoration: none; display: grid; place-items: center; color: var(--md-sys-color-on-surface)" href="Hub1440.dc.html"><span class="material-symbols-rounded" aria-hidden="true">apps</span></a>
+</header>
+<nav class="atlas-nav-rail" aria-label="Main" style="position: absolute; left: 0; top: 64px; height: 1036px; box-sizing: border-box; padding-top: 16px; background: var(--md-sys-color-surface)">
+<a class="atlas-nav-item" href="Explore1440.dc.html"><span class="atlas-nav-ind"><span class="material-symbols-rounded" aria-hidden="true">map</span></span>Explore</a>
+<a class="atlas-nav-item" href="Runs1440.dc.html"><span class="atlas-nav-ind"><span class="material-symbols-rounded" aria-hidden="true">history</span></span>Runs</a>
+<a class="atlas-nav-item" href="Coverage1440.dc.html"><span class="atlas-nav-ind"><span class="material-symbols-rounded" aria-hidden="true">donut_small</span></span>Coverage</a>
+<a class="atlas-nav-item" href="DataManifest1440.dc.html" aria-current="page"><span class="atlas-nav-ind"><span class="material-symbols-rounded" aria-hidden="true">dataset</span></span>Data</a>
+<a class="atlas-nav-item" href="AdminSignIn1440.dc.html" style="margin-top: 12px"><span class="atlas-nav-ind"><span class="material-symbols-rounded" aria-hidden="true">admin_panel_settings</span></span>Admin</a>
+</nav>
+
+<main style="position: absolute; left: 80px; top: 64px; width: 1360px; height: 1036px; box-sizing: border-box; padding: 24px 32px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: center; gap: 12px">
+<h2 style="flex: 1; margin: 0; font-family: var(--font-brand); font-size: 28px; line-height: 36px; font-weight: 400">Data</h2>
+<a class="atlas-chip" aria-haspopup="menu" style="text-decoration: none" href="Runs1440.dc.html">Run 3 · current<span class="material-symbols-rounded" aria-hidden="true">arrow_drop_down</span></a>
+</div>
+<div class="atlas-tabs" role="tablist" aria-label="Data views">
+<a class="atlas-tab" role="tab" aria-selected="false" href="DataManifest1440.dc.html" style="display: inline-flex; align-items: center; text-decoration: none">Manifest</a>
+<a class="atlas-tab" role="tab" aria-selected="false" href="DataVerify1440.dc.html" style="display: inline-flex; align-items: center; text-decoration: none">Verify</a>
+<a class="atlas-tab" role="tab" aria-selected="true" href="DataCatalog1440.dc.html" style="display: inline-flex; align-items: center; text-decoration: none">Catalog</a>
+</div>
+
+<div style="display: flex; gap: 16px; flex: 1; min-height: 0">
+<nav aria-label="Tables" style="flex: 0 0 300px; display: flex; flex-direction: column; gap: 8px">
+<div style="position: relative; z-index: 30"><dc-import name="SearchBox" value="Find a table or field" variant="header" device="desktop" start-open="{{ false }}" hint-size="100%,48px"></dc-import></div>
+<span style="padding: 8px 4px 0; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--md-sys-color-on-surface-variant)">Frozen tables · contract v1</span>
+<ul class="atlas-list" style="border-radius: var(--md-sys-shape-corner-medium); overflow: hidden">
+<li class="atlas-list-item atlas-list-item--action" style="min-height: 56px; align-items: center"><span class="material-symbols-rounded" aria-hidden="true">home_work</span><div style="flex: 1"><b style="font-weight: 500">properties</b><div class="atlas-prov" style="font-size: 12px">412,860 rows · 21 fields</div></div></li>
+<li class="atlas-list-item atlas-list-item--action" aria-selected="true" style="min-height: 56px; align-items: center"><span class="material-symbols-rounded" aria-hidden="true">description</span><div style="flex: 1"><b style="font-weight: 500">permits</b><div style="font-size: 12px">2,380,507 rows · 15 fields</div></div></li>
+<li class="atlas-list-item atlas-list-item--action" style="min-height: 56px; align-items: center"><span class="material-symbols-rounded" aria-hidden="true">person</span><div style="flex: 1"><b style="font-weight: 500">owners</b><div class="atlas-prov" style="font-size: 12px">398,114 rows · 11 fields</div></div></li>
+<li class="atlas-list-item atlas-list-item--action" style="min-height: 56px; align-items: center"><span class="material-symbols-rounded" aria-hidden="true">engineering</span><div style="flex: 1"><b style="font-weight: 500">contractors</b><div class="atlas-prov" style="font-size: 12px">18,240 rows · 9 fields</div></div></li>
+</ul>
+<span style="padding: 8px 4px 0; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--md-sys-color-on-surface-variant)">Supporting</span>
+<ul class="atlas-list" style="border-radius: var(--md-sys-shape-corner-medium); overflow: hidden">
+<li class="atlas-list-item atlas-list-item--action" style="min-height: 56px; align-items: center"><span class="material-symbols-rounded" aria-hidden="true">roofing</span><div style="flex: 1"><b style="font-weight: 500">roof_age</b><div class="atlas-prov" style="font-size: 12px">412,860 rows · derived</div></div></li>
+<li class="atlas-list-item atlas-list-item--action" style="min-height: 56px; align-items: center"><span class="material-symbols-rounded" aria-hidden="true">storefront</span><div style="flex: 1"><b style="font-weight: 500">businesses</b><div class="atlas-prov" style="font-size: 12px">61,305 rows · TX Comptroller</div></div></li>
+</ul>
+<div class="atlas-prov" style="font-size: 12px; line-height: 16px"><span class="material-symbols-rounded" aria-hidden="true">info</span>Row counts are Sample except permits</div>
+<div class="atlas-card atlas-card--outlined" style="padding: 12px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 16px"><b style="font-weight: 500; font-size: 13px">In SQL and MCP, use the views</b><span class="atlas-cid">v_property · v_roofing_permit</span><span class="atlas-cid">v_contractor · v_run</span><span style="color: var(--md-sys-color-on-surface-variant)">Views join these tables; v_property includes owner fields.</span></div>
+</nav>
+
+<section aria-labelledby="tbl-h" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+<div class="atlas-card atlas-card--outlined" style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 8px"><h3 id="tbl-h" style="flex: 1; margin: 0; font-family: var(--font-mono); font-size: 20px; line-height: 28px; font-weight: 500">permits</h3><a class="atlas-btn atlas-btn--text" href="ExploreQ-sql.dc.html"><span class="material-symbols-rounded" aria-hidden="true">terminal</span>Query in SQL</a><button class="atlas-btn atlas-btn--text" onClick="{{__say.k3}}"><span class="material-symbols-rounded" aria-hidden="true">content_copy</span>Copy schema</button></div>
+<p style="margin: 0; font-size: 14px; line-height: 20px">One row per building permit issued by the City of Austin, with roofing work classified from the description.</p>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; font-size: 13px; line-height: 18px">
+<div><div style="color: var(--md-sys-color-on-surface-variant)">Rows</div><b class="num" style="font-weight: 500">2,380,507</b></div>
+<div><div style="color: var(--md-sys-color-on-surface-variant)">Last updated</div><b style="font-weight: 500">2026-10-17 10:24 UTC · Run 3</b></div>
+<div><div style="color: var(--md-sys-color-on-surface-variant)">Source</div><a href="#">Austin permits (3syk-w9eu)</a></div>
+<div><div style="color: var(--md-sys-color-on-surface-variant)">Licence · CID</div><span>[Licence as published] · <span class="atlas-cid">…q4xa</span></span></div>
+</div>
+</div>
+
+<div class="atlas-table-wrap" style="flex: 1; min-height: 0; overflow: auto; border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface)">
+<table class="atlas-table atlas-table--dense" style="width: 100%">
+<thead><tr><th>Field</th><th>Type</th><th>Meaning</th><th>Source</th><th>Licence</th></tr></thead>
+<tbody>
+<tr><td><span class="atlas-cid">permit_id</span></td><td>string</td><td>Permit number, for example 2020-047812 BP</td><td>Austin permits</td><td>[As published]</td></tr>
+<tr><td><span class="atlas-cid">parcel_id</span></td><td>string</td><td>TCAD parcel the permit is joined to</td><td>Derived: address match</td><td>[Derived]</td></tr>
+<tr><td><span class="atlas-cid">work_class</span></td><td>string</td><td>Work type as written by the City</td><td>Austin permits</td><td>[As published]</td></tr>
+<tr><td><span class="atlas-cid">is_roofing</span></td><td>boolean</td><td>True when the description describes roofing work</td><td>Derived: description classifier</td><td>[Derived]</td></tr>
+<tr><td><span class="atlas-cid">status</span></td><td>enum</td><td>open, stalled or closed; stalled = open and past its expiry date (from status, issue and expiry dates)</td><td>Derived from status, issue and expiry dates (stalled = open and past its expiry date)</td><td>[Derived]</td></tr>
+<tr><td><span class="atlas-cid">issued_date</span></td><td>date</td><td>Date the permit was issued</td><td>Austin permits</td><td>[As published]</td></tr>
+<tr><td><span class="atlas-cid">final_date</span></td><td>date, nullable</td><td>Date it was finaled; null means never finaled</td><td>Austin permits</td><td>[As published]</td></tr>
+<tr><td><span class="atlas-cid">open_days</span></td><td>integer</td><td>Days open as of the run date</td><td>Derived</td><td>[Derived]</td></tr>
+<tr><td><span class="atlas-cid">contractor_id</span></td><td>string, nullable</td><td>Resolved contractor; null means unresolved</td><td>Derived: name matching</td><td>[Derived]</td></tr>
+<tr><td><span class="atlas-cid">bbb_rating</span></td><td>string, nullable</td><td>Letter rating; null means not available, reason in bbb_status</td><td>BBB</td><td>[Terms]</td></tr>
+<tr><td><span class="atlas-cid">bbb_status</span></td><td>enum</td><td>available, no_profile or source_blocked</td><td>Derived</td><td>[Derived]</td></tr>
+<tr><td><span class="atlas-cid">source_url</span></td><td>string</td><td>Link to the original public record</td><td>Austin permits</td><td>[As published]</td></tr>
+<tr><td><span class="atlas-cid">captured_at</span></td><td>timestamp</td><td>When this row was collected</td><td>Pipeline</td><td>[Derived]</td></tr>
+<tr><td><span class="atlas-cid">run</span></td><td>integer</td><td>Pipeline run that produced the row</td><td>Pipeline</td><td>[Derived]</td></tr>
+<tr><td><span class="atlas-cid">cid</span></td><td>string</td><td>CID of the published file holding the row</td><td>Pipeline</td><td>[Derived]</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+</main>
+<sc-if value="{{__toastOn}}" hint-placeholder-val="{{ false }}"><div class="atlas-snackbar" role="status" style="position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 90; max-width: 90%">{{__toastText}}</div></sc-if>
+<div style="position: absolute; left: 12px; bottom: 12px; z-index: 80"><dc-import name="ProtoBar" here="Data · catalog" desktop="DataCatalog1440.dc.html" tablet="DataCatalog768.dc.html" mobile="Data390.dc.html" current="desktop" hint-size="48px,48px"></dc-import></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const __o = this.__rv() || {};
+    const __k = this.__k || (this.__k = { t: {}, msg: '' });
+    const __P = {};
+    const __S = {"k1": "Travis County, TX is the only live county. Others show as Coming soon.", "k3": "Copied to the clipboard (Sample)."};
+    const __p = {}, __tg = {}, __say = {};
+    Object.keys(__P).forEach((k) => { const v = k in __k.t ? __k.t[k] : __P[k]; __p[k] = String(v); __tg[k] = () => { __k.t[k] = !v; this.forceUpdate(); }; });
+    Object.keys(__S).forEach((k) => { __say[k] = () => { __k.msg = __S[k]; this.forceUpdate(); clearTimeout(__k.h); __k.h = setTimeout(() => { __k.msg = ''; this.forceUpdate(); }, 2800); }; });
+    return Object.assign({}, __o, { __p: __p, __tg: __tg, __say: __say, __toastOn: !!__k.msg, __toastText: __k.msg });
+  }
+
+__rv() {
+return {};
+}
+}
+</script>
+</body>
+</html>
