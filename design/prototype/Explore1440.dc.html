@@ -48,6 +48,8 @@ div.lrow.t5{grid-template-columns:minmax(0,1fr) 72px 80px 92px 44px;min-height:5
 .ll2{display:block;font-size:12px;line-height:16px;color:var(--md-sys-color-on-surface-variant)}
 .crm-note{display:flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;padding:4px 10px;border:1.5px dashed var(--md-sys-color-tertiary);border-radius:var(--md-sys-shape-corner-small);background:var(--md-sys-color-surface-container-lowest);color:var(--md-sys-color-on-surface);font:500 12px/16px var(--font-plain);text-align:center}
 .lrad{flex:none;display:flex;align-items:center;gap:8px;min-width:0;padding:0 4px;border-radius:var(--md-sys-shape-corner-small)}.lrad input[type=range]{width:120px;min-width:72px;height:28px;margin:0;accent-color:var(--md-sys-color-primary)}.dev-mobile .lrad{flex:1}.dev-mobile .lrad input[type=range]{flex:1;width:auto}
+@keyframes aiwspin{to{transform:rotate(360deg)}}.aiw{display:flex;flex-direction:column;gap:6px}.aiw-spin{animation:aiwspin 1s linear infinite}@media (prefers-reduced-motion: reduce){.aiw-spin{animation:none}}
+.cbx{display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:18px;min-width:0}.cbx-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
 .mchips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px 0}.mchips::-webkit-scrollbar{display:none}.mchips>button{flex:none;height:32px}
 .sql-ed{white-space:pre-wrap;width:100%;height:132px;box-sizing:border-box;padding:12px;border:0;outline:0;resize:none;background:transparent;color:var(--md-sys-color-on-surface);font:400 12px/18px var(--font-mono)}
 </style>
@@ -351,9 +353,12 @@ div.lrow.t5{grid-template-columns:minmax(0,1fr) 72px 80px 92px 44px;min-height:5
 <div role="region" aria-label="Answer" aria-busy="{{ansBusy}}" style="display: flex; flex-direction: column; gap: {{ansGap}}; padding: {{ansPad}}; font-size: 13px; line-height: 18px">
 <div style="display: flex; gap: 8px; align-items: flex-start"><span class="material-symbols-rounded atlas-icon-20" aria-hidden="true" style="color: var(--md-sys-color-primary)">smart_toy</span><b class="clamp3" style="font-weight: 500; font-size: 14px; line-height: 20px; -webkit-line-clamp: 2">{{ans.q}}</b></div>
 <sc-if value="{{ans.ctx}}" hint-placeholder-val="{{ false }}"><span class="atlas-pill atlas-pill--info" style="align-self: flex-start"><span class="material-symbols-rounded" aria-hidden="true">forum</span>Follow-up · area from your last question</span></sc-if>
-<div title="How I read this: {{ans.how}}" style="padding: 6px 10px; border-radius: var(--md-sys-shape-corner-small); background: var(--md-sys-color-surface-container); font-size: 12px; line-height: 16px"><p class="clamp3" aria-label="How I read this question" style="margin: 0; -webkit-line-clamp: {{ans.howLines}}"><b style="font-weight: 500">How I read this:</b> {{ans.how}}</p></div>
+<sc-if value="{{ans.working}}" hint-placeholder-val="{{ false }}"><div class="aiw"><div role="status" style="display: flex; align-items: center; gap: 8px"><span class="material-symbols-rounded atlas-icon-20 aiw-spin" aria-hidden="true" style="color: var(--md-sys-color-primary)">progress_activity</span><b style="font-weight: 500; font-size: 14px">Working…</b><span class="num" role="timer" aria-live="off" aria-label="{{ans.secLabel}} elapsed" style="color: var(--md-sys-color-on-surface-variant)">{{ans.sec}} s</span><span style="flex: 1"></span><button class="atlas-btn atlas-btn--text" onClick="{{aiCancel}}" style="height: 36px">Cancel</button></div><div class="atlas-progress atlas-progress--indeterminate" role="progressbar" aria-label="Working"><i></i></div><span style="font-size: 12px; line-height: 16px; color: var(--md-sys-color-on-surface-variant)">The answer and all its steps arrive together. Up to 6 steps; it stops at 25 s.</span></div></sc-if>
+<sc-if value="{{ans.slow}}" hint-placeholder-val="{{ false }}"><div class="atlas-banner atlas-banner--warning" role="alert"><span class="material-symbols-rounded" aria-hidden="true">timer_off</span><div class="atlas-banner__body"><b style="font-weight: 500">Took too long.</b> The answer stopped at the 25 s limit. Nothing was counted, and your question is kept.</div></div><div style="display: flex; flex-wrap: wrap; gap: 8px"><button class="atlas-btn atlas-btn--filled" onClick="{{aiRetry}}">Try again</button><button class="atlas-btn atlas-btn--outlined" onClick="{{aiToFilters}}">Use Filters instead</button></div></sc-if>
+<sc-if value="{{ans.cancelled}}" hint-placeholder-val="{{ false }}"><div class="atlas-banner atlas-banner--info" role="status"><span class="material-symbols-rounded" aria-hidden="true">cancel</span><div class="atlas-banner__body">Cancelled. Nothing was counted, and your question is kept.</div></div><button class="atlas-btn atlas-btn--tonal" onClick="{{aiRetry}}" style="align-self: flex-start">Ask again</button></sc-if>
+<sc-if value="{{ans.done}}" hint-placeholder-val="{{ true }}"><div title="How I read this: {{ans.how}}" style="padding: 6px 10px; border-radius: var(--md-sys-shape-corner-small); background: var(--md-sys-color-surface-container); font-size: 12px; line-height: 16px"><p class="clamp3" aria-label="How I read this question" style="margin: 0; -webkit-line-clamp: {{ans.howLines}}"><b style="font-weight: 500">How I read this:</b> {{ans.how}}</p></div></sc-if>
 <sc-if value="{{ans.stepsShut}}" hint-placeholder-val="{{ false }}"><button class="ans-row" onClick="{{ans.openSteps}}" aria-expanded="false" style="min-height: 36px; font-size: 12px; color: var(--md-sys-color-on-surface-variant)"><span class="material-symbols-rounded atlas-icon-16" aria-hidden="true" style="color: var(--status-success)">check_circle</span><span style="flex: 1">{{ans.nSteps}} steps done · show</span><span class="material-symbols-rounded atlas-icon-18" aria-hidden="true">expand_more</span></button></sc-if>
-<sc-if value="{{ans.stepsShown}}" hint-placeholder-val="{{ true }}"><ol aria-label="Steps" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px">
+<sc-if value="{{ans.stepsShown2}}" hint-placeholder-val="{{ true }}"><ol aria-label="Steps" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px">
 <sc-for list="{{ans.steps}}" as="st" hint-placeholder-count="4"><li style="display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--md-sys-color-on-surface-variant)"><span class="material-symbols-rounded atlas-icon-16" aria-hidden="true" style="color: {{st.c}}">{{st.icon}}</span><span>{{st.t}}</span></li></sc-for>
 </ol></sc-if>
 <sc-if value="{{ans.done}}" hint-placeholder-val="{{ true }}">
@@ -365,7 +370,7 @@ div.lrow.t5{grid-template-columns:minmax(0,1fr) 72px 80px 92px 44px;min-height:5
 </div>
 </sc-if>
 <sc-if value="{{listTab}}" hint-placeholder-val="{{ true }}">
-<sc-if value="{{noResults}}" hint-placeholder-val="{{ false }}"><div style="padding: 20px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 14px"><b style="font-weight: 500">No properties match.</b><span style="color: var(--md-sys-color-on-surface-variant)">Widen the radius, or open Close to add a near miss.</span><button class="atlas-btn atlas-btn--tonal" onClick="{{toClose}}" style="align-self: flex-start">See close matches</button></div></sc-if>
+<sc-if value="{{aiWaitOn}}" hint-placeholder-val="{{ false }}"><div role="status" style="padding: 20px 16px; font-size: 14px; line-height: 20px; color: var(--md-sys-color-on-surface-variant)">{{aiWaitText}}</div></sc-if><sc-if value="{{noResults}}" hint-placeholder-val="{{ false }}"><div style="padding: 20px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 14px"><b style="font-weight: 500">No properties match.</b><span style="color: var(--md-sys-color-on-surface-variant)">Widen the radius, or open Close to add a near miss.</span><button class="atlas-btn atlas-btn--tonal" onClick="{{toClose}}" style="align-self: flex-start">See close matches</button></div></sc-if>
 <ul class="atlas-list" style="margin: 0; padding: 0">
 <sc-for list="{{cards}}" as="it" hint-placeholder-count="4">
 <li class="atlas-list-item" aria-selected="{{it.detailStr}}" aria-current="{{it.hlStr}}" style="align-items: flex-start; padding-top: 8px; padding-bottom: 8px; background: {{it.bg}}">
@@ -374,7 +379,9 @@ div.lrow.t5{grid-template-columns:minmax(0,1fr) 72px 80px 92px 44px;min-height:5
 <div style="display: flex; align-items: center; gap: 4px"><span class="atlas-list-item__title" style="flex: 1">{{it.title}}</span><span class="num" style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); white-space: nowrap">{{it.distB}}</span><button class="atlas-icon-btn" aria-label="Show details for {{it.title}}" onClick="{{it.details}}" style="width: 40px; height: 40px"><span class="material-symbols-rounded atlas-icon-20" aria-hidden="true">info</span></button><button class="atlas-icon-btn" aria-label="{{it.openLabel}}" aria-expanded="{{it.openStr}}" onClick="{{it.toggleOpen}}" style="width: 40px; height: 40px"><span class="material-symbols-rounded" aria-hidden="true">{{it.openIcon}}</span></button></div>
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: var(--md-sys-color-on-surface-variant)"><button class="sig" onClick="{{it.toggleWhy}}" aria-label="Why roof {{it.roof}} years, {{it.conf}} confidence"><span class="sw" aria-hidden="true" style="background: var({{it.c}}); margin-right: 0"></span>Roof {{it.roof}} yrs<span class="atlas-pill {{it.confClass}}">{{it.conf}}</span></button><button class="sig" onClick="{{it.toggleWhy}}" aria-label="Why: {{it.permitShort}}"><span class="material-symbols-rounded atlas-icon-16" aria-hidden="true">description</span>{{it.permitShort}}</button><sc-if value="{{it.added}}" hint-placeholder-val="{{ false }}"><span class="atlas-pill atlas-pill--warning">Close match added</span></sc-if></div>
 <sc-if value="{{it.open}}" hint-placeholder-val="{{ false }}">
-<div style="font-size: 13px; line-height: 18px">Basis: {{it.basis}} · {{it.contractorLine}}</div>
+<div style="font-size: 13px; line-height: 18px">Basis: {{it.basis}}</div>
+<sc-if value="{{it.cbOn}}" hint-placeholder-val="{{ true }}"><div class="cbx" role="group" aria-label="Contractor: {{it.cbLabel}}"><span>Contractor <b style="font-weight: 500">“{{it.cbPrinted}}”</b> <span style="color: var(--md-sys-color-on-surface-variant)">as printed on permit</span></span><span class="cbx-row"><span class="{{it.cbCls}}" title="{{it.cbTip}}"><span class="material-symbols-rounded" aria-hidden="true">{{it.cbIcon}}</span>{{it.cbLabel}}</span><span>{{it.cbReason}}</span></span><span style="color: var(--md-sys-color-on-surface-variant)">BBB: {{it.cbBbb}}</span></div></sc-if>
+<sc-if value="{{it.cbOff}}" hint-placeholder-val="{{ false }}"><div style="font-size: 13px; line-height: 18px; color: var(--md-sys-color-on-surface-variant)">{{it.cbNone}}</div></sc-if>
 <button class="atlas-chip" onClick="{{it.toggleWhy}}" style="align-self: flex-start"><span class="material-symbols-rounded" aria-hidden="true">account_tree</span>Why is this a match?<span class="material-symbols-rounded" aria-hidden="true">chevron_right</span></button>
 </sc-if>
 </div>
@@ -438,7 +445,7 @@ div.lrow.t5{grid-template-columns:minmax(0,1fr) 72px 80px 92px 44px;min-height:5
 </div>
 </sc-for>
 </sc-if>
-<sc-if value="{{noResults}}" hint-placeholder-val="{{ false }}"><div style="padding: 20px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 14px"><b style="font-weight: 500">No properties match.</b><span style="color: var(--md-sys-color-on-surface-variant)">Widen the radius, or open Close to add a near miss.</span><button class="atlas-btn atlas-btn--tonal" onClick="{{toClose}}" style="align-self: flex-start">See close matches</button></div></sc-if>
+<sc-if value="{{aiWaitOn}}" hint-placeholder-val="{{ false }}"><div role="status" style="padding: 20px 16px; font-size: 14px; line-height: 20px; color: var(--md-sys-color-on-surface-variant)">{{aiWaitText}}</div></sc-if><sc-if value="{{noResults}}" hint-placeholder-val="{{ false }}"><div style="padding: 20px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 14px"><b style="font-weight: 500">No properties match.</b><span style="color: var(--md-sys-color-on-surface-variant)">Widen the radius, or open Close to add a near miss.</span><button class="atlas-btn atlas-btn--tonal" onClick="{{toClose}}" style="align-self: flex-start">See close matches</button></div></sc-if>
 </div>
 <div style="display: flex; align-items: center; gap: 8px; min-height: 48px; flex: none; padding: 0 4px 0 16px; border-top: 1px solid var(--md-sys-color-outline-variant); font-size: 13px; color: var(--md-sys-color-on-surface-variant)"><span class="hm" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{lFoot}}</span><div class="lrad" role="group" aria-label="Radius from {{placeLabel}}, all query modes" title="From {{placeLabel}} ({{placeLL}}) · all query modes"><label class="ht" for="lr-range" style="font-size: 12px; font-weight: 500; color: var(--md-sys-color-on-surface-variant)">Radius</label><input id="lr-range" type="range" min="0.5" max="10" step="0.5" value="{{rLabel}}" onInput="{{onRadius}}" aria-valuetext="{{rLabel}} miles" aria-label="Radius in miles"><input id="lr-num" class="qb-in num" type="number" min="0.5" max="10" step="0.5" value="{{rLabel}}" onChange="{{onRadius}}" onKeyDown="{{rNumKey}}" aria-label="Radius in miles, 0.5 to 10" style="width: 60px; height: 36px; text-align: right"><span style="font-size: 12px">mi</span></div><sc-if value="{{tPagerOn}}" hint-placeholder-val="{{ true }}"><dc-import name="Pager" pages="{{tPages}}" page="{{tPageNo}}" text="" label="Table pages" compact="{{ true }}" on-page="{{goTPage}}" hint-size="160px,40px"></dc-import></sc-if><button class="atlas-icon-btn hm" aria-label="Download {{rowsShown}} rows as CSV" title="Download CSV" onClick="{{copyCsv}}"><span class="material-symbols-rounded" aria-hidden="true">download</span></button></div>
 </sc-if>
@@ -449,9 +456,9 @@ div.lrow.t5{grid-template-columns:minmax(0,1fr) 72px 80px 92px 44px;min-height:5
 <!-- ============ Details drawer, on demand ============ -->
 <sc-if value="{{drawerOn}}" hint-placeholder-val="{{ false }}">
 <aside class="atlas-side-sheet" role="dialog" aria-label="Property details: {{d.title}}" style="position: absolute; left: {{dX}}px; top: {{dY}}px; width: {{dW}}px; height: {{dH}}px; box-sizing: border-box; padding: 16px 20px; overflow: auto; z-index: 30; background: var(--md-sys-color-surface-container-low); box-shadow: var(--md-sys-elevation-level3); display: flex; flex-direction: column; gap: 14px">
-<div style="display: flex; align-items: flex-start; gap: 8px"><div style="flex: 1; display: flex; flex-direction: column; gap: 4px"><span class="atlas-pill atlas-pill--info" style="align-self: flex-start">Sample</span><h2 style="margin: 0; font-family: var(--font-brand); font-size: 22px; line-height: 28px; font-weight: 400">{{d.title}}</h2><span style="font-size: 13px; color: var(--md-sys-color-on-surface-variant)">{{d.dist}} mi from the pin</span></div><button class="atlas-icon-btn" aria-label="Close details" onClick="{{closeDrawer}}"><span class="material-symbols-rounded" aria-hidden="true">close</span></button></div>
-<section class="atlas-card atlas-card--outlined" style="display: flex; flex-direction: column; gap: 6px"><h3 class="atlas-card__title" style="margin: 0">Roof</h3><div class="atlas-kv"><span>Roof age</span><span class="num">{{d.roof}} yrs</span></div><div class="atlas-kv"><span>Basis</span><span>{{d.basis}}</span></div><div class="atlas-kv"><span>Confidence</span><span class="atlas-pill {{d.confClass}}">{{d.conf}}</span></div><span class="atlas-prov" style="font-size: 12px"><span class="material-symbols-rounded" aria-hidden="true">description</span>roof_age · Run 3 · CID …r8sd</span></section>
-<section class="atlas-card atlas-card--outlined" style="display: flex; flex-direction: column; gap: 6px"><h3 class="atlas-card__title" style="margin: 0">Roofing permit</h3><div class="atlas-kv"><span>Status</span><span>{{d.permitShort}}</span></div><div class="atlas-kv"><span>Contractor</span><span>{{d.contractor}}</span></div><div class="atlas-kv"><span>BBB rating</span><span class="atlas-pill atlas-pill--unavailable">Not available: source blocked</span></div><span class="atlas-prov" style="font-size: 12px"><span class="material-symbols-rounded" aria-hidden="true">description</span>Austin permits · Run 3 · CID …q4xa</span></section>
+<div style="display: flex; align-items: flex-start; gap: 8px"><div style="flex: 1; display: flex; flex-direction: column; gap: 4px"><span class="atlas-pill atlas-pill--info" style="align-self: flex-start">Sample</span><h2 style="margin: 0; font-family: var(--font-brand); font-size: 22px; line-height: 28px; font-weight: 400">{{d.title}}</h2><span style="font-size: 13px; color: var(--md-sys-color-on-surface-variant)">{{d.dist}} mi from the area centre</span></div><button class="atlas-icon-btn" aria-label="Close details" onClick="{{closeDrawer}}"><span class="material-symbols-rounded" aria-hidden="true">close</span></button></div>
+<section class="atlas-card atlas-card--outlined" style="display: flex; flex-direction: column; gap: 6px"><h3 class="atlas-card__title" style="margin: 0">Roof</h3><div class="atlas-kv"><span>Roof age</span><span class="num">{{d.roof}} yrs</span></div><div class="atlas-kv"><span>Basis</span><span>{{d.basis}}</span></div><div class="atlas-kv"><span>Confidence</span><span class="atlas-pill {{d.confClass}}">{{d.conf}}</span></div><span class="atlas-prov" style="font-size: 12px"><span class="material-symbols-rounded" aria-hidden="true">description</span>roof_age_years · Run 3 · CID …r8sd</span></section>
+<section class="atlas-card atlas-card--outlined" style="display: flex; flex-direction: column; gap: 6px"><h3 class="atlas-card__title" style="margin: 0">Roofing permit</h3><div class="atlas-kv"><span>Status</span><span>{{d.permitShort}}</span></div><div class="atlas-kv"><span>Contractor, as printed on permit</span><span>{{d.contractor}}</span></div><sc-if value="{{d.cbOn}}" hint-placeholder-val="{{ true }}"><div class="atlas-kv" style="align-items: flex-start"><span>Identity</span><span class="cbx-row"><span class="{{d.cbCls}}" title="{{d.cbTip}}"><span class="material-symbols-rounded" aria-hidden="true">{{d.cbIcon}}</span>{{d.cbLabel}}</span><span style="font-size: 12px; line-height: 16px">{{d.cbReason}}</span></span></div><div class="atlas-kv"><span>BBB</span><span>{{d.cbBbb}}</span></div></sc-if><span class="atlas-prov" style="font-size: 12px"><span class="material-symbols-rounded" aria-hidden="true">description</span>Austin permits · Run 3 · CID …q4xa</span></section>
 <section class="atlas-card atlas-card--outlined" style="display: flex; flex-direction: column; gap: 6px"><h3 class="atlas-card__title" style="margin: 0">Owner</h3><div class="atlas-kv"><span>Tenure</span><span class="num">{{d.tenure}} yrs</span></div><div class="atlas-kv"><span>Mailing address</span><span>{{d.mailing}}</span></div><span class="atlas-prov" style="font-size: 12px"><span class="material-symbols-rounded" aria-hidden="true">description</span>TCAD owners · Run 3 · CID …7m2c</span></section>
 <div style="display: flex; flex-wrap: wrap; gap: 8px"><a class="atlas-btn atlas-btn--filled" href="{{propHref}}" style="text-decoration: none"><span class="material-symbols-rounded" aria-hidden="true">open_in_full</span>Full details</a><button class="atlas-btn atlas-btn--tonal" onClick="{{askProp}}"><span class="material-symbols-rounded" aria-hidden="true">smart_toy</span>Ask about it</button><a class="atlas-btn atlas-btn--text" href="DataVerify1440.dc.html" style="text-decoration: none">Verify CID</a></div>
 </aside>
@@ -488,6 +495,10 @@ class Component extends DCLogic {
       P('77', '77 Sample Bnd · Pflugerville 78660', 6.2, 280, 27, 'year built 1999', 'Low', 'open', 1.4, '', 18.8, false, 'Pflugerville, TX'),
       P('26', '26 Example Pl · Austin 78754', 3.9, 10, 9, 'reroof permit 2017', 'High', 'none', 0, '', 3.1, false, 'Austin, TX')
     ];
+    // AD-05: contractor identity (oracle's five states) and AD-07 BBB state per permit. The name stays as printed on the permit (Sample).
+    const CST = { '101': ['candidate', 'blocked'], '58': ['resolved', 'blocked'], '18': ['resolved', 'blocked'], '310': ['resolved', 'blocked'], '41': ['ambiguous', 'blocked'], '37': ['conflicting', 'blocked'], '3': ['unresolved', 'not_checked'] }; // BBB refused every check in Run 3 (403), so no permit is Rated or Not found here
+    const PRINTED = { '37': 'PLACEHOLDER ROOF & GUTTER', '3': 'J EXAMPLE' };
+    this.data.forEach((x) => { if (PRINTED[x.id]) x.contractor = PRINTED[x.id]; const c = CST[x.id]; x.cres = c ? c[0] : null; x.bbb = c ? c[1] : null; });
     this.cat = {
       roof: { label: 'Roof age', ops: ['≥', '≤'], value: '15' },
       permit: { label: 'Permit status', ops: ['is', 'is not'], value: 'open or stalled' },
@@ -496,9 +507,9 @@ class Component extends DCLogic {
       ooa: { label: 'Owner mailing', ops: ['is', 'is not'], value: 'out of area' }
     };
     this.sqlEx = [
-      { id: 'roof', label: 'Roof ≥ 15 in Area', sql: "SELECT address, roof_age_yrs, roof_age_basis\nFROM v_property\nWHERE dist_mi(centroid, :area_centre) <= :radius_mi\n  AND roof_age_yrs >= 15\nORDER BY roof_age_yrs DESC;", test: (x, r) => x.d <= r && x.roof >= 15 },
-      { id: 'perm', label: 'Open permits 5+ yrs', sql: "SELECT p.address, r.permit_id, r.open_days, r.contractor_name\nFROM v_roofing_permit r JOIN v_property p USING (parcel_id)\nWHERE r.final_date IS NULL AND r.open_days >= 1826\n  AND dist_mi(p.centroid, :area_centre) <= :radius_mi\nORDER BY r.open_days DESC;", test: (x, r) => x.d <= r && (x.status === 'open' || x.status === 'stalled') && x.yrs >= 5 },
-      { id: 'ooa', label: 'Out-of-area, roof ≥ 20', sql: "SELECT address, owner_mailing_city, roof_age_yrs\nFROM v_property\nWHERE owner_out_of_area AND roof_age_yrs >= 20\n  AND dist_mi(centroid, :area_centre) <= :radius_mi;", test: (x, r) => x.d <= r && x.ooa && x.roof >= 20 }
+      { id: 'roof', label: 'Roof ≥ 15 in Area', sql: "SELECT situs_address, roof_age_years, roof_age_basis\nFROM v_property\nWHERE dist_mi(lat, lon, :area_centre) <= :radius_mi\n  AND roof_age_years >= 15\nORDER BY roof_age_years DESC;", test: (x, r) => x.d <= r && x.roof >= 15 },
+      { id: 'perm', label: 'Open permits 5+ yrs', sql: "SELECT p.situs_address, r.permit_number, r.status_class,\n  r.status_raw, r.open_days, r.contractor_name_raw,\n  r.contractor_resolution\nFROM v_roofing_permit r JOIN v_property p USING (property_cid)\nWHERE r.status_class IN ('open','stalled') AND r.open_days >= 1826\n  AND dist_mi(p.lat, p.lon, :area_centre) <= :radius_mi\nORDER BY r.open_days DESC;", test: (x, r) => x.d <= r && (x.status === 'open' || x.status === 'stalled') && x.yrs >= 5 },
+      { id: 'ooa', label: 'Out-of-area, roof ≥ 20', sql: "SELECT situs_address, owner_area_class, roof_age_years,\n  tenure_years, tenure_basis\nFROM v_property\nWHERE owner_is_out_of_area AND roof_age_years >= 20\n  AND dist_mi(lat, lon, :area_centre) <= :radius_mi;", test: (x, r) => x.d <= r && x.ooa && x.roof >= 20 }
     ];
     const tour = !!props.tourDemo;
     // Presets let the search box open this workspace already in a query mode (Sample).
@@ -511,6 +522,9 @@ class Component extends DCLogic {
       // D-11 drawn as the second turn: D-10's question first, then the follow-up that reuses its area (review #61).
       aicontractor: { method: 'ai', aiText: 'Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?', aiUsed: 2, aiTurns: [{ q: 'Which properties within five miles of Pflugerville have roofs older than 15 years?', n: 9, R: 5, place: 'pf', placeLabel: 'Pflugerville city hall', placeShort: 'Pflugerville' }] },
       aiooa: { method: 'ai', aiText: 'Out-of-area owners with roofs over 20 years within 5 miles' },
+      // AD-09: one response, no streaming. Working… with a timer, and the 25 s stop (Sample timings).
+      aiworking: { method: 'ai', aiText: 'Every out-of-area owner with an open permit and a BBB rating in the county', aiPhase: 'working', aiSec: 7, aiHold: true },
+      aislow: { method: 'ai', aiText: 'Every out-of-area owner with an open permit and a BBB rating in the county', aiPhase: 'slow', aiSec: 25 },
       builder: { method: 'builder' }, sql: { method: 'sql' }, ai: { method: 'ai' }
     };
     const pre = PRE[props.preset] || {};
@@ -521,7 +535,7 @@ class Component extends DCLogic {
       join: 'AND', conds: [{ key: 'roof', op: '≥', value: '15' }, { key: 'permit', op: 'is', value: 'open or stalled' }],
       sqlId: 'roof', sqlText: this.sqlEx[0].sql, sqlRan: 'roof', sqlErr: '',
       aiText: 'Which properties within five miles of Pflugerville have roofs older than 15 years?', aiRan: 'Which properties within five miles of Pflugerville have roofs older than 15 years?', aiDrop: {},
-      aiEdit: {}, aiChipOpen: null, aiTurns: [], aiStream: 99, aiUsed: props.aiUsed || Component.aiUsedSession(), aiPaused: !!props.aiPaused, aiCtx: null, sort: 'roof', sortOpen: false, open: tour ? { '101': true } : {}, why: null, rtab: (pre.method || props.method) === 'ai' ? 'answer' : 'match', page: 0, pageKey: '', schemaOpen: false, sqlFix: null, sqlErrTitle: '', detail: null, sel: {},
+      aiEdit: {}, aiChipOpen: null, aiTurns: [], aiPhase: 'done', aiSec: 0, aiUsed: props.aiUsed || Component.aiUsedSession(), aiPaused: !!props.aiPaused, aiCtx: null, sort: 'roof', sortOpen: false, open: tour ? { '101': true } : {}, why: null, rtab: (pre.method || props.method) === 'ai' ? 'answer' : 'match', page: 0, pageKey: '', schemaOpen: false, sqlFix: null, sqlErrTitle: '', detail: null, sel: {},
       z: 1, px: 0, py: 0, snack: '', prev: null, qc: (props.device ?? 'desktop') !== 'desktop', sheet: tour ? 'full' : 'peek', help: !!props.helpOpen, askCard: !!props.firstVisit, place: props.place || 'pf', placeOpen: false, placeQ: '', cc: false, layersOpen: false, qSheet: 'half', hl: null, tpage: 0, tpageKey: ''
     };
     Object.assign(this.state, pre);
@@ -576,12 +590,35 @@ class Component extends DCLogic {
     else if (/many years|long[- ]open|for years|a long time/.test(t)) out.push({ k: 'yrs', label: '“Many years” = open ≥ 5 yrs', v: 5 });
     if (/out[- ]of[- ](?:area|state|town)|absentee|live elsewhere/.test(t)) out.push({ k: 'ooa', label: 'Owner mails from outside the county', v: true });
     if (/contractor/.test(t)) out.push({ k: 'contractor', label: 'Show the listed contractor', v: true });
-    if (/bbb|rating/.test(t)) out.push({ k: 'bbb', label: 'BBB rating where available', v: true });
+    if (/bbb|rating/.test(t)) out.push({ k: 'bbb', label: 'BBB: Rated, Not found, Blocked or Not checked', v: true });
     return out;
   }
   // Prototype-only switch (ProtoBar). Off = CountyLens as it ships: List view only. On = Roofing CRM map preview. Do not ship.
   static mapOn() { try { if (typeof window.__clMapView === 'boolean') return window.__clMapView; } catch (e) {} try { const u = new URLSearchParams(window.location.search).get('mapView'); if (u === '1' || u === 'on') return true; if (u === '0' || u === 'off') return false; } catch (e) {} try { return window.localStorage.getItem('countylens.proto.mapView') === '1'; } catch (e) { return false; } }
-  componentDidMount() { this.onMap = (e) => { try { if (e && e.type === 'storage') window.__clMapView = undefined; } catch (er) {} this.setState({ mapTick: (this.state.mapTick || 0) + 1 }); }; try { window.addEventListener('storage', this.onMap); window.addEventListener('cl-mapview', this.onMap); } catch (e) {} }
+  componentDidMount() { if (this.state.aiPhase === 'working') this.aiTick(99, false); this.onMap = (e) => { try { if (e && e.type === 'storage') window.__clMapView = undefined; } catch (er) {} this.setState({ mapTick: (this.state.mapTick || 0) + 1 }); }; try { window.addEventListener('storage', this.onMap); window.addEventListener('cl-mapview', this.onMap); } catch (e) {} }
+  // AD-05 / AD-06: contractor identity badge, same five variants as the ContractorBadge component.
+  static get CB() { return {
+    resolved: { cls: 'atlas-pill--success', icon: 'verified', label: 'Resolved', reason: 'Comptroller taxpayer no. 32041178552 matched' },
+    candidate: { cls: 'atlas-pill--info', icon: 'help', label: 'Candidate', reason: 'Likely match on name and address, not proof' },
+    ambiguous: { cls: 'atlas-pill--warning', icon: 'call_split', label: 'Ambiguous', reason: '2 Comptroller companies fit this name' },
+    conflicting: { cls: 'atlas-pill--danger', icon: 'sync_problem', label: 'Conflicting', reason: 'Sources disagree on which company this is' },
+    unresolved: { cls: 'atlas-pill--unavailable', icon: 'link_off', label: 'Unresolved', reason: 'No Comptroller match. No Texas roofing licence register exists' }
+  }; }
+  aiTick(dur, answered) {
+    clearInterval(this.aiT);
+    this.aiT = setInterval(() => {
+      const st = this.state; if (st.aiPhase !== 'working') { clearInterval(this.aiT); return; }
+      const n = (st.aiSec || 0) + 1;
+      if (n >= 25) { clearInterval(this.aiT); this.setState({ aiSec: 25, aiPhase: 'slow' }); return; }
+      if (!st.aiHold && n >= dur) {
+        clearInterval(this.aiT);
+        const used = answered ? st.aiUsed + 1 : st.aiUsed; // only an answered question counts
+        if (answered) { try { window.sessionStorage.setItem('countylens.aiUsed', String(used)); } catch (e) {} }
+        this.setState({ aiSec: n, aiPhase: 'done', aiUsed: used }); return;
+      }
+      this.setState({ aiSec: n });
+    }, 1000);
+  }
   static aiUsedSession() { try { return Math.max(0, parseInt(window.sessionStorage.getItem('countylens.aiUsed') || '0', 10) || 0); } catch (e) { return 0; } }
   say(text, undoable) { clearTimeout(this.sT); this.setState(undoable ? { snack: text } : { snack: text, prev: null }); this.sT = setTimeout(() => this.setState({ snack: '' }), 4000); }
   componentWillUnmount() { clearTimeout(this.sT); clearInterval(this.aiT); clearTimeout(this.hdrT); try { window.removeEventListener('storage', this.onMap); window.removeEventListener('cl-mapview', this.onMap); } catch (e) {} }
@@ -627,6 +664,7 @@ class Component extends DCLogic {
     const confClass = { High: 'atlas-pill--success', Medium: 'atlas-pill--warning', Low: 'atlas-pill--danger' };
     // ---------- query ----------
     let matched = [], close = [], summary = '';
+    const aiWait = s.method === 'ai' && (s.aiPhase || 'done') !== 'done'; // AD-09: matches arrive with the answer
     if (s.method === 'filters') {
       D.forEach((x) => { const f = this.matchFilters(x, s); if (!f.length) matched.push(x); else if (f.length === 1) close.push({ x: x, f: f[0] }); });
       summary = 'Filters: roof ≥ ' + s.thr + (s.perm !== 'any' ? ' · ' + (s.perm === 'stalled' ? 'stalled permits' : 'open or stalled permits') : '') + (s.openYrs ? ' open ≥ ' + s.openYrs + ' yrs' : '') + (s.ten ? ' · tenure > 10' : '') + (s.ooa ? ' · out-of-area' : '');
@@ -646,6 +684,7 @@ class Component extends DCLogic {
       if (g('ctx') && prevT) { g('ctx').label = 'Area from your last question: ' + prevT.placeShort; if (g('r') && !g('r').stated) g('r').label = 'Radius from your last question: ' + prevT.R + ' mi'; }
       const R = g('r') && g('r').stated ? g('r').v : (g('ctx') && prevT ? prevT.R : s.r);
       matched = D.filter((x) => x.d <= R && (!g('thr') || x.roof > g('thr').v) && (!g('perm') || x.status === 'open' || x.status === 'stalled') && (!g('yrs') || x.yrs >= g('yrs').v) && (!g('ooa') || x.ooa));
+      if (aiWait) matched = [];
       summary = 'AI: ' + parts.length + ' assumptions';
       this.aiParts = parts; this.aiR = R; this.aiG = g;
     } else {
@@ -659,13 +698,16 @@ class Component extends DCLogic {
     const sorters = { roof: (p, q) => q.roof - p.roof, open: (p, q) => q.yrs - p.yrs || q.roof - p.roof, near: (p, q) => p.d - q.d };
     matched = matched.slice().sort(sorters[s.sort]);
     const sortLabel = { roof: 'Oldest roof', open: 'Permit open longest', near: 'Nearest' }[s.sort];
-    const permitShort = (x) => ({ stalled: 'Permit stalled ' + x.yrs + ' yrs', open: 'Permit open ' + x.yrs + ' yrs', closed: 'Permit closed 2023', none: 'No open permit', nosource: 'No permit source here' })[x.status];
+    // AD-08: the profile's class, then the source's own status word.
+    const permitShort = (x) => ({ stalled: 'Stalled ' + x.yrs + ' yrs · source says Expired', open: 'Open ' + x.yrs + ' yrs · source says Active', closed: 'Closed 2023 · source says Final', none: 'No open permit', nosource: 'No permit source here' })[x.status];
+    const CB = Component.CB, BBB = { rated: 'Rated A−', not_found: 'Not found', blocked: 'Blocked · bbb.org refused the check (403), 2026-10-17', not_checked: 'Not checked · no name to look up' };
+    const cbOf = (x) => { const c = x.contractor && CB[x.cres || 'unresolved']; return c ? { cbOn: true, cbOff: false, cbPrinted: x.contractor, cbCls: 'atlas-pill ' + c.cls, cbIcon: c.icon, cbLabel: c.label, cbReason: c.reason, cbTip: x.cres === 'candidate' ? 'Name matches stay Candidate. Only an official ID resolves a contractor.' : '', cbBbb: BBB[x.bbb || 'not_checked'] } : { cbOn: false, cbOff: true, cbPrinted: '', cbCls: '', cbIcon: '', cbLabel: '', cbReason: '', cbTip: '', cbBbb: '' }; };
     const pos = (x) => { const a = x.a * Math.PI / 180; return { x: Math.round(300 + Math.cos(a) * x.d0 * 28), y: Math.round(390 + Math.sin(a) * x.d0 * 28) }; };
     const bucket = (y) => y >= 25 ? '--viz-roof-age-25-plus' : y >= 20 ? '--viz-roof-age-20-24' : y >= 15 ? '--viz-roof-age-15-19' : y >= 10 ? '--viz-roof-age-10-14' : '--viz-roof-age-0-9';
     const L = (rule, value, src, cid) => ({ rule, value, src, cid });
     const lineage = (x) => {
       const out = [L('Within ' + rr + ' mi of ' + place.label, x.d + ' mi from the area centre to the parcel centre', 'TCAD parcels · Run 3', 'bafybei…7m2c'), L('Roof age ' + x.roof + ' yrs', x.basis + ' · ' + x.conf + ' confidence', x.basis.indexOf('permit') >= 0 ? 'Austin permits · Run 3' : 'TCAD parcels · Run 3', x.basis.indexOf('permit') >= 0 ? 'bafybei…q4xa' : 'bafybei…7m2c')];
-      if (x.status === 'open' || x.status === 'stalled') out.push(L('Roofing permit ' + x.status, 'Open ' + x.yrs + ' yrs' + (x.contractor ? ' · contractor ' + x.contractor : ' · contractor unresolved'), 'Austin permits · Run 3', 'bafybei…q4xa'));
+      if (x.status === 'open' || x.status === 'stalled') out.push(L('Roofing permit ' + x.status + ' · source says ' + (x.status === 'stalled' ? 'Expired' : 'Active'), 'Open ' + x.yrs + ' yrs' + (x.contractor ? ' · contractor “' + x.contractor + '” as printed on permit · ' + CB[x.cres || 'unresolved'].label : ' · no contractor printed on permit'), 'Austin permits · Run 3', 'bafybei…q4xa'));
       if (s.ooa || s.method !== 'filters') out.push(L('Owner', (x.ooa ? 'Out of area: ' : 'Local: ') + x.mailing + ' · tenure ' + x.tenure + ' yrs', 'TCAD owners · Run 3', 'bafybei…7m2c'));
       return out;
     };
@@ -674,7 +716,7 @@ class Component extends DCLogic {
     const bear = (x) => { const a = x.a * Math.PI / 180, dx = Math.cos(a) * x.d0 - place.x, dy = Math.sin(a) * x.d0 - place.y; const deg = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360; return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8]; };
     const osmUrl = (x) => { const a = x.a * Math.PI / 180, lat = (30.4394 - Math.sin(a) * x.d0 / 69).toFixed(5), lon = (-97.6200 + Math.cos(a) * x.d0 / 59.6).toFixed(5); return 'https://www.openstreetmap.org/?mlat=' + lat + '&mlon=' + lon + '#map=18/' + lat + '/' + lon; };
     const decorate = (x) => ({ ...x, ll: ll(x), ll4: ll(x, 4), src: srcUrl(x), dist: x.d.toFixed(1), distB: x.d.toFixed(1) + ' mi ' + bear(x), distCell: isD ? x.d.toFixed(1) + ' ' + bear(x) : x.d.toFixed(1), osm: osmUrl(x), c: bucket(x.roof), short: x.title.split(' · ')[0], confClass: confClass[x.conf], permitShort: permitShort(x),
-      contractor: x.contractor || 'Unresolved', contractorLine: x.contractor ? 'Contractor: ' + x.contractor + ' · BBB: Blocked · 403 on 2026-10-17 · where available' : (x.status === 'nosource' ? 'Permits not available here' : 'Contractor: none listed'),
+      contractor: x.contractor || 'None printed on permit', ...cbOf(x), cbNone: x.status === 'nosource' ? 'Permits not available here' : 'No contractor printed on permit',
       details: () => this.setState({ detail: x.id, qc: (this.props.device ?? 'desktop') === 'desktop' ? s.qc : true }) });
     // ---------- layout per device (one component, three layouts) ----------
     const dev = this.props.device ?? 'desktop', isD = dev === 'desktop', isT = dev === 'tablet', isM = dev === 'mobile';
@@ -703,7 +745,7 @@ class Component extends DCLogic {
     const peek = mapOn && isMob && s.sheet !== 'full';
     const bodyH = cardsH - (isMob && mapOn ? 28 : 0) - 48 - (peek ? 0 : 48) - 4 - (isMob && !mapOn ? 64 : 0); // 64: room for the Edit query FAB
     const pages = []; let cur = [], acc = 0;
-    matched.forEach((x) => { const h = (s.open[x.id] ? hE : hC) + (isMob ? (x.title.length > 26 ? 20 : 0) + (permitShort(x).length > 19 ? 44 : 0) : 0); if (cur.length && acc + h > bodyH) { pages.push(cur); cur = []; acc = 0; } cur.push(x); acc += h; });
+    matched.forEach((x) => { const h = (s.open[x.id] ? hE + (x.contractor ? (isMob ? 92 : mapOn ? 156 : 86) : 0) : hC) + (isMob ? (x.title.length > 26 ? 20 : 0) + (permitShort(x).length > 19 ? 44 : 0) : (permitShort(x).length > 24 ? 26 : 0)); if (cur.length && acc + h > bodyH) { pages.push(cur); cur = []; acc = 0; } cur.push(x); acc += h; });
     if (cur.length) pages.push(cur);
     const pKey = summary + '|' + s.sort + '|' + s.place + '|' + s.r;
     const pg = Math.min(pages.length - 1, Math.max(0, s.pageKey === pKey ? s.page : 0));
@@ -736,14 +778,13 @@ class Component extends DCLogic {
     // Review #27: engine line + a 'run it yourself' DuckDB command built from the query that ran.
     const diy = (() => {
       const CID = 'bafybeihq7n3', cidShort = 'bafybeih…q7n3';
-      const VIEWS = { v_property: 12.6, v_roofing_permit: 5.8, v_contractor: 1.1, v_run: 0.1 }; // MB read by the browser (Sample)
+      const VIEWS = { v_property: 12.6, v_roofing_permit: 5.8, v_contractor: 1.1, v_run: 0.1 }; // MB of the elephant-cli tables behind each view read by the browser (Sample)
       const ran = (this.sqlEx.find((e) => e.id === s.sqlRan) || this.sqlEx[0]).sql;
       const used = Object.keys(VIEWS).filter((v) => ran.indexOf(v) >= 0);
       const lat = (30.4394 - place.y / 69).toFixed(4), lon = (-97.6200 + place.x / 59.6).toFixed(4);
       const q = ran.replace(/:area_centre/g, "{'lat': " + lat + ", 'lon': " + lon + '}').replace(/:radius_mi/g, String(this.aiR || s.r));
-      const cmd = 'duckdb -c "\nINSTALL httpfs; LOAD httpfs;\n'
-        + used.map((v) => 'CREATE VIEW ' + v + " AS SELECT * FROM read_parquet('https://ipfs.io/ipfs/" + CID + '/' + v + ".parquet');").join('\n')
-        + '\nCREATE MACRO dist_mi(a, b) AS 3958.8 * 2 * asin(sqrt(pow(sin(radians(b.lat - a.lat) / 2), 2) + cos(radians(a.lat)) * cos(radians(b.lat)) * pow(sin(radians(b.lon - a.lon) / 2), 2)));\n'
+      // AD-01: no serving files. views.sql (packages/query-core) defines the views and dist_mi() over the elephant-cli tables of the run.
+      const cmd = '# views.sql is in packages/query-core. It defines ' + used.join(', ') + ' and dist_mi()\n# over the elephant-cli tables of Run 3 at https://ipfs.io/ipfs/' + CID + '/\nduckdb -init views.sql -c "\nSET VARIABLE run_cid = \'' + CID + '\';\n'
         + q + '\n"';
       return { cmd: cmd, cidShort: cidShort, mb: used.reduce((t, v) => t + VIEWS[v], 0).toFixed(1) };
     })();
@@ -754,10 +795,10 @@ class Component extends DCLogic {
       'Found ' + ctrLabel + ' at ' + pLL(useCtx ? PL[prevTurn.place] || place : place) + (useCtx ? ' (from your last question)' : ''),
       'Searched r = ' + (this.aiR || s.r) + ' mi' + (G('thr') ? ', roof > ' + G('thr').v + ' yrs' : '') + (G('yrs') ? ', permit open ≥ ' + G('yrs').v + ' yrs' : (G('perm') ? ', permit open or stalled' : '')) + (G('ooa') ? ', owner out of area' : ''),
       'Read ' + matched.length + ' matching parcels from v_property' + (G('perm') || G('yrs') ? ' and their permits from v_roofing_permit' : ''),
-      (G('bbb') || G('contractor')) ? 'Looked up contractors; BBB: Blocked · 403 on 2026-10-17 · where available' : 'Checked roof-age basis and confidence for each match'
+      (G('bbb') || G('contractor')) ? 'Read contractor identity (TX Comptroller registry only) and BBB state from v_roofing_permit' : 'Checked roof-age basis and confidence for each match'
     ] : [];
-    const streamN = s.aiStream;
-    const ansDone = streamN > ansSteps.length, stepsShut = dvA !== 'desktop' && ansDone && !s.stepsOpen;
+    const aiPh = s.aiPhase || 'done';
+    const ansDone = aiPh === 'done', stepsShut = dvA !== 'desktop' && ansDone && !s.stepsOpen;
     const howPl = useCtx ? PL[prevTurn.place] || place : place;
     const ansHow = isAiM ? [
       ctrLabel + ' → ' + pLL(howPl),
@@ -768,9 +809,11 @@ class Component extends DCLogic {
       'data: v_property' + (G('perm') || G('yrs') ? ', v_roofing_permit' : '') + (G('bbb') || G('contractor') ? ', v_contractor' : '') + ' · Run 3'
     ].filter(Boolean).join(' · ') : '';
     const ansObj = { q: s.aiRan, ctx: !!useCtx, how: ansHow, gap: dvA === 'desktop' ? '8px' : '6px', pad: dvA === 'desktop' ? '12px 16px' : '8px 16px', howLines: dvA === 'desktop' ? '4' : '2', done: ansDone, stepsShut: stepsShut, stepsShown: !stepsShut, nSteps: String(ansSteps.length), openSteps: () => this.setState({ stepsOpen: true }),
-      steps: ansSteps.map((t, i) => ({ t: t, icon: i < streamN ? 'check_circle' : (i === streamN ? 'progress_activity' : 'radio_button_unchecked'), c: i < streamN ? 'var(--status-success)' : 'var(--md-sys-color-on-surface-variant)' })).filter((x, i) => i <= streamN),
-      summary: matched.length ? 'Found ' + count.toLocaleString('en-US') + ' properties (' + matched.length + ' sample shown). The oldest roof is ' + matched[0].title.split(' · ')[0] + ', ' + matched[0].roof + ' yrs [1].' + (G('contractor') ? ' Contractors are listed where the permit names one.' : '') : 'No properties match this reading. Change or drop an assumption, or see Close.',
-      cites: cited.map((x, i) => ({ n: String(i + 1), title: x.title, meta: 'Roof ' + x.roof + ' yrs · ' + x.conf + ' · ' + permitShort(x) + (G('contractor') && x.contractor ? ' · ' + x.contractor : ''), open: () => { const k = matched.findIndex((y) => y.id === x.id); this.setState({ why: x.id, hl: x.id, tpage: Math.floor(Math.max(0, k) / rowsPer), tpageKey: tKey }); } })),
+      steps: ansDone ? ansSteps.map((t) => ({ t: t, icon: 'check_circle', c: 'var(--status-success)' })) : [],
+      working: aiPh === 'working', slow: aiPh === 'slow', cancelled: aiPh === 'cancelled', sec: String(s.aiSec || 0), secLabel: (s.aiSec || 0) + ' seconds',
+      stepsShown2: ansDone && !stepsShut,
+      summary: matched.length ? 'Found ' + count.toLocaleString('en-US') + ' properties (' + matched.length + ' sample shown). The oldest roof is ' + matched[0].title.split(' · ')[0] + ', ' + matched[0].roof + ' yrs [1].' + (G('contractor') ? ' Contractors are shown as printed on the permit, with their identity state.' : '') : 'No properties match this reading. Change or drop an assumption, or see Close.',
+      cites: cited.map((x, i) => ({ n: String(i + 1), title: x.title, meta: 'Roof ' + x.roof + ' yrs · ' + x.conf + ' · ' + permitShort(x) + (G('contractor') && x.contractor ? ' · “' + x.contractor + '” · ' + CB[x.cres || 'unresolved'].label : ''), open: () => { const k = matched.findIndex((y) => y.id === x.id); this.setState({ why: x.id, hl: x.id, tpage: Math.floor(Math.max(0, k) / rowsPer), tpageKey: tKey }); } })),
       more: mapOn && dvA !== 'mobile' && matched.length > cited.length };
     const closeList = close.slice(0, 3).map((c) => ({ title: c.x.title.split(' · ')[0], why: c.f.why,
       apply: () => {
@@ -782,7 +825,7 @@ class Component extends DCLogic {
       : s.method === 'builder' ? s.conds.map((c) => this.phrase(c))
       : s.method === 'sql' ? ['SQL: ' + (this.sqlEx.find((e) => e.id === s.sqlRan) || this.sqlEx[0]).label.toLowerCase()]
       : (this.aiParts || []).filter((p) => ['c', 'r', 'ctx'].indexOf(p.k) < 0).map((p) => p.label.replace(/^\w/, (m) => m.toLowerCase()));
-    const hdrNow = count.toLocaleString('en-US') + '\u0001within ' + rr + ' mi of ' + ctrLabel + (hdrFilt.length ? ' · ' + hdrFilt.join(' · ') : '');
+    const hdrNow = (aiWait ? '…' : count.toLocaleString('en-US')) + '\u0001within ' + rr + ' mi of ' + ctrLabel + (hdrFilt.length ? ' · ' + hdrFilt.join(' · ') : '');
     if (this.hdrShown === undefined) { this.hdrShown = hdrNow; this.hdrPend = hdrNow; }
     else if (hdrNow !== this.hdrPend) { this.hdrPend = hdrNow; clearTimeout(this.hdrT); this.hdrT = setTimeout(() => { this.hdrShown = this.hdrPend; this.setState({ hdrTick: (this.state.hdrTick || 0) + 1 }); }, 150); }
     const hdrParts = this.hdrShown.split('\u0001');
@@ -891,17 +934,17 @@ class Component extends DCLogic {
         if (s.aiPaused || s.aiUsed >= AIQ) return; // paused or out of questions: nothing runs, nothing is counted
         // Only an answered question counts. Failed, paused or throttled questions and chip edits do not (Sample: nothing recognised = failed).
         const answered = this.parseAi(q).some((x) => x.k !== 'r');
-        const used = answered ? s.aiUsed + 1 : s.aiUsed;
-        if (answered) { try { window.sessionStorage.setItem('countylens.aiUsed', String(used)); } catch (e) {} }
-        this.setState({ aiUsed: used });
         const turn = { q: s.aiRan, n: matched.length, R: this.aiR || s.r, place: s.place, placeLabel: place.label, placeShort: place.short || place.label };
         const pw = this.parseAi(q).find((x) => x.k === 'c');
         const reduced = (this.props.motion ?? 'system') === 'reduced' || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-        this.setState({ aiRan: q, aiDrop: {}, aiEdit: {}, aiChipOpen: null, aiTurns: [turn].concat(s.aiTurns).slice(0, 4), stepsOpen: false, rtab: 'answer', why: null, aiStream: reduced ? 99 : 0, place: pw && !/that area/.test(q.toLowerCase()) ? pw.v : s.place });
-        clearInterval(this.aiT); if (!reduced) this.aiT = setInterval(() => { const n = this.state.aiStream + 1; this.setState({ aiStream: n }); if (n > 4) clearInterval(this.aiT); }, 380);
+        // AD-09: one response through the API, no streaming. Working… with a timer; the whole answer and its steps arrive together (Sample: 3 s); hard stop at 25 s.
+        this.setState({ aiRan: q, aiDrop: {}, aiEdit: {}, aiChipOpen: null, aiTurns: [turn].concat(s.aiTurns).slice(0, 4), stepsOpen: false, rtab: 'answer', why: null, aiPhase: 'working', aiSec: 0, aiHold: false, place: pw && !/that area/.test(q.toLowerCase()) ? pw.v : s.place });
+        this.aiTick(reduced ? 2 : 3, answered);
       },
+      aiCancel: () => { clearInterval(this.aiT); this.setState({ aiPhase: 'cancelled' }); this.say('Cancelled. Nothing was counted.'); },
+      aiRetry: () => { clearInterval(this.aiT); this.setState({ aiText: s.aiRan }, () => this._runAi && this._runAi()); },
       aiEx: ['Which properties within five miles of Pflugerville have roofs older than 15 years?', 'Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?', 'Out-of-area owners with roofs over 20 years within 5 miles'].slice(0, 2).map((q) => ({ label: q, pick: () => this.setState({ aiText: q }) })),
-      aiChips: (s.method === 'ai' ? this.aiParts : []).map((p) => {
+      aiChips: (s.method === 'ai' && !aiWait ? this.aiParts : []).map((p) => {
         const OPT = { r: [1, 3, 5, 7, 10].map((v) => [v, v + ' mi']), thr: [10, 15, 20, 25].map((v) => [v, 'Roof > ' + v + ' yrs']), yrs: [1, 3, 5, 10].map((v) => [v, 'Open ≥ ' + v + ' yrs']), c: Object.keys(PL).slice(0, 5).map((k) => [k, PL[k].label]) }[p.k];
         const NAME = { r: 'Radius', thr: 'Roof age threshold', yrs: '“Many years” means', c: 'Centre' }[p.k] || p.label;
         const open = s.aiChipOpen === p.k;
@@ -916,7 +959,7 @@ class Component extends DCLogic {
       newChat: () => this.setState({ aiTurns: [], aiText: '', aiEdit: {}, aiDrop: {} }),
       aiNoChips: s.method === 'ai' && this.aiParts.length === 0,
       aiMissing: s.method === 'ai' && this.aiParts.some((p) => p.k === 'bbb' || p.k === 'contractor' || p.k === 'thr'),
-      aiMissingText: (s.method === 'ai' && this.aiParts.some((p) => p.k === 'bbb' || p.k === 'contractor')) ? 'BBB: Blocked · 403 on 2026-10-17 · where available. Contractor is unresolved on some permits. Pflugerville city permits are not in the Austin permit data.' : 'Some roof ages come from year built only (Low confidence). Parcels with no build year are left out.',
+      aiMissingText: (s.method === 'ai' && this.aiParts.some((p) => p.k === 'bbb' || p.k === 'contractor')) ? 'Contractor names are as printed on the permit; only an official Comptroller taxpayer number resolves one. BBB is Blocked on some (bbb.org refused the check, 403) or Not checked. Pflugerville city permits are not in the Austin permit data.' : 'Some roof ages come from year built only (Low confidence). Parcels with no build year are left out.',
       r: s.r, rLabel: String(rr), onRadius: onRadius, thrOpts: thrOpts, permOpts: permOpts, openOpts: [[0, 'Any time'], [1, '1 yr'], [3, '3 yrs'], [5, '5 yrs'], [10, '10 yrs']].map(([v, l]) => ({ label: l, on: String((s.openYrs || 0) === v), pick: () => this.setState({ openYrs: v, openMenu: false, perm: v && s.perm === 'any' ? 'openstalled' : s.perm }) })),
       openMenu: !!s.openMenu, openMenuStr: String(!!s.openMenu), toggleOpenMenu: () => this.setState({ openMenu: !s.openMenu }), openOnStr: String(!!s.openYrs), openLabel: s.openYrs ? s.openYrs + ' yrs' : 'any time',
       tenOn: String(s.ten), ooaOn: String(s.ooa), tenIcon: s.ten ? 'check' : 'add', ooaIcon: s.ooa ? 'check' : 'add',
@@ -953,11 +996,11 @@ class Component extends DCLogic {
       sqlFixOn: !!s.sqlFix, sqlFixLabel: s.sqlFix ? s.sqlFix.label : '', sqlErrTitle: s.sqlErrTitle || 'Query not run.', sqlErrStr: String(!!s.sqlErr), sqlEdBorder: s.sqlErr ? 'var(--status-danger)' : 'var(--md-sys-color-outline-variant)',
       sqlNearLabel: this.nearSql(s.sqlText).label, sqlNearSnippet: this.nearSql(s.sqlText).sql.split('\n').slice(0, 2).join('\n') + ' …',
       schemaOpen: s.schemaOpen, schemaStr: String(!!s.schemaOpen), toggleSchema: () => this.setState({ schemaOpen: !s.schemaOpen }),
-      schema: [{ n: 'v_property', rows: '412,860', cols: 'address, roof_age_yrs, roof_age_basis, centroid, owner_out_of_area, owner_mailing_city' }, { n: 'v_roofing_permit', rows: '22,083', cols: 'permit_id, parcel_id, open_days, final_date, contractor_name' }, { n: 'v_contractor', rows: '18,240', cols: 'contractor_id, name, bbb_rating, bbb_status' }, { n: 'v_run', rows: '3', cols: 'run, manifest_cid, published_at' }],
+      schema: [{ n: 'v_property', rows: '412,860', cols: 'property_cid, situs_address, lat, lon, coordinate_source, roof_age_years, roof_age_basis, roof_age_confidence, last_sale_date, tenure_years, tenure_basis, owner_is_out_of_area, owner_area_class' }, { n: 'v_roofing_permit', rows: '22,083', cols: 'permit_cid, property_cid, permit_number, status_raw, status_class, issue_date, final_date, expiry_date, open_days, contractor_company_cid, contractor_name_raw, contractor_resolution, bbb_status, bbb_rating' }, { n: 'v_contractor', rows: '18,240', cols: 'contractor_company_cid, name, identity_source, bbb_status, bbb_rating, roofing_permit_count' }, { n: 'v_run', rows: '3', cols: 'run_id, started_at, finished_at, manifest_cid, previous_manifest_cid' }],
       sqlErr: !!s.sqlErr, sqlErrText: s.sqlErr, sqlOk: !s.sqlErr, sqlOkNoDiy: !s.sqlErr && !s.diyOpen, diyOpen: !s.sqlErr && !!s.diyOpen, diyStr: String(!!s.diyOpen),
       toggleDiy: () => this.setState({ diyOpen: !s.diyOpen }),
       copyDiy: () => { try { navigator.clipboard.writeText(diy.cmd); } catch (e) {} this.say('DuckDB command copied. Paste it into a terminal with DuckDB installed.'); },
-      engLine: 'DuckDB-WASM in your browser · read-only · ' + diy.cidShort + ' (CID copy) · ' + diy.mb + ' MB', engTitle: 'DuckDB-WASM runs in your browser, read-only. It reads ' + diy.cidShort + ' from a copy named by its CID (bytes checked against the CID at release) and falls back to ipfs.io if the copy fails. ' + diy.mb + ' MB fetched.', diyCmd: diy.cmd, sqlStatus: matched.length + ' sample rows · 62 ms · ' + (mapOn ? 'map and list' : 'in the list'),
+      engLine: 'DuckDB-WASM in your browser · read-only · ' + diy.cidShort + ' (CID copy) · ' + diy.mb + ' MB', engTitle: 'DuckDB-WASM runs in your browser, read-only. It reads the elephant-cli tables of ' + diy.cidShort + ' through the views, from a copy named by its CID (bytes checked against the CID at release), and falls back to ipfs.io if the copy fails. ' + diy.mb + ' MB fetched.', diyCmd: diy.cmd, sqlStatus: matched.length + ' sample rows · 62 ms · ' + (mapOn ? 'map and list' : 'in the list'),
       countLabel: count.toLocaleString('en-US'), querySummary: summary,
       resetQuery: () => this.setState({ aiDrop: {}, r: 5, thr: 15, perm: 'any', openYrs: 0, ten: false, ooa: false, join: 'AND', conds: [{ key: 'roof', op: '≥', value: '15' }, { key: 'permit', op: 'is', value: 'open or stalled' }], sqlId: 'roof', sqlText: this.sqlEx[0].sql, sqlRan: 'roof', sqlErr: '', sqlFix: null, sel: {} }),
       saveSearch: () => this.say('Saved in this browser. Find it under Saved in the search box.'),
@@ -974,8 +1017,8 @@ class Component extends DCLogic {
       gapsDisplay: s.gaps ? 'inline' : 'none', gapsChip: s.gaps,
       ringR: ringR, handleX: 300 + ringR, chipTop: Math.max(mapT + 8, Math.round(cy + s.py - ringR * z * fit - 40)),
       pins: pins, pinsOn: nSel > 0, pinsText: nSel + ' selected · numbers match the list',
-      ans: ansObj, ansGap: ansObj.gap, ansPad: ansObj.pad, ansBusy: String(!ansObj.done),
-      cards: cards, shown: String(cards.length), noResults: matched.length === 0, closeList: closeList, noClose: closeList.length === 0,
+      ans: ansObj, ansGap: ansObj.gap, ansPad: ansObj.pad, ansBusy: String(ansObj.working),
+      cards: cards, shown: String(cards.length), noResults: matched.length === 0 && !aiWait, aiWaitOn: aiWait, aiWaitText: { working: 'Matches arrive with the answer.', slow: 'No matches: the answer stopped at 25 s. Try again, or use Filters instead.', cancelled: 'No matches: the question was cancelled.' }[s.aiPhase] || '', closeList: closeList, noClose: closeList.length === 0,
       whyView: !!wx, wv: wx ? { title: wx.title, short: wx.title.split(' · ')[0], lineage: lineage(wx), details: decorate(wx).details, ll: ll(wx), src: srcUrl(wx), osm: osmUrl(wx), bear: decorate(wx).distB + ' from the area centre' } : { title: '', short: '', lineage: [], details: () => {}, ll: '', src: '#', osm: '#', bear: '' }, closeWhy: () => this.setState({ why: null }),
       answerTab: !wx && tabK === 'answer', listTab: !wx && tabK === 'match', closeTab: !wx && tabK === 'close', showExp: !wx && tabK === 'match' && !peek,
       tabAnsStr: String(tabK === 'answer'), toAnswer: () => this.setState({ rtab: 'answer', why: null }),
@@ -991,7 +1034,7 @@ class Component extends DCLogic {
       clearSel: () => this.setState({ sel: {} }),
       toggleAll: () => { if (nSel === rows.length) this.setState({ sel: {} }); else { const o = {}; rows.forEach((x) => { o[x.id] = true; }); this.setState({ sel: o }); } },
       copyCsv: () => this.say('Download starts: ' + rows.length + ' rows as CSV (Sample file).'),
-      drawerOn: !!dItem, d: dItem ? { ...decorate(dItem), tenure: String(dItem.tenure), mailing: (dItem.ooa ? 'Out of area · ' : 'Local · ') + dItem.mailing } : { title: '', dist: '', roof: '', basis: '', conf: '', confClass: '', permitShort: '', contractor: '', tenure: '', mailing: '' },
+      drawerOn: !!dItem, d: dItem ? { ...decorate(dItem), tenure: String(dItem.tenure), mailing: (dItem.ooa ? 'Out of area · ' : 'Local · ') + dItem.mailing } : { title: '', dist: '', roof: '', basis: '', conf: '', confClass: '', permitShort: '', contractor: '', tenure: '', mailing: '', cbOn: false, cbCls: '', cbIcon: '', cbLabel: '', cbReason: '', cbTip: '', cbBbb: '' },
       closeDrawer: () => this.setState({ detail: null }),
       snack: !!s.snack, snackText: s.snack, canUndo: !!s.prev,
       undo: () => { this.setState({ ...(s.prev || {}), prev: null, addedId: null, snack: '' }); }

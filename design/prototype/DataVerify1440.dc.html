@@ -143,9 +143,9 @@ class Component extends DCLogic {
         else this.setState({ tick: n });
       }, every);
     };
-    const ART = { file: { name: 'roofing_permits.parquet', cid: 'bafybeigr7…r8fp', size: '38.2 MB', kind: 'file · expected SHA-256 7d1e…c09a', icon: 'description', label: 'roofing_permits.parquet · 38.2 MB' },
-      big: { name: 'permits.parquet', cid: 'bafybei…q4xa', size: '412 MB', kind: 'file over 50 MB', icon: 'description', label: 'permits.parquet · 412 MB' },
-      dir: { name: 'run3/ (directory)', cid: 'bafybeih…q7n3', size: '14 files · 640 MB', kind: 'directory', icon: 'folder', label: 'run3/ · directory' } };
+    const ART = { file: { name: 'structure.parquet', cid: 'bafybeigr7…r8fp', size: '38.2 MB', kind: 'file · expected SHA-256 7d1e…c09a', icon: 'description', label: 'structure.parquet · 38.2 MB' },
+      big: { name: 'property_improvement.parquet', cid: 'bafybei…q4xa', size: '412 MB', kind: 'file over 50 MB', icon: 'description', label: 'property_improvement.parquet · 412 MB' },
+      dir: { name: 'relationships/ (directory)', cid: 'bafybei…r1ls', size: '11 tables · 96 MB', kind: 'directory', icon: 'folder', label: 'relationships/ · directory' } };
     const ak = this.state.art || 'file', art = ART[ak], viaCar = ak !== 'file';
     const arts = Object.keys(ART).map((k) => ({ label: ART[k].label, icon: ART[k].icon, on: String(k === ak), pick: () => { if (this.timer) clearInterval(this.timer); this.timer = null; this.setState({ art: k, tick: 12, running: false }); } }));
     const carTitle = ak === 'dir' ? 'Directories verify via CAR' : 'Too large to hash in your browser: verify via CAR';

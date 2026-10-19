@@ -98,9 +98,54 @@ Then search design/ for "IPNS", "Route 53", "serving Parquet", "coverage.json",
 "merge_stats", "roof_age_yrs", "tenure_yrs" and "no token" and list every hit.
 ```
 
+## Step 4. Final round (after review round 9)
+
+Round 9 left five copy and component fixes (log rows #113, #117, #118, #120, #121). Everything else in that round was either sample data or a repo doc, and is already closed.
+
+**Sample data is out of scope (PO, 2026-10-19, log #123).** The prototype's totals, counts, CIDs, sizes and sample rows are placeholders. Reviews don't count or compare them, and Claude Design gets no instructions about which data to show. The build fills every value from the published manifest and the elephant-cli tables ([02-design.md § 2](../docs/02-design.md), "Sample data → build rules").
+
+### 4a. In Claude Design (same project), paste:
+
+```text
+Final small fixes. Change only the copy and components listed below. Leave every number, count,
+CID, size, sample row and other screen exactly as it is. Use only Atlas tokens and components.
+
+1. PropertyStates: replace "Show on map" with "Show in the list" (every board where it
+   appears), and "The map and results still work" with "Filters, SQL and the list still work".
+   Remove the "Daily Street View limit reached" card; Street View is Coming soon, so show the
+   Coming-soon card there instead. The partial-data row's bare "Unresolved" pill becomes the
+   shared ContractorBadge, with its one-line reason and the contractor text labelled
+   "as printed on permit".
+2. Map wording with the map off: in the Explore drawer, "mi from the pin" becomes
+   "mi from the area centre". On Coverage, "placed on the map with Overture" becomes
+   "located with Overture places".
+3. Retitle the ExploreQ-ai board "Explore · AI · D-10 answered (populated)".
+4. Help > MCP: replace "'Try a tool' below goes through the CountyLens API instead, so you need
+   no token there." with "You don't paste a token here: the CountyLens API adds it on the server."
+5. Explore drawer Roof card and Property detail: the field label "roof_age" becomes
+   "roof_age_years".
+
+Apply each change at 390, 768 and 1440 where the board exists. When done, list each board you
+changed, then update the handoff document to match.
+```
+
+Export into `design/` the same way as before.
+
+### 4b. In Claude Code, paste (a narrow check, not a full review):
+
+```text
+Check the new design/ export against design/04-design-update-g3.md Step 4a only, items 1 to 5,
+at 390, 768 and 1440. Do not review sample data (log #123). For each of log rows #113, #117,
+#118, #120 and #121, set the Resolution in design/design-review-log.md to "Incorporated
+(final export)" if the board shows the fix, or keep it open with what is missing. Then repeat
+the keyword search from Step 3, list every hit outside the review log and this file, and
+update docs/02-design.md (remove the "in the final export" notes that are now done).
+```
+
 ## Done when
 
 - The review log has no open **Blocking** item.
+- Sample-data findings are closed under log #123, never sent to Claude Design.
 - The search in Step 3 finds no hits, except in `design-review-log.md` history or this file.
 - `docs/02-design.md` still maps every README demo line to a screen and state.
 

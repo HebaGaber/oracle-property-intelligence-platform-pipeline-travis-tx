@@ -56,11 +56,11 @@ a{color:var(--md-sys-color-primary)}a:hover{color:var(--md-sys-color-on-primary-
 <span>Manifest <span class="atlas-cid">bafybeih…q7n3<button aria-label="Copy CID" onClick="{{__say.k5}}"><span class="material-symbols-rounded" aria-hidden="true">content_copy</span></button></span></span>
 <span class="atlas-pill atlas-pill--success" style="align-self: flex-start"><span class="material-symbols-rounded" aria-hidden="true">verified</span>New, distinct CID · verified</span>
 </section>
-<section aria-label="IPNS" class="atlas-card atlas-card--outlined" style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 18px">
-<span class="atlas-card__title">IPNS name</span>
-<span class="atlas-cid">k51qzi5u…x9a2</span>
-<span>Now points to <span class="atlas-cid" style="font-weight: 500">bafybeih…q7n3</span></span>
-<span style="color: var(--md-sys-color-on-surface-variant)">Was <span class="atlas-cid">bafybeig…k2p8</span> until 11:43 UTC</span>
+<section aria-label="CAR file" class="atlas-card atlas-card--outlined" style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 18px">
+<span class="atlas-card__title">CAR available</span>
+<span>Run 3 CAR <span class="atlas-cid">bafybei…car3<button aria-label="Copy CAR CID" onClick="{{__say.k4}}"><span class="material-symbols-rounded" aria-hidden="true">content_copy</span></button></span></span>
+<span style="color: var(--md-sys-color-on-surface-variant)">1.31 GB · same CID on IPFS and as a GitHub Release copy</span>
+<span class="atlas-pill atlas-pill--success" style="align-self: flex-start"><span class="material-symbols-rounded" aria-hidden="true">link</span>Run 3 manifest links to Run 2</span>
 </section>
 </div>
 
@@ -70,12 +70,12 @@ a{color:var(--md-sys-color-primary)}a:hover{color:var(--md-sys-color-on-primary-
 <table class="atlas-table atlas-table--dense" style="width: 100%">
 <thead><tr><th>Source</th><th class="num">Run 2</th><th class="num">Run 3</th><th class="num">Added</th><th class="num">Changed</th><th class="num">Removed</th><th>Artifact CID, Run 2 → Run 3</th></tr></thead>
 <tbody>
-<tr><td>Austin permits</td><td class="num">2,378,944</td><td class="num">2,380,507</td><td class="num">+1,563</td><td class="num">~412</td><td class="num">−0</td><td><span class="atlas-cid">…p3ua</span> → <span class="atlas-cid">…q4xa</span></td></tr>
-<tr><td>TCAD properties</td><td class="num">412,779</td><td class="num">412,860</td><td class="num">+118</td><td class="num">~2,904</td><td class="num">−37</td><td><span class="atlas-cid">…6k1b</span> → <span class="atlas-cid">…7m2c</span></td></tr>
-<tr><td>TCAD owners and sales</td><td class="num">398,051</td><td class="num">398,114</td><td class="num">+63</td><td class="num">~1,240</td><td class="num">−0</td><td><span class="atlas-cid">…6k1b</span> → <span class="atlas-cid">…7m2c</span></td></tr>
-<tr><td>Contractors</td><td class="num">18,218</td><td class="num">18,240</td><td class="num">+22</td><td class="num">~9</td><td class="num">−0</td><td><span class="atlas-cid">…z0f4</span> → <span class="atlas-cid">…c2t9</span></td></tr>
+<tr><td>Austin permits · property_improvement</td><td class="num">2,378,944</td><td class="num">2,380,507</td><td class="num">+1,563</td><td class="num">~412</td><td class="num">−0</td><td><span class="atlas-cid">…p3ua</span> → <span class="atlas-cid">…q4xa</span></td></tr>
+<tr><td>TCAD properties · properties</td><td class="num">412,779</td><td class="num">412,860</td><td class="num">+118</td><td class="num">~2,904</td><td class="num">−37</td><td><span class="atlas-cid">…6k1b</span> → <span class="atlas-cid">…7m2c</span></td></tr>
+<tr><td>TCAD owners and sales · person, sales_history</td><td class="num">398,051</td><td class="num">398,114</td><td class="num">+63</td><td class="num">~1,240</td><td class="num">−0</td><td><span class="atlas-cid">…n1vb</span> → <span class="atlas-cid">…o2wn</span>, <span class="atlas-cid">…s4lh</span></td></tr>
+<tr><td>Contractor names on permits · company</td><td class="num">22,188</td><td class="num">22,210</td><td class="num">+22</td><td class="num">~9</td><td class="num">−0</td><td><span class="atlas-cid">…u2kq</span> → <span class="atlas-cid">…w3nd</span></td></tr>
 <tr><td>BBB ratings</td><td class="num">0</td><td class="num">0</td><td class="num">+0</td><td class="num">~0</td><td class="num">−0</td><td><span class="atlas-pill atlas-pill--unavailable">Same CID: nothing fetched, source blocked</span></td></tr>
-<tr><td>TX Comptroller businesses</td><td class="num">61,036</td><td class="num">61,305</td><td class="num">+310</td><td class="num">~95</td><td class="num">−41</td><td><span class="atlas-cid">…u2kq</span> → <span class="atlas-cid">…w3nd</span></td></tr>
+<tr><td>TX Comptroller businesses · company</td><td class="num">61,036</td><td class="num">61,305</td><td class="num">+310</td><td class="num">~95</td><td class="num">−41</td><td><span class="atlas-cid">…u2kq</span> → <span class="atlas-cid">…w3nd</span></td></tr>
 </tbody>
 </table>
 </div>
@@ -86,8 +86,8 @@ a{color:var(--md-sys-color-primary)}a:hover{color:var(--md-sys-color-on-primary-
 <h3 id="chk-h" class="atlas-card__title" style="width: 100%">Immutability checks</h3>
 <span class="{{rsCls}}" role="status" aria-live="polite" title="Prior CID bafybeig…k2p8, checked on ipfs.io and dweb.link"><span class="material-symbols-rounded" aria-hidden="true">{{rsIcon}}</span>{{rsText}}</span>
 <span class="atlas-pill atlas-pill--success"><span class="material-symbols-rounded" aria-hidden="true">check</span>New run has a distinct CID</span>
-<span class="atlas-pill atlas-pill--success"><span class="material-symbols-rounded" aria-hidden="true">check</span>IPNS points at the new CID</span>
-<span class="atlas-pill atlas-pill--success"><span class="material-symbols-rounded" aria-hidden="true">check</span>Both CIDs in run history</span>
+<span class="atlas-pill atlas-pill--success"><span class="material-symbols-rounded" aria-hidden="true">check</span>New manifest links to the old one (previousManifestCid)</span>
+<span class="atlas-pill atlas-pill--success"><span class="material-symbols-rounded" aria-hidden="true">check</span>Both runs listed in runs/index.json</span><span class="atlas-pill atlas-pill--success"><span class="material-symbols-rounded" aria-hidden="true">inventory_2</span>CAR available</span>
 <span style="flex: 1"></span>
 <span role="group" aria-label="Preview the prior-CID check" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--md-sys-shape-corner-medium); border: 1px dashed var(--md-sys-color-outline)"><span style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-right: 2px">Prototype</span><sc-for list="{{rsOpts}}" as="o" hint-placeholder-count="3"><button class="atlas-chip" aria-pressed="{{o.on}}" onClick="{{o.pick}}" style="height: 32px">{{o.label}}</button></sc-for></span>
 <button class="atlas-btn atlas-btn--outlined" onClick="{{__say.k6}}"><span class="material-symbols-rounded" aria-hidden="true">download</span>Directory CAR, Run 3</button>
@@ -95,7 +95,7 @@ a{color:var(--md-sys-color-primary)}a:hover{color:var(--md-sys-color-on-primary-
 </section>
 </main>
 <sc-if value="{{__toastOn}}" hint-placeholder-val="{{ false }}"><div class="atlas-snackbar" role="status" style="position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 90; max-width: 90%">{{__toastText}}</div></sc-if>
-<div style="position: absolute; left: 12px; bottom: 12px; z-index: 80"><dc-import name="ProtoBar" here="Runs · compare Run 3 vs Run 2 (D-7)" desktop="RunsCompare1440.dc.html" tablet="RunsCompare768.dc.html" mobile="Runs390.dc.html" current="desktop" hint-size="48px,48px"></dc-import></div>
+<div style="position: absolute; left: 12px; bottom: 12px; z-index: 80"><dc-import name="ProtoBar" here="Runs · compare Run 3 vs Run 2 (D-7)" desktop="RunsCompare1440.dc.html" tablet="RunsCompare768.dc.html" mobile="RunsCompare390.dc.html" current="desktop" hint-size="48px,48px"></dc-import></div>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"resolve":{"editor":"enum","options":["checking","ok","failed"],"default":"ok"},"$preview":{"width":1440,"height":960}}'>

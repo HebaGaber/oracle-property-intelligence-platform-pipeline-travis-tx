@@ -18,8 +18,8 @@ a{color:var(--md-sys-color-primary)}a:hover{color:var(--md-sys-color-on-primary-
 </helmet>
 <div style="position: relative; width: 1440px; height: 760px; box-sizing: border-box; padding: 40px; display: flex; flex-direction: column; gap: 16px; background: var(--md-sys-color-surface-container-low); font-family: var(--font-plain); color: var(--md-sys-color-on-surface)">
 <h2 style="margin: 0; font-family: var(--font-brand); font-size: 24px; line-height: 32px; font-weight: 400">Property detail states</h2>
-<p style="margin: 0; font-size: 14px; line-height: 20px; color: var(--md-sys-color-on-surface-variant)">Populated: “Property · 1440” and “Property · 390”. Each state keeps the address, the close button and “Show on map” usable.</p>
-<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px; flex: 1; min-height: 0">
+<p style="margin: 0; font-size: 14px; line-height: 20px; color: var(--md-sys-color-on-surface-variant)">Populated: “Property · 1440” and “Property · 390”. Each state keeps the address, the close button and “Show in the list” usable.</p>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; flex: 1; min-height: 0">
 
 <section aria-label="Loading" style="display: flex; flex-direction: column; gap: 8px">
 <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 500">Loading</h3>
@@ -37,8 +37,9 @@ a{color:var(--md-sys-color-primary)}a:hover{color:var(--md-sys-color-on-primary-
 <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 500">Partial data</h3>
 <div style="flex: 1; border-radius: var(--md-sys-shape-corner-medium); overflow: hidden; background: var(--md-sys-color-surface); padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 18px">
 <div class="atlas-banner atlas-banner--warning" role="status"><span class="material-symbols-rounded" aria-hidden="true">warning</span><div class="atlas-banner__body">2 fields are missing; the rest is complete.</div></div>
-<div class="atlas-kv"><span>BBB</span><span class="atlas-pill atlas-pill--unavailable">Not available: source blocked</span></div>
-<div class="atlas-kv"><span>Tenure</span><span class="atlas-pill atlas-pill--unavailable">Unknown: no deed data</span></div>
+<div class="atlas-kv"><span>BBB</span><span class="atlas-pill atlas-pill--unavailable">Blocked · bbb.org refused (403)</span></div>
+<div class="atlas-kv"><span>Tenure</span><span class="atlas-pill atlas-pill--unavailable">Unknown: no dated sale</span></div>
+<div role="group" aria-label="Contractor: Unresolved" style="display: flex; flex-direction: column; gap: 4px"><span>Contractor <b style="font-weight: 500">“J EXAMPLE”</b> <span style="color: var(--md-sys-color-on-surface-variant)">as printed on permit</span></span><span style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px"><span class="atlas-pill atlas-pill--unavailable"><span class="material-symbols-rounded" aria-hidden="true">link_off</span>Unresolved</span><span>No Comptroller match. No Texas roofing licence register exists</span></span></div>
 <div class="atlas-kv"><span>Roof age</span><span>23 yrs · High</span></div>
 </div>
 </section>
@@ -46,7 +47,7 @@ a{color:var(--md-sys-color-primary)}a:hover{color:var(--md-sys-color-on-primary-
 <section aria-label="Rate-limited" style="display: flex; flex-direction: column; gap: 8px">
 <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 500">Rate-limited</h3>
 <div style="flex: 1; border-radius: var(--md-sys-shape-corner-medium); overflow: hidden; background: var(--md-sys-color-surface); padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 18px">
-<div style="height: 120px; box-sizing: border-box; padding: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; border: 1px dashed var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface-container-low)"><span class="material-symbols-rounded" aria-hidden="true">hourglass_top</span><b style="font-weight: 500">Photo paused for today</b><span style="color: var(--md-sys-color-on-surface-variant)">Daily Street View limit reached; photos return at 00:00 UTC.</span></div>
+<div style="height: 120px; box-sizing: border-box; padding: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; border: 1px dashed var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface-container-low)"><span class="material-symbols-rounded" aria-hidden="true" style="color: var(--md-sys-color-on-surface-variant)">no_photography</span><b style="font-weight: 500">Street View: coming soon</b><span style="color: var(--md-sys-color-on-surface-variant)">No street photo yet. The property data below is unaffected.</span></div>
 <div class="atlas-banner atlas-banner--info" role="status"><span class="material-symbols-rounded" aria-hidden="true">schedule</span><div class="atlas-banner__body">Permits rate-limited, retrying in 4 s (attempt 2 of 3).</div></div>
 </div>
 </section>
@@ -56,7 +57,16 @@ a{color:var(--md-sys-color-primary)}a:hover{color:var(--md-sys-color-on-primary-
 <div style="flex: 1; border-radius: var(--md-sys-shape-corner-medium); overflow: hidden; background: var(--md-sys-color-surface); padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 18px">
 <b style="font-size: 18px; line-height: 24px; font-weight: 400; font-family: var(--font-brand)">101 Sample Ln</b>
 <div class="atlas-banner atlas-banner--error" role="alert"><span class="material-symbols-rounded" aria-hidden="true">error</span><div class="atlas-banner__body">This record could not load.</div><button class="atlas-btn atlas-btn--text" onClick="{{__say.k1}}">Retry</button></div>
-<span style="color: var(--md-sys-color-on-surface-variant)">The map and results still work. You can also find this parcel in the SQL panel.</span>
+<span style="color: var(--md-sys-color-on-surface-variant)">Filters, SQL and the list still work. You can also find this parcel in the SQL panel.</span>
+</div>
+</section>
+
+<section aria-label="Merged-from details not published" style="display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 500">Merged-from details not published</h3>
+<div style="flex: 1; border-radius: var(--md-sys-shape-corner-medium); overflow: hidden; background: var(--md-sys-color-surface); padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 18px">
+<b style="font-size: 16px; line-height: 24px; font-weight: 500">Owner merged from 2 records</b>
+<div class="atlas-missing" role="note" style="font-size: 13px; line-height: 18px"><span class="material-symbols-rounded" aria-hidden="true">info</span><div><b style="font-weight: 500">Merge details: coming soon.</b> Run 3 merged 6,866 owner records in the county (Run manifest · coverage section).</div></div>
+<span style="color: var(--md-sys-color-on-surface-variant)">Used if A-02 finds no published field that names the source accounts. No lineage file is published (AD-01).</span>
 </div>
 </section>
 

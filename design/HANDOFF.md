@@ -1,13 +1,11 @@
 # CountyLens: design handoff for implementation
 
-> **Overridden where it conflicts (2026-10-19).** The architecture decisions AD-01…AD-16 in [docs/decisions/0000-agent-architecture.md](../docs/decisions/0000-agent-architecture.md) and the architecture rules win over anything in this handoff, especially §2 (IPNS, serving Parquet, `coverage.json` / `merge_stats.json`, MCP without a token, Route 53, streamed agent steps, view column names). The design update is described in [04-design-update-g3.md](04-design-update-g3.md).
-
 **Product:** CountyLens, a list-first explorer for public property, permit, owner and contractor data in Travis County, TX. The map is not Task A scope (it is reused in the Roofing CRM, Task B).
 **Domain:** countylens.aldarraj.com
 **Design system:** Atlas (Material 3). No new design values: anything Atlas lacks is built from Atlas tokens and logged in §8. Corner radii use `--md-sys-shape-corner-*` only.
 **Clickable prototype:** the CountyLens canvas artifact (claude.ai). Open `Main.dc.html` (site map) and use the round prototype menu on any board to switch device or jump around. The same menu has the prototype-only **Map view (CRM preview)** switch, off by default (§1, Map view).
 **Prototype source:** `prototype/` in this package. One `.dc.html` file per board, plus the Atlas tokens and components CSS and the CountyLens extensions (`ds/countylens/a11y.css`, `tablet.css`, `compact.css`).
-**Handoff date:** 2026-10-18, revised after seven design-review rounds (88 points; see `design-review-log.md`) · 97 boards · every button and link checked to work, with the map switch off and on.
+**Handoff date:** 2026-10-19, revised after seven design-review rounds (88 points; see `design-review-log.md`) engineering's architecture decisions AD-01 to AD-16 (`0000-agent-architecture.md` §5, confirmed by the PO on 2026-10-19; what changed is in §13) and review round 8 (#89–#108) · 106 boards · every button and link checked to work, with the map switch off and on.
 
 > How to read the prototype source. Each board is HTML in an `<x-dc>` template with `{{holes}}`, `sc-for` and `sc-if`, and logic in a `DCLogic` class. Treat it as a behaviour and layout reference, not as code to port. Port the logic, not the numbers: the sample records, run data and counts are fixtures (review #14).
 
@@ -19,8 +17,9 @@
 |---|---|
 | Sample data | Every number that is not from a real source is labelled **Sample** in the UI. The prototype's demo sample data is accepted for the design (review #30). In the build, test fixtures are labelled as fixtures and never reach the hosted app; "Sample" labels are removed only where real data replaces them (#14). |
 | Coverage | Travis County, TX is the only live county. Other counties and states show as **Coming soon**, muted, with no counts and no "Notify me" (#20). |
-| Sources | TCAD (properties, owners and sales, parcel geometry) · Austin open-data permits (`3syk-w9eu`, City of Austin only) · **TX Comptroller franchise-tax (`9cir-efmm`)** for businesses · **Overture** for places · contractors derived from permit names · BBB ratings (#28). |
-| BBB | **Blocked in Run 3.** One wording everywhere (cards, Coverage, AI, MCP, Runs): "BBB: Blocked · 403 on 2026-10-17 · where available", linked to the fetch-log evidence. Never blank, never "no rating" (#37). |
+| Sources | TCAD (properties, owners and sales, parcel geometry) · Austin open-data permits (`3syk-w9eu`, City of Austin only) · **TX Comptroller franchise-tax (`9cir-efmm`)** for businesses · **Overture** for places · contractor names as printed on permits · BBB ratings (#28). |
+| Contractor identity | **Official or nothing (AD-05, AD-06).** The permit's name is shown **"as printed on permit"** and never becomes a company record. A **Contractor badge** gives one of five states with a one-line reason: **Resolved** (an official registry identifier matched: "Comptroller taxpayer no. {id} matched"), **Candidate** (likely match from name, phone, address, BBB or places; not proof; tooltip "Name matches stay Candidate. Only an official ID resolves a contractor."), **Ambiguous** (more than one possible company), **Conflicting** (the sources disagree), **Unresolved** (no match). There is **no licence line**: the reason says "No Texas roofing licence register exists". Data licences on the Legal pages are unaffected. **Decided by the PO on 2026-10-19 (AD-05):** a name match, even exact, unique and active, stays **Candidate**; only an official registry identifier resolves a contractor. Austin permits carry names only, so Resolved will be rare. With no name on the permit: "No contractor printed on permit", no badge. |
+| BBB | Four states, one wording everywhere (AD-07): **Rated** (with the letter), **Not found**, **Blocked**, **Not checked** (`bbb_status` = `rated` / `not_found` / `blocked` / `not_checked`). **Blocked in Run 3:** "BBB: Blocked · bbb.org refused the check (403) on 2026-10-17", linked to the fetch-log evidence. Never blank, never "no rating" (#37). BBB is extra detail, never proof of identity. |
 | Roof age | Always an estimate, shown with its **basis** (reroof permit, then new build, then year built) and a **confidence** badge (High / Medium / Low). |
 | Proof | Every value can be traced: source → capture time → run → CID, with copy and Verify. Results show coordinates and a source link (#23). |
 | Public vs admin | The app is public by default and **the demo needs no admin access**. **Only admins can sync**: Start / Stop / Retry run and Activity appear only after **Admin sign-in** (email code, no self sign-up), which sits at the end of the main navigation, and carry an Admin flag (#19, #41). AI mode shows each visitor a **quota of 10 questions per session** (sessionStorage), visible all session; failed, paused or throttled questions and chip edits do not count; sign-in for more questions is **coming soon** (#58, #66, #79). |
@@ -31,7 +30,7 @@
 | Breakpoints | 390 (mobile), 768 (tablet), 1440 (desktop): **every screen has all three** (#8, #9). Atlas tokens: compact < 600, medium 600–839, expanded ≥ 840. |
 | No inner scrolling | At every size, the Explore query panel and results panel fit without scrolling. Results page instead (§4.1.6). |
 | Touch targets | **48 px** is the build rule (#16). |
-| One source of counts | Every count on Coverage, the Ownership row, Reconciliation and the MCP `get_coverage` tool comes from one `coverage.json` (merge figures from `merge_stats.json`) (#34). |
+| One source of counts | Every count on Coverage, the Ownership row, Reconciliation and the MCP `get_coverage` tool comes from one place: the **coverage section of the run manifest** (AD-04, #34). There is no `coverage.json` or `merge_stats.json`. |
 | Scope rule | Anything beyond the README requirements either ships with labelled sample (test) data that shows the intended experience, or is marked **Coming soon**. Content that must be dynamic (counts, dates, CIDs, URLs) is wired in implementation. |
 
 ## 2. Architecture (hybrid, review #1)
@@ -40,32 +39,32 @@ These are design constraints. Engineering owns the final choices; record the hyb
 
 | Runs in the browser | Runs on the server (Lambda: tRPC, and MCP's own handler) |
 |---|---|
-| Explore queries (Filters, SQL), Verify, Coverage, Runs and Data screens | The AI agent (D-10, D-11), MCP (D-12), IPNS resolution |
+| Explore queries (Filters, SQL), Verify, Coverage, Runs and Data screens | The AI agent (D-10, D-11), MCP (D-12) |
 | **DuckDB-WASM** over CID-addressed Parquet: CID-named copy first, public gateway fallback (#64, #84) | DuckDB over the same published Parquet |
 | **Free-form SQL runs only here** | Fixed, parameterised tools only; no free-form SQL |
 
 - Both sides share one **`query-core`** package: view definitions, bound parameters, filter definitions and the SQL checks (§4.1.3).
-- **Published data.** Each run writes Parquet plus `manifest.json`, `schema.json`, `runs.json`, `coverage.json`, `runs/<id>/events.json`, `cost.json`, `merge_stats.json`, a lineage view and slim geo-sorted serving Parquet (derived from `elephant-cli export-tables`). No map `tiles/` directory: map tiles belong to the CRM (#78). These outputs belong in stories A-02 (data contract) and A-11 (publication) (#32). Earlier CIDs are never changed (D-7).
+- **Published data (AD-01, AD-03, AD-04).** Each run publishes exactly what `elephant-cli export-tables` writes: one Parquet table per lexicon class (`properties`, `property_improvement`, `structure`, `sales_history`, `person`, `company`, `address`, `geometry`, `business_location`), one per relationship (`relationships/`) and `tables-export.json`; plus the **run manifest** (`oracle-travis-run-manifest.v1`: `runId`, `previousManifestCid`, sources with watermarks, records, deltas and limitations, artifacts with CID, size and SHA-256, and a **coverage section**) and the **places gazetteer**. There is **no serving Parquet** and no other copy of the data. The run history is `runs/index.json`, committed to git and published with each release; the app finds the latest run there. **No IPNS:** each manifest links to the one before it (the run chain). No map `tiles/` directory: map tiles belong to the CRM (#78). These outputs belong in stories A-02 (data contract) and A-11 (publication) (#32). Earlier CIDs are never changed (D-7).
 - **Views exposed to SQL and MCP:**
 
   | View | Rows | Columns |
   |---|---|---|
-  | `v_property` | 412,860 | `address`, `lat`, `lon`, `roof_age_yrs`, `roof_age_basis`, `centroid`, `owner_out_of_area`, `owner_mailing_city`, `last_sale_date`, `tenure_yrs`, `source_url`, … |
-  | `v_roofing_permit` | 22,083 | `permit_id`, `parcel_id`, `status`, `issue_date`, `expiry_date`, `open_days`, `final_date`, `contractor_name`, … |
-  | `v_contractor` | 18,240 | `contractor_id`, `name`, `bbb_rating`, `bbb_status` |
-  | `v_run` | 3 | `run`, `manifest_cid`, `published_at`, `roll_pct` |
+  | `v_property` | 412,860 | `property_cid`, `situs_address`, `lat`, `lon`, `coordinate_source`, `roof_age_years`, `roof_age_basis` (`permit` / `new_construction` / `built_year` / `unknown`), `roof_age_confidence`, `last_sale_date`, `tenure_years`, `tenure_basis` (`sale_date` / `unknown`), `owner_is_out_of_area`, `owner_area_class` (`in_county` / `regional` / `out_of_area` / `unknown`), … |
+  | `v_roofing_permit` | 22,083 | `permit_cid`, `property_cid`, `permit_number`, `status_raw`, `improvement_status`, `status_class` (`open` / `stalled` / `closed` / `exclude`), `issue_date`, `final_date`, `expiry_date`, `is_open`, `open_days`, `contractor_company_cid`, `contractor_name_raw`, `contractor_resolution`, `bbb_status` (`rated` / `not_found` / `blocked` / `not_checked`), `bbb_rating`, … |
+  | `v_contractor` | 18,240 | `contractor_company_cid`, `name`, `identity_source`, BBB fields, `roofing_permit_count` (Resolved companies, plus one row per unresolved name, marked unresolved) |
+  | `v_run` | 3 | `run_id`, `started_at`, `finished_at`, `manifest_cid`, `previous_manifest_cid`, sources |
 
-  Bound parameters: `:area_centre`, `:radius_mi`. Helper function: `dist_mi(centroid, :area_centre)`.
-- **Places gazetteer.** Area search needs Census places and ZIP centroids. Add a gazetteer artifact to the A-02 data contract (#30).
+  The views live in `packages/query-core/views.sql`, over the elephant-cli tables only; names are frozen against a real `tables-export.json` in A-02 (AD-07). Bound parameters: `:area_centre`, `:radius_mi`. Helper function: `dist_mi(lat, lon, :area_centre)`.
+- **Places gazetteer.** Area search needs Census places and ZIP centroids: `gazetteer.parquet` (`place_id`, `name`, `kind`, `lat`, `lon`, `source`) in the A-02 data contract, listed in the manifest (#30).
 - **Verify (D-6).** Fetch a **file** artifact under about 50 MB from two public gateways: lane A **ipfs.io** and lane B **dweb.link**, the pair the README names (#69). Both are operated by **Interplanetary Shipyard**, and each lane shows its operator; neither is run by CountyLens. **Filebase stores and pins the files**; Filebase's own gateway is **never** one of the two lanes (#26). w3s.link is not on the demo path. Fetch **by the plain file URL** (`https://ipfs.io/ipfs/<cid>`, `https://<cid>.ipfs.dweb.link/`), never `?format=raw`, which returns one block (#35). Hash as a stream with **hash-wasm** or **@noble/hashes** (WebCrypto cannot hash in chunks) and compare with the manifest's size and SHA-256. Directories and files over 50 MB show **Verify via CAR**. Each lane prints the exact URL fetched. A rate limit counts as pending with a countdown, never as a failure. Verify always uses the public gateways, never the CID-named copy (#64). **Gateway spike (#69, implementation):** early in A-02, test one real Filebase-pinned CID on ipfs.io and dweb.link (CORS, Range, subdomain redirect, rate limits).
 - **Activity log.** Server-side events only (AI questions, MCP calls, Try a tool, search), written to **CloudWatch Logs** (`/countylens/query-log`), kept 30 days, no personal data. Filters, SQL and Builder run in the browser and are **not logged**; the page says so (#18, #43). Admin only.
-- **Agent.** Turns a question into tool calls and shows its steps, citations and assumptions. Conversation memory is kept on the client; a follow-up such as "near that area" reuses the previous area (#24). It must say what data is missing (for example BBB) rather than invent it.
-- **MCP.** `https://countylens.aldarraj.com/mcp` is its **own stateless Streamable HTTP handler** (a Lambda behind API Gateway) that shares `query-core` with tRPC, with CORS and Origin checks. It is **public and read-only**, with no token, and **throttled** by the API Gateway stage rate limit and reserved Lambda concurrency (no per-IP WAF rules, which would add cost). Throttled calls return `429`. **Try a tool** calls the same endpoint; the prototype's sample response must not ship (#2, #44, #57).
+- **Agent (AD-09).** Turns a question into tool calls and returns **one response through API Gateway, no streaming**: at most 6 tool steps and 3 model calls, a hard stop at 25 s (target p95 under 20 s). The UI shows **Working…** with an elapsed timer and Cancel, then the answer with all its steps at once, or **Took too long** at 25 s. Conversation memory is kept on the client; a follow-up such as "near that area" reuses the previous area (#24). It must say what data is missing (for example BBB) rather than invent it.
+- **MCP.** `https://countylens.aldarraj.com/mcp` is its **own stateless Streamable HTTP handler** (a Lambda behind API Gateway) that shares `query-core` with tRPC, with CORS and Origin checks. It is read-only and needs a **bearer token** (AD-10), shared privately with reviewers and stored in SSM; a missing or wrong token returns `401`. It is **throttled** by the API Gateway stage rate limit (no per-IP WAF rules, which would add cost); throttled calls return `429`. **Try a tool** goes through the CountyLens API, which adds the token on the server, so the token never reaches the browser; the prototype's sample response must not ship (#2, #44, #57).
 - **Shareable URLs.** Explore state lives in the URL, for example `/tx/travis/explore?at=30.4394,-97.6200&r=5&roof=15&permit=open,stalled&tenure=10&ooa=1&sort=open_desc&sel=p_101`, plus `mode=filters|sql|ai`, `view=list` and `place=<id>`. **Area = `place` or `at`:** a picked place writes `place=<id>`; a free centre writes `at=lat,lon`; both round-trip with `r`. The back button must work. CountyLens has List view only: a `view=map` URL falls back to List (#74, #88).
 - **Sign-in and run commands.** Cognito user pool with the built-in **email code** (SES) for admins only, self sign-up off (#41); the AI-user variant is coming soon (#66). Start / Stop / Retry go to an **SQS run-command queue** with a command ID. A small **local bridge** on the pipeline host long-polls the queue with scoped IAM credentials (the SSM agent does not read SQS), acknowledges each command when it picks it up, and drops commands older than **15 minutes** so a stale Start never fires later. **Cancel** sends a cancel message keyed by the command ID; the bridge skips that command if it has not started. If nothing acknowledges within 60 s the UI shows "Host offline" (#42, #56).
-- **Serving files (#36, #64).** Queries (browser DuckDB and the Lambda agent and MCP) read the slim, geo-sorted serving Parquet from an **immutable copy named by its CID** (Amplify or S3, bytes checked against the CID at release), with HTTP range reads, so they look instant on camera. If the copy fails, the browser falls back to a public gateway; a Lambda fallback fetch is labelled "via server". The loading state shows MB of the needed columns, never a 400 MB download.
-- **Cost (#7, #40, #55).** `cost.json` lists **every** deployed resource with its idle cost: Amplify Hosting; S3 (`runs/live.json` and the CID-named copies, < $0.01); API Gateway + Lambda (tRPC and the MCP endpoint); model API calls; the IPNS publisher (a Lambda step after publish); SSM Parameter Store (IPNS key and config); Cognito; SES; SQS; CloudWatch Logs; **Route 53 hosted zone ($0.50 a month) + ACM certificate (free)**; Filebase pinning (free tier, 5 GB); GitHub Releases (CAR copies, free); the public gateways ipfs.io and dweb.link (free, run by Interplanetary Shipyard, not ours); the local pipeline. Idle total: about **$0.51 a month**, the hosted zone being the only fixed cost.
-- **AI spend (#58, #66, #68, #71, G3).** Server-side protection: a daily spend counter (the DynamoDB item above) with the provider's prepaid credit as the hard ceiling, about 6 steps and 1.5k output tokens per answer, a route throttle, reserved concurrency of 3–5 for the agent Lambda, and an alarm at 80% of the daily cap; size the cap for evaluation days. The visible quota is **10 questions per session**, kept in `sessionStorage` and shown beside Find and in the results tab bar. Only answered questions count: failed, paused or throttled questions do not, and a chip edit that re-runs the query without a model call does not count and costs nothing (#79). When the daily budget is used up, AI mode pauses until 00:00 UTC and says so; Filters and SQL keep working. If `agent.ask` streams through a Lambda Function URL, the API Gateway stage throttle does not apply, so reserved concurrency and the budget counter are the protection; record this at G3, or stream through API Gateway REST streaming. **Model provider (#73, #88):** Vercel AI SDK, provider set by `AI_PROVIDER` (`bedrock` or `gateway`); confirm quota before A-14. Optional: cache answers per run CID and question for 24 h, labelled "cached answer from {time}".
+- **Reading the data (#36, #64, AD-01).** Queries (browser DuckDB and the Lambda agent and MCP) read the **elephant-cli tables through the views**, from an **S3 copy of the published files named by their CID** (bytes checked against the CID at release), with HTTP range reads of only the columns and row groups a query needs. If the copy fails, the browser falls back to a public gateway; a Lambda fallback fetch is labelled "via server". The loading state shows MB of the needed columns, never a 400 MB download.
+- **Cost (#7, #40, #55, AD-13).** The Coverage cost card lists **every** deployed resource with its fixed cost and its usage in cents: Amplify Hosting; **S3 copy of published files** (cents); API Gateway + Lambda (tRPC and the MCP endpoint); model API calls; the DynamoDB spend counter; SSM Parameter Store (MCP token and config); Cognito; SES; SQS; CloudWatch Logs; ACM certificate (free; DNS stays at Namecheap, **no Route 53 hosted zone**); Filebase pinning (free tier, 5 GB); GitHub Releases (CAR copies, free); the public gateways ipfs.io and dweb.link (free, run by Interplanetary Shipyard, not ours); the local pipeline. **$0.00 fixed per month**; everything else is usage in cents.
+- **AI spend (#58, #66, #68, #71, G3).** Server-side protection: a daily spend counter (the DynamoDB item above) with the provider's prepaid credit as the hard ceiling, about 6 steps and 1.5k output tokens per answer, a route throttle, reserved concurrency of 3–5 for the agent Lambda **only if the account limit allows it** (AD-11), and an alarm at 80% of the daily cap ($3 a day); size the cap for evaluation days. The visible quota is **10 questions per session**, kept in `sessionStorage` and shown beside Find and in the results tab bar. Only answered questions count: failed, paused or throttled questions do not, and a chip edit that re-runs the query without a model call does not count and costs nothing (#79). When the daily budget is used up, AI mode pauses until 00:00 UTC and says so; Filters and SQL keep working. There is no streaming (AD-09): `agent.ask` returns one response through API Gateway, so the stage throttle applies. **Model provider (#73, #88):** Vercel AI SDK, provider set by `AI_PROVIDER` (`bedrock` or `gateway`); confirm quota before A-14. Optional: cache answers per run CID and question for 24 h, labelled "cached answer from {time}".
 - **Demo city check (#38).** During A-02, count real roofing permits inside the Pflugerville 5 mi ring (Austin permits cover the City of Austin only). If the D-11 answer would be thin, move the demo centre to a place whose ring is mostly City of Austin, for example ZIP 78753.
 
 ## 3. Site map and routes
@@ -80,14 +79,14 @@ These are design constraints. Engineering owns the final choices; record the hyb
 | Search box (in place, every screen) | `?q=` on any route | Must | – | `SearchBox`, `SearchStates` |
 | Property detail | `/tx/travis/property/{id}` | Must | D-9 | `PropertyDetail` (shared), `Property1440`, `Property768`, `Property390`, `Property390Full`, `Property390NoImagery`, `PropertyStates` |
 | Runs | `/runs` | Must | D-2 | `Runs1440`, `Runs768`, `Runs390`, `RunsStates`, `RunsAdmin1440` |
-| Runs compare | `/runs/compare?a=2&b=3` | Must | D-7 | `RunsCompare1440`, `RunsCompare768` |
+| Runs compare | `/runs/compare?a=2&b=3` | Must | D-7 | `RunsCompare1440`, `RunsCompare768`, `RunsCompare390` |
 | Pipeline history log | `/runs/log` | Must | – | `RunsLog1440`, `RunsLog768` |
 | Coverage | `/tx/travis/coverage` | Must | D-3 | `Coverage1440`, `Coverage768`, `Coverage390`, `CoverageStates` |
-| Data: manifest + IPNS | `/data/manifest` | Must | D-5 | `DataManifest1440`, `DataManifest768`, `Data390`, `DataStates` |
+| Data: run chain + manifest | `/data/manifest` | Must | D-5 | `DataManifest1440`, `DataManifest768`, `Data390`, `DataStates`, `RunChain` |
 | Data: verify | `/data/verify/{cid}` | Must | D-6 | `DataVerify1440`, `DataVerify768`, `DataStates` |
 | Data: catalog | `/data/catalog` | Must | – | `DataCatalog1440`, `DataCatalog768` |
 | SQL states and errors | Explore · SQL | Must | D-4 | `SqlStates` |
-| AI mode states | Explore · AI | Must | D-10, D-11 | `HelperStates` |
+| AI mode states | Explore · AI | Must | D-10, D-11 | `HelperStates`, `ExploreQ-aiworking`, `ExploreQ-aislow` (and their 768 and 390 boards) |
 | Help · MCP and API docs | `/help/mcp` | Must | D-12 | `HelpMcp1440`, `HelpMcp768`, `HelpMcp390` |
 | Admin sign-in | `/admin/sign-in` (Admin in the main navigation) | Must | – | `AdminSignIn1440`, `AdminSignIn768`, `AdminSignIn390` |
 | Sign in to keep asking (AI users) · **Coming soon** | `/sign-in` | Coming soon | – | `UserSignIn1440`, `UserSignIn768`, `UserSignIn390` (planned flow, not linked) |
@@ -148,7 +147,7 @@ The map layouts (map + 360 px cards panel at 1440, map above cards at 768, full-
 #### 4.1.3 Query modes
 
 - **Filters:** roof age at least, in years (10 / 13 / 15 / 20 / 25), roofing permit (Any / Open or stalled / Stalled) plus an **"Open ≥ N yrs"** chip with a menu (any time, 1, 3, 5, 10 yrs) that matches the agent's "many years" chip (#59, E-33), owner (Tenure > 10 yrs, Out-of-area).
-  - **Definitions inline (#31, #37):** "Out-of-area = mailing address outside Travis County"; "Stalled = open and past its expiry date" (from status, issue and expiry dates; no inspection dates assumed, confirm in A-01); "Tenure = years since the last sale; unknown when there is no sale date".
+  - **Definitions inline (#31, #37):** "Out-of-area = mailing address outside Travis County"; "Stalled = the source says Expired, or open past its expiry date" (AD-08: the Travis profile sets the class from `status_raw` and `expiry_date`; an expired permit is never relabelled Completed or Cancelled); "Tenure = years since the last sale; unknown when there is no sale date".
   - **Suggested queries:** "Out-of-area owners, roof ≥ 20" and "Owners for 10+ years, roof ≥ 15".
 - **Builder: prototype, coming soon (#21, #46).** No "Soon" pill on the rail item (PO, round 5); the corner badge stays on the mobile switcher segment (E-30) and the panel note says it is coming soon. It still opens, with the note "Prototype of the coming query builder. Filters, SQL and AI ship first."
   - A plain-language sentence (up to 3 lines) and an All (AND) / Any (OR) switch.
@@ -167,16 +166,19 @@ The map layouts (map + 360 px cards panel at 1440, map above cards at 768, full-
     7. Unbalanced brackets or quotes.
   - Every error also shows **an example that runs**, the nearest suggestion, with **Use this example**.
   - A successful run shows "n rows · 62 ms · in the list".
-  - **Engine line (#27, #64):** "DuckDB-WASM in your browser · read-only · bafybeih…q7n3 (CID copy) · 18.4 MB" (MB from the views the query reads); the tooltip explains the CID-named copy, the check at release and the ipfs.io fallback.
-  - **Run it yourself (#27):** toggles a copyable DuckDB CLI command built from the query that ran: `INSTALL httpfs`, one `CREATE VIEW … read_parquet('https://ipfs.io/ipfs/<cid>/<view>.parquet')` per view used, a `dist_mi` macro, and the query with `:area_centre` and `:radius_mi` filled in. It hides the suggestions while open.
-- **AI:** a question box (72 px) with **Find** and the session quota "n of 10 AI questions left this session"; the results tab bar repeats it as "n of 10 left", so the quota stays visible while the answer is open (#58, #66, #79). Kept in `sessionStorage`; only answered questions count (not failed, paused or throttled ones, and not chip edits). At the limit Find is disabled and an info banner says "You've used this session's 10 AI questions. Filters and SQL have no limit —" with the button **Open this question in Filters** (same Area, radius and conditions), then plain text, not a button: "More AI questions with sign-in: coming soon." When the daily budget is used up, a paused banner replaces it (E-31; boards `ExploreQ-ailimit`, `ExploreQ-aipaused`). Two suggestions show until a conversation has turns (and on mobile until a question has run).
+  - **Suggestion SQL uses the AD-07 names:** `situs_address`, `roof_age_years`, `dist_mi(lat, lon, :area_centre)`; the permit query reads `status_class`, `status_raw`, `open_days`, `contractor_name_raw` and `contractor_resolution`, joins on `property_cid` and filters `WHERE r.status_class IN ('open','stalled') AND r.open_days >= 1826`, so stalled permits are kept (#103); the out-of-area query reads `owner_is_out_of_area`, `owner_area_class`, `tenure_years` and `tenure_basis`. The Schema list shows the §2 view columns.
+  - **Engine line (#27, #64):** "DuckDB-WASM in your browser · read-only · bafybeih…q7n3 (CID copy) · 18.4 MB" (MB of the elephant-cli tables behind the views the query reads); the tooltip explains that it reads those tables through the views, the CID-named copy, the check at release and the ipfs.io fallback.
+  - **Run it yourself (#27):** toggles a copyable DuckDB CLI command built from the query that ran: `duckdb -init views.sql` (from `packages/query-core`, which defines the views and `dist_mi()` over the run's elephant-cli tables on ipfs.io), `SET VARIABLE run_cid`, and the query with `:area_centre` and `:radius_mi` filled in. No per-view Parquet files. It hides the suggestions while open.
+- **AI:** a question box (72 px) with **Find** and the session quota "n of 10 AI questions left this session"; the results tab bar repeats it as "n of 10 left", so the quota stays visible while the answer is open (#58, #66, #79). Kept in `sessionStorage`; only answered questions count, and a question counts when its answer arrives (not failed, cancelled, timed-out, paused or throttled ones, and not chip edits). At the limit Find is disabled and an info banner says "You've used this session's 10 AI questions. Filters and SQL have no limit —" with the button **Open this question in Filters** (same Area, radius and conditions), then plain text, not a button: "More AI questions with sign-in: coming soon." When the daily budget is used up, a paused banner replaces it (E-31; boards `ExploreQ-ailimit`, `ExploreQ-aipaused`). Two suggestions show until a conversation has turns (and on mobile until a question has run).
   - **"Read as" assumption chips are editable (#4):** tap a chip to open a small menu of values. Radius: 1 / 3 / 5 / 7 / 10 mi. Roof age: 10 / 15 / 20 / 25 yrs. Years open ("many years" = N): 1 / 3 / 5 / 10. Place: the first five places. Edited chips say "(you set)". ✕ drops a chip as the secondary action.
   - **Answer tab (#24),** the default results tab in AI mode:
     - The question, with a "Follow-up · area from your last question" pill when it applies.
-    - **How I read this (#39):** one line built from the assumptions, for example "Pflugerville city hall → 30.4394, −97.6200 · within 5 mi · roof age > 15 yrs (reroof permit, else new build, else year built) · data: v_property · Run 3". Clamped to 2 lines below desktop, full text on hover.
-    - Four tool steps streamed one by one (skipped under reduced motion), for example "Found Pflugerville at 30.4394, −97.6200" · "Searched r = 5 mi, roof > 15 yrs" · "Read 9 matching parcels from v_property" · "Checked roof-age basis and confidence". On 768 and 390 the finished steps fold into one "4 steps done · show" row.
+    - **Working… (AD-09, E-43):** while the single response is pending: a spinner icon (static under reduced motion), "Working…", the elapsed seconds (a timer, not announced every second), an indeterminate progress bar, "The answer and all its steps arrive together. Up to 6 steps; it stops at 25 s." and **Cancel** (nothing counted; "Cancelled" banner with Ask again). Matches and the "Read as" chips wait for the answer ("Matches arrive with the answer."). Board: `ExploreQ-aiworking` (timer from 7 s; it reaches Took too long at 25 s).
+    - **Took too long (AD-09, E-43):** at 25 s a warning banner "Took too long. The answer stopped at the 25 s limit. Nothing was counted, and your question is kept." with **Try again** (filled) and **Use Filters instead** (outlined; same Area, radius and conditions). Board: `ExploreQ-aislow`.
+    - **How I read this (#39):** arrives with the answer; one line built from the assumptions, for example "Pflugerville city hall → 30.4394, −97.6200 · within 5 mi · roof age > 15 yrs (reroof permit, else new build, else year built) · data: v_property · Run 3". Clamped to 2 lines below desktop, full text on hover.
+    - **All tool steps at once, with the answer (no streaming, AD-09),** for example "Found Pflugerville at 30.4394, −97.6200" · "Searched r = 5 mi, roof > 15 yrs" · "Read 9 matching parcels from v_property" · "Checked roof-age basis and confidence" (contractor questions: "Read contractor identity (TX Comptroller registry only) and BBB state from v_roofing_permit"). On 768 and 390 they fold into one "4 steps done · show" row.
     - A summary with numbered citations (5 on desktop, 3 on tablet, 2 on mobile). **Citations ↔ rows (#76, E-39):** citation [n] matches row n in the numbered Matches table (numbered cards at 390); tapping it highlights row n and opens its Why view, and the row number opens the same Why view. (With the CRM preview on, the numbers also match numbered map pins.)
-    - The missing-data note ("BBB: Blocked · 403 on 2026-10-17 · where available").
+    - The missing-data note. Contractor questions: "Contractor names are as printed on the permit; only a TX Comptroller match is Resolved. BBB is Blocked on some (bbb.org refused the check, 403) or Not checked. …"; citations then show the name as printed and its badge label.
     - **Conversation:** up to 4 turns, kept on the client. "Earlier in this conversation" shows recent turns with **New conversation**. "That area", "same area" and "near there" reuse the previous area and radius.
   - Recognises distance, places (Pflugerville, Manor, Wells Branch, Austin, the four ZIPs), roof age, permits, contractors and owners.
 
@@ -197,8 +199,8 @@ With the switch off (CountyLens) all of these are hidden, along with the OSM cre
 
 #### 4.1.5 Result cards
 
-- **Collapsed:** title · distance with bearing · details (i) · expand. Below it, two **signal chips**: roof yrs (with its roof-age colour swatch) + confidence pill, and permit status. Each chip opens the Why view (#6).
-- **Expanded:** adds the basis and contractor line ("BBB not available") and the **Why is this a match?** button.
+- **Collapsed:** title · distance with bearing · details (i) · expand. Below it, two **signal chips**: roof yrs (with its roof-age colour swatch) + confidence pill, and permit status as **class + the source's own status word (AD-08)**: "Stalled 6.4 yrs · source says Expired", "Open 3.8 yrs · source says Active", "Closed 2023 · source says Final". Each chip opens the Why view (#6).
+- **Expanded:** adds the basis, then the **contractor block (AD-05, AD-06, E-42):** Contractor "SAMPLE ROOFING CO" *as printed on permit* · the Contractor badge (Resolved / Candidate / Ambiguous / Conflicting / Unresolved) with its one-line reason · "BBB: {state}". No licence line. With no name on the permit: "No contractor printed on permit". Then the **Why is this a match?** button. The details drawer's Roofing permit card has the same status, "Contractor, as printed on permit", Identity (badge + reason) and BBB rows.
 - **Why view:** replaces the list inside the panel, with Back to results.
   - Each rule with its value; **Coordinates** (lat, lon); a **source record** link; then source · run · CID (#23).
   - Verify CID and Details buttons.
@@ -207,7 +209,7 @@ With the switch off (CountyLens) all of these are hidden, along with the OSM cre
 
 #### 4.1.6 Paging, never scrolling
 
-- Pages are packed to fit the panel's height. In the prototype: collapsed card 88 px, expanded 188 px (170 on tablet), header 48 px, pager 48 px.
+- Pages are packed to fit the panel's height. In the prototype: collapsed card 88 px, expanded 188 px (170 on tablet) plus the contractor block, header 48 px, pager 48 px.
 - Expanding cards pushes the overflow onto the next page.
 - Pager text: "1–7 of 9 sample cards"; the table footer reads "Showing 1–9 of 9 sample rows · Oldest roof" with a compact Pager and Download.
 - Changing the query, sort, Area or radius goes back to page 1.
@@ -215,14 +217,14 @@ With the switch off (CountyLens) all of these are hidden, along with the OSM cre
 #### 4.1.7 Other Explore pieces
 
 - **List view (the CountyLens results view):** at 1440 a paged table with row checkboxes and the columns # · Address · Roof (colour swatch + number) · Basis · Conf. · Permit · Mi (with bearing) · **Lat, lon** · **Source** (link to the TCAD record) · Open in OpenStreetMap (#23); rows per page from the height (48 px rows); a Pager and Download in the footer. At 768 the 5-column table (56 px rows). In AI mode a numbered table (# · Address with lat, lon · Roof · Conf. · Distance).
-- **Details:** opens from (i). "Ask about it" opens AI mode with a question about that address filled in.
+- **Details:** opens from (i), the drawer under the title reads "{n} mi from the area centre". Its Roof card cites `roof_age_years · Run 3 · CID`. "Ask about it" opens AI mode with a question about that address filled in.
 - **Opened from search:** each search mode opens Explore in that mode with its query loaded (`ExploreQ-*` boards).
   - Filters: roof15, permits5 (the D-9 board: roof ≥ 15, open or stalled permits open ≥ 5 yrs, near Pflugerville, sorted by longest open), ooa78753 (SC-5: out-of-area owners **and tenure > 10 yrs**, #83), stalled78753.
   - SQL: sqlperm, sql.
-  - AI: aicontractor (the D-11 board, drawn as the second turn: D-10's question in "Earlier in this conversation", then "…near that area…" with the follow-up pill and the carried-over area), aiooa, ai, ailimit, aipaused.
+  - AI: aicontractor (the D-11 board, drawn as the second turn: D-10's question in "Earlier in this conversation", then "…near that area…" with the follow-up pill and the carried-over area), aiooa, ai, ailimit, aipaused, **aiworking** and **aislow** (AD-09; also `ExploreQ768-*` and `ExploreQ390-*`).
   - CRM preview: crmmap (roof15 with Map view on; prototype only).
   - Builder: builder (the prototype, marked Soon).
-- **States** (`ExploreStates`, `SqlStates`, `HelperStates`): loading, empty with close matches, error, partial (BBB), rate-limited, and AI "can't answer" (no sale prices).
+- **States** (`ExploreStates`, `SqlStates`, `HelperStates`): loading, empty with close matches, error, partial (BBB), rate-limited, AI "can't answer" (no sale prices), and AI **Working…** and **Took too long** (AD-09).
 
 ### 4.2 Search box (every screen)
 
@@ -239,9 +241,9 @@ With the switch off (CountyLens) all of these are hidden, along with the OSM cre
   - **Street View: coming soon** (#17), shown as the no-imagery card; no Google key or billing.
   - Owner and sale (confidential owners show as "withheld").
   - Roof: estimate, basis, confidence and an evidence chain.
-  - Permits with contractor and BBB status.
-  - **Owner merged from 2 records** (#3, #34, #62): a real de-duplication, two TCAD owner accounts for the same owner (“SAMPLE, JORDAN A”, kept, last sale 2011-07-18, which matches the Owner section; and “JORDAN A SAMPLE”, merged, “same normalised name and mailing address; newer account”), matched on normalised name + mailing address. It links to Coverage → Reconciliation.
-  - Provenance (field · source · captured · run · CID · licence).
+  - Permits: each with its class + source status word ("Stalled · source says Expired", "Closed · source says Final"), issued · expired · final dates, "Contractor, as printed on permit", **Identity** (Contractor badge + reason) and BBB state (AD-05, AD-06, AD-08). No licence line. The note under them says the class comes from the Travis profile next to `status_raw`, and identity from the TX Comptroller registry only.
+  - **Owner merged from 2 records** (#3, #34, #62): a real de-duplication, two TCAD owner accounts for the same owner (“SAMPLE, JORDAN A”, kept, last sale 2011-07-18, which matches the Owner section; and “JORDAN A SAMPLE”, merged, “same normalised name and mailing address; newer account”), matched on normalised name + mailing address. It links to Coverage → Reconciliation. **Sources (#92, AD-01):** each source row says "From the published owner record (person table) · TCAD account {id}"; there is no lineage file or `v_lineage`. **Fallback:** if A-02 finds no published field that names the source accounts, the section shows "Merge details: coming soon. Run 3 merged 6,866 owner records in the county (Run manifest · coverage section)." (`PropertyDetail` prop `mergeDetails="none"`; `PropertyStates` · Merged-from details not published; E-47).
+  - Provenance (field · source · captured · run · CID · data licence), with the AD-07 field names (`roof_age_years`, `bbb_status`, `lat, lon`); Location shows "Coordinate source: TCAD parcel centroid".
   - **Similar properties:** a vertical list in the result-card style.
 - **Below 600 px**, permits and provenance rows become key–value cards. Nothing scrolls sideways (#10).
 - **"Ask about this property":** opens Explore in AI mode.
@@ -276,9 +278,11 @@ With the switch off (CountyLens) all of these are hidden, along with the OSM cre
 
   The dashed state bar is **prototype only**. The simulated Running state and the Run 4 sample stay in the prototype as is (#29); the build shows Running only for a real run.
 - **Compare (D-7):**
-  - The two runs side by side, IPNS now and before, per-source deltas and artifact CID changes.
+  - The two runs side by side, per-source deltas and artifact CID changes (AD-03): the **new manifest CID**, which links to the old one (`previousManifestCid`); the **old manifest still resolves on ipfs.io and dweb.link**; **CAR available** (Run 3 CAR on the GitHub Release, with its CID and size). Checks: "New manifest links to the old one (previousManifestCid)", "Both runs listed in runs/index.json", "CAR available". No IPNS.
   - Immutability checks and a directory CAR download.
   - The **prior-CID pill** has three states: Checking ipfs.io and dweb.link… · Prior CID resolves on ipfs.io and dweb.link · Prior CID failed on {gateway}. It stays static in the prototype (#25).
+  - Each source row names its elephant-cli table and CID: permits → `property_improvement`, properties → `properties`, owners → `person` and `sales_history`, contractor names and businesses → `company` (#100).
+  - **390 (`RunsCompare390`, #107, E-48):** the two run cards stacked, then the new manifest CID linked down to the old one (previousManifestCid), the "Old manifest still resolves on ipfs.io and dweb.link" pill and the CAR link, then per-source changes as a list. States: populated, loading, empty (only one run), error (Run 2 manifest unreadable), partial (one gateway failed) and rate-limited.
 - **History log:** 41 events, filters by event type and run with **Clear filters**, numbered pager (12 per page), Download CSV.
 
 ### 4.5 Coverage
@@ -292,44 +296,48 @@ With the switch off (CountyLens) all of these are hidden, along with the OSM cre
   1. Property (TCAD appraisal roll).
   2. Permit (Austin `3syk-w9eu`).
   3. Ownership (TCAD owners and sales).
-  4. Contractor (names on Austin permits), with the sub-row **Contractor · BBB: "Blocked · 403 on 2026-10-17 · where available"**, linked to its evidence.
-  5. Business (TX Comptroller franchise-tax `9cir-efmm`; places from Overture).
+  4. Contractor (names on Austin permits), with the sub-row **Contractor · BBB: "Blocked · bbb.org refused the check (403) on 2026-10-17"**, linked to its evidence.
+  5. Business (TX Comptroller franchise-tax `9cir-efmm`; "52,870 located with Overture places").
   6. Coordinates (TCAD parcel geometry).
 
+  Every count's source is **"Run manifest · coverage section"** (AD-04), and each row's provenance names its elephant-cli table and CID (#100): Property → `properties`, Permit → `property_improvement`, Ownership → `person` + `sales_history`, Contractor → `company`, Business → `company` + `business_location`, Coordinates → `geometry`.
+  - **Permit row (#102, AD-16):** "Sample: 21,640 of 22,083 reroof permits matched to a property · 443 unmatched (kept and counted)".
+  - **Contractor row (#90, AD-05, E-45):** "22,210 names · 5 identity states (Sample)" with a stacked bar and a legend with counts: Resolved 0 · Candidate 14,880 · Ambiguous 2,140 · Conflicting 390 · Unresolved 4,800 (all Sample, adding up to 22,210), and "Real counts come from Run 3 in A-02. Resolved needs an official ID; Austin permits carry names only." The BBB sub-row counts against the same 22,210 names.
   Each row shows status, source, **"Out of: {denominator source}"**, a loaded/missing bar (missing hatched), %, reason, a Run 1–3 trend, collected time and a provenance link. There is a table view.
 - **Coverage by area:** the 7 rows × Austin / Pflugerville / Manor / unincorporated on `--viz-seq-1…5`; "No source" and "Blocked" hatched.
 - **Reconciliation · duplicates merged in Run 3 (#3):** Property, Owner, Contractor and Business, each with records in, merged, entities out, a share-merged bar (0–20% scale) and the method:
   - Property: TCAD prop ID + geo ID.
   - Owner: normalised name + mailing address.
-  - Contractor: licence number, then normalised name + phone.
+  - Contractor: "Merged only on an official registry identifier. Name, phone, address, BBB and places matches stay Candidates." (#89). **Merged** counts only Resolved merges; Candidate, Ambiguous, Conflicting and Unresolved names stay one row each (22,210 in → 0 merged → 22,210 out, Sample).
   - Business: Comptroller taxpayer number; an Overture place within 50 m.
 
-  Owner reads 404,980 in → 398,114 out, the same figure as the Ownership row and MCP `get_coverage` (#34). Worked examples: **owner** 2 accounts → 1 (opens Property detail) and **contractor** “SAMPLE ROOFING CO”, “Sample Roofing Company LLC” and “Sample Rfg Co” → Sample Roofing Co. (one licence, 11 permits). Counts come from the run's `coverage.json`; merge counts and examples from its `merge_stats.json` (#62).
-- **Cost (#7, #40, #55),** full width, 15 resources in two columns, each with what it is for and its idle cost. Header pill: "$0.51 a month when idle".
-  - Web app (AWS Amplify Hosting) · S3 bucket (`runs/live.json`, CID-named copies) · API Gateway + Lambda (tRPC and the MCP endpoint) · model API calls · IPNS publisher · SSM Parameter Store (IPNS key, config) · Cognito user pool · SES · SQS run-command queue · CloudWatch Logs · Route 53 hosted zone + ACM ($0.50 a month) · Filebase pinning (free tier, 5 GB) · GitHub Releases (CAR copies) · public gateways (ipfs.io, dweb.link; run by Interplanetary Shipyard, not ours) · pipeline (local Restate stack).
-  - Last bill **$0.62** (Sample), explained on the card: $0.50 Route 53 hosted zone + $0.12 usage while testing (model calls and Lambda requests), from Cost Explorer captured 10-01. A $5/month budget alert, and a link to the evidence in the run release.
+  Owner reads 404,980 in → 398,114 out, the same figure as the Ownership row and MCP `get_coverage` (#34). Worked examples: **owner** 2 accounts → 1 (opens Property detail) and a **contractor Candidate cluster** (#89): "SAMPLE ROOFING CO, Sample Roofing Company LLC, Sample Rfg Co → 1 likely Comptroller company" with the Candidate badge, "· 3 spellings · Candidate, not proof · 11 permits · not merged · No Texas roofing licence register exists". Counts and merge counts come from the coverage section of the run manifest (numbers only, no rows, AD-04). Worked examples are read at query time from the published elephant-cli tables (#91, #62).
+- **Cost (#7, #40, #55, AD-13),** full width, 16 resources in two columns, each with what it is for and **"Fixed · usage"** (for example "$0.00 · 2¢"). Header pill: **"$0.00 fixed per month"**.
+  - Web app (AWS Amplify Hosting) · **S3 copy of published files** (2¢) · API Gateway + Lambda (tRPC and the MCP endpoint) · model API calls ($3 daily cap) · DynamoDB spend counter · SSM Parameter Store (MCP token, config) · Cognito user pool · SES · SQS run-command queue · CloudWatch Logs · ACM certificate (free; DNS at Namecheap, no Route 53 hosted zone) · Filebase pinning (free tier, 5 GB) · GitHub Releases (CAR copies) · public gateways (ipfs.io, dweb.link; run by Interplanetary Shipyard, not ours) · **Scheduled refresh (EventBridge Scheduler, off) + Fargate task definition, $0.00** (#101, AD-15) · pipeline (local Restate stack). No Route 53 hosted zone, IPNS publisher or IPNS key.
+  - Last bill **$0.07** (Sample), explained on the card: $0.00 fixed + 7¢ usage while testing (model calls, Lambda requests, S3 copy), from Cost Explorer captured 10-01. A $5/month budget alert, and the evidence line "cost.json, built at deploy time and attached to the release (not an IPFS artifact)" (#101).
 - Known limitations · source speed and constraints (TX Comptroller and Overture rows).
 - **States:** loaded, loading, gaps only, rate-limited (cached counts), error, empty.
 
 ### 4.6 Data
 
 - **Manifest (D-5):**
-  - IPNS card and manifest card.
-  - Artifacts table (name, CID with copy, codec, size, SHA-256, Verify): 13 rows on 2 pages. (The `tiles/` row shows only in the CRM preview; CountyLens publishes no map tiles, #78.)
+  - **Run chain first (AD-03, E-41, `RunChain`):** this run's manifest CID → the previous manifest CID → … → "First run · no previous manifest". Each run is a tappable tile (manifest CID, date) with **Verify** and Copy CID; the selected run's line shows its manifest, previous manifest, size and gateways. Arrows run left to right at 1440 and 768 and top to bottom at 390. The run list is `runs/index.json`, committed to git. No IPNS.
+  - Artifacts table (name, CID with copy, codec, size, SHA-256, Verify): `manifest.json`, then the elephant-cli tables (`properties`, `property_improvement`, `structure`, `sales_history`, `company`, `person`, `address`, `geometry`, `business_location`, `relationships/` as a directory, `tables-export.json`) and `gazetteer.parquet`, on 2 pages. (The `tiles/` row shows only in the CRM preview; CountyLens publishes no map tiles, #78.)
   - Download `manifest.json`.
 - **Verify (D-6, #26):**
   - Pick an artifact. Files under 50 MB race on two lanes, **Lane A · ipfs.io** and **Lane B · dweb.link**, each with its operator (Interplanetary Shipyard) (#69), showing bytes, time, status and the **exact URL fetched**: the plain file URL of a `bafybei…` root (`https://ipfs.io/ipfs/bafybeigr7…`, `https://bafybeigr7….ipfs.dweb.link/`), never `?format=raw` (#35). Filebase stores the files and its gateway is never a lane. `DataStates` and `Data390` use the same 38.2 MB example; larger files and directories show Verify via CAR (#53).
   - Directories and large files show **Verify via CAR** with the reason.
   - Results: Verified, Mismatch, Rate-limited with a countdown. Reduced motion shows "Received n%" (A-8).
 - **Catalog:**
-  - Frozen tables (properties, permits, owners, contractors) plus supporting ones (roof_age, businesses).
-  - Field types, meanings, sources and licences.
+  - **Only what is published (AD-01):** the elephant-cli tables, one per class (`properties`, `property_improvement`, `structure`, `sales_history`, `person`, `company`, `address`, `geometry`, `business_location`) and `relationships/`, then "Also published": `manifest.json` and `gazetteer.parquet`. Names and columns come from `tables-export.json`.
+  - Field types, meanings, sources and data licences. The selected example is `property_improvement` (`cid`, `property_cid`, `data_group_cid`, `request_identifier`, `improvement_type`, `improvement_action`, `improvement_status`, dates, `source_http_request` keeping the raw status and expiry date), with a card listing what `v_roofing_permit` adds (§2).
+  - "In SQL and MCP, use the views": `views.sql` defines them over these tables only.
   - Query in SQL.
 
 ### 4.7 Activity (admin only, #18, #19, #43)
 
 - **Header note:** "Server-side events from CloudWatch Logs: AI questions, MCP calls, Try a tool and search · kept 30 days · no personal data. Browser queries (Filters, SQL, Builder) run on the visitor's device and are not logged."
-- **BBB never shows as a failure (#60):** an AI question about BBB ratings is logged as "Answered · BBB missing-data note". No sample row searches a contractor name (#33).
+- **BBB never shows as a failure (#60):** an AI question about BBB ratings is logged as "Answered · BBB missing-data note". A timed-out AI question (AD-09) is logged as "Failed: took too long (25 s)". No sample row searches a contractor name (#33).
 - **Last week:** server events, median and p95 response, failure rate, top areas, top questions and tools, failure reasons.
 - **Query log:**
   - Type chips (AI, MCP, Try a tool, Search) and Failed only, with **Clear filters**.
@@ -338,16 +346,16 @@ With the switch off (CountyLens) all of these are hidden, along with the OSM cre
 
 ### 4.8 Help · MCP and API docs (#2)
 
-- **Endpoint:** `https://countylens.aldarraj.com/mcp`, its own stateless Streamable HTTP handler sharing `query-core`, with CORS and Origin checks. **Access:** public and read-only for `tools/list` and `tools/call`, no token, throttled (stage rate limit and reserved concurrency); throttled calls return `429` (#44, #57).
+- **Endpoint:** `https://countylens.aldarraj.com/mcp`, its own stateless Streamable HTTP handler sharing `query-core`, with CORS and Origin checks. **Access (AD-10, E-44):** "Bearer token required, shared privately with reviewers" for `tools/list` and `tools/call` (info pills with a key icon), read-only, throttled (stage rate limit); no or wrong token returns `401`, throttled calls `429` (#44, #57). Tool schemas and sample responses use the AD-07 names (`property_cid` for every property, never `id`, #108; `roof_age_years_min`, `status_class`, `owner_is_out_of_area`, `roof_age_years`, `roof_age_basis`, `coordinate_source`, `status_raw`, `contractor_name_raw`, `contractor_resolution`, `bbb_status`).
 - **Tools, each with input schema, a copy-paste example and its real response:**
   - `search_properties`
-  - `get_property`
+  - `get_property` (`owner_merged_from` is optional: present only when the published owner record names its source accounts, #92)
   - `list_permits`
-  - `get_coverage`
+  - `get_coverage` (from the manifest's coverage section; includes `contractor_resolution: {resolved, candidate, ambiguous, conflicting, unresolved}` and the permit match `{reroof, matched_to_property, unmatched_kept}`, #90, #102)
   - `list_runs`
   - `resolve_place`
-- **Connect a client (#57):** Claude Desktop via `mcp-remote` (`{"mcpServers": {"countylens": {"command": "npx", "args": ["mcp-remote", "https://countylens.aldarraj.com/mcp"]}}}`), Claude Code (`claude mcp add --transport http countylens https://countylens.aldarraj.com/mcp`) and MCP Inspector (Streamable HTTP, no header).
-- **Try a tool:** pick a tool, edit the JSON arguments, Run, and see the response and timing. It calls the same public endpoint. The prototype shows a labelled sample response; the build must show the live reply.
+- **Connect a client (#57, AD-10):** every snippet carries `Authorization: Bearer <token>`. Claude Desktop via `mcp-remote` (`{"mcpServers": {"countylens": {"command": "npx", "args": ["mcp-remote", "https://countylens.aldarraj.com/mcp", "--header", "Authorization: Bearer <token>"]}}}`), Claude Code (`claude mcp add --transport http countylens https://countylens.aldarraj.com/mcp --header "Authorization: Bearer <token>"`) and MCP Inspector (Streamable HTTP, header `Authorization: Bearer <token>`).
+- **Try a tool:** pick a tool, edit the JSON arguments, Run, and see the response and timing. "Runs through the CountyLens API, which adds the token for you." The prototype shows a labelled sample response; the build must show the live reply. **States (#104, E-46):** error "Couldn't run: 401 Unauthorized. The server's MCP token is misconfigured, so nothing ran." with Try again (any API failure uses "Couldn't run: {reason}"); throttled "429 · throttled. Too many calls, try again in n s." with the Run button disabled and counting down. The dashed "Prototype · reply as" chips (Live · Error 401 · Throttled 429) do not ship.
 
 ### 4.9 Sign-in: admins now, AI users coming soon (#19, #41, #42, #58, #66)
 
@@ -379,11 +387,11 @@ Similar properties in Property detail stays (redesigned in round 1).
 | Shell | – | – | – | – | – | Fresh, running, stale, failed, never synced (`ShellStates`) |
 | Explore | skeleton cards | close matches tab | banner + retry | BBB gap note | gateway countdown | `ExploreStates` |
 | SQL | running | 0 rows | plain-language errors with fix and example | – | – | read-only (`SqlStates`) |
-| AI mode | steps streaming | close suggestions | query couldn't finish | missing source | wait timer | can't answer; follow-up (`HelperStates`) |
-| Property | skeleton | Street View coming soon | – | withheld owner | – | `PropertyStates` |
+| AI mode | Working… with timer and Cancel | close suggestions | query couldn't finish; Took too long at 25 s | missing source | wait timer | can't answer; follow-up (`HelperStates`, `ExploreQ-aiworking`, `ExploreQ-aislow`) |
+| Property | skeleton | Street View coming soon | "Filters, SQL and the list still work" | withheld owner; contractor shows the shared Contractor badge (Unresolved, its reason, name as printed on permit); merged-from details not published | Street View: coming soon card (no daily-limit state) + permits retrying | `PropertyStates` (every state keeps "Show in the list") |
 | Search | – | hint and next step | – | – | – | `SearchStates` |
 | Runs | running | no runs | failed | partial | verify pending | stale; public vs admin |
-| Runs compare | prior CID checking | – | prior CID failed on {gateway} | – | – | resolves on both |
+| Runs compare | prior CID checking; 390 skeleton cards | 390: only one run | prior CID failed on {gateway}; 390: Run 2 manifest unreadable | 390: one gateway failed | 390: gateways rate-limited | resolves on both (`RunsCompare390` has all six) |
 | Coverage | counting | no coverage yet | could not load | gaps only | cached counts | `CoverageStates` |
 | Data | lanes pending | – | mismatch | – | rate-limited | verify via CAR (`DataStates`) |
 | Activity | – | not enough activity | – | – | – | admin only (`ActivityStates`) |
@@ -410,7 +418,9 @@ Similar properties in Property detail stays (redesigned in round 1).
 | Query panel | Explore | Filters / SQL / AI and the footer (Area and radius live in the results bar and footer, E-34); 390: modal bottom sheet opened by the Edit query FAB |
 | Results table | Explore | live header (E-35), Matches / Close tabs, paged table (full, 5-column, numbered for AI), roof-age swatch, OSM link |
 | Results panel | Explore | tabs (Answer, Matches, Close), paging, Why view |
-| Answer panel | Explore · AI | steps, summary, citations ↔ rows, missing note, turns |
+| Answer panel | Explore · AI | Working… (timer, Cancel), Took too long, then steps all at once, summary, citations ↔ rows, missing note, turns (AD-09) |
+| RunChain | Data · Manifest (1440, 768, 390) | `device` (desktop / mobile), `verifyHref`; runs newest first, each tappable with Verify and Copy CID (AD-03) |
+| ContractorBadge | Explore cards and drawer, Property detail, AI citations | `state` (resolved / candidate / ambiguous / conflicting / unresolved), `printed`, `bbb`; name as printed on permit, pill + one-line reason, BBB state; no licence line (AD-05, AD-06) |
 | Pipeline diagram, Gantt timeline, change-mix bar | Runs | status tokens; table alternative for each |
 | Coverage bar, area matrix, sparkline, reconciliation table, cost list | Coverage | `--viz-seq-*`, hatch for missing |
 | Admin gate | Shell, Runs, Activity | public by default; admin flag and actions after sign-in |
@@ -469,12 +479,12 @@ The rule: tokens only, no new values. Anything Atlas lacks is built from Atlas p
 | E-12 | Change mix: `--viz-cat-1/6/2` in light, `--viz-cat-3/1/4` in dark, each marked +, ~ or −; validated for colour-blind readers in both themes (#11) |
 | E-13 | Prototype state bar and ProtoBar, including the Map view (CRM preview) switch: **do not ship** |
 | E-14 | Editable assumption chip (#4) |
-| E-15 | Agent answer panel (#24) |
+| E-15 | Agent answer panel (#24): one response, no streaming (AD-09) |
 | E-16 | Radius ring handle (#5) · CRM preview · not Task A |
 | E-17 | Signal chips on cards (#6) |
 | E-18 | Coming-soon item (#17, #21, #22) |
 | E-19 | Reconciliation table and "Merged from n records" (#3) |
-| E-20 | Cost section (#7) |
+| E-20 | Cost section (#7): fixed · usage in cents, "$0.00 fixed per month" (AD-13) |
 | E-21 | Key–value card stack below 600 px (#8, #10) |
 | E-22 | Tablet (768) and compact (390) rules (#8, #9) |
 | E-23 | Try-a-tool panel (#2) |
@@ -495,6 +505,14 @@ The rule: tokens only, no new values. Anything Atlas lacks is built from Atlas p
 | E-38 | ~~Disabled "Map · Soon" segment~~ removed (PO, round 5): CountyLens has no view switcher; `view=map` falls back to List (#74) |
 | E-39 | Citation ↔ numbered row (#76) |
 | E-40 | Run picker: dropdown with every run and its timestamp, first control on Runs (PO, round 5) |
+| E-41 | Run chain on Data · Manifest: manifests newest first, each linked to the previous one, tappable, with Verify (AD-03) |
+| E-42 | Contractor badge, five identity states with a one-line reason; name "as printed on permit"; no licence line (AD-05, AD-06) |
+| E-43 | AI Working… (elapsed timer, Cancel) and Took too long at 25 s (Try again, Use Filters instead) (AD-09) |
+| E-44 | MCP access: "Bearer token" pills and the Authorization header in every client snippet (AD-10) |
+| E-45 | Contractor identity bar: five states stacked, legend with icon, label and count; Sample counts (#90) |
+| E-46 | Try a tool error (401) and throttled (429) states; prototype-only "reply as" chips (#104) |
+| E-47 | Merge-details fallback note on Property detail (#92) |
+| E-48 | Runs compare at 390, six states (#107) |
 
 **Deviations when mapView is OFF** (CountyLens ships with it off; each one has its full version with mapView ON, in the CRM):
 
@@ -514,15 +532,15 @@ The rule: tokens only, no new values. Anything Atlas lacks is built from Atlas p
 | D-1 | Opening context: Travis County, TX · Run 3 · {date} | App shell | `Explore1440`; `ShellStates` | Point at the location chip and run badge; the badge opens Runs |
 | D-2 | Run summary: sources, counts, timestamps, limitations, % of roll | Runs | `Runs1440` · Completed | 8 sources with BBB blocked; County coverage 99.4% of roll; click Austin permits |
 | D-3 | Records by source with collection time and provenance | Coverage | `Coverage1440` · Loaded | Six record-kind rows with denominators, then the area grid, Reconciliation and Cost |
-| D-4 | Query layer: DuckDB in the browser, no hosted database; reads the CID-named copy first, public gateway fallback | Explore · SQL | `ExploreQ-sql`, `ExploreQ-sqlperm`; `SqlStates` | Run a suggestion; read the engine line; open Run it yourself and copy the DuckDB command; type FORM to show the fix |
-| D-5 | Artifact manifest: CID, size, codec, digest; IPNS → CID | Data · Manifest | `DataManifest1440` | IPNS card, then the artifacts table |
+| D-4 | Query layer: DuckDB in the browser, no hosted database; reads the elephant-cli tables through the views, from the CID-named copy first, public gateway fallback | Explore · SQL | `ExploreQ-sql`, `ExploreQ-sqlperm`; `SqlStates` | Run a suggestion; read the engine line; open Run it yourself and copy the DuckDB command; type FORM to show the fix |
+| D-5 | Artifact manifest: CID, size, codec, digest; the run chain | Data · Manifest | `DataManifest1440` | Run chain first (Run 3 → Run 2 → Run 1; tap a run, Verify), then the artifacts table of elephant-cli tables, manifest and gazetteer |
 | D-6 | Two-gateway fetch; bytes match size and digest | Data · Verify | `DataVerify1440`; `DataStates` | Pick the 38.2 MB file; press Verify; read the plain file URLs on ipfs.io and dweb.link and each lane's operator; show a directory → Verify via CAR |
-| D-7 | New CID, old one intact; IPNS moves; CAR | Runs · Compare | `RunsCompare1440` | Prior CID resolves on both gateways; IPNS before and after; CAR |
+| D-7 | New CID, old one intact; CAR | Runs · Compare | `RunsCompare1440` | New manifest CID linked to the old one; the old one still resolves on ipfs.io and dweb.link; CAR available |
 | D-8 | Radius, roof ≥ 15: count, basis, coordinates, source | Explore · Filters (List view, map switch off) | `ExploreQ-roof15` | Move the radius slider or type in the number field; the header updates ("128 within 5 mi of Pflugerville city hall · roof ≥ 15 yrs"); Sort = Nearest; Mi with bearing, lat, lon, Source and Open in OpenStreetMap per row; a Close match "0.2 mi outside"; a row → Why view |
-| D-9 | Open roof permits in the D-8 area: duration, contractor, BBB or a labelled gap | Explore · Filters + Property | `ExploreQ-permits5` (roof ≥ 15, open or stalled, open ≥ 5 yrs, near Pflugerville), `Property1440` | Same area and roof rule as D-8; the Open ≥ 5 yrs chip; permit chips on cards; the stalled definition; "BBB: Blocked · 403 on 2026-10-17 · where available"; Owner merged from 2 records |
-| D-10 | Old roofs within 5 mi of Pflugerville, with reasoning and evidence | Explore · AI (List view, map switch off) | `ExploreQ-ai` | Tap the first suggestion, Find; read How I read this; steps stream; **citations ↔ rows**: tap [2] → row 2 highlights in the numbered Matches table and its Why view opens |
-| D-11 | Long-open permits **near that area**, contractor, assumptions, gaps | Explore · AI | `ExploreQ-aicontractor` (two turns) | D-10's question sits in "Earlier in this conversation"; the follow-up "…near that area…" shows the follow-up pill and reuses Pflugerville; change "Open ≥ 5 yrs" to 3; BBB note |
-| D-12 | MCP-ready: tool list and one answered query | Help · MCP | `HelpMcp1440` | Public, read-only, throttled endpoint (no token); tools and schemas; Try a tool `search_properties`; connect from Claude Desktop (mcp-remote), Claude Code or Inspector |
+| D-9 | Open roof permits in the D-8 area: duration, contractor, BBB or a labelled gap | Explore · Filters + Property | `ExploreQ-permits5` (roof ≥ 15, open or stalled, open ≥ 5 yrs, near Pflugerville), `Property1440` | Same area and roof rule as D-8; the Open ≥ 5 yrs chip; permit chips on cards ("Stalled 6.4 yrs · source says Expired"); expand a card: contractor as printed on permit with its badge; "BBB: Blocked · bbb.org refused the check (403)"; Owner merged from 2 records |
+| D-10 | Old roofs within 5 mi of Pflugerville, with reasoning and evidence | Explore · AI (List view, map switch off) | `ExploreQ-ai` (board "Explore · AI · D-10 answered (populated)") | Tap the first suggestion, Find; Working… with its timer, then the answer with all steps at once; read How I read this; **citations ↔ rows**: tap [2] → row 2 highlights in the numbered Matches table and its Why view opens |
+| D-11 | Long-open permits **near that area**, contractor, assumptions, gaps | Explore · AI | `ExploreQ-aicontractor` (two turns) | D-10's question sits in "Earlier in this conversation"; the follow-up "…near that area…" shows the follow-up pill and reuses Pflugerville; change "Open ≥ 5 yrs" to 3; contractors as printed with their badge; BBB note. Optional: `ExploreQ-aislow` for Took too long |
+| D-12 | MCP-ready: tool list and one answered query | Help · MCP | `HelpMcp1440` | Bearer token required (shared privately with reviewers), read-only, throttled; tools and schemas; Try a tool `search_properties`; connect from Claude Desktop (mcp-remote), Claude Code or Inspector, each with the Authorization header. On Try a tool: "You don't paste a token here: the CountyLens API adds it on the server (AD-10)." |
 
 ## 10. Accessibility (board `A11yAudit`)
 
@@ -530,7 +548,8 @@ The rule: tokens only, no new values. Anything Atlas lacks is built from Atlas p
 - **Touch targets: 48 px is the build rule** (Atlas §14.1); smeargle checks it on every screen.
 - A visible focus ring everywhere, inset where a container clips it.
 - The radius works by keyboard (slider and number field, arrow keys); every chart has a table view or text alternative. (Map keyboard, A-4, belongs to the CRM preview.)
-- `prefers-reduced-motion` gives a reduced version of each animation (A-8 gateway race; A-6, A-7 in the CRM preview); the answer steps appear at once.
+- `prefers-reduced-motion` gives a reduced version of each animation (A-8 gateway race; A-6, A-7 in the CRM preview); the Working… spinner stops turning. Answer steps always arrive at once (AD-09).
+- The Working… timer is a `role="timer"` that is not announced every second; Working, Took too long and Cancelled are announced once.
 - Status is never shown by colour alone: always an icon plus a label (and +, ~, − on change charts).
 - Live regions announce counts, the results header, SQL messages, answer text and page changes.
 
@@ -543,32 +562,82 @@ The rule: tokens only, no new values. Anything Atlas lacks is built from Atlas p
 5. **Mobile property sheet** scrolls (a full-page sheet; accepted).
 6. **Settings** is not drawn.
 7. **#38 Demo city:** count real roofing permits in the Pflugerville 5 mi ring during A-02; switch the demo centre if D-11 comes back thin (§2).
-8. **#37 Stalled definition:** confirm in A-01 whether the Austin data has inspection dates; until then stalled = open and past its expiry date.
+8. **#37 Stalled definition (AD-08):** the Travis profile sets `status_class` from `status_raw` and `expiry_date`; stalled = source says Expired (or Expired - License), or open past its expiry date. The card always shows the source's own word.
 9. **#51 Hexagons and map layers:** CRM preview only; no CountyLens marker; not Task A (decisions #22, #74, #82). A deliberate deviation from Brief A, built in the Roofing CRM.
-10. **#52 Compare:** at implementation, link "Directory CAR, Run 3" to `carCid` and its GitHub Release copy, and show each run's data window (`updated_at` from → to) (decision #25).
+10. **#52 Compare:** at implementation, link the Run 3 CAR to `carCid` and its GitHub Release copy, and show each run's data window (`updated_at` from → to) (decision #25).
 11. **G3 architecture gate:** #54/#69 lane B is dweb.link (same operator as ipfs.io; confirm CORS, Range and the subdomain redirect in the A-02 spike), #58 AI spend caps (budget, steps, tokens, concurrency), #64 CID-named copies with gateway fallback. All three are applied in the design and §2; record them in the constitution at G3.
 12. **#63 Similar properties** stays (PO decision); its similarity rule is still to be defined in implementation (a proposal: same ZIP, roof age within 3 yrs).
 13. **#65 Hub links:** wire "Watch demo" and "Pull requests" at release.
 14. **#69 Gateway spike** in A-02 (§2 Verify): ipfs.io + dweb.link on one real Filebase-pinned CID.
 15. **#70 Privacy:** the page now describes admin accounts (email only, Cognito eu-north-1, deleted within 30 days of a request or of access ending) and says no user IDs, emails or IPs reach the activity log; needs legal review before launch.
 16. **Map view: CRM task.** Not designed for CountyLens (no view switcher); the map, its layers and its keyboard model are the Roofing CRM's (Task B). The prototype keeps them behind the ProtoBar switch (#74, #78).
+17. ~~AD-05 name-match~~ **Decided by the PO on 2026-10-19:** an exact, unique, active legal-name match stays Candidate; only an official registry identifier (Comptroller taxpayer number) resolves a contractor. Closed (#105).
+18. **AD-07 names** are frozen against a real `tables-export.json` in A-02; if a name changes there, update the SQL suggestions, Schema list, Catalog and MCP schemas together.
+19. **#92 Merge details:** in A-02, name the elephant-cli field that carries an owner's source accounts. If none exists, ship the fallback note (§4.3).
 
 ## 12. Suggested build order
 
-1. `query-core` and the data contract: views, manifest, `runs.json`, `coverage.json`, `merge_stats.json`, `cost.json`, gazetteer, fixtures.
-2. App shell, URL state, SearchBox, admin gate (Cognito email code, SQS run-command queue).
+1. `query-core` and the data contract: `views.sql` over the elephant-cli tables, the run manifest (with its coverage section and `previousManifestCid`), `runs/index.json`, gazetteer, fixtures.
+2. App shell, URL state, SearchBox.
 3. Explore: Filters + Area picker (results bar) + radius control (results footer) + live results header + paged List (table at 1440 and 768, cards at 390 with the sticky header and Edit query sheet) + Why view, close matches + property drawer. Explore ships List view only (no view switcher).
 4. SQL (DuckDB-WASM, checks, suggestions); AI mode on the server agent (editable chips, answer panel, follow-ups); then Builder.
 5. Runs, Compare, Log · Coverage (rows, reconciliation, cost) · Data manifest and Verify · Catalog.
-6. Help · MCP page on the public, throttled `/mcp`; apps hub with its status chip.
+6. Help · MCP page on the token-protected, throttled `/mcp` (Try a tool through the CountyLens API); apps hub with its status chip.
 7. States for every screen; 768 and 390 rules; accessibility pass against §10. (No map work: the map is the CRM's.)
-8. Activity (server-side events in CloudWatch Logs) and the "What can I ask?" card (nice to have).
+8. The "What can I ask?" card (nice to have).
+9. Admin, built last (AD-12): Cognito sign-in, SQS run-command queue and bridge, Start / Stop / Retry, Activity (#93).
 
 **Acceptance check:**
 - Every row in §9 can be demonstrated end to end with the map switch off.
 - Explore ships List view only, with no view switcher, and `view=map` falls back to List.
 - No map code, map toggle or feature flag ships; no `tiles/` in the manifest.
+- No IPNS, no serving Parquet, no streaming answer, no contractor licence line (AD-01, AD-03, AD-06, AD-09).
 - No panel scrolls at 390, 768 or 1440 in Explore.
 - Every value has a source → run → CID path.
 - Sample values are labelled.
 - Coming-soon items carry a "Soon" pill; only Builder has a working prototype, and it is not in the first release.
+
+## 13. Architecture decisions applied (AD-01 to AD-16, 2026-10-19)
+
+Engineering's decisions in `0000-agent-architecture.md` §5 override the design where they differ. Only what they change was changed; every other screen, state, token and component is as before. New pieces use Atlas tokens and components only and are logged in §8 (E-41 to E-48). Review round 8 (#89–#108) found the places the first pass still disagreed with the decisions; the second table lists those fixes.
+
+| Decision | What changed in the design | Boards |
+|---|---|---|
+| AD-01 No serving Parquet | Data and Catalog list only the elephant-cli tables plus the manifest and the gazetteer; queries read the tables through `views.sql`; the SQL loading state and Run it yourself no longer mention a serving file | `DataCatalog1440` (768 inherits), `DataManifest1440`, `Data390`, `DataVerify1440`, `SqlStates`, `Explore1440` |
+| AD-03 No IPNS | Every IPNS card, "IPNS before/after" and "IPNS → CID" removed. Data · Manifest starts with the run chain (this run's manifest CID → previous → …, each tappable, each with Verify). Runs · Compare shows the new manifest CID, the old one still resolving on ipfs.io and dweb.link, and CAR available | `RunChain` (new), `DataManifest1440`, `Data390`, `DataStates`, `RunsCompare1440`, `Runs1440`, `RunsLog1440`, `Coverage1440`, `HelpMcp1440`, `Hub1440`, `Main`, `Flows` |
+| AD-04 Counts from the manifest | Every Coverage count's source is "Run manifest · coverage section" | `Coverage1440` (768, 390 inherit) |
+| AD-05 Contractor identity | Contractor badge with Resolved / Candidate / Ambiguous / Conflicting / Unresolved and a one-line reason; the permit's name labelled "as printed on permit" | `ContractorBadge` (new), `Explore1440` (cards, drawer, Why view, AI), `PropertyDetail`, `PropertyStates` |
+| AD-06 No licence register | No contractor licence line; "No Texas roofing licence register exists" as the reason. Data licences on Legal pages unchanged | `ContractorBadge`, `Coverage1440`, `PropertyDetail` |
+| AD-07 Column names, BBB states | `roof_age_years`, `tenure_years`, `tenure_basis`, `owner_is_out_of_area`, `owner_area_class`, `contractor_company_cid`, `coordinate_source` in SQL examples, the Schema list, Catalog and MCP schemas; BBB Rated / Not found / Blocked / Not checked | `Explore1440`, `HelpMcp1440`, `DataCatalog1440`, `SqlStates`, `PropertyDetail`, `HelperStates`, `ExploreStates`, `EmptyHints`, `ShellStates`, `Runs1440`, `Coverage1440` |
+| AD-08 Raw permit status | Permit cards show the class and the source's word: "Stalled · source says Expired" | `Explore1440`, `PropertyDetail` |
+| AD-09 One AI response | Working… with timer and Cancel, then the full answer with all steps at once; Took too long at 25 s with Try again and Use Filters instead; a question counts when its answer arrives | `Explore1440`, `HelperStates`, `ExploreQ-aiworking`, `ExploreQ-aislow` and their 768 / 390 boards (new), `Extensions` |
+| AD-10 MCP token | "Bearer token required, shared privately with reviewers"; `Authorization: Bearer <token>` in the Desktop, Code and Inspector snippets; Try a tool "Runs through the CountyLens API, which adds the token for you"; "public, read-only, no token" removed | `HelpMcp1440` (768, 390 inherit) |
+| AD-13 Cost | "$0.00 fixed per month" plus usage in cents; Route 53 hosted zone, IPNS publisher and IPNS key removed; "S3 copy of published files (cents)" added | `Coverage1440` (768, 390 inherit) |
+| AD-02, AD-11, AD-12, AD-14 to AD-16 | No design change (AD-11 noted in §2 AI spend) | – |
+
+**Round 8 fixes (#89–#108, 2026-10-19):**
+
+| # | Fix | Boards |
+|---|---|---|
+| 89 | Reconciliation worked example is a Candidate cluster ("1 likely Comptroller company", Candidate badge, not merged); Contractor method "Merged only on an official registry identifier…" | `Coverage1440` (768, 390 inherit) |
+| 90 | Contractor row shows the five identity states as a stacked bar with counts (Sample) and the A-02 note; Reconciliation merges only Resolved; `get_coverage` returns `contractor_resolution` | `Coverage1440`, `CoverageStates`, `HelpMcp1440` |
+| 91 | §4.5: counts and merge counts from the manifest (numbers only); worked examples read at query time from the tables | HANDOFF |
+| 92 | Merged-from rows cite "From the published owner record (person table) · TCAD account {id}"; fallback note; `owner_merged_from` optional | `PropertyDetail` (Property 1440 / 768 / 390 / 390 full inherit), `PropertyStates`, `HelpMcp1440` |
+| 93 | Admin pieces moved to the last build step | HANDOFF §12 |
+| 94 | Partial card is the shared result card: "Open 6.4 yrs · source says Active", contractor as printed on permit + Candidate badge | `ExploreStates` (SearchStates and EmptyHints checked: no result card) |
+| 95 | Resolved reason "Comptroller taxpayer no. {id} matched"; Candidate tooltip | `ContractorBadge`, `Explore1440`, `PropertyDetail` |
+| 96 | "No contractor printed on permit" variant and a 390 key–value example | `ContractorBadge` |
+| 97 | Loading uses the SqlStates pattern: progress bar, "11.2 of 18.4 MB of the columns needed · Run 3" | `ExploreStates` |
+| 98 | "Filters, SQL and the list keep working."; no map or ring | `ExploreStates`, `HelperStates` |
+| 99 | 13 artifacts (14 counted the CRM-only `tiles/`) | `RunChain`, `Runs1440`, `RunsLog1440`, `Data390` |
+| 100 | Provenance names the elephant-cli table and CID; the derived `…c2t9` artifact is gone | `Coverage1440`, `RunsCompare1440` |
+| 101 | Cost adds the scheduled refresh (EventBridge Scheduler, off) + Fargate task definition; cost.json is a deploy-time release asset | `Coverage1440` |
+| 102 | Permit row and `get_coverage` show 21,640 of 22,083 matched, 443 unmatched (kept and counted) | `Coverage1440`, `HelpMcp1440` |
+| 103 | SQL suggestion 2 filters `r.status_class IN ('open','stalled')` | `Explore1440` |
+| 104 | Try a tool error (401) and throttled (429) states at all widths | `HelpMcp1440` (768, 390 inherit) |
+| 105 | AD-05 name-match recorded as decided; D-12 token line | HANDOFF §1, §9, §11 |
+| 106 | `HelperContext1440` removed from the AD-07 row (not in `prototype/`) | HANDOFF §13 |
+| 107 | `RunsCompare390` added, six states; Runs and the prototype menu link to it on mobile | `RunsCompare390` (new), `RunsCompare1440`, `Runs1440` |
+| 108 | MCP rows use `property_cid` | `HelpMcp1440` |
+
+**Final copy fixes (2026-10-19):** `PropertyStates`: "Show in the list", "Filters, SQL and the list still work", the Street View coming-soon card replaces the daily-limit card, and the partial row uses the shared Contractor badge with its reason and "as printed on permit". `Explore1440` (768, 390 inherit): drawer "mi from the area centre"; Roof card field `roof_age_years`. `Coverage1440` (768, 390 inherit): "located with Overture places". `HelpMcp1440` (768, 390 inherit): Access card "You don't paste a token here: the CountyLens API adds it on the server." `ExploreQ-ai` retitled "Explore · AI · D-10 answered (populated)". No numbers, counts, CIDs, sizes or sample rows changed.

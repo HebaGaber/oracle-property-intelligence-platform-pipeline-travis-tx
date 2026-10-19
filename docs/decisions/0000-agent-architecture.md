@@ -2,7 +2,7 @@
 id: ADR-0000
 type: decision-input
 title: "CountyLens architecture: what the kit agents recommend and what we decided"
-status: Proposed. The PO approves at Gate G3, then it becomes docs/architecture-constitution.md
+status: Confirmed by the PO on 2026-10-19 (AD-01 to AD-16). Becomes docs/architecture-constitution.md at Gate G3
 created: 2026-10-18
 updated: 2026-10-19
 ---
@@ -172,7 +172,7 @@ Each decision has an ID (**AD-** = architecture decision; the handoff's D-1…D-
 
   The name printed on the permit is shown as "as printed on permit" and never becomes a company record.
 - **Why:** rule A5 says identity comes from official records only, and oracle owns identity. Two or three states would hide the difference between "nearly sure" and "no idea".
-- **Open question for the PO:** does an exact, unique, active legal-name match in the Comptroller registry count as `resolved`? By default it stays `candidate` (the kit rule).
+- **PO decision (2026-10-19):** an exact, unique, active legal-name match in the Comptroller registry stays `candidate`, as the kit rule says. Only an official registry identifier match is `resolved`.
 - **Design change:** the contractor badge on result cards and Property detail gets five variants. `v_contractor` shows `resolved` companies, plus one row per unresolved name, marked as unresolved.
 
 **AD-06. Which contractor links do we write for Texas?**
@@ -329,13 +329,13 @@ Each decision has an ID (**AD-** = architecture decision; the handoff's D-1…D-
 
 ## 9. What happens next
 
-1. **PO reviews this document** and confirms or changes AD-01…AD-16, including the AD-05 name-match question.
+1. ~~PO reviews this document~~ Done: AD-01…AD-16 confirmed on 2026-10-19; AD-05 name match = `candidate`.
 2. **Redo the affected design work** using [`design/04-design-update-g3.md`](../../design/04-design-update-g3.md).
 3. **Write the architecture constitution and run Gate G3:**
    ```text
    /developmentsupport-architecture-guard-init
    Use docs/decisions/0000-agent-architecture.md and my decisions: AD-01 to AD-16 as written
-   (AD-05 name-match: {resolved | candidate}). Then run /developmentsupport-g3-precheck.
+   (AD-05 name-match: candidate). Then run /developmentsupport-g3-precheck.
    ```
 4. **Fix constitution article VI** (AD-14: Secrets Manager → SSM), in both `.specify/memory/constitution.md` and `../assessment-guide/templates/constitution.md`, as a PATCH.
 
