@@ -464,6 +464,7 @@ export function assembleParcel(r: Pick<Us1Results, "tcad" | "gis">): Parcel {
       user_agent: receipt.user_agent,
       attempts: receipt.attempts,
       outcome: receipt.outcome,
+      ...(receipt.resumes === undefined ? {} : { resumes: receipt.resumes }),
       file_path: `pipeline/data/raw/tcad/${basename(r.tcad.export_path)}`,
       seconds: round(r.tcad.download_rate.seconds),
       megabytes_per_minute: round(r.tcad.download_rate.megabytes_per_minute),

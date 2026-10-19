@@ -182,6 +182,8 @@ export const ExportReceiptSchema = z.strictObject({
   user_agent: Text,
   attempts: z.int().positive(),
   outcome: z.enum(["ok", "throttled-then-ok"]),
+  /** HTTP Range resumes after a part-way drop (FR-003, 0..5); absent on older catalogs. */
+  resumes: z.int().min(0).max(5).optional(),
   /** Repository-relative path of the gitignored file, e.g. pipeline/data/raw/tcad/<name>. */
   file_path: z.string().regex(/^pipeline\/data\/raw\/tcad\/[^/]+$/),
   seconds: z.number().nonnegative(),

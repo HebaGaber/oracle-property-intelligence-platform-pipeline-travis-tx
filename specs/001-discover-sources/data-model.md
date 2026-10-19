@@ -85,7 +85,7 @@ Set rule: the row count equals `census_reference.place_count + 1` (unincorporate
 
 ## Capture receipt (internal)
 
-`url`, `method`, `status`, `bytes`, `sha256`, `captured_at`, `user_agent`, `attempts`, `outcome` (`ok` | `blocked` | `throttled-then-ok` | `failed`).
+`url`, `method`, `status`, `bytes`, `sha256`, `captured_at`, `user_agent`, `attempts`, `outcome` (`ok` | `blocked` | `throttled-then-ok` | `failed`). Downloads also record `resumes` (int 0..5): the HTTP Range resumes made after the stream dropped part-way (FR-003, PO 2026-10-20). A resume is made only when the first 200 advertised `Accept-Ranges: bytes`, a `Content-Length` and no content encoding; it sends `Range: bytes=<received>-` (plus `If-Range` with the strong ETag or Last-Modified) with the same User-Agent and client, and is appended only on a 206 whose `Content-Range` continues from the last byte to the advertised length with an unchanged ETag/Last-Modified. A resumed file is accepted only when its final size equals the advertised length; `sha256` covers the whole file. Receipts written before this change have no `resumes` (read as 0). `Parcel.export_receipt` copies `resumes` when present.
 
 ## Discovery run (state machine)
 

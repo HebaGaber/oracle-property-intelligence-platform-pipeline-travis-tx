@@ -16,6 +16,7 @@ import { stringify } from "yaml";
 import { redact } from "../lib/log.js";
 import { safeHeaders, type CaptureReceipt } from "../lib/source-client.js";
 import { BLOCKED_EVIDENCE_DIR } from "./assemble.js";
+import { resumesText } from "./probes/common.js";
 
 /** The story the evidence belongs to (front matter `parent`, constitution XIX). */
 export const EVIDENCE_PARENT = "A-01";
@@ -83,6 +84,7 @@ export function renderBlockedEvidence(input: RenderInput): string {
   front.url = clean(receipt.url);
   front.method = receipt.method;
   front.attempts = receipt.attempts;
+  if (receipt.resumes !== undefined && receipt.resumes > 0) front.resumes = receipt.resumes;
   front.user_agent = receipt.user_agent;
   front.outcome = receipt.outcome;
   if (receipt.blocked_reason !== null) front.blocked_reason = receipt.blocked_reason;
@@ -119,7 +121,7 @@ export function renderBlockedEvidence(input: RenderInput): string {
     "",
     `# Blocked evidence: ${subject.kind} ${subject.key}`,
     "",
-    `The source ${what} at ${receipt.captured_at} after ${receipt.attempts} attempt(s) with the project User-Agent; outcome \`${receipt.outcome}\`. No retry with a changed identity was made and no challenge was solved (FR-006a). Geo signal: ${front.geo_signal === "none" ? "none" : `"${String(front.geo_signal)}"`} (FR-006b).`,
+    `The source ${what} at ${receipt.captured_at} after ${receipt.attempts} attempt(s)${resumesText(receipt)} with the project User-Agent; outcome \`${receipt.outcome}\`. No retry with a changed identity was made and no challenge was solved (FR-006a). Geo signal: ${front.geo_signal === "none" ? "none" : `"${String(front.geo_signal)}"`} (FR-006b).`,
     "",
     "## Response headers",
     "",

@@ -44,7 +44,7 @@ export function missingReason(receipt: CaptureReceipt): string {
     }
     const broken = brokenDownload(receipt);
     if (broken) {
-      return `failed: HTTP ${status}, the download broke at ${brokenAt(broken)} (${broken.error}) after ${receipt.attempts} attempt(s) at ${at}`;
+      return `failed: HTTP ${status}, the download broke at ${brokenAt(broken)} (${broken.error}) after ${receipt.attempts} attempt(s)${resumesText(receipt)} at ${at}`;
     }
     const why = receipt.error ? ` (${receipt.error})` : "";
     return `failed: HTTP ${status}${why} after ${receipt.attempts} attempt(s) at ${at}`;
@@ -72,6 +72,12 @@ export function brokenDownload(receipt: CaptureReceipt): BrokenDownload | null {
     content_length: body.content_length,
     error: receipt.error ?? "stream ended early",
   };
+}
+
+/** " and N range resume(s)" when a download resumed (FR-003); "" otherwise or on old receipts. */
+export function resumesText(receipt: CaptureReceipt): string {
+  const resumes = receipt.resumes ?? 0;
+  return resumes > 0 ? ` and ${resumes} range resume(s)` : "";
 }
 
 /** "<bytes> of <content-length> bytes" (or "of an unknown length"). */

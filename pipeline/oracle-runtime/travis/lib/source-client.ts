@@ -13,13 +13,17 @@
 //   `timeout_ms`;
 // - backoff only on 429/5xx: full jitter, 1 s base, 60 s cap, 5 attempts, honouring
 //   Retry-After; still failing after 5 attempts gives outcome `failed` (FR-006e);
+// - a download that drops part-way resumes with `Range: bytes=<received>-` only when the
+//   first 200 advertised `Accept-Ranges: bytes` and a length: same headers and client, at
+//   most MAX_RESUMES, inside the same total limit, appended only on a matching 206 with
+//   unchanged ETag/Last-Modified, accepted only at the advertised size (FR-003);
 // - no proxy, agent, dispatcher, IP or header rotation: the request init carries only
 //   method, headers, signal and redirect;
 // - a capture receipt per request; an optional Socrata app token is sent as a header and
 //   recorded only as `app_token_used`;
 // - `isGeoBlock` is true only for an explicit body, error-code or header signal (FR-006b).
 import { createHash } from "node:crypto";
-import { createWriteStream, mkdirSync, renameSync, rmSync } from "node:fs";
+import { createWriteStream, mkdirSync, renameSync, rmSync, type WriteStream } from "node:fs";
 import { dirname } from "node:path";
 import { performance } from "node:perf_hooks";
 import pLimit, { type LimitFunction } from "p-limit";
@@ -35,6 +39,8 @@ export const BACKOFF_BASE_MS = 1_000;
 export const BACKOFF_CAP_MS = 60_000;
 export const MAX_ATTEMPTS = 5;
 export const DEFAULT_TIMEOUT_MS = 60_000;
+/** Range resumes allowed after a download drops part-way (FR-003, PO 2026-10-20). */
+export const MAX_RESUMES = 5;
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 export type CaptureOutcome = "ok" | "blocked" | "throttled-then-ok" | "failed";
@@ -65,6 +71,11 @@ export interface CaptureReceipt {
   challenge_signal?: string;
   /** A 2xx download whose body stream broke part-way: bytes received and advertised length. */
   incomplete_body?: { bytes: number; content_length: number | null };
+  /**
+   * Downloads only: HTTP Range resumes made after the stream dropped part-way (0..5,
+   * FR-003). Absent on receipts written before 2026-10-20; read absent as 0.
+   */
+  resumes?: number;
   /** Blocked or failed captures only: what the evidence file needs (T037). Never logged. */
   stop_evidence?: StopEvidence;
 }
@@ -299,6 +310,89 @@ const realSleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+/** One download request's abort controller and limit timers. */
+interface StreamGuard {
+  controller: AbortController;
+  /** Restarts the inactivity timer (called on every chunk). */
+  resetIdle: () => void;
+  clear: () => void;
+}
+
+function lowerHeaders(response: Response): Record<string, string> {
+  const out: Record<string, string> = {};
+  response.headers.forEach((value, name) => {
+    out[name.toLowerCase()] = value;
+  });
+  return out;
+}
+
+function parseLength(value: string | undefined): number | null {
+  if (value === undefined || !/^\d+$/.test(value.trim())) return null;
+  const n = Number(value.trim());
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/** The whole-file length advertised by the first (200) answer, or null. */
+function advertisedLength(headers: Record<string, string>): number | null {
+  return parseLength(headers["content-length"]);
+}
+
+/**
+ * A dropped download may resume only when the source advertises `Accept-Ranges: bytes`,
+ * a whole-file length to verify against, and an unencoded body (byte offsets of a
+ * decoded stream would not match the server's).
+ */
+function supportsResume(headers: Record<string, string>, advertised: number | null): boolean {
+  const ranges = (headers["accept-ranges"] ?? "").toLowerCase().split(",");
+  const encoding = (headers["content-encoding"] ?? "identity").trim().toLowerCase();
+  return (
+    ranges.some((r) => r.trim() === "bytes") &&
+    advertised !== null &&
+    (encoding === "" || encoding === "identity")
+  );
+}
+
+/** Range (and If-Range, so a changed file is never spliced) for a resume from `from`. */
+function resumeHeaders(first: Record<string, string>, from: number): Record<string, string> {
+  const out: Record<string, string> = { range: `bytes=${from}-` };
+  const etag = first.etag;
+  const lastModified = first["last-modified"];
+  if (etag !== undefined && !etag.startsWith("W/")) out["if-range"] = etag;
+  else if (lastModified !== undefined) out["if-range"] = lastModified;
+  return out;
+}
+
+/**
+ * Why a 206 answer cannot be appended, or null: its Content-Range must start at the last
+ * byte received and end at the advertised length, and the ETag and Last-Modified of the
+ * first answer must not have changed.
+ */
+function resumeMismatch(
+  first: Record<string, string>,
+  resumed: Record<string, string>,
+  from: number,
+  advertised: number | null,
+): string | null {
+  for (const name of ["etag", "last-modified"]) {
+    const before = first[name];
+    if (before !== undefined && resumed[name] !== before) {
+      return `${name === "etag" ? "ETag" : "Last-Modified"} changed between attempts`;
+    }
+  }
+  const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec((resumed["content-range"] ?? "").trim());
+  const start = range ? Number(range[1]) : Number.NaN;
+  const end = range ? Number(range[2]) : Number.NaN;
+  const total = range ? Number(range[3]) : Number.NaN;
+  if (advertised === null || start !== from || end !== advertised - 1 || total !== advertised) {
+    return `Content-Range "${resumed["content-range"] ?? "none"}" does not continue bytes ${from}-${(advertised ?? 0) - 1}/${advertised ?? "unknown"}`;
+  }
+  const partLength = parseLength(resumed["content-length"]);
+  if (partLength !== null && partLength !== advertised - from) {
+    return `Content-Length ${partLength} does not equal the ${advertised - from} bytes left`;
+  }
+  return null;
+}
+
 type Attempt =
   | { kind: "response"; status: number; headers: Record<string, string>; body: Buffer; at: Date }
   | { kind: "timeout"; at: Date }
@@ -475,7 +569,12 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
         Partial<
           Pick<
             CaptureReceipt,
-            "timeout_ms" | "blocked_reason" | "error" | "challenge_signal" | "incomplete_body"
+            | "timeout_ms"
+            | "blocked_reason"
+            | "error"
+            | "challenge_signal"
+            | "incomplete_body"
+            | "resumes"
           >
         > & {
           bytes: number;
@@ -508,6 +607,7 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
         timeout_ms: fields.timeout_ms ?? null,
         blocked_reason: fields.blocked_reason ?? null,
         rate_limits_observed: observed.length > 0 ? observed.join("; ") : null,
+        resumes: fields.resumes ?? 0,
       };
       if (fields.error !== undefined) receipt.error = fields.error;
       if (fields.challenge_signal !== undefined) {
@@ -531,51 +631,230 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
     // A timer can fire a fraction of a millisecond before the monotonic clock reaches its
     // limit, so a timeout records at least the limit that fired (FR-003: >= 10 min / 2 h).
     let limitHit = 0;
+    let timedOut = false;
     const elapsed = (): number => Math.max(1, limitHit, Math.round(clock() - startedMs));
+
+    /**
+     * One request's abort controller with the shared 2-hour total limit (measured from the
+     * first request, so it spans every resume) and its own 10-minute inactivity limit.
+     */
+    const openGuard = (): StreamGuard => {
+      const controller = new AbortController();
+      const fire = (limit: number) => (): void => {
+        timedOut = true;
+        limitHit = Math.max(limitHit, limit);
+        controller.abort();
+      };
+      const total = setTimeout(
+        fire(request.totalMs),
+        Math.max(0, request.totalMs - (clock() - startedMs)),
+      );
+      let idle = setTimeout(fire(request.inactivityMs), request.inactivityMs);
+      return {
+        controller,
+        resetIdle: () => {
+          clearTimeout(idle);
+          idle = setTimeout(fire(request.inactivityMs), request.inactivityMs);
+        },
+        clear: () => {
+          clearTimeout(total);
+          clearTimeout(idle);
+        },
+      };
+    };
+
+    const timeoutStop = (fields: {
+      status: number | null;
+      bytes: number;
+      sha256: string;
+      headers: Record<string, string>;
+      resumes?: number;
+    }): DownloadResult =>
+      finish({
+        ...fields,
+        outcome: "blocked",
+        blocked_reason: "timeout",
+        timeout_ms: elapsed(),
+        excerpt: Buffer.alloc(0),
+        path: null,
+      });
+
+    /** A refused (non-2xx, or HTML) answer: never streamed to disk, a bounded excerpt kept. */
+    const refusal = async (
+      response: Response,
+      responseHeaders: Record<string, string>,
+      guard: StreamGuard,
+    ): Promise<{ body: Buffer; excerpt: Buffer; challenge: string | null }> => {
+      const body = Buffer.from(await response.arrayBuffer().catch(() => new ArrayBuffer(0)));
+      guard.clear();
+      return {
+        body,
+        excerpt: body.subarray(0, EXCERPT_BYTES),
+        challenge: challengeOf(response.status, responseHeaders, body),
+      };
+    };
+
+    /** Streams one response body into `out`, hashing as it arrives; the stream error or null. */
+    const pump = async (
+      response: Response,
+      guard: StreamGuard,
+      out: WriteStream,
+      onChunk: (chunk: Uint8Array) => void,
+    ): Promise<string | null> => {
+      const reader = response.body?.getReader() ?? null;
+      const onAbort = (): void => {
+        void reader?.cancel().catch(() => undefined);
+      };
+      guard.controller.signal.addEventListener("abort", onAbort);
+      try {
+        while (reader) {
+          const { done, value } = await reader.read();
+          if (done || timedOut) break;
+          guard.resetIdle();
+          onChunk(value);
+          if (!out.write(value)) await new Promise((r) => out.once("drain", r));
+        }
+        return null;
+      } catch (error) {
+        return timedOut ? null : error instanceof Error ? error.message : String(error);
+      } finally {
+        guard.clear();
+        guard.controller.signal.removeEventListener("abort", onAbort);
+      }
+    };
+
+    const streamWithResumes = async (
+      response: Response,
+      firstHeaders: Record<string, string>,
+      firstGuard: StreamGuard,
+    ): Promise<DownloadResult> => {
+      mkdirSync(dirname(request.destPath), { recursive: true });
+      const out = createWriteStream(part);
+      const hash = createHash("sha256");
+      let bytes = 0;
+      let resumes = 0;
+      const onChunk = (chunk: Uint8Array): void => {
+        hash.update(chunk);
+        bytes += chunk.byteLength;
+      };
+      const closeOut = (): Promise<void> => new Promise((resolve) => out.end(() => resolve()));
+      const advertised = advertisedLength(firstHeaders);
+      const rangeable = supportsResume(firstHeaders, advertised);
+
+      let streamError = await pump(response, firstGuard, out, onChunk);
+      while (streamError !== null && !timedOut && rangeable && resumes < MAX_RESUMES) {
+        resumes += 1;
+        const guard = openGuard();
+        let resumed: Response;
+        try {
+          resumed = await fetchImpl(request.url, {
+            method: "GET",
+            headers: { ...headers, ...resumeHeaders(firstHeaders, bytes) },
+            signal: guard.controller.signal,
+            redirect: "follow",
+          });
+        } catch (error) {
+          guard.clear();
+          if (timedOut || guard.controller.signal.aborted || isAbort(error)) break;
+          const message = error instanceof Error ? error.message : String(error);
+          streamError = `resume ${resumes} failed with a network error: ${message}`;
+          break;
+        }
+        const resumedHeaders = lowerHeaders(resumed);
+        if (resumed.status !== 206) {
+          const refused = await refusal(resumed, resumedHeaders, guard);
+          if (refused.challenge !== null || resumed.status === 403) {
+            // StopOnBlocked is unchanged on a resume: stop, no further request.
+            await closeOut();
+            rmSync(part, { force: true });
+            return finish({
+              status: resumed.status,
+              outcome: "blocked",
+              blocked_reason: refused.challenge !== null ? "challenge" : "http-403",
+              ...(refused.challenge === null ? {} : { challenge_signal: refused.challenge }),
+              bytes: refused.body.byteLength,
+              sha256: sha256(refused.body),
+              headers: resumedHeaders,
+              excerpt: refused.excerpt,
+              path: null,
+              resumes,
+            });
+          }
+          streamError = `resume ${resumes} refused: HTTP ${resumed.status} instead of 206 Partial Content`;
+          break;
+        }
+        const mismatch = resumeMismatch(firstHeaders, resumedHeaders, bytes, advertised);
+        if (mismatch !== null) {
+          await resumed.body?.cancel().catch(() => undefined);
+          guard.clear();
+          streamError = `resume ${resumes} rejected: ${mismatch}`;
+          break;
+        }
+        streamError = await pump(resumed, guard, out, onChunk);
+      }
+      await closeOut();
+
+      if (timedOut) {
+        rmSync(part, { force: true });
+        return timeoutStop({
+          status: response.status,
+          bytes,
+          sha256: hash.digest("hex"),
+          headers: firstHeaders,
+          resumes,
+        });
+      }
+      if (streamError === null && resumes > 0 && bytes !== advertised) {
+        streamError = `resumed file size ${bytes} does not equal the advertised length ${advertised ?? "unknown"}`;
+      }
+      if (streamError !== null) {
+        rmSync(part, { force: true });
+        return finish({
+          status: response.status,
+          outcome: "failed",
+          error: redact(streamError, secrets),
+          incomplete_body: { bytes, content_length: advertised },
+          bytes,
+          sha256: hash.digest("hex"),
+          headers: firstHeaders,
+          excerpt: Buffer.alloc(0),
+          path: null,
+          resumes,
+        });
+      }
+      renameSync(part, request.destPath);
+      return finish({
+        status: response.status,
+        outcome: attempts > 1 ? "throttled-then-ok" : "ok",
+        bytes,
+        sha256: hash.digest("hex"),
+        headers: firstHeaders,
+        excerpt: Buffer.alloc(0),
+        path: request.destPath,
+        resumes,
+      });
+    };
 
     while (attempts < MAX_ATTEMPTS) {
       attempts += 1;
-      const controller = new AbortController();
-      let timedOut = false;
-      const total = setTimeout(
-        () => {
-          timedOut = true;
-          limitHit = Math.max(limitHit, request.totalMs);
-          controller.abort();
-        },
-        Math.max(0, request.totalMs - (clock() - startedMs)),
-      );
-      let idle = setTimeout(() => {
-        timedOut = true;
-        limitHit = Math.max(limitHit, request.inactivityMs);
-        controller.abort();
-      }, request.inactivityMs);
-      const clearTimers = (): void => {
-        clearTimeout(total);
-        clearTimeout(idle);
-      };
+      const guard = openGuard();
 
       let response: Response;
       try {
         response = await fetchImpl(request.url, {
           method: "GET",
           headers,
-          signal: controller.signal,
+          signal: guard.controller.signal,
           redirect: "follow",
         });
       } catch (error) {
-        clearTimers();
-        if (timedOut || controller.signal.aborted || isAbort(error)) {
-          return finish({
+        guard.clear();
+        if (timedOut || guard.controller.signal.aborted || isAbort(error)) {
+          return timeoutStop({
             status: null,
-            outcome: "blocked",
-            blocked_reason: "timeout",
-            timeout_ms: elapsed(),
             bytes: 0,
             sha256: sha256(Buffer.alloc(0)),
             headers: {},
-            excerpt: Buffer.alloc(0),
-            path: null,
           });
         }
         const message = error instanceof Error ? error.message : String(error);
@@ -591,19 +870,13 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
         });
       }
 
-      const responseHeaders: Record<string, string> = {};
-      response.headers.forEach((value, name) => {
-        responseHeaders[name.toLowerCase()] = value;
-      });
+      const responseHeaders = lowerHeaders(response);
       const contentType = responseHeaders["content-type"] ?? "";
       const isHtml = /text\/html/i.test(contentType);
 
       if (response.status < 200 || response.status >= 300 || isHtml) {
         // Read a bounded excerpt only; never stream an error or challenge body to disk.
-        const body = Buffer.from(await response.arrayBuffer().catch(() => new ArrayBuffer(0)));
-        clearTimers();
-        const excerpt = body.subarray(0, EXCERPT_BYTES);
-        const challenge = challengeOf(response.status, responseHeaders, body);
+        const { body, excerpt, challenge } = await refusal(response, responseHeaders, guard);
         if (isRetryable(response.status) && challenge === null && attempts < MAX_ATTEMPTS) {
           const retryAfterHeader = responseHeaders["retry-after"] ?? null;
           observed.push(
@@ -632,74 +905,9 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
         });
       }
 
-      // 2xx with a file body: stream it to <dest>.part, hashing as it arrives.
-      mkdirSync(dirname(request.destPath), { recursive: true });
-      const out = createWriteStream(part);
-      const hash = createHash("sha256");
-      let bytes = 0;
-      const reader = response.body?.getReader() ?? null;
-      const onAbort = (): void => {
-        void reader?.cancel().catch(() => undefined);
-      };
-      controller.signal.addEventListener("abort", onAbort);
-      let streamError: string | null = null;
-      try {
-        while (reader) {
-          const { done, value } = await reader.read();
-          if (done || timedOut) break;
-          clearTimeout(idle);
-          idle = setTimeout(() => {
-            timedOut = true;
-            limitHit = Math.max(limitHit, request.inactivityMs);
-            controller.abort();
-          }, request.inactivityMs);
-          hash.update(value);
-          bytes += value.byteLength;
-          if (!out.write(value)) await new Promise((r) => out.once("drain", r));
-        }
-      } catch (error) {
-        if (!timedOut) streamError = error instanceof Error ? error.message : String(error);
-      } finally {
-        clearTimers();
-        controller.signal.removeEventListener("abort", onAbort);
-        await new Promise<void>((resolve) => out.end(() => resolve()));
-      }
-
-      if (timedOut || streamError !== null) {
-        rmSync(part, { force: true });
-        const advertised = Number(responseHeaders["content-length"] ?? Number.NaN);
-        return finish({
-          status: response.status,
-          outcome: timedOut ? "blocked" : "failed",
-          blocked_reason: timedOut ? "timeout" : null,
-          timeout_ms: timedOut ? elapsed() : null,
-          ...(streamError === null
-            ? {}
-            : {
-                error: redact(streamError, secrets),
-                incomplete_body: {
-                  bytes,
-                  content_length:
-                    Number.isSafeInteger(advertised) && advertised >= 0 ? advertised : null,
-                },
-              }),
-          bytes,
-          sha256: hash.digest("hex"),
-          headers: responseHeaders,
-          excerpt: Buffer.alloc(0),
-          path: null,
-        });
-      }
-      renameSync(part, request.destPath);
-      return finish({
-        status: response.status,
-        outcome: attempts > 1 ? "throttled-then-ok" : "ok",
-        bytes,
-        sha256: hash.digest("hex"),
-        headers: responseHeaders,
-        excerpt: Buffer.alloc(0),
-        path: request.destPath,
-      });
+      // 2xx with a file body: stream it to <dest>.part, hashing as it arrives. A drop
+      // part-way continues with Range requests when the source supports them (FR-003).
+      return streamWithResumes(response, responseHeaders, guard);
     }
     throw new Error("source-client: download loop ended without a result");
   }
