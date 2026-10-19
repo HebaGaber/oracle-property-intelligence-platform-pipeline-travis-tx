@@ -31,6 +31,7 @@ import type { CaptureReceipt } from "../lib/source-client.js";
 import { renderBlockedEvidence } from "./blocked-evidence.js";
 import type { Destination } from "./destination-proof.js";
 import { assembleUs1, type AssembleOptions, type Us1Blocks, type Us1Results } from "./assemble.js";
+import { catalogSafe } from "./catalog-text.js";
 import {
   assemblePermits,
   type AssemblePermitsOptions,
@@ -747,8 +748,16 @@ interface Session {
   destination: Destination | null;
 }
 
-/** Assembles the full catalog from the journaled probe results (pure, deterministic). */
+/**
+ * Assembles the full catalog from the journaled probe results (pure, deterministic). Runtime
+ * text (challenge titles, error messages) is mapped into the writer's safe character set
+ * here, the single point where journaled probe output enters the catalog (catalog-text.ts).
+ */
 function assembleSession(session: Session, snapshot: string): Catalog {
+  return catalogSafe(assembleCatalog(session, snapshot));
+}
+
+function assembleCatalog(session: Session, snapshot: string): Catalog {
   const blocks = assembleUs1(session.results, { assembledAt: snapshot });
   const tcadStop = session.results.tcad.blocked_receipt;
   blocks.sources = withRecordsRequests(blocks.sources, {

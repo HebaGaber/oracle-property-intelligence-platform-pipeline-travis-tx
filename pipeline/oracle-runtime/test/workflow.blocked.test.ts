@@ -16,6 +16,7 @@ import {
 } from "../travis/lib/source-client.js";
 import { CatalogSchema, type Catalog } from "../travis/discovery/catalog.schema.js";
 import { checkCatalog } from "../travis/discovery/check-catalog.js";
+import { emitCatalogYaml } from "../travis/discovery/write-catalog.js";
 import type { JurisdictionProfileEntry } from "../travis/profiles/jurisdictions.js";
 import {
   createJurisdictionProbes,
@@ -96,6 +97,12 @@ interface Scenario {
   bbbCfChallenge?: boolean;
   /** run-1 shape: a normal 200 permit page carrying the Cloudflare challenge-platform beacon. */
   alphaBeacon?: boolean;
+  /** run-2 shape: a 403 Cloudflare interstitial whose <title> the challenge signal quotes. */
+  alphaCfTitle?: boolean;
+  /** run-2 shape: BBB answers 200 with a titled interstitial (no cf-mitigated header). */
+  bbbTitle?: boolean;
+  /** A network error whose message carries a quote, a backslash and a newline. */
+  gisOddError?: boolean;
 }
 
 /** SYNTHETIC: a 200 response whose body stream errors after `sent` bytes (undici "terminated"). */
@@ -165,18 +172,26 @@ function routes(s: Scenario): Route[] {
         return new Response(EXPORT, { headers: { "content-type": "application/json" } });
       },
     },
-    { match: (u) => u.host === "gis.traviscountytx.gov", respond: () => json({ count: 2 }) },
+    {
+      match: (u) => u.host === "gis.traviscountytx.gov",
+      respond: () => {
+        if (s.gisOddError) throw new TypeError('connect failed: "ECONNRESET" at a\\b\nnext line');
+        return json({ count: 2 });
+      },
+    },
     {
       match: (u) => u.host.endsWith("bbb.org"),
       respond: () =>
-        s.bbbCfChallenge
-          ? text("<html><head><title>Just a moment... | BBB</title></head></html>", 403, {
-              "content-type": "text/html",
-              "cf-mitigated": "challenge",
-            })
-          : s.bbbBlocked
-            ? text("<html>Just a moment...</html>", 403)
-            : text("<html>synthetic listing page</html>"),
+        s.bbbTitle
+          ? text("<html><head><title>Just a moment...</title></head></html>", 200)
+          : s.bbbCfChallenge
+            ? text("<html><head><title>Just a moment... | BBB</title></head></html>", 403, {
+                "content-type": "text/html",
+                "cf-mitigated": "challenge",
+              })
+            : s.bbbBlocked
+              ? text("<html>Just a moment...</html>", 403)
+              : text("<html>synthetic listing page</html>"),
     },
     {
       match: (u) => u.host === "census.test",
@@ -185,11 +200,13 @@ function routes(s: Scenario): Route[] {
     {
       match: (u) => u.host === "alpha.test",
       respond: () =>
-        s.alphaBlocked
-          ? text("Forbidden", 403)
-          : s.alphaBeacon
-            ? text(BEACON_PAGE, 200, { "content-type": "text/html", server: "cloudflare" })
-            : text("<html>synthetic permits page</html>"),
+        s.alphaCfTitle
+          ? text("<html><head><title>Attention Required! | Cloudflare</title></head></html>", 403)
+          : s.alphaBlocked
+            ? text("Forbidden", 403)
+            : s.alphaBeacon
+              ? text(BEACON_PAGE, 200, { "content-type": "text/html", server: "cloudflare" })
+              : text("<html>synthetic permits page</html>"),
     },
     { match: () => true, respond: () => text("<html>synthetic evidence page</html>") },
   ];
@@ -473,6 +490,43 @@ describe("run-1 regressions: next step, anti_bot and challenge classification", 
     );
     expect(alpha.status).toBe("supported");
     expect(alpha.blocked_evidence).toBeUndefined();
+  });
+});
+
+describe("run-2 regression: runtime text in the catalog stays writable", () => {
+  // Live run "travis-2" stalled in catalog:write: a Cloudflare interstitial title is quoted
+  // in the challenge signal (title: "Attention Required! | Cloudflare"), missingReason copied
+  // it into the jurisdiction notes, and the writer refused the double quote.
+  it("a quoted challenge title and an odd network error reach the catalog without quote, backslash or control characters", async () => {
+    const h = harness({ alphaCfTitle: true, bbbTitle: true, gisOddError: true });
+    const emitted: string[] = [];
+    h.extra.writeCatalog = (c) => {
+      emitted.push(emitCatalogYaml(c));
+      h.catalogs.push(structuredClone(c));
+    };
+    await expect(h.run()).rejects.toBeInstanceOf(Suspended);
+    expect(h.journal.filter((n) => n.startsWith("catalog:write:"))).toHaveLength(1);
+    expect(emitted).toHaveLength(1);
+    const catalog = must(h.catalogs.at(-1));
+    const alpha = must(must(catalog.permits).jurisdictions.find((j) => j.key === "alpha"));
+    expect(alpha.status).toBe("blocked");
+    expect(must(alpha.notes)).toContain("title: 'Attention Required! | Cloudflare'");
+    const bbb = source(catalog, "bbb");
+    expect(must(bbb.anti_bot)).toContain("title: 'Just a moment...'");
+    const gis = source(catalog, "tcad_gis");
+    expect(must(gis.blocked_evidence).error).toBe("connect failed: 'ECONNRESET' at a/b next line");
+    // every string anywhere in the catalog is in the writer's safe set
+    // eslint-disable-next-line no-control-regex -- control characters are what we look for
+    const unsafe = /["\\\u0000-\u001f\u007f]/;
+    const strings: string[] = [];
+    JSON.stringify(catalog, (_k, v: unknown) => {
+      if (typeof v === "string") strings.push(v);
+      return v;
+    });
+    expect(strings.filter((x) => unsafe.test(x))).toEqual([]);
+    // the evidence file keeps the source's own text (only redaction applies there)
+    const alphaEvidence = must(h.evidence.get(must(alpha.blocked_evidence).evidence_path));
+    expect(alphaEvidence).toContain("Attention Required! | Cloudflare");
   });
 });
 
