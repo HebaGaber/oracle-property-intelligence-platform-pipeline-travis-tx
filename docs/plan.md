@@ -6,12 +6,12 @@ parent: FL-A
 vision: VIS-A
 classification: Project      # new system, ≥ 4 weeks of normal effort
 owner: HebaGaber
-status: Draft                # Draft → In Review → Approved → Returned
+status: Approved                 # Draft → In Review → Approved → Returned
 gate: G2
-version: 0.1
+version: 0.2
 created: 2026-10-17
-approved_by: []
-approved_date:
+approved_by: [HebaGaber]
+approved_date: 2026-10-19
 ---
 
 # High-Level Implementation Plan: Oracle Pipeline (Travis County, TX)
@@ -52,7 +52,7 @@ Before the stories are written, two planning steps remain:
 
 ## 3. Architecture summary (conceptual)
 
-Conceptual only; G3 freezes the decisions, and the read-path spike (before A-03 Stage 3) confirms the query path.
+Conceptual only. **G3 froze the decisions in [architecture-constitution.md](architecture-constitution.md) (ARD-A, AD-01 to AD-30), which wins wherever this section differs.** The read-path spike (before A-03 Stage 3) confirms the query path.
 
 ### 3.1 System overview
 
@@ -82,7 +82,7 @@ flowchart TB
   end
   subgraph IPFS["4 · Public IPFS"]
     direction LR
-    FB["Filebase pin + gateway<br/>(range reads for DuckDB)"]
+    FB["Filebase pin<br/>(fallback read path)"]
     P2["2nd pin + CARs on GitHub Release"]
     GW["ipfs.io + dweb.link<br/>(independent verification)"]
   end
@@ -97,7 +97,7 @@ flowchart TB
   SRC --> RS --> QDB --> CLI
   CLI --> FB & P2
   CLI --> MAN --> FB
-  FB --> WEB & API & MCP
+  FB --> CP["S3 + CloudFront byte copy by CID<br/>(read path, AD-02)"] --> WEB & API & MCP
   FB -. same CIDs .-> GW
   FB --> CRM
   SCH -. opt-in .-> RS
@@ -125,7 +125,7 @@ flowchart TB
   U["Evaluator / CRM agent"] --> AG["Roofing-lead agent<br/>tRPC procedure, Vercel AI SDK<br/>AI_PROVIDER=bedrock → eu.anthropic.claude-sonnet-4-6"]
   U2["Claude Desktop / any MCP client"] --> MS["MCP server<br/>@modelcontextprotocol/sdk"]
   AG --> T["Zod tools from query-core<br/>geocodePlace · searchProperties<br/>searchRoofingPermits · getProperty"]
-  MS --> T2["MCP tools<br/>listScopes · getSchema · query (read-only SELECT ≤ 1000)<br/>+ the same roofing tools"]
+  MS --> T2["MCP tools (AD-21: fixed, no SQL)<br/>search_properties · list_permits · get_property<br/>get_coverage · list_runs · get_schema (≤ 1000 rows)"]
   T --> DQ["DuckDB over published Parquet (by CID)"]
   T2 --> DQ
   DQ --> EV["Answer: results[] with property_cid + sources,<br/>stated assumptions, missing data flagged"]
@@ -262,8 +262,7 @@ erDiagram
   MANIFEST {
     string manifest_cid PK
     string previous_manifest_cid
-    string ipns_name "optional"
-    string resolved_cid "if IPNS is used"
+    string coverage "counts section, AD-04 (no IPNS, AD-03)"
   }
   ARTIFACT {
     string cid PK "CIDv1 base32"
@@ -290,7 +289,7 @@ erDiagram
 | BBB profile | contractor with a BBB page | rating, URL, capture time | bbb.org (API if granted, otherwise bounded harvest) | Enrichment only; stop on 403; missing shows "BBB not available". |
 | Place | Overture point of interest | category, phone, website, licence | Overture Maps places | Enrichment only; separate publication group; licence recorded. |
 | Pipeline run | execution of the pipeline | run id, start and end, sources, counts, deltas, limitations | The pipeline | At least 3 runs on different days; runs 2+ are windowed. |
-| Manifest | run | manifest CID, previous manifest CID, IPNS name and resolved CID | The pipeline, published to IPFS | Published CIDs never change; history keeps every manifest. |
+| Manifest | run | manifest CID, previous manifest CID, `coverage` section (no IPNS: AD-03, AD-04) | The pipeline, published to IPFS | Published CIDs never change; history keeps every manifest. |
 | Artifact | published object | CID (v1, base32), name, size, codec, SHA-256, CAR for directories | `elephant-cli` output | Verified on ipfs.io and dweb.link with size and digest match. |
 | Source record | every record above | source URL, capture time, digest or CID, run id | The source of each fact | Shown with every displayed record and agent answer (constitution XI). |
 
@@ -372,11 +371,11 @@ Each story runs the six-stage loop (playbook Part 2). The kit agent named in the
 | --- | --- | --- |
 | Ingestion | Kit `use-oracle` runtime (TypeScript) on local Restate 1.7 + Postgres 16 in Docker | Kit-prescribed (constitution A1); $0 cloud; durable resume after sleep or restart |
 | Publication | `elephant-cli` (validate, hash, CAR, export-tables, upload); Filebase IPFS pinning; second pin; CARs on GitHub Release | Only allowed public-data path (A2); CIDv1 identity (A3); survives any single vendor |
-| Data / query | Parquet tables from `export-tables`; DuckDB-WASM in the browser, DuckDB (`@duckdb/node-api`) in Lambda; reads through the Filebase gateway (range + CORS) | No Oracle-hosted database; compute runs on the consumer side (README "DuckDB", zero idle cost). Fallback if browser p95 > 3 s: DuckDB in Lambda over the same Parquet |
+| Data / query | Parquet tables from `export-tables`; DuckDB-WASM in the browser, DuckDB (`@duckdb/node-api`) in Lambda; reads a byte-for-byte copy of the published files on S3 + CloudFront keyed by CID, with the Filebase gateway as fallback (AD-02) | No Oracle-hosted database; compute runs on the consumer side (README "DuckDB", zero idle cost). Fallback if browser p95 > 3 s: DuckDB in Lambda over the same Parquet |
 | Frontend | React + Vite in a Turborepo (`apps/web`) on Amplify Hosting; Atlas (Material 3) tokens and components; mobile-first | Golden Path; `build-frontend-backends`; design system mandated by `CLAUDE.md`. Map library chosen at G3 |
 | API | tRPC on Lambda behind API Gateway; Zod on every input; shared `packages/api-client` | Golden Path; constitution IV, V |
 | AI | Vercel AI SDK (`ai`) with `@ai-sdk/amazon-bedrock`; `AI_PROVIDER=bedrock` with `eu.anthropic.claude-sonnet-4-6` (confirmed 2026-10-17); Gateway fallback | Constitution VI; no direct provider SDKs |
-| MCP | `@modelcontextprotocol/sdk`, stateless Streamable HTTP on Lambda with a bearer token in Secrets Manager, plus a stdio build | The kit MCP serves only Jackson, FL today, so our own MCP over our CIDs proves MCP-readiness |
+| MCP | `@modelcontextprotocol/sdk`, stateless Streamable HTTP on Lambda with a bearer token in SSM Parameter Store and six fixed Zod tools, no SQL (AD-10, AD-14, AD-21), plus a stdio build | The kit MCP serves only Jackson, FL today, so our own MCP over our CIDs proves MCP-readiness |
 | IaC / CI | AWS CDK (TypeScript), region from config (demo `eu-north-1`, default `us-east-2`), tag `project_name=oracle-travis`; GitHub Actions: Vitest, Playwright (hosted URL only), ESLint, Prettier, `tsc`, gitleaks | Constitution III, X, XII |
 | Observability | Powertools Logger, Tracer and Metrics; X-Ray; one DLQ alarm per queue | Constitution VII, VIII |
 
@@ -527,7 +526,7 @@ Order: Project-class enablers first, the walking skeleton live before feature wo
 
 | Risk | Description | L | I | Mitigation | Owner |
 | --- | --- | --- | --- | --- | --- |
-| RISK-01 | Public gateways (ipfs.io, dweb.link) rate-limit (429) or are slow during verification | H | H | Filebase gateway for range reads; verification with backoff and a retry state in the UI; never mark "verified" on failure; pre-warm CIDs before the demo | HebaGaber |
+| RISK-01 | Public gateways (ipfs.io, dweb.link) rate-limit (429) or are slow during verification | H | H | Live queries never use public gateways (S3 + CloudFront CID copy, AD-02); verification with backoff and a retry state in the UI; never mark "verified" on failure; pre-warm CIDs before the demo | HebaGaber |
 | RISK-02 | Filebase free tier too small for the full county | M | H | Measure CAR and table sizes in the spike; Starter plan for one month or a self-run kubo node; CARs on a GitHub Release as an extra copy | HebaGaber |
 | RISK-03 | TCAD download page returns 403 to this machine (seen 2026-10-17) | M | H | A-01 confirms a terms-compliant path first: browser download of the published export files; fallback US-hosted GitHub Actions runner; never evasion | HebaGaber |
 | RISK-04 | Travis County GIS times out from this machine | M | M | Fallback coordinates from Austin permit lat/lon through `tcad_id`; US runner; record the coordinate source per property | HebaGaber |
@@ -597,7 +596,7 @@ Every branch is created from `feature/oracle-pipeline` and merged back with `--n
 
 **AI pre-check report:** PASS, 0 FAILs, 2 notes. Full report: [gates/G2-PROJ-A-precheck.md](gates/G2-PROJ-A-precheck.md).
 
-**Decision:** ☐ Approved ☐ Returned, reason: … · date: …
+**Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-19 (v0.2)
 
 ## 13. Open questions and gaps
 
@@ -607,7 +606,7 @@ Every branch is created from `feature/oracle-pipeline` and merged back with `--n
 | Q-02 | Where the DNS for `aldarraj.com` is hosted, to point `countylens.aldarraj.com` at Amplify | PO | Resolved: Namecheap. In A-03, add the Amplify certificate-validation CNAME and the `explorer` CNAME there |
 | Q-03 | Filebase plan limits for the full county | Read-path spike | Open: measured before A-03 Stage 3 |
 | Q-04 | G1 decision on the feature list | PO | Resolved: approved 2026-10-17 |
-| Q-05 | Update constitution VI, `CLAUDE.md` and `PUBLISHING.md` § 1.6, which still say Bedrock is blocked | PO | Partly resolved: constitution VI amended (v3.0.1, 2026-10-17); `CLAUDE.md` and `PUBLISHING.md` still to update |
+| Q-05 | Update constitution VI, `CLAUDE.md` and `PUBLISHING.md` § 1.6, which still say Bedrock is blocked | PO | Resolved for this repo (2026-10-19): constitution VI (3.0.1) and `CLAUDE.md` say Bedrock works. `PUBLISHING.md` is in the shared assessment guide and is left as is. |
 | Q-06 | UX and market research on comparable apps, then the Claude Design prompt script | PO + Claude | Resolved: [CountyLens UX Research and Design Brief](https://claude.ai/code/artifact/6d43751b-f645-449d-bfc9-0ff3a5af0e70) (2026-10-17) |
 | Q-07 | How many real queries before "Most searched" chips replace "Suggested starting points" | PO | Resolved: 5 (2026-10-17) |
 | Q-08 | Hosted address after the rename to CountyLens | PO | Resolved: `countylens.aldarraj.com` (2026-10-17) |
@@ -619,3 +618,4 @@ Every branch is created from `feature/oracle-pipeline` and merged back with `--n
 | 0.1 | 2026-10-17 | Initial draft: phases, architecture, agent components, data structure, kit-agent approach |
 | 0.1 | 2026-10-17 | Domain DNS on Namecheap (Q-02); UX research done (Q-06); nice-to-have helper features and RISK-14 added |
 | 0.1 | 2026-10-17 | System overview drawn top to bottom; § 3.3 expanded into the full data reference (ER diagram with fields, record reference, contract views, derivation rules, Elephant storage pattern) |
+| 0.2 | 2026-10-19 | Aligned with the G3 architecture constitution (ARD-A): § 3 points at ARD-A; read path is the S3 + CloudFront CID copy with Filebase as fallback (AD-02); MCP has six fixed tools and no SQL (AD-21); no IPNS fields in the manifest (AD-03, AD-04); secrets in SSM (AD-14); RISK-01 mitigation updated. No scope, phase or feature change. |

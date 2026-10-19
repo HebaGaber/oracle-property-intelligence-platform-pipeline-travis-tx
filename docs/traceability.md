@@ -43,7 +43,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | AC-27 | Prefer CIDv1 (base32) for every published object. | A4 | FEAT-A11 | | | | | |
 | AC-28 | Keep published bytes retrievable from the public IPFS network, not only from a private node, authenticated gateway, vendor dashboard or laptop. | A4 | FEAT-A11 | | | | | |
 | AC-29 | Publish a machine-readable JSON artifact manifest per run, listing every eligible object with `cid`, name/path, `size`, codec (file/directory), content digest, and optional `origins`. | A4 | FEAT-A11 | | | | | |
-| AC-30 | If IPNS is used, record both the IPNS name and the resolved CID for that run. | A4 | FEAT-A11 | | | | | |
+| AC-30 | If IPNS is used, record both the IPNS name and the resolved CID for that run. | A4 | FEAT-A11 | N/A: no IPNS is used (ARD AD-03); the run chain (`previousManifestCid` + `runs/index.json`) replaces it | | | | |
 | AC-31 | On incremental republish, keep prior CIDs immutable; new data produces a new CID; run history retains previous CIDs. | A4 (A3) | FEAT-A12, FEAT-A11 | | | | | |
 | AC-32 | For directory artifacts, also publish a CAR of the DAG rooted at that CID. | A4 | FEAT-A11 | | | | | |
 | AC-33 | Demonstrate each listed CID fetched from at least two independent public gateways not operated by this environment, with bytes matching the manifest size/digest. | A4 | FEAT-A11, FEAT-A13 | | | | | |
@@ -91,8 +91,8 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | --- | --- | --- | --- | --- | --- |
 | G0 | docs/01-intent.md | 0.1 | PASS (4 warnings), `docs/gates/G0-VIS-A-precheck.md` | Approved (HebaGaber) | 2026-10-17 |
 | G1 | docs/feature-list.md | 0.1 | PASS, `docs/gates/G1-FL-A-precheck.md` | Approved (HebaGaber) | 2026-10-17 |
-| G2 | docs/plan.md | 0.1 | PASS, `docs/gates/G2-PROJ-A-precheck.md` | Pending | |
-| Design CP | design/ | | | | |
-| G3 | docs/architecture-constitution.md | | | | |
+| G2 | docs/plan.md | 0.2 | PASS, `docs/gates/G2-PROJ-A-precheck.md` (re-run for 0.2) | Approved (HebaGaber) | 2026-10-19 |
+| Design CP | docs/02-design.md, design/ | 1.5 | `developmentsupport-prototype-review`, `design/design-review-log.md` | Approved (HebaGaber) | 2026-10-19 |
+| G3 | docs/architecture-constitution.md | 0.2 | `docs/gates/G3-ARD-A-precheck.md` | PASS; Approved (HebaGaber) | 2026-10-19 |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |

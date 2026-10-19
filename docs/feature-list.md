@@ -6,7 +6,7 @@ parent: VIS-A
 owner: HebaGaber             # PO
 status: Approved             # Draft → In Review → Approved → Returned
 gate: G1
-version: 0.1
+version: 0.1.1
 created: 2026-10-17
 approved_by: [HebaGaber]
 approved_date: 2026-10-17
@@ -143,7 +143,7 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 | NFR-01 | Performance | Radius plus roof-age and open-permit searches return in p95 < 3 s over the full county on the hosted explorer. | A02, A03, A13, A14, A15 |
 | NFR-02 | Cost | Nothing that bills while idle is enabled by default (constitution A7); the scheduler is off by default; AWS budget alert at $10. | A03, A12, A13–A16 |
 | NFR-03 | Observability | Every Lambda uses Powertools Logger, Tracer and Metrics with X-Ray and JSON logs; one DLQ alarm per queue (constitution VII, VIII). | A03, A12–A15 |
-| NFR-04 | Security | Zero secrets in Git, logs or PR bodies (gitleaks in CI); MCP bearer token and keys in Secrets Manager (constitution XII). | ALL |
+| NFR-04 | Security | Zero secrets in Git, logs or PR bodies (gitleaks in CI); MCP bearer token and keys in SSM Parameter Store SecureString (constitution VI, XII; AD-14). | ALL |
 | NFR-05 | Data honesty | 100% of displayed records and agent answers cite source URL, capture time and digest or CID; missing data is labelled, never guessed (constitution XI). | A02, A04–A10, A13–A15 |
 | NFR-06 | Durability | 100% of manifest CIDs are CIDv1 and fetch from two independent public gateways with matching size and SHA-256; published CIDs never change (constitution A3, A4). | A03, A11, A12, A13 |
 | NFR-07 | Source etiquette | Bounded concurrency and backoff on every source; zero CAPTCHA bypasses; crawling stops on the first 403 from BBB (constitution A6). | A01, A04–A09 |
@@ -202,3 +202,5 @@ Critical path: A-01 → A-03 → A-04 → A-06 → A-10 → A-11 → A-12. A-13 
 **AI pre-check report:** PASS, 0 FAILs, 2 notes. Full report: [gates/G1-FL-A-precheck.md](gates/G1-FL-A-precheck.md).
 
 **Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-17
+
+**Amendment 0.1.1 (2026-10-19, wording only, no scope change):** NFR-04 now says SSM Parameter Store SecureString instead of Secrets Manager, to match architecture decision AD-14 and constitution 3.0.3. The G1 approval stands.

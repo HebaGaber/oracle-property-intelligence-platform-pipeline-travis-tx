@@ -186,7 +186,7 @@ Each decision has an ID (**AD-** = architecture decision; the handoff's D-1…D-
 ### Data model and names (mew decides)
 
 **AD-07. Which column names are final?**
-- **Decision:** mew's names in the appendix, mew § 2.4. For example:
+- **Decision:** mew's names in the appendix, mew § 2.3. For example:
   - `roof_age_years`, `tenure_years` + `tenure_basis`, `owner_is_out_of_area` + `owner_area_class`, `coordinate_source`, `contractor_company_cid`;
   - `roof_age_basis` = `permit` / `new_construction` / `built_year` / `unknown`;
   - `bbb_status` = `rated` / `not_found` / `blocked` / `not_checked`.
@@ -330,611 +330,623 @@ Each decision has an ID (**AD-** = architecture decision; the handoff's D-1…D-
 ## 9. What happens next
 
 1. ~~PO reviews this document~~ Done: AD-01…AD-16 confirmed on 2026-10-19; AD-05 name match = `candidate`.
-2. **Redo the affected design work** using [`design/04-design-update-g3.md`](../../design/04-design-update-g3.md).
-3. **Write the architecture constitution and run Gate G3:**
+2. ~~Redo the affected design work~~ Done: Design Checkpoint approved 2026-10-19 (`docs/02-design.md` v1.5), using [`design/04-design-update-g3.md`](../../design/04-design-update-g3.md).
+3. ~~Write the architecture constitution and run Gate G3~~ Done 2026-10-19: [architecture-constitution.md](../architecture-constitution.md) (ARD-A v0.2, AD-01 to AD-30), pre-check PASS. Original prompt:
    ```text
    /developmentsupport-architecture-guard-init
    Use docs/decisions/0000-agent-architecture.md and my decisions: AD-01 to AD-16 as written
    (AD-05 name-match: candidate). Then run /developmentsupport-g3-precheck.
    ```
-4. **Fix constitution article VI** (AD-14: Secrets Manager → SSM), in both `.specify/memory/constitution.md` and `../assessment-guide/templates/constitution.md`, as a PATCH.
+4. ~~Fix constitution article VI~~ Done 2026-10-19: constitution 3.0.3 (both copies) says SSM (AD-14).
 
 ---
 
 ## Appendix: the agents' answers, word for word
 
-These are the three answers exactly as the agents returned them (2026-10-18). They are kept for the record and so every decision above can be traced. **Where an answer and a decision above differ, the decision wins.** Click a heading to expand it.
+These are the three answers exactly as the agents returned them when the consult was **re-run on 2026-10-19**. They replace the first answers of 2026-10-18, which AD-01 to AD-16 were decided from; git history keeps the first answers (commit `5549aab`). All three agents read this document, including AD-01 to AD-16, before answering. **Where an answer and a decision above differ, the decision wins** until the PO decides otherwise. The disagreements are listed first. Click a heading to expand an answer.
+
+### Where the three answers disagree
+
+| # | Topic | oracle | metagross | mew | Decision it touches |
+|---|---|---|---|---|---|
+| 1 | **Where coverage counts come from** | No coverage object built from the Query DB. Every manifest count must be recomputable from published tables or capture receipts (its P0-3, "tightening AD-04") | Manifest `coverage` includes `merge {entityType, inputRecords, canonical}`, which only the Query DB can produce | Manifest `coverage` is the only source of counts and carries aggregate match, merge and `parcel_match` totals, plus counts for all five contractor states, all of which come from Query DB matching | AD-04 |
+| 2 | **Contractor states shown per permit** | Five-state ledger. Expects most badges to show `candidate` or `unresolved` | View column `resolution` with the five AD-05 states; `<ContractorBadge>` has five variants | Public tables can only show resolved or not resolved. `candidate`, `ambiguous` and `conflicting` live in the Query DB and have no public carrier (its R1, high) | AD-05 |
+| 3 | **Roof-age basis and confidence** | No lexicon fields for them. Publish the evidence date only and record basis and confidence as a lexicon gap (its R3) | View columns `roof_age_basis` and `roof_age_confidence` | Derive both in the view from public fields: a matching replacement permit means `permit`/`high`, new construction means `medium`, built year means `low` (its § 2.4) | AD-07 |
+| 4 | **BBB publication** | Publish only if a lexicon class exists. Otherwise do not publish, show `bbb_status=not_checked`, and never publish a side file | Assumes `bbb_status` with `rated` is in the view | `fact_sheet` via `company_has_fact_sheet`, **or** a schema-versioned artifact listed in the manifest (a non-CLI file) | AD-07, A2 |
+| 5 | **Profiles and ZIP lists as public artifacts** | Profiles are code. Manifest values come only from CLI outputs, and only `elephant-cli` output is public | Silent | Publish the roofing and status profiles, the Travis ZIP list and the regional-county list as manifest artifacts, so the derivations can be checked | A2, AD-01 |
+| 6 | **Scheduled refresh and the database** | Fargate task runs the kit AWS batch mode end to end, with an operator-chosen private Postgres | Query DB is never reachable from AWS. No connection string in `apps/` or `infra/` | The refresh writes new snapshots only, so nothing needs a writable hosted store | AD-15 |
+| 7 | **Agent timeout** | Hard stop at 25 s | Layered: server abort at 23 s, Lambda 25 s, client 25 s, because a 25 s hard stop lets Lambda kill the request before it can return `timed_out` | Silent | AD-09, AD-11 |
+| 8 | **Printed contractor name** | It may have no lexicon field; the only lawful fix is a lexicon extension (its R2) | Silent | Puts `contractor_name_raw` in `v_roofing_permit` and one `v_contractor` row per unresolved printed name, while flagging the field as unconfirmed (its R2) | AD-05, AD-07 |
+
+**Raised by one agent only (no conflict, but new):**
+
+- **metagross:** constitution articles VI/XII and NFR-04 still say Secrets Manager, while AD-14 says SSM. `docs/plan.md` § 3.2 still lists an MCP `query` (SELECT) tool, which breaks P0-11. CDK goes in a top-level `infra/` instead of the skill's `apps/api/cdk/`.
+- **mew:** `as_of_date` must be the run's `finishedAt`, not `now()`. Unmatched permits are not published (`property_cid` is non-null in the views). `v_run` drops `ipns_name` and `resolved_cid`. The live lexicon tools were down again, and the `use-neutral-lexicon` skill could not be loaded, so every lexicon name is still unconfirmed.
+- **oracle:** a Socrata deletion diff, the Texas Tax Code §25.025 confidentiality filter, and proposed thresholds for retries, BBB pacing, ArcGIS paging and Parquet part size.
 
 <details>
 <summary><strong>soofi-xyz-team-kit:oracle</strong> · skills: use-oracle, onboard-county, query-db-loading-matching, deploy-open-data-mcp, apply-engineering-guidelines</summary>
 
-### Oracle design consult: CountyLens / Travis County, TX (read-only)
+### Oracle design consult: CountyLens Travis County ingestion, reconciliation and publication
 
-Sources read: `README.md`, `docs/01-intent.md`, `docs/plan.md`, `design/HANDOFF.md` (plus the prototype file list), `.specify/memory/constitution.md` Task A addendum, `../assessment-guide/reference/A-oracle.md` §3, §5, §7–§9. Skills loaded: use-oracle (with `car-publication.md`, `continuous-ingestion.md`, `roof-age-and-identity-reingest.md`), onboard-county, query-db-loading-matching, deploy-open-data-mcp, apply-engineering-guidelines. Kit version 0.99.1. Nothing in the repo was modified, nothing was ingested or deployed.
+Sources read: README.md, docs/01-intent.md, docs/plan.md §3–§7, design/04-design-update-g3.md, docs/decisions/0000-agent-architecture.md (AD-01..AD-16, P0 list, key numbers), .specify/memory/constitution.md (Task A addendum A1–A8), ../assessment-guide/reference/A-oracle.md §3, §5, §7–§9. Kit skills loaded: apply-engineering-guidelines, use-oracle (plus car-publication.md and continuous-ingestion.md), onboard-county, query-db-loading-matching, deploy-open-data-mcp. I ignored design/HANDOFF.md and the prototype's sample data. No files were written and nothing was run.
 
-I found three places where the current design breaks an Oracle invariant. They are flagged with **[CONFLICT]** and come first under P0 rules and open risks.
+My position on the confirmed decisions: I agree with AD-01 to AD-16, with two exceptions. **AD-04** (manifest coverage) needs a tighter rule. **AD-15** (scheduled refresh) needs a rule against mixing stacks. Both are in section 5 (P0-3 and P0-11) and in section 6.
 
 ---
 
 ### 1. Components and AWS services (with why)
 
-#### 1.1 Ingestion plane (local, $0 cloud)
+#### 1.1 Ingestion plane (operator machine, $0 cloud)
 
 | Component | Choice | Why |
-| --- | --- | --- |
-| Durable runtime | Kit `use-oracle/runtime` in **local mode**: Restate 1.7.2 + Postgres 16 (`pipeline/local-stack/docker-compose.yml`, already running) | Constitution A1; the kit prescribes it. No cloud cost. Restate resumes after the laptop sleeps (RISK-13). **One mode per run**: never mix local Restate handlers with the kit's AWS batch workers (`runtime/infra/county-enrichment-batch-stack.ts`) inside a run. |
-| Run coordinator | A Restate workflow that owns the durable run manifest. States: `DISCOVERING → READINESS_BLOCKED / READY → RUNNING → COOLING_DOWN / WAITING_HUMAN → PUBLISHING → VERIFYING → COMPLETE / FAILED_EXHAUSTED` | `continuous-ingestion.md`: the chat is never the workflow engine. Run history (A3) comes from this state, not from logs. |
-| Seed | `county-seed-data`: one official seed CSV from the TCAD certified roll. `request_identifier` = TCAD property ID (the folio) | The seed CSV is the input of record. The folio is the parcel key. |
-| Appraisal adapter + transform | `county-appraisal-onboarding` + `build-county-transform` over the **TCAD Certified Special Export (JSON)**. Supplemental roll exports drive incremental updates | One bulk file beats 400k detail-page requests against a source that returned 403 (RISK-03). |
-| Coordinates | Kit `arcgis-feature-service` adapter on `TCAD_PARCELS` (2,000 features per page). Fallback: Austin permit `latitude`/`longitude` via `tcad_id`, with `coordinate_source` recorded | The adapter already exists, so it is reused, not rebuilt. GIS is not the population; the roll is. |
-| Permit adapter (new) | `county-permit-adapter`: a **Socrata adapter** registered in `src/permits/adapters/index` for Austin `3syk-w9eu`. Other jurisdictions get kit adapters only where A-01 shows a supported platform (Tyler/Accela/SmartGov, etc.). The rest are classified as records-request or no public history | The kit has no Socrata adapter (A-oracle §4). Extend the runtime, never replace it. |
-| Travis county profile (new) | `counties/travis/`: permit profile (status vocabulary → open / stalled / closed / exclude; reviewed roofing term list with excludes) and a **roof-age source profile** for `src/roof-age/estimator.ts` | The kit rule: *"County/source profiles own exact status and work mappings… Do not classify with product-query regex."* |
-| Official identity | TX Comptroller franchise-tax holders `9cir-efmm` (Socrata) as the corporate registry. **No licensing authority exists for roofers.** TDLR's public licence data covers licensed trades (electrical, A/C) but not roofing; treat it as a lead for those trades | Plays the Sunbiz role. The DBPR role has no Texas equivalent for roofing, so the gap is recorded, not substituted (§5, P0-9). |
-| Enrichment | `bbb-harvest` (bounded, stop on 403), `overture-places-ingest` (licence-gated) | Kept in separate tracks. Never identity. |
-| Internal Query DB | Local Postgres via `query-db-loading-matching`: folio reconciliation, `(path, sha256)` watermarks, tombstones, permit↔property links, identity ledger, roof-age lineage | Internal only. Never published, never exposed, never the MCP source (A2). |
-| Publisher | A thin TypeScript wrapper that runs the exact `elephant-cli` sequence per data group and fails closed on each non-zero exit: `validate dir → hash → validate CAR → export-tables → upload CAR → upload tables` | Constitution A2 and the kit: build CARs only from `hash` output, tables only from `export-tables`. The wrapper adds gates and evidence. It never computes tables itself. |
-| Manifest builder | Reads the CLI's `--output-json` upload summaries and `tables-export.json`, computes SHA-256 and size per artifact, writes `runs/<runId>/manifest.json` + `runs/index.json` | README §IPFS publication and A-oracle §8. CIDs are taken from CLI output, never re-derived by hand. |
-| Pinning | Filebase via `--api https://rpc.filebase.io` + a second independent pin (kubo node kept online through review, or a second provider) + CARs attached to a GitHub Release | Must survive any single vendor (README). |
+|---|---|---|
+| Runtime | Kit `use-oracle/runtime`, **local Restate + Postgres** mode | Constitution A1 requires it. It costs $0 when idle and resumes durably. Use one mode per run. |
+| Run coordinator | A durable run manifest in Restate state, with the kit states `DISCOVERING → READINESS_BLOCKED / READY → RUNNING → COOLING_DOWN → WAITING_HUMAN → PUBLISHING → VERIFYING → COMPLETE / FAILED_EXHAUSTED` | Kit rule (continuous-ingestion.md): the chat is never the workflow engine. |
+| Appraisal backbone | `county-seed-data` → `county-appraisal-onboarding` → `build-county-transform` over the TCAD Certified Special Export (JSON), with Supplemental exports as the incremental feed | The certified roll is the property denominator. Supplemental exports are the change source. |
+| Coordinates | The kit's existing `arcgis-feature-service` adapter on `TCAD_PARCELS`, paged at 2,000 features per request | Reuse the existing adapter. GIS is **not** the population, so compare its count to the roll. |
+| Austin permits | **New `socrata` adapter** registered in the kit adapter index (`src/permits/adapters/`), written in TypeScript | The kit has no Socrata adapter. A1 says extend the runtime, never replace it. |
+| Business identity | Texas Comptroller `9cir-efmm`, loaded through a Socrata-backed corporate-registry ingest **before** permit contractor resolution | Same ordering as the Sunbiz-then-DBPR rule: official identity loads before permits. |
+| BBB | `bbb-harvest`, bounded, stopping on the first 403 | Enrichment only (A5, A6). |
+| Places | `overture-places-ingest`, behind its licence gate, as its own data group | Enrichment only. |
+| Internal Query DB | The local Postgres, used only through `query-db-loading-matching` | Reconciliation, identity resolution and roof-age lineage. It is never public. |
+| Roof age | Kit `src/roof-age/estimator.ts` with a new **Travis/Austin production profile** | P0-7. Kept versioned and auditable. |
+| Publisher | A thin TypeScript wrapper that calls `elephant-cli` in a fixed order with fail-closed gates | A2. It contains no publishing logic of its own. |
 
-**Data groups (one CAR each, seed root inside every archive, Seed never its own group):**
+#### 1.2 Publication plane (public IPFS)
 
-- `county`: TCAD property, parcel, address, structure, owner, sales, plus geometry if the lexicon carries it.
-- `property_improvement`: all permits, not only roofing. The roofing signal is a profile classification on the record.
-- Corporate registry group: Comptroller companies.
-- `places`: Overture.
-- BBB: only if the live lexicon has a reputation class.
+- **Filebase over Kubo RPC** (`--api https://rpc.filebase.io`) for CAR and tables upload, with CLI readback. This is the kit's worked example.
+- A **second independent pin**, or a kubo node kept online through review, plus the **CARs attached to a GitHub Release**. Together they keep the data available without relying on one vendor (README).
+- Verification uses **ipfs.io and dweb.link**, which this environment does not operate. They are never on the query read path.
+- **Atlas county-page PR** (`counties/TX/travis.json`), attempted once access exists. Until it merges, the status is "public by CID; Atlas registration pending" (P0-16).
 
-Confirm every group and class with `mew` / `listClassesByDataGroup` before A-02 freezes names. The `export-tables --atlas-page` group key comes from the archive itself.
+#### 1.3 Hosted plane (AWS, CDK only, region from config: demo `eu-north-1`, company default `us-east-2`)
 
-#### 1.2 Hosted plane (AWS, CDK only, region from config: demo `eu-north-1`, default `us-east-2`)
+metagross owns hosting. These are the pieces that touch Oracle data, and my constraints on each.
 
-| Service | Use | Why / zero-idle note |
-| --- | --- | --- |
-| **Amplify Hosting** | Static React + DuckDB-WASM explorer at `countylens.aldarraj.com` | No server. The browser does the compute. |
-| **Lambda (arm64, Node 22) + Function URL with response streaming** for the agent | tRPC agent procedure (Vercel AI SDK → Bedrock `eu.anthropic.claude-sonnet-4-6`, `AI_PROVIDER` switch) | API Gateway integrations time out at **29 s**. A multi-step agent under 10 RPM Bedrock throttling can exceed that. A streaming Function URL allows up to 15 min. Pay per request. |
-| **API Gateway HTTP API** (or a second Function URL) | MCP Streamable HTTP endpoint (`POST /mcp`, `GET /health`) with a bearer token | Stateless and per request. |
-| **DuckDB in Lambda** (`@duckdb/node-api`, with the `httpfs`/`parquet` extensions **bundled in the image or layer**, not installed at runtime) | Fixed, parameterised tools for the agent and MCP over the same Parquet | No database server. Use `/tmp` (up to 10 GB) as a **CID-keyed part cache**. CIDs are immutable, so the cache never needs invalidation. |
-| **SSM Parameter Store SecureString (standard tier)** for the MCP token, Filebase keys (publish-time only, not in Lambda) and the AI Gateway key | Secrets | **Not Secrets Manager.** At $0.40 per secret per month it bills while idle, which breaks A7. The standard tier is free. |
-| **DynamoDB on-demand** | One item per UTC day: AI spend and question counter (handoff §2) | Storage is fractions of a cent; no capacity is provisioned. |
-| **EventBridge Scheduler (state DISABLED)** → refresh target | Opt-in scheduled incremental run | A7: off by default. See risk R-9 for which target. |
-| **CloudWatch Logs** (30-day retention, `/countylens/query-log`) + **X-Ray** + Powertools Logger/Tracer/Metrics | Observability | Golden Path. Logs bill per GB ingested, close to zero when idle. |
-| **SQS DLQ + one self-resolving CloudWatch alarm** per async path (only if an async path exists, for example the scheduled refresh) | DLQ monitoring | Golden Path. Alarms cost $0.10 per month each, the only small standing item. Record it in `docs/cost.md`. |
-| **AWS Budgets** ($10 alert) | Cost proof | CON-02. |
-
-Not used:
-
-- **S3 for data.** IPFS plus the GitHub Release is the store, and S3 adds a second source of truth.
-- **RDS / Aurora / OpenSearch / NAT gateway.** All of them bill while idle.
-- **Any Query DB endpoint in the cloud.**
+| Service | Use | Oracle constraint |
+|---|---|---|
+| S3 + CloudFront | A byte-for-byte cache of CLI table parts, keyed by CID (AD-02) | Hash every object against its CID on write and never edit it. It must contain nothing that is not already on IPFS. |
+| Lambda (arm64, Node 22) | MCP server and agent tools using DuckDB `@duckdb/node-api` over CLI Parquet | They read published CIDs only. There is no network path to the Query DB. |
+| API Gateway | Rate limiting in front of the agent and MCP | Requests never trigger index resolution or archive loading. |
+| SSM Parameter Store SecureString | Filebase keys (operator only), MCP bearer token, AI keys | Not Secrets Manager, which bills while idle (AD-14). |
+| EventBridge Scheduler (**disabled**) → ECS Fargate task running the kit `Dockerfile.batch` | Opt-in refresh (AD-15) | It must run the **AWS mode end to end**, never feeding local Restate handlers. Its Postgres is operator-chosen and private. |
+| SQS + DLQ + one self-resolving CloudWatch alarm per DLQ | Only where an async boundary exists (bridge commands, refresh) | Golden Path: bounded concurrency, idempotency, backoff. |
+| AWS Budgets ($10) and Cost Explorer | Zero-idle proof | A7. |
+| GitHub Actions US runner | Fallback egress for geo-blocked public sources | Only when the block is by geography. It is **never** a way past a 403, CAPTCHA or bot challenge. |
 
 ---
 
 ### 2. Data contracts
 
-#### 2.1 Ingestion contracts (internal, owned by the kit runtime)
+#### 2.1 Identity keys (internal and published)
 
-| Contract | Shape / rule |
-| --- | --- |
-| **Seed CSV** | One row per TCAD folio: `parcel_id`, `request_identifier` (TCAD property ID as printed, never digits-normalized), address, plus `source_http_request` for the roll file. Seed count = certified roll count. |
-| **`source_http_request` on every lexicon record** | `{method, url, multiValueQueryString}` plus `request_identifier`. **Austin permit:** `GET https://data.austintexas.gov/resource/3syk-w9eu.json?permit_number=<n>` (re-fetchable per record). **Comptroller company:** the `9cir-efmm` row query by taxpayer number. **TCAD:** the per-property detail request **only if the transform actually captured from it**. Otherwise the bulk export URL plus file SHA-256. Never write a detail URL that was not fetched (no fabricated provenance). |
-| **Handoff manifest per stage** | run, source, partition, artifact URI, SHA-256, schema version, row count, terminal checkpoint, next stage. The consumer verifies the digest and records an idempotency receipt. |
-| **`ready.json`** | References the same artifact hash as the transform metadata. A missing marker means *not loadable*, never "empty". |
-| **Watermarks** (per county, job, track) | `{prefix, mergedCount, lastMergedAt, hashIndexPath}`, where the hash index is `(path, sha256)`. **Austin:** `:updated_at` high-water mark, re-read with a 24 h overlap. **TCAD:** export filename + SHA-256 (certified, then supplementals). **BBB:** harvest date + profile URL set. |
-| **Tombstones** | `{source, request_identifier, terminal_reason (dead / invalid / retired / source-deleted), evidence, observed_at}`. Consumed in the same transaction that advances the watermark. |
-| **Roof-age output** | Kit `elephant.roof-age-estimate.v1`: `anchor` (permit terminal date with source record and date field, or built year with field provenance, or null), `asOfDate`, `estimatedAgeYears`, confidence (`high` / `medium` / `low`), classification, eligibility/reason, coverage state + caveat codes, profile version + **profile SHA-256**. |
-| **Identity ledger** | `{permit_contact_id, raw_name, resolver_version, rule, candidate_company_ids[], accepted_company_id or null, status (resolved / candidate / ambiguous / conflicting / unresolved), source snapshot digest, effective date}`. Immutable, append-only. |
+- **Parcel key** = `(jurisdiction_key="travis", request_identifier)`, where `request_identifier` is the TCAD identifier **exactly as the source prints it**. Choose between `prop_id` and `geo_id` in A-01 and record the choice. The other identifier goes in a crosswalk and is used only as a matching candidate. Never use a digits-only normalization.
+- **Permit key** = `(jurisdiction, permit_number)` only if A-01 proves `permit_number` is unique in `3syk-w9eu`. Otherwise use the Socrata row identifier and keep `permit_number` as an attribute.
+- **Company key**: the Comptroller taxpayer number in `request_identifier`. `source_http_request` must be a **per-entity GET** against the official record, either the Socrata row query `data.texas.gov/resource/9cir-efmm.json?taxpayer_number=<id>` or the Comptroller per-taxpayer search. It is **never** the dataset landing or bulk page. This is the Texas counterpart of the `search.sunbiz.org` document-number rule.
 
-#### 2.2 Public contract (what the UI, agent, MCP and Task B read)
+#### 2.2 Data groups (one CAR each, seed root inside every archive)
 
-1. **Tables of record:** exactly what `elephant-cli export-tables` writes: one Parquet table per class, one per relationship, plus `properties`. The CLI owns the columns (`cid`, `property_cid`, `data_group_cid`, `request_identifier` + class schema). **Read the names from `tables-export.json` and generate the name map. Never type them from memory.**
-2. **`packages/query-core/views.sql`:** DuckDB views over those tables only: `v_property`, `v_roofing_permit`, `v_contractor`, `v_run` with the A-oracle §5 columns. Views may **compute** query-time derivations from published fields:
-   - `open_days = as_of − issue_date`;
-   - `is_open` from the profile-classified status already on the record;
-   - `tenure_yrs`, which stays **null/unknown** without deed data;
-   - `owner_is_out_of_area` from a ZIP list that is itself a published, CID-addressed reference artifact.
+| Group | Content | Source |
+|---|---|---|
+| `county` | property, parcel, address, structure, owner (person/company), sales (if present), geometry | TCAD and GIS |
+| `property_improvement` | permits with raw status and expiry, plus `property_improvement_has_contractor` **only for `resolved`** | Austin Socrata and any other supported jurisdictions |
+| `corporate_registry` | Comptroller companies | `9cir-efmm` |
+| `places` | Overture POIs | Overture (licence recorded) |
+| BBB | **Only if a lexicon class exists.** Otherwise it is not published and the UI shows `bbb_status=not_checked/blocked` (see §6) | bbb.org |
 
-   Views must **not** re-classify roofing by regex. The roofing flag and status class come from the profile at transform time.
-3. **`source` block on every agent, MCP and API result:** `{state:"TX", county:"travis", dataGroup, archiveCid, tablesCid, schemaCid, manifestCid, runId, asOf}`. This mirrors the MCP 2.0 `source` shape, so the CRM can switch to Atlas later without a model change.
-4. **Run manifest** `oracle-travis-run-manifest.v1` (A-oracle §8):
-   - `runId`, `previousManifestCid`, `sources[]` with `{watermark, records, sourceDenominator, delta{added,changed,removed}, limitations[]}`;
-   - `artifacts[]` with `{name, cid (v1 base32), codec, size, sha256, kind, rootCid / carCid}`;
-   - optional `origins`.
+Seed is never a group of its own. No `contractor_has_license` or `contractor_has_person` edges, because Texas has no roofing licensing authority (AD-06). Relationship objects carry only `from` and `to`.
 
-   Coverage counts come from the **CountyTables row counts** plus the **source denominators measured at capture**. Reconciliation figures are aggregate counts only.
-5. **`runs/index.json`** (committed): every run with its manifest CID. That file is the run history.
-6. **`contract/v1/`**: README, column list and 20 real rows, cited by CID for Task B.
+#### 2.3 Capture receipt (immutable, internal, one per fetch)
+`{ source, url, method, requestedAt, httpStatus, bytes, sha256, requestIdentifier, adapterVersion, runId }`. A 403, a challenge, or a CAPTCHA HTML page is recorded as `blocked` with its receipt and is **never** transformed.
 
-#### 2.3 Relationship contract (contractors)
+#### 2.4 Internal load contracts (query-db-loading-matching)
 
-Only for an **accepted official** match:
+- Artifacts are scoped to `data/artifacts/<track>/travis/<jobId>/`. Only `ready.json` files whose artifact hash equals the transform metadata hash are loaded.
+- Watermark per (county, job, track): `{ prefix, mergedCount, lastMergedAt, hashIndexPath }`. The hash index is keyed on `(path, artifactHash)`. Source-level watermarks: Socrata `:updated_at`, TCAD export date plus file sha256, Comptroller dataset `rowsUpdatedAt`, BBB harvest date.
+- Tombstones `{ key, reason: dead|invalid|retired|source_removed, evidenceReceipt }` are consumed in the same transaction as the merge.
+- Identity-resolution ledger row: `{ permitKey, rawContractorName, state: resolved|candidate|ambiguous|conflicting|unresolved, matchRule, resolverVersion, registrySnapshotDigest, effectiveOn }`.
+- Roof-age lineage: selected permit, classifier and version, evidence date and precision, profile digest, as-of date, confidence, coverage caveats, and eligibility reason.
 
-- `property_improvement_has_contractor` (`property_improvement` → `company`), with `from` and `to` only;
-- the `company` record comes from the Comptroller row, with that row's `source_http_request`.
+#### 2.5 Versioned Travis source profile (code, not SQL)
+`profiles/travis-austin@<semver>`:
+- Reroof **include** terms: `REROOF`, `RE-ROOF`, `ROOF REPLACE`, and reviewed additions.
+- **Exclude** terms: solar/PV, `Auxiliary Power`, RTU, roof deck, `roof-mounted`.
+- Status map: open, stalled, closed and exclude, using the vocabulary in A-oracle §5.
+- Unmapped terms → `needs_review`.
 
-No `contractor_has_license` or `contractor_has_person` edges are written for Texas roofing, because no licensing authority record exists. The raw permit contractor text stays on the permit record (as printed, labelled "as printed on permit") and never becomes a `company`, `person` or `license`.
+The profile's digest is stamped on every classification and on the roof-age row.
+
+#### 2.6 Public read contract
+
+- The public tables are exactly what `export-tables` writes, with the CLI-owned columns `cid`, `property_cid`, `data_group_cid`, `request_identifier` plus class columns. Exact names are frozen from a real `tables-export.json` in A-02.
+- `packages/query-core/views.sql` defines `v_property`, `v_roofing_permit`, `v_contractor` and `v_run` over those tables only. Column names follow AD-07.
+- `roof_age_years` is computed in the view from a published roof-evidence date and `as_of`. It is not stored, because of the lexicon minimum of 1 year.
+
+#### 2.7 Run manifest (`oracle-travis-run-manifest.v1`, A-oracle §8)
+
+- Every artifact entry is `{ name, cid (CIDv1), codec, size, sha256, kind, carCid? }`. These values are taken **only** from CLI outputs: the hash CSV, CAR root, `tables-export.json` and upload JSONs.
+- `previousManifestCid` forms the chain. `runs/index.json` is the history.
+- There is no IPNS of our own (AD-03), no gateway URLs as identity, and no rows.
 
 ---
 
 ### 3. Patterns that must be visible in the code
 
-1. **Gate-or-stop.** The readiness validator exit code blocks seed, pilot and full runs in code, not in prose. A non-zero `elephant-cli` exit at any of the six publish steps aborts that group. Upload readback CID ≠ declared root → fail.
-2. **Kit extension points, not forks.** The new Socrata adapter is registered through `src/permits/adapters/index`. The Travis profiles live under `counties/travis/`. Roof age calls `src/roof-age/integration.ts`. Vendored kit files are unchanged (a diff against kit 0.99.1 shows additions only).
-3. **Folio identity.** One `ParcelKey = {jurisdictionKey, requestIdentifier}` type. There is no `normalizeParcelId()` on any conflict key; normalized IDs appear only in a `matchCandidates()` path with `match_method` recorded.
-4. **Single-writer Loader per county**, with `ON CONFLICT` merges, journaled phases and per-batch checkpoints. A test proves that **re-running the same load writes 0 rows**.
-5. **Content-aware watermark + tombstone consumption** in the same transaction. A test proves that changing a file in place (same path, new hash) reloads it, and that a source-deleted permit is removed or downgraded.
-6. **Profile-owned classification.** The roofing term list (`REROOF`, `RE-ROOF`, `ROOF REPLACE`; excludes for solar/PV/`Auxiliary Power`, RTU, roof deck, "roof-mounted") and the status map are data files with a SHA-256. Unmapped values go to `needs_review`. No `LIKE '%ROOF%'` in any view or tool.
-7. **Versioned identity resolver** that writes the immutable ledger. A name, phone, address, BBB or places hit returns `candidate`, never `resolved`.
-8. **Source politeness as code.** Each source has:
-   - a token bucket and an identified User-Agent;
-   - `Retry-After` handling for 429;
-   - exponential backoff with jitter;
-   - a **circuit breaker that opens permanently on a 403 or a challenge page** (BBB, TCAD, GIS) and records the evidence. It never retries around it.
-9. **CLI-only publication.** The publisher module has one function per CLI step and no Parquet writer or CAR library imports. The only CID logic is a **multihash-digest comparator** (it compares digests, not CID strings, across codecs).
-10. **Immutable, CID-keyed caching** in the browser and in Lambda `/tmp`. The cache key is the CID; there is no TTL logic.
-11. **Fixed, Zod-typed tools in `query-core`**, shared by the agent and MCP: `searchProperties`, `searchRoofingPermits`, `getProperty`, `getCoverage`, `listRuns`, plus a read-only `query` with these limits:
-    - one `SELECT`/`WITH` statement;
-    - `LIMIT` ≤ 1000;
-    - views only;
-    - deny-listed functions (`read_*`, `COPY`, `ATTACH`, `INSTALL`, `LOAD`, `httpfs` settings).
-
-    Free-form SQL runs only in the browser (handoff §2).
-12. **Missing data says why.** Every nullable signal carries a reason enum:
-    - BBB: `blocked_403`, `no_profile`, `not_harvested`;
-    - tenure: `no_deed_data`;
-    - contractor: `unresolved`, `candidate`, `ambiguous`;
-    - roof age: `needs_review`, `ineligible:<reason>`.
-13. **Powertools Logger/Tracer/Metrics** on every Lambda, with business metrics (`AgentQuestions`, `ToolCalls`, `ToolErrors`, `GatewayVerifyFailures`). The redaction list covers tokens, keys and owner PII in logs.
+1. **Kit extension, not reimplementation.** The Socrata adapter, Travis profile and Comptroller ingest are registered through the kit's adapter and profile seams. A reviewer should see no parallel harvest loop.
+2. **A fail-closed publication pipeline.** One module calls `validate dir → hash → validate CAR → export-tables --atlas-page → upload CAR → upload tables`. Each step checks the exit code and the previous step's output file before the next step starts. A test asserts that the order cannot be changed.
+3. **The manifest builder reads only CLI artifacts and capture receipts.** It has no import of the Postgres client. Enforce this with a lint or dependency-cruiser rule: `packages/publish` and `packages/query-core` may not import `pg`, `postgres` or `DATABASE_URL`.
+4. **CID verification compares digests, not CID strings**, because data blocks are dag-json `baguqeera…` and schemas are raw `bafkrei…`. Fetch from two independent gateways and compare size and sha256 against the manifest.
+5. **A single-writer Loader per county.** All appraisal, permit, identity and enrichment merges go through one `Loader('travis')`. It uses staging plus `ON CONFLICT`, journaled phases and per-batch checkpoints. There are no manual side loads.
+6. **Content-aware watermarks and tombstone consumption.** Both are visible in the merge transaction. A test changes a file in place and expects a reload, and another test sets a tombstone and expects the stale row to be deleted or downgraded.
+7. **Deletion detection for Socrata.** `:updated_at` cannot see deleted rows, so a periodic key-set diff of row id and permit number against the loaded set produces `source_removed` tombstones.
+8. **Queued external boundaries** (Golden Path). Each source fetch has an idempotency key, bounded concurrency, exponential backoff with jitter, a retry budget and a DLQ. A single `StopOnBlocked` guard sends a 403 or challenge to `WAITING_HUMAN`. Nothing rotates IPs or user agents.
+9. **The identity resolver has a five-state enum and a versioned ledger.** `resolved` requires an **official identifier match**. A name, phone, address, BBB or places match can never be more than `candidate` (PO decision on AD-05). The printed name is kept as `contractor_name_as_printed` and never becomes a `company`.
+10. **Classification lives in versioned profiles.** A grep gate in CI fails on `LIKE '%ROOF%'` or similar in views, agent prompts or tools.
+11. **Provenance travels with every record.** Each lexicon record has a `source_http_request` and a `request_identifier`. Every view row exposes a source URL, CID and run. Missing values carry a reason enum, never null alone.
+12. **The confidentiality filter is applied before transform.** TCAD records flagged under Texas Tax Code §25.025 are dropped or redacted before `validate`, and the count is recorded in the manifest's limitations.
+13. **Powertools Logger, Tracer and Metrics** wrap every Lambda and batch entry point. Business metrics: records captured, loaded, published and failed, plus duration, per source.
 
 ---
 
 ### 4. Non-functional requirements (numeric thresholds)
 
+Numbers marked *(proposed)* are mine. All others are already confirmed in AD-16 or §7 of the decision record.
+
+#### 4.1 Completeness and correctness
+
 | Area | Threshold |
-| --- | --- |
-| Property coverage | Seed count = TCAD certified roll account count, with **0 unexplained**. The plan's "< 2% explained" applies only to rows proven dead or invalid with evidence. Distinct loaded folios = ready appraisal folios exactly. |
-| Coordinates | ≥ **99.0%** of roll folios have lat/lon. Every gap row is classified (null GIS attribute, no geometry, fallback used). |
-| Austin permits | Captured rows = Socrata `count(*)` at the run's watermark, with **0 unexplained delta**. The no-`tcad_id` share is reported (baseline 2.6%). 100% of valid unmatched permits are kept internally, with a null property link and a reason. |
-| Jurisdictions | **100%** of permit jurisdictions classified (supported / records request / no public history) with dated evidence. |
-| Provenance | **100%** of published records carry `source_http_request` + `request_identifier`. CI fails on 0.01% missing. |
-| Idempotency | A repeated load writes **0** rows. A repeated `hash` on identical input gives a **byte-identical** CAR and the same root (assert in CI with a fixture). |
-| Source rate limits | **Socrata:** `$limit` 50,000 per page, ≤ 2 concurrent requests, app token. Full 2.38M backfill target ≤ **4 h**. **GIS:** 2,000 per page, ≤ 2 concurrent, ≤ 2 requests/s. **BBB:** ≤ 1 request per 5 s, a hard cap set in A-08, and **0 retries after a 403 or challenge**. **Retries:** at most 5 attempts, 1 s base backoff, 60 s cap, full jitter. |
-| Incremental runs | ≥ **3** runs on ≥ **3** different calendar days. Runs 2 and later read only `:updated_at > watermark − 24 h`, not a full reload, with per-source `added / changed / removed`. Permit freshness at demo time ≤ **7 days** behind the source's latest `:updated_at`. |
-| Roofing classifier | Spot-check **25** random positives per profile version: ≥ **24/25** are true primary-roof replacements. `needs_review` rate reported. Precision is re-checked whenever the term list hash changes. |
-| Publication | **100%** of manifest CIDs are CIDv1 base32. **100%** of directories have a CAR. Each manifest file ≤ 50 MB is fetched from **ipfs.io and dweb.link** with size and SHA-256 equal. Per-gateway timeout 60 s; 3 attempts with backoff; a 429 counts as *pending*, never *verified*. Run 1's manifest still verifies after Run 3. |
-| Browser query | 5-mile radius + roof age > 15 years: p95 ≤ **3 s** warm, ≤ **8 s** cold first load (plan SC-07). If browser p95 > 3 s, fall back to Lambda DuckDB. |
-| Agent | First streamed token ≤ **5 s**. Full answer p95 ≤ **45 s** under the 10 RPM Bedrock limit. ≤ **6** tool steps per question. Lambda memory 2,048 MB; reserved concurrency **≤ 5**. Daily AI spend cap from the DynamoDB counter (for example $2/day), then a "paused" state. |
-| MCP | Row limit ≤ **1,000**. DuckDB statement timeout **10 s**. `/health` < 500 ms. 100% of responses carry the `source` block. |
-| Cost | **$0.00/day** standing cost with the scheduler disabled, apart from listed cents (alarms, log storage), which are itemised in `docs/cost.md`. $10 budget alert. |
-| Logs | 30-day retention. **0** secrets or owner PII in logs (gitleaks in CI plus a redaction unit test). |
-| CAR shape | ≤ 5,000 properties per shard and every block < 1 MiB (the CLI guarantees this; assert it on the hash output). |
+|---|---|
+| Readiness gate | `county-readiness-preflight` exits 0 before seed, pilot or full run. Every permit jurisdiction is classified with evidence. |
+| Pilot | About 25 representative parcels, covering the residential-skip, permit-less, permit-with-contact and failure paths |
+| Feasibility | Any source projected above **48 h** of capture needs an explicit decision: bulk, records request, or runtime lookup |
+| Properties | Distinct published folios = TCAD certified roll − proven dead/invalid − confidential, with **0 unexplained** differences |
+| Coordinates | **≥ 99%** of properties. Every gap has a reason. Each value is labelled with `coordinate_source`. |
+| Austin permits | Captured = source total at the watermark, with **0 unexplained** differences. **≥ 97%** of Austin roofing permits matched to a property. 100% of unmatched permits kept and counted. |
+| Out-of-county Austin permits | 100% counted separately and excluded from Travis totals |
+| Roofing classifier | **≥ 24 of 25** correct per profile version on a random sample. **≤ 5%** sent to `needs_review`. |
+| Idempotency | Re-applying the same load writes **0 rows**. Re-hashing the same input gives the **same CAR root and tables root**. |
+| Watermarks | **100%** of final ready artifacts covered. **100%** of tombstones consumed. **0** stale rows after a tombstone. |
+| Provenance | **100%** of published records and view rows carry a source link and run |
+| CAR checks | **6 of 6** pass on `validate <car>`: integrity, root, index, graph, lexicon, orphans |
+
+#### 4.2 Freshness and continuity
+
+- **≥ 3 runs** on **≥ 3 different days**. Runs 2 and later are windowed, not full reloads.
+- Permits are **≤ 7 days** behind the source at demo time.
+- Socrata page size **≤ 50,000 rows** per request, with an app token *(proposed)*.
+- Retry budget **5 attempts**, exponential backoff with full jitter from 1 s base to 60 s cap *(proposed)*.
+- BBB: **≤ 1 request every 3 s**, concurrency 1, and a hard stop on the **first** 403 or challenge *(proposed)*.
+- ArcGIS: **2,000 features per page**, concurrency **≤ 2** *(proposed)*.
+
+#### 4.3 Publication
+
+- **100% CIDv1**. Every directory has a CAR.
+- Every manifest artifact is fetched from **ipfs.io and dweb.link** with matching size and sha256.
+- Run 1 CIDs still resolve after Run 3.
+- Upload readback succeeds for the archive root and the tables root before any Atlas PR.
+- Table part size: tune `--part-size` so each part is **≤ 256 MB** for range reads *(proposed; measure in the A-02 spike)*.
+
+#### 4.4 Serving
+
+| Path | Threshold |
+|---|---|
+| Browser query | p95 **< 3 s** once loaded; first load **≤ 8 s** |
+| Agent | p95 **< 20 s**, hard stop at **25 s**, **≤ 6** tool steps, **≤ 3** model calls, **$3/day** cap with an alarm at 80% |
+| MCP | **≤ 1,000** rows per call, `tools/list` **< 500 ms**, `tools/call` p95 **< 3 s**, **5 req/s** (burst 10) |
+| Cost | **$0.00 fixed** per month while idle, plus cents of storage. **$10** budget alert. |
 
 ---
 
 ### 5. P0 rules (must never be broken)
 
-1. **The Query DB is never public.** It is never published, exported to IPFS, exposed to the UI, agent, MCP or CRM, or referenced by a public pointer. Its credentials never leave the operator machine.
-2. **Only `elephant-cli` output is public data.** CARs only from `hash`. Tables only from `export-tables`. **[CONFLICT]** The handoff's "slim geo-sorted serving Parquet (derived from `elephant-cli export-tables`)" is a hand-built table and is not allowed as published data. Use DuckDB views (with bbox prefilters) over the CLI tables, and tune `--part-size` for range reads.
-3. **Validate before hash, validate the CAR before export, read back before any claim.** No step is skipped on a "small" run.
-4. **CIDv1 and immutability.**
-   - Published CIDs never change, and gateway URLs are derived from CIDs.
-   - Compare digests, not CID strings, across codecs.
-   - Incremental ingestion is **windowed**, but each publish is a **full new group snapshot** with a new root. Unchanged blocks deduplicate on IPFS.
-   - A run with no delta yields the same group root and a new manifest; that is correct, not a bug.
-5. **No per-county public pointer.** **[CONFLICT]** The handoff's server-side "IPNS resolution" implies a CountyLens IPNS name. The kit forbids a county-specific public pointer, and the README makes IPNS optional ("if used"). Chain runs with `previousManifestCid` + the committed `runs/index.json` instead. The only IPNS is global `elephant-atlas`, and only after an Atlas merge.
-6. **No published coverage object built from the Query DB.** **[CONFLICT, needs an ADR]** The handoff wants `coverage.json` and `merge_stats.json` as published files, but the kit lists "coverage objects" as never-publish. Compliant form: put counts in the run manifest, computed from CountyTables row counts, source denominators and aggregate reconciliation counts (no rows, no Query DB extract). The UI's "one source of counts" becomes the manifest.
-7. **Folio is the parcel key.** Never use digits-only normalization as a conflict key. A historical key correction needs a source-scoped clean reload; never run `TRUNCATE … CASCADE`.
-8. **Single writer per county, idempotent merges, `(path, hash)` watermarks, tombstones consumed.** No manual bulk load runs alongside the incremental loader.
-9. **Contractor identity is official or nothing.**
-   - Permit names are search keys only.
-   - No `company`, `person` or `license` is copied from permit text.
-   - Name, phone, address, BBB and places matches are **candidates**.
-   - Without a Texas roofing licensing authority, `contractor_has_license` and `contractor_has_person` are **not written**; the gap is recorded and no other edge is substituted.
-10. **BBB, places and AVM are enrichment.** They never establish identity or completeness. **Stop on a BBB 403.**
-11. **Never bypass a CAPTCHA, bot challenge, geo-block or rate limit.** No IP rotation and no headless evasion. A US runner is a legitimate egress location, not an evasion tool. It must send the same identified User-Agent and respect the same limits.
-12. **Roof age only from the kit estimator** with the frozen Travis profile. An open replacement permit does not reset it. Repairs, coatings and accessory roofs are excluded. Never synthesise a date. Confidence and coverage caveats always travel with the value.
-13. **No fabricated provenance or synthetic data shown as real.** Fixtures never reach the hosted app. Pre-lexicon data is re-mined, not backfilled.
-14. **Honour TCAD confidentiality flags.** Texas Tax Code §25.025 lets protected owners (peace officers, judges, family-violence victims and others) suppress their records. Never publish or re-derive a suppressed owner name or address.
-15. **Never claim "published to Atlas"** without a merged Atlas PR, the global IPNS index containing Travis, and an MCP 2.0 sync. Until then the wording is "public by CID; Atlas registration pending".
-16. **No secrets in git, logs or UI.** Never commit raw captures, CARs, Parquet, `DATABASE_URL` or keys. CARs go to the GitHub Release, not into the tree.
-17. **TypeScript only** (Python only for PySpark/Glue). **CDK only.** **Vercel AI SDK only** for LLM calls, with Zod tool schemas and no `any`.
+1. **The Query DB is internal.** It is never published, never reachable from AWS, never behind the UI, agent or MCP, and its credentials never appear in output or logs.
+2. **Only `elephant-cli` output is public**, in the order validate → hash → validate CAR → export-tables → upload with readback. No step is skipped on any run size. There are no hand-built tables and no "serving" Parquet.
+3. **No coverage object built from the Query DB.** Manifest counts must be recomputable from published tables or from capture receipts. This is how I tighten AD-04.
+4. **CIDv1 only. Published CIDs are immutable.** New data means a new CID. Gateway URLs are derived and never stored as identity.
+5. **No county-specific public pointer.** That means no CountyLens IPNS and no parallel public registry. Atlas is the only registry. Do not say "published to Atlas" before the merge, the global IPNS resolution and the MCP 2.0 sync have all happened.
+6. **The folio is the TCAD identifier exactly as printed.** No digits-only key, and no merging of distinct lettered parcels.
+7. **Contractor identity is official or nothing.** `resolved` needs an official identifier match. A permit-printed name is a search key only and is never persisted as a company or person. `property_improvement_has_contractor` is written only for `resolved` contractors.
+8. **Respect source terms.** Stop on a 403. Never bypass a CAPTCHA, bot challenge or rate limit. Never rotate IPs or user agents. Record a blocked source as `blocked`.
+9. **Roof age comes only from the kit estimator** with the versioned Travis profile. An open replacement permit never resets it. No date is ever invented.
+10. **Classification lives only in versioned profiles.** An expired permit is never relabelled to fit a lexicon enum (AD-08).
+11. **One ingestion stack per run.** Never mix local Restate handlers with AWS batch workers.
+12. **Honour TCAD confidentiality flags** (Texas Tax Code §25.025).
+13. **No synthetic or sample data on the hosted site.** Re-mine pre-lexicon data from source and never backfill provenance.
+14. **No secrets, captures, CARs, Parquet or database URLs in git, logs, PRs or `VITE_*` variables.**
+15. **TypeScript, CDK, and the Vercel AI SDK only.** Region comes from config. Nothing that bills while idle is enabled by default.
 
 ---
 
 ### 6. Open risks
 
-| # | Risk | Impact | Recommendation |
-| --- | --- | --- | --- |
-| R-1 | **Kit-vs-README conflict** on coverage, merge stats, own IPNS and the derived serving Parquet (P0-2, P0-5, P0-6) | A reviewer fails the story, or the Oracle invariants break | Decide at G3 in an ADR: counts in the manifest, no CountyLens IPNS, no hand-built tables. Update `design/HANDOFF.md` §2 before A-02. |
-| R-2 | **Texas contractor identity will mostly be `unresolved`/`candidate`.** Austin prints company names, not licence numbers, and the kit says name matches are only candidates | `v_contractor` is thin; the demo line "contractor identity" looks weak | Show the as-printed name with a resolution badge. Get a PO decision on whether a *unique, active, exact legal-name + entity-suffix* Comptroller match is "resolved: name-exact (official registry)" or stays a candidate. Record either way in an ADR. Check A-01 for any Austin contractor registration number in the source. |
-| R-3 | **Lexicon fit unknown.** It is unconfirmed whether the live manifest has fields for permit status, dates, work class, contractor raw text, roof-age estimate, BBB rating and geometry | Signals cannot ride in the CAR, and nothing may be substituted | `mew` checks `listClassesByDataGroup` / `getPropertySchema` in A-02. Any gap is computed at query time from published fields, or recorded as a lexicon gap. |
-| R-4 | **`tcad_id` semantics.** Austin `tcad_id` may be the TCAD geo ID, not the property ID, and its format may differ (dashes, leading zeros) | A wrong join creates silent false links | Test the join on a 1,000-row sample in A-01. Map through the roll's own ID crosswalk, never by stripping digits. |
-| R-5 | **Austin spans three counties** (Travis, Williamson, Hays) | Out-of-county permits pollute Travis counts | Source-boundary filter: keep only permits that join to a Travis folio or fall inside the Travis boundary. Count the rest as `out_of_boundary`. |
-| R-6 | **Unmatched permits cannot sit in a property-rooted CAR** (63k with no `tcad_id`) | Coverage looks lower than captured | Keep them internally with a reason. Publish only reconciled links (address fallback with `match_method`). Report captured / linked / unlinked in the manifest. |
-| R-7 | **Socrata hard deletes** are invisible to `:updated_at` | Stale permits survive (false open leads) | A periodic full `:id` set diff (cheap `$select=:id`) creates tombstones on runs 2 and 3. |
-| R-8 | **TCAD 403 / GIS timeout** from this machine | The backbone is blocked | A terms-compliant browser download of the published export, a US runner with an identified UA, and permit lat/lon as the coordinate fallback. Never evasion. |
-| R-9 | **Scheduled refresh target.** A cloud run needs a reachable Query DB, and RDS/Aurora bill while idle | Breaks A7, or the scheduler is a stub | Define the scheduler and a Fargate task (kit `Dockerfile.batch`) **disabled**, with `DATABASE_URL` from SSM pointing at an operator-chosen Postgres. Document that enabling it is the consumer's cost decision. Never mix it with local Restate within a run. |
-| R-10 | **Filebase plan limits** (1 GB vs 5 GB conflict) against about 2.4M permits + 400k properties | Upload fails or the pin is incomplete | Measure CAR and table sizes in the A-03 spike, then choose Starter for one month or a self-run kubo node. The GitHub Release CAR copy is the vendor-independent fallback. |
-| R-11 | **Public gateway behaviour** (ipfs.io, dweb.link): 429s, subdomain redirects, CORS for in-browser hashing | The demo verify line fails live | Gateway spike early in A-02. Pre-warm CIDs. Retry state in the UI. Use the CLI `verify-manifest` as a second proof. |
-| R-12 | **Bedrock 10 RPM + API Gateway 29 s** | Agent timeouts | Streaming Function URL, a step budget of 6 or fewer, and the `AI_PROVIDER=gateway` fallback. |
-| R-13 | **DuckDB native binary in Lambda** (extension install needs network, arm64 build) | Cold-start failures | Container image with the extensions pre-installed. Set `extension_directory` to the image path. |
-| R-14 | **Owner PII and confidentiality** | Legal and ethical exposure | P0-14. Exclude suppressed records at transform time. Run a PII redaction test on logs. |
-| R-15 | **Atlas not registrable** (private repo, no access). The kit MCP 2.0 cannot serve Travis | The "MCP-ready" claim depends on our own server | The own MCP mirrors the MCP 2.0 tool shapes and the `source` block. Do **not** point `@elephant-xyz/mcp` at a custom `ATLAS_IPNS` (that would be a parallel registry). State "Atlas pending" in the PR. |
-| R-16 | **Kit runtime is `.mjs`** while the constitution says TypeScript | Reviewer flag | Vendored kit files stay as they are (A1). All new Travis code is TypeScript. Record this in Complexity Tracking. |
+| # | Risk | Impact | Mitigation and owner |
+|---|---|---|---|
+| R1 | **BBB has no lexicon class** | BBB cannot be published through the CLI, so A2 forbids exposing it publicly. That leaves the demo's "BBB where available" unpublished. | mew confirms in A-02. If there is no class, file a lexicon extension request, show `bbb_status=not_checked`, and record it as a documented gap. Never publish a side file. |
+| R2 | **No place for the printed contractor name** in the lexicon `property_improvement` | The "listed contractor" demo line cannot be answered from published tables. | mew checks the live schema in A-02. If the field is missing, the only lawful option is a lexicon extension. Record the gap. |
+| R3 | **No lexicon fields for roof-age basis or confidence** | Views can compute age from dates, but not from the estimator's basis and confidence, which conflicts with P0-9. | Map the estimator output onto existing structure or improvement fields if they exist. Otherwise publish the evidence date only, and record basis and confidence as a lexicon gap. |
+| R4 | **`resolved` contractors will be near 0%**, because Austin prints names, not taxpayer IDs | `property_improvement_has_contractor` is almost never written, and most contractor badges show `candidate` or `unresolved`. | Accept this honestly (PO decision on AD-05). Check in A-01 whether Austin publishes a contractor registration ID that crosswalks officially. |
+| R5 | **Atlas access is missing, and the Atlas repo is private** | Under the kit completion contract the county is never "published". The kit MCP 2.0 cannot serve Travis. | Request access early. Prepare `export-tables --atlas-page` output anyway. Use the P0-5 wording. Our own MCP over our CIDs proves MCP-readiness in the meantime. |
+| R6 | **README manifest versus the kit's "no parallel registry" rule** | A reviewer could read `runs/index.json` and the manifest as a parallel registry. | Keep the manifest strictly descriptive (CLI artifacts and receipts only, no county pointer), and state in the PR that Atlas remains the registry. |
+| R7 | **`tcad_id` may not be TCAD's `prop_id`**, and Austin spans 3 counties | Joins could be silently wrong, and counts inflated. | Test 1,000 rows against the roll and crosswalk in A-01. Count out-of-county permits separately. |
+| R8 | **Deleted Socrata rows are invisible to `:updated_at`** | False live permits remain after the source removes them. | Periodic key-set diff → `source_removed` tombstones. |
+| R9 | **TCAD and GIS return 403 or time out from this machine** | No property backbone. | Retry from the US runner only for geography-based blocks. Use the lawful bulk download or a records request. Never evade. |
+| R10 | **TCAD may lack sale dates** | Tenure is mostly "unknown". | Confirm in A-01 and show "Tenure unknown" with its reason. |
+| R11 | **Owner names do not split into first and last** | Person records fail validation. | Send trusts and businesses to `company` and count the remaining failures. |
+| R12 | **Filebase plan size** (1 to 5 GB free; a full county may be larger) | Upload fails, or availability lapses before an Atlas merge. | Measure CAR and tables size in the spike. Keep the second pin and the GitHub Release CARs. |
+| R13 | **AD-15 Fargate refresh plus a Postgres the operator chooses** | Mixing stacks, or a reachable database. | Run the AWS batch mode end to end. Keep the database private with no public endpoint. Leave it disabled by default. |
+| R14 | **Golden Path wants PagerDuty and Lexicon metric registration** | Reviewer deductions. | Use one SNS email subscriber per DLQ alarm. Document PagerDuty and the Lexicon/Main Dashboard metric registration as gaps in `kit-usage.md`. |
+| R15 | **Kit runtime files are `.mjs`** while the constitution requires TypeScript | Reviewer flag. | Keep the vendored files as provided. Write all new adapters, profiles and the publisher in TypeScript, and note it in Complexity Tracking. |
+| R16 | **Public gateways are slow or rate-limited during the live verification** | The two-gateway demo line fails on camera. | Warm the CIDs before the demo. Add a retry state in the UI. Use a small file artifact for the live fetch. |
 
+The A-02 action that unblocks R1–R3: have mew read the live lexicon for the `property_improvement`, `company`, `structure` and any reputation class, then confirm every frozen view column against a real `tables-export.json` from a pilot CAR before G5.
 
 </details>
 
 <details>
 <summary><strong>soofi-xyz-team-kit:metagross</strong> · skills: build-frontend-backends, integrate-ci-cd, apply-engineering-guidelines</summary>
 
-Metagross design consult for CountyLens (Oracle pipeline, Travis County TX). Read-only; no repo file changed. Sources read: README.md, docs/01-intent.md, docs/plan.md, docs/feature-list.md (NFRs), docs/02-design.md v1.1, design/HANDOFF.md, .specify/memory/constitution.md v3.0.2, ../assessment-guide/reference/A-oracle.md §3, §5, §7–§9. Skills loaded: build-frontend-backends, integrate-ci-cd, apply-engineering-guidelines.
+### Metagross design consult: CountyLens monorepo, API, hosting and CI (Task A)
+
+This is a read-only consult. I wrote no files and ran nothing that changes state. It follows AD-01 to AD-16 in `docs/decisions/0000-agent-architecture.md`, which override `design/HANDOFF.md` and the prototype. Where I found a conflict between documents, I list it under section 6 instead of choosing a side silently.
+
+Sources read: `README.md`, `docs/01-intent.md`, `docs/plan.md`, `docs/02-design.md`, `docs/decisions/0000-agent-architecture.md`, `design/04-design-update-g3.md`, `.specify/memory/constitution.md`, `../assessment-guide/reference/A-oracle.md` §3, §5, §7–§9, and the kit skills `apply-engineering-guidelines`, `build-frontend-backends` (with its rule files) and `integrate-ci-cd`.
 
 ### 1. Components and AWS services (with why)
 
-**Monorepo layout (Turborepo + pnpm workspaces, TypeScript only)**
+#### 1.1 Monorepo layout (Turborepo + pnpm workspaces, TypeScript only)
 
-| Path | Role | Why |
-|---|---|---|
-| `apps/web` | React + Vite CountyLens on Amplify Hosting. Atlas tokens only, List view only, DuckDB-WASM loaded lazily for Filters, SQL, Coverage, Runs, Data | Static hosting has about $0 idle cost, and query compute runs in the visitor's browser (README "no Oracle-hosted database"). |
-| `apps/api/src/trpc/` | tRPC router on Lambda (`@trpc/server/adapters/aws-lambda`), one router file per domain: `meta`, `search`, `explore`, `property`, `agent`, `ai`, `runs`, `coverage`, `data` (`ipns.resolve`, `verify.fetch` fallback), `admin` | Golden Path. One typed boundary; the `AppRouter` type is exported to `api-client`. |
-| `apps/api/src/mcp/` | A separate Lambda entry point: stateless Streamable HTTP `POST /mcp` (`@modelcontextprotocol/sdk`), using JSON-response mode with no SSE, plus a stdio build target | Constitution IV keeps MCP inside `apps/api`. HANDOFF §2 gives MCP its own handler, so it does not go through tRPC. JSON-response mode means it still works behind proxies that buffer responses. |
-| `apps/api/cdk/` | The single CDK app (`bin/app.ts`) with stacks `Serving`, `Api`, `Auth`, `Ops`, `Hosting`, `Scheduler` | Follows the skill's `apps/api/cdk` shape. One `cdk deploy --all`. Each stack can be destroyed and costed separately. |
-| `apps/bridge` | A small local TypeScript process next to Restate: it long-polls the SQS run-command queue, acknowledges commands, drops commands older than 15 min, and writes `runs/live.json` | Admin Start, Stop and Retry (HANDOFF §2) without exposing the laptop to the internet. |
-| `packages/query-core` | `views.sql`, the `dist_mi()` macro, bound-parameter filter builders, the SQL guard (the checks in HANDOFF §4.1.3), and Zod tool schemas shared by the UI, agent and MCP | One data model behind three interfaces. This is the "MCP-ready without changing the data model" proof. |
-| `packages/contract` | Zod schemas for manifest v1, `runs/index.json`, `coverage.json`, `merge_stats.json`, `cost.json`, `events.json`, `schema.json`, the gazetteer and view row types. It produces `contract/v1/` for Task B | Every reader validates published JSON before it renders it. Task B consumes the same package or its JSON Schema export. |
-| `packages/api-client` | The only tRPC client (`httpBatchLink`), React Query hooks, and API URL from `VITE_API_URL` | Skill non-negotiable: no duplicated client code. |
-| `packages/shared` | `ipfs` (CID → gateway URL derivation, streaming SHA-256 with `hash-wasm`, gateway lanes), `config` (typed env: region, `AI_PROVIDER`, domain, caps), formatting of provenance and missing-data copy | Gateway URLs are always derived, never stored. The single BBB wording lives in one place. |
-| `packages/tsconfig`, `packages/eslint-config` | Shared configs | Standard. |
-| `pipeline/` | The vendored kit runtime and local stack. It is **outside** the pnpm workspace because it uses npm and `package-lock.json` and runs as provided (constitution II, A1) | Do not let Turborepo rebuild or re-lock the kit runtime. Publication scripts that write manifests import `packages/contract` by path or through a built tarball. |
+```
+/
+├── apps/
+│   ├── web/                 React + Vite SPA → Amplify Hosting (one Amplify app)
+│   │   ├── src/atlas/       Atlas tokens + components (the only styling source)
+│   │   ├── src/engine/      DuckDB-WASM adapter (implements query-core QueryEngine)
+│   │   ├── src/routes/      Hub, Runs, Coverage, Explore (Filters/SQL/AI), Property, Data, Help·MCP
+│   │   └── amplify.yml      monorepo build: turbo run build --filter=web...
+│   └── api/                 tRPC + agent + MCP, bundled for Lambda
+│       ├── src/trpc/        init, context (Powertools in ctx), routers by domain
+│       ├── src/routers/     meta, runs, coverage, manifest, verify, explore, property, agent, ai, mcpProxy, admin
+│       ├── src/agent/       provider factory (AI_PROVIDER), tool binding from query-core, budget guard
+│       ├── src/mcp/         stateless Streamable HTTP handler + stdio entry
+│       ├── src/engine/      @duckdb/node-api adapter (implements QueryEngine)
+│       ├── src/handlers/    trpc.ts, mcp.ts (two Lambda entry points)
+│       └── src/config.ts    Zod-validated env
+├── packages/
+│   ├── contract/            Zod: run manifest v1, runs/index.json, view row types, provenance envelope; contract/v1 sample rows (real)
+│   ├── query-core/          views.sql, manifest→SQL binding, parameterised SQL builders, Zod tool schemas; engine-agnostic
+│   ├── api-client/          the only tRPC client (React Query hooks, splitLink); type-only import of AppRouter
+│   ├── shared/              gateway URL derivation, origin allowlist, formatting, "missing because" reasons
+│   ├── tsconfig/            base / react / node
+│   └── eslint-config/       includes the bans in §3.8
+├── infra/                   one CDK app (TypeScript), stacks listed in §1.3
+├── pipeline/
+│   ├── oracle-runtime/      vendored kit runtime, run as provided (constitution II)
+│   ├── local-stack/         existing Restate + Postgres
+│   └── publish/             TS: manifest builder, runs/index.json writer, CID-copy uploader, verify-manifest
+├── runs/                    <runId>/manifest.json + index.json (committed)
+├── tests/e2e/               Playwright, hosted URL only
+├── justfile                 setup, format, lint, type-check, test, build, deploy
+└── turbo.json, pnpm-workspace.yaml
+```
 
-**AWS services** (all in the configured region, `eu-north-1` for the demo; only CloudFront-side pieces are global)
+The skill's template places CDK under `apps/api/cdk/`. I put it in a top-level `infra/` instead, because the Amplify app, the CID-copy bucket, Cognito and the disabled scheduler are not API concerns. This is the only deviation from the skill, and it should be noted in Complexity Tracking.
 
-| Service | Use | Why / cost note |
-|---|---|---|
-| Amplify Hosting | `apps/web`, main branch on `feature/oracle-pipeline`, previews for `NNN-slug` branches, custom domain `countylens.aldarraj.com` | Skill rule: one Amplify app per frontend. $0 idle. |
-| S3 + CloudFront (OAC) | **CID-named immutable serving copies**: `/cid/<cid>/…parquet` with `Cache-Control: immutable` and CORS that exposes `Content-Range`, `Accept-Ranges` and `Content-Length`. Also `runs/live.json` (`no-store`) | Fast range reads for DuckDB-WASM and Lambda (HANDOFF §2 #64). Bytes are checked against the CID at release. Costs a few cents a month for storage, which `cost.json` must say. |
-| API Gateway **HTTP API (v2)** | `/countylens/trpc/*` and `/countylens/mcp`, stage throttling, custom domain `api.countylens.aldarraj.com` with an ACM certificate validated by a CNAME at Namecheap | Skill standard. Pay per request. The stage throttle protects MCP and the agent. |
-| Lambda (Node 22, arm64) | `TrpcFn`, `McpFn`, `IpnsPublishFn` (a step after publish) | Pay per request. DuckDB (`@duckdb/node-api`) with the `httpfs` and `parquet` extensions **pre-bundled in a layer**, and `home_directory=/tmp`. |
-| Bedrock (`eu.anthropic.claude-sonnet-4-6`) through the Vercel AI SDK | The agent | Constitution VI. Gateway fallback through `AI_PROVIDER`. |
-| DynamoDB on-demand | One item per UTC day: AI spend counter (atomic `ADD` with a condition) | The only hosted state the design allows. $0 idle. |
-| Cognito user pool (email OTP through SES) | Admin sign-in only, self sign-up off, `admin` group | Needed only for Start, Stop and Retry and Activity. The demo needs none of it. |
-| SQS run-command queue + DLQ | Admin commands to the local bridge | Queued external boundary (Golden Path). One DLQ alarm. |
-| SSM Parameter Store SecureString | IPNS key, bridge config, `AI_GATEWAY_API_KEY` | $0 idle. Secrets Manager costs $0.40 a month per secret (see conflict C-4). |
-| CloudWatch Logs, Metrics, X-Ray, one dashboard | Powertools output; `/countylens/query-log` kept 30 days, other logs 14 days | Constitution VIII. |
-| SNS (email topic) | Alarm fan-out; the documented PagerDuty substitute (constitution IX) | PagerDuty is not available on this demo account. |
-| EventBridge Scheduler | Incremental refresh schedule, defined with `state: DISABLED` | Constitution A7. |
-| AWS Budgets | $10 monthly alert, plus an 80% alarm on the AI daily cap | NFR-02. |
-| **No Route 53 hosted zone** | DNS stays at Namecheap: Amplify and ACM validation CNAMEs plus the `api.` CNAME | Removes the only fixed cost ($0.50 a month in HANDOFF §2). See C-2. |
+#### 1.2 Runtime components
 
-Ingestion stays on the local Restate + Postgres stack. Its Query DB is never deployed and is never reachable from any AWS component.
+| Component | Choice | Why |
+| --- | --- | --- |
+| Explorer UI | React + Vite static SPA on **Amplify Hosting**, Git-connected to the fork, with auto branch creation for `NNN-*` story branches | One Amplify app per frontend (skill rule). Branch previews come free with the Git connection. Static hosting has about $0 idle cost. |
+| Browser query engine | **DuckDB-WASM**, self-hosted bundle, lazy-loaded on Explore/SQL | Compute runs on the consumer's side, so no hosted DB (README, A7). Free-form SQL runs only here (P0-11). |
+| API | **tRPC v11** on **Lambda** (Node 22, arm64, 1,769 MB, 25 s) behind **API Gateway HTTP API v2** | Golden Path. HTTP API is the cheapest choice and has no idle cost. |
+| Agent | Inside the tRPC function, procedure `agent.ask`, **Vercel AI SDK** with the provider chosen by `AI_PROVIDER` | Constitution VI. One response, no streaming (AD-09). |
+| MCP | A **separate Lambda** (`mcp.ts`) on route `POST /mcp`, `@modelcontextprotocol/sdk`, stateless Streamable HTTP, bearer token | Separate throttling, logs and blast radius from the UI API. The token is never on the tRPC path (AD-10). |
+| Server query engine | `@duckdb/node-api`, one instance per container held in module scope, views bound once per manifest CID | Agent and MCP use the same `query-core` SQL as the UI. |
+| Data read path | **S3 bucket (private) + CloudFront (OAC, default `*.cloudfront.net` domain)** holding a byte-for-byte copy keyed by CID (AD-02). Fallback is the Filebase gateway, labelled "via server" or "fallback". | Public gateways are too slow for range reads. Using the default CloudFront domain avoids an ACM certificate in us-east-1, which the region rule does not allow. |
+| Verify (D-6) | Browser fetches from **ipfs.io and dweb.link**, SHA-256 via `crypto.subtle`, compared with the manifest | The verification must not touch our copy. |
+| AI spend guard | **DynamoDB on-demand**, one item per UTC day, atomic conditional `ADD` | $3/day cap and 80% alarm (AD-16). Cost is pennies. |
+| Secrets | **SSM Parameter Store SecureString** (MCP token, AI Gateway key), read through the Powertools Parameters utility with a cache | AD-14. Secrets Manager costs $0.40 per secret per month. |
+| Admin (built last, AD-12) | Cognito user pool (email code), JWT checked in a tRPC `adminProcedure` middleware (`aws-jwt-verify`), SQS command queue + DLQ + alarm, S3 `runs/live.json` | Nothing bills while idle. Built after D-1 to D-12. |
+| Scheduler | EventBridge Scheduler, `state: DISABLED`, pointing at a Fargate task definition (machamp owns it) | A7, AD-15. |
+| DNS | Namecheap only. Amplify custom domain `countylens.aldarraj.com` (Amplify-managed certificate). API custom domain `api.countylens.aldarraj.com` with a **regional ACM certificate in the configured region**, DNS-validated by a CNAME at Namecheap | AD-13: no Route 53 zone, $0 fixed cost. |
+| Observability | Powertools Logger, Tracer and Metrics. X-Ray active. Log groups at 14 days, query log at 30 days. Alarms go to SNS email, which is the documented PagerDuty substitute. | Constitution VIII, IX. AD-16. |
 
-**Frontend/backend boundary decisions**
+#### 1.3 CDK stacks (`infra/`, `env` from `CDK_DEFAULT_ACCOUNT`/`CDK_DEFAULT_REGION`, tag `project_name=oracle-travis`)
 
-- **Browser (W):** Filters, free-form SQL (only here), Coverage, Runs, Compare, Manifest, Catalog, and Verify (always the public gateways ipfs.io and dweb.link, plain file URLs, streamed hash).
-- **Lambda (L):** the agent, MCP, IPNS resolution, `search.suggest`, admin commands, the Activity summary, and a labelled "via server" fallback fetch. These use fixed, parameterised `query-core` tools only and never free-form SQL.
-- **Direct (D):** immutable JSON artifacts (`manifest.json`, `runs/index.json`, `coverage.json`) are fetched by CID, and every one is validated with `packages/contract`.
-- `/mcp` on the main domain is an Amplify rewrite (200 proxy) to `api.countylens.aldarraj.com/countylens/mcp`. If the spike shows the proxy drops headers or POST bodies, advertise the `api.` URL instead.
+1. `CountyLensData`: CID-copy bucket (block public access, SSE-S3, versioning off because objects are immutable), CloudFront with OAC, a response-headers policy for CORS and range headers, and a cache policy that is immutable for one year.
+2. `CountyLensCert`: the API regional certificate on its own, so the main stack never hangs waiting for DNS validation.
+3. `CountyLensApi`: HTTP API, stage throttles plus route throttles, the two `NodejsFunction`s, the DynamoDB spend table, SSM parameter **references** (values set out of band, never in CDK), alarms.
+4. `CountyLensWeb`: `CfnApp` + `CfnBranch` (`feature/oracle-pipeline`) + auto-branch pattern + `CfnDomain`. The SPA rewrite rule and env vars come from stack outputs.
+5. `CountyLensOps` (last): Cognito, SQS + DLQ + one DLQ alarm, the disabled schedule, and a GitHub OIDC provider + deploy role for CI.
 
 ### 2. Data contracts
 
-**Views** (`packages/query-core/views.sql`, over `elephant-cli export-tables` Parquet; exact class and column names come from `tables-export.json`, never from memory)
+#### 2.1 `packages/contract` (Zod is the source of truth; TS types are inferred from it)
 
-| View | Required columns (minimum) | Required semantics |
-|---|---|---|
-| `v_property` | `property_cid`, `request_identifier`, `address`, `lat`, `lon`, `coord_source`, `year_built`, `roof_age_years`, `roof_age_basis` (`permit` / `new_construction` / `built_year`), `roof_age_confidence` (`high` / `medium` / `low`), `last_sale_date`, `tenure_yrs` (nullable), `owner_name`, `owner_mailing_city`, `owner_mailing_state`, `owner_mailing_zip`, `owner_is_out_of_area`, `owner_is_regional`, `source_url`, `captured_at`, `run_id` | Tenure is `NULL` and shown as "unknown" when there is no sale date, never "long tenure". Out-of-area means the mailing ZIP is not on the Travis ZIP list; regional uses the configurable neighbouring-county list. An open replacement permit does not reset roof age. |
-| `v_roofing_permit` | `permit_cid`, `property_cid` (nullable when unmatched), `jurisdiction`, `permit_number`, `status_raw`, `status_class` (`open` / `stalled` / `closed`; excluded rows never appear), `issue_date`, `expiry_date`, `final_date`, `is_open`, `open_days`, `work_class`, `description`, `contractor_company_cid`, `contractor_name`, `contractor_resolution` (`resolved` / `unresolved`), `bbb_rating`, `bbb_status` (`rated` / `not_listed` / `blocked`), `bbb_url`, `source_url`, `captured_at`, `run_id` | `open_days = as_of − issue_date` for open and stalled permits. `as_of` is the run's `finishedAt`, never `now()`, so answers can be repeated per run. Roofing means the reviewed term list with excludes; unclear terms go to `needs_review` and are not shown as roofing. |
-| `v_contractor` | `contractor_company_cid`, `name`, `identity_source`, `resolution`, `bbb_rating`, `bbb_status`, `permit_count`, `roofing_permit_count` | Identity comes from official records only (A5). BBB is enrichment. |
-| `v_run` | `run_id`, `started_at`, `finished_at`, `kind` (`full` / `incremental`), `window_from`, `window_to`, `sources[]`, counts, deltas, `limitations[]`, `manifest_cid`, `previous_manifest_cid` | Built from `runs/index.json`. |
-| `v_lineage` | `entity_cid`, `merged_from[]` (`source`, `source_record_id`, `source_url`, `captured_at`, `digest`) | Backs "Merged from" and SC-2. |
-| `gazetteer` | `place_id`, `name`, `kind` (`place` / `zip`), `lat`, `lon`, `source` | Census places and ZIP centroids for the area search and the agent's geocoding. The model never geocodes. |
+- **`RunManifestV1`**: `schema: "oracle-travis-run-manifest.v1"`, `runId`, `county`/`state`/`fips`, `startedAt`/`finishedAt` (ISO UTC), `previousManifestCid` (nullable only for run 1), `sources[] {name, watermark, records, delta {added, changed, removed}, limitations[]}`, `artifacts[] {name, cid, codec: "file"|"directory", size, sha256, kind: "car"|"table"|"directory"|..., carCid?, rootCid?}`, `coverage {perSource[] {source, records, denominator, denominatorSource, capturedAt}, merge {entityType, inputRecords, canonical}[]}` (numbers only, AD-04), `origins?[]`. There is **no `ipns` field** (AD-03). Refinements reject a non-CIDv1 value (`bafy…`/`bafk…` base32), any stored gateway URL, and any directory without a `carCid`.
+- **`RunsIndexV1`**: `runs[] {runId, manifestCid, finishedAt}`, ordered. The app picks the latest run from this file, and nothing else.
+- **`Provenance`** (attached to every row and every answer): `{source_url, captured_at, table, table_cid, run_id, manifest_cid}`, plus `missing?: {field, reason}` with an enum of reasons (`bbb_blocked`, `bbb_not_found`, `tenure_unknown`, `no_coordinates`, `contractor_unresolved`, …). "Missing data says why" is enforced by this type.
+- **View row types** for `v_property`, `v_roofing_permit`, `v_contractor`, `v_run`, using mew's AD-07 names: `roof_age_years`, `roof_age_basis` (`permit|new_construction|built_year|unknown`), `roof_age_confidence`, `last_sale_date`, `tenure_years`, `tenure_basis`, `owner_is_out_of_area`, `owner_area_class`, `coordinate_source`, `status_raw`, `status_class` (`open|stalled|closed`), `issue_date`, `expiry_date`, `final_date`, `open_days`, `contractor_company_cid`, `resolution` (five AD-05 states), `bbb_status` (`rated|not_found|blocked|not_checked`). These are frozen in A-02 against a real `tables-export.json`. Until then they are provisional.
 
-**Serving Parquet.** A slim, geo-sorted projection (sorted by a geohash or Hilbert key, with row groups of about 10–20k rows) derived from the CLI-exported tables and published as its own CID. It is listed in the manifest as `kind: "serving"` with `derivedFrom: [cid…]`, so "derived from `elephant-cli` output" can be audited.
+#### 2.2 `packages/query-core`
 
-**Manifest:** `oracle-travis-run-manifest.v1` exactly as in A-oracle §8:
-- CIDv1 base32 everywhere; `codec` is `file` or `directory`.
-- `size` and `sha256` on every file; `carCid` on every directory.
-- `previousManifestCid` and `ipns {name, resolvedCid}`.
-- `runs/index.json` is the run history. Zod parses it with `.strict()`, so unknown fields fail CI and do not slip through.
+- `views.sql` is built **only** over the elephant-cli tables (AD-01). `bindManifest(manifest, baseUrl): string` emits the `read_parquet([...part URLs...])` prelude. Part URLs are derived as `${baseUrl}/${cid}`.
+- `QueryEngine` interface: `query<T>(sql, params): Promise<T[]>`. It has two implementations, one in `apps/web` and one in `apps/api`. query-core imports neither engine.
+- Tool schemas (Zod input and output), shared by `explore.*`, the agent and MCP: `search_properties {lat, lon | place, radius_mi ≤ 25, roof_min_years, permit: any|open|stalled, open_min_years, tenure_min_years, ooa, sort, page, limit ≤ 1000}`, `list_permits`, `get_property {property_cid}`, `get_coverage {run?}`, `list_runs`, `get_schema`. Output rows always carry `Provenance`. The radius search runs a bounding-box prefilter first, then haversine, as in §9.
 
-**tRPC contracts.** Use the 02-design §2 table as is. These fields are required on every result row, and the output schema enforces them: `cid`, `source_url`, `run`. The `agent.ask` output is `{answer, how, steps[], matches[], query{area, radius_mi, roof, permit, openYrs}, missing[], assumptions[], outcome: answered | failed | paused | throttled}`. `matches[n]` lines up with citation `[n]`.
+#### 2.3 tRPC surface (from `docs/02-design.md` §2; the `AppRouter` type is the contract the web app consumes)
 
-**MCP tools** (Zod input and output, max 1,000 rows): `search_properties`, `get_property`, `list_permits`, `get_coverage`, `list_runs`, `resolve_place`. Their arguments are the same Zod objects as the tRPC procedures, imported from `query-core`, not copied.
+The routers are `meta.latest`, `runs.list/get/compare/chain`, `cid.check`, `coverage.get`, `manifest.get`, `verify.fetch` (labelled fallback only), `schema.get`, `explore.search/closeMatches`, `property.get`, `search.suggest`, `agent.ask`, `ai.status`, `mcpProxy.call` (adds the token on the server), and `admin.*`.
 
-**Shared-package plan (dependency direction).** `contract` ← `query-core` ← (`apps/api`, `apps/web`). `shared` has no app dependencies. `api-client` depends only on the type export from `apps/api`. Nothing imports from `pipeline/`.
+`agent.ask` returns `{answer, how, steps[], matches[] (citation n → row n), query, missing[], outcome: answered|failed|paused|throttled|timed_out|cancelled}`.
+
+Changes must be **additive only**, because Amplify preview branches share one API deployment.
+
+#### 2.4 MCP
+
+The server exposes the same six query-core tools and no free-form SQL (P0-11). Requests without a token get 401, throttled requests get 429, and an Origin check applies. A stdio build is available for Claude Desktop.
 
 ### 3. Patterns that must be visible in the code
 
-1. **Turborepo:**
-   - `turbo.json` with `build` (`dependsOn: ["^build"]`), `lint`, `type-check`, `test` and `test:e2e` tasks.
-   - `pnpm-workspace.yaml` listing `apps/*` and `packages/*`, without `pipeline/`.
-   - `workspace:*` internal dependencies.
-2. **One client:** `apps/web` imports only from `@countylens/api-client`. A lint rule (`no-restricted-imports` on `@trpc/client`) enforces it outside that package.
-3. **tRPC on Lambda:**
-   - `awsLambdaRequestHandler` in `handler.ts`.
-   - `createContext` carries the Powertools `logger`, `tracer` and `metrics`, plus `requestId`.
-   - One middleware logs duration and outcome and emits `ItemsProcessed`, `ItemsFailed` and `Duration`.
-   - `.input(z…)` and `.output(z…)` on every procedure.
-   - An `adminProcedure` checks the Cognito JWT `admin` group.
-4. **Powertools on every Lambda.** Logger, Tracer and Metrics, X-Ray `ACTIVE`, JSON logs, `POWERTOOLS_SERVICE_NAME` set per function, and redaction of email and IP before anything is logged.
-5. **CDK conventions:**
-   - Region from `CDK_DEFAULT_REGION` or `AWS_REGION` only. CI greps the synthesized templates for a literal `eu-north-1` or `us-east-2` in `lib/`.
-   - `Tags.of(app).add('project_name','oracle-travis')`.
-   - `HttpApi` + `HttpLambdaIntegration` + `ApiMapping` with `apiMappingKey: 'countylens'`.
-   - A `CfnOutput` for every URL.
-   - `cdk synth --strict` passing the bootstrap-qualifier context.
-6. **Amplify:** `apps/web/amplify.yml` runs `pnpm turbo run build --filter=web...`. `VITE_API_URL` and `VITE_SERVING_BASE` are set per branch in the CDK `Hosting` stack, not in code. Rewrites cover the SPA fallback and the `/mcp` proxy.
-7. **CI/CD (integrate-ci-cd shape):**
-   - A root `justfile` with `setup`, `format`, `lint`, `type-check`, `test`, `build` and `deploy`.
-   - Caller workflows with `permissions: id-token: write` at the workflow and job level.
-   - A CDK-defined GitHub OIDC deploy role.
-   - The bootstrap qualifier discovered from `/cdk-bootstrap/*/version`, never guessed.
-   - Playwright runs only after deploy, against the hosted URL (the config throws on `localhost`). gitleaks runs on every push.
-8. **Queued boundary:** for SQS, the command has an idempotency key (`commandId`), a visibility timeout, `maxReceiveCount` 3 → DLQ, and one self-resolving `ApproximateNumberOfMessagesVisible > 0` alarm on the DLQ wired to SNS. Bridge polling is bounded to one consumer.
-9. **Provenance is a type, not a convention.** One `Provenance` Zod object (`source_url`, `captured_at`, `run_id`, `cid`) is embedded in every row schema. The UI component that renders a value takes a `Provenance` prop and will not render without one.
-10. **Six states per data screen:** a single `QueryState` discriminated union (`loading | empty | error | partial | rate_limited | ready`) used by every screen.
-11. **URL state:** one `exploreParams` Zod schema parses and serializes the query string (`at`, `place`, `r`, `roof`, `permit`, `openYrs`, `tenure`, `ooa`, `sort`, `sel`, `mode`). `view=map` coerces to `list`.
+1. **Turborepo + pnpm workspace protocol.** `turbo run build --filter=web...` in `amplify.yml`. All internal dependencies use `workspace:*`.
+2. **A single tRPC client** in `packages/api-client`. It uses `splitLink` so `agent.ask` (and `mcpProxy.call`) are **never batched**. This lets the HTTP API route `POST /trpc/agent.ask` carry its own throttle. A batched URL would bypass it.
+3. **Powertools in the tRPC context.** Logger, Tracer and Metrics are created once per handler and passed through `ctx`. Business metrics are emitted under namespace `CountyLens`: `QueriesServed`, `QueriesFailed`, `QueryDurationMs`, `AgentAnswered/Failed/Throttled/TimedOut`, `AgentTokens`, `McpCalls`, `McpUnauthorized`.
+4. **Zod-validated config** at module load in each app (`config.ts`). It fails fast and contains no literal region. A CDK assertion test plus a lint rule fail if `eu-north-1` or `us-east-2` appears anywhere outside config defaults.
+5. **Provider factory.** `getModel()` switches on `AI_PROVIDER` (`@ai-sdk/amazon-bedrock` with the `eu.` profile ID from config, or the AI SDK Gateway). Agent code never names a provider. The agent call sets `stopWhen` at 3 model steps, a tool-call counter at 6 or fewer, `maxOutputTokens: 1500`, and `abortSignal: AbortSignal.timeout(23_000)`.
+6. **Budget guard before every model call.** A DynamoDB conditional update decides between `paused` and proceeding. Actual token usage is recorded after the call.
+7. **Engine adapter.** query-core is engine-agnostic. The Lambda engine keeps the DuckDB instance in module scope, sets `home_directory`/`temp_directory` to `/tmp`, uses pre-bundled linux-arm64 extensions with `autoinstall_known_extensions=false`, and binds views once per manifest CID.
+8. **Atlas-only UI.** ESLint/stylelint ban raw colour, spacing and font literals and any non-Atlas component library in `apps/web`. A shared `<Provenance/>` and `<MissingReason/>` sit on every data display. `<ContractorBadge state>` has five variants, and the permit status shows "source says {status_raw}".
+9. **CID-derived URLs only.** `gatewayUrl(cid, gw)` and `copyUrl(cid)` in `packages/shared`. No stored gateway URL passes the contract schema.
+10. **Immutable CID copy.** The uploader checks each file's size and SHA-256 against the manifest before `PutObject` to `cid/<cid>`, refuses to overwrite an existing key, and sets `Cache-Control: public, max-age=31536000, immutable`.
+11. **The hosted-only Playwright guard.** The config throws if `baseURL` is localhost. The web app ships `/build.json` with the git SHA, and CI waits until the hosted SHA matches the commit before running the e2e tests.
+12. **CDK assertion tests** check that:
+    - every resource has the tag;
+    - the scheduler is `DISABLED`;
+    - there are no `AWS::SecretsManager::Secret`, `AWS::RDS::*` or `AWS::KMS::Key` resources and no provisioned concurrency;
+    - there is one alarm per DLQ;
+    - log retention is 14 or 30 days;
+    - no ACM certificate is in us-east-1.
 
 ### 4. Non-functional requirements (numeric thresholds)
 
 | Area | Threshold |
-|---|---|
-| Explore Filters (D-8, D-9), browser | p95 < 3 s from Find to rendered rows over the full county, cold page (NFR-01); p95 < 1 s for later queries in the session; ≤ 25 MB of Parquet columns fetched before the first result |
-| SQL panel | Result shows "n rows · ms". Display cap 1,000 rows; the guard rejects writes and DDL before DuckDB runs anything |
-| Web bundle | Initial JS ≤ 300 KB gzipped, excluding DuckDB-WASM, which loads lazily on the first query. LCP < 2.5 s on 390 px mobile (Lighthouse, simulated 4G) |
-| tRPC non-agent procedures | p95 < 1.5 s warm; cold start < 4 s (DuckDB layer init); Lambda arm64, 1,769 MB, timeout 25 s |
-| Agent `agent.ask` | p95 < 20 s end to end; hard stop at 25 s (the HTTP API integration maximum is 30 s); ≤ 6 tool steps; ≤ 3 model calls per answer; ≤ 1,500 output tokens; 10 answered questions per session (client), with the daily spend cap enforced on the server |
-| MCP | `tools/list` p95 < 500 ms warm; `tools/call` p95 < 3 s; max 1,000 rows per call; stage throttle 5 rps steady, burst 10, and `429` when exceeded |
-| Verify (D-6) | Files ≤ 50 MB per lane; 60 s timeout per lane; streamed hash; a 429 shows a countdown and is never reported as "failed" |
-| Admin run commands | Ack within 60 s, otherwise "Host offline"; commands expire after 15 min; DLQ after 3 receives |
-| Cost | $0.00 a month of fixed AWS charges with nothing enabled (no hosted zone, no Secrets Manager, no provisioned concurrency, no WAF, no customer KMS key), plus S3 storage of under $0.05 a month, stated in `cost.json`; budget alert at $10; AI daily cap sized for evaluation days (proposal: $3 a day), alarm at 80% |
-| Logs | Query log kept 30 days; all other log groups 14 days; zero PII or secrets (unit test on the redaction function) |
-| Data honesty | 100% of result rows and agent matches carry `cid`, `source_url` and `run` (enforced by the output schema; a Playwright check samples 25 rows) |
-| Accessibility and layout | WCAG 2.2 AA; touch targets 48 px; no inner scroll in Explore at 390, 768 and 1440 (`smeargle`) |
-| Quality | CI ≤ 15 min; ≥ 80% line coverage on `query-core` and `contract`; every golden query G1–G6 green against the deployed endpoint |
-| Caching | Artifacts under `/cid/*`: `max-age=31536000, immutable`; `runs/live.json`: `no-store`; `meta.latest` (IPNS resolution) cached for 60 s |
+| --- | --- |
+| Browser search (Filters) | p95 < 3 s per query once loaded; first DuckDB load ≤ 8 s with a progress bar (NFR-01, AD-16) |
+| Initial JS | ≤ 300 KB gzipped, excluding DuckDB-WASM (which is lazy-loaded) |
+| Web vitals (mobile, 4G profile) | LCP < 2.5 s, CLS < 0.1, INP < 200 ms; WCAG 2.2 AA; 48 px touch targets; responsive at 390 / 768 / 1440 |
+| API (non-agent procedures) | p95 < 1 s warm; cold start including DuckDB init < 3 s |
+| Agent | p95 < 20 s; server abort at 23 s; Lambda timeout 25 s; client "Took too long" at 25 s; HTTP API limit 29–30 s; ≤ 6 tool steps, ≤ 3 model calls, ≤ 1,500 output tokens |
+| MCP | `tools/list` < 500 ms; `tools/call` p95 < 3 s; ≤ 1,000 rows per call; route throttle 5 rps, burst 10 |
+| Throttles | `agent.ask` route 1 rps, burst 3; default stage 20 rps, burst 40 |
+| AI spend | $3/day hard cap; alarm at 80% ($2.40) |
+| Cost | $0.00 fixed per month with everything idle; S3 + CloudFront copy at cents per month; AWS Budget alert at $10 |
+| Verify (in the UI) | Both gateways succeed with matching size and SHA-256 for every artifact ≤ 50 MB; larger CARs are verified by the `verify-manifest` CLI (evidence file) |
+| Logs | 14 days; query log 30 days; zero secrets or PII (gitleaks in CI, log redaction) |
+| CI | ≤ 15 min; ≥ 80% line coverage on `query-core` and `contract`; golden queries G1–G6 pass on the hosted URL |
 
-### 5. P0 rules
+### 5. P0 rules (must never be broken)
 
-1. TypeScript only for apps, Lambdas, CDK and scripts. No Python outside PySpark/Glue. The kit runtime runs as provided.
-2. CDK only, and no console-created resources. No Amplify Gen2 backends and no AWS Blocks. The region always comes from config, never a literal.
-3. The browser and Lambdas read **only published, CID-addressed artifacts**. No code path, environment variable, security group or IAM policy reaches the local Query DB, Restate or Postgres.
-4. Free-form SQL runs only in the browser. Server-side tools are fixed, parameterised `query-core` functions with Zod input; no string concatenation into SQL.
-5. Every LLM call goes through the Vercel AI SDK, with the provider from `AI_PROVIDER`. Never import `@aws-sdk/client-bedrock-runtime`, `@anthropic-ai/sdk` or `openai`.
-6. Gateway URLs are derived from CIDs at render time and never stored as an identity. Verify never uses Filebase or our own CID copy as a lane.
-7. A published CID or manifest is never overwritten. The S3 `/cid/*` prefix is write-once (a bucket policy denies `PutObject` on existing keys through a condition, or S3 Object Lock in governance mode).
-8. Missing data is rendered as missing ("BBB: Blocked · 403 on 2026-10-17 · where available", "Tenure unknown"), never blank or invented. Test fixtures never ship to the hosted app.
-9. No secrets in git, logs, PR bodies or `VITE_*` variables. Secrets go in SSM SecureString. gitleaks blocks the merge.
-10. Nothing that bills while idle is enabled by default (A7). The scheduler is `DISABLED`, and nothing uses provisioned concurrency.
-11. The hosted URL is the only evidence. Playwright refuses to run against localhost.
-12. Every Lambda has Powertools Logger, Tracer and Metrics. Every DLQ has exactly one self-resolving alarm. No critical failure is handled by logging alone.
-13. The UI uses only Atlas tokens and components, and builds no map code, toggle or flag.
+1. The Query DB is never reachable from AWS, the API, the agent, MCP or the browser. No connection string exists in `apps/` or `infra/`.
+2. The app reads only elephant-cli output, through views. There is no serving table, derived file or Query DB export (AD-01).
+3. CIDv1 only. Published CIDs and CID-copy objects are never overwritten. Gateway URLs are derived and never stored.
+4. Verify uses ipfs.io and dweb.link only, never our copy or Filebase.
+5. Free-form SQL runs only in the browser. The agent and MCP use the fixed Zod tools, capped at 1,000 rows.
+6. Every displayed value or answer carries provenance. Missing values show a reason and are never left blank or guessed. No sample, prototype or fixture data ships (the "Running" run, Run 4, and the fake Try response are prototype only).
+7. TypeScript only. CDK only, with nothing created in the console. The region comes from config. Only CloudFront, WAF and CloudWatch Logs may use us-east-1. No Amplify Gen2 backends and no AWS Blocks.
+8. LLM calls go only through the Vercel AI SDK. `@aws-sdk/client-bedrock-runtime`, `openai` and `@anthropic-ai/sdk` are banned by lint.
+9. No secrets in git, logs, PRs or `VITE_*` variables. The MCP token never reaches the browser (Try a tool is proxied on the server).
+10. Nothing that bills while idle is on by default (scheduler disabled, no provisioned concurrency, no WAF, no KMS CMK, no Secrets Manager, no Route 53 zone).
+11. Only the hosted URL counts as evidence. Never merge the PR.
 
 ### 6. Open risks
 
-| # | Risk | Mitigation / decision needed at G3 |
-|---|---|---|
-| R-1 | **Bedrock at 10 requests a minute versus a 6-step agent.** Each answer could use up the whole minute, and the D-10 and D-11 questions asked back to back could be throttled on camera. | Geocode deterministically from the gazetteer; at most 3 model calls per answer (plan the tool arguments → run tools → summarize); SDK retry with backoff; cache answers per (run CID, normalized question) for 24 h, labelled; Gateway fallback. |
-| R-2 | **Lambda account concurrency on a new account may be 10.** In that case reserved concurrency (the design asks for 3–5) fails at deploy, because unreserved concurrency must stay ≥ 10. | Run `aws lambda get-account-settings` before A-03. If the limit is 10, drop reserved concurrency and rely on the stage throttle plus the DynamoDB spend counter, and record the change at G3. |
-| R-3 | **No streaming through the HTTP API.** It buffers responses, so the "steps streamed one by one" UX does not stream. A Lambda Function URL streams but bypasses the throttle (#71). | v1: return the full answer within 25 s and replay the steps in the UI. Stream only if the timing spike shows answers over 10 s, using API Gateway REST response streaming. |
-| R-4 | **DuckDB in Lambda:** native binary size, cold start, and `httpfs` trying to install extensions at runtime on a read-only filesystem. | Pre-bundle extensions in a layer, set `home_directory=/tmp`, measure cold start in the read-path spike, and keep the < 4 s threshold. |
-| R-5 | **Range and CORS on the fallback gateways.** ipfs.io and dweb.link may not expose `Content-Range`, and they rate-limit. That matters only on the fallback path, but it breaks DuckDB-WASM if the CID copy is down. | Spike (#69). Label the fallback as slow; never route Verify through the CID copy. |
-| R-6 | **Amplify connected to GitHub through CDK** needs a GitHub token (`accessToken`). SSM SecureString dynamic references are not supported for that property, and Secrets Manager costs money while idle. | Option A: create the Secrets Manager secret only for the deploy, then delete it (Amplify keeps the token). Option B: an Amplify app with no Git connection; CI uploads the build with `CreateDeployment` and creates a branch per story branch. Decide at G3. Also confirm Amplify Hosting is offered in `eu-north-1`. |
-| R-7 | **Cognito email OTP** needs the Essentials tier and SES as the sender. A new account's SES is in sandbox mode, and the domain identity needs DKIM CNAMEs at Namecheap. | Verify each admin address in the SES sandbox; record the DKIM CNAMEs in A-03. The demo needs no admin, so this is not on the critical path. |
-| R-8 | **The shared Spring-Oaks workflows are not reachable** from `HebaGaber`'s fork, and the Lexicon metric registry and Main Dashboard are private as well. | Keep the integrate-ci-cd *shape* (justfile recipes, OIDC, qualifier) in local workflows, a CloudWatch dashboard defined in CDK and a metric list in `docs/`, all recorded as documented substitutes in `kit-usage.md`. Workflows trigger on story branches and `feature/oracle-pipeline`, never on `main`. |
-| R-9 | **The `/mcp` proxy through an Amplify rewrite** may change headers, `Origin` or body size limits. | Use JSON-response mode, no SSE. If the spike fails, advertise `https://api.countylens.aldarraj.com/countylens/mcp`. |
-| R-10 | **Free plan credits.** An "Access Denied" may come from the plan, not the code. | Check `aws freetier get-account-plan-state` first; the budget alert stays at $10. |
-| R-11 | **Mixed package managers:** `pipeline/` uses npm and the workspace uses pnpm. | Keep `pipeline/` outside the workspace, with its own lockfile and CI job. |
+| Risk | Impact | Mitigation | When |
+| --- | --- | --- | --- |
+| **Constitution VI/XII and NFR-04 still name Secrets Manager for the Gateway key and MCP token, but AD-14 says SSM** | A reviewer flags a violation either way | PATCH the constitution wording and NFR-04 at G3 | G3 |
+| **`docs/plan.md` §3.2 lists an MCP `query` tool (read-only SELECT), which conflicts with P0-11** | A reviewer finds SQL on the server | Drop it from the plan. MCP gets the six fixed tools including `get_schema` | G3 |
+| AD-09/AD-11 both say "25 s", so Lambda kills the request before it can return `timed_out` | The demo shows a 5xx instead of "Took too long" | Layered timeouts: abort at 23 s, Lambda 25 s, client 25 s | A-14 |
+| Amplify Git connection needs a GitHub token. Secrets Manager breaks $0, and an `ssm-secure` dynamic reference may not be supported on `AWS::Amplify::App` | Hosting setup blocked or a fixed cost | Pass the token as a `noEcho` CfnParameter at deploy time from the local env. The fallback is manual zip deploys from CI, which loses automatic branch previews | A-03 |
+| Amplify Hosting availability in eu-north-1, and the custom domain with Namecheap DNS (CNAME verification) | Hosted URL delayed | Check before A-03. The `*.amplifyapp.com` URL is the agreed fallback (ASM-8) | A-03 |
+| Regional ACM certificate DNS validation stalls a deploy | A stack hangs for hours | Separate cert stack, deployed first. Use the execute-api URL until it is issued | A-03 |
+| `@duckdb/node-api` native binary and httpfs extension on Lambda arm64 | Cold-start failures | Bundle the linux-arm64 binary and extensions (Docker bundling, or a container image if the zip exceeds 250 MB). Measure in the read-path spike | A-02/A-03 spike |
+| DuckDB-WASM range reads need CORS to expose `Content-Range`, `Accept-Ranges`, `Content-Length` and `ETag` on CloudFront and S3 | Queries fail only in the browser | Response-headers policy plus a Playwright check on the hosted URL. No COOP/COEP headers (they would break the gateway fetches) | A-03 |
+| Gateway CORS, redirects (dweb.link redirects to a subdomain) and rate limits during the live Verify | D-6 fails on camera | Warm the CIDs before recording. Retry state in the UI. CLI evidence as the backup | A-11 |
+| CORS and preview origins: HTTP API wildcard-origin support is uncertain | Preview branches can't call the API | Handle CORS in the handler with the shared allowlist (`countylens.{domain}` plus a regex for `*.{appId}.amplifyapp.com`) | A-03 |
+| One API deployment serves every preview branch | A preview runs against a newer or older API | Additive-only procedures. Never rename or remove before the story merges | ongoing |
+| The company shared CI workflows (`Spring-Oaks-Capital-LLC/github-workflows`) and the company API domain mapping are not reachable from this fork or account | CI shape differs from the Golden Path | Same justfile recipes and the same stage order in local workflows, deploying via a GitHub OIDC role. Note it in `kit-usage.md` | A-03 |
+| Account concurrency limit may be 10 | Reserved concurrency fails at deploy | Run `aws lambda get-account-settings` first. Otherwise rely on throttles plus the spend cap (AD-11) | before A-03 |
+| PagerDuty and Lexicon metric registration need company access | Golden Path gap | SNS email as the documented substitute. List both as known gaps in the PR | A-16 |
+| Recomputing a UnixFS CID in the uploader depends on elephant-cli's chunker settings | False upload rejections | Check by size and SHA-256 against the manifest, which is itself CID-addressed, instead of recomputing the CID | A-03 |
+| Cognito email-code sign-in uses the default Cognito email sender (low daily quota) | Admin sign-in fails during review | Build it last (AD-12). The demo does not depend on it | last |
+| Free-plan credits run out | "Access Denied" in the demo | Budget alert at $10. Check `aws freetier get-account-plan-state` before debugging | ongoing |
 
-**Conflicts between source documents that G3 must settle**
-
-- **C-1 MCP auth.** Intent ASM-10 and NFR-04 say there is a bearer token in Secrets Manager. HANDOFF §2 and §4.8 say the MCP is public and read-only, with no token, and throttled. I recommend public read-only: the README asks only for "MCP-ready", MCP Inspector then needs no header, and there is no secret to manage. Amend ASM-10 and NFR-04.
-- **C-2 DNS.** Plan Q-02 says the DNS is at Namecheap, while HANDOFF and 02-design count a $0.50 Route 53 hosted zone. I recommend no hosted zone, so the idle cost is $0.00. Fix `cost.json` and the Coverage cost card to match.
-- **C-3 DuckDB read path.** Plan §4 and A-oracle say reads go through the Filebase gateway, while HANDOFF says a CID-named copy with gateway fallback. I recommend the CID copy on S3 + CloudFront, with the public gateway as fallback. Filebase stays the pin and is never the read path or a Verify lane.
-- **C-4 Secrets store.** Constitution VI and NFR-04 name Secrets Manager, while the design's cost traps say SSM SecureString. I recommend SSM SecureString and an amended constitution VI (PATCH).
-- **C-5 Layout.** Constitution IV puts MCP inside `apps/api`, while the earlier metagross draft in `docs/decisions/0000-agent-architecture.md` proposed `apps/mcp` and `infra/`. This answer follows the constitution and the skill (`apps/api/src/mcp`, `apps/api/cdk`).
-
-**Deployment and verification plan (summary)**
-
-1. Before A-03:
-   - Run the read-path spike: CID copy versus gateway range reads, DuckDB-WASM p95, DuckDB Lambda cold start, and the `/mcp` proxy.
-   - Check Lambda concurrency and Amplify availability in the region.
-   - Discover the CDK bootstrap qualifier.
-2. A-03 walking skeleton:
-   - `cdk deploy --all` creates Serving, Api, Hosting and Ops. Auth comes later.
-   - Add the Namecheap CNAMEs and the CI with OIDC.
-   - Playwright opens one real reroof permit by CID on `countylens.aldarraj.com`.
-3. Every later story:
-   - Push the story branch, which runs CI and deploys an Amplify preview plus the API.
-   - Run Playwright against the preview URL and `smeargle` at 390, 768 and 1440.
-   - Record evidence in `docs/evidence/`, then pass G7.
-4. Release:
-   - Run golden queries G1–G6 against the deployed agent and MCP.
-   - Take a Cost Explorer screenshot showing $0 fixed cost.
-   - Destroy the stacks after review only if the PO asks.
-
+**Relevant files:**
+- `/Users/hebagaber/Github/oracle-property-intelligence-platform-pipeline-travis-tx/docs/decisions/0000-agent-architecture.md`
+- `/Users/hebagaber/Github/oracle-property-intelligence-platform-pipeline-travis-tx/docs/02-design.md`
+- `/Users/hebagaber/Github/oracle-property-intelligence-platform-pipeline-travis-tx/docs/plan.md` (§3.2 MCP `query` tool conflict)
+- `/Users/hebagaber/Github/oracle-property-intelligence-platform-pipeline-travis-tx/.specify/memory/constitution.md` (articles VI and XII, Secrets Manager wording)
+- `/Users/hebagaber/Github/oracle-property-intelligence-platform-pipeline-travis-tx/docs/feature-list.md` (NFR-04)
 
 </details>
 
 <details>
-<summary><strong>soofi-xyz-team-kit:mew</strong> · skills: use-neutral-lexicon, apply-engineering-guidelines (data model only)</summary>
+<summary><strong>soofi-xyz-team-kit:mew</strong> · skills: apply-engineering-guidelines (use-neutral-lexicon could not be loaded; see its answer) · data model only</summary>
+
+### mew design consult: CountyLens data model (Travis County, TX), read-only
+
+**Skills.** `apply-engineering-guidelines` loaded. `use-neutral-lexicon` **is not available to me**: the Skill tool refused it because only the user can run it. I did not repeat its workflow by hand. Instead I confirmed names from three places: the live Atlas MCP, the kit's own `use-oracle` runtime code and reference docs, and the earlier mew consult in `docs/decisions/0000-agent-architecture.md` (appendix), which came from the bundled catalog.
+
+**What I could and could not confirm (2026-10-19)**
+
+| Status | What |
+|---|---|
+| **Live lexicon tools: still down** | `listClassesByDataGroup`, `listPropertiesByClassName` and `getPropertySchema` returned "Internal error" on both the kit server and the legacy server. No lexicon class, property or enum below is confirmed live. |
+| **Confirmed live (Atlas, Jackson FL, `county` group)** | `property` columns: `parcel_identifier`, `property_structure_built_year`, `property_effective_built_year`, `property_type`, `property_usage_type`, `request_identifier`, `source_http_request`, `cid`, `property_cid`, `data_group_cid`, and others. Link tables have the shape `relationship_cid`, `from_cid`, `to_cid`, `property_cid`, `data_group_cid` (seen on `property_has_address`). Atlas serves only Jackson FL, with 1 row per table. |
+| **Confirmed from kit code (`skills/use-oracle/`)** | The roof-age estimator output, `elephant.roof-age-estimate.v1` (`runtime/src/roof-age/estimator.ts`). The lineage columns `roof_age_*` (`integration.ts`), which the kit's roof-age doc says belong in **private reconciliation tables**. The internal permit record, `elephant.normalized-permit-record.v1` (`runtime/src/permits/contracts.mjs`). The `export-tables` layout (`reference/car-publication.md`). |
+| **Earlier bundled precedent only (unconfirmed)** | `structure.roof_date` / `roof_age_years` (minimum 1), the `improvement_status` enum (no Expired), the `improvement_type` / `improvement_action` enums, `sales_history.ownership_transfer_date`, `person` required fields, `company` having no Texas ID, `company_has_fact_sheet`, `parcel_has_geometry`, and `person_has_property` / `company_has_property` being deprecated. |
 
 ### 1. Components and AWS services (with why)
 
-This consult covers the data model only, so service choices belong to `metagross`, `oracle` and `machamp`. The model does constrain those choices in five ways:
+Only what the data model needs:
 
-- **Two separate stores with one boundary.**
-  - The internal Query DB (Postgres, local) holds the mutable reconciliation work: matching, merging, roof-age lineage, watermarks and tombstones.
-  - The published lexicon records (CIDs) are the only public truth. Every consumer reads `elephant-cli export-tables` Parquet. No service may read the Query DB at runtime.
-- **The contract layer is code, not a database.** `packages/query-core` holds the DuckDB views over the exported tables, plus Zod schemas derived from the same column list. The UI (DuckDB-WASM), the agent and MCP (DuckDB in Lambda) all import it. Any component that needs its own copy of the schema is a design smell.
-- **The data is graph-shaped, so views must join through link tables.** Every link is a separate relationship record (`property_has_address`, `property_has_property_improvement`, …). Lambda memory and Parquet part size have to suit multi-table joins, not one flat table.
-- **Some data has no lexicon class.** BBB ratings, the run manifest and run history fall outside the lexicon. They need a defined publication path (see § 2.6 and § 6, R1).
-- **The scheduled refresh writes new snapshots only.** It never updates a published table in place, so nothing needs a writable hosted store.
+- **`elephant-cli export-tables` Parquet is the only public data.**
+  - It produces one table per lexicon class and per relationship type, plus `properties` from the county index.
+  - Columns are the class schema plus `cid`, `property_cid`, `data_group_cid` and `request_identifier`. Nested values are JSON strings.
+  - **The CLI owns this layout.** The views read it as is (AD-01).
+- **`packages/query-core` is the contract, written as code.**
+  - It holds `views.sql`, plus Zod schemas generated from the same column list.
+  - **DuckDB-WASM** (browser) and **DuckDB `@duckdb/node-api`** (agent and MCP Lambda) both run it. There is no hosted database.
+- **S3 + CloudFront byte copy under each CID** (AD-02). It is the read path for the views and is checked against the CID on upload. It is a cache, never a second source.
+- **Run manifest and `runs/index.json`** (outside the lexicon). `v_run` and the coverage figures read them through DuckDB `read_json`. The manifest's `coverage` section is the only source of counts (AD-04).
+- **Internal Query DB** (local Postgres). It holds matching, merging, roof-age lineage, watermarks and tombstones. **No hosted component ever reads it.**
+- The scheduled refresh writes **new snapshots only**, so nothing needs a writable hosted store.
 
 ### 2. Data contracts
 
-#### 2.1 What I confirmed and what I could not
-
-- **Confirmed from the bundled class/relationship catalog** (same structure as the Elephant lexicon):
-  - classes: `property`, `parcel`, `address`, `geometry`, `structure`, `sales_history`, `deed`, `person`, `company`, `property_improvement`, `inspection`, `license`, `fact_sheet`, `business_location`, `communication`;
-  - data groups: `County`, `Property Improvement`, `Seed`, `Business Location`;
-  - the relationships, properties and enums listed below.
-- **Confirmed from a live published Atlas table** (Jackson County FL, `county` group, synced 2026-10-15):
-  - tables `property`, `parcel`, `address`, `property_has_address`, `address_has_parcel` and the flattened `properties`;
-  - the `property` table's columns, including `request_identifier`, `source_http_request`, `cid`, `property_cid`, `data_group_cid`, `parcel_identifier`, `property_structure_built_year`, `property_effective_built_year` and `property_type`.
-- **Not confirmed:**
-  - The live lexicon MCP tools (`listClassesByDataGroup`, `listPropertiesByClassName`, on both the kit and the legacy server) returned "Internal error". Treat every name below as bundled precedent until the A-02 export's `tables-export.json` confirms it.
-  - `contractor_has_license` appears in kit documentation but not in the bundled `Property Improvement` group.
-  - No class for a BBB profile or rating exists.
-  - `company` has no Texas business identifier field. Its only identifier is `sunbiz_document_number`, which is Florida-specific.
-  - `property_improvement` has no permit expiry date field.
-
-#### 2.2 Layer decisions
+#### 2.1 Layers
 
 | Layer | Concepts |
-| --- | --- |
-| Universal core | `person`, `company`, `address`, `geometry`, `communication`, `file`/`fact_sheet`, ingestion run, published artifact |
-| Reusable real-estate extension (lexicon) | `property`, `parcel`, `structure`, `sales_history`, `deed`, `property_improvement` (the permit), `inspection`, `license`, `business_location`, `tax` |
-| Organization-specific (CountyLens / Travis) | Roofing work classifier profile, Austin status-class mapping (open / stalled / closed / exclude), Travis ZIP list and regional-county list, BBB enrichment, lead flags (`is_open`, `open_days`, tenure, out-of-area), run manifest schema `oracle-travis-run-manifest.v1` |
+|---|---|
+| Universal core | person, company, address, geometry, file/fact sheet, ingestion run, published artifact |
+| Reusable real-estate extension (lexicon) | `property`, `parcel`, `structure`, `sales_history`, `deed`, `property_improvement` (the permit), `inspection`, `business_location`, `tax` |
+| CountyLens / Travis only (never lexicon) | Austin roofing work profile and status-class profile, the Travis ZIP list and regional-county list, BBB enrichment, lead flags (`is_open`, `open_days`, tenure, out-of-area), `oracle-travis-run-manifest.v1` |
 
-BBB and the lead flags stay out of the lexicon records. They are projections or enrichment, not property facts.
+#### 2.2 Source-to-lexicon mapping
 
-#### 2.3 Source → lexicon mapping (County and Property Improvement groups)
+| Source fact | Lexicon target | Rule |
+|---|---|---|
+| TCAD account (as printed) | `property.request_identifier`; `parcel.parcel_identifier` via `property_has_parcel` | Deterministic identity; never strip dashes or zeros (P0-4) |
+| Situs address | `address` via `property_has_address` (confirmed live) | Keep `unnormalized_address` |
+| GIS parcel centroid | `geometry` via `parcel_has_geometry` | `coordinate_source = gis_centroid` |
+| Austin permit lat/lon (fallback) | `address` latitude/longitude via `property_improvement_has_address` | `coordinate_source = permit_point` |
+| Year built | `property.property_structure_built_year` (confirmed live), `property_effective_built_year` | Integer |
+| TCAD property code | `property.property_type` / `property_usage_type` (confirmed live) | Mapped through a reviewed table; an unmapped code goes to review |
+| Roof | `structure.roof_date` via `property_has_structure` | Comes only from the estimator. The year-only fallback writes `YYYY` and never claims Jan 1. **Do not write `roof_age_years = 0`** (bundled minimum is 1); the view derives age. |
+| Owner | `person` / `company` via `sales_history_has_person` / `_company` | Do not use the deprecated `*_has_property`. Trusts, estates and entities go to `company`. |
+| Owner mailing address | `address` via `person_has_mailing_address` / `company_has_mailing_address` | Protected owners under Texas Tax Code §25.025 are not published |
+| Sale | `sales_history.ownership_transfer_date`; `deed` via `sales_history_has_deed` | A null date means tenure is unknown |
+| Austin permit | `property_improvement` via `property_has_property_improvement` | `permit_number`, `permit_issue_date`, `completion_date`, `permit_close_date`. The kit's internal record also has `expiration_date`, `final_inspection_date` and `application_received_date`; whether they are **lexicon** fields is unconfirmed. |
+| Work and status | `improvement_type`, `improvement_action`, `improvement_status` | Set **only** by the versioned profile |
+| Contractor | `company` via `property_improvement_has_contractor` | **Only** on an official registry-identifier match (AD-05, AD-06). No `contractor_has_person` and no `contractor_has_license`. |
+| Comptroller taxpayer | `company.name`; the taxpayer number in `request_identifier` + `source_http_request` | Lexicon extension request pending (AD-06) |
+| BBB | `fact_sheet` via `company_has_fact_sheet` (resolved companies only), or a schema-versioned artifact listed in the manifest | Enrichment, never identity |
+| Overture places | `business_location` (+ `_has_geometry`, `_has_address`, `_has_company` only on an official match) | Separate data group; the licence is recorded |
+| Provenance | `source_http_request`, `request_identifier` on every record; `*_has_fact_sheet` for documents | — |
 
-| Fact | Lexicon target (confirmed in bundled catalog) | Notes |
-| --- | --- | --- |
-| TCAD account | `property.request_identifier` + `parcel.parcel_identifier` (required, string) via `property_has_parcel` | Deterministic identity. One property per certified-roll account. |
-| Situs address | `address` via `property_has_address` | `address` requires `street_number`, `street_name`, `street_suffix_type`, `city_name`, `postal_code`, `state_code`, `county_name`, `country_code`. Keep `unnormalized_address`. |
-| Coordinates | `geometry` (`latitude` −90..90, `longitude`, `polygon`) via `parcel_has_geometry`. Permit points via `property_improvement_has_address` → `address.latitude`/`longitude` | Record `coordinate_source` (GIS centroid or permit point) in the view. |
-| Year built | `property.property_structure_built_year` (integer, 4 digits), `property_effective_built_year` | |
-| Property type | `property.property_type` (closed enum, e.g. `SingleFamily`, `Townhouse`, `VacantLand`, …) | TCAD codes map through a reviewed table. Unmapped codes go to review and are never guessed. |
-| Roof | `structure.roof_date` (pattern `YYYY`, `YYYY-MM` or `YYYY-MM-DD`), `structure.roof_age_years` (integer, **minimum 1**) via `property_has_structure` | Full lineage stays in the estimator output (`elephant.roof-age-estimate.v1`). |
-| Owner | `person` or `company` linked through `sales_history_has_person` / `sales_history_has_company`, from `property_has_sales_history` | `person_has_property` and `company_has_property` are **deprecated** in `County`; do not use them. `person` requires `first_name` and `last_name`. |
-| Owner mailing address | `address` via `person_has_mailing_address` / `company_has_mailing_address` | |
-| Sale / tenure | `sales_history.ownership_transfer_date` (date, nullable), `purchase_price_amount`, `sale_type` (enum); `deed` (`book`, `page`, `instrument_number`, `deed_type`) via `sales_history_has_deed` | |
-| Values | `tax` via `property_has_tax` | Tax property names not confirmed. |
-| Permit | `property_improvement` via `property_has_property_improvement` (1:N) and `parcel_has_property_improvement` | Austin `permit_number` → `permit_number`; `issue_date` → `permit_issue_date`; `completed_date` → `completion_date` and/or `permit_close_date` (all `format: date`). The profile decides which date is the terminal date. |
-| Permit type | `improvement_type` (enum includes `Roofing`, `Solar`, `MechanicalHVAC`, `GeneralBuilding`, …); `improvement_action` (`Addition`, `Alteration`, `New`, `Other`, `Remove`, `Repair`, `Replacement`) | Set by the versioned classifier profile, never by SQL. |
-| Permit status | `improvement_status` (`Cancelled`, `Completed`, `InProgress`, `OnHold`, `Permitted`, `Planned`) | The enum has no "Expired" member, so the stalled class cannot come from this field. Keep the raw `status_current` too (see § 6, R2). |
-| Contractor | `company` via `property_improvement_has_contractor` (1:N), **only on an official match**; `contractor_type` enum (`Builder`, `DIY`, `GeneralContractor`, `HandymanService`, `PropertyManager`, `Specialist`, `Unknown`); `contractor_has_person` (company → person) | An unresolved contractor gets **no** company edge. Its raw name survives only as a search key. |
-| Inspection | `inspection` (`inspection_number`, `inspection_status`, `completed_date`, `scheduled_date`, …) via `property_improvement_has_inspection` | Only if A-01 finds inspection data. |
-| Business (Comptroller) | `company.name` | No Texas identifier field exists (see § 6, R3). |
-| Places (Overture) | `business_location` (`name`, `basic_category`, `operating_status`, `source_system`, `source_record_identifier`, `source_record_version`, `source_release`, `source_confidence`, `source_provenance`), with `business_location_has_geometry`, `_has_address`, `_has_parcel`, `_has_company` | Separate data group. `_has_company` only on an official match. |
-| Provenance | `source_http_request` on every record; `request_identifier`; `*_has_fact_sheet` for supporting documents | |
+**Unmatched permits.** The kit's permit record must be bound to the parcel it was requested for (`contracts.mjs` superRefine), and every exported table carries `property_cid`. So a permit with no Travis property **is not published**. It stays in the Query DB and is **counted** in the manifest `coverage` section (with `parcel_match` totals). This settles the nullable `property_cid` question from the earlier consult: in public views, `property_cid` is **non-null**.
 
-#### 2.4 Contract views (`query-core/views.sql`, version `contract/v1`)
+#### 2.3 Contract views (`contract/v1`, names aligned with AD-07 and AD-08)
 
-Each view row carries provenance and an as-of date:
+Every row carries `run_id`, `as_of_date`, `source_url`, `captured_at`, and the record `cid` plus its table CID from the manifest.
 
-- `run_id`, `as_of_date`, `source_url`, `captured_at`, `source_digest` (or source record CID).
 - **`v_property`** (one row per certified-roll account):
-  - `property_cid`, `request_identifier`, `parcel_identifier`, situs address, `lat`, `lon`, `coordinate_source`;
-  - `year_built`, `roof_age_years`, `roof_age_basis` (`permit` / `new_construction` / `built_year` / `unknown`), `roof_age_confidence` (`high` / `medium` / `low`), `roof_age_anchor_date`, `roof_age_anchor_precision` (`day` / `month` / `year`), `roof_age_caveats`;
-  - `last_sale_date`, `tenure_years`, `tenure_basis` (`sale_date` / `unknown`);
-  - `owner_name`, `owner_kind` (`person` / `company`), `owner_mailing_zip`, `owner_mailing_state`, `owner_is_out_of_area` (`true` / `false` / `null`), `owner_area_class` (`in_county` / `regional` / `out_of_area` / `unknown`).
-- **`v_roofing_permit`** (one row per accepted or needs-review roofing permit):
-  - `permit_cid`, `property_cid` (nullable), `parcel_match` (`tcad_id` / `address` / `unmatched`), `jurisdiction`, `permit_number`;
-  - `status_raw`, `improvement_status`, `status_class`, `issue_date`, `final_date`, `expiry_date`, `is_open`, `open_days`;
-  - `work_class_raw`, `description`, `roofing_classification` (`accepted` / `needs_review`), `classifier_profile_version`;
-  - `contractor_company_cid` (nullable), `contractor_name_raw`, `contractor_resolution` (`resolved` / `unresolved` / `ambiguous`), `bbb_status` (`rated` / `not_found` / `blocked` / `not_checked`), `bbb_rating`, `bbb_url`, `bbb_captured_at`.
-- **`v_contractor`** (one row per resolved company, plus one aggregate row per distinct unresolved name key that is flagged unresolved): `contractor_company_cid`, `name`, `identity_source`, `resolver_version`, BBB fields, `permit_count`, `roofing_permit_count`.
-- **`v_run`**: `run_id`, `started_at`, `finished_at`, the `sources[]` (name, watermark, records, added / changed / removed, limitations), `manifest_cid`, `previous_manifest_cid`, `ipns_name`, `resolved_cid`.
+  - identity and location: `property_cid`, `request_identifier`, `parcel_identifier`, `situs_address`, `lat`, `lon`, `coordinate_source` (`gis_centroid` / `permit_point` / `none`);
+  - roof: `year_built`, `roof_date`, `roof_date_precision` (`day` / `month` / `year`), `roof_age_years`, `roof_age_basis` (`permit` / `new_construction` / `built_year` / `unknown`), `roof_age_confidence` (`high` / `medium` / `low` / `none`);
+  - tenure: `last_sale_date`, `tenure_years`, `tenure_basis` (`sale_date` / `unknown`);
+  - owner: `owner_name`, `owner_kind`, `owner_mailing_state`, `owner_mailing_zip`, `owner_is_out_of_area` (true / false / null), `owner_area_class` (`in_county` / `regional` / `out_of_area` / `unknown`), `owner_withheld` (bool).
+- **`v_roofing_permit`** (one row per profile-accepted or `needs_review` roofing permit):
+  - identity: `permit_cid`, `property_cid`, `jurisdiction`, `permit_number`;
+  - status and dates: `status_raw`, `improvement_status`, `status_class` (`open` / `stalled` / `closed`), `issue_date`, `expiry_date`, `final_date`, `is_open`, `open_days`;
+  - work: `work_class_raw`, `description`, `roofing_classification` (`accepted` / `needs_review`), `classifier_profile_version`;
+  - contractor and BBB: `contractor_name_raw`, `contractor_company_cid` (null unless resolved), `contractor_resolution`, `bbb_status` (`rated` / `not_found` / `blocked` / `not_checked`), `bbb_status_reason`, `bbb_rating`, `bbb_url`, `bbb_captured_at`.
+  - `exclude` permits are not in the view.
+- **`v_contractor`** (one row per resolved company, plus one row per distinct unresolved printed name marked unresolved): `contractor_company_cid`, `name`, `resolution`, `identity_source`, BBB fields, `permit_count`, `roofing_permit_count`.
+- **`v_run`**: `run_id`, `started_at`, `finished_at`, `sources[]` (name, watermark, records, added / changed / removed, limitations), `coverage`, `manifest_cid`, `previous_manifest_cid`.
+  - **Drop `ipns_name` and `resolved_cid`** (AD-03). The earlier consult listed them.
 
-#### 2.5 Derivation contracts
+#### 2.4 Derivations (view projections; never stored as truth)
 
-These are projections: they are recomputed from published records for a given `as_of_date` and never stored as truth.
+- **`as_of_date` = the run's `finishedAt` date from the manifest**, not `now()`. A run's answers can then be reproduced and tested.
+- **Roof basis and confidence can be derived from public data, with no regex.**
+  - `permit` / `high`: `roof_date` equals the `completion_date` or `permit_close_date` of a linked `property_improvement` with `improvement_type = Roofing` and `improvement_action = Replacement`.
+  - `new_construction` / `medium`: the same match, with `improvement_action = New`.
+  - `built_year` / `low`: `roof_date` is a 4-digit year equal to `property_structure_built_year`.
+  - `unknown` / `none`: anything else.
+  - This mirrors the estimator's fixed rules: replacement is high, new construction is medium, built year is low.
+- **Roof age:** `roof_age_years` = whole years from `roof_date` to `as_of_date`. A year-only date uses calendar-year subtraction. 0 is allowed.
+- **Open days:** `open_days = as_of_date − issue_date` when `status_class ∈ {open, stalled}`; otherwise null.
+- **Stalled:** comes from the profile's mapping of `status_raw` (Expired, Expired - License), or an open status with `expiry_date < as_of_date`. **Expired is never mapped to Completed or Cancelled.**
+- **Tenure:** `tenure_years = floor((as_of_date − max(ownership_transfer_date)) / 365.25)`. With no dated sale, the result is null with basis `unknown`.
+- **Out of area:** the mailing ZIP is checked against a versioned Travis ZIP list and a regional-county list. A missing ZIP gives `unknown`.
 
-- **Open days:** `open_days = as_of_date − issue_date`, only when `status_class ∈ {open, stalled}`; otherwise null.
-- **Stalled:** derived from `status_raw ∈ {Expired, Expired - License}`, or from an open status with `expiry_date < as_of_date`.
-- **Tenure:** `tenure_years = floor((as_of_date − max(ownership_transfer_date)) / 365.25)`. With no dated sale, the result is `null` and `tenure_basis = unknown`, never "long tenure".
-- **Out-of-area:** mailing `postal_code` against a versioned Travis ZIP list and regional-county list. A missing mailing ZIP gives `unknown`.
-- **Roof age:** comes only from the kit estimator, with the Travis source profile. An open replacement permit never resets it.
+#### 2.5 Data outside the lexicon
 
-#### 2.6 Data outside the lexicon
-
-- **Run manifest:** `oracle-travis-run-manifest.v1`, following reference § 8.
-- **`runs/index.json`:** the run history.
-- **BBB enrichment:** a schema-versioned artifact keyed by `company` CID. The preferred lexicon-valid carrier is a `fact_sheet` linked by `company_has_fact_sheet` (confirmed in `County`). Each of these is listed in the manifest with its CID and SHA-256.
+- The run manifest (reference § 8, with no IPNS block) and its `coverage` section: counts and aggregate match and merge counts only.
+- `runs/index.json`.
+- BBB enrichment (see § 2.2).
+- Roofing and status profiles (versioned, with SHA-256), the Travis ZIP list and the regional-county list. Each is published as a manifest artifact so the derivations can be checked.
 
 ### 3. Patterns that must be visible in the code
 
 1. **Deterministic identity and idempotent loads.**
-   - Property identity: TCAD account → `request_identifier`.
-   - Permit identity: `(jurisdiction, permit_number[, source row key])`.
-   - Company identity: the official registry key, never the name.
-   - Re-running a load or the roof-age apply step writes 0 rows (that test is part of the evidence).
-2. **Profile-driven classification.**
-   - A versioned source profile, with its SHA-256 recorded, maps Austin `status_current`, `permittype`/`work_class`/`description` terms, and the solar/PV, RTU, deck and "roof-mounted" excludes onto `improvement_type`, `improvement_action`, `improvement_status` and `status_class`.
-   - Unmapped terms → `needs_review`.
-   - **No regex classification inside `views.sql` or the product query** (kit rule: "Do not classify with product-query regex").
-3. **Links are their own records.** Views join through relationship tables (`property_has_property_improvement`, `property_improvement_has_contractor`, `sales_history_has_person` / `_company`, `parcel_has_geometry`). Foreign IDs are never copied into an entity as shortcuts.
-4. **History is append-only.** Each run is a new snapshot. Corrections arrive as new records under a new CID; tombstones remove stale rows from the next snapshot; old CIDs stay untouched. "Current" values are projections for a given `as_of_date`.
-5. **Unknown is a real value, separate from false.** Tri-state or enum columns cover tenure, out-of-area, BBB status, contractor resolution and parcel match. The UI and agent render the reason, never a blank.
-6. **Provenance columns on every view row,** plus the shared roof-age lineage (`anchor`, `confidence`, caveats, profile version).
-7. **One schema source.** The Zod schemas in `query-core` are derived from the view column list. A contract test fails if any view column or type differs from the Zod schema or from `contract/v1/`.
-8. **Contractor identity gate.** A row is `resolved` only when a verified `property_improvement_has_contractor` edge exists. BBB and `business_location` never create or decide that edge.
-9. **Watermarks and run deltas.**
-   - Per-source watermarks: Socrata `:updated_at`, TCAD export date and artifact hash, BBB harvest date.
-   - Each run records added / changed / removed counts in its manifest.
+   - Property key: the TCAD account. Permit key: `(jurisdiction, permit_number[, source row key])`. Company key: the registry ID.
+   - A re-run writes 0 rows, and a test proves it.
+2. **Profile-driven classification.** Profiles set the `improvement_*` enums and `status_class`; unmapped terms become `needs_review`. **No `LIKE '%ROOF%'` or regex in `views.sql`, the agent or MCP.**
+3. **Joins go through link tables** (`from_cid` / `to_cid`). No copied foreign IDs.
+4. **Append-only snapshots.** Corrections arrive as new CIDs, tombstones act on the next snapshot, and "current" means "as of a run".
+5. **Unknown is a real value, separate from false,** for tenure, out-of-area, BBB, resolution and coordinates. Every unknown has a reason column or code that the UI and agent render.
+6. **Provenance columns on every view row.**
+7. **One schema source.** Zod is generated from the view columns. A contract test fails if the views drift from Zod, from `contract/v1/`, or from the real `tables-export.json`.
+8. **Contractor gate.** `resolved` if and only if a `property_improvement_has_contractor` edge exists. BBB and places never create that edge.
+9. **Per-source watermarks** (Socrata `:updated_at`, TCAD export date plus artifact hash, BBB harvest date), with per-run added / changed / removed counts in the manifest.
 
 ### 4. Non-functional requirements (numeric thresholds)
 
 | NFR | Threshold |
-| --- | --- |
-| Property completeness | `v_property` row count = TCAD certified-roll account count, with every difference itemised. 0 unexplained differences. |
-| Coordinate coverage | `lat`/`lon` on ≥ 99% of roll properties; the remaining ≤ 1% is classified by reason |
-| Provenance coverage | 100% of rows in every contract view have non-null `source_url`, `captured_at` and `run_id` |
-| Roofing classifier precision | ≥ 24 of 25 correct in a random 25-row spot check per profile version; 0 solar/PV or RTU permits in `accepted` |
-| Classifier review queue | `needs_review` count is reported every run and stays ≤ 5% of candidate roofing permits before the full publish |
-| Permit-to-parcel match | ≥ 97% of Austin roofing permits matched (`tcad_id` is null on 2.6% of all rows); every unmatched permit is kept and counted |
-| Contractor identity | 0 rows marked `resolved` without an official-registry edge; resolved, unresolved and ambiguous counts published each run |
-| Idempotency | Re-running the same load or roof-age apply with the same inputs writes 0 rows |
-| Immutability | 100% of earlier-run CIDs still resolve after each republish; ≥ 3 runs in `runs/index.json`, each with a distinct `manifest_cid` |
-| Query latency | 5-mile radius + roof-age query on the full county, p95 < 3 s (SC-07) |
-| Agent correctness | Recall ≥ 80% of the top-N rows against the `query-core` SQL on G1–G4; G6 returns 0 rows and says so |
-| MCP read-only query | SELECT only; ≤ 1,000 rows per call |
-| Contract stability | Changing any column name, type or meaning requires `contract/v2`. `v1` stays published under its CID. |
-| Derived-value sanity | `open_days ≥ 0`; `roof_age_years ≥ 0` in views; no dates in the future relative to `as_of_date` |
+|---|---|
+| Property completeness | `v_property` rows = TCAD certified-roll accounts, 0 unexplained differences (protected owners still counted) |
+| Coordinates | ≥ 99% of properties have `lat`/`lon`; the ≤ 1% gap is classified by reason |
+| Provenance | 100% of view rows have non-null `source_url`, `captured_at`, `run_id` and `cid` |
+| Permit match | ≥ 97% of Austin roofing permits joined to a Travis property; 100% of the rest counted in `coverage` |
+| Classifier | ≥ 24 of 25 correct per profile version; 0 solar/PV or RTU permits `accepted`; `needs_review` ≤ 5% |
+| Contractor | 0 `resolved` rows without a registry edge; counts for all five states in `coverage` each run |
+| Idempotency | Re-load or re-apply writes 0 rows; the same archive gives the same tables root CID |
+| Immutability | ≥ 3 runs; 100% of earlier CIDs still resolve; each run has a distinct `manifest_cid` |
+| Derived sanity | `open_days ≥ 0`; `roof_age_years ≥ 0`; no date after `as_of_date` |
+| Query | 5-mile radius + roof-age query p95 < 3 s in the browser once loaded; MCP/agent ≤ 1,000 rows per call |
+| Contract | Any rename, retype or change of meaning requires `contract/v2`; `v1` stays under its CID |
+| Tests | ≥ 80% coverage on `query-core` and `contract` |
 
-### 5. P0 rules
+### 5. P0 rules (must never be broken)
 
-1. Never publish, export or expose the Query DB. Public tables come only from `elephant-cli export-tables`.
-2. Never mutate a published CID. New data means a new CID, and run history keeps every earlier CID.
-3. Never set contractor identity from the permit's name text, BBB or places. Without an official match the contractor stays `unresolved`.
-4. Never invent values:
-   - no synthesised roof dates (age alone never yields a date; a built-year fallback keeps year precision);
-   - no enum members that are not in the lexicon;
+1. Public data comes only from `elephant-cli export-tables`. The Query DB is never published or reachable (A2).
+2. Published CIDs never change. Run history keeps every CID (A3).
+3. Contractor identity comes only from an official registry ID. A printed name, BBB or places never decide it (A5, AD-05).
+4. No invented values:
+   - no roof date made from an age;
+   - no lexicon enum members that don't exist;
    - no "long tenure" without a dated sale;
-   - no BBB rating without a captured source.
-5. Never classify roofing permits or statuses with ad hoc regex in views or the agent. Only the frozen, versioned profile classifies.
-6. An open replacement permit never resets roof age, and an `Expired` permit is never mapped to `Completed` or `Cancelled` to fit the enum.
-7. Every displayed row and every agent answer carries its CID and source provenance. Missing data states its reason.
-8. Do not use the deprecated `person_has_property` / `company_has_property`. Ownership goes through `sales_history`.
-9. Never fetch from a blocked source with evasion. A source that returns 403 is recorded as `blocked` in the data, not as absent.
-10. The contract is frozen at `v1` once Task B consumes it. Changes are additive under a new version only.
+   - no BBB rating without a captured source;
+   - Expired is never mapped to Completed or Cancelled.
+5. Roof age comes only from the kit estimator with the Travis profile. An open replacement permit never resets it.
+6. Classification lives only in versioned profiles, never in view, agent or MCP SQL.
+7. Every row and every answer carries a CID and provenance. Missing data says why.
+8. The TCAD ID is kept exactly as printed. Protected owners (Texas Tax Code §25.025) are never published.
+9. Do not use the deprecated `person_has_property` / `company_has_property`.
+10. A source that returns 403 is recorded as `blocked` in the data, never fetched with evasion.
 
 ### 6. Open risks
 
-- **R1. BBB and run metadata have no lexicon class.** They cannot travel as ordinary lexicon records through `elephant-cli`.
-  - Decide in A-02: a `company_has_fact_sheet` carrier, or a separate schema-versioned artifact listed in the manifest.
-  - Confirm that either path satisfies constitution A2.
-- **R2. The status enum cannot express "stalled", and there is no expiry field.** `improvement_status` has no Expired member, and `property_improvement` has no expiry date, while the design's stalled rule depends on `expiresdate`.
-  - Keep `status_raw` and the expiry date in the source payload, and surface them in `v_roofing_permit`.
-  - Decide the mapping for Expired in the profile, and flag it as an extension request if needed.
-- **R3. `company` has no Texas identifier.** The only identifier is `sunbiz_document_number`. Comptroller taxpayer and SOS file numbers have nowhere to go, so the deterministic company identity has no lexicon home. Options:
-  - a fact sheet;
-  - an identifier inside `source_http_request` and `request_identifier`;
-  - a lexicon extension request.
-- **R4. `structure.roof_age_years` has a minimum of 1.** A roof replaced in the current year (age 0) fails validation. Do not round it up. Write `roof_date` only, and derive age in the view.
-- **R5. `person` and `address` have strict required fields.**
-  - `person` requires `first_name` and `last_name`, but TCAD owner strings such as "SMITH JOHN & MARY", trusts and estates do not split cleanly.
-  - `address` requires a street suffix and number, which PO boxes and foreign mailing addresses lack.
-  - A parsing policy is needed: route entity owners to `company`, keep `unnormalized_address`, and count the records that fail validation.
-- **R6. TCAD may not carry sale or deed dates.** If not, tenure is `unknown` for most properties and the README's "10-year tenure" query becomes mostly unknown. A-01 must confirm this.
-- **R7. Column names have drifted between documents.** `design/HANDOFF.md` uses `roof_age_yrs`, `owner_out_of_area`, `tenure_yrs`, `contractor_id`, `bbb_status`, `centroid`, while reference § 5 uses `roof_age_years`, `owner_is_out_of_area`, `contractor_company_cid`. A-02 must freeze one set (I recommend the `_years` / `_cid` forms in § 2.4) and update the prototype procedure contract.
-- **R8. Austin permit identity is unverified.** Whether `permit_number` is unique per row in `3syk-w9eu` (versus several rows per permit for sub-work) must be checked before the identity key is fixed. Otherwise duplicates inflate the counts or merge distinct permits.
-- **R9. The live lexicon tools are unavailable.** Every name above is bundled precedent. A-02 must check them against `tables-export.json` from a real export before freezing.
-- **R10. "Duplicates merged" needs a definition per entity type** (property, owner, company), with a measurable statistic and a worked example. The model supports it through deterministic identity, but the merge rules for owners across TCAD rows are not yet written down.
+- **R1 (high). Per-permit contractor states other than "resolved" have no public carrier.** AD-05 and the design show `candidate`, `ambiguous` and `conflicting` badges per permit. Those come from Query DB matching, and AD-04 allows only aggregate counts to leave it. From public tables, a view can derive only resolved / not resolved.
+  - Decide in A-02 with oracle and the PO: find a lexicon-valid carrier, or show non-resolved rows as `unresolved` plus the counts.
+- **R2 (high). Public carriers for `status_raw`, `expiry_date` and `contractor_name_raw` are unconfirmed.** The kit's internal permit record has `expiration_date`, `description` and contractor names, but whether `property_improvement` publishes them is unknown. If it doesn't:
+  - the stalled rule falls back to `improvement_status` alone;
+  - AD-08's "source says Expired" has no source.
+  - Check `tables-export.json` in the A-02 spike before freezing anything.
+- **R3. Roof-age lineage is private.** The `roof_age_*` columns are reconciliation-only, so `roof_age_basis` and `roof_age_confidence` must use the § 2.4 derivation from public fields. Confirm `structure` is exported with `roof_date`, and test the derivation against the estimator output for 25 properties (they must match 25 of 25).
+- **R4. Live lexicon tools are down.** Every name marked "bundled" is unverified. Freeze names only against a real `tables-export.json`.
+- **R5. Owner without a sale date.** If TCAD has no deed or sale dates, ownership via `sales_history` needs a dated or undated record policy. Confirm the lexicon allows a null `ownership_transfer_date`; otherwise owner links have no carrier.
+- **R6. Strict required fields.** `person` requires `first_name` and `last_name`; `address` requires a street suffix. PO boxes, foreign addresses and "SMITH JOHN & MARY" need a parsing policy. Count validation failures each run.
+- **R7. Austin data quality.** Is `permit_number` unique per row? Is `tcad_id` really the TCAD account (test on 1,000 rows)? Permits from outside the county also appear; keep only Travis joins and count the rest.
+- **R8. BBB on unresolved contractors.** It cannot attach to a company that doesn't exist. `bbb_status = not_checked` with `bbb_status_reason = contractor_unresolved` keeps AD-07's four states. That makes `bbb_status_reason` an additive column to confirm.
+- **R9. "Duplicates merged".** The merge rules and a measurable statistic are still undefined for owners across TCAD rows and for contractor names. Only aggregate counts may be published (AD-04).
 
+**Relevant files:**
+- `/Users/hebagaber/.claude/plugins/cache/soofi-xyz/soofi-xyz-team-kit/0.99.1/skills/use-oracle/runtime/src/roof-age/estimator.ts`
+- `/Users/hebagaber/.claude/plugins/cache/soofi-xyz/soofi-xyz-team-kit/0.99.1/skills/use-oracle/runtime/src/roof-age/integration.ts`
+- `/Users/hebagaber/.claude/plugins/cache/soofi-xyz/soofi-xyz-team-kit/0.99.1/skills/use-oracle/runtime/src/permits/contracts.mjs`
+- `/Users/hebagaber/.claude/plugins/cache/soofi-xyz/soofi-xyz-team-kit/0.99.1/skills/use-oracle/reference/car-publication.md`
+- `/Users/hebagaber/.claude/plugins/cache/soofi-xyz/soofi-xyz-team-kit/0.99.1/skills/use-oracle/reference/roof-age-and-identity-reingest.md`
+- `/Users/hebagaber/Github/oracle-property-intelligence-platform-pipeline-travis-tx/docs/decisions/0000-agent-architecture.md`
 
 </details>
-
