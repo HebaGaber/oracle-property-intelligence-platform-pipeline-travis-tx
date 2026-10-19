@@ -11,8 +11,19 @@
 // (pipeline/local-stack/services/app.ts) passes in its own SDK module, so only the
 // local-stack copy is ever loaded at runtime.
 import type * as restate from "@restatedev/restate-sdk";
-import type { SourceKey } from "./catalog.schema.js";
+import type { Catalog, SourceKey } from "./catalog.schema.js";
 import type { CaptureReceipt } from "../lib/source-client.js";
+import { assembleUs1, type AssembleOptions, type Us1Blocks, type Us1Results } from "./assemble.js";
+import { probeGisCount } from "./probes/arcgis.js";
+import type { ProbeDeps } from "./probes/common.js";
+import {
+  probeBbb,
+  probeContractorLicensing,
+  probeOverture,
+  type PriorObservation,
+} from "./probes/evidence.js";
+import { probeAustinPermits, probeComptroller } from "./probes/socrata.js";
+import { probeTcad } from "./probes/tcad.js";
 
 export const WORKFLOW_NAME = "TravisDiscovery";
 
@@ -55,8 +66,8 @@ export interface ProbeStep {
 export interface DiscoveryIO {
   /** Deterministic (journaled) current time. */
   now(): Promise<Date>;
-  /** Journaled step: runs `fn` once and replays its result afterwards. */
-  run<T extends CaptureReceipt>(name: string, fn: () => Promise<T>): Promise<T>;
+  /** Journaled step: runs `fn` once and replays its (JSON-serializable) result afterwards. */
+  run<T>(name: string, fn: () => Promise<T>): Promise<T>;
   /** Persists the run record (workflow state). */
   save(record: RunRecord): void;
 }
@@ -131,10 +142,14 @@ export const WORKFLOW_OPTIONS = {
 
 const RUN_STATE_KEY = "run";
 
-export function createTravisDiscovery(
-  sdk: RestateSdk,
-  steps: () => readonly ProbeStep[] = () => [],
-) {
+export interface TravisDiscoveryOptions {
+  /** US1 probes (built per run). Without them the workflow records an empty run. */
+  probes?: () => Us1Probes;
+  /** Writes the assembled catalog (pipeline/docs/travis-sources.yaml in production). */
+  writeCatalog?: (catalog: Catalog) => void;
+}
+
+export function createTravisDiscovery(sdk: RestateSdk, options: TravisDiscoveryOptions = {}) {
   return sdk.workflow({
     name: WORKFLOW_NAME,
     options: WORKFLOW_OPTIONS,
@@ -145,10 +160,174 @@ export function createTravisDiscovery(
           run: (name, fn) => ctx.run(name, fn),
           save: (record) => ctx.set(RUN_STATE_KEY, record),
         };
-        return runDiscovery(io, ctx.key, steps());
+        if (!options.probes) return runDiscovery(io, ctx.key, []);
+        const { record, blocks } = await runSourceDiscovery(io, ctx.key, options.probes());
+        const write = options.writeCatalog;
+        if (write) {
+          const snapshot = (await io.now()).toISOString();
+          await io.run(`catalog:write:${snapshot.slice(0, 10)}`, async () => {
+            write(buildUs1Catalog(blocks, snapshot, 0));
+            return true;
+          });
+        }
+        return record;
       },
       status: async (ctx: restate.WorkflowSharedContext): Promise<RunRecord | null> =>
         (await ctx.get<RunRecord>(RUN_STATE_KEY)) ?? null,
     },
   });
+}
+
+// ---------- T025: the US1 probe steps ----------
+
+/** One function per US1 probe step; each returns a JSON-serializable probe result. */
+export interface Us1Probes {
+  austin: () => Promise<Us1Results["austin"]>;
+  comptroller: () => Promise<Us1Results["comptroller"]>;
+  tcad: () => Promise<Us1Results["tcad"]>;
+  gis: () => Promise<Us1Results["gis"]>;
+  bbb: () => Promise<Us1Results["bbb"]>;
+  overture: () => Promise<Us1Results["overture"]>;
+  licensing: () => Promise<Us1Results["licensing"]>;
+}
+
+export interface Us1Deps extends ProbeDeps {
+  /** Override of pipeline/data/raw/tcad/ (tests only). */
+  rawDir?: string;
+  tcadLandingUrl?: string;
+  tcadLimits?: { inactivityMs: number; totalMs: number };
+  /** JSON record path of the TCAD export once confirmed from the Export Layouts. */
+  tcadRecordPath?: string;
+  gisTimeoutMs?: number;
+  /** The recorded BBB challenge observation to reuse instead of a new request. */
+  bbbPrior?: PriorObservation;
+}
+
+export function createUs1Probes(deps: Us1Deps): Us1Probes {
+  const base: ProbeDeps = { client: deps.client, now: deps.now };
+  return {
+    austin: () => probeAustinPermits(base),
+    comptroller: () => probeComptroller(base),
+    tcad: () =>
+      probeTcad({
+        ...base,
+        ...(deps.rawDir === undefined ? {} : { rawDir: deps.rawDir }),
+        ...(deps.tcadLandingUrl === undefined ? {} : { landingUrl: deps.tcadLandingUrl }),
+        ...(deps.tcadLimits === undefined ? {} : { limits: deps.tcadLimits }),
+        ...(deps.tcadRecordPath === undefined ? {} : { recordPath: deps.tcadRecordPath }),
+      }),
+    gis: () =>
+      probeGisCount(base, deps.gisTimeoutMs === undefined ? {} : { timeoutMs: deps.gisTimeoutMs }),
+    bbb: () => probeBbb(base, deps.bbbPrior),
+    overture: () => probeOverture(base),
+    licensing: () => probeContractorLicensing(base),
+  };
+}
+
+/** Step order, the source each step measures and its measurement name (idempotency key). */
+const US1_STEPS: ReadonlyArray<readonly [keyof Us1Probes, SourceKey, string]> = [
+  ["austin", "austin_permits", "measurements"],
+  ["comptroller", "tx_comptroller", "measurements"],
+  ["tcad", "tcad_certified", "export"],
+  ["gis", "tcad_gis", "feature_count"],
+  ["bbb", "bbb", "observation"],
+  ["overture", "overture", "licence"],
+  ["licensing", "contractor_licensing", "evidence"],
+];
+
+/** Which step's stop receipt explains a blocked source row. */
+const STEP_FOR_SOURCE: Partial<Record<SourceKey, keyof Us1Probes>> = {
+  austin_permits: "austin",
+  tx_comptroller: "comptroller",
+  tcad_certified: "tcad",
+  tcad_supplemental: "tcad",
+  tcad_gis: "gis",
+  bbb: "bbb",
+  overture: "overture",
+  contractor_licensing: "licensing",
+};
+
+export interface SourceDiscoveryResult {
+  record: RunRecord;
+  results: Us1Results;
+  blocks: Us1Blocks;
+}
+
+export async function runSourceDiscovery(
+  io: DiscoveryIO,
+  runId: string,
+  probes: Us1Probes,
+  options: Partial<AssembleOptions> = {},
+): Promise<SourceDiscoveryResult> {
+  const started = await io.now();
+  const record: RunRecord = {
+    run_id: runId,
+    started_at: started.toISOString(),
+    state: "DISCOVERING",
+    blockers: [],
+    steps: [],
+    validator: null,
+    auto_advance_to_seed: false,
+  };
+  io.save(record);
+
+  const results: Partial<Us1Results> = {};
+  const stepKeys: Partial<Record<keyof Us1Probes, string>> = {};
+  for (const [name, sourceKey, measurement] of US1_STEPS) {
+    const key = stepKey(sourceKey, measurement, await io.now());
+    stepKeys[name] = key;
+    const result = await io.run(key, probes[name] as () => Promise<Us1Results[typeof name]>);
+    (results as Record<string, unknown>)[name] = result;
+    const last = result.blocked_receipt ?? result.receipts.at(-1) ?? null;
+    record.steps.push({
+      key,
+      source_key: sourceKey,
+      measurement,
+      outcome: last?.outcome ?? "ok",
+      status: last?.status ?? null,
+      captured_at: last?.captured_at ?? (await io.now()).toISOString(),
+    });
+    io.save(record);
+  }
+
+  const complete = results as Us1Results;
+  const blocks = assembleUs1(complete, {
+    assembledAt: options.assembledAt ?? (await io.now()).toISOString(),
+    ...(options.evidencePath === undefined ? {} : { evidencePath: options.evidencePath }),
+  });
+
+  for (const source of blocks.sources) {
+    if (source.status !== "blocked") continue;
+    const step = STEP_FOR_SOURCE[source.key];
+    const receipt = step ? complete[step].blocked_receipt : null;
+    if (!step || !receipt) continue;
+    record.blockers.push({
+      source_key: source.key,
+      step_key: stepKeys[step] as string,
+      receipt,
+      next_step: NEXT_STEP_BLOCKED,
+    });
+  }
+  record.state = record.blockers.length > 0 ? "WAITING_HUMAN" : "READY";
+  io.save(record);
+  return { record, results: complete, blocks };
+}
+
+/** The catalog with the US1 blocks (permits, destination and census come in US2-US4). */
+export function buildUs1Catalog(
+  blocks: Us1Blocks,
+  snapshotTime: string,
+  waitingHumanHours: number,
+): Catalog {
+  return {
+    county: "Travis",
+    state: "TX",
+    slug: "travis",
+    fips: "48453",
+    snapshot_time: snapshotTime,
+    waiting_human_hours: waitingHumanHours,
+    parcel: blocks.parcel,
+    enrichment: blocks.enrichment,
+    sources: blocks.sources,
+  };
 }

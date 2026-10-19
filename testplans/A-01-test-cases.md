@@ -8,7 +8,7 @@ spec: specs/001-discover-sources/spec.md
 owner: HebaGaber             # QC Lead
 status: Approved             # Draft → In Review → Approved
 gate: G6
-version: 0.4
+version: 0.5
 created: 2026-10-19
 runtime_url: "none: Project story (G4 C-04 exception); every case runs from a terminal at the repo root on branch 001-discover-sources"
 reviewed_code: 7311edd
@@ -260,7 +260,7 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
 - **Preconditions:** outcome A (TCAD available); otherwise record N/A with TC-018.
 - **Steps:**
   1. **Open** the terminal at the repo root on `001-discover-sources`.
-  2. **Run** `catq 'parcel.assessed_parcel_count'` → `{value: <integer > 0>, source_url, captured_at}` (first measurement; no reference value).
+  2. **Run** `catq 'parcel.assessed_parcel_count_measurement'` → `{value: <integer > 0> (equal to `parcel.assessed_parcel_count`), source_url, captured_at}` (first measurement; no reference value).
   3. **Run** `catq 'parcel.roll_year'` → `2026`.
   4. **Run** `catq 'parcel.certification_date'` → a string matching `YYYY-MM-DD`.
   5. **Run** `catq 'parcel.identifier_name'` → `"prop_id"` or `"geo_id"`.
@@ -275,12 +275,12 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
 
 - **Priority / tags:** P1 · `@validation`
 - **Maps to:** AC-3, FR-003b
-- **Preconditions:** `catq 'parcel.gis_feature_count.value'` is a number (otherwise TC-011 applies).
+- **Preconditions:** `catq 'parcel.gis_feature_count'` is a number (otherwise TC-011 applies).
 - **Steps:**
   1. **Open** the terminal at the repo root on `001-discover-sources`.
-  2. **Run** `catq 'Math.abs(parcel.gap_pct - Math.abs(parcel.assessed_parcel_count.value - parcel.gis_feature_count.value) / parcel.assessed_parcel_count.value * 100) <= 0.01'` → `true`.
+  2. **Run** `catq 'Math.abs(parcel.gap_pct - Math.abs(parcel.assessed_parcel_count - parcel.gis_feature_count) / parcel.assessed_parcel_count * 100) <= 0.01'` → `true`.
   3. **Run** `catq 'parcel.gap_pct <= 2 || parcel.discrepancy_explanation.length > 0'` → `true`.
-  4. **Run** `catq 'parcel.gis_feature_count.value >= parcel.assessed_parcel_count.value || ["acknowledged","none"].includes(parcel.separately_assessed_without_geometry)'` → `true`.
+  4. **Run** `catq 'parcel.gis_feature_count >= parcel.assessed_parcel_count || ["acknowledged","none"].includes(parcel.separately_assessed_without_geometry)'` → `true`.
   5. **Run** `catq 'parcel.canonical_source'` → `"TCAD 2026 certified roll"`.
 - **Expected result:** the gap percentage is computed correctly; above 2% an explanation exists; GIS below the roll carries the acknowledgement; the roll, not GIS, is the canonical source.
 
@@ -292,7 +292,7 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
 - **Steps:**
   1. **Open** the terminal at the repo root on `001-discover-sources`.
   2. **Run** `catq 'sources.find(s=>s.key==="tcad_gis").status'` → `"blocked"` if the layer timed out at capture (otherwise TC-010 applies; record N/A).
-  3. **Run** `catq 'parcel.gis_feature_count'` → `{value: null, missing_reason: "<text containing timeout>", source_url, captured_at}`.
+  3. **Run** `catq 'parcel.gis_feature_count_measurement'` → `{value: null, missing_reason: "<text containing timeout>", source_url, captured_at}`.
   4. **Run** `catq 'parcel.gap_pct'` → `"unknown"`.
   5. **Run** `catq 'sources.find(s=>s.key==="tcad_gis").blocked_evidence.timeout_ms > 0'` → `true`.
   6. **Run** `catq '[sources.find(s=>s.key==="tcad_certified").anti_bot, sources.find(s=>s.key==="tcad_gis").anti_bot].every(a=>a && a.length>0)'` → `true`.
@@ -395,7 +395,7 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
   10. **Run** `repq 'ingest_allowed'` → `false`.
   11. **Run** `grep -c "WAITING_HUMAN" docs/evidence/A-01.md` → `1` or more.
   12. **Run** `grep -ciE "TCAD.*(403|blocked)" docs/sources.md` → `1` or more.
-  13. **Run** `catq 'parcel.assessed_parcel_count'` → `{value: null, missing_reason: "<text containing 403>", …}`.
+  13. **Run** `catq 'parcel.assessed_parcel_count_measurement'` → `{value: null, missing_reason: "<text containing 403>", …}`.
 - **Expected result:** TCAD is recorded as blocked with code 403, time, URL and committed evidence; a complete records request is named; the validator exits 1 with **only** the `parcel` gate blocked (catalog metadata, permit, destination and enrichment pass); seed and ingest stay forbidden; the run state `WAITING_HUMAN` and the missing roll count are documented in `docs/sources.md` and `docs/evidence/A-01.md`.
 
 ### A-01-TC-019: No retry with a changed identity; one attempt on 403 (security, negative)

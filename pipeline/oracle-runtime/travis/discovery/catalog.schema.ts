@@ -163,6 +163,26 @@ export const JurisdictionSchema = z.strictObject({
 });
 export type Jurisdiction = z.infer<typeof JurisdictionSchema>;
 
+/** Receipt of the one TCAD export download (data-model: Parcel.export_receipt). */
+export const ExportReceiptSchema = z.strictObject({
+  url: Url,
+  method: z.enum(["GET", "HEAD"]),
+  status: z.int(),
+  bytes: z.int().nonnegative(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  captured_at: UtcTimestamp,
+  user_agent: Text,
+  attempts: z.int().positive(),
+  outcome: z.enum(["ok", "throttled-then-ok"]),
+  /** Repository-relative path of the gitignored file, e.g. pipeline/data/raw/tcad/<name>. */
+  file_path: z.string().regex(/^pipeline\/data\/raw\/tcad\/[^/]+$/),
+  seconds: z.number().nonnegative(),
+  megabytes_per_minute: z.number().nonnegative(),
+  roll_year: z.int(),
+  certification_date: DateString.optional(),
+});
+export type ExportReceipt = z.infer<typeof ExportReceiptSchema>;
+
 export const ParcelSchema = z
   .strictObject({
     canonical_source: Text,
@@ -181,6 +201,7 @@ export const ParcelSchema = z
     identifier_proven: z.boolean(),
     identifier_format: Text.optional(),
     deed_or_sale_dates_present: z.boolean().optional(),
+    export_receipt: ExportReceiptSchema.optional(),
   })
   .refine((p) => p.assessed_parcel_count === p.assessed_parcel_count_measurement.value, {
     message: "assessed_parcel_count must equal its measurement value",

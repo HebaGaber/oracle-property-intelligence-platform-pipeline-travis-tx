@@ -13,6 +13,9 @@
 //   recorded only as `app_token_used`;
 // - `isGeoBlock` is true only for an explicit body, error-code or header signal (FR-006b).
 import { createHash } from "node:crypto";
+import { createWriteStream, mkdirSync, renameSync, rmSync } from "node:fs";
+import { dirname } from "node:path";
+import { performance } from "node:perf_hooks";
 import pLimit, { type LimitFunction } from "p-limit";
 import type { ZodType } from "zod";
 import { createLogger, redact, type LogFields } from "./log.js";
@@ -62,6 +65,30 @@ export interface CaptureRequest<T> {
   timeoutMs?: number;
   /** Send the optional Socrata app token (header `X-App-Token`). */
   useAppToken?: boolean;
+  /** Lower the attempt budget below MAX_ATTEMPTS (for example 1 for a single observation). */
+  maxAttempts?: number;
+}
+
+export interface DownloadRequest {
+  url: string;
+  /** Final file path; data is streamed to `<destPath>.part` and renamed on success. */
+  destPath: string;
+  /** No bytes for this long counts as a timeout (FR-003: 10 minutes). */
+  inactivityMs: number;
+  /** The whole download may not run longer than this (FR-003: 2 hours). */
+  totalMs: number;
+  accept?: string;
+}
+
+export interface DownloadResult {
+  receipt: CaptureReceipt;
+  /** The saved file, or null when the download did not complete. */
+  path: string | null;
+  /** Wall-clock seconds from request to last byte (measured with a monotonic clock). */
+  seconds: number;
+  /** At most EXCERPT_BYTES of a non-2xx or HTML body, for blocked evidence. */
+  excerpt: Buffer;
+  headers: Record<string, string>;
 }
 
 export interface CaptureResult<T> {
@@ -83,11 +110,18 @@ export interface SourceClientOptions {
   /** Optional Socrata app token; defaults to SOCRATA_APP_TOKEN from the environment. */
   appToken?: string;
   log?: (event: string, fields: LogFields) => void;
+  /** Monotonic milliseconds for elapsed-time measurement; defaults to performance.now. */
+  clock?: () => number;
 }
 
 export interface SourceClient {
   capture<T = unknown>(request: CaptureRequest<T>): Promise<CaptureResult<T>>;
+  /** Streams one large file to disk with inactivity and total limits (TCAD export). */
+  download(request: DownloadRequest): Promise<DownloadResult>;
 }
+
+/** Bytes kept from a refused download body for the evidence excerpt. */
+export const EXCERPT_BYTES = 64 * 1024;
 
 export interface SavedResponse {
   status: number | null;
@@ -171,7 +205,9 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
   const random = options.random ?? Math.random;
   const now = options.now ?? (() => new Date());
   const defaultTimeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const appToken = options.appToken ?? process.env.SOCRATA_APP_TOKEN ?? null;
+  const clock = options.clock ?? (() => performance.now());
+  // An empty token (option or environment) means no token.
+  const appToken = (options.appToken ?? process.env.SOCRATA_APP_TOKEN ?? "") || null;
   const secrets = appToken ? [appToken] : [];
   const logger = createLogger(undefined, secrets);
   const emit = options.log ?? ((event: string, fields: LogFields) => logger.info(event, fields));
@@ -232,7 +268,8 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
     let attempts = 0;
     let last: Attempt | null = null;
 
-    while (attempts < MAX_ATTEMPTS) {
+    const budget = Math.max(1, Math.min(MAX_ATTEMPTS, request.maxAttempts ?? MAX_ATTEMPTS));
+    while (attempts < budget) {
       attempts += 1;
       last = await attemptOnce(request.url, method, headers, timeoutMs);
       if (last.kind !== "response" || !isRetryable(last.status)) break;
@@ -242,7 +279,7 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
           ? `HTTP ${last.status}`
           : `HTTP ${last.status} Retry-After ${retryAfterHeader}`,
       );
-      if (attempts >= MAX_ATTEMPTS) break;
+      if (attempts >= budget) break;
       const retryAfterMs = parseRetryAfter(retryAfterHeader, now());
       await sleep(retryAfterMs ?? backoffDelayMs(attempts, random));
     }
@@ -304,9 +341,224 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
     return { receipt, data, body, headers: responseHeaders };
   }
 
+  async function downloadUnlimited(request: DownloadRequest): Promise<DownloadResult> {
+    const headers: Record<string, string> = {
+      "user-agent": USER_AGENT,
+      accept: request.accept ?? "*/*",
+    };
+    const startedMs = clock();
+    const startedAt = now();
+    const part = `${request.destPath}.part`;
+    const observed: string[] = [];
+    let attempts = 0;
+
+    const finish = (
+      fields: Pick<CaptureReceipt, "status" | "outcome"> &
+        Partial<Pick<CaptureReceipt, "timeout_ms" | "blocked_reason" | "error">> & {
+          bytes: number;
+          sha256: string;
+          headers: Record<string, string>;
+          excerpt: Buffer;
+          path: string | null;
+        },
+    ): DownloadResult => {
+      const geo =
+        fields.outcome === "blocked" || fields.outcome === "failed"
+          ? detectGeoSignal({
+              status: fields.status,
+              headers: fields.headers,
+              body: fields.excerpt.toString("utf8"),
+            })
+          : null;
+      const receipt: CaptureReceipt = {
+        url: redact(request.url, secrets),
+        method: "GET",
+        status: fields.status,
+        bytes: fields.bytes,
+        sha256: fields.sha256,
+        captured_at: startedAt.toISOString(),
+        user_agent: USER_AGENT,
+        attempts,
+        outcome: fields.outcome,
+        geo_signal: geo ?? "none",
+        app_token_used: false,
+        timeout_ms: fields.timeout_ms ?? null,
+        blocked_reason: fields.blocked_reason ?? null,
+        rate_limits_observed: observed.length > 0 ? observed.join("; ") : null,
+      };
+      if (fields.error !== undefined) receipt.error = fields.error;
+      emit("source.download", { ...receipt });
+      return {
+        receipt,
+        path: fields.path,
+        seconds: (clock() - startedMs) / 1000,
+        excerpt: fields.excerpt,
+        headers: fields.headers,
+      };
+    };
+
+    const elapsed = (): number => Math.max(1, Math.round(clock() - startedMs));
+
+    while (attempts < MAX_ATTEMPTS) {
+      attempts += 1;
+      const controller = new AbortController();
+      let timedOut = false;
+      const total = setTimeout(
+        () => {
+          timedOut = true;
+          controller.abort();
+        },
+        Math.max(0, request.totalMs - (clock() - startedMs)),
+      );
+      let idle = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, request.inactivityMs);
+      const clearTimers = (): void => {
+        clearTimeout(total);
+        clearTimeout(idle);
+      };
+
+      let response: Response;
+      try {
+        response = await fetchImpl(request.url, {
+          method: "GET",
+          headers,
+          signal: controller.signal,
+          redirect: "follow",
+        });
+      } catch (error) {
+        clearTimers();
+        if (timedOut || controller.signal.aborted || isAbort(error)) {
+          return finish({
+            status: null,
+            outcome: "blocked",
+            blocked_reason: "timeout",
+            timeout_ms: elapsed(),
+            bytes: 0,
+            sha256: sha256(Buffer.alloc(0)),
+            headers: {},
+            excerpt: Buffer.alloc(0),
+            path: null,
+          });
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        return finish({
+          status: null,
+          outcome: "failed",
+          error: redact(message, secrets),
+          bytes: 0,
+          sha256: sha256(Buffer.alloc(0)),
+          headers: {},
+          excerpt: Buffer.alloc(0),
+          path: null,
+        });
+      }
+
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, name) => {
+        responseHeaders[name.toLowerCase()] = value;
+      });
+      const contentType = responseHeaders["content-type"] ?? "";
+      const isHtml = /text\/html/i.test(contentType);
+
+      if (response.status < 200 || response.status >= 300 || isHtml) {
+        // Read a bounded excerpt only; never stream an error or challenge body to disk.
+        const body = Buffer.from(await response.arrayBuffer().catch(() => new ArrayBuffer(0)));
+        clearTimers();
+        const excerpt = body.subarray(0, EXCERPT_BYTES);
+        if (isRetryable(response.status) && attempts < MAX_ATTEMPTS) {
+          const retryAfterHeader = responseHeaders["retry-after"] ?? null;
+          observed.push(
+            retryAfterHeader === null
+              ? `HTTP ${response.status}`
+              : `HTTP ${response.status} Retry-After ${retryAfterHeader}`,
+          );
+          const retryAfterMs = parseRetryAfter(retryAfterHeader, now());
+          await sleep(retryAfterMs ?? backoffDelayMs(attempts, random));
+          continue;
+        }
+        if (isRetryable(response.status)) observed.push(`HTTP ${response.status}`);
+        const blocked = response.status === 403 || (response.status < 300 && isHtml);
+        return finish({
+          status: response.status,
+          outcome: blocked ? "blocked" : "failed",
+          blocked_reason: blocked ? (response.status === 403 ? "http-403" : "challenge") : null,
+          bytes: body.byteLength,
+          sha256: sha256(body),
+          headers: responseHeaders,
+          excerpt,
+          path: null,
+        });
+      }
+
+      // 2xx with a file body: stream it to <dest>.part, hashing as it arrives.
+      mkdirSync(dirname(request.destPath), { recursive: true });
+      const out = createWriteStream(part);
+      const hash = createHash("sha256");
+      let bytes = 0;
+      const reader = response.body?.getReader() ?? null;
+      const onAbort = (): void => {
+        void reader?.cancel().catch(() => undefined);
+      };
+      controller.signal.addEventListener("abort", onAbort);
+      let streamError: string | null = null;
+      try {
+        while (reader) {
+          const { done, value } = await reader.read();
+          if (done || timedOut) break;
+          clearTimeout(idle);
+          idle = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+          }, request.inactivityMs);
+          hash.update(value);
+          bytes += value.byteLength;
+          if (!out.write(value)) await new Promise((r) => out.once("drain", r));
+        }
+      } catch (error) {
+        if (!timedOut) streamError = error instanceof Error ? error.message : String(error);
+      } finally {
+        clearTimers();
+        controller.signal.removeEventListener("abort", onAbort);
+        await new Promise<void>((resolve) => out.end(() => resolve()));
+      }
+
+      if (timedOut || streamError !== null) {
+        rmSync(part, { force: true });
+        return finish({
+          status: response.status,
+          outcome: timedOut ? "blocked" : "failed",
+          blocked_reason: timedOut ? "timeout" : null,
+          timeout_ms: timedOut ? elapsed() : null,
+          ...(streamError === null ? {} : { error: redact(streamError, secrets) }),
+          bytes,
+          sha256: hash.digest("hex"),
+          headers: responseHeaders,
+          excerpt: Buffer.alloc(0),
+          path: null,
+        });
+      }
+      renameSync(part, request.destPath);
+      return finish({
+        status: response.status,
+        outcome: attempts > 1 ? "throttled-then-ok" : "ok",
+        bytes,
+        sha256: hash.digest("hex"),
+        headers: responseHeaders,
+        excerpt: Buffer.alloc(0),
+        path: request.destPath,
+      });
+    }
+    throw new Error("source-client: download loop ended without a result");
+  }
+
   return {
     capture<T = unknown>(request: CaptureRequest<T>): Promise<CaptureResult<T>> {
       return limiterFor(request.url)(() => captureUnlimited(request));
+    },
+    download(request: DownloadRequest): Promise<DownloadResult> {
+      return limiterFor(request.url)(() => downloadUnlimited(request));
     },
   };
 }
