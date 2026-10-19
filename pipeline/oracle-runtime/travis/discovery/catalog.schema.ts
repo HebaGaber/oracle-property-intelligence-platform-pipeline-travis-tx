@@ -79,6 +79,8 @@ export const BlockedEvidenceSchema = z
   .strictObject({
     http_status: z.int().optional(),
     timeout_ms: z.int().nonnegative().optional(),
+    /** Network or stream error (redacted); a network error has no status and no timeout_ms. */
+    error: Text.optional(),
     captured_at: UtcTimestamp,
     url: Url,
     evidence_path: Text,
@@ -88,9 +90,10 @@ export const BlockedEvidenceSchema = z
     outcome: z.enum(["blocked", "failed"]),
     geo_signal: Text,
   })
-  .refine((b) => b.http_status !== undefined || b.timeout_ms !== undefined, {
-    message: "blocked_evidence needs http_status or timeout_ms",
-  });
+  .refine(
+    (b) => b.http_status !== undefined || b.timeout_ms !== undefined || b.error !== undefined,
+    { message: "blocked_evidence needs http_status, timeout_ms or error" },
+  );
 
 export const LocatedElsewhereSchema = z.strictObject({
   jurisdiction: Text,

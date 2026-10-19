@@ -27,11 +27,12 @@ Every number in the catalog is a Measurement, never a bare value (FR-007a).
 | `status` | `available` or `blocked` |
 | `denominator` | Measurement (Comptroller: `travis_coded_rows` is the denominator, plus `statewide_rows`) |
 | `throughput` | Throughput, or `download_rate` for single-file sources |
-| `anti_bot` | rate limits observed, challenge seen, `app_token_used` |
+| `anti_bot` | rate limits observed, challenge seen, `app_token_used`; derived from the source's own receipts: "challenge: seen (HTTP n; <signal>)" whenever a receipt carries an explicit challenge signal (`cf-mitigated: challenge`, an interstitial body, or challenge markers on a 403/429/503), otherwise "challenge: none seen" |
 | `projected_full_capture_hours` | number; derived (denominator ÷ median rate ÷ 60) |
 | `decision` | `bulk download` \| `ingest` \| `runtime retrieval`; required when projected hours > 48, and always present |
 | `decision_reason` | required with `decision` |
 | `blocked_evidence` | required when `status: blocked` |
+| `next_step` | the human's next step. A real block (403, challenge, timeout) names its records request or API application. A reachable source whose 2xx download broke part-way (`failed` with `error`, no automatic retry) names one more attempt with the same identity, `resolve -- <key> captured`, with the bytes received and the advertised length; its records request is kept only as a fallback in `notes`, not as `records_request` |
 | `tcad_id_null_count` | `austin_permits` only: Measurement of rows with no `tcad_id` |
 | `located_in_other_jurisdictions` | `austin_permits` only: array of `{jurisdiction, value, source_url, captured_at}` for Austin-issued records located elsewhere (from the `jurisdiction` field) |
 
@@ -72,7 +73,7 @@ Set rule: the row count equals `census_reference.place_count + 1` (unincorporate
 
 ## Blocked evidence
 
-`http_status` or `timeout_ms`, `captured_at`, `url`, `evidence_path` (committed file with headers and a body excerpt, no secrets), `body_sha256`, `attempts` and `user_agent` (copied from the capture receipt), `outcome` (`blocked` for 403/challenge/timeout, `failed` for 429/5xx after 5 attempts, FR-006e), `geo_signal` (`none` or the quoted signal; only a quoted signal permits the US check, FR-006b).
+`http_status`, `timeout_ms` or `error` (at least one): `timeout_ms` only for a real timeout; a network error with no HTTP response records `error` (for example "fetch failed") and no `timeout_ms`; a download that broke part-way records `http_status` plus its stream `error`. Then `captured_at`, `url`, `evidence_path` (committed file with headers and a body excerpt, no secrets), `body_sha256`, `attempts` and `user_agent` (copied from the capture receipt), `outcome` (`blocked` for 403/explicit challenge/timeout; `failed` for 429/5xx after 5 attempts (FR-006e), a network error, a broken download, a 2xx body that fails its expected format without a challenge signal, or another non-2xx status such as 404), `geo_signal` (`none` or the quoted signal; only a quoted signal permits the US check, FR-006b).
 
 ## Destination proof
 

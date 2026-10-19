@@ -39,7 +39,7 @@ import {
 import type { AustinLocatedEntry } from "./austin-issued.js";
 import { probeGisCount } from "./probes/arcgis.js";
 import { probeCensusPlaces, type CensusProbe } from "./probes/census.js";
-import type { ProbeDeps } from "./probes/common.js";
+import { brokenAt, brokenDownload, type BrokenDownload, type ProbeDeps } from "./probes/common.js";
 import {
   probeEvidencePage,
   type EvidenceProbe,
@@ -628,11 +628,45 @@ export const BBB_API_APPLICATION: RecordsRequest = {
 const BBB_NEXT_STEP =
   "Apply for the official BBB API with the BBB API Registration Form at developer.bbb.org (recorded only, not filed in A-01); the challenge is never solved; a bounded bbb-harvest that stops on 403 is the A-08 fallback";
 
-/** Adds the records request, next step and note to the blocked TCAD and BBB rows. */
-export function withRecordsRequests(sources: readonly Source[]): Source[] {
+/**
+ * Next step for a reachable source whose 2xx download broke part-way. It is not a block:
+ * the outcome stays `failed` and nothing retries automatically (FR-006, NFR-001); the
+ * operator may allow one more attempt with the same identity (`resolve -- <key> captured`).
+ */
+export function brokenDownloadStep(key: SourceKey, broken: BrokenDownload): string {
+  return `The source is reachable: it answered HTTP ${broken.status} and the download broke at ${brokenAt(broken)} (${broken.error}); this is not a block. Recommended: one more attempt with the same identity: npm --prefix pipeline/oracle-runtime run resolve -- ${key} captured (no automatic retry, FR-006, NFR-001)`;
+}
+
+/** The PIA request kept as a documented fallback note on a broken (not blocked) TCAD row. */
+function tcadFallbackNote(): string {
+  const req = TCAD_RECORDS_REQUEST;
+  return `${TCAD_RECORDS_NOTE}; fallback only if the download keeps breaking or TCAD starts refusing it: the Public Information Act request to ${req.recipient_office} through ${req.request_portal_url ?? req.request_email ?? "no channel"} (${req.route})`;
+}
+
+/**
+ * Adds the next step (and, for a real block, the records request and note) to the blocked
+ * TCAD and BBB rows. `stops` holds the receipt that stopped each source, so a broken
+ * download on a reachable source gets "one more captured attempt" instead of a records
+ * request; a records request is the next step only for a real block (403, challenge,
+ * timeout with no response).
+ */
+export function withRecordsRequests(
+  sources: readonly Source[],
+  stops: Partial<Record<SourceKey, CaptureReceipt | null>> = {},
+): Source[] {
   return sources.map((source) => {
     if (source.status !== "blocked") return source;
     if (source.key === "tcad_certified" || source.key === "tcad_supplemental") {
+      const stop = stops[source.key];
+      const broken = stop ? brokenDownload(stop) : null;
+      if (broken) {
+        const { records_request: _none, ...rest } = source;
+        return {
+          ...rest,
+          next_step: brokenDownloadStep(source.key, broken),
+          notes: tcadFallbackNote(),
+        };
+      }
       return {
         ...source,
         records_request: TCAD_RECORDS_REQUEST,
@@ -716,7 +750,11 @@ interface Session {
 /** Assembles the full catalog from the journaled probe results (pure, deterministic). */
 function assembleSession(session: Session, snapshot: string): Catalog {
   const blocks = assembleUs1(session.results, { assembledAt: snapshot });
-  blocks.sources = withRecordsRequests(blocks.sources);
+  const tcadStop = session.results.tcad.blocked_receipt;
+  blocks.sources = withRecordsRequests(blocks.sources, {
+    tcad_certified: tcadStop,
+    tcad_supplemental: tcadStop,
+  });
   const us1 = buildUs1Catalog(blocks, snapshot, session.record.waiting_human_hours);
   if (session.destination) us1.destination = session.destination;
   const j = session.jurisdictions;

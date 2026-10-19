@@ -29,7 +29,8 @@ export function missingReason(receipt: CaptureReceipt): string {
       return `blocked: timeout after ${receipt.timeout_ms ?? 0} ms at ${at}`;
     }
     if (receipt.blocked_reason === "challenge") {
-      return `blocked: challenge or unexpected page (HTTP ${receipt.status ?? "none"}, failed parse) at ${at}`;
+      const signal = receipt.challenge_signal ? `; ${receipt.challenge_signal}` : "";
+      return `blocked: challenge seen (HTTP ${receipt.status ?? "none"}${signal}) at ${at}`;
     }
     return `blocked: HTTP ${receipt.status ?? "none"} at ${at}`;
   }
@@ -38,10 +39,46 @@ export function missingReason(receipt: CaptureReceipt): string {
     if (status !== null && (status === 429 || status >= 500) && receipt.attempts >= MAX_ATTEMPTS) {
       return `throttled: ${MAX_ATTEMPTS} attempts exhausted (HTTP ${status}) at ${at}`;
     }
-    if (status === null) return `failed: network error at ${at}`;
-    return `failed: HTTP ${status} after ${receipt.attempts} attempt(s) at ${at}`;
+    if (status === null) {
+      return `failed: network error, no HTTP response (${receipt.error ?? "no message"}) at ${at}`;
+    }
+    const broken = brokenDownload(receipt);
+    if (broken) {
+      return `failed: HTTP ${status}, the download broke at ${brokenAt(broken)} (${broken.error}) after ${receipt.attempts} attempt(s) at ${at}`;
+    }
+    const why = receipt.error ? ` (${receipt.error})` : "";
+    return `failed: HTTP ${status}${why} after ${receipt.attempts} attempt(s) at ${at}`;
   }
   return `not measured at ${at}`;
+}
+
+/** A reachable source whose 2xx download stream broke part-way (not a block). */
+export interface BrokenDownload {
+  status: number;
+  bytes: number;
+  content_length: number | null;
+  error: string;
+}
+
+/** The broken-download facts of a receipt, or null when it is not one. */
+export function brokenDownload(receipt: CaptureReceipt): BrokenDownload | null {
+  const body = receipt.incomplete_body;
+  const status = receipt.status;
+  if (receipt.outcome !== "failed" || body === undefined || status === null) return null;
+  if (status < 200 || status >= 300) return null;
+  return {
+    status,
+    bytes: body.bytes,
+    content_length: body.content_length,
+    error: receipt.error ?? "stream ended early",
+  };
+}
+
+/** "<bytes> of <content-length> bytes" (or "of an unknown length"). */
+export function brokenAt(broken: BrokenDownload): string {
+  return broken.content_length === null
+    ? `${broken.bytes} bytes of an unknown length`
+    : `${broken.bytes} of ${broken.content_length} bytes`;
 }
 
 export function nullMeasurement(

@@ -3,8 +3,14 @@
 // Guard rules (contracts/capture-receipt.md, ARD § 8):
 // - at most 2 concurrent requests per host (p-limit per host);
 // - one constant, identified User-Agent naming the project and repo (no email);
-// - StopOnBlocked: HTTP 403, a 2xx body that fails its Zod parse (challenge page) or a
-//   timeout gives exactly one attempt and outcome `blocked`;
+// - StopOnBlocked: HTTP 403, an explicit bot challenge or a timeout gives exactly one
+//   attempt and outcome `blocked`. A challenge needs an explicit signal
+//   (`detectChallengeSignal`): the `cf-mitigated: challenge` header, a challenge
+//   interstitial body, or challenge markers on a 403/429/503. A Cloudflare beacon script
+//   injected into a normal 200 page is not a challenge; a 2xx body that fails its Zod parse
+//   without a challenge signal is `failed` ("unexpected body"), not `blocked`;
+// - a network error (no HTTP response) is `failed` with `error`; only a real timeout sets
+//   `timeout_ms`;
 // - backoff only on 429/5xx: full jitter, 1 s base, 60 s cap, 5 attempts, honouring
 //   Retry-After; still failing after 5 attempts gives outcome `failed` (FR-006e);
 // - no proxy, agent, dispatcher, IP or header rotation: the request init carries only
@@ -50,8 +56,15 @@ export interface CaptureReceipt {
   timeout_ms: number | null;
   blocked_reason: BlockedReason | null;
   rate_limits_observed: string | null;
-  /** network error message (redacted) when no HTTP response was received */
+  /**
+   * Redacted error message: the network error when no HTTP response was received, the
+   * stream error of a download that broke part-way, or why a 2xx body was unexpected.
+   */
   error?: string;
+  /** The quoted explicit challenge signal from the response, when one was seen. */
+  challenge_signal?: string;
+  /** A 2xx download whose body stream broke part-way: bytes received and advertised length. */
+  incomplete_body?: { bytes: number; content_length: number | null };
   /** Blocked or failed captures only: what the evidence file needs (T037). Never logged. */
   stop_evidence?: StopEvidence;
 }
@@ -215,6 +228,47 @@ export function detectGeoSignal(saved: SavedResponse): string | null {
   return null;
 }
 
+/** A challenge interstitial's page title (Cloudflare, Sucuri, DDoS-Guard, Imperva, PerimeterX). */
+const INTERSTITIAL_TITLE =
+  /^\s*(?:just a moment\b|attention required\b|checking your browser\b|one more step\b|security check\b|ddos-guard\b|pardon our interruption\b|access denied\b|request unsuccessful\b)/i;
+/** Body markers that appear only on a challenge interstitial, never on a normal page. */
+const INTERSTITIAL_BODY =
+  /window\._cf_chl_opt|id="challenge-form"|id="cf-chl-widget|request unsuccessful\. incapsula incident id|id="px-captcha"/i;
+/** Phrases of a challenge page without a <title> (bare interstitial text). */
+const INTERSTITIAL_TEXT =
+  /just a moment\.\.\.|attention required! \| cloudflare|checking your browser before accessing|checking if the site connection is secure/i;
+/** Looser markers, trusted only on a refusal status (403/429/503). */
+const REFUSAL_MARKERS =
+  /cf-chl|challenge-platform|just a moment|attention required|checking your browser|captcha|incapsula|perimeterx/i;
+const REFUSAL_STATUSES = new Set([403, 429, 503]);
+
+/**
+ * Returns the quoted explicit bot-challenge signal of a saved response, or null. A normal
+ * page that merely carries an injected beacon (for example Cloudflare's
+ * `/cdn-cgi/challenge-platform/` bot-detection script) is never a challenge.
+ */
+export function detectChallengeSignal(saved: SavedResponse): string | null {
+  const mitigated = Object.entries(saved.headers).find(
+    ([name]) => name.toLowerCase() === "cf-mitigated",
+  );
+  if (mitigated && /challenge/i.test(mitigated[1])) {
+    return `cf-mitigated: ${mitigated[1]}`.slice(0, 200);
+  }
+  const title = /<title[^>]*>([^<]*)<\/title>/i.exec(saved.body)?.[1]?.trim() ?? null;
+  if (title !== null && INTERSTITIAL_TITLE.test(title)) return `title: "${title}"`.slice(0, 200);
+  const marker = INTERSTITIAL_BODY.exec(saved.body);
+  if (marker) return `interstitial marker: "${marker[0]}"`;
+  if (title === null) {
+    const phrase = INTERSTITIAL_TEXT.exec(saved.body);
+    if (phrase) return `interstitial text: "${phrase[0]}"`;
+  }
+  if (saved.status !== null && REFUSAL_STATUSES.has(saved.status)) {
+    const refusal = REFUSAL_MARKERS.exec(saved.body);
+    if (refusal) return `HTTP ${saved.status} with challenge marker "${refusal[0]}"`;
+  }
+  return null;
+}
+
 export function isGeoBlock(saved: SavedResponse): boolean {
   return detectGeoSignal(saved) !== null;
 }
@@ -324,6 +378,8 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       attempts += 1;
       last = await attemptOnce(request.url, method, headers, timeoutMs);
       if (last.kind !== "response" || !isRetryable(last.status)) break;
+      // a challenge is never retried, whatever its status (StopOnBlocked)
+      if (challengeOf(last.status, last.headers, last.body) !== null) break;
       const retryAfterHeader = last.headers["retry-after"] ?? null;
       observed.push(
         retryAfterHeader === null
@@ -343,20 +399,27 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
     let outcome: CaptureOutcome;
     let blockedReason: BlockedReason | null = null;
     let data: T | null = null;
+    let error: string | null = null;
+    const challenge =
+      last.kind === "response" ? challengeOf(last.status, last.headers, last.body) : null;
 
     if (last.kind === "timeout") {
       outcome = "blocked";
       blockedReason = "timeout";
     } else if (last.kind === "error") {
       outcome = "failed";
+      error = last.message;
+    } else if (challenge !== null) {
+      outcome = "blocked";
+      blockedReason = "challenge";
     } else if (last.status === 403) {
       outcome = "blocked";
       blockedReason = "http-403";
     } else if (last.status >= 200 && last.status < 300) {
       const parsed = request.schema ? parseBody(request.schema, body, request.bodyKind) : null;
       if (parsed && !parsed.ok) {
-        outcome = "blocked";
-        blockedReason = "challenge";
+        outcome = "failed";
+        error = UNEXPECTED_BODY;
       } else {
         data = parsed ? parsed.value : null;
         outcome = attempts > 1 ? "throttled-then-ok" : "ok";
@@ -386,7 +449,8 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       blocked_reason: blockedReason,
       rate_limits_observed: observed.length > 0 ? observed.join("; ") : null,
     };
-    if (last.kind === "error") receipt.error = last.message;
+    if (error !== null) receipt.error = error;
+    if (challenge !== null) receipt.challenge_signal = redact(challenge, secrets);
     if (outcome === "blocked" || outcome === "failed") {
       receipt.stop_evidence = stopEvidence(responseHeaders, body, secrets);
     }
@@ -408,7 +472,12 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
 
     const finish = (
       fields: Pick<CaptureReceipt, "status" | "outcome"> &
-        Partial<Pick<CaptureReceipt, "timeout_ms" | "blocked_reason" | "error">> & {
+        Partial<
+          Pick<
+            CaptureReceipt,
+            "timeout_ms" | "blocked_reason" | "error" | "challenge_signal" | "incomplete_body"
+          >
+        > & {
           bytes: number;
           sha256: string;
           headers: Record<string, string>;
@@ -441,6 +510,10 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
         rate_limits_observed: observed.length > 0 ? observed.join("; ") : null,
       };
       if (fields.error !== undefined) receipt.error = fields.error;
+      if (fields.challenge_signal !== undefined) {
+        receipt.challenge_signal = redact(fields.challenge_signal, secrets);
+      }
+      if (fields.incomplete_body !== undefined) receipt.incomplete_body = fields.incomplete_body;
       if (fields.outcome === "blocked" || fields.outcome === "failed") {
         receipt.stop_evidence = stopEvidence(fields.headers, fields.excerpt, secrets);
         receipt.stop_evidence.body_bytes = fields.bytes;
@@ -530,7 +603,8 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
         const body = Buffer.from(await response.arrayBuffer().catch(() => new ArrayBuffer(0)));
         clearTimers();
         const excerpt = body.subarray(0, EXCERPT_BYTES);
-        if (isRetryable(response.status) && attempts < MAX_ATTEMPTS) {
+        const challenge = challengeOf(response.status, responseHeaders, body);
+        if (isRetryable(response.status) && challenge === null && attempts < MAX_ATTEMPTS) {
           const retryAfterHeader = responseHeaders["retry-after"] ?? null;
           observed.push(
             retryAfterHeader === null
@@ -542,11 +616,14 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
           continue;
         }
         if (isRetryable(response.status)) observed.push(`HTTP ${response.status}`);
-        const blocked = response.status === 403 || (response.status < 300 && isHtml);
+        const blocked = challenge !== null || response.status === 403;
+        const ok2xx = response.status >= 200 && response.status < 300;
         return finish({
           status: response.status,
           outcome: blocked ? "blocked" : "failed",
-          blocked_reason: blocked ? (response.status === 403 ? "http-403" : "challenge") : null,
+          blocked_reason: blocked ? (challenge !== null ? "challenge" : "http-403") : null,
+          ...(challenge === null ? {} : { challenge_signal: challenge }),
+          ...(!blocked && ok2xx ? { error: UNEXPECTED_HTML_DOWNLOAD } : {}),
           bytes: body.byteLength,
           sha256: sha256(body),
           headers: responseHeaders,
@@ -590,12 +667,22 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
 
       if (timedOut || streamError !== null) {
         rmSync(part, { force: true });
+        const advertised = Number(responseHeaders["content-length"] ?? Number.NaN);
         return finish({
           status: response.status,
           outcome: timedOut ? "blocked" : "failed",
           blocked_reason: timedOut ? "timeout" : null,
           timeout_ms: timedOut ? elapsed() : null,
-          ...(streamError === null ? {} : { error: redact(streamError, secrets) }),
+          ...(streamError === null
+            ? {}
+            : {
+                error: redact(streamError, secrets),
+                incomplete_body: {
+                  bytes,
+                  content_length:
+                    Number.isSafeInteger(advertised) && advertised >= 0 ? advertised : null,
+                },
+              }),
           bytes,
           sha256: hash.digest("hex"),
           headers: responseHeaders,
@@ -625,6 +712,16 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       return limiterFor(request.url)(() => downloadUnlimited(request));
     },
   };
+}
+
+/** Why a 2xx body that fails its expected-format parse (and shows no challenge) stops. */
+export const UNEXPECTED_BODY = "unexpected body: the 2xx response failed the expected-format check";
+/** Why a 2xx text/html answer to a file download (without a challenge signal) stops. */
+export const UNEXPECTED_HTML_DOWNLOAD =
+  "unexpected body: a text/html page answered instead of the file";
+
+function challengeOf(status: number, headers: Record<string, string>, body: Buffer): string | null {
+  return detectChallengeSignal({ status, headers, body: body.toString("utf8") });
 }
 
 function parseBody<T>(

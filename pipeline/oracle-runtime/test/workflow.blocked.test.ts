@@ -90,7 +90,39 @@ interface Scenario {
   austinThrottled?: boolean;
   bbbBlocked?: boolean;
   alphaBlocked?: boolean;
+  /** run-1 shape: the export answers HTTP 200 and the stream breaks part-way. */
+  tcadBroken?: boolean;
+  /** run-1 shape: BBB answers 403 with cf-mitigated: challenge and an interstitial. */
+  bbbCfChallenge?: boolean;
+  /** run-1 shape: a normal 200 permit page carrying the Cloudflare challenge-platform beacon. */
+  alphaBeacon?: boolean;
 }
+
+/** SYNTHETIC: a 200 response whose body stream errors after `sent` bytes (undici "terminated"). */
+function brokenStream(sent: number, contentLength: number): Response {
+  let done = false;
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      pull: (controller) => {
+        if (!done) {
+          done = true;
+          controller.enqueue(new Uint8Array(sent));
+          return;
+        }
+        controller.error(new TypeError("terminated"));
+      },
+    }),
+    {
+      status: 200,
+      headers: { "content-type": "application/json", "content-length": String(contentLength) },
+    },
+  );
+}
+
+const BEACON_PAGE = `<html><head><title>Building Permits | Alpha, TX</title></head><body>
+<h1>Building Permits</h1><p>synthetic permits page</p>
+<script>var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';</script>
+</body></html>`;
 
 function socrata(host: string, counts: Record<string, string>, s: Scenario): Route[] {
   const throttled = (): boolean => host === "data.austintexas.gov" && s.austinThrottled === true;
@@ -129,6 +161,7 @@ function routes(s: Scenario): Route[] {
         if (u.pathname === "/publicinformation") return text(LANDING);
         if (u.pathname === "/files/layouts.zip")
           return new Response("PK", { headers: { "content-type": "application/zip" } });
+        if (s.tcadBroken) return brokenStream(4096, 100_000);
         return new Response(EXPORT, { headers: { "content-type": "application/json" } });
       },
     },
@@ -136,9 +169,14 @@ function routes(s: Scenario): Route[] {
     {
       match: (u) => u.host.endsWith("bbb.org"),
       respond: () =>
-        s.bbbBlocked
-          ? text("<html>Just a moment...</html>", 403)
-          : text("<html>synthetic listing page</html>"),
+        s.bbbCfChallenge
+          ? text("<html><head><title>Just a moment... | BBB</title></head></html>", 403, {
+              "content-type": "text/html",
+              "cf-mitigated": "challenge",
+            })
+          : s.bbbBlocked
+            ? text("<html>Just a moment...</html>", 403)
+            : text("<html>synthetic listing page</html>"),
     },
     {
       match: (u) => u.host === "census.test",
@@ -147,7 +185,11 @@ function routes(s: Scenario): Route[] {
     {
       match: (u) => u.host === "alpha.test",
       respond: () =>
-        s.alphaBlocked ? text("Forbidden", 403) : text("<html>synthetic permits page</html>"),
+        s.alphaBlocked
+          ? text("Forbidden", 403)
+          : s.alphaBeacon
+            ? text(BEACON_PAGE, 200, { "content-type": "text/html", server: "cloudflare" })
+            : text("<html>synthetic permits page</html>"),
     },
     { match: () => true, respond: () => text("<html>synthetic evidence page</html>") },
   ];
@@ -359,6 +401,78 @@ describe("A-01-TC-018 blocked receipt waits for a human (FR-006, FR-006a, FR-006
       expect(must(h.evidence.get(p))).toMatch(/^---\nid: /);
     }
     expect([...h.evidence.values()].join("\n")).not.toContain("synthetic-secret");
+  });
+});
+
+describe("run-1 regressions: next step, anti_bot and challenge classification", () => {
+  it("bug 1: a broken TCAD download on a reachable source recommends one more captured attempt, not a records request", async () => {
+    const h = harness({ tcadBroken: true });
+    await expect(h.run()).rejects.toBeInstanceOf(Suspended);
+    const catalog = must(h.catalogs.at(-1));
+    const row = source(catalog, "tcad_certified");
+    expect(row.status).toBe("blocked");
+    const next = must(row.next_step);
+    expect(next).toMatch(/reachable/i);
+    expect(next).toMatch(/HTTP 200/);
+    expect(next).toMatch(/broke at 4096 of 100000 bytes/);
+    expect(next).toContain("resolve -- tcad_certified captured");
+    expect(next).not.toMatch(/^File the Public Information Act/);
+    // the PIA request is kept only as a documented fallback note, not as the next step
+    expect(row.records_request).toBeUndefined();
+    expect(must(row.notes)).toMatch(/fallback/i);
+    expect(must(row.notes)).toMatch(/Public Information Act/);
+    expect(must(row.blocked_evidence)).toMatchObject({
+      http_status: 200,
+      outcome: "failed",
+      error: "terminated",
+    });
+    expect(must(row.blocked_evidence).timeout_ms).toBeUndefined();
+    expect(must(row.anti_bot)).toMatch(/challenge: none seen/);
+    // automatic retry stays off: exactly one export request
+    expect(
+      h.calls.filter((c) => new URL(c.url).pathname === "/files/2026-special-export.json").length,
+    ).toBe(1);
+    const blocker = must(lastSaved(h).blockers.find((b) => b.source_key === "tcad_certified"));
+    expect(blocker.records_request).toBeUndefined();
+    expect(blocker.next_step).toContain("resolve -- tcad_certified captured");
+    expect(CatalogSchema.safeParse(catalog).success).toBe(true);
+  });
+
+  it("bug 1: a real TCAD block (403) still names the records request as the next step", async () => {
+    const h = harness({ tcadBlocked: true });
+    await expect(h.run()).rejects.toBeInstanceOf(Suspended);
+    const row = source(must(h.catalogs.at(-1)), "tcad_certified");
+    expect(must(row.next_step)).toMatch(/records request/i);
+    expect(row.records_request).toBeDefined();
+  });
+
+  it("bug 4: BBB 403 with cf-mitigated: challenge says the challenge was seen in anti_bot", async () => {
+    const h = harness({ bbbCfChallenge: true });
+    await expect(h.run()).rejects.toBeInstanceOf(Suspended);
+    const bbb = source(must(h.catalogs.at(-1)), "bbb");
+    expect(bbb.status).toBe("blocked");
+    expect(must(bbb.anti_bot)).toMatch(/challenge: seen/);
+    expect(must(bbb.anti_bot)).toContain("cf-mitigated: challenge");
+    expect(must(bbb.anti_bot)).not.toMatch(/none seen/);
+  });
+
+  it("bug 4: a source with no challenge says none seen", async () => {
+    const h = harness({ tcadBlocked: true });
+    await expect(h.run()).rejects.toBeInstanceOf(Suspended);
+    const catalog = must(h.catalogs.at(-1));
+    expect(must(source(catalog, "tcad_certified").anti_bot)).toMatch(/challenge: none seen/);
+    expect(must(source(catalog, "austin_permits").anti_bot)).toMatch(/challenge: none seen/);
+  });
+
+  it("bug 2: a 200 permit page with the challenge-platform beacon is not a blocked row", async () => {
+    const h = harness({ alphaBeacon: true });
+    const record = await h.run();
+    expect(record.state).toBe("READY");
+    const alpha = must(
+      must(must(h.catalogs.at(-1)).permits).jurisdictions.find((j) => j.key === "alpha"),
+    );
+    expect(alpha.status).toBe("supported");
+    expect(alpha.blocked_evidence).toBeUndefined();
   });
 });
 

@@ -77,18 +77,42 @@ export function blockedEvidence(receipt: CaptureReceipt, evidencePath: string): 
     outcome: receipt.outcome === "failed" ? "failed" : "blocked",
     geo_signal: receipt.geo_signal,
   };
+  // A real timeout records timeout_ms; a response records its status; a network error
+  // (no response, no timeout) records its error, never a made-up timeout_ms.
   if (receipt.timeout_ms !== null) evidence.timeout_ms = receipt.timeout_ms;
   else if (receipt.status !== null) evidence.http_status = receipt.status;
-  else evidence.timeout_ms = 0;
+  if (receipt.error !== undefined) evidence.error = receipt.error;
+  else if (receipt.timeout_ms === null && receipt.status === null) {
+    evidence.error = "network error, no HTTP response";
+  }
   return evidence;
 }
 
-function antiBot(receipts: readonly CaptureReceipt[], extra?: string): string {
-  const stop = receipts.find((r) => r.outcome === "blocked" || r.outcome === "failed");
-  const challenge = receipts.find((r) => r.blocked_reason === "challenge");
+/** The challenge part of anti_bot, derived only from the receipts' explicit signals. */
+function challengeText(receipts: readonly CaptureReceipt[]): string {
+  const seen = receipts.find(
+    (r) => r.challenge_signal !== undefined || r.blocked_reason === "challenge",
+  );
+  if (!seen) return "none seen";
+  const signal = seen.challenge_signal ? `; ${seen.challenge_signal}` : "";
+  return `seen (HTTP ${seen.status ?? "none"}${signal})`;
+}
+
+/**
+ * anti_bot text from the source's own receipts. `stop` is the receipt that stopped the
+ * source when it is not among `receipts` (a reused earlier observation).
+ */
+function antiBot(
+  receipts: readonly CaptureReceipt[],
+  extra?: string,
+  stopReceipt?: CaptureReceipt | null,
+): string {
+  const all =
+    stopReceipt && !receipts.includes(stopReceipt) ? [...receipts, stopReceipt] : receipts;
+  const stop = all.find((r) => r.outcome === "blocked" || r.outcome === "failed");
   const parts = [
     `rate limits observed: ${rateLimitsObserved(receipts)}`,
-    `challenge: ${challenge ? `seen (HTTP ${challenge.status ?? "none"})` : "none seen"}`,
+    `challenge: ${challengeText(all)}`,
     `app token used: ${receipts.some((r) => r.app_token_used)}`,
     `requests: ${receipts.length}`,
   ];
@@ -337,6 +361,7 @@ export function assembleSources(r: Us1Results, opts: AssembleOptions): Source[] 
       anti_bot: antiBot(
         r.bbb.receipts,
         r.bbb.reused ? "reused the recorded observation; no new request" : undefined,
+        r.bbb.blocked_receipt,
       ),
       decision: "runtime retrieval",
       decision_reason:

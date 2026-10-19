@@ -298,7 +298,7 @@ function blockedSection(catalog: Catalog): string[] {
     [
       "Blocked",
       "Outcome",
-      "HTTP status or timeout",
+      "HTTP status, timeout or network error",
       "Attempts",
       "Geo signal",
       "Evidence file",
@@ -309,8 +309,10 @@ function blockedSection(catalog: Catalog): string[] {
       subject,
       ev.outcome,
       ev.http_status !== undefined
-        ? `HTTP ${ev.http_status}`
-        : `timeout after ${num(ev.timeout_ms ?? 0)} ms`,
+        ? `HTTP ${ev.http_status}${ev.error ? ` (${cell(ev.error)})` : ""}`
+        : ev.timeout_ms !== undefined
+          ? `timeout after ${num(ev.timeout_ms)} ms`
+          : `network error: ${cell(ev.error ?? "no HTTP response")}`,
       num(ev.attempts),
       cell(ev.geo_signal),
       `\`${ev.evidence_path}\``,

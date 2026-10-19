@@ -1,7 +1,7 @@
 // T037: the committed evidence file for a blocked or failed source (FR-006, FR-007b).
 //
 // One Markdown file per stop receipt under docs/evidence/blocked/, with `id`/`parent` front
-// matter, the HTTP status or timeout, capture time, URL, attempts, User-Agent, outcome,
+// matter, the HTTP status, timeout or network error, capture time, URL, attempts, User-Agent, outcome,
 // geo signal, the saved response headers and a body excerpt with the SHA-256 of the whole
 // body. Everything is passed through the logger's redaction (credential URLs, token query
 // values, bearer tokens, registered secrets, home paths) plus a Windows home-path rule, and
@@ -86,6 +86,16 @@ export function renderBlockedEvidence(input: RenderInput): string {
   front.user_agent = receipt.user_agent;
   front.outcome = receipt.outcome;
   if (receipt.blocked_reason !== null) front.blocked_reason = receipt.blocked_reason;
+  if (receipt.error !== undefined) front.error = clean(receipt.error);
+  if (receipt.challenge_signal !== undefined) {
+    front.challenge_signal = clean(receipt.challenge_signal);
+  }
+  if (receipt.incomplete_body !== undefined) {
+    front.bytes_received = receipt.incomplete_body.bytes;
+    if (receipt.incomplete_body.content_length !== null) {
+      front.content_length = receipt.incomplete_body.content_length;
+    }
+  }
   front.geo_signal = clean(receipt.geo_signal);
   front.body_bytes = receipt.stop_evidence?.body_bytes ?? receipt.bytes;
   front.body_sha256 = receipt.sha256;
@@ -93,10 +103,15 @@ export function renderBlockedEvidence(input: RenderInput): string {
     front.rate_limits_observed = clean(receipt.rate_limits_observed);
   }
 
+  const incomplete = receipt.incomplete_body;
   const what =
     receipt.timeout_ms !== null
       ? `timed out after ${receipt.timeout_ms} ms`
-      : `answered HTTP ${receipt.status ?? "none"}`;
+      : receipt.status === null
+        ? `failed with a network error before any HTTP response (${clean(receipt.error ?? "no message")})`
+        : incomplete !== undefined
+          ? `answered HTTP ${receipt.status} and the body stream broke at ${incomplete.bytes} of ${incomplete.content_length ?? "an unknown number of"} bytes (${clean(receipt.error ?? "stream ended early")})`
+          : `answered HTTP ${receipt.status}`;
   const lines: string[] = [
     "---",
     stringify(front, { lineWidth: 0 }).trimEnd(),

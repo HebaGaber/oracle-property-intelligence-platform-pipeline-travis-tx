@@ -8,7 +8,7 @@
 //   "no statewide roofing licence" (A5: evidence only, not identity).
 // - TCAD supplemental exports: listed from the TCAD landing page, never downloaded.
 import { z } from "zod";
-import type { CaptureReceipt } from "../../lib/source-client.js";
+import { detectChallengeSignal, type CaptureReceipt } from "../../lib/source-client.js";
 import type { Measurement } from "../catalog.schema.js";
 import { missingReason, nullMeasurement, stopsSource, type ProbeDeps } from "./common.js";
 import type { TcadLinks } from "./tcad.js";
@@ -27,20 +27,22 @@ export const OVERTURE_MISSING_REASON =
   "not measured in A-01: optional source; licence gate decided in A-09";
 export const NO_STATEWIDE_ROOFING_LICENCE = "no statewide roofing licence";
 
-/** Markers of a bot challenge or block page. A page carrying one is never "available". */
-// Kept specific: a normal page that embeds a reCAPTCHA contact form is not a challenge.
-export const CHALLENGE_MARKERS =
-  /cf-chl|challenge-platform|just a moment\.\.\.|attention required! \| cloudflare|px-captcha|_incapsula_resource|request unsuccessful\. incapsula|<title>[^<]*access denied/i;
-
-/** An HTML/text page that is not a challenge page. */
+/**
+ * An HTML/text page that is not a challenge interstitial. The source client already stops
+ * on any explicit challenge signal (`detectChallengeSignal`); a normal page carrying an
+ * injected beacon script (for example `/cdn-cgi/challenge-platform/`) passes.
+ */
 export const ChallengeFreePage = z
   .string()
-  .refine((body) => !CHALLENGE_MARKERS.test(body), { message: "challenge page" });
+  .refine((body) => detectChallengeSignal({ status: 200, headers: {}, body }) === null, {
+    message: "challenge page",
+  });
 
 /** A previously recorded blocked observation (the blocked_evidence shape). */
 export interface PriorObservation {
   http_status?: number;
   timeout_ms?: number;
+  error?: string;
   captured_at: string;
   url: string;
   evidence_path: string;
@@ -81,7 +83,7 @@ export interface LicensingProbe {
 }
 
 function receiptFromPrior(prior: PriorObservation): CaptureReceipt {
-  return {
+  const receipt: CaptureReceipt = {
     url: prior.url,
     method: "GET",
     status: prior.http_status ?? null,
@@ -95,17 +97,21 @@ function receiptFromPrior(prior: PriorObservation): CaptureReceipt {
     app_token_used: false,
     timeout_ms: prior.timeout_ms ?? null,
     blocked_reason:
-      prior.timeout_ms !== undefined
-        ? "timeout"
-        : prior.http_status === 403
-          ? "http-403"
-          : "challenge",
+      prior.outcome === "failed"
+        ? null
+        : prior.timeout_ms !== undefined
+          ? "timeout"
+          : prior.http_status === 403
+            ? "http-403"
+            : "challenge",
     rate_limits_observed: null,
   };
+  if (prior.error !== undefined) receipt.error = prior.error;
+  return receipt;
 }
 
 async function observeOnce(deps: ProbeDeps, url: string): Promise<EvidenceProbe> {
-  const { receipt, body } = await deps.client.capture({
+  const { receipt } = await deps.client.capture({
     url,
     schema: ChallengeFreePage,
     bodyKind: "text",
@@ -113,7 +119,6 @@ async function observeOnce(deps: ProbeDeps, url: string): Promise<EvidenceProbe>
     maxAttempts: 1,
   });
   const stopped = stopsSource(receipt);
-  const marker = CHALLENGE_MARKERS.exec(body.toString("utf8"));
   return {
     status: stopped ? "blocked" : "available",
     receipts: [receipt],
@@ -122,13 +127,14 @@ async function observeOnce(deps: ProbeDeps, url: string): Promise<EvidenceProbe>
     captured_at: receipt.captured_at,
     reused: false,
     evidence_path: null,
-    challenge: marker ? marker[0] : null,
+    challenge: receipt.challenge_signal ?? null,
   };
 }
 
 /**
  * One observation of an official evidence page (a jurisdiction's permit page, T032): one
- * request, no retry; a 403, timeout or challenge page is `blocked`.
+ * request, no retry; a 403, timeout or explicit challenge is `blocked`; a 404, a network
+ * error or an unexpected body is `failed`.
  */
 export function probeEvidencePage(deps: ProbeDeps, url: string): Promise<EvidenceProbe> {
   return observeOnce(deps, url);

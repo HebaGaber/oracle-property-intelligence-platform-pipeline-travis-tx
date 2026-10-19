@@ -123,14 +123,18 @@ sources:
       captured_at: "<UTC>"
   # ... one row per source key (9 total); blocked rows add:
   #   blocked_evidence:
-  #     http_status: 403                 # or timeout_ms
+  #     http_status: 403                 # or timeout_ms (a real timeout only)
+  #     error: "fetch failed"            # optional: network error (then no http_status and
+  #                                      # no timeout_ms) or a stream error with http_status
+  #                                      # (a download that broke part-way)
   #     captured_at: "<UTC>"
   #     url: "<url>"
   #     evidence_path: "docs/evidence/blocked/<file>"
   #     body_sha256: "<hex>"
   #     attempts: 1
   #     user_agent: "<constant project UA>"
-  #     outcome: "blocked"               # or "failed" (429/5xx after 5 attempts)
+  #     outcome: "blocked"               # or "failed" (429/5xx after 5 attempts, network
+  #                                      # error, broken download, unexpected 2xx body, 404)
   #     geo_signal: "none"               # or the quoted signal
 ```
 
