@@ -25,7 +25,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | AC-11 | Capture roof age or best-available proxies (year built, last roofing permit/completion date) so properties with roofs older than a configurable threshold (default 15 years) can be queried. | A5 (A1) | FEAT-A10 | A-10 | | | | |
 | AC-12 | Reconcile duplicate entities across all uploaded datasets. | A2 | FEAT-A10, FEAT-A07 | A-10, A-07 | | | | |
 | AC-13 | Preserve source provenance for uploaded records. | A2 | FEAT-A10, FEAT-A02 | A-10, A-02 | | | | |
-| AC-14 | Continuous / incremental: support ongoing ingestion of new and changed records (scheduled or on-demand refreshes, change detection or bounded windows, idempotent steps). | A3 | FEAT-A12 | A-12, A-06, A-17 (on-demand refresh) | | | | |
+| AC-14 | Continuous / incremental: support ongoing ingestion of new and changed records (scheduled or on-demand refreshes, change detection or bounded windows, idempotent steps). | A3 | FEAT-A12, FEAT-A17 | A-12, A-06, A-17 (on-demand refresh) | | | | |
 | AC-15 | Continuous / incremental: maintain a visible history of pipeline runs (timestamps, source list, record counts, deltas, any source limitations). | A3 | FEAT-A12, FEAT-A13 | A-12, A-13 | | | | |
 | AC-16 | Continuous / incremental: demonstrate that data continues to be ingested and published over time (multiple runs or simulated ongoing updates). | A3 (A4) | FEAT-A12 | A-12 | | | | |
 | **Infrastructure & access** | | | | | | | | |
@@ -37,7 +37,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | AC-22 | Use DuckDB for local or portable analytical querying. | A5 | FEAT-A02, FEAT-A03 | A-02, A-03, A-13 | | | | |
 | AC-23 | Structure the database to support MCP access. | A6 | FEAT-A15, FEAT-A02 | A-15, A-02 | | | | |
 | AC-24 | Enable agent access to query the database. | A6 | FEAT-A14 | A-14 | | | | |
-| AC-25 | Provide a UI for exploring the uploaded data. | A5 | FEAT-A13, FEAT-A03 | A-13, A-03, A-18 | | | | |
+| AC-25 | Provide a UI for exploring the uploaded data. | A5 | FEAT-A13, FEAT-A03, FEAT-A18 | A-13, A-03, A-18 | | | | |
 | **IPFS publication** | | | | | | | | |
 | AC-26 | Treat IPFS CIDs as the durable identity of published artifacts; a vendor-specific HTTP URL is not the source of truth. | A4 | FEAT-A11 | A-11 | | | | |
 | AC-27 | Prefer CIDv1 (base32) for every published object. | A4 | FEAT-A11 | A-11 | | | | |
@@ -64,7 +64,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | AC-46 | Confirm the candidate fulfilled both Oracle and builder responsibilities for this milestone. | A1 (A4) | FEAT-A11, FEAT-A13 | A-11, A-13 (evidence only; the "Oracle + builder" statement is a release task, see note) | | | | |
 | AC-47 | Pass the demo using real uploaded Travis County records. | A1 | FEAT-A04–A10, FEAT-A13 | A-04–A-10, A-13 | | | | |
 | **Demo transcript** | | | | | | | | |
-| D-1 | Opening: the pipeline has loaded the available Travis County dataset, it is queryable through DuckDB, eligible artifacts are on IPFS as content-addressed snapshots, and the UI and agent answer roofing-lead questions. | A1–A6 (framing) | FEAT-A03, FEAT-A13 | A-03, A-13, A-16, A-18 (Hub) | | | | |
+| D-1 | Opening: the pipeline has loaded the available Travis County dataset, it is queryable through DuckDB, eligible artifacts are on IPFS as content-addressed snapshots, and the UI and agent answer roofing-lead questions. | A1–A6 (framing) | FEAT-A03, FEAT-A13, FEAT-A18 | A-03, A-13, A-16, A-18 (Hub) | | | | |
 | D-2 | Open the pipeline run summary → completed run, source list, county coverage, record counts, timestamps, documented source limitations. | A1 (A3) | FEAT-A13, FEAT-A12 | A-13, A-12, A-03, A-01 | | | | |
 | D-3 | Show total uploaded records by source → property, permit, ownership, contractor (with BBB where available), business and coordinate records with collection timestamps and provenance. | A1 (A2) | FEAT-A13, FEAT-A04–A09 | A-13, A-01, A-04–A-10 | | | | |
 | D-4 | Open the DuckDB-backed query layer → data available for structured querying without Oracle-hosted database infrastructure. | A5 (A4) | FEAT-A03, FEAT-A02 | A-03, A-13, A-02, A-16 | | | | |
@@ -96,6 +96,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | --- | --- | --- | --- | --- | --- |
 | G0 | docs/01-intent.md | 0.1 | PASS (4 warnings), `docs/gates/G0-VIS-A-precheck.md` | Approved (HebaGaber) | 2026-10-17 |
 | G1 | docs/feature-list.md | 0.1 | PASS, `docs/gates/G1-FL-A-precheck.md` | Approved (HebaGaber) | 2026-10-17 |
+| G1 | docs/feature-list.md | 0.2 | FAIL (3) → fixed → PASS, `docs/gates/G1-FL-A-precheck.md` | Re-approved (HebaGaber); adds FEAT-A17, FEAT-A18 | 2026-10-19 |
 | G2 | docs/plan.md | 0.2 | PASS, `docs/gates/G2-PROJ-A-precheck.md` (re-run for 0.2) | Approved (HebaGaber) | 2026-10-19 |
 | Design CP | docs/02-design.md, design/ | 1.5 | `developmentsupport-prototype-review`, `design/design-review-log.md` | Approved (HebaGaber) | 2026-10-19 |
 | G3 | docs/architecture-constitution.md | 0.2 | `docs/gates/G3-ARD-A-precheck.md` | PASS; Approved (HebaGaber) | 2026-10-19 |

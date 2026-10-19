@@ -6,10 +6,10 @@ parent: VIS-A
 owner: HebaGaber             # PO
 status: Approved             # Draft → In Review → Approved → Returned
 gate: G1
-version: 0.1.1
+version: 0.2
 created: 2026-10-17
 approved_by: [HebaGaber]
-approved_date: 2026-10-17
+approved_date: 2026-10-19        # v0.2 re-approval; v0.1 approved 2026-10-17
 ---
 
 # Initial Feature List: Oracle Pipeline (Travis County, TX)
@@ -81,7 +81,7 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 | FEAT-A04 | A-04 | Feature | TCAD property and owner backbone | Loads every TCAD certified-roll property with owner, mailing address, year built and sale date, matching the roll count. | Must | A1, A2 | SCN-A | VIS-A |
 | FEAT-A05 | A-05 | Feature | Property coordinates | Attaches GIS coordinates to at least 99% of roll properties and classifies every property without them. | Must | A1, A5 | SCN-A | VIS-A |
 | FEAT-A06 | A-06 | Feature | Permits from every jurisdiction | Loads permits from each classified jurisdiction with status, issue and final dates, and open duration. | Must | A1 | SCN-A | VIS-A |
-| FEAT-A07 | A-07 | Feature | Contractor identity | Resolves permit contractors to official business records, counting resolved, unresolved and ambiguous contractors. | Must | A1, A2 | SCN-A | VIS-A |
+| FEAT-A07 | A-07 | Feature | Contractor identity | Resolves permit contractors to official business records, reporting all five identity states. | Must | A1, A2 | SCN-A | VIS-A |
 | FEAT-A08 | A-08 | Feature | BBB ratings | Adds BBB ratings to resolved contractors within source terms, showing coverage and stopping on 403 responses. | Must | A1 | SCN-A | VIS-A |
 | FEAT-A09 | A-09 | Feature | Business and places records | Loads Texas business records and licensed places data for the county, with counts and licence recorded. | Must | A1 | SCN-A | VIS-A |
 
@@ -117,12 +117,12 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 | FEAT-ID | Story | Class | Feature name | Description (≤ 20 words) | MoSCoW | Eval pt | Scenario | Vision ref |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | FEAT-A17 | A-17 | Feature | Admin sign-in and run commands | Operator signs in by email code and starts, stops or retries runs through a queue the laptop pulls. | Should | A3 | SCN-D | VIS-A |
-| FEAT-A18 | A-18 | Feature | Content and Coming soon pages | Hub, legal, catalog and run-log pages from real files; planned features shown as Coming soon without sample data. | Should | A5 | SCN-A | VIS-A |
+| FEAT-A18 | A-18 | Feature | Content and Coming soon pages | Shows hub, legal, catalog and run-log pages from real files and marks planned features Coming soon without sample data. | Should | A5 | SCN-A | VIS-A |
 
 **Notes on the backlog**
 
-- No story was added, removed or merged; the 16 rows match `A-oracle.md` § 6 one to one.
-- **Every row is a Must** because each one is behind at least one README acceptance criterion or demo line (see `docs/traceability.md` § 1). The template's 70% guideline is exceeded on purpose; deferred scope is recorded as out of scope (OS-01 to OS-05) instead of as `Won't` rows, because a `Won't` row would need a story ID with no story behind it.
+- Sixteen rows (FEAT-A01 to FEAT-A16) match `A-oracle.md` § 6 one to one; FEAT-A17 and FEAT-A18 were added by the PO on 2026-10-19 (amendment 0.2). None were removed or merged.
+- **Every backlog row (FEAT-A01 to FEAT-A16) is a Must** because each one is behind at least one README acceptance criterion or demo line (see `docs/traceability.md` § 1). The template's 70% guideline is exceeded on purpose; deferred scope is recorded as out of scope (OS-01 to OS-05) instead of as `Won't` rows, because a `Won't` row would need a story ID with no story behind it.
 - **Lower-priority parts inside Must stories:**
   - **FEAT-A09:** Overture places are optional (Could). Business records are the Must part.
   - **FEAT-A12:** the CDK scheduler is Should and stays off by default (constitution A7). On-demand refreshes meet the README.
@@ -142,20 +142,20 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 | Operator and product completeness | A17–A18 | 2 | 0 | 2 | 0 | 0 |
 | **Total** | | **18** | **16** | **2** | **0** | **0** |
 
-**MoSCoW health:** 100% Must, above the 70% guideline. This is accepted because every Must traces to a README criterion or demo line (notes above).
+**MoSCoW health:** 16 Must, 2 Should (89% Must), above the 70% guideline. This is accepted because every Must traces to a README criterion or demo line (notes above); the two Should rows (FEAT-A17, FEAT-A18) are built after every Must.
 
 ## 6. Non-functional requirements
 
 | NFR-ID | Category | Requirement (measurable) | Features affected |
 | --- | --- | --- | --- |
 | NFR-01 | Performance | Radius plus roof-age and open-permit searches return in p95 < 3 s over the full county on the hosted explorer. | A02, A03, A13, A14, A15 |
-| NFR-02 | Cost | Nothing that bills while idle is enabled by default (constitution A7); the scheduler is off by default; AWS budget alert at $10. | A03, A12, A13–A16 |
-| NFR-03 | Observability | Every Lambda uses Powertools Logger, Tracer and Metrics with X-Ray and JSON logs; one DLQ alarm per queue (constitution VII, VIII). | A03, A12–A15 |
+| NFR-02 | Cost | Nothing that bills while idle is enabled by default (constitution A7); the scheduler is off by default; AWS budget alert at $10. | A03, A12–A18 |
+| NFR-03 | Observability | Every Lambda uses Powertools Logger, Tracer and Metrics with X-Ray and JSON logs; one DLQ alarm per queue (constitution VII, VIII). | A03, A12–A15, A17 |
 | NFR-04 | Security | Zero secrets in Git, logs or PR bodies (gitleaks in CI); MCP bearer token and keys in SSM Parameter Store SecureString (constitution VI, XII; AD-14). | ALL |
-| NFR-05 | Data honesty | 100% of displayed records and agent answers cite source URL, capture time and digest or CID; missing data is labelled, never guessed (constitution XI). | A02, A04–A10, A13–A15 |
+| NFR-05 | Data honesty | 100% of displayed records and agent answers cite source URL, capture time and digest or CID; missing data is labelled, never guessed (constitution XI). | A02, A04–A10, A13–A15, A18 |
 | NFR-06 | Durability | 100% of manifest CIDs are CIDv1 and fetch from two independent public gateways with matching size and SHA-256; published CIDs never change (constitution A3, A4). | A03, A11, A12, A13 |
 | NFR-07 | Source etiquette | Bounded concurrency and backoff on every source; zero CAPTCHA bypasses; crawling stops on the first 403 from BBB (constitution A6). | A01, A04–A09 |
-| NFR-08 | UX | Atlas tokens and components only; responsive tests pass at mobile, tablet and desktop breakpoints (`smeargle`). | A03, A13, A14, A16 |
+| NFR-08 | UX | Atlas tokens and components only; responsive tests pass at mobile, tablet and desktop breakpoints (`smeargle`). | A03, A13, A14, A16–A18 |
 | NFR-09 | Quality | CI is green on every merge: Vitest, Playwright against the hosted URL, ESLint, Prettier, `tsc` (constitution X). | ALL |
 
 ## 7. Assumptions and constraints
@@ -207,9 +207,9 @@ Critical path: A-01 → A-03 → A-04 → A-06 → A-10 → A-11 → A-12. A-13 
 | G1-08 | NFRs are measurable and no Must contradicts them | ☑ |
 | G1-09 | AI pre-check (`developmentsupport-g1-precheck`): PASS | ☑ |
 
-**AI pre-check report:** PASS, 0 FAILs, 2 notes. Full report: [gates/G1-FL-A-precheck.md](gates/G1-FL-A-precheck.md).
+**AI pre-check report:** v0.2 re-run 2026-10-19: PASS, 0 FAILs, 3 notes (after one FAIL run whose 3 findings were fixed). Full report: [gates/G1-FL-A-precheck.md](gates/G1-FL-A-precheck.md). v0.1 (2026-10-17): PASS, 0 FAILs, 2 notes.
 
-**Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-17
+**Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-17 (v0.1) · re-approved 2026-10-19 (v0.2)
 
 **Amendment 0.2 (2026-10-19, scope addition, PO decision during P8):** FEAT-A17 (admin sign-in and run commands, implementing the Accepted architecture decision AD-12, which had no story) and FEAT-A18 (Hub, legal, catalog and run-log pages, plus Coming soon items from `docs/02-design.md` § 3) were added as **Should**, built after every Must. The place gazetteer and the observability baseline were folded into FEAT-A02 and FEAT-A03, so they need no new rows. Re-run `/developmentsupport-g1-precheck` before G4 of A-17.
 
