@@ -35,7 +35,7 @@ parent: SPEC-A-01
 
 ## Constitution Part 3: Delivery process (XVIII–XXIII)
 
-- [ ] CHK015 Are gate decisions G4, G5 and G6 recorded with decision, date and any exception, so "no implement before G4–G6" can be checked from the documents alone? [Traceability, Constitution XVIII, docs/traceability.md §Gate log] — **Open (review 2026-10-19):** G4 and G5 are recorded; G6 is not yet recorded.
+- [x] CHK015 Are gate decisions G4, G5 and G6 recorded with decision, date and any exception, so "no implement before G4–G6" can be checked from the documents alone? [Traceability, Constitution XVIII, docs/traceability.md §Gate log] — **Open (review 2026-10-19):** G4 and G5 are recorded; G6 is not yet recorded.
 - [x] CHK016 Does every A-01 artifact that will be produced (catalog, summary, findings profile, evidence files, test report, review) have a required `id` and `parent` in front matter, including generated files? [Gap, Constitution XIX]
 - [x] CHK017 Is the branch and merge rule (`001-discover-sources`, `--no-ff` into `feature/oracle-pipeline` after G7) stated, along with the commit-prefix rule `A-01:`? [Completeness, Constitution XIX–XX]
 - [x] CHK018 Is "tests written first and failing first" stated as a requirement for every phase, including the acceptance tests mapped from the G6 cases? [Completeness, Constitution XXI] — Resolved 2026-10-19.

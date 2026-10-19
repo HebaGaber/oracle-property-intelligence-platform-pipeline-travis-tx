@@ -6,13 +6,13 @@ parent: FEAT-A01
 story: stories/A-01-discover-sources.md
 spec: specs/001-discover-sources/spec.md
 owner: HebaGaber             # QC Lead
-status: Draft                # Draft → In Review → Approved
+status: Approved             # Draft → In Review → Approved
 gate: G6
 version: 0.4
 created: 2026-10-19
 runtime_url: "none: Project story (G4 C-04 exception); every case runs from a terminal at the repo root on branch 001-discover-sources"
 reviewed_code: 7311edd
-qc_signoff: false
+qc_signoff: true
 ---
 
 # Test Cases: A-01 Discover Travis County sources and pass readiness preflight
@@ -564,13 +564,13 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
 
 | # | Criterion | Status |
 | --- | --- | --- |
-| G6-1 | Every AC and every FR maps to at least one TC (§ 2 and § 7) | ☐ |
-| G6-2 | Happy, negative, edge and missing-data paths covered | ☐ |
-| G6-3 | NFRs have test cases with measurable pass criteria | ☐ |
-| G6-4 | Every case is a complete sequence starting from the hosted URL | ☐ |
-| G6-5 | Negative cases state the exact message or rejection behavior | ☐ |
-| G6-6 | Test data and environment documented, with real records | ☐ |
-| G6-7 | Every TC traces to the story and a requirement | ☐ |
-| G6-8 | AI pre-check (`developmentsupport-g6-precheck`): PASS | ☐ |
+| G6-1 | Every AC and every FR maps to at least one TC (§ 2 and § 7) | ☑ |
+| G6-2 | Happy, negative, edge and missing-data paths covered | ☑ |
+| G6-3 | NFRs have test cases with measurable pass criteria | ☑ |
+| G6-4 | Every case is a complete sequence starting from the hosted URL | ☑ |
+| G6-5 | Negative cases state the exact message or rejection behavior | ☑ |
+| G6-6 | Test data and environment documented, with real records | ☑ |
+| G6-7 | Every TC traces to the story and a requirement | ☑ |
+| G6-8 | AI pre-check (`developmentsupport-g6-precheck`): PASS | ☑ |
 
-**Decision:** ☐ Approved ☐ Returned, reason: {…} · {date}
+**Decision:** ☑ Approved ☐ Returned · 2026-10-19 (HebaGaber, QC Lead). G6-4 (hosted URL), C-07 (manifest CID) and C-09 (Playwright) accepted as justified exceptions: Project story, no hosted runtime until A-03 (same basis as G4 C-04, G5 C-05).

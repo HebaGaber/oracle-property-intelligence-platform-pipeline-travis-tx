@@ -28,3 +28,7 @@ History (2026-10-19): run 1 (v0.1) failed C-05 and C-06; run 2 (v0.2) passed; ru
 ## Fix list (ordered by impact on the assessment score)
 
 No gaps. Record the decision, including PO acceptance of the C-05, C-07 and C-09 exceptions (same basis as G4 C-04 and G5 C-05).
+
+## Decision
+
+**Approved (HebaGaber, QC Lead), 2026-10-19.** C-05, C-07 and C-09 accepted as justified exceptions (Project story, no hosted runtime until A-03; same basis as G4 C-04 and G5 C-05).

@@ -102,5 +102,6 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G3 | docs/architecture-constitution.md | 0.2 | `docs/gates/G3-ARD-A-precheck.md` | PASS; Approved (HebaGaber) | 2026-10-19 |
 | G4 | stories/A-01-discover-sources.md | rev 3 | FAIL (3) → FAIL (1) → PASS, `docs/gates/G4-A-01-precheck.md`; C-04 justified exception (Project feature) | Ready (HebaGaber) | 2026-10-19 |
 | G5 | specs/001-discover-sources (spec, plan, tasks) | 2026-10-19 | PASS (0 FAIL; C-05 via the G4 C-04 exception), `docs/gates/G5-A-01-precheck.md`; analyze CRITICAL/HIGH fixed, 3 MEDIUM open | Approved (HebaGaber) | 2026-10-19 |
+| G6 | testplans/A-01-test-cases.md | 0.4 | FAIL (2) → PASS → FAIL (1) → PASS, `docs/gates/G6-A-01-precheck.md`; C-05/C-07/C-09 justified exceptions (Project story) | Approved (HebaGaber, QC Lead) | 2026-10-19 |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
