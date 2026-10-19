@@ -9,11 +9,12 @@
   },
   "scripts": {
     "test": "vitest run --passWithNoTests",
+    "test:acceptance": "vitest run --config vitest.acceptance.config.ts",
     "typecheck": "node node_modules/typescript-7/bin/tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "discover": "tsx travis/discovery/workflow.ts",
+    "discover": "tsx travis/discovery/discover.ts",
     "check-catalog": "tsx travis/discovery/check-catalog.ts",
     "validate": "tsx travis/discovery/run-validator.ts",
     "resolve": "tsx travis/discovery/resolve.ts",

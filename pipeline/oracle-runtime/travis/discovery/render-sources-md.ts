@@ -1,0 +1,441 @@
+// T046: operator command `npm --prefix pipeline/oracle-runtime run render-sources`
+// (FR-007, FR-007a, FR-007b). Regenerates docs/sources.md from the catalog.
+//
+// - Front matter `id: SRC-A`, `parent: A-01` (constitution XIX).
+// - Every number sits in a table row that also carries its source URL and its UTC capture
+//   time (URL column before the time column), so `grep` can prove FR-007a.
+// - A null value shows its `missing_reason`, never 0.
+// - Deterministic: the output depends only on the catalog (no clock, no locale, no host
+//   paths); times are shown to the second; a re-run with the same catalog gives no diff.
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { redact } from "../lib/log.js";
+import { DEFAULT_REPO_ROOT } from "./blocked-evidence.js";
+import type { Catalog, Measurement, Source } from "./catalog.schema.js";
+import { DEFAULT_CATALOG_PATH, readCatalog } from "./write-catalog.js";
+
+export const SOURCES_MD_REL_PATH = "docs/sources.md";
+const CATALOG_REL_PATH = "pipeline/docs/travis-sources.yaml";
+
+type Obj = Record<string, unknown>;
+
+/** Escapes a table cell: pipes and line breaks never break the row. */
+function cell(text: string): string {
+  return text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|").trim();
+}
+
+/** UTC time to the second (FR-007a, and the TC-022 provenance grep). */
+function utc(iso: string): string {
+  return iso.replace(/\.\d+Z$/, "Z");
+}
+
+function groupInt(n: number): string {
+  const sign = n < 0 ? "-" : "";
+  const digits = String(Math.abs(n));
+  return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/** Integers with thousands separators; other numbers rounded to 2 decimals. */
+function num(n: number): string {
+  if (Number.isInteger(n)) return groupInt(n);
+  const fixed = (Math.round(n * 100) / 100).toFixed(2);
+  const [int = "0", frac = "00"] = fixed.split(".");
+  return `${groupInt(Number(int))}.${frac}`;
+}
+
+function value(m: { value: number | null; missing_reason?: string | undefined }): string {
+  return m.value === null
+    ? `missing: ${cell(m.missing_reason ?? "no reason recorded")}`
+    : num(m.value);
+}
+
+function row(cells: readonly string[]): string {
+  return `| ${cells.map((c) => (c === "" ? " " : c)).join(" | ")} |`;
+}
+
+function table(header: readonly string[], rows: readonly string[][]): string[] {
+  if (rows.length === 0) return ["_None._", ""];
+  return [row(header), row(header.map(() => "---")), ...rows.map((r) => row(r)), ""];
+}
+
+function isObj(v: unknown): v is Obj {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+interface FoundMeasurement {
+  path: string;
+  m: Measurement;
+}
+
+/** Every Measurement in a subtree (any object with an own `value`), in catalog order. */
+function measurements(node: unknown, path: string, out: FoundMeasurement[]): FoundMeasurement[] {
+  if (Array.isArray(node)) {
+    node.forEach((item, i) => {
+      const label = isObj(item) && typeof item.key === "string" ? item.key : String(i);
+      measurements(item, `${path}[${label}]`, out);
+    });
+  } else if (isObj(node)) {
+    if (Object.hasOwn(node, "value") && typeof node.source_url === "string") {
+      out.push({ path, m: node as unknown as Measurement });
+    } else {
+      for (const [k, v] of Object.entries(node)) measurements(v, path ? `${path}.${k}` : k, out);
+    }
+  }
+  return out;
+}
+
+function sourcesTable(sources: readonly Source[]): string[] {
+  return table(
+    [
+      "Source",
+      "Status",
+      "Denominator",
+      "Decision",
+      "Projected full-capture hours",
+      "Source URL",
+      "Captured (UTC)",
+    ],
+    sources.map((s) => [
+      `\`${s.key}\``,
+      s.status,
+      value(s.denominator),
+      cell(`${s.decision ?? "none"}: ${s.decision_reason ?? "no reason recorded"}`),
+      typeof s.projected_full_capture_hours === "number"
+        ? num(s.projected_full_capture_hours)
+        : "not projected",
+      s.denominator.source_url,
+      utc(s.denominator.captured_at),
+    ]),
+  );
+}
+
+function measurementsTable(catalog: Catalog): string[] {
+  const found: FoundMeasurement[] = [];
+  measurements(catalog.sources, "sources", found);
+  if (catalog.parcel) measurements(catalog.parcel, "parcel", found);
+  if (catalog.permits) measurements(catalog.permits, "permits", found);
+  return table(
+    ["Measurement", "Value", "Method", "Source URL", "Captured (UTC)"],
+    found.map(({ path, m }) => [
+      `\`${cell(path)}\``,
+      value(m),
+      cell(m.method ?? m.query ?? ""),
+      m.source_url,
+      utc(m.captured_at),
+    ]),
+  );
+}
+
+function throughputSection(sources: readonly Source[]): string[] {
+  const rows: string[][] = [];
+  for (const s of sources) {
+    const t = s.throughput;
+    if (!t) continue;
+    const at = utc(t.window_end);
+    rows.push([
+      `\`${s.key}\``,
+      "rows per minute (median)",
+      num(t.rows_per_minute_median),
+      s.url,
+      at,
+    ]);
+    rows.push([`\`${s.key}\``, "pages read", num(t.pages_read), s.url, at]);
+    rows.push([`\`${s.key}\``, "page size (rows)", num(t.page_size), s.url, at]);
+    rows.push([`\`${s.key}\``, "measurement window", `${utc(t.window_start)} to ${at}`, s.url, at]);
+    rows.push([`\`${s.key}\``, "app token used", String(t.app_token_used), s.url, at]);
+    rows.push([`\`${s.key}\``, "rate limits observed", cell(t.rate_limits_observed), s.url, at]);
+  }
+  for (const s of sources) {
+    const d = s.download_rate;
+    if (!d) continue;
+    rows.push([
+      `\`${s.key}\``,
+      "download megabytes per minute",
+      num(d.megabytes_per_minute),
+      d.source_url,
+      utc(d.captured_at),
+    ]);
+  }
+  return table(["Source", "Measure", "Value", "Source URL", "Captured (UTC)"], rows);
+}
+
+function parcelSection(catalog: Catalog): string[] {
+  const p = catalog.parcel;
+  if (!p) return ["_No parcel block in the catalog._", ""];
+  const roll = p.assessed_parcel_count_measurement;
+  const gis = p.gis_feature_count_measurement;
+  const gap =
+    p.gap_pct === "unknown"
+      ? `unknown: ${cell(p.gap_reason ?? "no reason recorded")}`
+      : `${num(p.gap_pct)} % (threshold ${num(p.discrepancy_threshold_pct)} %)`;
+  const lines = table(
+    ["Measure", "Value", "Source URL", "Captured (UTC)"],
+    [
+      [
+        `Assessed parcels, roll year ${p.roll_year} (canonical denominator)`,
+        value(roll),
+        roll.source_url,
+        utc(roll.captured_at),
+      ],
+      ["GIS parcel features", value(gis), gis.source_url, utc(gis.captured_at)],
+      ["Gap between roll and GIS", gap, gis.source_url, utc(gis.captured_at)],
+    ],
+  );
+  lines.push(`- Canonical source: ${p.canonical_source}`);
+  if (p.certification_date) lines.push(`- Certification date: ${p.certification_date}`);
+  lines.push(
+    `- Parcel identifier: ${p.identifier_name ?? "not yet read"} (proven unique: ${String(p.identifier_proven)})${p.identifier_format ? `; format: ${p.identifier_format}` : ""}`,
+  );
+  if (p.deed_or_sale_dates_present !== undefined) {
+    lines.push(`- Deed or sale dates present: ${String(p.deed_or_sale_dates_present)}`);
+  }
+  if (p.separately_assessed_without_geometry) {
+    lines.push(
+      `- Separately assessed units without geometry: ${p.separately_assessed_without_geometry}`,
+    );
+  }
+  if (p.discrepancy_explanation)
+    lines.push(`- Discrepancy explanation: ${p.discrepancy_explanation}`);
+  if (p.export_receipt) {
+    lines.push(
+      `- TCAD export receipt: SHA-256 \`${p.export_receipt.sha256}\`, captured ${utc(p.export_receipt.captured_at)} from ${p.export_receipt.url} (file kept out of git)`,
+    );
+  }
+  lines.push("");
+  return lines;
+}
+
+function jurisdictionsSection(catalog: Catalog): string[] {
+  const out: string[] = [];
+  const c = catalog.census_reference;
+  if (c) {
+    out.push(
+      ...table(
+        [
+          "Census dataset",
+          "Vintage",
+          "Places with land in the county",
+          "Expected jurisdictions (places + unincorporated)",
+          "Source URL",
+          "Captured (UTC)",
+        ],
+        [
+          [
+            cell(c.dataset),
+            cell(c.vintage),
+            num(c.place_count),
+            num(c.place_count + 1),
+            c.source_url,
+            utc(c.captured_at),
+          ],
+        ],
+      ),
+    );
+  }
+  const rows = catalog.permits?.jurisdictions ?? [];
+  out.push(
+    ...table(
+      [
+        "Jurisdiction",
+        "Class",
+        "Validator status",
+        "Historical records",
+        "Supported from",
+        "Issued by",
+        "Evidence URL",
+        "Captured (UTC)",
+      ],
+      rows.map((j) => [
+        cell(j.jurisdiction),
+        j.spec_class,
+        j.status,
+        String(j.historical_records),
+        j.earliest_record_date ?? "",
+        cell(j.issued_by ?? ""),
+        j.evidence_url,
+        utc(j.evidence_captured_at),
+      ]),
+    ),
+  );
+  if (rows.length > 0) {
+    out.push(
+      "Austin-issued permits located in another jurisdiction are counted under `austin_permits` (see Measurements); the city rows show them as informational `austin_issued_located_here` counts that never set a city's class.",
+      "",
+    );
+  }
+  return out;
+}
+
+function blockedSection(catalog: Catalog): string[] {
+  const rows: Array<{
+    subject: string;
+    ev: NonNullable<Source["blocked_evidence"]>;
+    req?: Source["records_request"];
+    next?: string | undefined;
+  }> = [];
+  for (const s of catalog.sources) {
+    if (s.blocked_evidence) {
+      rows.push({
+        subject: `source \`${s.key}\``,
+        ev: s.blocked_evidence,
+        req: s.records_request,
+        next: s.next_step,
+      });
+    }
+  }
+  for (const j of catalog.permits?.jurisdictions ?? []) {
+    if (j.blocked_evidence) {
+      rows.push({
+        subject: `jurisdiction ${cell(j.jurisdiction)}`,
+        ev: j.blocked_evidence,
+        req: j.records_request,
+      });
+    }
+  }
+  if (rows.length === 0) return ["No source or jurisdiction was blocked at capture.", ""];
+  const out = table(
+    [
+      "Blocked",
+      "Outcome",
+      "HTTP status or timeout",
+      "Attempts",
+      "Geo signal",
+      "Evidence file",
+      "Blocked URL",
+      "Captured (UTC)",
+    ],
+    rows.map(({ subject, ev }) => [
+      subject,
+      ev.outcome,
+      ev.http_status !== undefined
+        ? `HTTP ${ev.http_status}`
+        : `timeout after ${num(ev.timeout_ms ?? 0)} ms`,
+      num(ev.attempts),
+      cell(ev.geo_signal),
+      `\`${ev.evidence_path}\``,
+      ev.url,
+      utc(ev.captured_at),
+    ]),
+  );
+  out.push(
+    "While any source is blocked the discovery run waits in `WAITING_HUMAN` for a human to resolve it (`resolve -- <source_key> captured|still-blocked`); nothing is bypassed and seed, pilot and ingest stay stopped for a blocked parcel source.",
+    "",
+  );
+  for (const { subject, req, next } of rows) {
+    if (!req && !next) continue;
+    out.push(`- ${subject}:`);
+    if (req) {
+      out.push(
+        `  - Records request (${req.route}): ${req.recipient_office}; scope: ${req.system_scope}; channel: ${req.request_portal_url ?? req.request_email ?? "none"}`,
+      );
+    }
+    if (next) out.push(`  - Next step: ${next}`);
+  }
+  out.push("");
+  return out;
+}
+
+function destinationSection(catalog: Catalog): string[] {
+  const d = catalog.destination;
+  if (!d) return ["_No destination block in the catalog._", ""];
+  const lines = [
+    `- Writes in scope: ${String(d.writes_in_scope)}; proven: ${String(d.proven)}${d.captured_at ? ` (checked ${utc(d.captured_at)})` : ""}`,
+  ];
+  for (const id of d.independent_identity_sources ?? []) lines.push(`- ${id}`);
+  if (d.missing_reason) lines.push(`- ${d.missing_reason}`);
+  lines.push("");
+  return lines;
+}
+
+function enrichmentSection(catalog: Catalog): string[] {
+  const b = catalog.enrichment?.bbb;
+  if (!b) return ["_No enrichment block in the catalog._", ""];
+  const lines = [
+    `- BBB status: ${b.status}${b.evidence_url ? `; evidence ${b.evidence_url}` : ""}${b.evidence_captured_at ? ` captured ${utc(b.evidence_captured_at)}` : ""}`,
+  ];
+  if (b.next_step) lines.push(`- BBB next step: ${b.next_step}`);
+  lines.push("");
+  return lines;
+}
+
+export function renderSourcesMd(catalog: Catalog): string {
+  const lines: string[] = [
+    "---",
+    "id: SRC-A",
+    "parent: A-01",
+    `title: ${catalog.county} County source catalog summary`,
+    `catalog: ${CATALOG_REL_PATH}`,
+    `snapshot_time: "${utc(catalog.snapshot_time)}"`,
+    "---",
+    "",
+    `# ${catalog.county} County sources (${catalog.state}, FIPS ${catalog.fips})`,
+    "",
+    `Generated by \`npm --prefix pipeline/oracle-runtime run render-sources\` from \`${CATALOG_REL_PATH}\` (snapshot ${utc(catalog.snapshot_time)}). Do not edit by hand. Every number below sits in a row with its source URL and UTC capture time; a missing value shows why it is missing.`,
+    "",
+    `Time the discovery run spent waiting for a human: ${num(catalog.waiting_human_hours)} h (recorded in the catalog, SC-006).`,
+    "",
+    "## Sources",
+    "",
+    ...sourcesTable(catalog.sources),
+    "## Throughput and download rates",
+    "",
+    ...throughputSection(catalog.sources),
+    "## Parcel roll and GIS",
+    "",
+    ...parcelSection(catalog),
+    "## Permit jurisdictions",
+    "",
+    ...jurisdictionsSection(catalog),
+    "## Blocked sources",
+    "",
+    ...blockedSection(catalog),
+    "## Destination proof",
+    "",
+    ...destinationSection(catalog),
+    "## Enrichment",
+    "",
+    ...enrichmentSection(catalog),
+    "## Measurements",
+    "",
+    "Every measurement in the catalog, with how it was measured.",
+    "",
+    ...measurementsTable(catalog),
+  ];
+  while (lines.at(-1) === "") lines.pop();
+  return `${lines.join("\n")}\n`;
+}
+
+export interface RenderCliOptions {
+  repoRoot?: string;
+  catalogPath?: string;
+  out?: (line: string) => void;
+}
+
+export function main(options: RenderCliOptions = {}): number {
+  const out =
+    options.out ??
+    ((line: string) => {
+      process.stdout.write(`${line}\n`);
+    });
+  const root = options.repoRoot ?? DEFAULT_REPO_ROOT;
+  let catalog: Catalog;
+  try {
+    catalog = readCatalog(options.catalogPath ?? DEFAULT_CATALOG_PATH);
+  } catch (error) {
+    const message = error instanceof Error ? (error.message.split("\n")[0] ?? "") : String(error);
+    out(redact(`render-sources: catalog unreadable: ${message}`));
+    return 1;
+  }
+  const target = join(root, SOURCES_MD_REL_PATH);
+  mkdirSync(dirname(target), { recursive: true });
+  const tmp = `${target}.tmp-${process.pid}`;
+  writeFileSync(tmp, renderSourcesMd(catalog), "utf8");
+  renameSync(tmp, target);
+  out(`render-sources: wrote ${SOURCES_MD_REL_PATH} from ${CATALOG_REL_PATH}`);
+  return 0;
+}
+
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exitCode = main();
+}

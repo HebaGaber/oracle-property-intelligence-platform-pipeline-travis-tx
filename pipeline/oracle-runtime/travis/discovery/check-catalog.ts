@@ -1,4 +1,4 @@
-// T026 + T033: the A-01 checker, rules 1-8 (contracts/catalog.md). The kit validator
+// T026 + T033 + T047: the A-01 checker, rules 1-9 (contracts/catalog.md). The kit validator
 // ignores these A-01 keys, so this checker enforces them.
 //
 // Usage: check-catalog [path]   (default pipeline/docs/travis-sources.yaml)
@@ -222,7 +222,59 @@ function checkAustinIssued(cat: Obj, austin: Obj | undefined, fail: Fail): void 
   }
 }
 
-export function checkCatalog(raw: unknown): string[] {
+// ---------- T047: rule 9, catalog hygiene ----------
+
+/** What rule 9 refuses. The FAIL line names the pattern and the path, never the value. */
+const HYGIENE_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
+  ["a postgres:// connection URL", /postgres(?:ql)?:\/\//i],
+  ["credentials in a URL", /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]+(?::[^\s/@]*)?@/i],
+  [
+    "a token value in a query string",
+    /[?&](?:\$\$)?(?:app_token|token|access_token|api_key|apikey|secret|password|sig|signature)=[^&#\s"]+/i,
+  ],
+  ["an X-App-Token header value", /x-app-token\s*[:=]\s*\S+/i],
+  ["a bearer or basic credential", /\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/],
+  ["an absolute home path", /(?:\/Users|\/home)\/[^/\s"']+/],
+  ["the DATABASE_URL variable name", /DATABASE_URL/],
+  ["a password assignment", /password\s*[=:]\s*\S+/i],
+];
+
+export interface CheckOptions {
+  /** Secret values that must never appear verbatim (for example the Socrata app token). */
+  secrets?: readonly string[];
+}
+
+/** Rule 9 on every string (keys and values) in the catalog. */
+function checkHygiene(node: unknown, path: string, secrets: readonly string[], fail: Fail): void {
+  const inspect = (text: string, where: string): void => {
+    // one FAIL line per string: the first finding is enough to stop the catalog
+    if (secrets.some((secret) => secret.length > 0 && text.includes(secret))) {
+      fail(9, where, "contains a registered secret value");
+      return;
+    }
+    const hit = HYGIENE_PATTERNS.find(([, re]) => re.test(text));
+    if (hit) fail(9, where, `contains ${hit[0]}`);
+  };
+  if (typeof node === "string") {
+    inspect(node, path);
+    return;
+  }
+  if (Array.isArray(node)) {
+    node.forEach((item, i) => {
+      const label = isObj(item) && text(item.key) ? item.key : String(i);
+      checkHygiene(item, `${path}[${label}]`, secrets, fail);
+    });
+    return;
+  }
+  if (!isObj(node)) return;
+  for (const [k, v] of Object.entries(node)) {
+    const where = path === "" ? k : `${path}.${k}`;
+    inspect(k, `${where} (key)`);
+    checkHygiene(v, where, secrets, fail);
+  }
+}
+
+export function checkCatalog(raw: unknown, options: CheckOptions = {}): string[] {
   const lines: string[] = [];
   const fail: Fail = (rule, subject, detail) => {
     lines.push(`FAIL rule ${rule}: ${subject} ${detail}`);
@@ -366,6 +418,9 @@ export function checkCatalog(raw: unknown): string[] {
     }
   }
 
+  // Rule 9: no connection URL, token value or absolute home path anywhere in the catalog.
+  checkHygiene(raw, "", options.secrets ?? [], fail);
+
   return lines;
 }
 
@@ -379,8 +434,10 @@ export function main(
   out: (line: string) => void = (line) => {
     process.stdout.write(`${line}\n`);
   },
+  env: Record<string, string | undefined> = process.env,
 ): number {
-  const path = resolveCatalogPath(argv[0], process.env.INIT_CWD ?? process.cwd());
+  const secrets = [env.SOCRATA_APP_TOKEN ?? ""].filter((s) => s.length > 0);
+  const path = resolveCatalogPath(argv[0], env.INIT_CWD ?? process.cwd());
   const shown = redact(path);
   let raw: unknown;
   try {
@@ -390,9 +447,9 @@ export function main(
     out(`FAIL rule 0: catalog ${shown} unreadable: ${redact(message ?? "")}`);
     return 1;
   }
-  const lines = checkCatalog(raw);
-  for (const line of lines) out(line);
-  if (lines.length === 0) out(`PASS check-catalog rules 1-8: ${shown}`);
+  const lines = checkCatalog(raw, { secrets });
+  for (const line of lines) out(redact(line, secrets));
+  if (lines.length === 0) out(`PASS check-catalog rules 1-9: ${shown}`);
   return lines.length > 0 ? 1 : 0;
 }
 

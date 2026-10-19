@@ -23,6 +23,7 @@ import {
   createUs1Probes,
   planResolution,
   runTravisDiscovery,
+  type DiscoveryDeps,
   type HumanIO,
   type Resolution,
   type RunRecord,
@@ -176,6 +177,8 @@ interface Harness {
   validatorRuns: number;
   sleeps: number;
   io: HumanIO;
+  /** Extra dependencies merged into the run (Phase 6 wiring tests). */
+  extra: Partial<DiscoveryDeps>;
   run: () => Promise<RunRecord>;
 }
 
@@ -195,6 +198,7 @@ function harness(scenario: Scenario, resolutions: Resolution[] = []): Harness {
     validatorRuns: 0,
     sleeps: 0,
     io: undefined as unknown as HumanIO,
+    extra: {},
     run: async () => {
       throw new Error("unset");
     },
@@ -255,6 +259,7 @@ function harness(scenario: Scenario, resolutions: Resolution[] = []): Harness {
       writeEvidence: (path, content) => {
         h.evidence.set(path, content);
       },
+      ...h.extra,
     });
   return h;
 }
@@ -401,7 +406,12 @@ describe("A-01-TC-027 resolve (FR-006f)", () => {
     const catalog = must(h.catalogs.at(-1));
     expect(source(catalog, "tcad_certified").status).toBe("available");
     expect(must(catalog.parcel).assessed_parcel_count).toBe(2);
-    expect(h.validatorRuns).toBe(1);
+    // once on the first catalog (r0), once again after the re-probe
+    expect(h.validatorRuns).toBe(2);
+    expect(h.journal.filter((k) => k.startsWith("validator:run:"))).toEqual([
+      "validator:run:r0",
+      "validator:run:r1",
+    ]);
     expect(record.validator).toMatchObject({ exit_code: 0 });
     expect(record.state).toBe("READY");
     expect(record.blockers).toEqual([]);
@@ -422,7 +432,8 @@ describe("A-01-TC-027 resolve (FR-006f)", () => {
     expect(record.state).toBe("WAITING_HUMAN");
     expect(hostCalls(h.calls, "traviscad.org")).toBe(1);
     expect(h.journal.some((k) => /reprobe/.test(k))).toBe(false);
-    expect(h.validatorRuns).toBe(0);
+    // only the first-catalog run; a still-blocked resolution does not re-run the validator
+    expect(h.validatorRuns).toBe(1);
     for (const key of ["tcad_certified", "tcad_supplemental"] as const) {
       const b = must(record.blockers.find((x) => x.source_key === key));
       expect(b.waiting).toBe(false);
@@ -680,5 +691,48 @@ describe("READY never starts seed (FR-006d; kit default overridden)", () => {
     const path = fileURLToPath(new URL("../travis/discovery/workflow.ts", import.meta.url));
     const src = readFileSync(path, "utf8");
     expect(src).not.toMatch(/serviceClient|objectClient|workflowClient|SendClient|genericSend/);
+  });
+});
+
+describe("Phase 6 wiring: destination proof, first validator run, waiting and completion times", () => {
+  it("journals the destination proof once and writes the destination block into the catalog", async () => {
+    const h = harness({});
+    let proofs = 0;
+    h.extra.destinationProof = async () => {
+      proofs += 1;
+      return {
+        writes_in_scope: true,
+        proven: true,
+        independent_identity_sources: ["docker-side: synthetic", "sql-side: synthetic"],
+        captured_at: "2026-01-01T00:00:00Z",
+      };
+    };
+    const record = await h.run();
+    expect(proofs).toBe(1);
+    expect(h.journal.filter((k) => k.startsWith("destination:proof:"))).toHaveLength(1);
+    const catalog = must(h.catalogs.at(-1));
+    expect(must(catalog.destination).proven).toBe(true);
+    expect(CatalogSchema.safeParse(catalog).success).toBe(true);
+    expect(record.validator).toMatchObject({ exit_code: 0 });
+    expect(record.completed_at).not.toBeNull();
+    expect(record.waiting_since).toBeNull();
+  });
+
+  it("sets waiting_since while waiting on a human and clears it after the resolution", async () => {
+    const h = harness({ tcadBlocked: true });
+    await expect(h.run()).rejects.toBeInstanceOf(Suspended);
+    const waiting = lastSaved(h);
+    expect(waiting.state).toBe("WAITING_HUMAN");
+    expect(waiting.waiting_since).toMatch(/Z$/);
+    expect(waiting.completed_at).toBeNull();
+
+    const done = harness({ tcadBlocked: true }, [
+      { source_key: "tcad_certified", outcome: "still-blocked" },
+      { source_key: "tcad_supplemental", outcome: "still-blocked" },
+    ]);
+    const record = await done.run();
+    expect(record.state).toBe("WAITING_HUMAN");
+    expect(record.waiting_since).toBeNull();
+    expect(record.completed_at).toMatch(/Z$/);
   });
 });

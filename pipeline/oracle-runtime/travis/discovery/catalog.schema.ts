@@ -223,13 +223,26 @@ export const PermitsSchema = z.strictObject({
   jurisdictions: z.array(JurisdictionSchema),
 });
 
-export const DestinationSchema = z.strictObject({
-  writes_in_scope: z.boolean(),
-  proven: z.boolean(),
-  independent_identity_sources: z.array(Text),
-  project: Text.optional(),
-  environment: Text.optional(),
-});
+export const DestinationSchema = z
+  .strictObject({
+    writes_in_scope: z.boolean(),
+    proven: z.boolean(),
+    /** T044: Docker-side and SQL-side identities (research R9); absent when not proven. */
+    independent_identity_sources: z.array(Text).optional(),
+    /** Why the destination is not proven (the validator then blocks the gate). */
+    missing_reason: Text.optional(),
+    captured_at: UtcTimestamp.optional(),
+    project: Text.optional(),
+    environment: Text.optional(),
+  })
+  .refine((d) => !d.proven || (d.independent_identity_sources?.length ?? 0) >= 2, {
+    message: "a proven destination needs two independent identity sources",
+    path: ["independent_identity_sources"],
+  })
+  .refine((d) => d.proven || d.missing_reason !== undefined, {
+    message: "an unproven destination needs missing_reason",
+    path: ["missing_reason"],
+  });
 
 export const BbbSchema = z.strictObject({
   status: Text,

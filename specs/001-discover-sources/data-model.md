@@ -76,7 +76,7 @@ Set rule: the row count equals `census_reference.place_count + 1` (unincorporate
 
 ## Destination proof
 
-`writes_in_scope: true`, `proven: true`, `independent_identity_sources` (2 entries: Docker-side container ID + image digest; SQL-side system identifier + database + version). No URLs or passwords.
+`writes_in_scope: true`, `proven: true`, `independent_identity_sources` (2 entries: Docker-side container ID + image digest; SQL-side system identifier + database + version), `captured_at`. If the proof fails: `proven: false` with `missing_reason` (the validator then blocks the destination gate). No URLs or passwords.
 
 ## Census reference
 

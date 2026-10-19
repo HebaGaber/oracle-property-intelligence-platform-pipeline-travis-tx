@@ -29,6 +29,7 @@ import {
 } from "./catalog.schema.js";
 import type { CaptureReceipt } from "../lib/source-client.js";
 import { renderBlockedEvidence } from "./blocked-evidence.js";
+import type { Destination } from "./destination-proof.js";
 import { assembleUs1, type AssembleOptions, type Us1Blocks, type Us1Results } from "./assemble.js";
 import {
   assemblePermits,
@@ -105,6 +106,10 @@ export interface RunRecord {
   waiting_human_hours: number;
   /** Every human resolution received, in order. */
   resolutions: ResolutionRecord[];
+  /** UTC time the run started waiting on a human; null while it is not waiting. */
+  waiting_since: string | null;
+  /** UTC time the run handler finished (READY, or WAITING_HUMAN with documented blockers). */
+  completed_at: string | null;
   /** Always false: READY never starts seed (A-04 does). */
   auto_advance_to_seed: false;
 }
@@ -125,6 +130,8 @@ export function newRunRecord(runId: string, startedAt: Date): RunRecord {
     validator: null,
     waiting_human_hours: 0,
     resolutions: [],
+    waiting_since: null,
+    completed_at: null,
     auto_advance_to_seed: false,
   };
 }
@@ -258,6 +265,8 @@ export interface TravisDiscoveryOptions {
   writeEvidence?: (relPath: string, content: string) => void;
   /** Extra secrets redacted from evidence files (for example the Socrata app token). */
   secrets?: () => readonly string[];
+  /** T044: proves the internal destination (Docker side + SQL side) for the catalog. */
+  destinationProof?: () => Promise<Destination>;
 }
 
 export function createTravisDiscovery(sdk: RestateSdk, options: TravisDiscoveryOptions = {}) {
@@ -282,6 +291,7 @@ export function createTravisDiscovery(sdk: RestateSdk, options: TravisDiscoveryO
         if (options.runValidator) deps.runValidator = options.runValidator;
         if (options.writeEvidence) deps.writeEvidence = options.writeEvidence;
         if (options.secrets) deps.secrets = options.secrets();
+        if (options.destinationProof) deps.destinationProof = options.destinationProof;
         return runTravisDiscovery(io, ctx.key, deps);
       },
       status: async (ctx: restate.WorkflowSharedContext): Promise<RunRecord | null> =>
@@ -663,6 +673,7 @@ export interface DiscoveryDeps {
   runValidator?: () => Promise<ValidatorResult>;
   writeEvidence?: (relPath: string, content: string) => void;
   secrets?: readonly string[];
+  destinationProof?: () => Promise<Destination>;
 }
 
 export type ResolvePlan = { accepted: true; promise: string } | { accepted: false; reason: string };
@@ -699,6 +710,7 @@ interface Session {
   probes: Us1Probes;
   jurisdictions: (JurisdictionCapture & { probes: JurisdictionProbes }) | null;
   profile: readonly JurisdictionProfileEntry[];
+  destination: Destination | null;
 }
 
 /** Assembles the full catalog from the journaled probe results (pure, deterministic). */
@@ -706,6 +718,7 @@ function assembleSession(session: Session, snapshot: string): Catalog {
   const blocks = assembleUs1(session.results, { assembledAt: snapshot });
   blocks.sources = withRecordsRequests(blocks.sources);
   const us1 = buildUs1Catalog(blocks, snapshot, session.record.waiting_human_hours);
+  if (session.destination) us1.destination = session.destination;
   const j = session.jurisdictions;
   if (!j) return us1;
   return withJurisdictions(
@@ -894,10 +907,18 @@ export async function runTravisDiscovery(
         }
       : null,
     profile,
+    destination: null,
   };
+  const prove = deps.destinationProof;
+  if (prove) {
+    const key = `destination:proof:${(await io.now()).toISOString().slice(0, 10)}`;
+    session.destination = await io.run(key, prove);
+  }
 
   const first = await publishCatalog(io, session, deps, 0);
   record.blockers = sessionBlockers(session, first).map((b) => newBlocker(b));
+  const validateFirst = deps.runValidator;
+  if (validateFirst) record.validator = await io.run("validator:run:r0", validateFirst);
   io.save(record);
 
   let round = 0;
@@ -905,10 +926,12 @@ export async function runTravisDiscovery(
     const waiting = record.blockers.filter((b) => b.waiting);
     if (waiting.length === 0) break;
     record.state = "WAITING_HUMAN";
-    io.save(record);
     const since = await io.now();
+    record.waiting_since = since.toISOString();
+    io.save(record);
     const resolution = await io.awaitResolution(waiting.map((b) => b.promise));
     const at = await io.now();
+    record.waiting_since = null;
     record.waiting_human_hours =
       Math.round((record.waiting_human_hours + (at.getTime() - since.getTime()) / HOUR_MS) * 1e6) /
       1e6;
@@ -949,6 +972,7 @@ export async function runTravisDiscovery(
   }
 
   record.state = record.blockers.length > 0 ? "WAITING_HUMAN" : "READY";
+  record.completed_at = (await io.now()).toISOString();
   io.save(record);
   return record;
 }
