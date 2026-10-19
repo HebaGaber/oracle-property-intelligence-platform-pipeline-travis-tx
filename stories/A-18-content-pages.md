@@ -103,7 +103,7 @@ Pages and items:
 ## Evidence to capture
 
 - `docs/evidence/A-18.md`: route list with screenshots, the no-sample-data scan output, Lighthouse scores.
-- `smeargle` report; `testplans/A-18-test-cases.md` results; `docs/reviews/CR-A18.md`.
+- `smeargle` report; `testplans/A-18-test-cases.md` results; `docs/reviews/CR-A-18.md`.
 
 ---
 

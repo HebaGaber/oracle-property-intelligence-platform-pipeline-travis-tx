@@ -98,7 +98,7 @@ Not a UI story. Run history and the compare view are `design/prototype/Runs1440.
 
 - `docs/evidence/A-12-runs.md`: the three runs with timestamps, sources, deltas, limitations.
 - `docs/evidence/A-12-immutability.md`: immutability check output after Run 3.
-- `testplans/A-12-test-cases.md` results, `docs/reviews/CR-A12.md`.
+- `testplans/A-12-test-cases.md` results, `docs/reviews/CR-A-12.md`.
 
 ---
 

@@ -92,7 +92,7 @@ Not a UI story. Basis and confidence columns appear on `design/prototype/Explore
 ## Evidence to capture
 
 - `docs/evidence/A-10.md`: dedup statistics per entity type, roof-age coverage by basis and confidence, the 25-property audit, the `rowsWritten: 0` re-run, the worked example for `0208011301`.
-- `testplans/A-10-test-cases.md` results, `docs/reviews/CR-A10.md`.
+- `testplans/A-10-test-cases.md` results, `docs/reviews/CR-A-10.md`.
 
 ---
 

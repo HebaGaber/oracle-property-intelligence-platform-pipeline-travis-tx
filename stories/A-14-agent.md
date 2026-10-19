@@ -101,7 +101,7 @@ When done: a tRPC procedure `agent.ask` on Lambda uses the Vercel AI SDK; `getMo
 ## Evidence to capture
 
 - `docs/evidence/A-14-agent.md`: G1–G6 results with durations, step counts, groundedness and recall, trace IDs.
-- `smeargle` report; `testplans/A-14-test-cases.md` results; `docs/reviews/CR-A14.md` (alakazam, ash).
+- `smeargle` report; `testplans/A-14-test-cases.md` results; `docs/reviews/CR-A-14.md` (alakazam, ash).
 
 ---
 

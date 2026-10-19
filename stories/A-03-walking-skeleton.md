@@ -107,7 +107,7 @@ When done: the Turborepo scaffold (`apps/web`, `apps/api`, `packages/*`, `pipeli
 
 - `docs/evidence/A-03.md`: hosted URL, build SHA from `/build.json`, manifest CID, `verify-manifest` output, Playwright trace, spike p95 table, one CloudWatch log line and X-Ray trace ID, CDK assertion output.
 - `docs/decisions/0001-read-path.md`.
-- `testplans/A-03-test-cases.md` results, `docs/reviews/CR-A03.md`.
+- `testplans/A-03-test-cases.md` results, `docs/reviews/CR-A-03.md`.
 
 ---
 

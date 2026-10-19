@@ -94,7 +94,7 @@ Not a UI story. Its numbers appear later on the Coverage screen (`design/prototy
 
 - `docs/evidence/A-01.md`: validator output with exit code, the YAML digest, one row per source with URL, count and capture time.
 - `docs/evidence/A-01-coverage.md` (started here; completed in A-11 with the published counts).
-- `testplans/A-01-test-cases.md` results, `docs/reviews/CR-A01.md`.
+- `testplans/A-01-test-cases.md` results, `docs/reviews/CR-A-01.md`.
 
 ---
 

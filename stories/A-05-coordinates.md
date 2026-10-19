@@ -91,7 +91,7 @@ Not a UI story. Coordinates show as "Lat, lon" and "Mi + bearing" columns on `de
 ## Evidence to capture
 
 - `docs/evidence/A-05.md`: coverage SQL output, GIS count vs roll count, gap by reason, paging throughput.
-- `testplans/A-05-test-cases.md` results, `docs/reviews/CR-A05.md`.
+- `testplans/A-05-test-cases.md` results, `docs/reviews/CR-A-05.md`.
 
 ---
 

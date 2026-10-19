@@ -92,7 +92,7 @@ Not a UI story. The five-state badge is designed in `design/prototype/Contractor
 ## Evidence to capture
 
 - `docs/evidence/A-07.md`: five-state counts, crosswalk finding, match rule version, a 25-row review sample.
-- `testplans/A-07-test-cases.md` results, `docs/reviews/CR-A07.md`.
+- `testplans/A-07-test-cases.md` results, `docs/reviews/CR-A-07.md`.
 
 ---
 

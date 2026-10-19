@@ -112,7 +112,7 @@ When done: Atlas-only routes per `docs/02-design.md` § 1–2 — Runs (+ Compar
 ## Evidence to capture
 
 - `docs/evidence/A-13-duckdb.md`, `A-13-roof-age.md`, `A-13-open-permits.md`: hosted URL, inputs, screenshots, counts, p95 timings, trace IDs.
-- `smeargle` report at 390/768/1440; `testplans/A-13-test-cases.md` results; `docs/reviews/CR-A13.md` (metagross, audino).
+- `smeargle` report at 390/768/1440; `testplans/A-13-test-cases.md` results; `docs/reviews/CR-A-13.md` (metagross, audino).
 
 ---
 

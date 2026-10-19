@@ -95,7 +95,7 @@ Not a UI story. The manifest and verify screens are `design/prototype/DataManife
 
 - `docs/evidence/A-11-manifest.md`: manifest CID, artifact count and total size, release URL.
 - `docs/evidence/A-11-gateways.md`: full `verify-manifest` output.
-- `testplans/A-11-test-cases.md` results, `docs/reviews/CR-A11.md`.
+- `testplans/A-11-test-cases.md` results, `docs/reviews/CR-A-11.md`.
 
 ---
 

@@ -96,7 +96,7 @@ When done: `docs/cost.md` (component, idle cost, cost per use, who pays) with re
 ## Evidence to capture
 
 - `docs/cost.md`, `docs/source-limits.md`, billing screenshot, `cdk synth` assertion output.
-- `smeargle` report; `testplans/A-16-test-cases.md` results; `docs/reviews/CR-A16.md`.
+- `smeargle` report; `testplans/A-16-test-cases.md` results; `docs/reviews/CR-A-16.md`.
 
 ---
 

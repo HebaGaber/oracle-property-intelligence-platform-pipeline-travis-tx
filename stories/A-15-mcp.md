@@ -93,7 +93,7 @@ The Help · MCP page that documents the endpoint is `design/prototype/HelpMcp144
 ## Evidence to capture
 
 - `docs/evidence/A-15-mcp.md`: Inspector screenshot, `tools/list` output, one call with result, 401 check, `donphan` transcript, timings.
-- `docs/mcp.md`; `testplans/A-15-test-cases.md` results; `docs/reviews/CR-A15.md`.
+- `docs/mcp.md`; `testplans/A-15-test-cases.md` results; `docs/reviews/CR-A-15.md`.
 
 ---
 

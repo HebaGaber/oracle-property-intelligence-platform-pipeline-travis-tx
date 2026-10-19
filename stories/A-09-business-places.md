@@ -89,7 +89,7 @@ Not a UI story. Counts appear on `design/prototype/Coverage1440.dc.html` (throug
 ## Evidence to capture
 
 - `docs/evidence/A-09.md`: counts vs source totals, licence record, category counts.
-- `testplans/A-09-test-cases.md` results, `docs/reviews/CR-A09.md`.
+- `testplans/A-09-test-cases.md` results, `docs/reviews/CR-A-09.md`.
 
 ---
 

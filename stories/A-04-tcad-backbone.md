@@ -94,7 +94,7 @@ Not a UI story. Its counts appear on `design/prototype/Coverage1440.dc.html` and
 ## Evidence to capture
 
 - `docs/evidence/A-04.md`: pilot output for the 25 parcels, roll count vs loaded count with the classified difference, confidential count, `monitoring-county-ingestion` report.
-- `testplans/A-04-test-cases.md` results, `docs/reviews/CR-A04.md`.
+- `testplans/A-04-test-cases.md` results, `docs/reviews/CR-A-04.md`.
 
 ---
 

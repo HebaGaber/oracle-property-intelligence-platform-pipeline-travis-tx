@@ -94,7 +94,7 @@ Not a UI story. Permit chips ("Stalled 6.4 yrs · source says Expired") appear o
 ## Evidence to capture
 
 - `docs/evidence/A-06.md`: per-jurisdiction counts vs source totals, match rate, unmatched by reason, status-class split, backfill throughput, re-stamp detection log.
-- `testplans/A-06-test-cases.md` results, `docs/reviews/CR-A06.md`.
+- `testplans/A-06-test-cases.md` results, `docs/reviews/CR-A-06.md`.
 
 ---
 

@@ -108,7 +108,7 @@ Not a UI story. The column names appear on the SQL board (`design/prototype/Expl
 ## Evidence to capture
 
 - `docs/evidence/A-02.md`: the carrier verdict table, extension requests filed, `tables-export.json` digest, the frozen column list, the 25-permit classifier review, gazetteer source and digest.
-- `testplans/A-02-test-cases.md` results, `docs/reviews/CR-A02.md`.
+- `testplans/A-02-test-cases.md` results, `docs/reviews/CR-A-02.md`.
 
 ---
 

@@ -101,7 +101,7 @@ Not on the README transcript. Optional closing aside: "As the Oracle operator I 
 ## Evidence to capture
 
 - `docs/evidence/A-17.md`: sign-in screenshots, the SQS message ID → bridge log → Restate workflow ID chain, 403 check, DLQ alarm test email, CDK assertion output, trace ID.
-- `smeargle` report; `testplans/A-17-test-cases.md` results; `docs/reviews/CR-A17.md`.
+- `smeargle` report; `testplans/A-17-test-cases.md` results; `docs/reviews/CR-A-17.md`.
 
 ---
 

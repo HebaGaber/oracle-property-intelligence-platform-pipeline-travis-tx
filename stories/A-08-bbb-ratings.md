@@ -91,7 +91,7 @@ Not a UI story. "BBB: Blocked · 403" appears on `design/prototype/ExploreQ-perm
 ## Evidence to capture
 
 - `docs/evidence/A-08.md`: probe log, 403 evidence or ratings captured, coverage % by status.
-- `testplans/A-08-test-cases.md` results, `docs/reviews/CR-A08.md`.
+- `testplans/A-08-test-cases.md` results, `docs/reviews/CR-A-08.md`.
 
 ---
 
