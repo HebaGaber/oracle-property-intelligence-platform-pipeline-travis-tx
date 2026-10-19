@@ -14,9 +14,18 @@ import type * as restate from "@restatedev/restate-sdk";
 import type { Catalog, SourceKey } from "./catalog.schema.js";
 import type { CaptureReceipt } from "../lib/source-client.js";
 import { assembleUs1, type AssembleOptions, type Us1Blocks, type Us1Results } from "./assemble.js";
+import {
+  assemblePermits,
+  type AssemblePermitsOptions,
+  type JurisdictionBlocks,
+} from "./assemble-permits.js";
+import type { AustinLocatedEntry } from "./austin-issued.js";
 import { probeGisCount } from "./probes/arcgis.js";
+import { probeCensusPlaces, type CensusProbe } from "./probes/census.js";
 import type { ProbeDeps } from "./probes/common.js";
 import {
+  probeEvidencePage,
+  type EvidenceProbe,
   probeBbb,
   probeContractorLicensing,
   probeOverture,
@@ -24,6 +33,10 @@ import {
 } from "./probes/evidence.js";
 import { probeAustinPermits, probeComptroller } from "./probes/socrata.js";
 import { probeTcad } from "./probes/tcad.js";
+import {
+  TRAVIS_JURISDICTION_PROFILE,
+  type JurisdictionProfileEntry,
+} from "../profiles/jurisdictions.js";
 
 export const WORKFLOW_NAME = "TravisDiscovery";
 
@@ -147,6 +160,10 @@ export interface TravisDiscoveryOptions {
   probes?: () => Us1Probes;
   /** Writes the assembled catalog (pipeline/docs/travis-sources.yaml in production). */
   writeCatalog?: (catalog: Catalog) => void;
+  /** US2 jurisdiction probes (built per run). Without them no permits block is written. */
+  jurisdictions?: () => JurisdictionProbes;
+  /** The curated profile (defaults to the Travis profile). */
+  profile?: readonly JurisdictionProfileEntry[];
 }
 
 export function createTravisDiscovery(sdk: RestateSdk, options: TravisDiscoveryOptions = {}) {
@@ -161,12 +178,22 @@ export function createTravisDiscovery(sdk: RestateSdk, options: TravisDiscoveryO
           save: (record) => ctx.set(RUN_STATE_KEY, record),
         };
         if (!options.probes) return runDiscovery(io, ctx.key, []);
-        const { record, blocks } = await runSourceDiscovery(io, ctx.key, options.probes());
+        const { record, results, blocks } = await runSourceDiscovery(io, ctx.key, options.probes());
+        const jurisdictionBlocks = options.jurisdictions
+          ? await runJurisdictionDiscovery(
+              io,
+              record,
+              options.jurisdictions(),
+              options.profile ?? TRAVIS_JURISDICTION_PROFILE,
+              results.austin.located_in_other_jurisdictions,
+            )
+          : null;
         const write = options.writeCatalog;
         if (write) {
           const snapshot = (await io.now()).toISOString();
           await io.run(`catalog:write:${snapshot.slice(0, 10)}`, async () => {
-            write(buildUs1Catalog(blocks, snapshot, 0));
+            const us1 = buildUs1Catalog(blocks, snapshot, 0);
+            write(jurisdictionBlocks ? withJurisdictions(us1, jurisdictionBlocks) : us1);
             return true;
           });
         }
@@ -330,4 +357,99 @@ export function buildUs1Catalog(
     enrichment: blocks.enrichment,
     sources: blocks.sources,
   };
+}
+
+// ---------- T032: the US2 jurisdiction steps ----------
+
+/** The Census probe and one evidence probe per profile entry; results are JSON-serializable. */
+export interface JurisdictionProbes {
+  census: () => Promise<CensusProbe>;
+  evidence: (entry: JurisdictionProfileEntry) => Promise<EvidenceProbe>;
+}
+
+export interface JurisdictionProbeOptions {
+  /** Override of the Census place-by-county file URL (tests only). */
+  censusUrl?: string;
+}
+
+export function createJurisdictionProbes(
+  deps: ProbeDeps,
+  options: JurisdictionProbeOptions = {},
+): JurisdictionProbes {
+  return {
+    census: () =>
+      probeCensusPlaces(deps, options.censusUrl === undefined ? {} : { url: options.censusUrl }),
+    evidence: (entry) => probeEvidencePage(deps, entry.evidence_url),
+  };
+}
+
+const NEXT_STEP_CENSUS =
+  "Human review: the Census place list could not be read, so the expected jurisdiction count is unknown; capture the Census file, then resolve (T036)";
+
+function stepFrom(
+  key: string,
+  measurement: string,
+  probe: { blocked_receipt: CaptureReceipt | null; receipts: CaptureReceipt[] },
+  fallbackAt: string,
+): StepRecord {
+  const last = probe.blocked_receipt ?? probe.receipts.at(-1) ?? null;
+  return {
+    key,
+    source_key: "other_jurisdictions",
+    measurement,
+    outcome: last?.outcome ?? "ok",
+    status: last?.status ?? null,
+    captured_at: last?.captured_at ?? fallbackAt,
+  };
+}
+
+/**
+ * Runs the Census step, then one journaled evidence step per profile entry, and assembles the
+ * `permits` block and `census_reference`. Appends step records to `record`; a Census file
+ * that cannot be read is a blocker (the expected set is unknown). A blocked evidence page is
+ * recorded on its row (status `blocked` with its records request), not as a run blocker.
+ */
+export async function runJurisdictionDiscovery(
+  io: DiscoveryIO,
+  record: RunRecord,
+  probes: JurisdictionProbes,
+  profile: readonly JurisdictionProfileEntry[],
+  austinLocated: readonly AustinLocatedEntry[],
+  options: AssemblePermitsOptions = {},
+): Promise<JurisdictionBlocks> {
+  const censusKey = stepKey("other_jurisdictions", "census_places", await io.now());
+  const census = await io.run(censusKey, probes.census);
+  record.steps.push(stepFrom(censusKey, "census_places", census, census.captured_at));
+  const censusReceipt = census.blocked_receipt ?? census.receipts.at(-1) ?? null;
+  if (census.census_reference === null && censusReceipt) {
+    record.blockers.push({
+      source_key: "other_jurisdictions",
+      step_key: censusKey,
+      receipt: censusReceipt,
+      next_step: NEXT_STEP_CENSUS,
+    });
+  }
+  io.save(record);
+
+  const evidence: Record<string, EvidenceProbe> = {};
+  for (const entry of profile) {
+    const measurement = `evidence_${entry.key}`;
+    const key = stepKey("other_jurisdictions", measurement, await io.now());
+    const captured = await io.run(key, () => probes.evidence(entry));
+    evidence[entry.key] = captured;
+    record.steps.push(stepFrom(key, measurement, captured, captured.captured_at));
+    io.save(record);
+  }
+
+  return assemblePermits(census, profile, evidence, austinLocated, options);
+}
+
+/** Adds the US2 blocks (permits, census_reference) to a catalog. */
+export function withJurisdictions(
+  catalog: Omit<Catalog, "permits" | "census_reference">,
+  blocks: JurisdictionBlocks,
+): Catalog {
+  const out: Catalog = { ...catalog, permits: blocks.permits };
+  if (blocks.census_reference) out.census_reference = blocks.census_reference;
+  return out;
 }

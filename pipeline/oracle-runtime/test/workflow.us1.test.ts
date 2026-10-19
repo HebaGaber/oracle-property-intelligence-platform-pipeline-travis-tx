@@ -36,6 +36,11 @@ const LANDING = `<html><body><p>Certified on July 25, 2026.</p>
 <a href="/files/supp-1.zip">2026 Supplemental Appraisal Roll Export 1</a></body></html>`;
 const EXPORT = JSON.stringify([{ prop_id: 1, deed_date: "2020-01-01" }, { prop_id: 2 }]);
 
+/** Rules 1-5 and 8 only: the US1 catalog has no permits block yet (rules 6-7 are US2). */
+function us1Rules(catalog: Parameters<typeof checkCatalog>[0]): string[] {
+  return checkCatalog(catalog).filter((l) => !/^FAIL rule [67]:/.test(l));
+}
+
 const tmpDirs: string[] = [];
 afterEach(() => {
   for (const d of tmpDirs.splice(0)) rmSync(d, { recursive: true, force: true });
@@ -146,7 +151,7 @@ describe("US1 discovery on synthetic probe output", () => {
     expect(journal.every((k) => /^[a-z_]+:[a-z_]+:2026-01-01$/.test(k))).toBe(true);
     expect(catalog.sources.map((s) => s.key)).toEqual([...SOURCE_KEYS]);
     expect(CatalogSchema.safeParse(catalog).success).toBe(true);
-    expect(checkCatalog(catalog)).toEqual([]);
+    expect(us1Rules(catalog)).toEqual([]);
 
     const austin = must(catalog.sources.find((s) => s.key === "austin_permits"));
     expect(austin.denominator.value).toBe(2_400_000);
@@ -183,7 +188,7 @@ describe("US1 discovery on synthetic probe output", () => {
     expect(bbb.status).toBe("blocked");
     expect(must(bbb.blocked_evidence).attempts).toBe(1);
     expect(must(catalog.enrichment).bbb.status).toBe("blocked");
-    expect(checkCatalog(catalog)).toEqual([]);
+    expect(us1Rules(catalog)).toEqual([]);
   });
 
   it("TCAD 403 + GIS timeout: WAITING_HUMAN, roll null with reason, gap unknown, never GIS as denominator", async () => {
@@ -193,7 +198,7 @@ describe("US1 discovery on synthetic probe output", () => {
       expect.arrayContaining(["tcad_certified", "tcad_supplemental", "tcad_gis", "bbb"]),
     );
     expect(CatalogSchema.safeParse(catalog).success).toBe(true);
-    expect(checkCatalog(catalog)).toEqual([]);
+    expect(us1Rules(catalog)).toEqual([]);
 
     const parcel = must(catalog.parcel);
     expect(parcel.assessed_parcel_count).toBeNull();

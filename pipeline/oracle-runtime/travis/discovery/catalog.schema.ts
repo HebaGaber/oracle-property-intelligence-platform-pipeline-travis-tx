@@ -145,6 +145,11 @@ export const JurisdictionStatusSchema = z.enum([...VALIDATOR_STATUSES, "needs-re
 export const JurisdictionSchema = z.strictObject({
   jurisdiction: Text,
   key: Text,
+  /** Census PLACEFP of the place; absent for the unincorporated county row. */
+  census_placefp: z
+    .string()
+    .regex(/^\d{5}$/)
+    .optional(),
   spec_class: z.enum(SPEC_CLASSES),
   status: JurisdictionStatusSchema,
   historical_records: z.boolean(),
@@ -246,6 +251,8 @@ export const CensusReferenceSchema = z.strictObject({
   source_url: Url,
   captured_at: UtcTimestamp,
   place_count: z.int().nonnegative(),
+  /** How the place list was filtered (for example whether a land-area column existed). */
+  notes: Text.optional(),
 });
 
 export const ApprovedExceptionSchema = z.strictObject({ gate: Text, reason: Text });

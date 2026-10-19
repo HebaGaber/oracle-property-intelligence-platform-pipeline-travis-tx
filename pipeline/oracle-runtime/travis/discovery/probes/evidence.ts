@@ -126,6 +126,14 @@ async function observeOnce(deps: ProbeDeps, url: string): Promise<EvidenceProbe>
   };
 }
 
+/**
+ * One observation of an official evidence page (a jurisdiction's permit page, T032): one
+ * request, no retry; a 403, timeout or challenge page is `blocked`.
+ */
+export function probeEvidencePage(deps: ProbeDeps, url: string): Promise<EvidenceProbe> {
+  return observeOnce(deps, url);
+}
+
 export async function probeBbb(deps: ProbeDeps, prior?: PriorObservation): Promise<EvidenceProbe> {
   if (prior) {
     const receipt = receiptFromPrior(prior);

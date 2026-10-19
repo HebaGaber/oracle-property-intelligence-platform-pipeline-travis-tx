@@ -1,5 +1,5 @@
-// T026: the A-01 checker, rules 1-5 and 8 (contracts/catalog.md). Rules 6-7 arrive in US2
-// (T033). The kit validator ignores these A-01 keys, so this checker enforces them.
+// T026 + T033: the A-01 checker, rules 1-8 (contracts/catalog.md). The kit validator
+// ignores these A-01 keys, so this checker enforces them.
 //
 // Usage: check-catalog [path]   (default pipeline/docs/travis-sources.yaml)
 // Prints one line per failure, `FAIL rule <n>: <subject> <detail>`, and exits 1 on any
@@ -10,8 +10,15 @@ import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
 import { redact } from "../lib/log.js";
+import { matchesJurisdiction } from "./austin-issued.js";
 import { DECISIONS, SOURCE_KEYS } from "./catalog.schema.js";
 import { MAX_PAGE_SIZE, MIN_PAGES, exceedsDecisionThreshold } from "./measure.js";
+import {
+  CENTRAL_PORTAL_KINDS,
+  SPEC_CLASSES,
+  STATUS_MAP,
+  VALIDATOR_STATUSES,
+} from "./status-map.js";
 import { DEFAULT_CATALOG_PATH } from "./write-catalog.js";
 
 export { DEFAULT_CATALOG_PATH };
@@ -66,6 +73,152 @@ function walkMeasurements(node: unknown, path: string, fail: Fail): void {
   }
   for (const [k, v] of Object.entries(node)) {
     walkMeasurements(v, path === "" ? k : `${path}.${k}`, fail);
+  }
+}
+
+const REQUEST_STATUSES = new Set(["custodian-only", "manual-only", "blocked"]);
+const REQUEST_ROUTES = new Set(["api-first", "records-first"]);
+const AUSTIN_DATASET = /data\.austintexas\.gov/i;
+
+/** The validator's `_records_request_complete`, on plain data. */
+function requestComplete(req: unknown): boolean {
+  if (!isObj(req)) return false;
+  return (
+    text(req.recipient_office) &&
+    text(req.system_scope) &&
+    typeof req.route === "string" &&
+    REQUEST_ROUTES.has(req.route) &&
+    (text(req.request_portal_url) || text(req.request_email))
+  );
+}
+
+/** Rule 6: count = Census place_count + 1; one valid class per row with its extras (R3). */
+function checkJurisdictions(cat: Obj, fail: Fail): void {
+  const census = cat.census_reference;
+  const placeCount = isObj(census) && num(census.place_count) ? census.place_count : null;
+  if (placeCount === null) fail(6, "census_reference", "missing");
+  const permits = cat.permits;
+  if (!isObj(permits)) {
+    fail(6, "permits", "block missing");
+    return;
+  }
+  const rows = Array.isArray(permits.jurisdictions) ? permits.jurisdictions : [];
+  if (placeCount !== null) {
+    const expected = placeCount + 1;
+    if (rows.length !== expected) {
+      fail(6, "jurisdictions", `${rows.length} != census place_count + 1 (${expected})`);
+    }
+    if (permits.expected_jurisdiction_count !== expected) {
+      fail(
+        6,
+        "permits",
+        `expected_jurisdiction_count ${String(permits.expected_jurisdiction_count)} != census place_count + 1 (${expected})`,
+      );
+    }
+  }
+  if (permits.assumes_unified_countywide_history !== false) {
+    fail(6, "permits", "assumes_unified_countywide_history must be false");
+  }
+  const seen = new Set<string>();
+  rows.forEach((raw, i) => {
+    const r: Obj = isObj(raw) ? raw : {};
+    const id = text(r.key) ? r.key : `jurisdictions[${i}]`;
+    if (text(r.key)) {
+      if (seen.has(r.key)) fail(6, "jurisdictions", `duplicate key ${r.key}`);
+      seen.add(r.key);
+    }
+    if (!text(r.jurisdiction)) fail(6, id, "jurisdiction name missing");
+    if (!text(r.evidence_url)) fail(6, id, "evidence_url missing");
+    if (!(typeof r.evidence_captured_at === "string" && UTC_ISO.test(r.evidence_captured_at))) {
+      fail(6, id, "evidence_captured_at missing or non-UTC");
+    }
+    const status = r.status;
+    if (!(
+      typeof status === "string" && (VALIDATOR_STATUSES as readonly string[]).includes(status)
+    )) {
+      fail(
+        6,
+        id,
+        `status "${String(status)}" is not a validator status (${VALIDATOR_STATUSES.join(", ")})`,
+      );
+      return;
+    }
+    const specClass = r.spec_class;
+    if (!(
+      typeof specClass === "string" && (SPEC_CLASSES as readonly string[]).includes(specClass)
+    )) {
+      fail(6, id, `spec_class "${String(specClass)}" is not one of ${SPEC_CLASSES.join(" | ")}`);
+      return;
+    }
+    const mapping = STATUS_MAP.find((m) => m.spec_class === specClass && m.status === status);
+    if (!mapping) {
+      fail(6, id, `spec_class "${specClass}" does not map to status "${status}" (research R3)`);
+      return;
+    }
+    if (typeof r.historical_records !== "boolean") {
+      fail(6, id, "historical_records must be true or false");
+    } else if (r.historical_records !== mapping.historical_records) {
+      fail(6, id, `historical_records ${r.historical_records} does not match status "${status}"`);
+    }
+    const kind = typeof r.portal_kind === "string" ? r.portal_kind.trim().toLowerCase() : "";
+    if (CENTRAL_PORTAL_KINDS.has(kind) && r.historical_records === true) {
+      fail(6, id, `portal_kind "${kind}" is intake and cannot be historical records`);
+    }
+    if (status === "supported" && !text(r.earliest_record_date)) {
+      fail(6, id, "earliest_record_date missing (status supported)");
+    }
+    if (REQUEST_STATUSES.has(status) && !requestComplete(r.records_request)) {
+      fail(6, id, `records_request missing or incomplete for status "${status}"`);
+    }
+    if (status === "blocked" && !isObj(r.blocked_evidence)) {
+      fail(6, id, "blocked_evidence missing (status blocked)");
+    }
+    if (status === "delegated" && !text(r.issued_by)) {
+      fail(6, id, "issued_by missing (status delegated)");
+    }
+  });
+}
+
+/** Rule 7: Austin-issued counts located elsewhere stay under Austin (FR-004c). */
+function checkAustinIssued(cat: Obj, austin: Obj | undefined, fail: Fail): void {
+  if (!austin) return; // rule 5 already reports the missing Austin row
+  const located = Array.isArray(austin.located_in_other_jurisdictions)
+    ? austin.located_in_other_jurisdictions.filter(isObj)
+    : null;
+  if (located === null || located.length === 0) {
+    fail(7, "austin_permits", "located_in_other_jurisdictions missing");
+  }
+  const entries = located ?? [];
+  const permits = isObj(cat.permits) ? cat.permits : {};
+  const rows = Array.isArray(permits.jurisdictions) ? permits.jurisdictions.filter(isObj) : [];
+  for (const r of rows) {
+    if (!text(r.jurisdiction)) continue;
+    const id = text(r.key) ? r.key : r.jurisdiction;
+    const isAustin = /^austin$/i.test(r.jurisdiction.trim());
+    if (!isAustin && text(r.evidence_url) && AUSTIN_DATASET.test(r.evidence_url)) {
+      fail(
+        7,
+        id,
+        "evidence_url is the Austin permits dataset; a city's class rests on its own evidence",
+      );
+    }
+    if (isAustin) continue;
+    const matching = entries.filter(
+      (e) =>
+        typeof e.jurisdiction === "string" &&
+        matchesJurisdiction(e.jurisdiction, r.jurisdiction as string),
+    );
+    const sum = matching.reduce((acc, e) => acc + (num(e.value) ? e.value : 0), 0);
+    const here = r.austin_issued_located_here;
+    if (matching.length === 0) {
+      if (isObj(here)) fail(7, id, "austin_issued_located_here has no matching Austin entry");
+      continue;
+    }
+    if (!isObj(here)) {
+      fail(7, id, `austin_issued_located_here missing (Austin entries ${sum})`);
+    } else if (here.value !== sum) {
+      fail(7, id, `austin_issued_located_here ${String(here.value)} != Austin entries ${sum}`);
+    }
   }
 }
 
@@ -177,6 +330,9 @@ export function checkCatalog(raw: unknown): string[] {
     if (!text(austin.decision)) fail(5, subject, "decision missing");
   }
 
+  checkJurisdictions(cat, fail);
+  checkAustinIssued(cat, austin, fail);
+
   // Rule 8: GIS is counted (gap computed against the roll), or unknown with a reason.
   const parcel = cat.parcel;
   if (!isObj(parcel)) {
@@ -236,7 +392,7 @@ export function main(
   }
   const lines = checkCatalog(raw);
   for (const line of lines) out(line);
-  if (lines.length === 0) out(`PASS check-catalog rules 1-5, 8: ${shown}`);
+  if (lines.length === 0) out(`PASS check-catalog rules 1-8: ${shown}`);
   return lines.length > 0 ? 1 : 0;
 }
 

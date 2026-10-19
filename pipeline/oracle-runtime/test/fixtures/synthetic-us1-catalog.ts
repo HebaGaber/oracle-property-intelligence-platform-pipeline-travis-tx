@@ -1,5 +1,5 @@
-// SYNTHETIC TEST FIXTURE (test-only). A catalog with the `sources` and `parcel` blocks
-// that passes checker rules 1-5 and 8. Every value is invented; none of it is a Travis
+// SYNTHETIC TEST FIXTURE (test-only). A complete catalog (sources, parcel, permits, census)
+// that passes checker rules 1-8. Every value is invented; none of it is a Travis
 // County measurement and it must never be copied into pipeline/docs/ or docs/.
 import type { Catalog, Measurement, Source } from "../../travis/discovery/catalog.schema.js";
 
@@ -54,6 +54,71 @@ export function syntheticUs1Catalog(): Catalog {
       identifier_proven: true,
       identifier_format: "synthetic: integer",
       deed_or_sale_dates_present: true,
+    },
+    census_reference: {
+      dataset: "synthetic place-by-county file",
+      vintage: "2020",
+      source_url: `${U}/census/place_by_county.txt`,
+      captured_at: AT,
+      place_count: 2,
+    },
+    permits: {
+      expected_jurisdiction_count: 3,
+      assumes_unified_countywide_history: false,
+      jurisdictions: [
+        {
+          jurisdiction: "Austin",
+          key: "austin",
+          census_placefp: "00001",
+          spec_class: "supported",
+          status: "supported",
+          historical_records: true,
+          portal_kind: "open-data-api",
+          portal: `${U}/resource/abcd-1234.json`,
+          evidence_url: `${U}/austin/permits`,
+          evidence_captured_at: AT,
+          earliest_record_date: "1990-01-01",
+        },
+        {
+          jurisdiction: "Synthetic",
+          key: "synthetic",
+          census_placefp: "00002",
+          spec_class: "records request",
+          status: "manual-only",
+          historical_records: false,
+          portal_kind: "application-intake",
+          portal: `${U}/synthetic/apply`,
+          evidence_url: `${U}/synthetic/permits`,
+          evidence_captured_at: AT,
+          records_request: {
+            recipient_office: "Synthetic City Secretary",
+            system_scope: "synthetic permit system, 2000 to present",
+            route: "records-first",
+            request_portal_url: `${U}/synthetic/records`,
+          },
+          austin_issued_located_here: {
+            value: 5,
+            source_url: `${U}/g`,
+            captured_at: AT,
+            method: "Austin-issued (jurisdiction group-by): SYNTHETIC FULL PURPOSE=5",
+          },
+        },
+        {
+          jurisdiction: "Synthetic County unincorporated",
+          key: "synthetic_unincorporated",
+          spec_class: "records request",
+          status: "custodian-only",
+          historical_records: false,
+          evidence_url: `${U}/county/permits`,
+          evidence_captured_at: AT,
+          records_request: {
+            recipient_office: "Synthetic County records management",
+            system_scope: "synthetic county permits, 1990 to present",
+            route: "records-first",
+            request_email: "records@synthetic.test",
+          },
+        },
+      ],
     },
     sources: [
       {
