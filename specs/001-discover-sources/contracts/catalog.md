@@ -23,10 +23,19 @@ waiting_human_hours: 0            # A-01 extension: hours spent in WAITING_HUMAN
 
 parcel:                       # validator gate: parcel
   canonical_source: "TCAD 2026 certified roll"
-  assessed_parcel_count: <int or null>
+  assessed_parcel_count: <int or null>     # plain number: the validator reads it as such
+  assessed_parcel_count_measurement:       # provenance; value must equal assessed_parcel_count
+    value: <int or null>
+    source_url: "<url>"
+    captured_at: "<UTC>"
   roll_year: 2026
   certification_date: "<date>"
-  gis_feature_count: <int or null>
+  gis_feature_count: <int or null>         # plain number
+  gis_feature_count_measurement:           # provenance; value must equal gis_feature_count
+    value: <int or null>
+    missing_reason: "<text when null>"
+    source_url: "<url>"
+    captured_at: "<UTC>"
   discrepancy_threshold_pct: 2.0
   discrepancy_explanation: "<text, required when counts differ>"
   separately_assessed_without_geometry: "acknowledged"   # or "none"; required when GIS < roll
