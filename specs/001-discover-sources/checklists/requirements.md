@@ -1,3 +1,8 @@
+---
+id: CHK-A-01-req
+parent: SPEC-A-01
+---
+
 # Specification Quality Checklist: Discover Travis County sources and pass readiness preflight
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning

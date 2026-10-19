@@ -1,3 +1,9 @@
+---
+id: SPEC-A-01
+parent: A-01
+story: stories/A-01-discover-sources.md
+---
+
 # Feature Specification: Discover Travis County sources and pass readiness preflight
 
 **Feature Branch**: `001-discover-sources`
