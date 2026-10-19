@@ -36,7 +36,7 @@ How to prove the story works. Commands are in [contracts/cli.md](contracts/cli.m
 
 1. `npm --prefix pipeline/oracle-runtime run render-sources` → `git diff docs/sources.md` is empty.
 2. Pick 3 numbers in `docs/sources.md`; each links to its source URL and UTC capture time (under 2 minutes each).
-3. Spot re-measure: an independent `count(*)` on `3syk-w9eu` and on `9cir-efmm` (county code 227) lands within expected drift of the catalog values.
+3. Spot re-measure: an independent `count(*)` on `3syk-w9eu` limited to rows created by the measurement's `captured_at` equals the catalog value exactly; the `9cir-efmm` county-227 recount and the Austin-issued counts per jurisdiction agree within 0.5% (test cases TC-005, TC-006, TC-014).
 
 ## Scenario 5: hygiene
 

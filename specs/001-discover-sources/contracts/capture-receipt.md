@@ -30,7 +30,8 @@ Matches the ARD § 6 internal contracts. Written by `source-client.ts` for every
 | 2xx challenge page (fails the parse) | 1 | `blocked` | `WAITING_HUMAN` |
 | 403 | 1 | `blocked` | `WAITING_HUMAN` |
 | Timeout | 1 | `blocked` | `WAITING_HUMAN` |
-| 429 / 5xx | ≤ 5, backoff 1 s base, 60 s cap, full jitter, honors `Retry-After` | `throttled-then-ok` or `failed` | `failed` → recorded, run continues for other sources |
+| 429 / 5xx | ≤ 5, backoff 1 s base, 60 s cap, full jitter, honors `Retry-After` | `throttled-then-ok` or `failed` | `throttled-then-ok` → unchanged; `failed` → measurement `null` with "throttled: 5 attempts exhausted", that source `WAITING_HUMAN`, other sources continue (FR-006e) |
+| TCAD export download: no data for 10 min, or 2 h total | 1 | `blocked` (`timeout_ms` = elapsed) | `WAITING_HUMAN` (FR-003) |
 
 ## Discovery run record
 

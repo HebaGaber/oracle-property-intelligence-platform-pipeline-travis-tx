@@ -61,7 +61,7 @@ Phase 0 of [plan.md](plan.md). The Technical Context has no open `NEEDS CLARIFIC
 
 ## R8. Counting the TCAD export
 
-- **Decision**: download the 2026 Certified Special Export once to `pipeline/data/raw/tcad/` with a long step timeout; count accounts with `stream-json` (streaming, bounded memory); list top-level record fields; record bytes, SHA-256, download rate, roll year and certification date. The JSON record path is confirmed from the Export Layouts file before counting.
+- **Decision**: download the 2026 Certified Special Export once to `pipeline/data/raw/tcad/` with a 10-minute inactivity limit and a 2-hour total limit (either one counts as a timeout and records the source as blocked, FR-003/FR-006); the Restate step's inactivity and abort timeouts are set above these limits so the probe, not the runtime, decides; count accounts with `stream-json` (streaming, bounded memory); list top-level record fields; record bytes, SHA-256, download rate, roll year and certification date. The JSON record path is confirmed from the Export Layouts file before counting.
 - **Rationale**: the file may be multi-GB (oracle risk 9); spec FR-003.
 - **Alternatives considered**: loading the whole file (memory); counting with `jq` (an extra tool outside the TS rule).
 

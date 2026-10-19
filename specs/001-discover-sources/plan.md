@@ -54,7 +54,7 @@ Copied from `stories/A-01-discover-sources.md` front matter and [agent-design.md
 |---|---------|------|
 | 1 | Fail-closed gate run unmodified, SHA-256 checked, relative catalog path, no auto-advance to seed | `pipeline/oracle-runtime/kit/use-oracle/scripts/validate-county-readiness.py` (vendored), `pipeline/oracle-runtime/travis/discovery/run-validator.ts` |
 | 2 | One HTTP boundary: StopOnBlocked, backoff only on 429/5xx, `p-limit(2)` per host, constant identified UA, no rotation, `isGeoBlock` only on an explicit signal | `pipeline/oracle-runtime/travis/lib/source-client.ts` |
-| 3 | Zod at every boundary; a challenge page fails the parse and becomes `blocked` | `pipeline/oracle-runtime/travis/discovery/probes/*.ts`, `catalog.schema.ts` |
+| 3 | Zod at every boundary, closed list: Socrata responses (`3syk-w9eu`, `9cir-efmm`), ArcGIS count response, Census file rows, TCAD export records (each streamed record parsed for the key and date fields used), the Export Layouts field list, evidence-page responses (status, content type, challenge markers), the catalog on read and write, and the `resolve` command arguments; a challenge page fails the parse and becomes `blocked` | `pipeline/oracle-runtime/travis/discovery/probes/*.ts`, `catalog.schema.ts` |
 | 4 | Durable workflow: journaled `ctx.run` probe steps with idempotency keys; `WAITING_HUMAN` via a durable promise; long TCAD step timeout | `pipeline/oracle-runtime/travis/discovery/workflow.ts`, bound in `pipeline/local-stack/services/app.ts` |
 | 5 | Measurement: ≥ 3 consecutive pages, median rate, server-side counts, streaming TCAD count, projected hours | `pipeline/oracle-runtime/travis/discovery/probes/socrata.ts`, `probes/tcad.ts`, `measure.ts` |
 | 6 | GIS is not the population; null GIS gives the gap `unknown` with a reason | `probes/arcgis.ts`, `check-catalog.ts` |
@@ -69,7 +69,7 @@ Copied from `stories/A-01-discover-sources.md` front matter and [agent-design.md
 | # | Article | Check for this plan | Status |
 |---|---------|---------------------|--------|
 | I | Outcome first | A-01 has no hosted surface. Its proof is the committed catalog, summary and validator report in the PR (FR-007), all with real Travis County data; hosted display comes in A-11/A-13 | ❌ justified (G4 C-04 exception, see Complexity Tracking) |
-| II–IV | Stack | All new code is TypeScript; the only Python is the vendored kit validator run as provided (II, D-03). No AWS resources, so no CDK and no region. Code sits in the AD-23 layout (`pipeline/oracle-runtime`, `pipeline/local-stack`); Turborepo and the api-client arrive in A-03 | ✅ (CDK, api-client: N/A) |
+| II–IV | Stack | All new code is TypeScript; the only Python is the vendored kit validator run as provided (II, D-03). No AWS resources, so no CDK and no region; CDK (top-level `infra/`, region from config, `project_name=oracle-travis` tags) arrives with the first AWS resource in A-03. Code sits in the AD-23 layout (`pipeline/oracle-runtime`, `pipeline/local-stack`); Turborepo and the api-client also arrive in A-03 | ✅ (CDK, api-client: N/A until A-03) |
 | V–VI | Contracts and LLM | Zod parses every source response and the catalog before any logic; no `any`. No LLM calls | ✅ (VI: N/A) |
 | VII–IX | Operations | VII: bounded concurrency (2/host), idempotency keys, exponential backoff, Restate journal/pause as the local DLQ (allowed by VII). VIII/IX: no Lambda and no hosted critical path, so Powertools, X-Ray and PagerDuty do not apply; structured JSON logs; a blocked source surfaces as `WAITING_HUMAN` in the run record | ✅ (VIII–IX: N/A, stated) |
 | X | Quality gates | Vitest + `tsc` + ESLint + Prettier for `pipeline/oracle-runtime`, plus validator `--self-test`, run in a new GitHub Actions workflow `pipeline-ci.yml` (A-03 later folds it into Turborepo CI). Playwright: no hosted URL in this story | ✅ (Playwright: N/A) |
@@ -133,6 +133,8 @@ pipeline/
 │           ├── catalog.schema.ts        # Zod schema for the full catalog
 │           ├── write-catalog.ts         # block-style YAML emit (research R5)
 │           ├── check-catalog.ts         # A-01 rules the validator ignores (CLI, exit code)
+│           ├── blocked-evidence.ts      # evidence files + blocked_evidence rows
+│           ├── resolve.ts               # operator command for WAITING_HUMAN (FR-006f)
 │           ├── run-validator.ts         # runs the vendored validator, saves report + exit code
 │           └── render-sources-md.ts     # docs/sources.md from the YAML
 │   └── test/                            # Vitest: guard, mapping, schema, checker, renderer (synthetic fixtures, test-only)

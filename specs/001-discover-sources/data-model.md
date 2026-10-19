@@ -32,6 +32,10 @@ Every number in the catalog is a Measurement, never a bare value (FR-007a).
 | `decision` | `bulk download` \| `ingest` \| `runtime retrieval`; required when projected hours > 48, and always present |
 | `decision_reason` | required with `decision` |
 | `blocked_evidence` | required when `status: blocked` |
+| `tcad_id_null_count` | `austin_permits` only: Measurement of rows with no `tcad_id` |
+| `located_in_other_jurisdictions` | `austin_permits` only: array of `{jurisdiction, value, source_url, captured_at}` for Austin-issued records located elsewhere (from the `jurisdiction` field) |
+
+Overture (`overture`): `denominator.value` is `null` with `missing_reason: "not measured in A-01: optional source; licence gate decided in A-09"` (FR-001b).
 
 ## Throughput
 
@@ -66,7 +70,7 @@ Set rule: the row count equals `census_reference.place_count + 1` (unincorporate
 
 ## Blocked evidence
 
-`http_status` or `timeout_ms`, `captured_at`, `url`, `evidence_path` (committed file with headers and a body excerpt, no secrets), `body_sha256`, `geo_signal` (`none` or the quoted signal; only a quoted signal permits the US check, FR-006b).
+`http_status` or `timeout_ms`, `captured_at`, `url`, `evidence_path` (committed file with headers and a body excerpt, no secrets), `body_sha256`, `attempts` and `user_agent` (copied from the capture receipt), `outcome` (`blocked` for 403/challenge/timeout, `failed` for 429/5xx after 5 attempts, FR-006e), `geo_signal` (`none` or the quoted signal; only a quoted signal permits the US check, FR-006b).
 
 ## Destination proof
 
@@ -85,9 +89,9 @@ Set rule: the row count equals `census_reference.place_count + 1` (unincorporate
 ```text
 DISCOVERING ──all probes ok──────────────────────────▶ READY (validator exit 0)
      │
-     └─any source blocked─▶ WAITING_HUMAN ──human resolves: captured──▶ DISCOVERING (re-probe that source)
+     └─any source blocked or failed─▶ WAITING_HUMAN ──human resolves: captured──▶ DISCOVERING (re-probe that source once)
                                   │
                                   └──human resolves: still blocked + records request──▶ WAITING_HUMAN (documented blocker; story judged per FR-006c)
 ```
 
-`READY` never auto-advances to seed (A-04). Each probe step is journaled with the idempotency key `source:measurement:captured_date`.
+A human resolves a waiting source with `npm --prefix pipeline/oracle-runtime run resolve -- <source_key> captured|still-blocked` (FR-006f; [contracts/cli.md](contracts/cli.md)). `captured` re-probes only that source with the same identity and then re-runs the catalog write and the validator; `still-blocked` confirms the records request and leaves the run in `WAITING_HUMAN` as the documented blocker. `READY` never auto-advances to seed (A-04). The catalog's top level records `waiting_human_hours` (hours spent in `WAITING_HUMAN`, `0` when nothing waited) so SC-006 (run ≤ 8 h excluding waits) can be measured. Each probe step is journaled with the idempotency key `source:measurement:captured_date`.

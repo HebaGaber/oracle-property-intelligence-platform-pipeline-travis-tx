@@ -28,7 +28,7 @@ description: "Tasks for A-01 Discover Travis County sources and pass readiness p
 
 **Purpose**: Create the `pipeline/oracle-runtime` package (AD-23) and vendor the kit gate.
 
-- [ ] T001 Create `pipeline/oracle-runtime/package.json` (type module, private; dependencies `zod`, `yaml`, `stream-json`, `p-limit`, `@restatedev/restate-sdk` as a **peer** dependency matching `pipeline/local-stack` (one SDK instance), dev `tsx`, `typescript`, `vitest`, `eslint`, `prettier`; scripts `test`, `typecheck`, `lint`, `format:check`, `discover`, `check-catalog`, `validate`, `render-sources` per [contracts/cli.md](contracts/cli.md)) and `pipeline/oracle-runtime/tsconfig.json` (strict, no implicit any) **(builder: oracle)**
+- [ ] T001 Create `pipeline/oracle-runtime/package.json` (type module, private; dependencies `zod`, `yaml`, `stream-json`, `p-limit`, `@restatedev/restate-sdk` as a **peer** dependency matching `pipeline/local-stack` (one SDK instance), dev `tsx`, `typescript`, `vitest`, `eslint`, `prettier`; scripts `test`, `typecheck`, `lint`, `format:check`, `discover`, `check-catalog`, `validate`, `resolve`, `render-sources` per [contracts/cli.md](contracts/cli.md)) and `pipeline/oracle-runtime/tsconfig.json` (strict, no implicit any) **(builder: oracle)**
 - [ ] T002 [P] Add ESLint and Prettier config in `pipeline/oracle-runtime/eslint.config.js` and `pipeline/oracle-runtime/.prettierrc` (ban `any`, ban direct `console.log` outside `RT/travis/lib/log.ts`) **(builder: oracle)**
 - [ ] T003 [P] Vendor the kit validator **unmodified** from kit 0.99.1 `skills/use-oracle/scripts/validate-county-readiness.py` to `pipeline/oracle-runtime/kit/use-oracle/scripts/validate-county-readiness.py`, plus its 6 self-test fixtures from `skills/use-oracle/fixtures/readiness/*.yaml` to `pipeline/oracle-runtime/kit/use-oracle/fixtures/readiness/` (the script resolves `../fixtures/readiness`); write `pipeline/oracle-runtime/kit/VENDORED.md` with kit version, source paths and the SHA-256 of every vendored file; confirm `python3 …/validate-county-readiness.py --self-test` exits 0 **(builder: oracle)**
 - [ ] T004 [P] Create the empty folders and placeholders `pipeline/docs/`, `docs/evidence/`, `docs/evidence/blocked/`, and confirm `git check-ignore pipeline/data/raw/tcad/probe.json` succeeds (root `.gitignore` already ignores `pipeline/data/`) **(builder: oracle)**
@@ -79,11 +79,11 @@ description: "Tasks for A-01 Discover Travis County sources and pass readiness p
 
 - [ ] T020 [P] [US1] Implement median rate, projected hours and the 48-hour rule in `RT/travis/discovery/measure.ts` **(builder: oracle)**
 - [ ] T021 [P] [US1] Implement Socrata probes for Austin `3syk-w9eu` (count, null `tcad_id` count, jurisdiction group-by, 3-page throughput) and Comptroller `9cir-efmm` (statewide and county-227 counts) in `RT/travis/discovery/probes/socrata.ts`, Zod-parsing every response **(builder: oracle)**
-- [ ] T022 [P] [US1] Implement the TCAD probe in `RT/travis/discovery/probes/tcad.ts`: download the Export Layouts (field definitions), confirm the JSON record path, download the 2026 Certified Special Export **once** to `pipeline/data/raw/tcad/` with a long step timeout, stream-count accounts with `stream-json`, list fields, record `identifier_name` exactly as printed and `deed_or_sale_dates_present`; supplemental exports are listed, not downloaded **(builder: oracle)**
+- [ ] T022 [P] [US1] Implement the TCAD probe in `RT/travis/discovery/probes/tcad.ts`: download the Export Layouts (field definitions), confirm the JSON record path, download the 2026 Certified Special Export **once** to `pipeline/data/raw/tcad/` with a 10-minute inactivity limit and a 2-hour total limit (either → `blocked` with `timeout_ms`, FR-003; Restate step timeouts set above both), stream-count accounts with `stream-json`, list fields, record `identifier_name` exactly as printed and `deed_or_sale_dates_present`; supplemental exports are listed, not downloaded **(builder: oracle)**
 - [ ] T023 [P] [US1] Implement the ArcGIS `TCAD_PARCELS` count-only probe with a 60 s timeout in `RT/travis/discovery/probes/arcgis.ts` **(builder: oracle)**
-- [ ] T024 [P] [US1] Implement evidence probes for BBB (reuse the 2026-10-17 challenge evidence or at most one observation; never solve the challenge), Overture (licence page), contractor licensing ("no statewide roofing licence": TDLR and HB 3344 status) and TCAD supplemental (listing) in `RT/travis/discovery/probes/evidence.ts` **(builder: oracle)**
+- [ ] T024 [P] [US1] Implement evidence probes for BBB (reuse the 2026-10-17 challenge evidence or at most one observation; never solve the challenge), Overture (licence page; `denominator` `null` with `missing_reason: "not measured in A-01: optional source; licence gate decided in A-09"`), contractor licensing ("no statewide roofing licence": TDLR and HB 3344 status) and TCAD supplemental (listing) in `RT/travis/discovery/probes/evidence.ts` **(builder: oracle)**
 - [ ] T025 [US1] Add the US1 probe steps to `RT/travis/discovery/workflow.ts` and assemble the `sources` and `parcel` blocks (depends on T020–T024) **(builder: oracle)**
-- [ ] T026 [US1] Implement checker rules 1–5 and 8 with a CLI exit code in `RT/travis/discovery/check-catalog.ts` **(builder: oracle)**
+- [ ] T026 [US1] Implement checker rules 1–5 and 8 in `RT/travis/discovery/check-catalog.ts`: optional catalog path argument (default `pipeline/docs/travis-sources.yaml`), one line `FAIL rule <n>: <subject> <detail>` per failure (rule 3 exactly `FAIL rule 3: <source_key> projected <hours> h has no decision`), exit 1 on any failure ([contracts/catalog.md](contracts/catalog.md#checker-rules-check-catalogts-exit-0--all-pass)) **(builder: oracle)**
 
 **Checkpoint**: T015–T019 pass; the US1 independent test passes on a catalog built from synthetic probe output.
 
@@ -106,7 +106,7 @@ description: "Tasks for A-01 Discover Travis County sources and pass readiness p
 - [ ] T030 [P] [US2] Implement the Census probe in `RT/travis/discovery/probes/census.ts` (research R6; record the exact file URL used) **(builder: oracle)**
 - [ ] T031 [US2] Research and write the curated jurisdiction profile in `RT/travis/profiles/jurisdictions.ts`: one entry per Census place with land in Travis County plus Travis County unincorporated (start from the 18 leads; verify candidates such as Point Venture, San Leanna, The Hills, Volente and the Travis part of Elgin against the Census file, never assume), each with class per FR-004b, portal, `portal_kind`, evidence URL, `earliest_record_date` where supported, a complete `records_request` where required (recipient office, system and date scope, `api-first`/`records-first`, portal URL or email) and `issued_by` where delegated **(builder: oracle)**
 - [ ] T032 [US2] Add jurisdiction steps to `RT/travis/discovery/workflow.ts`: probe each profile evidence URL through the source client, stamp `evidence_captured_at`, map status with `status-map.ts`, attach Austin-issued counts from the T021 group-by (Lakeway, Bee Cave, Pflugerville full purpose and ETJ) as `austin_issued_located_here`, and build the `permits` block with `assumes_unified_countywide_history: false` **(builder: oracle)**
-- [ ] T033 [US2] Add checker rules 6–7 to `RT/travis/discovery/check-catalog.ts` **(builder: oracle)**
+- [ ] T033 [US2] Add checker rules 6–7 to `RT/travis/discovery/check-catalog.ts` (rule 6 exactly `FAIL rule 6: jurisdictions <actual> != census place_count + 1 (<expected>)`) **(builder: oracle)**
 
 **Checkpoint**: T027–T029 pass; US1 and US2 checker rules pass together.
 
@@ -120,12 +120,12 @@ description: "Tasks for A-01 Discover Travis County sources and pass readiness p
 
 ### Tests for User Story 4 (MANDATORY, write first) ⚠️
 
-- [ ] T034 [P] [US4] Workflow tests in `RT/test/workflow.blocked.test.ts`: a blocked receipt moves the run to `WAITING_HUMAN` and waits on a durable promise (no timer loop); resolving it as "captured" re-probes only that source; resolving it as "still blocked" keeps `WAITING_HUMAN` with the blocker recorded; `READY` never starts seed **(builder: oracle)**
+- [ ] T034 [P] [US4] Workflow tests in `RT/test/workflow.blocked.test.ts`: a blocked receipt moves the run to `WAITING_HUMAN` and waits on a durable promise (no timer loop); resolving it as "captured" re-probes only that source; resolving it as "still blocked" keeps `WAITING_HUMAN` with the blocker recorded; a 429/5xx that fails after 5 attempts gives a `null` measurement with "throttled: 5 attempts exhausted" and `WAITING_HUMAN` for that source only (FR-006e); `resolve <source_key> captured|still-blocked` exits 0 for a waiting source and 1 for a source that is not waiting (FR-006f); `READY` never starts seed **(builder: oracle)**
 - [ ] T035 [P] [US4] Blocked-evidence tests in `RT/test/blocked-evidence.test.ts`: the evidence file under `docs/evidence/blocked/` contains status or timeout, time, URL, headers and a body excerpt with its SHA-256, and no tokens, credential URLs or absolute home paths; `geo_signal` is `none` unless the saved response quotes an explicit signal **(builder: oracle)**
 
 ### Implementation for User Story 4
 
-- [ ] T036 [US4] Implement the `WAITING_HUMAN` durable promise and its resolve handler in `RT/travis/discovery/workflow.ts` **(builder: oracle)**
+- [ ] T036 [US4] Implement the `WAITING_HUMAN` durable promise and its resolve handler in `RT/travis/discovery/workflow.ts`, the operator command `resolve -- <source_key> captured|still-blocked` in `RT/travis/discovery/resolve.ts` per [contracts/cli.md](contracts/cli.md), and the FR-006e path (429/5xx after 5 attempts → `null` + "throttled: 5 attempts exhausted" → `WAITING_HUMAN`) **(builder: oracle)**
 - [ ] T037 [P] [US4] Implement blocked-evidence writing in `RT/travis/discovery/blocked-evidence.ts` and attach `blocked_evidence` to blocked source and jurisdiction rows **(builder: oracle)**
 - [ ] T038 [US4] Add the records requests for blocked sources to the catalog: TCAD (custodian, Public Information Act route, 2026 certified plus supplemental exports, `records-first` or `api-first`, portal URL or email) and BBB (next step: official API application, recorded only), in `RT/travis/discovery/workflow.ts` **(builder: oracle)**
 - [ ] T039 [US4] **Only if** a saved TCAD or GIS response has `geo_signal` other than `none`: add `.github/workflows/geo-check.yml` (`workflow_dispatch` only, one identified request with the project User-Agent, uploads status, headers and body digest as an artifact). If there is no geo signal, mark this task "N/A: no geo signal (FR-006b)" in `docs/evidence/A-01.md` **(builder: oracle; trigger: operator)**
@@ -144,7 +144,8 @@ description: "Tasks for A-01 Discover Travis County sources and pass readiness p
 
 - [ ] T040 [P] [US3] Destination-proof tests in `RT/test/destination-proof.test.ts`: two identities from independent sources (Docker side, SQL side); output contains no URL, host credentials or password **(builder: oracle)**
 - [ ] T041 [P] [US3] Validator-runner tests in `RT/test/run-validator.test.ts`: calls the vendored script with the relative path `pipeline/docs/travis-sources.yaml`; saves stdout to `docs/evidence/A-01-readiness.json` and the exit code; checks the vendored SHA-256 against `kit/VENDORED.md`; the report contains no absolute home path **(builder: oracle)**
-- [ ] T042 [P] [US3] Renderer tests in `RT/test/render-sources-md.test.ts`: every number links its source URL and UTC capture time; a null shows its `missing_reason`; output is deterministic (same catalog → byte-identical file) **(builder: oracle)**
+- [ ] T042 [P] [US3] Renderer tests in `RT/test/render-sources-md.test.ts`: every number links its source URL and UTC capture time; a null shows its `missing_reason`; the file starts with front matter `id: SRC-A` and `parent: A-01` (FR-007b); output is deterministic (same catalog → byte-identical file) **(builder: oracle)**
+- [ ] T055 [P] [US3] Acceptance tests in `RT/test/acceptance/a01.acceptance.test.ts`: one Vitest test per case in `testplans/A-01-test-cases.md` that names `a01.acceptance.test.ts`, titled exactly with its TC ID (e.g. `"A-01-TC-001 verdict PASS"`), each shelling out to the case's commands and asserting its expected outputs; one helper per step, test bodies call helpers only; cases for the TCAD outcome that does not apply are skipped with the reason (outcome A vs B). Written now and failing until the live run (T048–T051) exists. Numbered T055 to keep earlier IDs stable **(builder: oracle)**
 - [ ] T043 [P] [US3] Checker tests in `RT/test/check-catalog.hygiene.test.ts` for rule 9 (no `postgres://`, token values or absolute home paths anywhere in the catalog) **(builder: oracle)**
 
 ### Implementation for User Story 3
@@ -153,10 +154,10 @@ description: "Tasks for A-01 Discover Travis County sources and pass readiness p
 - [ ] T045 [P] [US3] Implement the validator runner in `RT/travis/discovery/run-validator.ts` **(builder: oracle)**
 - [ ] T046 [P] [US3] Implement the renderer in `RT/travis/discovery/render-sources-md.ts` writing `docs/sources.md` **(builder: oracle)**
 - [ ] T047 [US3] Add checker rule 9 to `RT/travis/discovery/check-catalog.ts` **(builder: oracle)**
-- [ ] T048 [US3] Live run on the operator machine: start the local stack (`bootstrap-oracle-infra` checks), run `npm --prefix pipeline/oracle-runtime run discover`, producing `pipeline/docs/travis-sources.yaml` with real Travis County measurements **(operator, with builder: oracle)**
-- [ ] T049 [US3] Write the county-discovery findings profile in `pipeline/docs/travis-county-findings.md` (appraiser portal, parcel identifier, permit portals, bulk sources, use codes, additional sources, feasibility, risks) from the live run **(builder: oracle)**
+- [ ] T048 [US3] Live run on the operator machine: start the local stack (`bootstrap-oracle-infra` checks); run the kit's `onboard-county` intake for Travis County (FIPS 48453) and the `county-discovery` procedure as the builder's kit skills (FR-001), recording the intake in `docs/evidence/A-01.md` and skipping the external push (PO decision 2026-10-19); then run `npm --prefix pipeline/oracle-runtime run discover`, producing `pipeline/docs/travis-sources.yaml` with real Travis County measurements **(operator, with builder: oracle)**
+- [ ] T049 [US3] Write the county-discovery findings profile in `pipeline/docs/travis-county-findings.md` (appraiser portal, parcel identifier, permit portals, bulk sources, use codes, additional sources, feasibility, risks, and an "Export layouts" section naming both TCAD layouts and the one A-04 uses) from the live run, with front matter `id: FND-A-01`, `parent: A-01` (FR-007b) **(builder: oracle)**
 - [ ] T050 [US3] Run `check-catalog` (exit 0) and `validate` on the live catalog; save `docs/evidence/A-01-readiness.json`; run the validator again with `python3 -s` (no PyYAML) and confirm the report is identical (parser parity) **(builder: oracle)**
-- [ ] T051 [US3] Run `render-sources` to write `docs/sources.md`; write `docs/evidence/A-01.md` (validator exit code, catalog SHA-256, one row per source with URL, count and capture time, the blocker record and run state if TCAD stays blocked per FR-006c) and start `docs/evidence/A-01-coverage.md` (completed in A-11) **(builder: oracle)**
+- [ ] T051 [US3] Run `render-sources` to write `docs/sources.md`; write `docs/evidence/A-01.md` (validator exit code, catalog SHA-256, one row per source with URL, count and capture time, the blocker record and run state if TCAD stays blocked per FR-006c) and start `docs/evidence/A-01-coverage.md` (completed in A-11); both evidence files carry front matter (`id: EV-A-01` / `EV-A-01-coverage`, `parent: A-01`, FR-007b) **(builder: oracle)**
 
 **Checkpoint**: Quickstart Scenarios 1, 2 and 4 pass on the real catalog.
 
@@ -168,7 +169,7 @@ description: "Tasks for A-01 Discover Travis County sources and pass readiness p
 
 - [ ] T052 [P] Add `.github/workflows/pipeline-ci.yml`: on push and pull request for `pipeline/oracle-runtime/**`, run `npm ci`, `typecheck`, `lint`, `format:check`, `test`, and `python3 …/validate-county-readiness.py --self-test` (research R12) **(builder: oracle)**
 - [ ] T053 Hygiene: run gitleaks on the branch; grep `docs/evidence/`, `docs/sources.md` and `pipeline/docs/` for `postgres://`, token values and `/Users/`; confirm `git check-ignore` on the TCAD file and that no TCAD rows are committed **(builder: oracle)**
-- [ ] T054 Run every scenario in `specs/001-discover-sources/quickstart.md` and record the results in `docs/evidence/A-01.md`; then run every test case in `testplans/A-01-test-cases.md` (the G6 cases derived from AC-1 to AC-7, constitution XXII) against the committed catalog, `docs/sources.md`, the validator report and the unit-test results, since there is no hosted URL (G4 C-04 exception), and record pass/fail per TC with evidence links in `docs/reports/TR-A-01.md` **(builder: oracle)**
+- [ ] T054 Run every scenario in `specs/001-discover-sources/quickstart.md` and record the results in `docs/evidence/A-01.md`; then run every test case in `testplans/A-01-test-cases.md` (the G6 cases derived from AC-1 to AC-7, constitution XXII) against the committed catalog, `docs/sources.md`, the validator report and the unit-test results, since there is no hosted URL (G4 C-04 exception), and record pass/fail per TC with evidence links in `docs/reports/TR-A-01.md` (front matter `id: TR-A-01`, `parent: QC-TC-A-01`, FR-007b); open `docs/defects/ERR-{n}.md` for every failing TC (constitution XXIII) **(builder: oracle)**
 
 ---
 
@@ -211,7 +212,7 @@ description: "Tasks for A-01 Discover Travis County sources and pass readiness p
 - US1 tests T015–T019 together; probes T020–T024 together.
 - US2 tests T027–T029 together; T030 in parallel with T031.
 - US4 tests T034–T035 together.
-- US3 tests T040–T043 together; T044–T046 together.
+- US3 tests T040–T043 and T055 together; T044–T046 together.
 
 ---
 

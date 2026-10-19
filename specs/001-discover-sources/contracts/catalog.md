@@ -19,6 +19,7 @@ state: "TX"
 slug: "travis"
 fips: "48453"
 snapshot_time: "<UTC ISO-8601>"
+waiting_human_hours: 0            # A-01 extension: hours spent in WAITING_HUMAN (SC-006)
 
 parcel:                       # validator gate: parcel
   canonical_source: "TCAD 2026 certified roll"
@@ -96,10 +97,40 @@ sources:
     decision: "ingest"                   # bulk download | ingest | runtime retrieval
     decision_reason: "<text>"
     captured_at: "<UTC>"
-  # ... one row per source key (9 total); blocked rows add blocked_evidence
+    tcad_id_null_count:                  # austin_permits only
+      value: <int>
+      source_url: "<url>"
+      captured_at: "<UTC>"
+    located_in_other_jurisdictions:      # austin_permits only
+      - jurisdiction: "LAKEWAY FULL PURPOSE"
+        value: <int>
+        source_url: "<url>"
+        captured_at: "<UTC>"
+  - key: "overture"
+    denominator:
+      value: null
+      missing_reason: "not measured in A-01: optional source; licence gate decided in A-09"
+      source_url: "<url>"
+      captured_at: "<UTC>"
+  # ... one row per source key (9 total); blocked rows add:
+  #   blocked_evidence:
+  #     http_status: 403                 # or timeout_ms
+  #     captured_at: "<UTC>"
+  #     url: "<url>"
+  #     evidence_path: "docs/evidence/blocked/<file>"
+  #     body_sha256: "<hex>"
+  #     attempts: 1
+  #     user_agent: "<constant project UA>"
+  #     outcome: "blocked"               # or "failed" (429/5xx after 5 attempts)
+  #     geo_signal: "none"               # or the quoted signal
 ```
 
 ## Checker rules (`check-catalog.ts`, exit 0 = all pass)
+
+Usage: `check-catalog [path]` (default `pipeline/docs/travis-sources.yaml`). Each failed rule prints one line `FAIL rule <n>: <subject> <detail>` and the command exits 1. Fixed formats used by the G6 test cases:
+
+- rule 3: `FAIL rule 3: <source_key> projected <hours> h has no decision`
+- rule 6: `FAIL rule 6: jurisdictions <actual> != census place_count + 1 (<expected>)`
 
 1. All 9 source keys present.
 2. Every Measurement has `source_url` and `captured_at`; every null has `missing_reason`.

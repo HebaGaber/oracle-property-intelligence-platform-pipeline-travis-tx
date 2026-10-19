@@ -106,6 +106,8 @@ The operator wants a blocked source recorded with evidence and a lawful next ste
 - TCAD is reachable but the GIS layer times out → TCAD measurements are recorded; GIS is blocked under User Story 4, and the GIS-vs-roll gap is recorded as unknown with the reason.
 - The Census list contains a place not among the 18 named (for example a small village) → it is added and classified like any other jurisdiction.
 - BBB answers with a bot challenge → recorded as blocked with evidence; no bypass; the next step is the official BBB API application (recorded only).
+- A source keeps answering "too many requests" after 5 attempts → the measurement is `null` with "throttled: 5 attempts exhausted" and the source waits for a human (FR-006e).
+- The TCAD export download stalls for 10 minutes or runs past 2 hours → treated as a timeout: recorded as blocked with the elapsed time (FR-003, FR-006).
 
 ## Requirements *(mandatory)*
 
@@ -113,9 +115,9 @@ The operator wants a blocked source recorded with evidence and a lawful next ste
 
 **AC-1: readiness verdict**
 
-- **FR-001**: System MUST run the kit flow onboarding → discovery → readiness preflight for Travis County (FIPS 48453) and keep the validator's exit result and full report as evidence.
+- **FR-001**: System MUST run the kit flow onboarding → discovery → readiness preflight for Travis County (FIPS 48453) and keep the validator's exit result and full report as evidence. The onboarding intake, the discovery procedure and the readiness validator are the kit's own procedures, run by the builder agent from its kit skills; the Travis probes are new code that supply the measurements those procedures record. No kit step is reimplemented.
 - **FR-001a**: The readiness verdict MUST be overall PASS with seeding and ingest allowed; a non-passing verdict stops seed, pilot and full ingest (safe preparation work may continue).
-- **FR-001b**: The catalog MUST name every source in `A-oracle.md` § 4: TCAD certified and supplemental exports, TCAD parcel GIS, Austin permits, other jurisdictions, Texas Comptroller franchise-tax holders, BBB, Overture places, and contractor licensing recorded as "no statewide roofing licence" with evidence.
+- **FR-001b**: The catalog MUST name every source in `A-oracle.md` § 4: TCAD certified and supplemental exports, TCAD parcel GIS, Austin permits, other jurisdictions, Texas Comptroller franchise-tax holders, BBB, Overture places, and contractor licensing recorded as "no statewide roofing licence" with evidence. The Overture places row records its denominator as `null` with the reason "not measured in A-01: optional source; licence gate decided in A-09".
 - **FR-001c**: The internal destination MUST be proven by two independent identity sources before any write (validator rule 4).
 - **FR-001d**: Every blocked, custodian-only or records-request row MUST carry a complete records request: recipient office, portal or email, system and date scope, and whether it is API-first or records-first (validator rule 5).
 - **FR-001e**: The Texas Comptroller row (`9cir-efmm`) MUST record two counts, each with URL and capture time: the Travis-coded rows (county code 227), which are its coverage denominator, and the statewide active-holder count, recorded as the lookup set for contractor identity matching (A-07).
@@ -126,7 +128,7 @@ The operator wants a blocked source recorded with evidence and a lawful next ste
 
 **AC-3: TCAD roll and GIS measured**
 
-- **FR-003**: System MUST download the TCAD **2026** Certified Special Export (the latest certified roll) once, record its size, content fingerprint, download rate and capture time, and keep it out of version control.
+- **FR-003**: System MUST download the TCAD **2026** Certified Special Export (the latest certified roll) once, record its size, content fingerprint, download rate and capture time, and keep it out of version control. The download stops after 10 minutes without data or 2 hours in total; either limit counts as a timeout under FR-006.
 - **FR-003a**: The catalog MUST record the certified account count (property denominator) with its roll year and certification date, the property key exactly as printed (`prop_id` or `geo_id`), and whether deed or sale dates are present.
 - **FR-003b**: The catalog MUST record the GIS parcel count, its gap from the roll as a percentage, and, when GIS is below the roll, whether separately assessed units without geometry are acknowledged; a gap above 2% blocks GIS-only seeding.
 - **FR-003c**: The catalog MUST record the anti-bot posture of the TCAD and GIS sources.
@@ -139,6 +141,7 @@ The operator wants a blocked source recorded with evidence and a lawful next ste
   - **supported**: permit records with history are publicly available online (API, bulk file or searchable portal) and can be captured within the source's terms;
   - **records request**: records exist but only through a custodian, or the online portal is intake-only (application submission, one-stop), blocked, or has no history;
   - **no public history**: evidence shows the jurisdiction keeps no public permit records, or another body issues its permits; in that case the permits are counted under the issuing body and the row names it.
+  - Each row also records the kit validator's status word for its class: supported → `supported`; records request → `custodian-only` (custodian only), `manual-only` (intake-only or no-history portal) or `blocked` (portal blocked); no public history → `delegated` (another body issues) or `unavailable` (no records). No other status word is used.
 - **FR-004c**: Austin-issued permits located in other jurisdictions MUST be recorded as Austin-issued, not as those jurisdictions' own permits.
 
 **AC-5: long captures decided**
@@ -152,11 +155,14 @@ The operator wants a blocked source recorded with evidence and a lawful next ste
 - **FR-006b**: Only when the evidence shows a geo-block MAY one identified request be made from a US-based runner; a plain 403 or challenge goes straight to a records request. Geo-block evidence means the source's own response says the block is about location (for example a "not available in your country/region" page, a country-block error code, or a header naming a geo restriction), and that response is saved; a bare 403 with no such signal is not geo-block evidence.
 - **FR-006c**: If the US check succeeds, the source is captured from there and FR-001 and FR-003 apply in full; otherwise the source stays blocked with a complete records request, and the failing verdict and missing roll count are recorded as the documented blocker in the summary and the story evidence.
 - **FR-006d**: Seed, pilot and full ingest for a blocked source MUST stay stopped until it is resolved.
+- **FR-006e**: A "too many requests" or server error that still fails after 5 attempts MUST record the measurement as `null` with the reason "throttled: 5 attempts exhausted" and move that source to the waiting-for-human state, as for a block; it is never retried with a changed network address or user agent.
+- **FR-006f**: A human MUST resolve a waiting source with one operator command and one of two outcomes: **captured** (that source is probed once more with the same identity, then the catalog and the validator re-run) or **still blocked** (the records request is confirmed and the run stays waiting, documented as the blocker in the summary and the story evidence).
 
 **AC-7: committed proof**
 
 - **FR-007**: The catalog, its readable summary and the validator report MUST be committed on the story branch and visible in the PR.
 - **FR-007a**: Every number in the summary MUST have a source URL and a UTC capture time.
+- **FR-007b**: Every Markdown artifact A-01 commits (the summary, the findings profile, the evidence files, the test report and the review) MUST carry front matter with `id` and `parent` (constitution XIX). The catalog is identified by its path and content fingerprint instead.
 
 ### Non-Functional Requirements
 
@@ -180,7 +186,7 @@ The operator wants a blocked source recorded with evidence and a lawful next ste
 - **SC-003**: The catalog's jurisdiction count equals the expected count, with 0 rows unclassified.
 - **SC-004**: 100% of sources projected above 48 hours of capture have an explicit decision.
 - **SC-005**: 0 retries with changed network identity and 0 CAPTCHA or bot-check bypasses in the run record.
-- **SC-006**: The readiness verdict is PASS with seeding and ingest allowed, or, if a source stays blocked, a documented blocker with a complete records request exists for it; either outcome is reached within the story's 1-day budget.
+- **SC-006**: The readiness verdict is PASS with seeding and ingest allowed, or, if a source stays blocked, a documented blocker with a complete records request exists for it; either outcome is reached by a discovery run that takes at most 8 hours from the first source capture to the catalog snapshot, excluding time spent waiting for a human (recorded in the catalog as `waiting_human_hours`).
 
 ## Assumptions
 
@@ -201,11 +207,11 @@ The operator wants a blocked source recorded with evidence and a lawful next ste
 | AC-3 | FR-003, FR-003a–c; User Story 1 scenario 2 |
 | AC-4 | FR-004, FR-004a–c; User Story 2 scenario 1 |
 | AC-5 | FR-005; User Story 1 scenario 3 |
-| AC-6 | FR-006, FR-006a–d; User Story 4 scenarios 1–3 |
-| AC-7 | FR-007, FR-007a; User Story 3 scenario 2 |
+| AC-6 | FR-006, FR-006a–f; User Story 4 scenarios 1–3 |
+| AC-7 | FR-007, FR-007a–b; User Story 3 scenario 2 |
 | Story FR-001 | FR-001 |
 | Story FR-002 | FR-001e, FR-002, FR-003a–c, FR-005 |
 | Story FR-003 | FR-004–FR-004c |
-| Story FR-004 | FR-006–FR-006d |
-| Story FR-005 | FR-007, FR-007a |
+| Story FR-004 | FR-006–FR-006f |
+| Story FR-005 | FR-007–FR-007b |
 | Story NFR-001 | NFR-001 |
