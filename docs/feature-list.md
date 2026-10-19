@@ -112,6 +112,13 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | FEAT-A16 | A-16 | Feature | Zero-cost proof and source limits | Shows standing cost and billing evidence, and documents measured source speeds and constraints. | Must | A1, A4 | SCN-A | VIS-A |
 
+### 4.7 Operator and product completeness (added 2026-10-19, amendment 0.2)
+
+| FEAT-ID | Story | Class | Feature name | Description (≤ 20 words) | MoSCoW | Eval pt | Scenario | Vision ref |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| FEAT-A17 | A-17 | Feature | Admin sign-in and run commands | Operator signs in by email code and starts, stops or retries runs through a queue the laptop pulls. | Should | A3 | SCN-D | VIS-A |
+| FEAT-A18 | A-18 | Feature | Content and Coming soon pages | Hub, legal, catalog and run-log pages from real files; planned features shown as Coming soon without sample data. | Should | A5 | SCN-A | VIS-A |
+
 **Notes on the backlog**
 
 - No story was added, removed or merged; the 16 rows match `A-oracle.md` § 6 one to one.
@@ -132,7 +139,8 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 | Publication and continuity | A11–A12 | 2 | 2 | 0 | 0 | 0 |
 | Explorer, agent and MCP | A13–A15 | 3 | 3 | 0 | 0 | 0 |
 | Cost and limits | A16 | 1 | 1 | 0 | 0 | 0 |
-| **Total** | | **16** | **16** | **0** | **0** | **0** |
+| Operator and product completeness | A17–A18 | 2 | 0 | 2 | 0 | 0 |
+| **Total** | | **18** | **16** | **2** | **0** | **0** |
 
 **MoSCoW health:** 100% Must, above the 70% guideline. This is accepted because every Must traces to a README criterion or demo line (notes above).
 
@@ -202,5 +210,7 @@ Critical path: A-01 → A-03 → A-04 → A-06 → A-10 → A-11 → A-12. A-13 
 **AI pre-check report:** PASS, 0 FAILs, 2 notes. Full report: [gates/G1-FL-A-precheck.md](gates/G1-FL-A-precheck.md).
 
 **Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-17
+
+**Amendment 0.2 (2026-10-19, scope addition, PO decision during P8):** FEAT-A17 (admin sign-in and run commands, implementing the Accepted architecture decision AD-12, which had no story) and FEAT-A18 (Hub, legal, catalog and run-log pages, plus Coming soon items from `docs/02-design.md` § 3) were added as **Should**, built after every Must. The place gazetteer and the observability baseline were folded into FEAT-A02 and FEAT-A03, so they need no new rows. Re-run `/developmentsupport-g1-precheck` before G4 of A-17.
 
 **Amendment 0.1.1 (2026-10-19, wording only, no scope change):** NFR-04 now says SSM Parameter Store SecureString instead of Secrets Manager, to match architecture decision AD-14 and constitution 3.0.3. The G1 approval stands.

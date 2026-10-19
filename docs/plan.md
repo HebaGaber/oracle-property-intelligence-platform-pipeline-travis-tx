@@ -521,6 +521,8 @@ Order: Project-class enablers first, the walking skeleton live before feature wo
 | FEAT-A14 | Roofing-lead agent | Must | 4 | `014-agent` |
 | FEAT-A15 | MCP interface | Must | 4 | `015-mcp` |
 | FEAT-A16 | Zero-cost proof and source limits | Must | 4 | `016-cost-limits` |
+| FEAT-A17 | Admin sign-in and run commands (AD-12, built last) | Should | 4 (after all Musts) | `017-admin-login` |
+| FEAT-A18 | Content and Coming soon pages | Should | 4 (after all Musts) | `018-content-pages` |
 
 ## 9. Risk register (G2 required: at least one mitigation per risk)
 
@@ -578,6 +580,8 @@ Every branch is created from `feature/oracle-pipeline` and merged back with `--n
 | `specs/014-agent` | A-14 | 4 | specify → clarify → plan → tasks → analyze → implement |
 | `specs/015-mcp` | A-15 | 4 | specify → clarify → plan → tasks → analyze → implement |
 | `specs/016-cost-limits` | A-16 | 4 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/017-admin-login` | A-17 | 4 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/018-content-pages` | A-18 | 4 | specify → clarify → plan → tasks → analyze → implement |
 
 ## 12. Gate G2: Plan Approval
 
