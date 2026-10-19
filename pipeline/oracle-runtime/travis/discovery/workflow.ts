@@ -3,16 +3,32 @@
 // - Each probe runs as a journaled `ctx.run` step named by its idempotency key
 //   `source:measurement:captured_date`, so a replay never re-probes a finished step.
 // - The run record keeps `state: DISCOVERING | WAITING_HUMAN | READY` in workflow state;
-//   any blocked or failed probe moves it to WAITING_HUMAN with a blocker entry. The durable
-//   promise a human resolves (and the `resolve` command) arrive in T036.
+//   any blocked or failed probe (403, challenge, timeout, or 429/5xx after 5 attempts,
+//   FR-006e) moves it to WAITING_HUMAN with a blocker entry.
+// - T036: each waiting source has its own durable promise `resolve:<source_key>:<attempt>`;
+//   the run waits on them (no timer loop) until a human resolves one with the shared
+//   `resolve` handler (operator command resolve.ts). `captured` re-probes only that source
+//   once with the same client identity, then rewrites the catalog and re-runs the
+//   validator; `still-blocked` documents the blocker and its records request and the run
+//   stays WAITING_HUMAN (FR-006f). Time spent waiting is `waiting_human_hours` (SC-006).
+// - T037/T038: blocked rows get their evidence file and, for TCAD and BBB, the records
+//   request / API application that is the next human step.
 // - READY never auto-advances to seed (kit default overridden; seed is A-04).
 //
 // One SDK instance: this file imports the Restate SDK **type-only**. The host
 // (pipeline/local-stack/services/app.ts) passes in its own SDK module, so only the
 // local-stack copy is ever loaded at runtime.
 import type * as restate from "@restatedev/restate-sdk";
-import type { Catalog, SourceKey } from "./catalog.schema.js";
+import { z } from "zod";
+import {
+  SourceKeySchema,
+  type Catalog,
+  type RecordsRequest,
+  type Source,
+  type SourceKey,
+} from "./catalog.schema.js";
 import type { CaptureReceipt } from "../lib/source-client.js";
+import { renderBlockedEvidence } from "./blocked-evidence.js";
 import { assembleUs1, type AssembleOptions, type Us1Blocks, type Us1Results } from "./assemble.js";
 import {
   assemblePermits,
@@ -42,11 +58,31 @@ export const WORKFLOW_NAME = "TravisDiscovery";
 
 export type RunState = "DISCOVERING" | "WAITING_HUMAN" | "READY";
 
+export type ResolutionOutcome = "captured" | "still-blocked";
+
 export interface Blocker {
   source_key: SourceKey;
   step_key: string;
   receipt: CaptureReceipt;
   next_step: string;
+  /** The records request (or API application) a human files for this source, if any. */
+  records_request?: RecordsRequest;
+  /** 1 for the first stop; +1 after each `captured` re-probe that is still blocked. */
+  attempt: number;
+  /** True while the run waits on this source's durable promise. */
+  waiting: boolean;
+  /** Durable promise name: `resolve:<source_key>:<attempt>`. */
+  promise: string;
+  /** `still-blocked` once a human documented the blocker; null while waiting. */
+  resolution: "still-blocked" | null;
+  resolved_at: string | null;
+}
+
+export interface ResolutionRecord {
+  source_key: SourceKey;
+  outcome: ResolutionOutcome;
+  attempt: number | null;
+  at: string;
 }
 
 export interface StepRecord {
@@ -64,9 +100,65 @@ export interface RunRecord {
   state: RunState;
   blockers: Blocker[];
   steps: StepRecord[];
-  validator: { exit_code: number; report_path: string; vendored_sha256: string } | null;
+  validator: ValidatorResult | null;
+  /** Hours spent in WAITING_HUMAN (wall time while at least one source waited), SC-006. */
+  waiting_human_hours: number;
+  /** Every human resolution received, in order. */
+  resolutions: ResolutionRecord[];
   /** Always false: READY never starts seed (A-04 does). */
   auto_advance_to_seed: false;
+}
+
+export interface ValidatorResult {
+  exit_code: number;
+  report_path: string;
+  vendored_sha256: string;
+}
+
+export function newRunRecord(runId: string, startedAt: Date): RunRecord {
+  return {
+    run_id: runId,
+    started_at: startedAt.toISOString(),
+    state: "DISCOVERING",
+    blockers: [],
+    steps: [],
+    validator: null,
+    waiting_human_hours: 0,
+    resolutions: [],
+    auto_advance_to_seed: false,
+  };
+}
+
+export function promiseName(source: SourceKey, attempt: number): string {
+  return `resolve:${source}:${attempt}`;
+}
+
+function resolveHint(source: SourceKey): string {
+  return `then run: npm --prefix pipeline/oracle-runtime run resolve -- ${source} captured|still-blocked`;
+}
+
+export interface BlockerInput {
+  source_key: SourceKey;
+  step_key: string;
+  receipt: CaptureReceipt;
+  next_step: string;
+  records_request?: RecordsRequest;
+}
+
+export function newBlocker(input: BlockerInput, attempt = 1): Blocker {
+  const blocker: Blocker = {
+    source_key: input.source_key,
+    step_key: input.step_key,
+    receipt: input.receipt,
+    next_step: input.next_step,
+    attempt,
+    waiting: true,
+    promise: promiseName(input.source_key, attempt),
+    resolution: null,
+    resolved_at: null,
+  };
+  if (input.records_request) blocker.records_request = input.records_request;
+  return blocker;
 }
 
 export interface ProbeStep {
@@ -98,23 +190,14 @@ export function stepKey(source: SourceKey, measurement: string, capturedAt: Date
 }
 
 const NEXT_STEP_BLOCKED =
-  "Human review: record the blocker and complete records request, then resolve (T036)";
+  "Human review: confirm the blocker and its records request, or capture the source with the same identity";
 
 export async function runDiscovery(
   io: DiscoveryIO,
   runId: string,
   steps: readonly ProbeStep[],
 ): Promise<RunRecord> {
-  const started = await io.now();
-  const record: RunRecord = {
-    run_id: runId,
-    started_at: started.toISOString(),
-    state: "DISCOVERING",
-    blockers: [],
-    steps: [],
-    validator: null,
-    auto_advance_to_seed: false,
-  };
+  const record = newRunRecord(runId, await io.now());
   io.save(record);
 
   for (const step of steps) {
@@ -129,12 +212,14 @@ export async function runDiscovery(
       captured_at: receipt.captured_at,
     });
     if (receipt.outcome === "blocked" || receipt.outcome === "failed") {
-      record.blockers.push({
-        source_key: step.source_key,
-        step_key: key,
-        receipt,
-        next_step: NEXT_STEP_BLOCKED,
-      });
+      record.blockers.push(
+        newBlocker({
+          source_key: step.source_key,
+          step_key: key,
+          receipt,
+          next_step: `${NEXT_STEP_BLOCKED}; ${resolveHint(step.source_key)}`,
+        }),
+      );
     }
     io.save(record);
   }
@@ -145,7 +230,7 @@ export async function runDiscovery(
 }
 
 /** The subset of the SDK this module needs; the host passes its own SDK module. */
-export type RestateSdk = Pick<typeof restate, "workflow">;
+export type RestateSdk = Pick<typeof restate, "workflow" | "RestatePromise">;
 
 /** Workflow step timeouts sit above the TCAD probe's own limits (10 min idle, 2 h total). */
 export const WORKFLOW_OPTIONS = {
@@ -154,6 +239,9 @@ export const WORKFLOW_OPTIONS = {
 } as const;
 
 const RUN_STATE_KEY = "run";
+
+/** Workflow key the operator commands use unless TRAVIS_DISCOVERY_RUN_ID says otherwise. */
+export const DEFAULT_RUN_ID = "travis";
 
 export interface TravisDiscoveryOptions {
   /** US1 probes (built per run). Without them the workflow records an empty run. */
@@ -164,6 +252,12 @@ export interface TravisDiscoveryOptions {
   jurisdictions?: () => JurisdictionProbes;
   /** The curated profile (defaults to the Travis profile). */
   profile?: readonly JurisdictionProfileEntry[];
+  /** Runs the vendored readiness validator (after a `captured` resolution). */
+  runValidator?: () => Promise<ValidatorResult>;
+  /** Writes one blocked-evidence file (repository-relative path, docs/evidence/blocked/). */
+  writeEvidence?: (relPath: string, content: string) => void;
+  /** Extra secrets redacted from evidence files (for example the Socrata app token). */
+  secrets?: () => readonly string[];
 }
 
 export function createTravisDiscovery(sdk: RestateSdk, options: TravisDiscoveryOptions = {}) {
@@ -172,35 +266,38 @@ export function createTravisDiscovery(sdk: RestateSdk, options: TravisDiscoveryO
     options: WORKFLOW_OPTIONS,
     handlers: {
       run: async (ctx: restate.WorkflowContext): Promise<RunRecord> => {
-        const io: DiscoveryIO = {
+        const io: HumanIO = {
           now: async () => new Date(await ctx.date.now()),
           run: (name, fn) => ctx.run(name, fn),
           save: (record) => ctx.set(RUN_STATE_KEY, record),
+          // Durable promises: the invocation suspends until the resolve handler completes one.
+          awaitResolution: (names) =>
+            sdk.RestatePromise.race(names.map((name) => ctx.promise<Resolution>(name).get())),
         };
         if (!options.probes) return runDiscovery(io, ctx.key, []);
-        const { record, results, blocks } = await runSourceDiscovery(io, ctx.key, options.probes());
-        const jurisdictionBlocks = options.jurisdictions
-          ? await runJurisdictionDiscovery(
-              io,
-              record,
-              options.jurisdictions(),
-              options.profile ?? TRAVIS_JURISDICTION_PROFILE,
-              results.austin.located_in_other_jurisdictions,
-            )
-          : null;
-        const write = options.writeCatalog;
-        if (write) {
-          const snapshot = (await io.now()).toISOString();
-          await io.run(`catalog:write:${snapshot.slice(0, 10)}`, async () => {
-            const us1 = buildUs1Catalog(blocks, snapshot, 0);
-            write(jurisdictionBlocks ? withJurisdictions(us1, jurisdictionBlocks) : us1);
-            return true;
-          });
-        }
-        return record;
+        const deps: DiscoveryDeps = { probes: options.probes() };
+        if (options.jurisdictions) deps.jurisdictions = options.jurisdictions();
+        if (options.profile) deps.profile = options.profile;
+        if (options.writeCatalog) deps.writeCatalog = options.writeCatalog;
+        if (options.runValidator) deps.runValidator = options.runValidator;
+        if (options.writeEvidence) deps.writeEvidence = options.writeEvidence;
+        if (options.secrets) deps.secrets = options.secrets();
+        return runTravisDiscovery(io, ctx.key, deps);
       },
       status: async (ctx: restate.WorkflowSharedContext): Promise<RunRecord | null> =>
         (await ctx.get<RunRecord>(RUN_STATE_KEY)) ?? null,
+      /** FR-006f: completes the waiting source's durable promise; refuses any other source. */
+      resolve: async (
+        ctx: restate.WorkflowSharedContext,
+        request: unknown,
+      ): Promise<ResolvePlan> => {
+        const record = (await ctx.get<RunRecord>(RUN_STATE_KEY)) ?? null;
+        const plan = planResolution(record, request);
+        if (!plan.accepted) return plan;
+        const resolution: Resolution = ResolveRequestSchema.parse(request);
+        await ctx.promise<Resolution>(plan.promise).resolve(resolution);
+        return plan;
+      },
     },
   });
 }
@@ -278,6 +375,8 @@ export interface SourceDiscoveryResult {
   record: RunRecord;
   results: Us1Results;
   blocks: Us1Blocks;
+  /** Idempotency key of each US1 step (a re-probe journals under `<key>:reprobe:<n>`). */
+  stepKeys: Record<keyof Us1Probes, string>;
 }
 
 export async function runSourceDiscovery(
@@ -286,16 +385,7 @@ export async function runSourceDiscovery(
   probes: Us1Probes,
   options: Partial<AssembleOptions> = {},
 ): Promise<SourceDiscoveryResult> {
-  const started = await io.now();
-  const record: RunRecord = {
-    run_id: runId,
-    started_at: started.toISOString(),
-    state: "DISCOVERING",
-    blockers: [],
-    steps: [],
-    validator: null,
-    auto_advance_to_seed: false,
-  };
+  const record = newRunRecord(runId, await io.now());
   io.save(record);
 
   const results: Partial<Us1Results> = {};
@@ -323,21 +413,35 @@ export async function runSourceDiscovery(
     ...(options.evidencePath === undefined ? {} : { evidencePath: options.evidencePath }),
   });
 
-  for (const source of blocks.sources) {
-    if (source.status !== "blocked") continue;
-    const step = STEP_FOR_SOURCE[source.key];
-    const receipt = step ? complete[step].blocked_receipt : null;
-    if (!step || !receipt) continue;
-    record.blockers.push({
-      source_key: source.key,
-      step_key: stepKeys[step] as string,
-      receipt,
-      next_step: NEXT_STEP_BLOCKED,
-    });
-  }
+  const keys = stepKeys as Record<keyof Us1Probes, string>;
+  record.blockers = sourceBlockers(blocks.sources, complete, keys).map((b) => newBlocker(b));
   record.state = record.blockers.length > 0 ? "WAITING_HUMAN" : "READY";
   io.save(record);
-  return { record, results: complete, blocks };
+  return { record, results: complete, blocks, stepKeys: keys };
+}
+
+/** One blocker per blocked source row whose stop receipt is known (FR-006, FR-006e). */
+function sourceBlockers(
+  sources: readonly Source[],
+  results: Us1Results,
+  stepKeys: Record<keyof Us1Probes, string>,
+): BlockerInput[] {
+  const out: BlockerInput[] = [];
+  for (const source of sources) {
+    if (source.status !== "blocked") continue;
+    const step = STEP_FOR_SOURCE[source.key];
+    const receipt = step ? results[step].blocked_receipt : null;
+    if (!step || !receipt) continue;
+    const input: BlockerInput = {
+      source_key: source.key,
+      step_key: stepKeys[step],
+      receipt,
+      next_step: `${source.next_step ?? NEXT_STEP_BLOCKED}; ${resolveHint(source.key)}`,
+    };
+    if (source.records_request) input.records_request = source.records_request;
+    out.push(input);
+  }
+  return out;
 }
 
 /** The catalog with the US1 blocks (permits, destination and census come in US2-US4). */
@@ -384,7 +488,7 @@ export function createJurisdictionProbes(
 }
 
 const NEXT_STEP_CENSUS =
-  "Human review: the Census place list could not be read, so the expected jurisdiction count is unknown; capture the Census file, then resolve (T036)";
+  "Human review: the Census place list could not be read, so the expected jurisdiction count is unknown; capture the Census file";
 
 function stepFrom(
   key: string,
@@ -417,17 +521,36 @@ export async function runJurisdictionDiscovery(
   austinLocated: readonly AustinLocatedEntry[],
   options: AssemblePermitsOptions = {},
 ): Promise<JurisdictionBlocks> {
+  const captured = await captureJurisdictions(io, record, probes, profile);
+  return assemblePermits(captured.census, profile, captured.evidence, austinLocated, options);
+}
+
+export interface JurisdictionCapture {
+  census: CensusProbe;
+  censusKey: string;
+  evidence: Record<string, EvidenceProbe>;
+}
+
+/** The journaled jurisdiction probes (Census, then one evidence page per profile entry). */
+export async function captureJurisdictions(
+  io: DiscoveryIO,
+  record: RunRecord,
+  probes: JurisdictionProbes,
+  profile: readonly JurisdictionProfileEntry[],
+): Promise<JurisdictionCapture> {
   const censusKey = stepKey("other_jurisdictions", "census_places", await io.now());
   const census = await io.run(censusKey, probes.census);
   record.steps.push(stepFrom(censusKey, "census_places", census, census.captured_at));
   const censusReceipt = census.blocked_receipt ?? census.receipts.at(-1) ?? null;
   if (census.census_reference === null && censusReceipt) {
-    record.blockers.push({
-      source_key: "other_jurisdictions",
-      step_key: censusKey,
-      receipt: censusReceipt,
-      next_step: NEXT_STEP_CENSUS,
-    });
+    record.blockers.push(
+      newBlocker({
+        source_key: "other_jurisdictions",
+        step_key: censusKey,
+        receipt: censusReceipt,
+        next_step: `${NEXT_STEP_CENSUS}; ${resolveHint("other_jurisdictions")}`,
+      }),
+    );
   }
   io.save(record);
 
@@ -441,7 +564,7 @@ export async function runJurisdictionDiscovery(
     io.save(record);
   }
 
-  return assemblePermits(census, profile, evidence, austinLocated, options);
+  return { census, censusKey, evidence };
 }
 
 /** Adds the US2 blocks (permits, census_reference) to a catalog. */
@@ -452,4 +575,380 @@ export function withJurisdictions(
   const out: Catalog = { ...catalog, permits: blocks.permits };
   if (blocks.census_reference) out.census_reference = blocks.census_reference;
   return out;
+}
+
+// ---------- T038: records requests for blocked sources ----------
+
+/**
+ * TCAD records request (FR-001d, FR-006c). Channel verified 2026-10-19 without contacting
+ * traviscad.org: the TCAD Open Records Center on GovQA names "Travis Central Appraisal
+ * District" and the Public Information Act and offers "Submit a Records Request". No
+ * request email was verified, so none is recorded. The recipient is the statutory officer
+ * for public information (the chief administrative officer, Tex. Gov't Code 552.201); the
+ * named person is not verified.
+ */
+export const TCAD_RECORDS_REQUEST: RecordsRequest = {
+  recipient_office:
+    "Travis Central Appraisal District, officer for public information (chief appraiser, Tex. Gov't Code 552.201)",
+  system_scope:
+    "Texas Public Information Act (Tex. Gov't Code ch. 552) request for the TCAD 2026 Certified Special Export (JSON) with its Export Layouts, and every 2026 supplemental appraisal roll export issued to date (roll year 2026)",
+  route: "records-first",
+  request_portal_url: "https://traviscad.govqa.us/WEBAPP/_rs/SupportHome.aspx",
+};
+
+const TCAD_RECORDS_NOTE =
+  "records request channel checked 2026-10-19 from a non-traviscad.org host: the TCAD Open Records Center (GovQA) names Travis Central Appraisal District and the Public Information Act; no request email was verified, so none is recorded; the recipient is the statutory officer for public information, the named person is not verified";
+
+const TCAD_NEXT_STEP =
+  "File the Public Information Act records request through the TCAD Open Records Center (recorded only in A-01; filing is an operator action); until it is answered TCAD stays blocked and seed, pilot and ingest stay stopped (FR-006c, FR-006d)";
+
+/**
+ * BBB next step: the official BBB API application (recorded only, never filed in A-01).
+ * developer.bbb.org is the BBB API site whose terms require the BBB API Registration Form;
+ * it was found by web search, bbb.org was not contacted.
+ */
+export const BBB_API_APPLICATION: RecordsRequest = {
+  recipient_office: "IABBB (International Association of Better Business Bureaus), BBB API program",
+  system_scope:
+    "BBB business profiles (accreditation, rating, complaints) for Travis County contractors through the official BBB API, requested with the BBB API Registration Form",
+  route: "api-first",
+  request_portal_url: "https://developer.bbb.org/",
+};
+
+const BBB_NEXT_STEP =
+  "Apply for the official BBB API with the BBB API Registration Form at developer.bbb.org (recorded only, not filed in A-01); the challenge is never solved; a bounded bbb-harvest that stops on 403 is the A-08 fallback";
+
+/** Adds the records request, next step and note to the blocked TCAD and BBB rows. */
+export function withRecordsRequests(sources: readonly Source[]): Source[] {
+  return sources.map((source) => {
+    if (source.status !== "blocked") return source;
+    if (source.key === "tcad_certified" || source.key === "tcad_supplemental") {
+      return {
+        ...source,
+        records_request: TCAD_RECORDS_REQUEST,
+        next_step: TCAD_NEXT_STEP,
+        notes: TCAD_RECORDS_NOTE,
+      };
+    }
+    if (source.key === "bbb") {
+      return { ...source, records_request: BBB_API_APPLICATION, next_step: BBB_NEXT_STEP };
+    }
+    return source;
+  });
+}
+
+// ---------- T036: WAITING_HUMAN, the durable promise and its resolution ----------
+
+export interface Resolution {
+  source_key: SourceKey;
+  outcome: ResolutionOutcome;
+}
+
+export const ResolveRequestSchema = z.strictObject({
+  source_key: SourceKeySchema,
+  outcome: z.enum(["captured", "still-blocked"]),
+});
+
+/** The workflow side effects plus the durable promise a human completes. */
+export interface HumanIO extends DiscoveryIO {
+  /** Waits until one of the named durable promises is completed; returns its resolution. */
+  awaitResolution(promiseNames: readonly string[]): Promise<Resolution>;
+}
+
+export interface DiscoveryDeps {
+  probes: Us1Probes;
+  jurisdictions?: JurisdictionProbes;
+  profile?: readonly JurisdictionProfileEntry[];
+  writeCatalog?: (catalog: Catalog) => void;
+  runValidator?: () => Promise<ValidatorResult>;
+  writeEvidence?: (relPath: string, content: string) => void;
+  secrets?: readonly string[];
+}
+
+export type ResolvePlan = { accepted: true; promise: string } | { accepted: false; reason: string };
+
+/** Decides whether a resolve request names a source that is waiting (FR-006f). */
+export function planResolution(record: RunRecord | null, request: unknown): ResolvePlan {
+  const parsed = ResolveRequestSchema.safeParse(request);
+  if (!parsed.success) {
+    return { accepted: false, reason: "expected <source_key> captured|still-blocked" };
+  }
+  if (record === null) {
+    return { accepted: false, reason: "no discovery run is recorded under this run id" };
+  }
+  const key = parsed.data.source_key;
+  const waiting = record.blockers.find((b) => b.source_key === key && b.waiting);
+  if (waiting) return { accepted: true, promise: waiting.promise };
+  const documented = record.blockers.some(
+    (b) => b.source_key === key && b.resolution === "still-blocked",
+  );
+  return {
+    accepted: false,
+    reason: documented
+      ? `${key} was already resolved still-blocked (documented blocker)`
+      : `${key} is not waiting for a human (run state ${record.state})`,
+  };
+}
+
+const HOUR_MS = 3_600_000;
+
+interface Session {
+  record: RunRecord;
+  results: Us1Results;
+  stepKeys: Record<keyof Us1Probes, string>;
+  probes: Us1Probes;
+  jurisdictions: (JurisdictionCapture & { probes: JurisdictionProbes }) | null;
+  profile: readonly JurisdictionProfileEntry[];
+}
+
+/** Assembles the full catalog from the journaled probe results (pure, deterministic). */
+function assembleSession(session: Session, snapshot: string): Catalog {
+  const blocks = assembleUs1(session.results, { assembledAt: snapshot });
+  blocks.sources = withRecordsRequests(blocks.sources);
+  const us1 = buildUs1Catalog(blocks, snapshot, session.record.waiting_human_hours);
+  const j = session.jurisdictions;
+  if (!j) return us1;
+  return withJurisdictions(
+    us1,
+    assemblePermits(
+      j.census,
+      session.profile,
+      j.evidence,
+      session.results.austin.located_in_other_jurisdictions,
+    ),
+  );
+}
+
+/** Every blocker the catalog implies: blocked source rows plus an unreadable Census file. */
+function sessionBlockers(session: Session, catalog: Catalog): BlockerInput[] {
+  const out = sourceBlockers(catalog.sources, session.results, session.stepKeys);
+  const j = session.jurisdictions;
+  const censusReceipt = j ? (j.census.blocked_receipt ?? j.census.receipts.at(-1) ?? null) : null;
+  if (j && j.census.census_reference === null && censusReceipt) {
+    out.push({
+      source_key: "other_jurisdictions",
+      step_key: j.censusKey,
+      receipt: censusReceipt,
+      next_step: `${NEXT_STEP_CENSUS}; ${resolveHint("other_jurisdictions")}`,
+    });
+  }
+  return out;
+}
+
+/** The stop receipt behind each blocked row, keyed by the row's evidence path. */
+function evidenceJobs(
+  session: Session,
+  catalog: Catalog,
+): Array<{ path: string; kind: "source" | "jurisdiction"; key: string; receipt: CaptureReceipt }> {
+  const jobs = new Map<
+    string,
+    { path: string; kind: "source" | "jurisdiction"; key: string; receipt: CaptureReceipt }
+  >();
+  for (const source of catalog.sources) {
+    const path = source.blocked_evidence?.evidence_path;
+    const step = STEP_FOR_SOURCE[source.key];
+    const receipt = step ? session.results[step].blocked_receipt : null;
+    if (path && receipt?.stop_evidence) {
+      jobs.set(path, { path, kind: "source", key: source.key, receipt });
+    }
+  }
+  for (const row of catalog.permits?.jurisdictions ?? []) {
+    const path = row.blocked_evidence?.evidence_path;
+    const receipt = session.jurisdictions?.evidence[row.key]?.blocked_receipt ?? null;
+    if (path && receipt?.stop_evidence) {
+      jobs.set(path, { path, kind: "jurisdiction", key: row.key, receipt });
+    }
+  }
+  return [...jobs.values()];
+}
+
+/** Assembles the catalog, writes evidence files and the catalog as journaled steps. */
+async function publishCatalog(
+  io: HumanIO,
+  session: Session,
+  deps: DiscoveryDeps,
+  round: number,
+): Promise<Catalog> {
+  const snapshot = (await io.now()).toISOString();
+  const catalog = assembleSession(session, snapshot);
+  const suffix = round === 0 ? "" : `:r${round}`;
+  const write = deps.writeEvidence;
+  const jobs = evidenceJobs(session, catalog);
+  if (write && jobs.length > 0) {
+    await io.run(`evidence:write:${snapshot.slice(0, 10)}${suffix}`, async () => {
+      for (const job of jobs) {
+        write(
+          job.path,
+          renderBlockedEvidence({
+            path: job.path,
+            subject: { kind: job.kind, key: job.key },
+            receipt: job.receipt,
+            secrets: deps.secrets ?? [],
+          }),
+        );
+      }
+      return jobs.length;
+    });
+  }
+  const writeCatalog = deps.writeCatalog;
+  if (writeCatalog) {
+    await io.run(`catalog:write:${snapshot.slice(0, 10)}${suffix}`, async () => {
+      writeCatalog(catalog);
+      return true;
+    });
+  }
+  return catalog;
+}
+
+/** Sources whose row is produced by the same probe step as `source`. */
+function sourcesOfStep(source: SourceKey): Set<SourceKey> {
+  if (source === "other_jurisdictions") return new Set(["other_jurisdictions"]);
+  const step = STEP_FOR_SOURCE[source];
+  const out = new Set<SourceKey>();
+  for (const [key, s] of Object.entries(STEP_FOR_SOURCE)) {
+    if (s === step) out.add(key as SourceKey);
+  }
+  return out;
+}
+
+/** `captured`: probes the blocker's step exactly once more with the same client. */
+async function reprobe(io: HumanIO, session: Session, blocker: Blocker): Promise<void> {
+  const name = `${blocker.step_key}:reprobe:${blocker.attempt}`;
+  const j = session.jurisdictions;
+  if (blocker.source_key === "other_jurisdictions" && j) {
+    const census = await io.run(name, j.probes.census);
+    j.census = census;
+    session.record.steps.push(stepFrom(name, "census_places", census, census.captured_at));
+    return;
+  }
+  const entry =
+    US1_STEPS.find(([, key]) => key === blocker.source_key) ??
+    US1_STEPS.find(([step]) => step === STEP_FOR_SOURCE[blocker.source_key]);
+  if (!entry) throw new Error(`workflow: no probe step for ${blocker.source_key}`);
+  const [step, sourceKey, measurement] = entry;
+  const result = await io.run(name, session.probes[step] as () => Promise<Us1Results[typeof step]>);
+  (session.results as unknown as Record<string, unknown>)[step] = result;
+  const last = result.blocked_receipt ?? result.receipts.at(-1) ?? null;
+  session.record.steps.push({
+    key: name,
+    source_key: sourceKey,
+    measurement,
+    outcome: last?.outcome ?? "ok",
+    status: last?.status ?? null,
+    captured_at: last?.captured_at ?? (await io.now()).toISOString(),
+  });
+}
+
+/** Replaces the blockers of the re-probed sources; a documented blocker stays documented. */
+function mergeBlockers(
+  record: RunRecord,
+  affected: ReadonlySet<SourceKey>,
+  fresh: readonly BlockerInput[],
+): void {
+  const previous = new Map(
+    record.blockers.filter((b) => affected.has(b.source_key)).map((b) => [b.source_key, b]),
+  );
+  const kept = record.blockers.filter((b) => !affected.has(b.source_key));
+  const replaced = fresh
+    .filter((b) => affected.has(b.source_key))
+    .map((input) => {
+      const old = previous.get(input.source_key);
+      if (old?.resolution === "still-blocked") return old;
+      return newBlocker(input, (old?.attempt ?? 0) + 1);
+    });
+  record.blockers = [...kept, ...replaced];
+}
+
+function stillBlockedStep(blocker: Blocker, at: string): string {
+  const req = blocker.records_request;
+  const request = req
+    ? `records request to ${req.recipient_office} (${req.request_portal_url ?? req.request_email ?? "no channel"}, ${req.route}) stands`
+    : "no records request applies to this source";
+  return `still blocked after human review at ${at}: documented blocker; ${request}; seed, pilot and ingest for this source stay stopped (FR-006c, FR-006d)`;
+}
+
+/**
+ * The whole discovery run: US1 and US2 probes, catalog and evidence, then WAITING_HUMAN
+ * until every waiting source is resolved (FR-006 to FR-006f). Ends READY when nothing is
+ * blocked, or WAITING_HUMAN with documented blockers. Never starts seed.
+ */
+export async function runTravisDiscovery(
+  io: HumanIO,
+  runId: string,
+  deps: DiscoveryDeps,
+): Promise<RunRecord> {
+  const us1 = await runSourceDiscovery(io, runId, deps.probes);
+  const record = us1.record;
+  record.state = "DISCOVERING";
+  io.save(record);
+  const profile = deps.profile ?? TRAVIS_JURISDICTION_PROFILE;
+  const session: Session = {
+    record,
+    results: us1.results,
+    stepKeys: us1.stepKeys,
+    probes: deps.probes,
+    jurisdictions: deps.jurisdictions
+      ? {
+          ...(await captureJurisdictions(io, record, deps.jurisdictions, profile)),
+          probes: deps.jurisdictions,
+        }
+      : null,
+    profile,
+  };
+
+  const first = await publishCatalog(io, session, deps, 0);
+  record.blockers = sessionBlockers(session, first).map((b) => newBlocker(b));
+  io.save(record);
+
+  let round = 0;
+  for (;;) {
+    const waiting = record.blockers.filter((b) => b.waiting);
+    if (waiting.length === 0) break;
+    record.state = "WAITING_HUMAN";
+    io.save(record);
+    const since = await io.now();
+    const resolution = await io.awaitResolution(waiting.map((b) => b.promise));
+    const at = await io.now();
+    record.waiting_human_hours =
+      Math.round((record.waiting_human_hours + (at.getTime() - since.getTime()) / HOUR_MS) * 1e6) /
+      1e6;
+    round += 1;
+    const targets = waiting.filter((b) => b.source_key === resolution.source_key);
+    record.resolutions.push({
+      source_key: resolution.source_key,
+      outcome: resolution.outcome,
+      attempt: targets[0]?.attempt ?? null,
+      at: at.toISOString(),
+    });
+    const target = targets[0];
+    if (!target) {
+      io.save(record);
+      continue;
+    }
+
+    if (resolution.outcome === "still-blocked") {
+      for (const b of targets) {
+        b.waiting = false;
+        b.resolution = "still-blocked";
+        b.resolved_at = at.toISOString();
+        b.next_step = stillBlockedStep(b, at.toISOString());
+      }
+      io.save(record);
+      await publishCatalog(io, session, deps, round);
+      continue;
+    }
+
+    record.state = "DISCOVERING";
+    io.save(record);
+    await reprobe(io, session, target);
+    const catalog = await publishCatalog(io, session, deps, round);
+    mergeBlockers(record, sourcesOfStep(target.source_key), sessionBlockers(session, catalog));
+    const validate = deps.runValidator;
+    if (validate) record.validator = await io.run(`validator:run:r${round}`, validate);
+    io.save(record);
+  }
+
+  record.state = record.blockers.length > 0 ? "WAITING_HUMAN" : "READY";
+  io.save(record);
+  return record;
 }

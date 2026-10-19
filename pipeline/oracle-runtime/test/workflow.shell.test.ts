@@ -127,7 +127,7 @@ describe("createTravisDiscovery (Restate binding)", () => {
     expect(WORKFLOW_NAME).toBe("TravisDiscovery");
     expect(captured).toHaveLength(1);
     expect(must(captured[0]).name).toBe("TravisDiscovery");
-    expect(Object.keys(must(captured[0]).handlers).sort()).toEqual(["run", "status"]);
+    expect(Object.keys(must(captured[0]).handlers).sort()).toEqual(["resolve", "run", "status"]);
   });
 
   it("imports the Restate SDK type-only, so the host's single SDK instance is used", () => {

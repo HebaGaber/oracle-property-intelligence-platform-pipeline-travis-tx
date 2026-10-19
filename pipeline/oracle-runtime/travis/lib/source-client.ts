@@ -52,6 +52,18 @@ export interface CaptureReceipt {
   rate_limits_observed: string | null;
   /** network error message (redacted) when no HTTP response was received */
   error?: string;
+  /** Blocked or failed captures only: what the evidence file needs (T037). Never logged. */
+  stop_evidence?: StopEvidence;
+}
+
+/** Saved response of a stop (blocked/failed) capture, for the committed evidence file. */
+export interface StopEvidence {
+  /** Lower-cased response headers without cookies, auth or token-bearing headers. */
+  headers: Record<string, string>;
+  /** At most EVIDENCE_EXCERPT_BYTES of the body, base64 (JSON-safe for the journal). */
+  excerpt_base64: string;
+  /** Size of the whole body the excerpt came from. */
+  body_bytes: number;
 }
 
 export interface CaptureRequest<T> {
@@ -122,6 +134,45 @@ export interface SourceClient {
 
 /** Bytes kept from a refused download body for the evidence excerpt. */
 export const EXCERPT_BYTES = 64 * 1024;
+
+/** Bytes of a stop body kept on the receipt for the evidence file (journal-friendly). */
+export const EVIDENCE_EXCERPT_BYTES = 4 * 1024;
+
+/** Response headers never kept: session cookies, auth challenges and anything token-like. */
+const UNSAFE_HEADER =
+  /cookie|authori[sz]ation|authenticate|token|secret|password|api-?key|session/i;
+
+/** Drops cookie, auth and token-bearing headers; redacts the remaining values. */
+export function safeHeaders(
+  headers: Record<string, string>,
+  secrets: readonly string[] = [],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    const lower = name.toLowerCase();
+    if (UNSAFE_HEADER.test(lower)) continue;
+    out[lower] = redact(value, secrets);
+  }
+  return out;
+}
+
+export function stopEvidence(
+  headers: Record<string, string>,
+  body: Buffer,
+  secrets: readonly string[] = [],
+): StopEvidence {
+  return {
+    headers: safeHeaders(headers, secrets),
+    excerpt_base64: body.subarray(0, EVIDENCE_EXCERPT_BYTES).toString("base64"),
+    body_bytes: body.byteLength,
+  };
+}
+
+/** The receipt as logged: without the saved stop body. */
+function loggable(receipt: CaptureReceipt): LogFields {
+  const { stop_evidence: _evidence, ...rest } = receipt;
+  return { ...rest };
+}
 
 export interface SavedResponse {
   status: number | null;
@@ -336,8 +387,11 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       rate_limits_observed: observed.length > 0 ? observed.join("; ") : null,
     };
     if (last.kind === "error") receipt.error = last.message;
+    if (outcome === "blocked" || outcome === "failed") {
+      receipt.stop_evidence = stopEvidence(responseHeaders, body, secrets);
+    }
 
-    emit("source.capture", { ...receipt });
+    emit("source.capture", loggable(receipt));
     return { receipt, data, body, headers: responseHeaders };
   }
 
@@ -387,7 +441,11 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
         rate_limits_observed: observed.length > 0 ? observed.join("; ") : null,
       };
       if (fields.error !== undefined) receipt.error = fields.error;
-      emit("source.download", { ...receipt });
+      if (fields.outcome === "blocked" || fields.outcome === "failed") {
+        receipt.stop_evidence = stopEvidence(fields.headers, fields.excerpt, secrets);
+        receipt.stop_evidence.body_bytes = fields.bytes;
+      }
+      emit("source.download", loggable(receipt));
       return {
         receipt,
         path: fields.path,
@@ -397,7 +455,10 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       };
     };
 
-    const elapsed = (): number => Math.max(1, Math.round(clock() - startedMs));
+    // A timer can fire a fraction of a millisecond before the monotonic clock reaches its
+    // limit, so a timeout records at least the limit that fired (FR-003: >= 10 min / 2 h).
+    let limitHit = 0;
+    const elapsed = (): number => Math.max(1, limitHit, Math.round(clock() - startedMs));
 
     while (attempts < MAX_ATTEMPTS) {
       attempts += 1;
@@ -406,12 +467,14 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       const total = setTimeout(
         () => {
           timedOut = true;
+          limitHit = Math.max(limitHit, request.totalMs);
           controller.abort();
         },
         Math.max(0, request.totalMs - (clock() - startedMs)),
       );
       let idle = setTimeout(() => {
         timedOut = true;
+        limitHit = Math.max(limitHit, request.inactivityMs);
         controller.abort();
       }, request.inactivityMs);
       const clearTimers = (): void => {
@@ -510,6 +573,7 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
           clearTimeout(idle);
           idle = setTimeout(() => {
             timedOut = true;
+            limitHit = Math.max(limitHit, request.inactivityMs);
             controller.abort();
           }, request.inactivityMs);
           hash.update(value);

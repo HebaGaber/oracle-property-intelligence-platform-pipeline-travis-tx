@@ -134,6 +134,8 @@ function setup(s: Scenario = {}) {
     blockers: [],
     steps: [],
     validator: null,
+    waiting_human_hours: 0,
+    resolutions: [],
     auto_advance_to_seed: false,
   };
   const probes = createJurisdictionProbes({ client, now: () => FIXED }, { censusUrl: CENSUS_URL });
