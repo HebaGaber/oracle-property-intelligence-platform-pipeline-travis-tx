@@ -1,5 +1,7 @@
 # CountyLens: design handoff for implementation
 
+> **Overridden where it conflicts (2026-10-19).** The architecture decisions AD-01…AD-16 in [docs/decisions/0000-agent-architecture.md](../docs/decisions/0000-agent-architecture.md) and the architecture rules win over anything in this handoff, especially §2 (IPNS, serving Parquet, `coverage.json` / `merge_stats.json`, MCP without a token, Route 53, streamed agent steps, view column names). The design update is described in [04-design-update-g3.md](04-design-update-g3.md).
+
 **Product:** CountyLens, a list-first explorer for public property, permit, owner and contractor data in Travis County, TX. The map is not Task A scope (it is reused in the Roofing CRM, Task B).
 **Domain:** countylens.aldarraj.com
 **Design system:** Atlas (Material 3). No new design values: anything Atlas lacks is built from Atlas tokens and logged in §8. Corner radii use `--md-sys-shape-corner-*` only.
