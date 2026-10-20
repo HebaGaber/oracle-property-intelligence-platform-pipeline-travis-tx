@@ -21,7 +21,9 @@
     "resolve": "tsx travis/discovery/resolve.ts",
     "render-sources": "tsx travis/discovery/render-sources-md.ts",
     "refresh-tcad-landing": "tsx travis/discovery/refresh-tcad-landing.ts",
-    "record-gis-runner": "tsx travis/discovery/record-gis-runner.ts"
+    "record-gis-runner": "tsx travis/discovery/record-gis-runner.ts",
+    "reprobe-jurisdictions": "tsx travis/discovery/reprobe-jurisdictions.ts",
+    "explain-blocked": "tsx travis/discovery/explain-blocked.ts"
   },
   "dependencies": {
     "p-limit": "^7.3.3",

@@ -90,4 +90,32 @@ describe("T043 checker rule 9: catalog hygiene", () => {
     expect(out2.some((l) => l.startsWith("FAIL rule 9:"))).toBe(true);
     expect(out2.join("\n")).not.toContain("env-token-xyz");
   });
+
+  it.each([
+    [
+      "a /home/ segment in a records-request portal URL",
+      "https://records.example.test/publicportal/home/newrequest",
+    ],
+    ["a /Users/ segment in an http URL", "http://example.test/Users/list"],
+    ["a home segment in a URL inside prose", "file at https://example.test/a/home/b (checked)"],
+  ])("does not fire on %s", (_label, url) => {
+    const c = cat();
+    austin(c).notes = url;
+    expect(rule9(c)).toEqual([]);
+  });
+
+  it.each([
+    ["a macOS home path after a URL", "https://example.test/x then /Users/someone/file"],
+    ["a Linux home path in prose", "saved to /home/someone/out.json"],
+    ["a Windows home path", "saved to C:\\Users\\someone\\out.json"],
+    ["a file:// URL to a home path", "file:///Users/someone/out.json"],
+  ])("still fails on %s outside an http(s) URL", (_label, bad) => {
+    const c = cat();
+    austin(c).notes = bad;
+    expect(rule9(c)).toEqual([
+      expect.stringMatching(
+        /^FAIL rule 9: sources\[austin_permits\]\.notes contains an absolute home path/,
+      ),
+    ]);
+  });
 });

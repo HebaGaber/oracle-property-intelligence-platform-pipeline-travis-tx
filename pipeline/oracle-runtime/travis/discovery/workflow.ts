@@ -30,7 +30,14 @@ import {
 import type { CaptureReceipt } from "../lib/source-client.js";
 import { renderBlockedEvidence } from "./blocked-evidence.js";
 import type { Destination } from "./destination-proof.js";
-import { assembleUs1, type AssembleOptions, type Us1Blocks, type Us1Results } from "./assemble.js";
+import {
+  assembleUs1,
+  BBB_NEXT_STEP,
+  type AssembleOptions,
+  type Us1Blocks,
+  type Us1Results,
+} from "./assemble.js";
+import { NOT_FILED } from "./jurisdiction-explanation.js";
 import { catalogSafe } from "./catalog-text.js";
 import {
   assemblePermits,
@@ -610,11 +617,11 @@ export const TCAD_RECORDS_REQUEST: RecordsRequest = {
 const TCAD_RECORDS_NOTE =
   "records request channel checked 2026-10-19 from a non-traviscad.org host: the TCAD Open Records Center (GovQA) names Travis Central Appraisal District and the Public Information Act; no request email was verified, so none is recorded; the recipient is the statutory officer for public information, the named person is not verified";
 
-const TCAD_NEXT_STEP =
-  "File the Public Information Act records request through the TCAD Open Records Center (recorded only in A-01; filing is an operator action); until it is answered TCAD stays blocked and seed, pilot and ingest stay stopped (FR-006c, FR-006d)";
+export const TCAD_NEXT_STEP = `The Public Information Act records request through the TCAD Open Records Center is the recorded lawful route and is ${NOT_FILED}; TCAD stays blocked and seed, pilot and ingest stay stopped (FR-006c, FR-006d)`;
 
 /**
- * BBB next step: the official BBB API application (recorded only, never filed in A-01).
+ * BBB records request: the official BBB API application (recorded only, never filed: PO
+ * decision 2026-10-20; the next step text is BBB_NEXT_STEP in assemble.ts).
  * developer.bbb.org is the BBB API site whose terms require the BBB API Registration Form;
  * it was found by web search, bbb.org was not contacted.
  */
@@ -625,9 +632,6 @@ export const BBB_API_APPLICATION: RecordsRequest = {
   route: "api-first",
   request_portal_url: "https://developer.bbb.org/",
 };
-
-const BBB_NEXT_STEP =
-  "Apply for the official BBB API with the BBB API Registration Form at developer.bbb.org (recorded only, not filed in A-01); the challenge is never solved; a bounded bbb-harvest that stops on 403 is the A-08 fallback";
 
 /**
  * Next step for a reachable source whose 2xx download broke part-way. It is not a block:
@@ -641,7 +645,7 @@ export function brokenDownloadStep(key: SourceKey, broken: BrokenDownload): stri
 /** The PIA request kept as a documented fallback note on a broken (not blocked) TCAD row. */
 function tcadFallbackNote(): string {
   const req = TCAD_RECORDS_REQUEST;
-  return `${TCAD_RECORDS_NOTE}; fallback only if the download keeps breaking or TCAD starts refusing it: the Public Information Act request to ${req.recipient_office} through ${req.request_portal_url ?? req.request_email ?? "no channel"} (${req.route})`;
+  return `${TCAD_RECORDS_NOTE}; fallback only if the download keeps breaking or TCAD starts refusing it: the Public Information Act request to ${req.recipient_office} through ${req.request_portal_url ?? req.request_email ?? "no channel"} (${req.route}), ${NOT_FILED}`;
 }
 
 /**

@@ -389,13 +389,16 @@ describe("A-01-TC-018 blocked receipt waits for a human (FR-006, FR-006a, FR-006
     expect(must(blocker.records_request).recipient_office).toMatch(/Travis Central/);
   });
 
-  it("T038: a BBB challenge records the official BBB API application as the next step (recorded only)", async () => {
+  it("T038: a BBB challenge records the official BBB API application as the next step (not filed, PO decision 2026-10-20)", async () => {
     const h = harness({ bbbBlocked: true });
     await expect(h.run()).rejects.toBeInstanceOf(Suspended);
     const bbb = source(must(h.catalogs.at(-1)), "bbb");
     expect(bbb.status).toBe("blocked");
     expect(must(bbb.next_step)).toMatch(/BBB API/);
-    expect(must(bbb.next_step)).toMatch(/recorded only/i);
+    expect(must(bbb.next_step)).toMatch(/not filed \(PO decision 2026-10-20\)/);
+    expect(must(bbb.next_step)).toMatch(
+      /bounded bbb-harvest that stops on 403 is the A-08 fallback/,
+    );
     expect(must(bbb.records_request)).toMatchObject({ route: "api-first" });
     expect(must(must(bbb.records_request).request_portal_url)).toMatch(
       /^https:\/\/developer\.bbb\.org/,

@@ -110,7 +110,7 @@ export const TRAVIS_JURISDICTION_PROFILE: readonly JurisdictionProfileEntry[] = 
     portal_kind: INTAKE,
     vendor: MGO,
     evidence_url:
-      "https://www.beecavetexas.gov/government/departments/planning_development/application_center/my_government_online",
+      "https://beecavetexas.gov/government/departments/planning_development/building/index.php",
     records_request: {
       recipient_office: "City of Bee Cave City Secretary (public information requests)",
       system_scope: scope("Planning & Development building and MEP permits in MyGovernmentOnline"),
@@ -118,7 +118,7 @@ export const TRAVIS_JURISDICTION_PROFILE: readonly JurisdictionProfileEntry[] = 
       request_portal_url: "https://cityofbeecavetx.nextrequest.com/",
     },
     notes:
-      "permits are filed and tracked by applicants in MyGovernmentOnline (account-based). unverified: date MGO was adopted and whether any public history search exists",
+      "permits are filed and tracked by applicants in MyGovernmentOnline (account-based). evidence_url updated 2026-10-20: the earlier MGO application-center page answered HTTP 404 on 2026-10-19; the city's Building Permits & Inspections page says all applications go through MyGovernmentOnline (account-based). unverified: date MGO was adopted and whether any public history search exists",
   },
   {
     key: "briarcliff",
@@ -262,7 +262,7 @@ export const TRAVIS_JURISDICTION_PROFILE: readonly JurisdictionProfileEntry[] = 
       request_portal_url: "https://www.leandertx.gov/orr",
     },
     notes:
-      "Travis County part only. All building permit applications are processed in the Development Hub, which also shows the status of an existing permit. unverified: whether the Hub has a public history search, earliest record date (leandertx.gov answered a Cloudflare HTTP 403 to the project user agent on 2026-10-19, not retried)",
+      "Travis County part only. All building permit applications are processed in the Development Hub, which also shows the status of an existing permit. unverified: whether the Hub has a public history search, earliest record date (leandertx.gov answered a Cloudflare HTTP 403 to the project user agent on 2026-10-19, not retried). The current permits page is https://www.leandertx.gov/760/Permits (found by web search on 2026-10-20, not requested)",
   },
   {
     key: "manor",
@@ -343,8 +343,7 @@ export const TRAVIS_JURISDICTION_PROFILE: readonly JurisdictionProfileEntry[] = 
     case: "intake-or-no-history",
     portal_kind: INTAKE,
     vendor: MGO,
-    evidence_url:
-      "https://www.rollingwoodtx.gov/planning-development/page/permitting-process-residential-and-commercial-building",
+    evidence_url: "https://rollingwoodtx.gov/node/9124",
     records_request: {
       recipient_office: "City of Rollingwood Development Services (permit records custodian)",
       system_scope: scope("building permits in MyGovernmentOnline"),
@@ -352,7 +351,7 @@ export const TRAVIS_JURISDICTION_PROFILE: readonly JurisdictionProfileEntry[] = 
       request_email: "developmentservices@rollingwoodtx.gov",
     },
     notes:
-      "all permit applications and issuance run through MyGovernmentOnline. unverified: the city's public information officer channel (the Development Services email is used until confirmed), earliest record date",
+      "all permit applications and issuance run through MyGovernmentOnline. evidence_url updated 2026-10-20: the earlier planning-development page answered HTTP 404 on 2026-10-19; the Permitting Process for Residential and Commercial Building page (node 9124) says all applications go through MyGovernmentOnline. The city also posts dated active-permit PDF lists (for example https://www.rollingwoodtx.gov/sites/default/files/fileattachments/building/page/133/active_permits_4.29.2024.pdf); they are snapshots, not a history. unverified: those lists as a source for A-06, the city's public information officer channel (the Development Services email is used until confirmed), earliest record date",
   },
   {
     key: "round_rock",
@@ -388,7 +387,7 @@ export const TRAVIS_JURISDICTION_PROFILE: readonly JurisdictionProfileEntry[] = 
       request_portal_url: "https://sanleannatx.com/",
     },
     notes:
-      "board packets carry monthly zoning reports listing building permits; no online permit system found. unverified: request channel (homepage used; it answered HTTP 406 to the project user agent on 2026-10-19, not retried), earliest record date",
+      "board packets carry monthly zoning reports listing building permits; no online permit system found (the board packets are the only public trace). The HTTP 406 seen on 2026-10-19 is a content-negotiation refusal (the server would not answer the requested text/html for a PDF), not a block (noted 2026-10-20). unverified: request channel (homepage used; it answered HTTP 406 to the project user agent on 2026-10-19, not retried), earliest record date",
   },
   {
     key: "sunset_valley",

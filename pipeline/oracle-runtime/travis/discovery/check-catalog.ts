@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
-import { redact } from "../lib/log.js";
+import { containsHomePath, redact } from "../lib/log.js";
 import { matchesJurisdiction } from "./austin-issued.js";
 import { DECISIONS, SOURCE_KEYS } from "./catalog.schema.js";
 import { MAX_PAGE_SIZE, MIN_PAGES, exceedsDecisionThreshold } from "./measure.js";
@@ -225,7 +225,7 @@ function checkAustinIssued(cat: Obj, austin: Obj | undefined, fail: Fail): void 
 // ---------- T047: rule 9, catalog hygiene ----------
 
 /** What rule 9 refuses. The FAIL line names the pattern and the path, never the value. */
-const HYGIENE_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
+const HYGIENE_PATTERNS: ReadonlyArray<readonly [string, { test(text: string): boolean }]> = [
   ["a postgres:// connection URL", /postgres(?:ql)?:\/\//i],
   ["credentials in a URL", /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]+(?::[^\s/@]*)?@/i],
   [
@@ -234,7 +234,7 @@ const HYGIENE_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
   ],
   ["an X-App-Token header value", /x-app-token\s*[:=]\s*\S+/i],
   ["a bearer or basic credential", /\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/],
-  ["an absolute home path", /(?:\/Users|\/home)\/[^/\s"']+/],
+  ["an absolute home path", { test: containsHomePath }],
   ["the DATABASE_URL variable name", /DATABASE_URL/],
   ["a password assignment", /password\s*[=:]\s*\S+/i],
 ];

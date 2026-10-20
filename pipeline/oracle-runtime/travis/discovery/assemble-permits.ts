@@ -7,11 +7,14 @@
 // - evidence_captured_at and evidence_http_status come from the capture, never the profile;
 // - an evidence page that answers 403, a challenge or a timeout makes the row
 //   `records request` / `blocked` with blocked_evidence and keeps its records request;
+// - every row that is not supported gets `blocked_explanation` (PO decision 2026-10-20:
+//   no request is filed), built from the assembled row only (jurisdiction-explanation.ts);
 // - Austin-issued counts located in a city are attached to that row as information only.
 import type { CaptureReceipt } from "../lib/source-client.js";
 import type { Catalog, Jurisdiction } from "./catalog.schema.js";
 import { BLOCKED_EVIDENCE_DIR, blockedEvidence } from "./assemble.js";
 import { austinIssuedMeasurement, type AustinLocatedEntry } from "./austin-issued.js";
+import { BLOCKED_NOTE, withExplanation } from "./jurisdiction-explanation.js";
 import { missingReason, stopsSource } from "./probes/common.js";
 import type { CensusProbe, CensusReference } from "./probes/census.js";
 import type { EvidenceProbe } from "./probes/evidence.js";
@@ -47,7 +50,7 @@ function blockedRow(
 ): Partial<Jurisdiction> {
   const mapping = mapStatus("records request", "portal-blocked");
   const path = evidencePath(entry.key, receipt);
-  const note = `evidence page blocked at the live run (${missingReason(receipt)}); classified records request until the records request is answered`;
+  const note = `evidence page blocked at the live run (${missingReason(receipt)}); ${BLOCKED_NOTE}`;
   return {
     spec_class: mapping.spec_class,
     status: mapping.status,
@@ -102,7 +105,7 @@ export function assembleJurisdictionRow(
 
   const austin = austinIssuedMeasurement(entry.jurisdiction, located);
   if (austin && entry.key !== "austin") row.austin_issued_located_here = austin;
-  return row;
+  return withExplanation(row, { challengeSignal: receipt.challenge_signal ?? null });
 }
 
 export function assemblePermits(

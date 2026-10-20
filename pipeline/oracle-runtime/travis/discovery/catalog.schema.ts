@@ -182,6 +182,11 @@ export const JurisdictionSchema = z.strictObject({
   issued_by: Text.optional(),
   austin_issued_located_here: MeasurementSchema.optional(),
   blocked_evidence: BlockedEvidenceSchema.optional(),
+  /**
+   * Evaluator-readable reason a non-supported row has no captured history: why, what was
+   * tried, what would unblock it (PO decision 2026-10-20: no request is filed).
+   */
+  blocked_explanation: Text.optional(),
   notes: Text.optional(),
 });
 export type Jurisdiction = z.infer<typeof JurisdictionSchema>;

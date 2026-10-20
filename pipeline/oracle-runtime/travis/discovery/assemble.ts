@@ -7,6 +7,7 @@
 // - every number is a Measurement copied from a probe (value or null + reason);
 // - every source carries a decision and a reason; projected hours come from measure.ts;
 // - a blocked or failed source carries blocked_evidence built from its stop receipt.
+import { NOT_FILED } from "./jurisdiction-explanation.js";
 import { basename } from "node:path";
 import type { CaptureReceipt } from "../lib/source-client.js";
 import {
@@ -364,8 +365,7 @@ export function assembleSources(r: Us1Results, opts: AssembleOptions): Source[] 
         r.bbb.blocked_receipt,
       ),
       decision: "runtime retrieval",
-      decision_reason:
-        "challenge-protected listing; official BBB API (application recorded) or a bounded bbb-harvest that stops on 403 (A-08); a challenge is never solved",
+      decision_reason: BBB_DECISION_REASON,
       blocked: r.bbb.blocked_receipt,
       evidencePath,
       reusedEvidencePath: r.bbb.evidence_path,
@@ -476,14 +476,21 @@ export function assembleParcel(r: Pick<Us1Results, "tcad" | "gis">): Parcel {
   return parcel;
 }
 
+/**
+ * BBB next step (PO decision 2026-10-20): the official BBB API application is the lawful
+ * route and is recorded, never filed; the A-08 fallback is a bounded bbb-harvest.
+ */
+export const BBB_NEXT_STEP = `The official BBB API application (BBB API Registration Form at developer.bbb.org) is ${NOT_FILED}; the challenge is never solved; a bounded bbb-harvest that stops on 403 is the A-08 fallback`;
+
+export const BBB_DECISION_REASON = `challenge-protected listing; the official BBB API application is ${NOT_FILED}, so the route is a bounded bbb-harvest that stops on 403 (A-08); a challenge is never solved`;
+
 export function assembleBbbEnrichment(bbb: EvidenceProbe, opts: AssembleOptions): BbbEnrichment {
   const evidencePath = opts.evidencePath ?? defaultEvidencePath;
   const out: BbbEnrichment = {
     status: bbb.status,
     evidence_url: bbb.url,
     evidence_captured_at: bbb.captured_at,
-    next_step:
-      "apply for the official BBB API (developer.bbb.org); otherwise a bounded bbb-harvest that stops on 403 (A-08)",
+    next_step: BBB_NEXT_STEP,
   };
   if (bbb.status === "blocked" && bbb.blocked_receipt) {
     out.evidence_path = bbb.evidence_path ?? evidencePath("bbb", bbb.blocked_receipt);

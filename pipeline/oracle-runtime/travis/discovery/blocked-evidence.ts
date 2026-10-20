@@ -9,10 +9,10 @@
 //
 // The catalog's `blocked_evidence.evidence_path` names the same file (assemble.ts); the
 // workflow writes it from the journaled receipt, so a replay never asks the source again.
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
 import { redact } from "../lib/log.js";
 import { safeHeaders, type CaptureReceipt } from "../lib/source-client.js";
 import { BLOCKED_EVIDENCE_DIR } from "./assemble.js";
@@ -174,4 +174,23 @@ export function writeBlockedEvidence(repoRoot: string, relPath: string, content:
   writeFileSync(tmp, content, "utf8");
   renameSync(tmp, target);
   return target;
+}
+
+/**
+ * The front matter of a committed evidence file, or null when the file is missing or has
+ * none. Used to read what the catalog row does not keep (blocked_reason, challenge_signal).
+ */
+export function readEvidenceFrontMatter(
+  repoRoot: string,
+  relPath: string,
+): Record<string, unknown> | null {
+  assertEvidencePath(relPath);
+  const target = join(repoRoot, relPath);
+  if (!existsSync(target)) return null;
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(readFileSync(target, "utf8"));
+  if (!match?.[1]) return null;
+  const front: unknown = parse(match[1], { schema: "core" });
+  return front !== null && typeof front === "object" && !Array.isArray(front)
+    ? (front as Record<string, unknown>)
+    : null;
 }

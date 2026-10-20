@@ -11,18 +11,38 @@ const USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+(?::[^\s/@]*)?@/gi;
 const TOKEN_PARAM =
   /([?&](?:\$\$)?(?:app_token|token|access_token|api_key|apikey|key|secret|password|sig|signature)=)[^&#\s"]*/gi;
 const BEARER = /\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]+/g;
-const HOME_PATH = /(?:\/Users|\/home)\/[^/\s"']+/g;
+/**
+ * Absolute home paths (macOS, Linux, Windows). An http(s) URL is matched first and kept, so
+ * a path segment inside a URL (for example `https://x.test/portal/home/newrequest`) is never
+ * taken for a home directory.
+ */
+const HOME_PATH_OR_URL =
+  /(https?:\/\/[^\s"'<>]+)|(?:\/Users|\/home)\/[^/\s"']+|[A-Za-z]:\\(?:Users|Documents and Settings)\\[^\\\s"']+/g;
+
+/** True when `text` holds an absolute home path outside any http(s) URL. */
+export function containsHomePath(text: string): boolean {
+  for (const match of text.matchAll(HOME_PATH_OR_URL)) {
+    if (match[1] === undefined) return true;
+  }
+  return false;
+}
+
+/** Replaces every absolute home path outside an http(s) URL with `~`. */
+export function replaceHomePaths(text: string): string {
+  return text.replace(HOME_PATH_OR_URL, (_whole, url: string | undefined) => url ?? "~");
+}
 
 export function redact(text: string, secrets: readonly string[] = []): string {
   let out = text;
   for (const secret of secrets) {
     if (secret.length > 0) out = out.split(secret).join(REDACTED);
   }
-  return out
-    .replace(USERINFO, `$1${REDACTED}@`)
-    .replace(TOKEN_PARAM, `$1${REDACTED}`)
-    .replace(BEARER, `$1 ${REDACTED}`)
-    .replace(HOME_PATH, "~");
+  return replaceHomePaths(
+    out
+      .replace(USERINFO, `$1${REDACTED}@`)
+      .replace(TOKEN_PARAM, `$1${REDACTED}`)
+      .replace(BEARER, `$1 ${REDACTED}`),
+  );
 }
 
 /** Redact every string inside a JSON-like value. */

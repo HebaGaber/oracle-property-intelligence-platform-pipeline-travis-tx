@@ -1,6 +1,6 @@
 // Supporting tests for T009 (JSON logger with redaction). Synthetic strings only.
 import { describe, expect, it } from "vitest";
-import { createLogger, redact } from "../travis/lib/log.js";
+import { containsHomePath, createLogger, redact } from "../travis/lib/log.js";
 import { must } from "./helpers.js";
 
 describe("redact", () => {
@@ -45,5 +45,19 @@ describe("createLogger", () => {
     expect(typeof entry.ts).toBe("string");
     expect(lines[0]).not.toContain("u:p@");
     expect(lines[0]).not.toContain("/Users/x");
+  });
+});
+
+describe("home-path detection outside URLs", () => {
+  it("keeps a path segment inside an http(s) URL", () => {
+    const url = "https://records.example.test/publicportal/home/newrequest";
+    expect(containsHomePath(url)).toBe(false);
+    expect(redact(`portal ${url}`)).toBe(`portal ${url}`);
+  });
+
+  it("still replaces real home paths, including Windows ones, next to a URL", () => {
+    const text = "https://example.test/home/x and /Users/someone/a and C:\\Users\\someone\\b";
+    expect(containsHomePath(text)).toBe(true);
+    expect(redact(text)).toBe("https://example.test/home/x and ~/a and ~\\b");
   });
 });

@@ -14,7 +14,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execRunner, type CommandRunner } from "../lib/command.js";
-import { redact } from "../lib/log.js";
+import { containsHomePath, redact } from "../lib/log.js";
 import { DEFAULT_REPO_ROOT } from "./blocked-evidence.js";
 import type { ValidatorResult } from "./workflow.js";
 
@@ -26,7 +26,6 @@ export const REPORT_REL_PATH = "docs/evidence/A-01-readiness.json";
 
 /** The validator's row in VENDORED.md, keyed by its path under kit/. */
 const VENDORED_KEY = "`use-oracle/scripts/validate-county-readiness.py`";
-const HOME_PATH = /(?:\/Users|\/home)\/[^/\s"']+/;
 
 export interface RunValidatorOptions {
   repoRoot?: string;
@@ -75,7 +74,7 @@ export async function runValidator(options: RunValidatorOptions = {}): Promise<V
   } catch {
     throw new Error("run-validator: validator stdout is not a JSON report; nothing saved");
   }
-  if (HOME_PATH.test(result.stdout)) {
+  if (containsHomePath(result.stdout)) {
     throw new Error("run-validator: report contains an absolute home path; nothing saved");
   }
   const reportPath = join(root, REPORT_REL_PATH);
