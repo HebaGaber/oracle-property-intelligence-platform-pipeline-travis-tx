@@ -14,3 +14,6 @@ test-results/
 # raw source downloads and local pipeline state (never commit)
 pipeline/data/
 *.car
+
+# elephant-cli debug log (written into the working folder)
+elephant-cli.log

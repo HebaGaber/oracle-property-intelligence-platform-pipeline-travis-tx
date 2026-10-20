@@ -105,5 +105,6 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G5 | specs/001-discover-sources (spec, plan, tasks) | 2026-10-19 | PASS (0 FAIL; C-05 via the G4 C-04 exception), `docs/gates/G5-A-01-precheck.md`; analyze CRITICAL/HIGH fixed, 3 MEDIUM open | Approved (HebaGaber) | 2026-10-19 |
 | G6 | testplans/A-01-test-cases.md | 0.4 | FAIL (2) → PASS → FAIL (1) → PASS, `docs/gates/G6-A-01-precheck.md`; C-05/C-07/C-09 justified exceptions (Project story) | Approved (HebaGaber, QC Lead) | 2026-10-19 |
 | G7 | A-01 (branch `001-discover-sources`) | `f3e4ceb` + fixes | FAIL (2) → PASS, `docs/gates/G7-A-01-precheck.md`; C-04/C-07 justified exceptions (Project story); CI run 39490116172 green; oracle 83/100; ERR-1 to ERR-8 closed | Validated (HebaGaber) | 2026-10-20 |
+| G4 | stories/A-02-data-contract.md | rev 2 | FAIL (2) → PASS, `docs/gates/G4-A-02-precheck.md`; C-04 and C-10/G4-8 justified exceptions (Project story; pilot made in A-02) | Ready (HebaGaber) | 2026-10-20 |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
