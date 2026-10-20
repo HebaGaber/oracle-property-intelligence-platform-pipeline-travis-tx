@@ -17,6 +17,11 @@
 // It refuses (exit 2, nothing written) when the catalog already carries amendments or a
 // run id, so it cannot run twice.
 //
+// `-- --venue` (CR2-3 / OR-N2, offline): stamps `venue` on every amendment that has none:
+// record-gis-runner ran on the US GitHub Actions runner ("runner"), every other command on
+// the operator's network ("operator"). It records its own amendment and refuses (exit 2)
+// when every amendment already has a venue, so it runs once only.
+//
 // Exit codes: 0 written, 2 refused.
 import { pathToFileURL } from "node:url";
 import { redact } from "../lib/log.js";
@@ -31,6 +36,7 @@ const BASIS_COMMIT = (sha: string): string =>
 export const PAST_AMENDMENTS: readonly Amendment[] = [
   {
     command: "rescan-tcad",
+    venue: "operator",
     at: "2026-10-20T06:12:39Z",
     fields: [
       "parcel.identifier_name",
@@ -43,6 +49,7 @@ export const PAST_AMENDMENTS: readonly Amendment[] = [
   },
   {
     command: "refresh-tcad-landing",
+    venue: "operator",
     at: "2026-10-20T06:19:52.331Z",
     fields: ["parcel.certification_date_measurement"],
     ref: "pipeline/data/raw/tcad/publicinformation-20261020T061952Z.html (SHA-256 1d5dd5c3c4fe4ae4800023bcd9d0365f42316090839a4323c23b6cf61f9a27bf)",
@@ -50,6 +57,7 @@ export const PAST_AMENDMENTS: readonly Amendment[] = [
   },
   {
     command: "record-gis-runner",
+    venue: "runner",
     at: "2026-10-20T08:05:12Z",
     fields: [
       "parcel.gis_feature_count",
@@ -65,6 +73,7 @@ export const PAST_AMENDMENTS: readonly Amendment[] = [
   },
   {
     command: "reprobe-jurisdictions",
+    venue: "operator",
     at: "2026-10-20T08:53:13.590Z",
     fields: [
       "permits.jurisdictions[austin]",
@@ -78,6 +87,7 @@ export const PAST_AMENDMENTS: readonly Amendment[] = [
   },
   {
     command: "explain-blocked",
+    venue: "operator",
     at: "2026-10-20T08:56:20Z",
     fields: [
       "permits.jurisdictions[*].blocked_explanation",
@@ -90,6 +100,7 @@ export const PAST_AMENDMENTS: readonly Amendment[] = [
   },
   {
     command: "reconcile-parcel-gap",
+    venue: "operator",
     at: "2026-10-20T10:46:22Z",
     fields: [
       "parcel.account_breakdown",
@@ -103,6 +114,7 @@ export const PAST_AMENDMENTS: readonly Amendment[] = [
   },
   {
     command: "hand edit (no command)",
+    venue: "operator",
     at: "2026-10-20T11:10:06Z",
     fields: ["approved_exceptions[parcel]"],
     ref: "PO approval 2026-10-20 (HebaGaber)",
@@ -223,7 +235,28 @@ export function backfill(catalog: Catalog): Catalog {
   return out;
 }
 
+/** Where each past command ran (CR2-3 / OR-N2): only record-gis-runner ran on a CI runner. */
+export function venueOf(command: string): "operator" | "runner" {
+  return command === "record-gis-runner" ? "runner" : "operator";
+}
+
+/** The catalog with `venue` on every amendment (pure); refuses when none is missing. */
+export function backfillVenue(catalog: Catalog): Catalog {
+  const list = catalog.amendments ?? [];
+  if (!list.some((a) => a.venue === undefined)) {
+    throw new Refusal(
+      "every amendment already records its venue; the venue backfill runs once only",
+    );
+  }
+  return {
+    ...catalog,
+    amendments: list.map((a) => (a.venue === undefined ? { ...a, venue: venueOf(a.command) } : a)),
+  };
+}
+
 export interface BackfillOptions {
+  /** CR2-3: stamp the amendment venues instead of the one-off history backfill. */
+  venue?: boolean;
   catalogPath?: string;
   now?: () => Date;
   out?: (line: string) => void;
@@ -236,12 +269,40 @@ export function main(options: BackfillOptions = {}): number {
       process.stdout.write(`${line}\n`);
     });
   const catalogPath = options.catalogPath ?? DEFAULT_CATALOG_PATH;
+  const now = (options.now ?? (() => new Date()))();
+  if (options.venue) {
+    try {
+      const next = backfillVenue(readCatalog(catalogPath));
+      amendCatalog(
+        next,
+        {
+          command: "backfill-amendments --venue",
+          venue: "operator",
+          fields: ["amendments[*].venue"],
+          ref: "docs/reviews/CR-A-01.md CR2-3 / OR-N2; the record-gis-runner amendment note (US GitHub Actions runner)",
+          note: "offline migration; record-gis-runner is runner, every other command operator; no measured value changed",
+        },
+        catalogPath,
+        now,
+      );
+      out("backfill-amendments: recorded the venue of every amendment");
+      return 0;
+    } catch (error) {
+      out(
+        redact(
+          `backfill-amendments: refused: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
+      return 2;
+    }
+  }
   try {
     const next = backfill(readCatalog(catalogPath));
     amendCatalog(
       next,
       {
         command: "backfill-amendments",
+        venue: "operator",
         fields: [
           "amendments (history)",
           "discovery_run_id",
@@ -253,7 +314,7 @@ export function main(options: BackfillOptions = {}): number {
         note: "one-off migration for the review findings; no measured value changed",
       },
       catalogPath,
-      (options.now ?? (() => new Date()))(),
+      now,
     );
     out(
       `backfill-amendments: recorded ${PAST_AMENDMENTS.length} past amendments; discovery_run_id ${DISCOVERY_RUN_ID}`,
@@ -270,5 +331,5 @@ export function main(options: BackfillOptions = {}): number {
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exitCode = main();
+  process.exitCode = main({ venue: process.argv.slice(2).includes("--venue") });
 }

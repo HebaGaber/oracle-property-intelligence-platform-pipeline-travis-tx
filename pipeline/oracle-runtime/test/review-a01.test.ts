@@ -16,6 +16,7 @@ import {
   backfill,
   main as backfillMain,
   PAST_AMENDMENTS,
+  venueOf,
 } from "../travis/discovery/backfill-amendments.js";
 import { withProfile } from "../travis/discovery/explain-blocked.js";
 import {
@@ -30,7 +31,11 @@ import { firewallBlock } from "../travis/discovery/jurisdiction-explanation.js";
 import { main as coverageMain, renderCoverage } from "../travis/discovery/render-coverage.js";
 import { renderSourcesMd } from "../travis/discovery/render-sources-md.js";
 import { reprobeRefusal } from "../travis/discovery/reprobe-jurisdictions.js";
-import { main as resolveMain, runMismatch } from "../travis/discovery/resolve.js";
+import {
+  main as resolveMain,
+  resolutionWriteRefusal,
+  runMismatch,
+} from "../travis/discovery/resolve.js";
 import {
   catalogWriteRefusal,
   readCatalog,
@@ -98,7 +103,7 @@ describe("CR-3: catalogWriteRefusal and amendments", () => {
   it("refuses amendments, approved exceptions, another run and a newer change", () => {
     const amended = withAmendment(
       next(),
-      { command: "rescan-tcad", fields: ["parcel.identifier_name"], ref: "r" },
+      { command: "rescan-tcad", venue: "operator", fields: ["parcel.identifier_name"], ref: "r" },
       new Date("2026-01-15T00:00:00Z"),
     );
     expect(catalogWriteRefusal(amended, next())).toMatch(
@@ -116,10 +121,14 @@ describe("CR-3: catalogWriteRefusal and amendments", () => {
   });
 
   it("withAmendment stamps the time and keeps earlier entries; the schema accepts it", () => {
-    const one = withAmendment(next(), { command: "a", fields: ["x"], ref: "r" }, new Date(0));
+    const one = withAmendment(
+      next(),
+      { command: "a", venue: "operator", fields: ["x"], ref: "r" },
+      new Date(0),
+    );
     const two = withAmendment(
       one,
-      { command: "b", fields: ["y"], ref: "r", egress_country: "EG" },
+      { command: "b", venue: "operator", fields: ["y"], ref: "r", egress_country: "EG" },
       new Date(1000),
     );
     expect(two.amendments?.map((a) => [a.command, a.at])).toEqual([
@@ -189,6 +198,35 @@ describe("CR-3: resolve refuses a run that did not write the catalog", () => {
     expect(await resolveMain(["bbb", "still-blocked"], { ...still.deps, env })).toBe(0);
     expect(still.egressCalls()).toBe(0);
   });
+
+  it("CR2-1 / OR-N5: refuses (exit 2, nothing sent) when the workflow could not write the result", async () => {
+    const env = { TRAVIS_DISCOVERY_RUN_ID: "travis-2" };
+    const base = { ...syntheticCatalog(), discovery_run_id: "travis-2" };
+    const amended = withAmendment(
+      base,
+      { command: "rescan-tcad", venue: "operator", fields: ["parcel.identifier_name"], ref: "r" },
+      new Date("2026-01-15T00:00:00Z"),
+    );
+    const excepted: Catalog = { ...base, approved_exceptions: [{ gate: "parcel", reason: "x" }] };
+    expect(resolutionWriteRefusal(amended, new Date())).toMatch(/offline amendment/);
+    expect(resolutionWriteRefusal(base, new Date())).toBeNull();
+    expect(resolutionWriteRefusal(null, new Date())).toBeNull();
+    for (const catalog of [amended, excepted]) {
+      for (const outcome of ["captured", "still-blocked"]) {
+        const lines: string[] = [];
+        const run = offline(catalog);
+        const code = await resolveMain(["bbb", outcome], {
+          ...run.deps,
+          env,
+          out: (l: string) => lines.push(l),
+        });
+        expect(code).toBe(2);
+        expect(run.posted).toEqual([]);
+        expect(run.egressCalls()).toBe(0);
+        expect(lines.join("\n")).toMatch(/refused: catalog write refused .*nothing sent/);
+      }
+    }
+  });
 });
 
 describe("OR-B1: the egress check", () => {
@@ -234,20 +272,91 @@ describe("OR-B1: the egress check", () => {
     expect(failed).toMatchObject({ ok: false });
   });
 
-  it("the catalog's reference is the run's egress, else the latest amendment's", () => {
+  it("CR2-3 / OR-N2: the reference is the newest operator amendment's egress, else the run's", () => {
     const c = syntheticCatalog();
     expect(catalogEgressReference(c)).toBeNull();
-    const amended = withAmendment(
+    const operator = withAmendment(
       c,
-      { command: "x", fields: ["y"], ref: "r", egress_country: "EG" },
+      { command: "x", venue: "operator", fields: ["y"], ref: "r", egress_country: "EG" },
       new Date(0),
     );
-    expect(catalogEgressReference(amended)).toBe("EG");
-    const withRun: Catalog = {
-      ...amended,
-      discovery_egress: { country: "US", captured_at: "2026-01-01T00:00:00Z", method: "m" },
+    expect(catalogEgressReference(operator)).toBe("EG");
+    // a newer amendment from the US CI runner is never the operator's reference
+    const runner = withAmendment(
+      operator,
+      {
+        command: "record-gis-runner",
+        venue: "runner",
+        fields: ["y"],
+        ref: "r",
+        egress_country: "US",
+      },
+      new Date(1000),
+    );
+    expect(catalogEgressReference(runner)).toBe("EG");
+    const run = { country: "GB", captured_at: "2026-01-01T00:00:00Z", method: "m" };
+    // a runner-only (or venue-less) history falls back to the run's own egress, else none
+    const runnerOnly = withAmendment(
+      c,
+      {
+        command: "record-gis-runner",
+        venue: "runner",
+        fields: ["y"],
+        ref: "r",
+        egress_country: "US",
+      },
+      new Date(0),
+    );
+    expect(catalogEgressReference(runnerOnly)).toBeNull();
+    expect(catalogEgressReference({ ...runnerOnly, discovery_egress: run })).toBe("GB");
+    expect(
+      catalogEgressReference({
+        discovery_egress: run,
+        amendments: [{ egress_country: "US" }],
+      }),
+    ).toBe("GB");
+    // an operator amendment after the run is the newer operator reference
+    expect(catalogEgressReference({ ...runner, discovery_egress: run })).toBe("EG");
+  });
+
+  it("CR2-3: backfill-amendments --venue stamps runner on record-gis-runner, operator elsewhere, once", () => {
+    const root = tmpRoot();
+    const catalogPath = join(root, "travis-sources.yaml");
+    const base = syntheticCatalog();
+    writeCatalog(
+      {
+        ...base,
+        amendments: [
+          { command: "rescan-tcad", at: "2026-01-01T00:00:00Z", fields: ["a"], ref: "r" },
+          {
+            command: "record-gis-runner",
+            at: "2026-01-02T00:00:00Z",
+            fields: ["b"],
+            ref: "r",
+            egress_country: "US",
+          },
+        ],
+      },
+      catalogPath,
+    );
+    const lines: string[] = [];
+    const opts = {
+      venue: true,
+      catalogPath,
+      now: () => new Date("2026-01-03T00:00:00Z"),
+      out: (l: string) => lines.push(l),
     };
-    expect(catalogEgressReference(withRun)).toBe("US");
+    expect(backfillMain(opts)).toBe(0);
+    const after = readCatalog(catalogPath);
+    expect(after.amendments?.map((a) => [a.command, a.venue])).toEqual([
+      ["rescan-tcad", "operator"],
+      ["record-gis-runner", "runner"],
+      ["backfill-amendments --venue", "operator"],
+    ]);
+    expect(catalogEgressReference(after)).toBeNull();
+    expect(backfillMain(opts)).toBe(2);
+    expect(lines.at(-1)).toMatch(/already records its venue/);
+    expect(PAST_AMENDMENTS.every((a) => a.venue === venueOf(a.command))).toBe(true);
   });
 });
 
@@ -504,6 +613,7 @@ describe("OR-M5: rule 11 and the sources.md sections", () => {
         approved,
         {
           command: "approve-exception",
+          venue: "operator",
           fields: ["approved_exceptions[parcel]"],
           ref: "docs/decisions/DEC-synthetic.md",
         },

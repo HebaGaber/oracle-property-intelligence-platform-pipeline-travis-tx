@@ -33,6 +33,7 @@ if (!destination.proven) {
     { ...readCatalog(), destination },
     {
       command: "prove-destination",
+      venue: "operator",
       fields: ["destination"],
       ref: "local stack: compose service postgres, SQL inside its container, and the configured loader connection",
       note: "three identities; the configured connection reports the same system identifier",

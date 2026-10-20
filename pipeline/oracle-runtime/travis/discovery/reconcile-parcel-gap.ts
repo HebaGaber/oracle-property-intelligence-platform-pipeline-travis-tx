@@ -108,6 +108,7 @@ export async function reconcileParcelGap(options: ReconcileOptions = {}): Promis
       { ...catalog, parcel },
       {
         command: COMMAND,
+        venue: "operator",
         fields: [
           "parcel.account_breakdown",
           "parcel.gap_reconciliation",

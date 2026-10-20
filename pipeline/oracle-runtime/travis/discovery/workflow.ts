@@ -289,9 +289,24 @@ export const WORKFLOW_OPTIONS = {
 
 const RUN_STATE_KEY = "run";
 
+/** What the run reads before it builds its probes, from a journaled step (CR2-5). */
+export interface ProbeContext {
+  /** The TCAD export already held (the catalog's export receipt), or null. */
+  priorExport: PriorExport | null;
+}
+
+/** Journaled step that reads the prior export from the catalog (CR2-5). */
+export const PRIOR_EXPORT_STEP = "catalog:prior-export";
+
 export interface TravisDiscoveryOptions {
   /** US1 probes (built per run). Without them the workflow records an empty run. */
-  probes?: () => Us1Probes;
+  probes?: (context: ProbeContext) => Us1Probes;
+  /**
+   * CR2-5: reads the export already held from the catalog on disk. It runs inside the
+   * journaled step PRIOR_EXPORT_STEP, so a replay sees the value the first attempt read; a
+   * read or schema error is a terminal error (no endless retry).
+   */
+  readPriorExport?: () => PriorExport | null;
   /** Writes the assembled catalog (pipeline/docs/travis-sources.yaml in production). */
   writeCatalog?: (catalog: Catalog) => void;
   /** Reads the catalog on disk (null when none) for the overwrite guard (CR-3). */
@@ -328,7 +343,20 @@ export function createTravisDiscovery(sdk: RestateSdk, options: TravisDiscoveryO
             sdk.RestatePromise.race(names.map((name) => ctx.promise<Resolution>(name).get())),
         };
         if (!options.probes) return runDiscovery(io, ctx.key, []);
-        const deps: DiscoveryDeps = { probes: options.probes() };
+        const readPrior = options.readPriorExport;
+        const priorExport = readPrior
+          ? await io.run(PRIOR_EXPORT_STEP, async () => {
+              try {
+                return readPrior();
+              } catch (error) {
+                throw permanent(
+                  io,
+                  `reading the prior TCAD export from the catalog failed: ${errorText(error)}`,
+                );
+              }
+            })
+          : null;
+        const deps: DiscoveryDeps = { probes: options.probes({ priorExport }) };
         if (options.jurisdictions) deps.jurisdictions = options.jurisdictions();
         if (options.profile) deps.profile = options.profile;
         if (options.writeCatalog) deps.writeCatalog = options.writeCatalog;

@@ -3,9 +3,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { CaptureReceipt } from "../travis/lib/source-client.js";
+import type { PriorExport } from "../travis/discovery/probes/tcad.js";
 import {
+  PRIOR_EXPORT_STEP,
   WORKFLOW_NAME,
   createTravisDiscovery,
+  type ProbeContext,
   runDiscovery,
   stepKey,
   type DiscoveryIO,
@@ -138,5 +141,92 @@ describe("createTravisDiscovery (Restate binding)", () => {
       .filter((line) => line.includes("@restatedev/restate-sdk"));
     expect(sdkImports.length).toBeGreaterThan(0);
     for (const line of sdkImports) expect(line).toMatch(/^import type /);
+  });
+});
+
+describe("CR2-5: the prior export is read from the catalog inside a journaled step", () => {
+  class Stop extends Error {}
+  class Terminal extends Error {}
+  const prior: PriorExport = {
+    receipt: receipt("ok", 200),
+    path: "/synthetic/export.zip",
+    seconds: 1,
+  };
+
+  /** Runs the `run` handler until the probes are built; `journal` replays recorded steps. */
+  async function runUntilProbes(
+    readPriorExport: () => PriorExport | null,
+    journal: Map<string, unknown>,
+  ): Promise<{ steps: string[]; reads: number; context: ProbeContext | null; error: unknown }> {
+    let handlers: Record<string, (ctx: unknown, input?: unknown) => Promise<unknown>> = {};
+    const sdk = {
+      workflow: (def: { handlers: typeof handlers }) => {
+        handlers = def.handlers;
+        return def;
+      },
+      TerminalError: Terminal,
+    };
+    let reads = 0;
+    let context: ProbeContext | null = null;
+    createTravisDiscovery(sdk as unknown as Parameters<typeof createTravisDiscovery>[0], {
+      readPriorExport: () => {
+        reads += 1;
+        return readPriorExport();
+      },
+      probes: (c) => {
+        context = c;
+        throw new Stop("probes built");
+      },
+    });
+    const steps: string[] = [];
+    const ctx = {
+      key: "run-cr2-5",
+      date: { now: async () => 0 },
+      set: () => undefined,
+      run: async (name: string, fn: () => Promise<unknown>) => {
+        steps.push(name);
+        if (journal.has(name)) return journal.get(name);
+        const value = await fn();
+        journal.set(name, JSON.parse(JSON.stringify(value)) as unknown);
+        return value;
+      },
+    };
+    let error: unknown = null;
+    try {
+      await must(handlers.run)(ctx, {});
+    } catch (e) {
+      error = e;
+    }
+    return { steps, reads, context, error };
+  }
+
+  it("journals the read and hands the probes its value; a replay does not read again", async () => {
+    const journal = new Map<string, unknown>();
+    const first = await runUntilProbes(() => prior, journal);
+    expect(first.error).toBeInstanceOf(Stop);
+    expect(first.steps).toEqual([PRIOR_EXPORT_STEP]);
+    expect(first.reads).toBe(1);
+    expect(first.context).toEqual({ priorExport: prior });
+    // replay: the catalog now says something else, but the journaled value is used
+    const replay = await runUntilProbes(() => null, journal);
+    expect(replay.reads).toBe(0);
+    expect(replay.context).toEqual({ priorExport: prior });
+  });
+
+  it("a catalog with no export receipt gives null", async () => {
+    const r = await runUntilProbes(() => null, new Map());
+    expect(r.context).toEqual({ priorExport: null });
+  });
+
+  it("an unreadable catalog is a terminal error inside the step; the probes are not built", async () => {
+    const r = await runUntilProbes(() => {
+      throw new Error("catalog schema: parcel.export_receipt.sha256 invalid");
+    }, new Map());
+    expect(r.error).toBeInstanceOf(Terminal);
+    expect(String((r.error as Error).message)).toMatch(
+      /reading the prior TCAD export from the catalog failed: catalog schema/,
+    );
+    expect(r.steps).toEqual([PRIOR_EXPORT_STEP]);
+    expect(r.context).toBeNull();
   });
 });

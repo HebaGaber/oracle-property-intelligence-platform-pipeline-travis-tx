@@ -172,6 +172,7 @@ export async function explainBlocked(options: ExplainOptions = {}): Promise<numb
       next,
       {
         command: "explain-blocked",
+        venue: "operator",
         fields: [
           "permits.jurisdictions[*].blocked_explanation",
           "permits.jurisdictions[*].notes",

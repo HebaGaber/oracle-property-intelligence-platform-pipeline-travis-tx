@@ -12,6 +12,10 @@
 // - CR-3 / OR-M1: TRAVIS_DISCOVERY_RUN_ID is not set (there is no default run id), or it is
 //   not the run that wrote the committed catalog (`discovery_run_id`): a superseded run
 //   would re-assemble the catalog from its own journal;
+// - CR2-1 / OR-N5: the workflow could not write the catalog after this resolution: both
+//   outcomes re-publish the catalog, and its write guard (`catalogWriteRefusal`) refuses a
+//   catalog that offline commands amended. The same guard runs here first, so no source is
+//   re-probed (and no run is left dead) for a result that could never be written;
 // - OR-B1: the outcome is `captured` (the workflow then re-probes the source) and the
 //   egress country differs from the run's recorded egress or ORACLE_EXPECT_EGRESS.
 //
@@ -23,7 +27,7 @@ import { checkEgress, type EgressCheck } from "../lib/egress.js";
 import { redact } from "../lib/log.js";
 import { SOURCE_KEYS, type Catalog } from "./catalog.schema.js";
 import { ResolveRequestSchema, WORKFLOW_NAME } from "./workflow.js";
-import { readCatalogIfPresent } from "./write-catalog.js";
+import { catalogWriteRefusal, readCatalogIfPresent } from "./write-catalog.js";
 
 export const DEFAULT_INGRESS_URL = "http://localhost:8080";
 /** The workflow key (run id) every operator command must name explicitly. */
@@ -45,6 +49,17 @@ export function runMismatch(catalog: Catalog | null, runId: string): string | nu
   }
   return null;
 }
+
+/**
+ * CR2-1 / OR-N5: why the workflow would refuse to write the catalog this resolution makes,
+ * or null. The workflow re-assembles the catalog for the same run at a later snapshot, so
+ * the guard is applied to that shape: the catalog on disk stamped `now`.
+ */
+export function resolutionWriteRefusal(catalog: Catalog | null, now: Date): string | null {
+  if (catalog === null) return null;
+  return catalogWriteRefusal(catalog, { ...catalog, snapshot_time: now.toISOString() });
+}
+
 const USAGE = `usage: npm --prefix pipeline/oracle-runtime run resolve -- <source_key> captured|still-blocked (source_key: ${SOURCE_KEYS.join(", ")})`;
 
 const ResolveResponseSchema = z.union([
@@ -58,6 +73,7 @@ export interface ResolveCliDeps {
   out?: (line: string) => void;
   readCatalog?: () => Catalog | null;
   egress?: (reference: string | null) => Promise<EgressCheck>;
+  now?: () => Date;
 }
 
 export async function main(argv: readonly string[], deps: ResolveCliDeps = {}): Promise<number> {
@@ -84,7 +100,10 @@ export async function main(argv: readonly string[], deps: ResolveCliDeps = {}): 
   }
   let mismatch: string | null;
   try {
-    mismatch = runMismatch((deps.readCatalog ?? (() => readCatalogIfPresent()))(), runId);
+    const onDisk = (deps.readCatalog ?? (() => readCatalogIfPresent()))();
+    mismatch =
+      runMismatch(onDisk, runId) ??
+      resolutionWriteRefusal(onDisk, (deps.now ?? (() => new Date()))());
   } catch {
     mismatch = "the committed catalog is unreadable";
   }

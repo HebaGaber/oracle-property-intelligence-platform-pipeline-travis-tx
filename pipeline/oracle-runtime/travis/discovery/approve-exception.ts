@@ -153,6 +153,7 @@ export async function approveException(
       withException(catalog, entry),
       {
         command: COMMAND,
+        venue: "operator",
         fields: [`approved_exceptions[${a.gate}]`],
         ref: a.decision_ref,
         note: `approved by ${a.approved_by} on ${a.approved_at}; bound to gap ${a.gap_pct}%, GIS ${a.gis}, roll ${a.assessed}`,

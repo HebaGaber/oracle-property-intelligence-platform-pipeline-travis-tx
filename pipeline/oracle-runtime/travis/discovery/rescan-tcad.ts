@@ -85,6 +85,7 @@ export async function rescanTcad(options: RescanOptions = {}): Promise<number> {
       { ...catalog, parcel },
       {
         command: "rescan-tcad",
+        venue: "operator",
         fields: [
           "parcel.identifier_name",
           "parcel.identifier_layout_name",

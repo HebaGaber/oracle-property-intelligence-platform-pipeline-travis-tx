@@ -288,6 +288,7 @@ export async function reprobeJurisdictions(
       },
       {
         command: "reprobe-jurisdictions",
+        venue: "operator",
         fields: targets.map(({ entry }) => `permits.jurisdictions[${entry.key}]`),
         ref:
           evidenceWrites.length > 0

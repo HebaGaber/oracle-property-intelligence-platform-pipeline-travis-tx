@@ -513,6 +513,12 @@ export const AmendmentSchema = z.strictObject({
     .string()
     .regex(/^[A-Z]{2}$/)
     .optional(),
+  /**
+   * CR2-3 / OR-N2: where the command ran. `operator` is the operator's own network (the
+   * egress reference of later requests); `runner` is a CI runner (record-gis-runner), whose
+   * egress is never a reference for the operator's requests.
+   */
+  venue: z.enum(["operator", "runner"]).optional(),
   note: Text.optional(),
 });
 export type Amendment = z.infer<typeof AmendmentSchema>;

@@ -123,7 +123,10 @@ export function writeCatalog(catalog: Catalog, path: string = DEFAULT_CATALOG_PA
   writeFileAtomic(path, emitCatalogYaml(valid));
 }
 
-export type AmendmentInput = Omit<Amendment, "at">;
+/** Every writer states where it ran (CR2-3 / OR-N2); the schema keeps it optional for old rows. */
+export type AmendmentInput = Omit<Amendment, "at" | "venue"> & {
+  venue: NonNullable<Amendment["venue"]>;
+};
 
 /** The catalog with one more `amendments[]` entry stamped `at` (UTC). Pure. */
 export function withAmendment(catalog: Catalog, amendment: AmendmentInput, at: Date): Catalog {

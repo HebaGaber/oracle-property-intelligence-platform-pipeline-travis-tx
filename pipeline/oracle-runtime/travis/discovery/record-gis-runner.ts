@@ -479,6 +479,7 @@ export async function recordGisRunner(options: RecordGisRunnerOptions): Promise<
       applied.catalog,
       {
         command: "record-gis-runner",
+        venue: "runner",
         fields: [
           "parcel.gis_feature_count",
           "parcel.gis_feature_count_measurement",

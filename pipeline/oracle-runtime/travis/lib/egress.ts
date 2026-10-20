@@ -107,12 +107,20 @@ export async function checkEgress(options: EgressCheckOptions): Promise<EgressCh
   };
 }
 
-/** The reference egress of the catalog's run: the run's own, else the latest amendment's. */
+/**
+ * The reference egress for the operator's next request (CR2-3 / OR-N2): the newest
+ * amendment made on the operator's own network (`venue: "operator"`) that recorded an
+ * egress, else the discovery run's own. A CI runner's amendment (`venue: "runner"`) or one
+ * that records no venue is never a reference: a US runner's egress would otherwise refuse
+ * the operator's network and accept a US VPN.
+ */
 export function catalogEgressReference(catalog: {
   discovery_egress?: { country: string } | undefined;
-  amendments?: ReadonlyArray<{ egress_country?: string | undefined }> | undefined;
+  amendments?:
+    ReadonlyArray<{ egress_country?: string | undefined; venue?: string | undefined }> | undefined;
 }): string | null {
-  if (catalog.discovery_egress) return catalog.discovery_egress.country;
-  const last = [...(catalog.amendments ?? [])].reverse().find((a) => a.egress_country);
-  return last?.egress_country ?? null;
+  const operator = [...(catalog.amendments ?? [])]
+    .reverse()
+    .find((a) => a.venue === "operator" && a.egress_country);
+  return operator?.egress_country ?? catalog.discovery_egress?.country ?? null;
 }

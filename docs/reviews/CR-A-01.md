@@ -62,17 +62,17 @@ Severity: Critical = blocks G7 (oracle "blocker", or data loss / evidence that m
 | CR2-1 / OR-N5 | Major | `travis/discovery/resolve.ts:87` | `resolve … captured` passes its checks, re-probes the county source, then the workflow refuses to write the amended catalog: a wasted county request and a dead run | Open | |
 | CR2-2 | Major | `travis/lib/source-client.ts:816` | if the write stream fails during `reader.read()`, `drained()` waits on events that already fired: the disk-full hang can still happen | Open | |
 | CR2-3 / OR-N2 | Major | `travis/lib/egress.ts:111` | the egress reference is the newest amendment, which can be the US runner's: the operator's own network would be refused and a US VPN accepted | Open | |
-| CR2-4 | Major | `travis/discovery/write-catalog.ts:169` | design: the workflow refuses any amended catalog, so it can never write again; it should merge onto the amended catalog | Open | |
+| CR2-4 | Major | `travis/discovery/write-catalog.ts:169` | design: the workflow refuses any amended catalog, so it can never write again; it should merge onto the amended catalog | Deferred to A-12 (PO 2026-10-20): incremental runs must write over an existing catalog, so the merge belongs there; for A-01 the committed catalog is final and the workflow refusing to overwrite it is the safe behaviour | |
 | CR2-5 | Major | `pipeline/local-stack/services/app.ts:47` | the catalog is read outside a journaled step; a read or schema error is retried forever, and a replay can see a different catalog | Open | |
-| OR-N3 | Minor | `travis/lib/egress.ts`, `discover.ts` | the guard compares countries only; `discover` checks only when `ORACLE_EXPECT_EGRESS` is set | Open (limit recorded in D-1) | |
-| OR-N4 | Minor | `specs/001-discover-sources/spec.md:155` | the amendment asks for both checks to be saved; the TCP test and sibling-host control exist only as prose | Open | |
-| CR2-6 | Minor | `travis/discovery/discover.ts:131` | any non-OK status answer is treated as "no existing run" | Open | |
-| CR2-7 | Minor | `pipeline/local-stack/services/configured-db.ts:23` | its own "no system identifier" error is rewritten to "connection failed" | Open | |
-| CR2-8 | Minor | `travis/lib/source-client.ts:784` | refused-body size taken from a compressed Content-Length | Open | |
-| CR2-9 | Minor | `travis/discovery/record-gis-runner.ts:278` | builds placeholder measurements (`example.invalid`) to call `computeGap` | Open | |
-| CR2-10 | Minor | `travis/discovery/probes/tcad.ts:317` | the export reuse check re-hashes the whole 3.5 GB file every run | Open | |
-| OR-N7 | Nit | `travis/discovery/reprobe-jurisdictions.ts` header | comment says the egress check runs last; DNS lookups run before it | Open | |
-| OR-N8 | Nit | `travis/lib/source-client.ts` `WAF_BODY` | the "request blocked" pattern is broad (fails closed) | Open | |
+| OR-N3 | Minor | `travis/lib/egress.ts`, `discover.ts` | the guard compares countries only; `discover` checks only when `ORACLE_EXPECT_EGRESS` is set | Deferred to A-04 (PO 2026-10-20): require `ORACLE_EXPECT_EGRESS` before the first ingest run; limit recorded in D-1 | |
+| OR-N4 | Minor | `specs/001-discover-sources/spec.md:155` | the amendment asks for both checks to be saved; the TCP test and sibling-host control exist only as prose | Deferred (PO 2026-10-20): the checks are recorded as prose with times in the evidence file; no further GIS requests are made from the operator machine, so they cannot be re-captured lawfully | |
+| CR2-6 | Minor | `travis/discovery/discover.ts:131` | any non-OK status answer is treated as "no existing run" | Deferred to A-12 (PO 2026-10-20): run handling is reworked there | |
+| CR2-7 | Minor | `pipeline/local-stack/services/configured-db.ts:23` | its own "no system identifier" error is rewritten to "connection failed" | Deferred to A-04 (PO 2026-10-20): the destination proof is refreshed before A-04's first write | |
+| CR2-8 | Minor | `travis/lib/source-client.ts:784` | refused-body size taken from a compressed Content-Length | Deferred to A-06 (PO 2026-10-20): next story that records blocked evidence at volume | |
+| CR2-9 | Minor | `travis/discovery/record-gis-runner.ts:278` | builds placeholder measurements (`example.invalid`) to call `computeGap` | Deferred to A-05 (PO 2026-10-20): GIS gap logic is extended there | |
+| CR2-10 | Minor | `travis/discovery/probes/tcad.ts:317` | the export reuse check re-hashes the whole 3.5 GB file every run | Deferred to A-04 (PO 2026-10-20): A-04 builds a one-time summary of the export so it is not re-read | |
+| OR-N7 | Nit | `travis/discovery/reprobe-jurisdictions.ts` header | comment says the egress check runs last; DNS lookups run before it | Deferred (PO 2026-10-20): comment-only, fixed when the file is next changed | |
+| OR-N8 | Nit | `travis/lib/source-client.ts` `WAF_BODY` | the "request blocked" pattern is broad (fails closed) | Deferred to A-06 (PO 2026-10-20): fails closed; tighten when more city portals are probed | |
 
 ## Oracle reviewer, run 1 (72/100)
 

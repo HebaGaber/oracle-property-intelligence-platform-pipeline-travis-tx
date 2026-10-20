@@ -198,6 +198,7 @@ export async function refreshTcadLanding(options: RefreshOptions = {}): Promise<
       { ...catalog, parcel },
       {
         command: "refresh-tcad-landing",
+        venue: "operator",
         fields: ["parcel.certification_date", "parcel.certification_date_measurement"],
         ref: `${page.pageRel} (SHA-256 ${page.receipt.sha256})`,
         ...(page.receipt.egress_country ? { egress_country: page.receipt.egress_country } : {}),

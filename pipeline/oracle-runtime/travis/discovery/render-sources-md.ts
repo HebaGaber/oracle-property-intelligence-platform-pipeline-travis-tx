@@ -570,7 +570,7 @@ function amendmentsSection(catalog: Catalog): string[] {
         `\`${a.command}\``,
         cell(a.fields.join(", ")),
         cell(a.ref),
-        a.egress_country ?? "not recorded",
+        `${a.egress_country ?? "not recorded"}${a.venue ? ` (${a.venue})` : ""}`,
         cell(a.note ?? ""),
       ]),
     ),

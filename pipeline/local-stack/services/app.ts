@@ -43,13 +43,13 @@ const sharedClient = (): SourceClient => (client ??= createSourceClient());
 const now = (): Date => new Date();
 
 const travisDiscovery = createTravisDiscovery(restate, {
-  probes: () => {
+  // CR2-5: the catalog read runs inside the workflow's journaled step (readPriorExport), so
+  // a replay sees the same value and a bad catalog is a terminal error, not a retry loop.
+  probes: ({ priorExport }) =>
+    createUs1Probes({ client: sharedClient(), now, ...(priorExport ? { priorExport } : {}) }),
+  readPriorExport: () => {
     const receipt = readCatalogIfPresent()?.parcel?.export_receipt;
-    return createUs1Probes({
-      client: sharedClient(),
-      now,
-      ...(receipt ? { priorExport: priorExportFrom(receipt, DEFAULT_REPO_ROOT) } : {}),
-    });
+    return receipt ? priorExportFrom(receipt, DEFAULT_REPO_ROOT) : null;
   },
   jurisdictions: () => createJurisdictionProbes({ client: sharedClient(), now }),
   profile: TRAVIS_JURISDICTION_PROFILE,

@@ -1291,6 +1291,7 @@ amendments:
   - command: "rescan-tcad"
     at: "2026-10-20T06:12:39Z"
     ref: "pipeline/data/raw/tcad/2026_20Certified_20JSON_20SUPP_200_2007182026.zip (export SHA-256 6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346)"
+    venue: "operator"
     note: "recorded by backfill-amendments; time is the commit time of b93bc44; the command ran shortly before it"
     fields:
       - "parcel.identifier_name"
@@ -1300,6 +1301,7 @@ amendments:
   - command: "refresh-tcad-landing"
     at: "2026-10-20T06:19:52.331Z"
     ref: "pipeline/data/raw/tcad/publicinformation-20261020T061952Z.html (SHA-256 1d5dd5c3c4fe4ae4800023bcd9d0365f42316090839a4323c23b6cf61f9a27bf)"
+    venue: "operator"
     note: "recorded by backfill-amendments; time is the page capture time; one identified request, egress not recorded (made before the egress check existed)"
     fields:
       - "parcel.certification_date_measurement"
@@ -1307,6 +1309,7 @@ amendments:
     at: "2026-10-20T08:05:12Z"
     ref: "https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39387019700 (body SHA-256 751ea63e3a6565108c8af9faa18aedf81990818d913a97002fcd8887aa160b6f)"
     egress_country: "US"
+    venue: "runner"
     note: "recorded by backfill-amendments; time is the commit time of fdf16d8; the command ran shortly before it; the request ran on the US GitHub Actions runner at 2026-10-20T07:31:05Z"
     fields:
       - "parcel.gis_feature_count"
@@ -1319,6 +1322,7 @@ amendments:
     at: "2026-10-20T08:53:13.590Z"
     ref: "docs/evidence/blocked/jurisdiction-rollingwood-20261020T085309Z.md, docs/evidence/blocked/jurisdiction-san_leanna-20261020T085313Z.md"
     egress_country: "EG"
+    venue: "operator"
     note: "recorded by backfill-amendments; time is the last re-probe capture; egress EG (operator network, VPN off) per docs/decisions/DEC-A-01-source-access.md D-3, not checked by the command at the time; the San Leanna re-probe was a request to a firewall-blocked site (deviation D-3)"
     fields:
       - "permits.jurisdictions[austin]"
@@ -1328,6 +1332,7 @@ amendments:
   - command: "explain-blocked"
     at: "2026-10-20T08:56:20Z"
     ref: "PO decision 2026-10-20 (no request filed); committed evidence files; no request made"
+    venue: "operator"
     note: "recorded by backfill-amendments; time is the commit time of 9ae3f5f; the command ran shortly before it"
     fields:
       - "permits.jurisdictions[*].blocked_explanation"
@@ -1337,6 +1342,7 @@ amendments:
   - command: "reconcile-parcel-gap"
     at: "2026-10-20T10:46:22Z"
     ref: "pipeline/data/raw/tcad/2026_20Certified_20JSON_20SUPP_200_2007182026.zip (export SHA-256 6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346)"
+    venue: "operator"
     note: "recorded by backfill-amendments; time is the commit time of 14b88ee; the command ran shortly before it"
     fields:
       - "parcel.account_breakdown"
@@ -1347,12 +1353,14 @@ amendments:
   - command: "hand edit (no command)"
     at: "2026-10-20T11:10:06Z"
     ref: "PO approval 2026-10-20 (HebaGaber)"
+    venue: "operator"
     note: "recorded by backfill-amendments; time is the commit time of e5f5d77; the command ran shortly before it; the entry was written by hand and is replaced by approve-exception"
     fields:
       - "approved_exceptions[parcel]"
   - command: "backfill-amendments"
     at: "2026-10-20T14:50:57.848Z"
     ref: "git history (b93bc44, 0f5922a, fdf16d8, 9ae3f5f, 14b88ee, e5f5d77) and docs/evidence/"
+    venue: "operator"
     note: "one-off migration for the review findings; no measured value changed"
     fields:
       - "amendments (history)"
@@ -1363,6 +1371,7 @@ amendments:
   - command: "explain-blocked"
     at: "2026-10-20T14:50:58.413Z"
     ref: "profile pipeline/oracle-runtime/travis/profiles/jurisdictions.ts and the committed evidence files; no request made"
+    venue: "operator"
     fields:
       - "permits.jurisdictions[*].blocked_explanation"
       - "permits.jurisdictions[*].notes"
@@ -1374,6 +1383,7 @@ amendments:
   - command: "reconcile-parcel-gap"
     at: "2026-10-20T15:11:24.650Z"
     ref: "pipeline/data/raw/tcad/2026_20Certified_20JSON_20SUPP_200_2007182026.zip (export SHA-256 6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346)"
+    venue: "operator"
     fields:
       - "parcel.account_breakdown"
       - "parcel.gap_reconciliation"
@@ -1383,12 +1393,21 @@ amendments:
   - command: "approve-exception"
     at: "2026-10-20T15:11:48.216Z"
     ref: "docs/decisions/DEC-A-01-parcel-gap-exception.md"
+    venue: "operator"
     note: "approved by HebaGaber on 2026-10-20; bound to gap 24.24%, GIS 373683, roll 493246"
     fields:
       - "approved_exceptions[parcel]"
   - command: "prove-destination"
     at: "2026-10-20T15:11:49.452Z"
     ref: "local stack: compose service postgres, SQL inside its container, and the configured loader connection"
+    venue: "operator"
     note: "three identities; the configured connection reports the same system identifier"
     fields:
       - "destination"
+  - command: "backfill-amendments --venue"
+    at: "2026-10-20T15:23:40.828Z"
+    ref: "docs/reviews/CR-A-01.md CR2-3 / OR-N2; the record-gis-runner amendment note (US GitHub Actions runner)"
+    venue: "operator"
+    note: "offline migration; record-gis-runner is runner, every other command operator; no measured value changed"
+    fields:
+      - "amendments[*].venue"

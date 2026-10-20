@@ -426,6 +426,35 @@ describe("CR-1, CR-2, CR-6: bounded refusals, write errors and the final size ch
     expect(statSync(join(dir, "export.zip.part")).isDirectory()).toBe(true);
   });
 
+  it("CR2-2: a .part stream that fails while a read is pending gives a failed receipt, no hang", async () => {
+    const dir = tempDir();
+    mkdirSync(join(dir, "export.zip.part"));
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        pulls += 1;
+        if (pulls === 1) {
+          controller.enqueue(new Uint8Array(payloadOf(1_024)));
+          return;
+        }
+        // the .part open (EISDIR) fails while this read is pending; then a chunk larger
+        // than the stream's buffer arrives, so write() answers false on a closed stream
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        controller.enqueue(new Uint8Array(payloadOf(256 * 1_024)));
+      },
+    });
+    const fetch: FetchLike = async () =>
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/zip", "accept-ranges": "bytes" },
+      });
+    const dl = await download(fetch, dir);
+    expect(dl.receipt.outcome).toBe("failed");
+    expect(dl.receipt.error).toMatch(/writing the \.part file failed: EISDIR/);
+    expect(dl.path).toBeNull();
+    expect(existsSync(join(dir, "export.zip"))).toBe(false);
+  }, 5_000);
+
   it("CR-6: a first download that ends short without an error is failed and keeps its .part", async () => {
     const payload = payloadOf(10_000);
     const fetch: FetchLike = async () =>

@@ -811,9 +811,16 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
           }
           const { done, value } = await reader.read();
           if (done || timedOut) break;
+          // CR2-2: the .part stream may have failed while this read was pending. Its `error`
+          // and `close` events have then already fired, so `drained()` would wait forever:
+          // stop before writing, and never wait for `drain` on a failed stream.
+          if (writeFailed() !== null) {
+            await reader.cancel().catch(() => undefined);
+            break;
+          }
           guard.resetIdle();
           onChunk(value);
-          if (!out.write(value)) await drained(out);
+          if (!out.write(value) && writeFailed() === null) await drained(out);
         }
         if (writeFailed() !== null) await reader?.cancel().catch(() => undefined);
         return null;
@@ -837,7 +844,18 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       out.on("error", (error: NodeJS.ErrnoException) => {
         writeError ??= error.code ?? error.message;
       });
-      const writeFailed = (): string | null => writeError;
+      // CR2-2: also reports a stream that errored or closed before its `error` listener ran
+      // (`errored` is set synchronously) or was destroyed without an error.
+      const writeFailed = (): string | null => {
+        if (writeError === null) {
+          const errored = out.errored as NodeJS.ErrnoException | null;
+          if (errored) writeError = errored.code ?? errored.message;
+          else if (out.destroyed || out.writableEnded) {
+            writeError = "the .part stream closed before the body was written";
+          }
+        }
+        return writeError;
+      };
       const hash = createHash("sha256");
       let bytes = 0;
       let resumes = 0;
