@@ -16,7 +16,7 @@ of the local pilot run they came from.
 ## The pilot run and its CIDs
 
 - `run_id`: `travis-pilot-20261020`; `as_of` (manifest `finishedAt`): `2026-10-20T22:00:10.663Z`.
-- `manifest_cid`: `bafkreic5ryg5mrqw3cwxwwz5ia65bsavi6m5ch4t7lslwqkmckiqwpjgnq`.
+- `manifest_cid`: `bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka`.
 - Tables roots: county `baguqeeraw6ig6khaxqllae7jb25iqrl2ohmwgaajarta3dd676u5x6l742ca`; property_improvement `baguqeerahdudplmrd4lnzglb7qlhvbeptzjey24sepiyfu6rapmryuw6haxq`.
 - Every CID in the sample and the manifest (`cid`, `permit_cid`, `property_cid`, `table_cid`, `manifest_cid`, the tables roots) is one of the **real content addresses of unpublished local files, replaced in A-03** (when the run is published through Atlas). Nothing here was uploaded; a gateway will not resolve them.
 
@@ -31,7 +31,7 @@ ipfs add --only-hash --cid-version 1 --raw-leaves -Q contract/v1/pilot-manifest.
 # (base32 of 0x01 0x55 0x12 0x20 + sha256(bytes), prefixed "b")
 ```
 
-Both print `bafkreic5ryg5mrqw3cwxwwz5ia65bsavi6m5ch4t7lslwqkmckiqwpjgnq`. `table_cid` is computed the same way from each Parquet part.
+Both print `bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka`. `table_cid` is computed the same way from each Parquet part.
 
 ## The sample cut
 

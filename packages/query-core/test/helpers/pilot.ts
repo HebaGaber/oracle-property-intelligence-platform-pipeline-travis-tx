@@ -8,7 +8,7 @@ import { openDuckDb, type DuckDbEngine } from "../../scripts/duckdb-engine.js";
 
 export const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 export const PILOT_MANIFEST = join(ROOT, "contract/v1/pilot-manifest.json");
-export const PILOT_MANIFEST_CID = "bafkreic5ryg5mrqw3cwxwwz5ia65bsavi6m5ch4t7lslwqkmckiqwpjgnq";
+export const PILOT_MANIFEST_CID = "bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka";
 
 const env = process.env.PILOT_DIR;
 /** Absolute pilot directory, or null when PILOT_DIR is unset or missing. */

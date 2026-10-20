@@ -22,7 +22,7 @@ The views in `contract/v1` may only freeze a column name once the field has a ve
 | Live lexicon manifest `https://lexicon.elephant.xyz/api/manifest`                                                   | **Live**: HTTP 200, 18,499 bytes, sha256 `7084b9334e66eb525d729e2d399f7216960abf30900081aaed194210be760640` (2026-10-20T22:04Z) | Class and data-group schema CIDs    |
 | `~/.elephant-cli/schema-cache/`                                                                                     | **Live**: filled by `elephant-cli validate` (1.58.1, GitHub main `44bb182`) during the pilot; 159 schemas                       | Every property, type and enum below |
 | Pilot export `pipeline/data/pilot/travis-pilot-20261020/tables/` (local, unpublished)                               | `export-tables` of both pilot CARs; read with DuckDB v1.5.6 (`DESCRIBE`, `SELECT`)                                              | Column presence and the cited row   |
-| Pilot manifest `contract/v1/pilot-manifest.json`                                                                    | CID `bafkreic5ryg5mrqw3cwxwwz5ia65bsavi6m5ch4t7lslwqkmckiqwpjgnq` (D-9 re-run from the saved captures)                          | The run the row belongs to          |
+| Pilot manifest `contract/v1/pilot-manifest.json`                                                                    | CID `bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka` (D-9 re-run from the saved captures)                          | The run the row belongs to          |
 
 Class schemas used (copied byte for byte to `packages/query-core/test/fixtures/schemas/`, with `index.json`):
 
