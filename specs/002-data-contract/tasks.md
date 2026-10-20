@@ -304,9 +304,9 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 **Purpose**: Constitution I, XVI, XXII. The story is not done until these pass.
 
 - [X] TZ01 Run the reviewer agents from the story front matter (`oracle`, `donphan`) read-only; record scores in docs/reviews/CR-A-02.md (each ≥ 75 or justified)
-- [ ] TZ02 N/A: Project story, no hosted runtime until A-03 (G4 C-04 exception; hosted proof in A-13 and A-15)
-- [ ] TZ03 N/A: Project story, no hosted runtime until A-03 (G6 C-05/C-09 exception; the test cases run from a terminal at the repo root and use Vitest instead of Playwright)
-- [ ] TZ04 N/A: Project story, no hosted runtime until A-03 (`ui: false`)
+- [X] TZ02 N/A: Project story, no hosted runtime until A-03 (G4 C-04 exception; hosted proof in A-13 and A-15)
+- [X] TZ03 N/A: Project story, no hosted runtime until A-03 (G6 C-05/C-09 exception; the test cases run from a terminal at the repo root and use Vitest instead of Playwright)
+- [X] TZ04 N/A: Project story, no hosted runtime until A-03 (`ui: false`)
 - [X] TZ05 Run the story's independent test (`agents.verify`): `docs/decisions/0002-lexicon-carriers.md` has a verdict for every field; `PILOT_DIR=pipeline/data/pilot/travis-pilot-20261020 pnpm vitest packages/query-core` passes; `duckdb -c "SELECT count(*) FROM 'contract/v1/sample.parquet'"` returns 20; plus `pnpm vitest --coverage` ≥ 80% on `packages/query-core` and `packages/contract` (NFR-002)
 - [X] TZ06 Write docs/reports/A-02-test-report.md, docs/evidence/A-02.md, the docs/traceability.md row and one docs/kit-usage.md line
 

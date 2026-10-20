@@ -54,7 +54,7 @@ CR-n = `/code-review` · OR-n = oracle reviewer · DP-n = donphan reviewer.
 | OR-F7 | Minor | `shared-seed.ts:126` | Deprecated `property_type` values are still written | **Deferred** to A-04 (full TCAD transform): map to the current enum before A-03/A-04 publishes | — |
 | OR-F8 | Minor | `rules.json` `stalled_rule` | Expired depends on a convention | Accepted (PO D-4a); stated plainly in the README for raw-table consumers; R1/R2 lead the drafted requests | `fa190b0` |
 | OR-F9 | Minor | `run-pilot.ts:400`, `sequence.ts:216` | Dirty-tree gitCommit; naive hash.csv split; hard-coded deltas | Fixed: dirty-tree limitation line and a real CSV parse. **Deferred** to A-12: derive deltas once `previousManifestCid` is set | `fa190b0` |
-| OR-F10 | Minor | ARD AD-25 vs ADR-0002 | AD-25 says requests are "filed"; D-1/D-8 say draft only | Recorded in ARD § 13 as deviation D-08 (Stage 6) | Stage 6 |
+| OR-F10 | Minor | ARD AD-25 vs ADR-0002 | AD-25 says requests are "filed"; D-1/D-8 say draft only | Recorded in ARD § 13 as deviation D-08 (ARD 0.2.2) | `aef8951` |
 | DP-m7 | Minor | `derive.ts:130` | `status_class` silently empty | Fixed with CR-1 | `fa190b0` |
 | DP-m8 | Minor | `bind-manifest.ts` | `area_list_sha256` fallback | Fixed with CR-8 | `fa190b0` |
 | DP-m9 | Minor | `contract/v1/README.md` | The pilot is skewed to open permits | Fixed: README says it is a schema contract, not a distribution | `fa190b0` |
