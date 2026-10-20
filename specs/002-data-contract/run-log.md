@@ -39,3 +39,5 @@ One line per step: time (local, 2026-10-20 unless stated) · stage · step · re
 | 10-21 00:12 | 4 | G6 run 2 | PASS, 0 FAILs; test cases v0.2 Approved, qc_signoff true; gate log row added |
 | 10-21 00:13 | 4 | `/speckit-checklist` | `checklists/governance.md`: CHK001–CHK048 (constitution Parts 1–3, Task A addendum, ACs, test cases); all unchecked (reviewer-owned) |
 | 10-21 00:13 | 4 | Commit | `A-02: test cases (G6) and checklist` |
+| 10-21 00:16 | 5 | `/speckit-implement` checklist gate | requirements.md 16/16; governance.md 0/48 → PO: "i approve them" → 48/48 ticked at the PO's instruction |
+| 10-21 00:21 | 5 | Phase 1 Setup (T001–T005, oracle) | pnpm workspace (contract, query-core, profile, publish); vitest 5.0.5, TS 6.0.3/7.0.2, zod 4.6.7, @duckdb/node-api 1.5.6-r.2 (test-only); elephant-cli 1.58.1 from github#44bb182 (`onlyBuiltDependencies` allows its build; puppeteer download NOT allowed); install, typecheck, lint, format, vitest all exit 0 |

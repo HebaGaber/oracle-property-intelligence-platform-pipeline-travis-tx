@@ -1,0 +1,32 @@
+{
+  "name": "countylens",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CountyLens workspace: data contract, query core, profiles and publish sequence (A-02, research R-11).",
+  "type": "module",
+  "packageManager": "pnpm@10.34.7",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests",
+    "typecheck": "node node_modules/typescript-7/bin/tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "format:check": "prettier --check packages profiles pipeline/publish \"*.{json,ts,js,yaml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "elephant-cli": "github:elephant-xyz/elephant-cli#44bb182b9f7f904662e9b33e1fde70bdeab62322",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
+  }
+}

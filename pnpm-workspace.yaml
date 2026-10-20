@@ -1,0 +1,11 @@
+# Smallest workspace (A-02 research R-11). pipeline/oracle-runtime stays its own npm package.
+packages:
+  - packages/*
+  - profiles/*
+  - pipeline/publish
+
+# Packages allowed to run install/build scripts. The pinned elephant-cli GitHub build
+# compiles itself on install (prepare); esbuild is used by tsx.
+onlyBuiltDependencies:
+  - "@elephant-xyz/cli@https://codeload.github.com/elephant-xyz/elephant-cli/tar.gz/44bb182b9f7f904662e9b33e1fde70bdeab62322"
+  - esbuild

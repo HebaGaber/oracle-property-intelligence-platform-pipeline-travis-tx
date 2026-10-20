@@ -27,11 +27,11 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
 **Purpose**: the smallest pnpm workspace (research R-11). No Turborepo and no app folders.
 
-- [ ] T001 [oracle] Create root `package.json` (private, `"type": "module"`, engines node ≥ 22, scripts `test`, `test:coverage`, `typecheck`, `lint`, `format:check`) with devDependencies `vitest` ^5, `@vitest/coverage-v8` ^5, `typescript` ~6, `typescript-7` (`npm:typescript@^7`), `tsx` ^4, `eslint` ^10, `typescript-eslint` ^8, `prettier` ^3, and `elephant-cli` pinned to `github:elephant-xyz/elephant-cli#44bb182b9f7f904662e9b33e1fde70bdeab62322`
-- [ ] T002 [oracle] Create `pnpm-workspace.yaml` (packages: `packages/*`, `profiles/*`, `pipeline/publish`), `tsconfig.base.json` (strict, `noUncheckedIndexedAccess`, ESM, NodeNext) and `vitest.workspace.ts` in the repository root
-- [ ] T003 [P] [oracle] Create `eslint.config.js` and `.prettierrc.json` at the root, with the `no-restricted-imports` rules from ARD § 4: ban `pg`, `postgres` and `@duckdb/*` in `packages/*/src/**` and `pipeline/publish/src/**`; ban `openai`, `@anthropic-ai/sdk` and `@aws-sdk/client-bedrock-runtime` everywhere
-- [ ] T004 [P] [oracle] Add to `.gitignore`: `pipeline/data/` (confirm present), `pipeline/data/raw/census/`, `**/*.parquet` with the single exception `!contract/v1/sample.parquet` (ARD deviation D-07), and `coverage/`
-- [ ] T005 [oracle] Run `pnpm install`; confirm `pnpm exec elephant-cli export-tables --help` prints the options (pinned build, not Homebrew); record the lockfile in git
+- [X] T001 [oracle] Create root `package.json` (private, `"type": "module"`, engines node ≥ 22, scripts `test`, `test:coverage`, `typecheck`, `lint`, `format:check`) with devDependencies `vitest` ^5, `@vitest/coverage-v8` ^5, `typescript` ~6, `typescript-7` (`npm:typescript@^7`), `tsx` ^4, `eslint` ^10, `typescript-eslint` ^8, `prettier` ^3, and `elephant-cli` pinned to `github:elephant-xyz/elephant-cli#44bb182b9f7f904662e9b33e1fde70bdeab62322`
+- [X] T002 [oracle] Create `pnpm-workspace.yaml` (packages: `packages/*`, `profiles/*`, `pipeline/publish`), `tsconfig.base.json` (strict, `noUncheckedIndexedAccess`, ESM, NodeNext) and `vitest.config.ts` (`test.projects`; vitest.workspace was removed in Vitest 4) in the repository root
+- [X] T003 [P] [oracle] Create `eslint.config.js` and `.prettierrc.json` at the root, with the `no-restricted-imports` rules from ARD § 4: ban `pg`, `postgres` and `@duckdb/*` in `packages/*/src/**` and `pipeline/publish/src/**`; ban `openai`, `@anthropic-ai/sdk` and `@aws-sdk/client-bedrock-runtime` everywhere
+- [X] T004 [P] [oracle] Add to `.gitignore`: `pipeline/data/` (confirm present), `pipeline/data/raw/census/`, `**/*.parquet` with the single exception `!contract/v1/sample.parquet` (ARD deviation D-07), and `coverage/`
+- [X] T005 [oracle] Run `pnpm install`; confirm `pnpm exec elephant-cli export-tables --help` prints the options (pinned build, not Homebrew); record the lockfile in git
 
 **Checkpoint**: the workspace installs and the pinned CLI runs. Tracks A, B and C can start.
 
