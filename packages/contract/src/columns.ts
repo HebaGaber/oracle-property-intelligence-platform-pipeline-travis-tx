@@ -95,7 +95,7 @@ export const PROVENANCE_COLUMNS: readonly Column[] = [
     "string",
     V,
     true,
-    "json_extract_string(source_http_request, '$.url')",
+    "source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url",
     "URL of the request that fetched the record's source page",
     "not_in_export",
   ),
@@ -104,7 +104,7 @@ export const PROVENANCE_COLUMNS: readonly Column[] = [
     "timestamptz",
     "TIMESTAMP WITH TIME ZONE",
     false,
-    "manifest sources[].captured_at",
+    "manifest sources[].captured_at of the source whose url the record's request uses",
     "When that source was captured",
     null,
   ),
@@ -162,8 +162,8 @@ const V_PROPERTY: readonly Column[] = [
     "cid",
     V,
     false,
-    "property.property_cid (export extra; equals property.cid)",
-    "The property's CID",
+    "property.cid (the from_cid of every property_has_* edge; the export extra `property_cid` is the Seed root, not this)",
+    "The property record's CID; the key v_roofing_permit.property_cid joins on",
     null,
   ),
   col(
@@ -212,38 +212,11 @@ const V_PROPERTY: readonly Column[] = [
     "source_missing",
   ),
   col(
-    "unnormalized_address",
-    "string",
-    V,
-    true,
-    "address.unnormalized_address via property_has_address",
-    "Situs address as printed",
-    "source_missing",
-  ),
-  col(
-    "city_name",
-    "string",
-    V,
-    true,
-    "address.city_name via property_has_address",
-    "Situs city",
-    "source_missing",
-  ),
-  col(
-    "postal_code",
-    "string",
-    V,
-    true,
-    "address.postal_code via property_has_address",
-    "Situs ZIP",
-    "source_missing",
-  ),
-  col(
     "latitude",
     "double",
     "DOUBLE",
     true,
-    "geometry.latitude via property_has_parcel → parcel_has_geometry; else the permit address",
+    "geometry.latitude via property_has_parcel → parcel_has_geometry",
     "Latitude",
     "no_coordinates",
   ),
@@ -252,14 +225,14 @@ const V_PROPERTY: readonly Column[] = [
     "double",
     "DOUBLE",
     true,
-    "geometry.longitude via property_has_parcel → parcel_has_geometry; else the permit address",
+    "geometry.longitude via property_has_parcel → parcel_has_geometry",
     "Longitude",
     "no_coordinates",
   ),
   enumCol(
     "coordinate_source",
     false,
-    "derived: geometry → gis_centroid, permit address → permit_point, else none",
+    "derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none",
     "Where the coordinates came from",
     null,
   ),
@@ -333,28 +306,10 @@ const V_PROPERTY: readonly Column[] = [
     "Owner display name",
     "no_owner_record",
   ),
-  col(
-    "owner_mailing_postal_code",
-    "string",
-    V,
-    true,
-    "address.postal_code via person_has_mailing_address / company_has_mailing_address",
-    "Owner mailing ZIP",
-    "no_mailing_address",
-  ),
-  col(
-    "owner_mailing_state_code",
-    "string",
-    V,
-    true,
-    "address.state_code via person_has_mailing_address / company_has_mailing_address",
-    "Owner mailing state",
-    "no_mailing_address",
-  ),
   enumCol(
     "owner_area_class",
     false,
-    "derived: mailing ZIP against the travis-places area lists",
+    "derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1",
     "Owner mailing area class",
     null,
   ),
@@ -365,14 +320,14 @@ const V_PROPERTY: readonly Column[] = [
     true,
     "derived: true for regional/out_of_area, false for in_county, null for unknown",
     "Owner mails from outside Travis",
-    "no_mailing_address",
+    "not_in_export",
   ),
   col(
     "area_list_sha256",
     "string",
     V,
     false,
-    "manifest profiles[] (travis-places)",
+    "manifest profiles[] (travis-places); else the travis-places gazetteer DIGEST",
     "Digest of the ZIP and regional lists",
     null,
   ),
@@ -668,7 +623,7 @@ const V_RUN: readonly Column[] = [
     "string",
     V,
     false,
-    "manifest profiles[] (travis-places)",
+    "manifest profiles[] (travis-places); else the travis-places gazetteer DIGEST",
     "Area list digest",
     null,
   ),
@@ -682,6 +637,140 @@ export const VIEWS = {
 } as const satisfies Record<string, readonly Column[]>;
 
 export type ViewName = keyof typeof VIEWS;
+
+/** A field a view would carry but cannot in v1: it appears only in each row's `missing`. */
+export interface UncarriedField {
+  field: string;
+  reason: MissingReason;
+  /** The class.property that would carry it, or why none exists. */
+  carrier: string;
+  /** What the view does instead (ADR-0002 fallback). */
+  fallback: string;
+}
+
+const NOT_EMITTED = "address is a top-level oneOf; export-tables emits none of its properties";
+const NO_PERMIT_CARRIER = "no property_improvement property (ADR-0002)";
+
+/**
+ * The no-carrier and not-emitted fields per view (ADR-0002; story edge case 2: a carrier the
+ * export does not emit is treated as no carrier until the export includes it). Every row of the
+ * view lists each one in `missing` with this reason.
+ */
+export const UNCARRIED = {
+  v_property: [
+    {
+      field: "unnormalized_address",
+      reason: "not_in_export",
+      carrier: `address.unnormalized_address via property_has_address (${NOT_EMITTED})`,
+      fallback: "not a v1 column; latitude/longitude come from geometry",
+    },
+    {
+      field: "city_name",
+      reason: "not_in_export",
+      carrier: `address.city_name via property_has_address (${NOT_EMITTED})`,
+      fallback: "not a v1 column",
+    },
+    {
+      field: "postal_code",
+      reason: "not_in_export",
+      carrier: `address.postal_code via property_has_address (${NOT_EMITTED})`,
+      fallback: "not a v1 column",
+    },
+    {
+      field: "owner_mailing_postal_code",
+      reason: "not_in_export",
+      carrier: `address.postal_code via *_has_mailing_address (${NOT_EMITTED})`,
+      fallback: "not a v1 column; owner_area_class = unknown, owner_is_out_of_area = null",
+    },
+    {
+      field: "owner_mailing_state_code",
+      reason: "not_in_export",
+      carrier: `address.state_code via *_has_mailing_address (${NOT_EMITTED})`,
+      fallback: "not a v1 column",
+    },
+  ],
+  v_roofing_permit: [
+    {
+      field: "status_raw",
+      reason: "no_lexicon_carrier",
+      carrier: NO_PERMIT_CARRIER,
+      fallback: "Expired is published as improvement_status null → status_class stalled (D-4a)",
+    },
+    {
+      field: "expiry_date",
+      reason: "no_lexicon_carrier",
+      carrier: NO_PERMIT_CARRIER,
+      fallback: "not published",
+    },
+    {
+      field: "contractor_name_raw",
+      reason: "no_lexicon_carrier",
+      carrier: NO_PERMIT_CARRIER,
+      fallback:
+        "contractor_resolution unresolved; five-state totals in the manifest coverage (AD-24)",
+    },
+    {
+      field: "bbb_rating",
+      reason: "no_lexicon_carrier",
+      carrier: "no business-rating class (fact_sheet has no fields)",
+      fallback: "bbb_status = not_checked with a reason",
+    },
+    {
+      field: "bbb_url",
+      reason: "no_lexicon_carrier",
+      carrier: "no business-rating class (fact_sheet has no fields)",
+      fallback: "not published",
+    },
+    {
+      field: "description",
+      reason: "no_lexicon_carrier",
+      carrier: NO_PERMIT_CARRIER,
+      fallback: "the profile classifies it before export; improvement_type/action carry the result",
+    },
+    {
+      field: "work_class_raw",
+      reason: "no_lexicon_carrier",
+      carrier: NO_PERMIT_CARRIER,
+      fallback: "the profile classifies it before export; improvement_type/action carry the result",
+    },
+  ],
+  v_contractor: [
+    {
+      field: "bbb_rating",
+      reason: "no_lexicon_carrier",
+      carrier: "no business-rating class (fact_sheet has no fields)",
+      fallback: "bbb_status = not_checked with a reason",
+    },
+    {
+      field: "bbb_url",
+      reason: "no_lexicon_carrier",
+      carrier: "no business-rating class (fact_sheet has no fields)",
+      fallback: "not published",
+    },
+  ],
+} as const satisfies Record<Exclude<ViewName, "v_run">, readonly UncarriedField[]>;
+
+/** Prefix of the property's own provenance columns in the sample row. */
+export const SAMPLE_PROPERTY_PREFIX = "property_";
+
+const SAMPLE_SHARED = new Set(["cid", "run_id", "manifest_cid", "as_of"]);
+const PROVENANCE_NAMES = new Set(PROVENANCE_COLUMNS.map((c) => c.name));
+
+/**
+ * contract/v1/sample.parquet: one v_roofing_permit row (all its columns, unprefixed) joined to its
+ * v_property row. The property's non-provenance columns keep their names (none collide); its
+ * provenance columns are prefixed `property_`, except cid (= property_cid) and the run-level
+ * run_id, manifest_cid and as_of, which equal the permit's.
+ */
+export const SAMPLE_COLUMNS: readonly Column[] = [
+  ...V_ROOFING_PERMIT,
+  ...V_PROPERTY.filter((c) => c.name !== "property_cid" && !PROVENANCE_NAMES.has(c.name)),
+  ...PROVENANCE_COLUMNS.filter((c) => !SAMPLE_SHARED.has(c.name)).map((c) => ({
+    ...c,
+    name: `${SAMPLE_PROPERTY_PREFIX}${c.name}`,
+    meaning: `The property's ${c.meaning.charAt(0).toLowerCase()}${c.meaning.slice(1)}`,
+  })),
+];
 
 export function columnNames(view: ViewName): string[] {
   return VIEWS[view].map((c) => c.name);

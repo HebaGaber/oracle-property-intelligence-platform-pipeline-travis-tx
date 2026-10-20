@@ -17,10 +17,22 @@ export {
   ALIASES,
   COLUMN_ENUMS,
   PROVENANCE_COLUMNS,
+  SAMPLE_COLUMNS,
+  SAMPLE_PROPERTY_PREFIX,
+  UNCARRIED,
   VIEWS,
   columnNames,
   type Column,
   type ColumnKind,
+  type UncarriedField,
   type ViewName,
 } from "./columns.js";
-export { ContractorRow, PropertyRow, RoofingPermitRow, RunRow, rowSchema } from "./rows.js";
+export {
+  ContractorRow,
+  PropertyRow,
+  RoofingPermitRow,
+  RunRow,
+  SampleRow,
+  rowSchema,
+  schemaFor,
+} from "./rows.js";

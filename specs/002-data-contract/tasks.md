@@ -200,16 +200,16 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
 ### Tests for User Story 2 (write first, must fail) ⚠️
 
-- [ ] T055 [P] [US2] Test `packages/query-core/test/no-text-classification.test.ts`. `views.sql` contains no `LIKE`, `ILIKE`, `regexp_*`, `SIMILAR TO` or `~` operator, no profile term literal (REROOF, RE-ROOF, ROOF REPLACE, SOLAR, PV, RTU, ROOF-MOUNTED) and no `now()`/`current_date`. No profile term literal appears in source code outside `profiles/`: the scan covers `packages/*/src/**`, `packages/query-core/views.sql`, `pipeline/publish/src/**` and `pipeline/oracle-runtime/travis/**`, excluding `**/test/**` fixtures (FR-009). `structure.roof_age_years` is never referenced.
-- [ ] T056 [P] [US2] Test `packages/query-core/test/derive.test.ts`, table-driven (mew § B.5 and data-model.md § Derivation rules):
+- [X] T055 [P] [US2] Test `packages/query-core/test/no-text-classification.test.ts`. `views.sql` contains no `LIKE`, `ILIKE`, `regexp_*`, `SIMILAR TO` or `~` operator, no profile term literal (REROOF, RE-ROOF, ROOF REPLACE, SOLAR, PV, RTU, ROOF-MOUNTED) and no `now()`/`current_date`. No profile term literal appears in source code outside `profiles/`: the scan covers `packages/*/src/**`, `packages/query-core/views.sql`, `pipeline/publish/src/**` and `pipeline/oracle-runtime/travis/**`, excluding `**/test/**` fixtures (FR-009). `structure.roof_age_years` is never referenced.
+- [X] T056 [P] [US2] Test `packages/query-core/test/derive.test.ts`, table-driven (mew § B.5 and data-model.md § Derivation rules):
   - `roof_age_years`, for full and year-only `roof_date`, gives 0 at the same year;
   - basis/confidence: permit/high · new_construction/medium · built_year/low · unknown/none;
   - tenure: no date → `unknown`, `is_long_tenure` null, `no_dated_sale`; 11 years → true; exactly 10 → false;
   - `owner_area_class`/`owner_is_out_of_area` for all four classes;
   - `open_days` = as_of − issue_date only for open/stalled, else null with `not_open`, and always ≥ 0;
   - `status_class` from the generated status map, with null status + issue date → `stalled`.
-- [ ] T057 [P] [US2] Test `packages/query-core/test/views.shape.test.ts` (in-memory DuckDB with empty typed tables built from the committed class-schema snapshot in `packages/query-core/test/fixtures/schemas/`, written by T053). All four views compile. `DESCRIBE` of each view equals `@countylens/contract` `columns.ts` (names, order, types). `bindManifest()` creates empty typed relations for tables the export did not emit (oracle R10).
-- [ ] T058 [P] [US2] Test `packages/query-core/test/views.pilot.test.ts`, gated on `PILOT_DIR` and skipped with an explicit message when it is absent:
+- [X] T057 [P] [US2] Test `packages/query-core/test/views.shape.test.ts` (in-memory DuckDB with empty typed tables built from the committed class-schema snapshot in `packages/query-core/test/fixtures/schemas/`, written by T053). All four views compile. `DESCRIBE` of each view equals `@countylens/contract` `columns.ts` (names, order, types). `bindManifest()` creates empty typed relations for tables the export did not emit (oracle R10).
+- [X] T058 [P] [US2] Test `packages/query-core/test/views.pilot.test.ts`, gated on `PILOT_DIR` and skipped with an explicit message when it is absent:
   - every view row parses with the Zod row schemas;
   - 0 nulls in `cid`, `table`, `table_cid`, `run_id`, `manifest_cid`, `as_of`;
   - for every row and nullable column, the value is non-null **or** `missing` contains that field (SC-007);
@@ -222,10 +222,10 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
 ### Implementation for User Story 2
 
-- [ ] T059 [US2] [oracle] Implement `packages/query-core/src/derive.ts` (one exported function per derived column, used to generate the SQL expressions and to unit-test them). Green T056.
-- [ ] T060 [US2] [oracle] Write `packages/query-core/views.sql`. The four views are over `export-tables` output only. Property comes from the county group (deduplicated by `cid`), permits from the property_improvement group. Joins go only through relationship tables (`from_cid`/`to_cid`). `v_roofing_permit` filters on `improvement_type = 'Roofing' AND improvement_action = 'Replacement'`. The `missing` list is built per row. The provenance columns are bound from the manifest. Green T055.
-- [ ] T061 [US2] [oracle] Implement `packages/query-core/src/bind-manifest.ts` (`bindManifest(manifest, tablesDir, engine)` with `as_of` = `finishedAt`, `captured_at` from `sources[]`, `profile_version`/`profile_sha256` from `profiles[]`, the part-file → `table_cid` map and empty typed relations for absent tables) and `packages/query-core/src/index.ts` (the `QueryEngine` interface; no engine import in `src`). Add `@duckdb/node-api` as a devDependency of `packages/query-core` only. Green T057.
-- [ ] T062 [US2] [oracle] Run `PILOT_DIR=pipeline/data/pilot/travis-pilot-20261020 pnpm vitest packages/query-core`. Fix the views until T058 is green. Record the frozen column list per view in run-log.md.
+- [X] T059 [US2] [oracle] Implement `packages/query-core/src/derive.ts` (one exported function per derived column, used to generate the SQL expressions and to unit-test them). Green T056.
+- [X] T060 [US2] [oracle] Write `packages/query-core/views.sql`. The four views are over `export-tables` output only. Property comes from the county group (deduplicated by `cid`), permits from the property_improvement group. Joins go only through relationship tables (`from_cid`/`to_cid`). `v_roofing_permit` filters on `improvement_type = 'Roofing' AND improvement_action = 'Replacement'`. The `missing` list is built per row. The provenance columns are bound from the manifest. Green T055.
+- [X] T061 [US2] [oracle] Implement `packages/query-core/src/bind-manifest.ts` (`bindManifest(manifest, tablesDir, engine)` with `as_of` = `finishedAt`, `captured_at` from `sources[]`, `profile_version`/`profile_sha256` from `profiles[]`, the part-file → `table_cid` map and empty typed relations for absent tables) and `packages/query-core/src/index.ts` (the `QueryEngine` interface; no engine import in `src`). Add `@duckdb/node-api` as a devDependency of `packages/query-core` only. Green T057.
+- [X] T062 [US2] [oracle] Run `PILOT_DIR=pipeline/data/pilot/travis-pilot-20261020 pnpm vitest packages/query-core`. Fix the views until T058 is green. Record the frozen column list per view in run-log.md.
 
 **Checkpoint**: the views are frozen against the pilot export (AC-2, AC-7).
 
@@ -265,7 +265,7 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
 ### Tests for User Story 5 (write first, must fail) ⚠️
 
-- [ ] T063 [P] [US5] Test `packages/query-core/test/sample.test.ts`:
+- [X] T063 [P] [US5] Test `packages/query-core/test/sample.test.ts`:
   - `contract/v1/sample.parquet` has exactly 20 rows, each one `v_roofing_permit` row joined to its `v_property` columns (prefixed per `columns.ts`);
   - 0 nulls in `source_url`, `captured_at`, `table`, `table_cid`, `run_id`, `manifest_cid`;
   - ≥ 1 row with `status_class = 'stalled'`;
@@ -275,8 +275,8 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
 ### Implementation for User Story 5
 
-- [ ] T064 [US5] [oracle] Implement `packages/query-core/scripts/cut-sample.ts`. It selects 20 rows from the bound pilot views by a recorded deterministic rule: all stalled rows first, then rows with roof age, then by `permit_cid`. It writes `contract/v1/sample.parquet` and `contract/v1/columns.json` (from `columns.ts`). It never reads the Query DB or raw captures.
-- [ ] T065 [US5] [oracle] Write `contract/v1/README.md`:
+- [X] T064 [US5] [oracle] Implement `packages/query-core/scripts/cut-sample.ts`. It selects 20 rows from the bound pilot views by a recorded deterministic rule: all stalled rows first, then rows with roof age, then by `permit_cid`. It writes `contract/v1/sample.parquet` and `contract/v1/columns.json` (from `columns.ts`). It never reads the Query DB or raw captures.
+- [X] T065 [US5] [oracle] Write `contract/v1/README.md`:
   - every column (name, type, meaning, source class.property or derivation, missing reason), generated from `columns.ts`;
   - every no-carrier gap and its fallback;
   - the D-4a "empty status means stalled" rule;

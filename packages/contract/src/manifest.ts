@@ -45,7 +45,7 @@ export const ManifestArtifact = z
   })
   .strict()
   .refine((a) => a.kind !== "directory" || a.carCid !== undefined, {
-    message: "a directory artifact needs carCid",
+    message: "directory artifacts need carCid (the UnixFS file CID of their tables.car)",
     path: ["carCid"],
   });
 
@@ -63,14 +63,18 @@ export const CoverageCount = z
   .object({ count: Count, derivation: z.enum(COVERAGE_DERIVATIONS), note: z.string().optional() })
   .strict();
 
-/** Every string in the value (deep), and every key, for the gateway and IPNS refinements. */
-function* strings(value: unknown): Generator<{ key: boolean; text: string }> {
-  if (typeof value === "string") yield { key: false, text: value };
-  else if (Array.isArray(value)) for (const v of value) yield* strings(v);
+/** Every string in the value (deep), and every key, with its path, for the gateway and IPNS refinements. */
+function* strings(
+  value: unknown,
+  path: (string | number)[] = [],
+): Generator<{ key: boolean; text: string; path: (string | number)[] }> {
+  if (typeof value === "string") yield { key: false, text: value, path };
+  else if (Array.isArray(value))
+    for (const [i, v] of value.entries()) yield* strings(v, [...path, i]);
   else if (value !== null && typeof value === "object") {
     for (const [k, v] of Object.entries(value)) {
-      yield { key: true, text: k };
-      yield* strings(v);
+      yield { key: true, text: k, path: [...path, k] };
+      yield* strings(v, [...path, k]);
     }
   }
 }
@@ -102,11 +106,16 @@ export const RunManifestV1 = z
     }
     for (const s of strings(m)) {
       if (!s.key && isGatewayUrl(s.text)) {
-        ctx.addIssue({ code: "custom", message: `gateway URL not allowed: ${s.text}` });
+        ctx.addIssue({
+          code: "custom",
+          path: s.path,
+          message: `gateway URLs are derived, never stored: ${s.text}`,
+        });
       }
       if (/ipns/i.test(s.text)) {
         ctx.addIssue({
           code: "custom",
+          path: s.path,
           message: `no IPNS field or value in a run manifest: ${s.text}`,
         });
       }

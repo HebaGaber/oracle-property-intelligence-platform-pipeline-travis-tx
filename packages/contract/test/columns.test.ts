@@ -4,6 +4,10 @@ import {
   ALIASES,
   COLUMN_ENUMS,
   PROVENANCE_COLUMNS,
+  SAMPLE_COLUMNS,
+  SAMPLE_PROPERTY_PREFIX,
+  SampleRow,
+  UNCARRIED,
   VIEWS,
   columnNames,
   rowSchema,
@@ -30,9 +34,6 @@ const EXPECTED: Record<ViewName, string[]> = {
     "property_type",
     "property_usage_type",
     "property_structure_built_year",
-    "unnormalized_address",
-    "city_name",
-    "postal_code",
     "latitude",
     "longitude",
     "coordinate_source",
@@ -46,8 +47,6 @@ const EXPECTED: Record<ViewName, string[]> = {
     "is_long_tenure",
     "owner_kind",
     "owner_name",
-    "owner_mailing_postal_code",
-    "owner_mailing_state_code",
     "owner_area_class",
     "owner_is_out_of_area",
     "area_list_sha256",
@@ -143,6 +142,53 @@ describe("columns", () => {
     ]) {
       expect(all).not.toContain(banned);
     }
+  });
+
+  it("address-only fields are not v1 columns; each is listed as not_in_export (ADR-0002)", () => {
+    const names = columnNames("v_property");
+    const addressOnly = [
+      "unnormalized_address",
+      "city_name",
+      "postal_code",
+      "owner_mailing_postal_code",
+      "owner_mailing_state_code",
+    ];
+    for (const f of addressOnly) expect(names).not.toContain(f);
+    expect(UNCARRIED.v_property.map((u) => [u.field, u.reason])).toEqual(
+      addressOnly.map((f) => [f, "not_in_export"]),
+    );
+    const area = VIEWS.v_property.find((c) => c.name === "owner_is_out_of_area");
+    expect(area?.missingReason).toBe("not_in_export");
+  });
+
+  it("the permit no-carrier fields are listed with no_lexicon_carrier (D-4c)", () => {
+    expect(UNCARRIED.v_roofing_permit.map((u) => u.field)).toEqual([
+      "status_raw",
+      "expiry_date",
+      "contractor_name_raw",
+      "bbb_rating",
+      "bbb_url",
+      "description",
+      "work_class_raw",
+    ]);
+    for (const u of Object.values(UNCARRIED).flat()) {
+      expect(u.fallback.length, u.field).toBeGreaterThan(0);
+      expect(u.carrier.length, u.field).toBeGreaterThan(0);
+    }
+    const all = Object.values(VIEWS).flatMap((cols) => cols.map((c) => c.name));
+    for (const u of Object.values(UNCARRIED).flat()) expect(all).not.toContain(u.field);
+  });
+
+  it("the sample row is a permit row plus its property's columns, property provenance prefixed", () => {
+    const names = SAMPLE_COLUMNS.map((c) => c.name);
+    expect(names.slice(0, columnNames("v_roofing_permit").length)).toEqual(
+      columnNames("v_roofing_permit"),
+    );
+    expect(names).toContain("roof_age_years");
+    expect(names).toContain(`${SAMPLE_PROPERTY_PREFIX}source_url`);
+    expect(names).toContain(`${SAMPLE_PROPERTY_PREFIX}missing`);
+    expect(new Set(names).size).toBe(names.length);
+    expect(SampleRow).toBeDefined();
   });
 
   it("every CID column ends in _cid and is typed as a CID", () => {
