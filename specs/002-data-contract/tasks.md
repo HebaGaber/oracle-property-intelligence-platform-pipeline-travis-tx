@@ -112,7 +112,7 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
   Green T017. Then run it live (AC-5) and record the counts in run-log.md.
 - [X] T024 [US3] [oracle] Implement `profiles/travis-austin@1.0.0/scripts/sample.ts` (research R-10): population = description or work class mentioning ROOF; seed `travis-austin@1.0.0/AC-3/2026-10-21`; 25 smallest digests. Write `docs/evidence/A-02-classifier-review.md` with columns permit, work_class, status, description, verdict, reason and PO ✔/✘. Green T018. Then run it live.
-- [ ] T025 [US3] 🛑 **D-7**: show the 25-permit table to the PO. Pass = ≥ 24 right, ≤ 1 `needs_review`, 0 solar/PV/RTU accepted. On a fail: adjust `rules.json`, bump to `1.0.1` (DIGEST, CHANGELOG), draw a new seed, ask again. Record the answers word for word in run-log.md.
+- [X] T025 [US3] 🛑 **D-7**: show the 25-permit table to the PO. Pass = ≥ 24 right, ≤ 1 `needs_review`, 0 solar/PV/RTU accepted. On a fail: adjust `rules.json`, bump to `1.0.1` (DIGEST, CHANGELOG), draw a new seed, ask again. Record the answers word for word in run-log.md.
 
 **Checkpoint**: the profile is green, AC-5 is measured, and AC-3 is reviewed.
 
