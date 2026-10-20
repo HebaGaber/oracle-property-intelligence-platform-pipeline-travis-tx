@@ -8,7 +8,7 @@ spec: specs/002-data-contract/spec.md
 owner: HebaGaber             # QC Lead
 status: Approved              # Draft → In Review → Approved
 gate: G6
-version: 0.2.1
+version: 0.2.2
 created: 2026-10-21
 runtime_url: "none: Project story (G4 C-04 exception); every case runs from a terminal at the repo root on branch 002-data-contract"
 reviewed_code: 9fcffcf
@@ -145,9 +145,9 @@ Every case starts with: **Open** a terminal at the repository root and run `git 
 - **Priority / tags:** P1 · `@smoke` · **Maps to:** AC-1, FR-001 · demo D-9, D-11
 - **Preconditions:** step 0; the pilot has run.
 - **Steps:**
-  1. **Run** `grep -cE '^\| (printed contractor name|status_raw|expiry_date|BBB rating|BBB profile URL|per-permit contractor state|roof_age_basis|roof_age_confidence|owner sale date) \|' docs/decisions/0002-lexicon-carriers.md` → `9`.
+  1. **Run** `grep -cE '^\| [1-9] +\| ' docs/decisions/0002-lexicon-carriers.md` → `9` (one row per field, numbered 1–9).
   2. **Run** `pnpm vitest run -t "A-02-TC-001"`.
-- **Expected result:** exactly 9 field rows. Each has exactly one verdict ∈ {`carrier`, `no carrier`, `no carrier (not emitted by the export)`}, and no field is missing or duplicated. Vitest: `1 passed`.
+- **Expected result:** exactly 9 field rows. Each has exactly one verdict ∈ {`carrier`, `no_carrier`, `no_carrier_not_emitted`}, and no field is missing or duplicated. Vitest: `1 passed`.
 
 ### A-02-TC-002: Each carrier verdict cites a live schema entry and a pilot row (integration)
 
@@ -269,7 +269,7 @@ Every case starts with: **Open** a terminal at the repository root and run `git 
 ### A-02-TC-014: Trade sub-permit with a re-roof term is not Roofing (negative)
 
 - **Priority / tags:** P2 · `@negative` · **Maps to:** AC-3, FR-003, D-4b
-- **Test data:** a September 2026 pilot EP permit whose description contains "re-roof".
+- **Test data:** the September 2026 pilot EP permit `2026-089033 EP`, whose description mentions a full roof replacement.
 - **Steps:**
   1. Step 0. **Run** `pnpm vitest run -t "A-02-TC-014"`.
 - **Expected result:** the verdict is `not_roofing`, reason `trade_permit`. In the pilot's `property_improvement` table, that permit's `improvement_type` is its trade (`Electrical`, `MechanicalHVAC` or `Plumbing`), never `Roofing`, and it is absent from `v_roofing_permit`.
@@ -334,7 +334,7 @@ Every case starts with: **Open** a terminal at the repository root and run `git 
 - **Expected result:**
   - "Pflugerville" → `{status:'found', kind:'place', geoid:'4857176', point:{lat:30.447765, lon:-97.602116}}`.
   - "Manor", "Lakeway" and "78753" → `found`, each with the Census internal point from the 2024 Gazetteer files.
-  - Each result carries `source.url` (census.gov file URL), `source.file_date` (Last-Modified, e.g. 2024-08-30), `source.sha256`, and `gazetteer.version = 1.0.0` with its SHA-256.
+  - Each result carries `source.url` (census.gov file URL), `source.file_date` (Last-Modified, e.g. 2024-08-30), `source.sha256`, and `gazetteer.version = "travis-places@1.0.0"` with its SHA-256.
 
 ### A-02-TC-021: Gazetteer: ZIP 99999 and Georgetown → out_of_scope (negative)
 
@@ -412,7 +412,7 @@ Every case starts with: **Open** a terminal at the repository root and run `git 
 
 - **Priority / tags:** P2 · `@error` · **Maps to:** FR-011, edge case "Austin or Census answers 403"
 - **Steps:**
-  1. Step 0. **Run** `pnpm vitest run -t "A-02-TC-029"` (a stubbed source answers 403 on the second permit GET).
+  1. Step 0. **Run** `pnpm vitest run -t "A-02-TC-029"` (a stubbed source answers 403 on a later permit GET; the test uses the 4th).
 - **Expected result:** the capture stops after the 403. One receipt has `status: 403` and `outcome: blocked`, with no retry and no changed user agent. No group directory or CLI step runs afterwards, and the run reports it as blocked with the URL.
 
 ### A-02-TC-030: No excluded or needs_review permit is published (negative)
@@ -449,11 +449,16 @@ Every case starts with: **Open** a terminal at the repository root and run `git 
 - A permit with a null `tcad_id` (`2026-122340 BP`) → kept unmatched with a reason, counted, never linked to a guessed parcel (checked in TC-006's run log counts).
 - The dataset grows between count and fetch → re-measured in one run; never compared with yesterday's number (TC-019).
 
+## Changes
+
+- **0.2.2 (2026-10-21, after the Stage 6 run; expected-value wording only, no AC change):** TC-001 grep matches the numbered verdict rows and the verdict spellings `no_carrier`/`no_carrier_not_emitted`; TC-014 names the real EP permit; TC-020 version string `travis-places@1.0.0`; TC-029 stub blocks a later (4th) GET.
+- **0.2.1 (2026-10-21):** TC-018 uses the 3 published Expired permits.
+
 ## 10. Gap-linked cases (expected to fail until fixed)
 
 | TC ID | Asserts | Gap | Defect |
 | --- | --- | --- | --- |
-| — | none known at drafting | — | — |
+| A-02-TC-004 | a carrier the export does not emit becomes `no_carrier_not_emitted` | no automated checker (rule applied by hand) | ERR-9 |
 
 ## 11. Execution log (filled in Stage 6)
 
