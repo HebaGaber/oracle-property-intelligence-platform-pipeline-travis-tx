@@ -11,7 +11,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | # | README criterion / demo line | Eval point | FEAT | Story (US) | Spec FR | Test case | Evidence | Demo time |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Geography & coverage** | | | | | | | | |
-| AC-1 | Target Travis County, TX as the default and primary county for ingestion and demos. | A1 | FEAT-A01, FEAT-A04 | A-01, A-04 | | | | |
+| AC-1 | Target Travis County, TX as the default and primary county for ingestion and demos. | A1 | FEAT-A01, FEAT-A04 | A-01, A-04 | A-01: FR-001, FR-001a–e (Travis, FIPS 48453; readiness PASS) | A-01-TC-001, A-01-TC-002 | `docs/evidence/A-01.md` (validator exit 0, catalog SHA-256 `0616593d…`) | |
 | **Data loading** | | | | | | | | |
 | AC-2 | Run the Oracle pipeline until all available county data is uploaded. | A1 | FEAT-A04–A09, FEAT-A11 | A-04–A-09, A-11 | | | | |
 | AC-3 | Load available property records into the database. | A1 | FEAT-A04 | A-04 | | | | |
@@ -30,7 +30,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | AC-16 | Continuous / incremental: demonstrate that data continues to be ingested and published over time (multiple runs or simulated ongoing updates). | A3 (A4) | FEAT-A12 | A-12 | | | | |
 | **Infrastructure & access** | | | | | | | | |
 | AC-17 | Optimize pipeline performance where feasible. | A1 | FEAT-A16, FEAT-A01 | A-16, A-01 | | | | |
-| AC-18 | Identify slow source sites or constrained data sources. | A1 | FEAT-A01 | A-01 | | | | |
+| AC-18 | Identify slow source sites or constrained data sources. | A1 | FEAT-A01 | A-01 | FR-002, FR-003, FR-005, FR-006–FR-006f, NFR-001 | A-01-TC-007, A-01-TC-017, A-01-TC-019, A-01-TC-020, A-01-TC-021, A-01-TC-NF-01 | `docs/evidence/A-01.md` (throughput per source; blocked BBB and 7 cities; GIS operator egress blocked), `docs/sources.md` | |
 | AC-19 | Document pipeline speed limitations and source constraints. | A1 | FEAT-A16 | A-16 | | | | |
 | AC-20 | Design the infrastructure so Oracle does not carry ongoing infrastructure cost by default. | A4 | FEAT-A16, FEAT-A03 | A-16, A-03 | | | | |
 | AC-21 | Use IPFS for decentralized storage of eligible dataset artifacts. | A4 | FEAT-A11, FEAT-A03 | A-11, A-03 | | | | |
@@ -89,6 +89,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | BN | VIS | FEAT | US | REQ | TASK | TC | Code (merge commit) | CR | REL |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | BN-A | VIS-A | | | | | | | | |
+| BN-A | VIS-A | FEAT-A01 | A-01 | `specs/001-discover-sources/spec.md` FR-001–FR-007, NFR-001 | `specs/001-discover-sources/tasks.md` T001–T055 (T039, T048–T054 still unticked; reconciled in `/speckit-converge`) | `testplans/A-01-test-cases.md` (27/27 applicable pass, `docs/reports/A-01-test-report.md`) | branch `001-discover-sources` @ `d93f746` (merge pending G7) | `docs/reviews/CR-A-01.md` (83/100) | |
 
 ## 3. Gate log
 
