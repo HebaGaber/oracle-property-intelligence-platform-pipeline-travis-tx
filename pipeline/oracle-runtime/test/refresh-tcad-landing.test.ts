@@ -52,8 +52,9 @@ function fixture(): { root: string; catalogPath: string } {
 function run(
   f: { root: string; catalogPath: string },
   routes: Record<string, () => Response>,
-  extra: { htmlPath?: string; validatorCode?: number } = {},
+  extra: { htmlPath?: string; validatorCode?: number; egressRefusal?: string } = {},
 ) {
+  let egressChecks = 0;
   const http = fakeHttp(
     Object.entries(routes).map(([url, respond]): Route => ({
       match: (u) => u.href === url,
@@ -74,19 +75,36 @@ function run(
     catalogPath: f.catalogPath,
     client,
     ...(extra.htmlPath ? { htmlPath: extra.htmlPath } : {}),
+    egress: async () => {
+      egressChecks += 1;
+      return extra.egressRefusal
+        ? { ok: false as const, reason: extra.egressRefusal }
+        : {
+            ok: true as const,
+            egress: { country: "EG", captured_at: FIXED.toISOString(), method: "trace" },
+          };
+    },
+    now: () => FIXED,
     validate: async () => {
       validatorCalls += 1;
       return extra.validatorCode ?? 0;
     },
     out: (l) => lines.push(l),
   });
-  return done.then((code) => ({ code, lines, http, validatorCalls: () => validatorCalls }));
+  return done.then((code) => ({
+    code,
+    lines,
+    http,
+    validatorCalls: () => validatorCalls,
+    egressChecks: () => egressChecks,
+  }));
 }
 
 const parcelOf = (c: Catalog) => must(c.parcel, "parcel");
 const strip = (c: Catalog) => {
   const { certification_date: _d, certification_date_measurement: _m, ...rest } = parcelOf(c);
-  return { ...c, parcel: rest };
+  const { amendments: _a, ...cat } = c;
+  return { ...cat, parcel: rest };
 };
 
 describe("refreshTcadLanding", () => {
@@ -190,5 +208,30 @@ describe("refreshTcadLanding", () => {
       { validatorCode: 1 },
     );
     expect(code).toBe(1);
+  });
+
+  it("OR-B1: refuses before any request when the egress check fails; nothing written", async () => {
+    const f = fixture();
+    const before = readFileSync(f.catalogPath, "utf8");
+    const r = await run(
+      f,
+      { [TCAD_PUBLIC_INFO_URL]: () => text(PAGE_WITH_DATE) },
+      { egressRefusal: "egress country is GB, but the run recorded EG; nothing was sent" },
+    );
+    expect(r.code).toBe(2);
+    expect(r.http.calls).toHaveLength(0);
+    expect(readFileSync(f.catalogPath, "utf8")).toBe(before);
+    expect(r.lines.join("\n")).toMatch(/refused: egress country is GB/);
+  });
+
+  it("OR-M5: records an amendment with the egress country; --html makes no egress check", async () => {
+    const f = fixture();
+    const r = await run(f, { [TCAD_PUBLIC_INFO_URL]: () => text(PAGE_WITH_DATE) });
+    expect(r.code).toBe(0);
+    const amendment = must(readCatalog(f.catalogPath).amendments?.at(-1));
+    expect(amendment.command).toBe("refresh-tcad-landing");
+    expect(amendment.egress_country).toBe("EG");
+    expect(amendment.fields).toContain("parcel.certification_date_measurement");
+    expect(r.egressChecks()).toBe(1);
   });
 });

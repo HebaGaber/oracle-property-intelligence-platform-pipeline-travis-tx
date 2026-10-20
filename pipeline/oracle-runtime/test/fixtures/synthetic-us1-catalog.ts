@@ -102,6 +102,18 @@ export function syntheticUs1Catalog(): Catalog {
             captured_at: AT,
             method: "Austin-issued (jurisdiction group-by): SYNTHETIC FULL PURPOSE=5",
           },
+          austin_issued_full_purpose: {
+            value: 5,
+            source_url: `${U}/g`,
+            captured_at: AT,
+            method: "Austin-issued inside the city limits (full purpose): SYNTHETIC FULL PURPOSE=5",
+          },
+          austin_issued_etj: {
+            value: 0,
+            source_url: `${U}/g`,
+            captured_at: AT,
+            method: "Austin-issued in the ETJ: no SYNTHETIC ETJ group, so 0",
+          },
         },
         {
           jurisdiction: "Synthetic County unincorporated",

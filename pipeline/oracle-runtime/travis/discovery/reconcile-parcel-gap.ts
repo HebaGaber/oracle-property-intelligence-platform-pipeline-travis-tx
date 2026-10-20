@@ -8,7 +8,8 @@
 // - gap_reconciliation: each explained component, explained, residual, residual % of roll;
 // - separately_assessed_without_geometry: "acknowledged", only when the measured condo
 //   units without geometry are more than zero (otherwise the field is left as it was);
-// - gap_reason and discrepancy_explanation, rewritten with the numbers.
+// - gap_reason and discrepancy_explanation, rewritten with the numbers;
+// and records the change in `amendments[]` (OR-M5).
 // The raw gap_pct, the roll count (canonical denominator), the GIS count and every other
 // catalog value stay byte-identical. GIS is never substituted for the roll.
 //
@@ -31,7 +32,7 @@ import {
 } from "./parcel-gap.js";
 import { scanExport, type ExportScan } from "./probes/tcad.js";
 import { main as runValidatorMain } from "./run-validator.js";
-import { DEFAULT_CATALOG_PATH, readCatalog, writeCatalog } from "./write-catalog.js";
+import { amendCatalog, DEFAULT_CATALOG_PATH, readCatalog } from "./write-catalog.js";
 
 export interface ReconcileOptions {
   repoRoot?: string;
@@ -40,6 +41,8 @@ export interface ReconcileOptions {
   validate?: () => Promise<number>;
   scan?: (path: string) => Promise<ExportScan>;
   out?: (line: string) => void;
+  /** Amendment time (tests). */
+  now?: () => Date;
 }
 
 const COMMAND = "reconcile-parcel-gap";
@@ -101,7 +104,22 @@ export async function reconcileParcelGap(options: ReconcileOptions = {}): Promis
       account_breakdown: accountBreakdownBlock(breakdown, receipt, scan.zip_entry),
       gap_reconciliation: reconciliation,
     };
-    writeCatalog({ ...catalog, parcel }, catalogPath);
+    amendCatalog(
+      { ...catalog, parcel },
+      {
+        command: COMMAND,
+        fields: [
+          "parcel.account_breakdown",
+          "parcel.gap_reconciliation",
+          "parcel.gap_reason",
+          "parcel.discrepancy_explanation",
+          ...(condos > 0 ? ["parcel.separately_assessed_without_geometry"] : []),
+        ],
+        ref: `${receipt.file_path} (export SHA-256 ${receipt.sha256})`,
+      },
+      catalogPath,
+      (options.now ?? (() => new Date()))(),
+    );
 
     say(
       `${COMMAND}: ${breakdown.records} records; by propType ${breakdown.by_prop_type.map((r) => `${r.prop_type} ${r.count}`).join(", ")}; inactive flagged ${breakdown.inactive_flagged}`,

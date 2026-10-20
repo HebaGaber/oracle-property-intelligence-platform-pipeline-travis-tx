@@ -17,6 +17,10 @@ permissions:
 
 jobs:
   probe:
+    # Disabled for good (OR-m3, DEC-A-01-source-access D-2): the one approved request was
+    # made in run 39387019700. The lasting record is docs/evidence/A-01-us-gis-runner.md
+    # (the run's artifact expires after 30 days). record-gis-runner still reads env below.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

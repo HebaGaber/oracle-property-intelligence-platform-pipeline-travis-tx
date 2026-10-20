@@ -17,10 +17,18 @@
 // readiness validator. The roll stays the denominator; GIS is never substituted for it, and
 // the gap is stated as measured, not explained.
 //
+// CR-5: a gap_reconciliation recorded for the SAME GIS count is kept and the gap texts are
+// rebuilt from it; one recorded for a different GIS count is stale and is dropped (the gap
+// texts then say to rerun reconcile-parcel-gap). account_breakdown and
+// separately_assessed_without_geometry come from the export alone (not from GIS), so they are
+// kept. CR-9: the gap uses computeGap (gap_pct rounds to 3 decimals, the one rule for every
+// writer) and the files are written with the shared atomic writer. OR-M5: the change is
+// recorded in `amendments[]`.
+//
 // Exit codes: 0 validator PASS, 1 validator BLOCKED (passed through), 2 refused (nothing written).
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
@@ -35,13 +43,15 @@ import {
   type Measurement,
   type Source,
 } from "./catalog.schema.js";
-import { gisCountUrl } from "./probes/arcgis.js";
+import { discrepancyExplanationText, gapReasonText } from "./parcel-gap.js";
+import { computeGap, gisCountUrl } from "./probes/arcgis.js";
 import { main as runValidatorMain } from "./run-validator.js";
 import {
+  amendCatalog,
   DEFAULT_CATALOG_PATH,
   emitCatalogYaml,
   readCatalog,
-  writeCatalog,
+  writeFileAtomic,
 } from "./write-catalog.js";
 
 export const WORKFLOW_REL = ".github/workflows/a01-us-gis-probe.yml";
@@ -56,6 +66,8 @@ const METHOD = "returnCountOnly";
 const ARTIFACT_DIR = /^pipeline\/data\/raw\/gis\/us-runner-(\d+)$/;
 const RUN_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/(\d+)$/;
 const NEXT_STEP = "account-type breakdown of the certified export is the next step";
+const RERUN =
+  "the GIS count changed, so the earlier reconciliation was dropped; rerun reconcile-parcel-gap";
 
 /** The workflow's env, the only place the runner's URL and User-Agent are defined. */
 const WorkflowSchema = z.looseObject({
@@ -93,6 +105,8 @@ export interface RecordGisRunnerOptions {
   catalogPath?: string;
   validate?: () => Promise<number>;
   out?: (line: string) => void;
+  /** Amendment time (tests). */
+  now?: () => Date;
 }
 
 class Refusal extends Error {}
@@ -258,9 +272,14 @@ function operatorEvidence(root: string, rel: string): Source["blocked_evidence"]
   return evidence.data;
 }
 
-/** |roll - GIS| / roll in percent, two decimals (the roll is always the denominator). */
+/** |roll - GIS| / roll in percent via computeGap (3 decimals; the roll is the denominator). */
 export function gapPct(roll: number, gis: number): number {
-  return Math.round((Math.abs(roll - gis) / roll) * 100 * 100) / 100;
+  const gap = computeGap(
+    { value: roll, source_url: "https://example.invalid/", captured_at: "1970-01-01T00:00:00Z" },
+    { value: gis, source_url: "https://example.invalid/", captured_at: "1970-01-01T00:00:00Z" },
+  ).gap_pct;
+  if (gap === "unknown") throw new Refusal("the roll count is 0; a gap percentage is undefined");
+  return gap;
 }
 
 function thousands(n: number): string {
@@ -337,7 +356,7 @@ export function applyRunnerMeasurement(
   catalog: Catalog,
   a: RunnerArtifact,
   blockedEvidence: Source["blocked_evidence"],
-): { catalog: Catalog; measurement: Measurement; gap: number } {
+): { catalog: Catalog; measurement: Measurement; gap: number; dropped: boolean } {
   const current = catalog.parcel;
   if (!current) throw new Refusal("catalog has no parcel block; run discovery first");
   const roll = current.assessed_parcel_count;
@@ -366,7 +385,9 @@ export function applyRunnerMeasurement(
     body_sha256: a.body_sha256,
     egress_country: "US",
   };
-  const gap = gapPct(roll, a.count);
+  const computed = computeGap(current.assessed_parcel_count_measurement, measurement).gap_pct;
+  if (computed === "unknown") throw new Refusal("the gap against the roll is undefined");
+  const gap = computed;
   const diff = a.count - roll;
   const relation = diff < 0 ? "below" : diff > 0 ? "above" : "equal to";
   const measured = `GIS ${a.count} features vs certified roll ${roll}${diff === 0 ? "" : ` (${Math.abs(diff)} ${diff < 0 ? "fewer" : "more"}, ${gap}% ${relation} the roll)`}, counted from a ${CAPTURED_VIA} at ${a.captured_at}`;
@@ -378,23 +399,43 @@ export function applyRunnerMeasurement(
     gis_feature_count: _gis,
     gis_feature_count_measurement: _gisMeasurement,
     gap_pct: _gap,
+    gap_reconciliation: previous,
     ...rest
   } = current;
+  // CR-5: a reconciliation stays only while it was made for this very GIS count.
+  const kept = previous !== undefined && previous.gap === roll - a.count ? previous : undefined;
+  const dropped = previous !== undefined && kept === undefined;
+  const pending = dropped ? RERUN : NEXT_STEP;
+  const receipt = current.export_receipt;
+  const texts =
+    kept !== undefined && receipt !== undefined
+      ? {
+          gap_reason: gapReasonText(roll, measurement, gap, kept, receipt),
+          discrepancy_explanation: discrepancyExplanationText(
+            roll,
+            measurement,
+            gap,
+            current.discrepancy_threshold_pct,
+            kept,
+            receipt,
+          ),
+        }
+      : {
+          gap_reason: `${measured}; gap not yet explained (${pending})`,
+          discrepancy_explanation: `${measured}${material ? `; above the ${current.discrepancy_threshold_pct}% threshold, so GIS-only seeding is blocked` : ""}; gap not yet explained (${pending}); the certified roll stays the canonical denominator and GIS is never substituted`,
+        };
   const parcel: Parcel = {
     ...rest,
     gis_feature_count: a.count,
     gis_feature_count_measurement: measurement,
     gap_pct: gap,
-    ...(diff === 0
-      ? {}
-      : {
-          gap_reason: `${measured}; gap not yet explained (${NEXT_STEP})`,
-          discrepancy_explanation: `${measured}${material ? `; above the ${current.discrepancy_threshold_pct}% threshold, so GIS-only seeding is blocked` : ""}; gap not yet explained (${NEXT_STEP}); the certified roll stays the canonical denominator and GIS is never substituted`,
-        }),
+    ...(diff === 0 ? {} : texts),
+    ...(kept === undefined ? {} : { gap_reconciliation: kept }),
   };
 
+  const { blocked_evidence: _blocked, ...rowRest } = row;
   const source: Source = {
-    ...row,
+    ...rowRest,
     status: "available",
     denominator: measurement,
     captured_at: a.captured_at,
@@ -403,7 +444,8 @@ export function applyRunnerMeasurement(
     decision: "ingest",
     decision_reason:
       "count-only probe in A-01; GIS is not the population; coordinates are paged at 2,000 features per request in A-05 through the kit arcgis-feature-service adapter, and that paging must run from a US runner (the operator egress never connects)",
-    ...(blockedEvidence ? { blocked_evidence: blockedEvidence } : {}),
+    // Available now: the operator-side stop is kept as operator_blocked_evidence (OR-M5).
+    ...(blockedEvidence ? { operator_blocked_evidence: blockedEvidence } : {}),
   };
   const next: Catalog = {
     ...catalog,
@@ -411,14 +453,7 @@ export function applyRunnerMeasurement(
     sources: catalog.sources.map((s) => (s.key === "tcad_gis" ? source : s)),
   };
   emitCatalogYaml(next); // throws before any write if the catalog would not validate or emit
-  return { catalog: next, measurement, gap };
-}
-
-function writeAtomic(path: string, text: string): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp-${process.pid}`;
-  writeFileSync(tmp, text, "utf8");
-  renameSync(tmp, path);
+  return { catalog: next, measurement, gap, dropped };
 }
 
 export async function recordGisRunner(options: RecordGisRunnerOptions): Promise<number> {
@@ -439,8 +474,30 @@ export async function recordGisRunner(options: RecordGisRunnerOptions): Promise<
     const catalog = readCatalog(catalogPath);
     const evidence = operatorEvidence(root, OPERATOR_EVIDENCE_REL);
     const applied = applyRunnerMeasurement(catalog, artifact, evidence);
-    writeAtomic(join(root, EVIDENCE_REL), renderRunnerEvidence(artifact, applied.measurement));
-    writeCatalog(applied.catalog, catalogPath);
+    writeFileAtomic(join(root, EVIDENCE_REL), renderRunnerEvidence(artifact, applied.measurement));
+    amendCatalog(
+      applied.catalog,
+      {
+        command: "record-gis-runner",
+        fields: [
+          "parcel.gis_feature_count",
+          "parcel.gis_feature_count_measurement",
+          "parcel.gap_pct",
+          "parcel.gap_reason",
+          "parcel.discrepancy_explanation",
+          ...(applied.dropped ? ["parcel.gap_reconciliation (dropped: stale)"] : []),
+          "sources[tcad_gis]",
+        ],
+        ref: `${artifact.run_url} (artifact ${artifact.artifact_rel}, body SHA-256 ${artifact.body_sha256})`,
+        egress_country: "US",
+        note: "the request ran on the US GitHub Actions runner, not on the operator machine",
+      },
+      catalogPath,
+      (options.now ?? (() => new Date()))(),
+    );
+    if (applied.dropped) {
+      say(`record-gis-runner: note: ${RERUN}`);
+    }
     say(
       `record-gis-runner: parcel.gis_feature_count ${artifact.count} (roll ${String(catalog.parcel?.assessed_parcel_count)}), gap_pct ${applied.gap}; tcad_gis status available; evidence ${EVIDENCE_REL}`,
     );

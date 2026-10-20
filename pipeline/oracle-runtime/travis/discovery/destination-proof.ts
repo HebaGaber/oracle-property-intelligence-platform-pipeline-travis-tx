@@ -7,8 +7,13 @@
 // - SQL side: psql runs *inside that container* (local socket, no host, port, URL or
 //   password) and the database itself reports `pg_control_system()` system identifier,
 //   `current_database()` and its server version.
+// - Config side (OR-m4): the connection the A-04 loader will use, the configured
+//   DATABASE_URL, reads `system_identifier` too, and it must equal the SQL side's. The host
+//   (pipeline/local-stack) supplies this reader; the URL is never printed or recorded.
 // Only these names and digests are recorded. Every value is checked against a strict
 // shape, so arbitrary command output (for example a connection URL) is never copied.
+// `captured_at` is the time of this proof: A-04 runs the proof again, and so refreshes
+// `destination.captured_at`, before its first write.
 // Any failure gives `proven: false` with a reason: the validator then blocks the
 // destination gate, which is the fail-closed outcome.
 import { fileURLToPath } from "node:url";
@@ -33,6 +38,11 @@ export interface DestinationProofOptions {
   database?: string;
   dbUser?: string;
   now?: () => Date;
+  /**
+   * Reads `system_identifier` through the configured DATABASE_URL (the A-04 loader's
+   * connection). Required: without it the destination is not proven.
+   */
+  configured?: () => Promise<string>;
 }
 
 const CONTAINER_ID = /^[0-9a-f]{64}$/;
@@ -110,7 +120,7 @@ async function sqlSide(
   containerId: string,
   database: string,
   user: string,
-): Promise<string> {
+): Promise<{ systemId: string; identity: string }> {
   const side = "sql-side";
   const out = await call(sql, side, "docker", [
     "exec",
@@ -134,7 +144,30 @@ async function sqlSide(
   if (!db || !DB_NAME.test(db)) throw new ProofError(`${side}: unexpected database name`);
   if (db !== database) throw new ProofError(`${side}: connected database differs from expected`);
   if (!VERSION.test(version)) throw new ProofError(`${side}: unexpected server version`);
-  return `sql-side: pg_control_system system_identifier ${systemId}, database ${db}, server version ${version}`;
+  return {
+    systemId,
+    identity: `sql-side: pg_control_system system_identifier ${systemId}, database ${db}, server version ${version}`,
+  };
+}
+
+/** The configured connection must report the same system identifier as the SQL side. */
+async function configSide(
+  configured: (() => Promise<string>) | undefined,
+  expected: string,
+): Promise<string> {
+  const side = "config-side";
+  if (!configured) throw new ProofError(`${side}: the configured connection was not checked`);
+  let id: string;
+  try {
+    id = (await configured()).trim();
+  } catch {
+    throw new ProofError(`${side}: the configured connection could not be read`);
+  }
+  if (!SYSTEM_ID.test(id)) throw new ProofError(`${side}: no system identifier`);
+  if (id !== expected) {
+    throw new ProofError(`${side}: the configured connection reaches a different database`);
+  }
+  return `${side}: the configured loader connection (environment, not recorded) reports system_identifier ${id}, equal to the sql-side identity`;
 }
 
 /** Proves the internal destination; never throws, never records a URL or password. */
@@ -150,10 +183,11 @@ export async function proveDestination(
   try {
     const a = await dockerSide(docker, options.composeFile ?? DEFAULT_COMPOSE_FILE, service);
     const b = await sqlSide(sql, a.id, database, user);
+    const c = await configSide(options.configured, b.systemId);
     return {
       writes_in_scope: true,
       proven: true,
-      independent_identity_sources: [a.identity, b],
+      independent_identity_sources: [a.identity, b.identity, c],
       captured_at: capturedAt,
     };
   } catch (error) {

@@ -147,8 +147,9 @@ function run(
   f: Fixture,
   keys: string[],
   routes: Record<string, () => Response | Promise<Response>>,
-  extra: { dnsFails?: boolean } = {},
+  extra: { dnsFails?: boolean; egressRefusal?: string } = {},
 ) {
+  let egressChecks = 0;
   const http = fakeHttp(
     Object.entries(routes).map(([url, respond]): Route => ({
       match: (u) => u.href === url,
@@ -175,13 +176,29 @@ function run(
       if (extra.dnsFails) throw new Error("getaddrinfo ENOTFOUND");
     },
     now: () => FIXED,
+    egress: async () => {
+      egressChecks += 1;
+      return extra.egressRefusal
+        ? { ok: false as const, reason: extra.egressRefusal }
+        : {
+            ok: true as const,
+            egress: { country: "EG", captured_at: FIXED.toISOString(), method: "trace" },
+          };
+    },
     validate: async () => {
       validatorCalls += 1;
       return 1;
     },
     out: (l) => lines.push(l),
   });
-  return { done, http, lines, validatorCalls: () => validatorCalls, resolved };
+  return {
+    done,
+    http,
+    lines,
+    validatorCalls: () => validatorCalls,
+    resolved,
+    egressChecks: () => egressChecks,
+  };
 }
 
 const row = (cat: Catalog, key: string): Jurisdiction =>
@@ -191,8 +208,14 @@ const row = (cat: Catalog, key: string): Jurisdiction =>
   );
 
 /** The catalog text of one row (from its "- jurisdiction:" line to the next row). */
+/** The catalog text without the appended amendments[] (OR-M5), which every command extends. */
+function body(yaml: string): string {
+  const end = yaml.indexOf("\namendments:");
+  return end < 0 ? yaml : yaml.slice(0, end + 1);
+}
+
 function rowText(yaml: string, key: string): string {
-  const parts = yaml.split(/\n(?= {4}- jurisdiction: )/);
+  const parts = body(yaml).split(/\n(?= {4}- jurisdiction: )/);
   return must(
     parts.find((p) => p.includes(`key: "${key}"`)),
     key,
@@ -303,7 +326,7 @@ describe("reprobe-jurisdictions: one request per row, rebuilt by the workflow's 
     expect(text1.split("\n    - jurisdiction: ")[0]).toBe(
       before.split("\n    - jurisdiction: ")[0],
     );
-    const tail = (t: string) => t.slice(t.indexOf("\ndestination:"));
+    const tail = (t: string) => body(t).slice(t.indexOf("\ndestination:"));
     expect(tail(text1)).toBe(tail(before));
   });
 
@@ -337,18 +360,32 @@ describe("reprobe-jurisdictions: one request per row, rebuilt by the workflow's 
     // Austin-issued permits located here (synthetic group-by) are stated in the explanation
     expect(moved.austin_issued_located_here?.value).toBe(5);
     expect(moved.blocked_explanation).toMatch(
-      /Synthetic's own permits are not captured, but 5 Austin-issued permits located here are captured through Austin dataset 3syk-w9eu/,
+      /Synthetic's own permits are not captured, but Austin-issued permits located here are captured through Austin dataset 3syk-w9eu: 5 permits inside the city limits \(full purpose\)/,
     );
+    // OR-m2: the re-probe is recorded on the row, with the evidence it supersedes
+    expect(moved.reprobe_count).toBe(1);
+    expect(moved.reprobed_at).toBe(FIXED.toISOString());
+    expect(moved.reprobe_url_changed).toBe(true);
+    expect(moved.superseded_evidence).toEqual([
+      {
+        evidence_path: `${EVIDENCE_DIR}/jurisdiction-moved_city-20260101T000000Z.md`,
+        superseded_by: be.evidence_path,
+      },
+    ]);
+    const amendment = must(readCatalog(f.catalogPath).amendments?.at(-1));
+    expect(amendment).toMatchObject({ command: "reprobe-jurisdictions", egress_country: "EG" });
+    expect(readFileSync(join(f.root, be.evidence_path), "utf8")).toMatch(/egress_country: EG/);
 
     const text1 = readFileSync(f.catalogPath, "utf8");
     for (const key of ["synthetic_city", "unincorporated", "open_city", "walled_city"]) {
       expect(rowText(text1, key)).toBe(rowText(before, key));
     }
 
-    // a second re-probe of the same row is refused (only once)
+    // a second re-probe of the same row is refused (only once), from reprobe_count
     const again = run(f, ["moved_city"], {});
     expect(await again.done).toBe(2);
     expect(again.http.calls).toHaveLength(0);
+    expect(again.lines.join("\n")).toMatch(/re-probed already \(reprobe_count 1/);
   });
 
   it("probes several rows one at a time", async () => {

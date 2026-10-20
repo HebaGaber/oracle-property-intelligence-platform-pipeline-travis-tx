@@ -4,6 +4,17 @@
 // recorded fields, that says (a) why no permit history is captured, (b) what was tried and
 // (c) what would unblock it, and that the request is not filed. Pure, no I/O; the class and
 // status rules (status-map.ts) are untouched.
+//
+// Review fixes (CR-A-01):
+// - OR-M2: a stop whose saved response names a web application firewall is a block,
+//   whatever its status (San Leanna's HTTP 406 names Mod Security); it is never called a
+//   content-negotiation refusal;
+// - OR-m5: a row whose only evidence is the Census place listing (no jurisdiction site
+//   answered) says so, never calls the Census file "the official page", and marks an
+//   unverified request channel;
+// - OR-m6: Austin-issued permits located here are split into full purpose (inside the city
+//   limits) and ETJ (outside them).
+import { wafSignal, type SavedResponse } from "../lib/source-client.js";
 import type { Jurisdiction } from "./catalog.schema.js";
 
 export const PO_DECISION = "PO decision 2026-10-20";
@@ -25,6 +36,47 @@ const AUSTIN_DATASET = "Austin dataset 3syk-w9eu";
 export interface ExplainOptions {
   /** The challenge marker recorded with the stop (receipt or evidence file), if any. */
   challengeSignal?: string | null;
+  /** The firewall that blocked the stop (`firewallBlock`), if the saved response names one. */
+  firewall?: string | null;
+}
+
+/**
+ * "the site's web application firewall (Mod Security)" when the saved stop response names a
+ * WAF (OR-M2), or null. The name is given only when the body or headers print it.
+ */
+export function firewallBlock(saved: SavedResponse | null): string | null {
+  if (saved === null || wafSignal(saved) === null) return null;
+  const text = `${saved.body} ${Object.values(saved.headers).join(" ")}`;
+  return /\bmod[_ ]?security\b/i.test(text)
+    ? "the site's web application firewall (Mod Security)"
+    : "the site's web application firewall";
+}
+
+/** The saved stop response of a receipt (its bounded excerpt), for `firewallBlock`. */
+export function savedStop(receipt: {
+  status: number | null;
+  stop_evidence?: { headers: Record<string, string>; excerpt_base64: string } | undefined;
+}): SavedResponse | null {
+  const ev = receipt.stop_evidence;
+  if (!ev) return null;
+  return {
+    status: receipt.status,
+    headers: ev.headers,
+    body: Buffer.from(ev.excerpt_base64, "base64").toString("utf8"),
+  };
+}
+
+/** The Census place listing is evidence that a place exists, not about its permits (OR-m5). */
+export function isCensusListingOnly(row: Pick<Jurisdiction, "evidence_url">): boolean {
+  try {
+    return /(?:^|\.)census\.gov$/i.test(new URL(row.evidence_url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function siteWord(row: Jurisdiction): string {
+  return /^village\b/i.test(row.records_request?.recipient_office ?? "") ? "village" : "city";
 }
 
 function day(iso: string): string {
@@ -34,6 +86,9 @@ function day(iso: string): string {
 /** A plain-language name for a recorded challenge marker (never the raw quoted marker). */
 export function describeChallenge(signal: string | null | undefined): string | null {
   if (!signal) return null;
+  if (/web application firewall|mod[_ ]?security/i.test(signal)) {
+    return "the site's web application firewall";
+  }
   if (/cloudflare|cf-mitigated/i.test(signal)) return "a Cloudflare challenge";
   if (/access denied/i.test(signal)) return "an Access Denied page";
   return "a bot challenge";
@@ -41,10 +96,8 @@ export function describeChallenge(signal: string | null | undefined): string | n
 
 function failureText(be: NonNullable<Jurisdiction["blocked_evidence"]>, short = false): string {
   if (be.timeout_ms !== undefined) return `no answer within ${be.timeout_ms} ms`;
-  if (be.http_status === undefined) return "network error, no HTTP response";
-  if (be.http_status === 406 && !short) {
-    return "HTTP 406, a content-negotiation refusal of the requested text/html, not a block";
-  }
+  if (be.http_status === undefined)
+    return short ? "network error" : "network error, no HTTP response";
   return `HTTP ${be.http_status}`;
 }
 
@@ -52,6 +105,9 @@ function whySentence(row: Jurisdiction, opts: ExplainOptions): string {
   const be = row.blocked_evidence;
   if (row.status === "blocked" && be) {
     const at = day(be.captured_at);
+    if (opts.firewall) {
+      return `No permit history was captured: blocked by ${opts.firewall}, ${failureText(be)}, on ${at}, and it is not requested again (no retry, no identity change)`;
+    }
     if (be.outcome === "blocked") {
       if (be.timeout_ms !== undefined) {
         return `No permit history was captured: the official page did not answer within ${be.timeout_ms} ms on ${at}, and it is not requested again (no retry, no identity change)`;
@@ -65,6 +121,9 @@ function whySentence(row: Jurisdiction, opts: ExplainOptions): string {
     case "manual-only":
       return `No permit history can be captured: permits are filed in an account-based application portal that shows no public permit history${row.vendor ? ` (portal: ${row.vendor})` : ""}`;
     case "custodian-only":
+      if (isCensusListingOnly(row)) {
+        return `No permit history can be captured: the ${siteWord(row)} site did not answer; permit system unknown`;
+      }
       return "No permit history can be captured: permit files are kept on paper or in the office and no online permit system was found";
     case "delegated":
       return `No permit history of its own: permits here are issued by ${row.issued_by ?? "another body"}`;
@@ -75,10 +134,25 @@ function whySentence(row: Jurisdiction, opts: ExplainOptions): string {
   }
 }
 
+function permitCount(n: number): string {
+  return n === 1 ? "1 permit" : `${n} permits`;
+}
+
 function austinClause(row: Jurisdiction): string {
   const here = row.austin_issued_located_here?.value;
   if (row.key === "austin" || typeof here !== "number" || here <= 0) return "";
   const owner = row.jurisdiction.endsWith("s") ? `${row.jurisdiction}'` : `${row.jurisdiction}'s`;
+  const fp = row.austin_issued_full_purpose?.value;
+  const etj = row.austin_issued_etj?.value;
+  if (typeof fp === "number" && typeof etj === "number") {
+    const parts: string[] = [];
+    if (fp > 0) parts.push(`${permitCount(fp)} inside the city limits (full purpose)`);
+    if (etj > 0) parts.push(`${permitCount(etj)} in its ETJ (outside the city limits)`);
+    if (fp === 0) parts.push("none inside the city limits (full purpose)");
+    const other = here - fp - etj;
+    if (other > 0) parts.push(`${permitCount(other)} under another Austin label`);
+    return `; ${owner} own permits are not captured, but Austin-issued permits located here are captured through ${AUSTIN_DATASET}: ${parts.join(", ")}`;
+  }
   const permits =
     here === 1
       ? "1 Austin-issued permit located here is"
@@ -95,6 +169,9 @@ function triedSentence(row: Jurisdiction): string {
     row.evidence_http_status === undefined
       ? "with no recorded HTTP status"
       : `answered HTTP ${row.evidence_http_status}`;
+  if (isCensusListingOnly(row)) {
+    return `Tried: no ${siteWord(row)} site answered on ${day(row.evidence_captured_at)} (see notes); the only evidence is the Census place listing ${row.evidence_url}, which ${answer} and names the place but says nothing about its permits`;
+  }
   return `Tried: one identified request to the official page ${row.evidence_url} on ${day(row.evidence_captured_at)} ${answer}`;
 }
 
@@ -102,7 +179,9 @@ function unblockSentence(row: Jurisdiction): string {
   const rr = row.records_request;
   if (rr) {
     const via = rr.request_portal_url ?? rr.request_email ?? "no recorded channel";
-    return `To unblock: a records request to ${rr.recipient_office} via ${via}; ${NOT_FILED}`;
+    const unverified =
+      rr.channel_verified === false ? " (channel unverified: it did not answer)" : "";
+    return `To unblock: a records request to ${rr.recipient_office} via ${via}${unverified}; ${NOT_FILED}`;
   }
   if (row.status === "delegated") {
     return `To unblock: nothing in this jurisdiction; the issuing body's records cover it (no request ${NOT_FILED})`;

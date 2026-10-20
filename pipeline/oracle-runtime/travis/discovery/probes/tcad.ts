@@ -10,8 +10,9 @@
 //    accounts, list fields, print the property key exactly as it appears, and note whether
 //    deed or sale dates are present. A ZIP download is read entry by entry, never unpacked.
 // Supplemental exports are listed only, never downloaded.
-import { createReadStream, mkdirSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { createHash } from "node:crypto";
+import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 import { pipeline, type Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { parser } from "stream-json";
@@ -20,7 +21,7 @@ import { streamArray } from "stream-json/streamers/stream-array.js";
 import { z } from "zod";
 import type { CaptureReceipt } from "../../lib/source-client.js";
 import { isZip, listZipEntries, openZipEntry } from "../../lib/zip-entry.js";
-import type { Measurement } from "../catalog.schema.js";
+import type { ExportReceipt, Measurement } from "../catalog.schema.js";
 import { downloadRate, type DownloadRate } from "../measure.js";
 import {
   missingReason,
@@ -126,6 +127,11 @@ export interface TcadProbe {
   assessed_parcel_count: Measurement;
   roll_year: number;
   certification_date: string | null;
+  /**
+   * OR-m8: captured_at of the prior download whose file was reused (no export request was
+   * sent); absent when the export was downloaded by this probe.
+   */
+  export_reused_from?: string;
 }
 
 export interface TcadProbeDeps extends ProbeDeps {
@@ -134,6 +140,11 @@ export interface TcadProbeDeps extends ProbeDeps {
   limits?: { inactivityMs: number; totalMs: number };
   /** Explicit JSON record path, once confirmed from the Export Layouts (T048). */
   recordPath?: string;
+  /**
+   * OR-m8: the previous export download; when `canReuseExport` holds, its file is scanned
+   * again and no export request is sent.
+   */
+  priorExport?: PriorExport;
 }
 
 // ---------- landing page ----------
@@ -216,10 +227,94 @@ export function findTcadLinks(html: string, baseUrl: string): TcadLinks {
   };
 }
 
-/** Where the export lands: pipeline/data/raw/tcad/<file name from the URL>. */
+/**
+ * Where a TCAD download lands: pipeline/data/raw/tcad/<stem>-<8 hex of SHA-256(URL)><ext>
+ * (CR-8): the URL basename alone is not unique (two links named `export.zip` would
+ * overwrite each other), so a short digest of the whole URL is added. Files downloaded
+ * before this rule keep their names: an existing file is always located through its
+ * receipt's `file_path` (see `priorExportFrom`), never by recomputing the name.
+ */
 export function tcadExportPath(url: string, rawDir: string = TCAD_RAW_DIR): string {
-  const name = basename(new URL(url).pathname).replace(/[^A-Za-z0-9._-]/g, "_");
-  return join(rawDir, name.length > 0 && name !== "." ? name : "tcad-certified-special-export");
+  const raw = basename(new URL(url).pathname).replace(/[^A-Za-z0-9._-]/g, "_");
+  const name = raw.length > 0 && raw !== "." ? raw : "tcad-certified-special-export";
+  const tag = createHash("sha256").update(url).digest("hex").slice(0, 8);
+  const ext = extname(name);
+  const stem = ext.length > 0 && ext.length < name.length ? name.slice(0, -ext.length) : name;
+  return join(rawDir, `${stem}-${tag}${ext.length < name.length ? ext : ""}`);
+}
+
+// ---------- OR-m8: reuse of an export already downloaded ----------
+
+/**
+ * A previous export download (the catalog's `parcel.export_receipt`) whose file may be
+ * reused instead of a new GET (OR-m8: AC-3 says the export is downloaded once).
+ */
+export interface PriorExport {
+  /** The previous receipt (outcome ok or throttled-then-ok). */
+  receipt: CaptureReceipt;
+  /** Absolute path of the file the receipt names. */
+  path: string;
+  /** Wall-clock seconds of that download (for the download rate). */
+  seconds: number;
+  /** The ETag of that download, when one was recorded (the 2026 catalog records none). */
+  etag?: string;
+}
+
+/**
+ * Builds a PriorExport from the catalog's export receipt. `repoRoot` resolves its
+ * repository-relative `file_path`; the file keeps the name it was saved under.
+ */
+export function priorExportFrom(receipt: ExportReceipt, repoRoot: string): PriorExport {
+  return {
+    receipt: {
+      url: receipt.url,
+      method: receipt.method,
+      status: receipt.status,
+      bytes: receipt.bytes,
+      sha256: receipt.sha256,
+      captured_at: receipt.captured_at,
+      user_agent: receipt.user_agent,
+      attempts: receipt.attempts,
+      outcome: receipt.outcome,
+      geo_signal: "none",
+      app_token_used: false,
+      timeout_ms: null,
+      blocked_reason: null,
+      rate_limits_observed: null,
+      resumes: receipt.resumes ?? 0,
+    },
+    path: join(repoRoot, receipt.file_path),
+    seconds: receipt.seconds,
+  };
+}
+
+async function fileSha256(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+  return hash.digest("hex");
+}
+
+/**
+ * True when the prior download can stand in for a new one with no request: the landing
+ * page still links the same export URL (a new export gets a new file name on TCAD), the
+ * prior outcome was a success, and the local file has the receipt's size and SHA-256. An
+ * ETag is compared only when both sides know one; the probe sends no HEAD to learn it.
+ */
+export async function canReuseExport(
+  prior: PriorExport,
+  exportUrl: string,
+  currentEtag?: string,
+): Promise<boolean> {
+  const r = prior.receipt;
+  if (r.url !== exportUrl || (r.outcome !== "ok" && r.outcome !== "throttled-then-ok")) {
+    return false;
+  }
+  if (prior.etag !== undefined && currentEtag !== undefined && prior.etag !== currentEtag) {
+    return false;
+  }
+  if (!existsSync(prior.path)) return false;
+  if (statSync(prior.path).size !== r.bytes) return false;
+  return (await fileSha256(prior.path)) === r.sha256;
 }
 
 // ---------- streaming scan ----------
@@ -632,7 +727,20 @@ export async function probeTcad(deps: TcadProbeDeps): Promise<TcadProbe> {
     base.layouts_path = layoutsPath;
   }
 
-  // 3. the one download
+  // 3. the one download (OR-m8: or none, when the prior download's file still matches)
+  const prior = deps.priorExport;
+  if (prior !== undefined && (await canReuseExport(prior, exportUrl))) {
+    base.export_receipt = prior.receipt;
+    base.export_path = prior.path;
+    base.export_reused_from = prior.receipt.captured_at;
+    base.download_rate = downloadRate({
+      bytes: prior.receipt.bytes,
+      seconds: Math.max(prior.seconds, 0.001),
+      source_url: exportUrl,
+      captured_at: prior.receipt.captured_at,
+    });
+    return scanned(base, prior.path, exportUrl, prior.receipt.captured_at, deps.recordPath);
+  }
   const dl = await deps.client.download({
     url: exportUrl,
     destPath: tcadExportPath(exportUrl, rawDir),
@@ -651,18 +759,26 @@ export async function probeTcad(deps: TcadProbeDeps): Promise<TcadProbe> {
   });
 
   // 4. streaming scan
+  return scanned(base, dl.path, exportUrl, dl.receipt.captured_at, deps.recordPath);
+}
+
+/** Step 4: the streaming scan of the export file; a scan failure leaves the count null. */
+async function scanned(
+  base: TcadProbe,
+  path: string,
+  exportUrl: string,
+  capturedAt: string,
+  recordPath: string | undefined,
+): Promise<TcadProbe> {
   try {
-    const scan = await scanExport(
-      dl.path,
-      deps.recordPath === undefined ? {} : { recordPath: deps.recordPath },
-    );
+    const scan = await scanExport(path, recordPath === undefined ? {} : { recordPath });
     return {
       ...base,
       scan,
       assessed_parcel_count: {
         value: scan.count,
         source_url: exportUrl,
-        captured_at: dl.receipt.captured_at,
+        captured_at: capturedAt,
         method: COUNT_METHOD,
         ...(scan.record_path === "" ? {} : { query: `record path: ${scan.record_path}` }),
       },
@@ -673,7 +789,7 @@ export async function probeTcad(deps: TcadProbeDeps): Promise<TcadProbe> {
       ...base,
       assessed_parcel_count: nullMeasurement(
         exportUrl,
-        dl.receipt.captured_at,
+        capturedAt,
         `export downloaded but not countable: ${message}`,
         COUNT_METHOD,
       ),

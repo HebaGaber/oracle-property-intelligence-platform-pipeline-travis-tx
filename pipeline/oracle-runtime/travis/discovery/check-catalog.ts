@@ -1,5 +1,8 @@
-// T026 + T033 + T047: the A-01 checker, rules 1-9 (contracts/catalog.md). The kit validator
-// ignores these A-01 keys, so this checker enforces them.
+// T026 + T033 + T047: the A-01 checker, rules 1-11 (contracts/catalog.md). The kit validator
+// ignores these A-01 keys, so this checker enforces them. Review additions (CR-A-01):
+// rule 7 also checks the full-purpose / ETJ split (OR-m6); rule 10 binds each approved
+// exception to the values it was approved for (OR-M3); rule 11 keeps status and stop
+// evidence consistent, so an available source is never presented as blocked (OR-M5).
 //
 // Usage: check-catalog [path]   (default pipeline/docs/travis-sources.yaml)
 // Prints one line per failure, `FAIL rule <n>: <subject> <detail>`, and exits 1 on any
@@ -10,7 +13,7 @@ import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
 import { containsHomePath, redact } from "../lib/log.js";
-import { matchesJurisdiction } from "./austin-issued.js";
+import { isEtj, isFullPurpose, matchesJurisdiction } from "./austin-issued.js";
 import { DECISIONS, SOURCE_KEYS } from "./catalog.schema.js";
 import { MAX_PAGE_SIZE, MIN_PAGES, exceedsDecisionThreshold } from "./measure.js";
 import {
@@ -219,6 +222,88 @@ function checkAustinIssued(cat: Obj, austin: Obj | undefined, fail: Fail): void 
     } else if (here.value !== sum) {
       fail(7, id, `austin_issued_located_here ${String(here.value)} != Austin entries ${sum}`);
     }
+    const parts: Array<[string, (label: string) => boolean]> = [
+      ["austin_issued_full_purpose", isFullPurpose],
+      ["austin_issued_etj", isEtj],
+    ];
+    for (const [field, belongs] of parts) {
+      const part = r[field];
+      const partSum = matching
+        .filter((e) => typeof e.jurisdiction === "string" && belongs(e.jurisdiction))
+        .reduce((acc, e) => acc + (num(e.value) ? e.value : 0), 0);
+      if (!isObj(part)) {
+        fail(7, id, `${field} missing (Austin entries ${partSum})`);
+      } else if (part.value !== partSum) {
+        fail(7, id, `${field} ${String(part.value)} != Austin entries ${partSum}`);
+      }
+    }
+  }
+}
+
+/** Rule 10: an approved exception holds only for the values it was approved for (OR-M3). */
+function checkExceptions(cat: Obj, fail: Fail): void {
+  const list = Array.isArray(cat.approved_exceptions) ? cat.approved_exceptions : [];
+  const parcel = isObj(cat.parcel) ? cat.parcel : {};
+  list.forEach((raw, i) => {
+    const e: Obj = isObj(raw) ? raw : {};
+    const id = `approved_exceptions[${text(e.gate) ? e.gate : i}]`;
+    for (const field of ["gate", "reason", "approved_by", "approved_at", "coverage_effect"]) {
+      if (!text(e[field])) fail(10, id, `${field} missing`);
+    }
+    if (!(text(e.decision_ref) && /^docs\/decisions\/[^/]+\.md$/.test(e.decision_ref))) {
+      fail(10, id, "decision_ref missing (docs/decisions/<file>.md)");
+    }
+    if (e.gate !== "parcel") return;
+    const bound: Array<[string, string, number]> = [
+      ["approved_gis_count", "gis_feature_count", 0],
+      ["approved_assessed_count", "assessed_parcel_count", 0],
+      ["approved_gap_pct", "gap_pct", 0.005],
+    ];
+    for (const [approved, actual, tolerance] of bound) {
+      const a = e[approved];
+      const b = parcel[actual];
+      if (!num(a)) {
+        fail(10, id, `${approved} missing`);
+      } else if (!num(b) || Math.abs(a - b) > tolerance) {
+        fail(
+          10,
+          id,
+          `parcel.${actual} ${String(b)} differs from ${approved} ${a}; the exception no longer applies`,
+        );
+      }
+    }
+  });
+}
+
+/** Rule 11: blocked_evidence only on a blocked row, and every blocked row has it (OR-M5). */
+function checkStopConsistency(cat: Obj, fail: Fail): void {
+  const sources = Array.isArray(cat.sources) ? cat.sources.filter(isObj) : [];
+  for (const s of sources) {
+    const key = text(s.key) ? s.key : "(unnamed source)";
+    if (s.status === "available" && isObj(s.blocked_evidence)) {
+      fail(
+        11,
+        key,
+        "is available but carries blocked_evidence; an operator-side stop of an available source is operator_blocked_evidence",
+      );
+    }
+    if (s.status === "blocked" && !isObj(s.blocked_evidence)) {
+      fail(11, key, "is blocked without blocked_evidence");
+    }
+    if (s.status === "blocked" && isObj(s.operator_blocked_evidence)) {
+      fail(11, key, "is blocked; operator_blocked_evidence is only for an available source");
+    }
+  }
+  const permits = isObj(cat.permits) ? cat.permits : {};
+  const rows = Array.isArray(permits.jurisdictions) ? permits.jurisdictions.filter(isObj) : [];
+  for (const r of rows) {
+    if (r.status !== "blocked" && isObj(r.blocked_evidence)) {
+      fail(
+        11,
+        text(r.key) ? r.key : "(unnamed row)",
+        `is ${String(r.status)} but carries blocked_evidence`,
+      );
+    }
   }
 }
 
@@ -421,6 +506,10 @@ export function checkCatalog(raw: unknown, options: CheckOptions = {}): string[]
   // Rule 9: no connection URL, token value or absolute home path anywhere in the catalog.
   checkHygiene(raw, "", options.secrets ?? [], fail);
 
+  // Rules 10 and 11 (review additions).
+  checkExceptions(cat, fail);
+  checkStopConsistency(cat, fail);
+
   return lines;
 }
 
@@ -449,7 +538,7 @@ export function main(
   }
   const lines = checkCatalog(raw, { secrets });
   for (const line of lines) out(redact(line, secrets));
-  if (lines.length === 0) out(`PASS check-catalog rules 1-9: ${shown}`);
+  if (lines.length === 0) out(`PASS check-catalog rules 1-11: ${shown}`);
   return lines.length > 0 ? 1 : 0;
 }
 

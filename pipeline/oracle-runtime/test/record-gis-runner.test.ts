@@ -29,6 +29,32 @@ const BODY = '{"count":800}';
 const SYNTHETIC_COOKIE = "synthetic-session-value-never-copied";
 
 const tmpDirs: string[] = [];
+
+const RECONCILIATION = (gap: number) => ({
+  gap,
+  components: [{ component: "non_land_accounts", count: gap - 10, reason: "synthetic" }],
+  explained: gap - 10,
+  residual: 10,
+  residual_pct_of_roll: 1,
+  method: "count-level",
+  residual_note: "synthetic residual",
+});
+
+const RECEIPT = {
+  url: "https://example.test/export.zip",
+  method: "GET" as const,
+  status: 200,
+  bytes: 10,
+  sha256: "a".repeat(64),
+  captured_at: "2026-01-01T00:00:00Z",
+  user_agent: USER_AGENT,
+  attempts: 1,
+  outcome: "ok" as const,
+  file_path: "pipeline/data/raw/tcad/export.zip",
+  seconds: 1,
+  megabytes_per_minute: 1,
+  roll_year: 2026,
+};
 afterEach(() => {
   for (const d of tmpDirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
@@ -197,7 +223,8 @@ function untouched(c: Catalog) {
     discrepancy_explanation: _e,
     ...parcel
   } = must(c.parcel);
-  return { ...c, parcel, sources: c.sources.filter((s) => s.key !== "tcad_gis") };
+  const { amendments: _f, ...rest } = c;
+  return { ...rest, parcel, sources: c.sources.filter((s) => s.key !== "tcad_gis") };
 }
 
 describe("recordGisRunner", () => {
@@ -238,7 +265,9 @@ describe("recordGisRunner", () => {
     expect(row.anti_bot).toMatch(/requests: 1 from US runner/);
     expect(row.decision).toBe("ingest");
     expect(row.decision_reason).toMatch(/US runner/);
-    expect(must(row.blocked_evidence)).toMatchObject({
+    // OR-M5: an available row keeps its operator-side stop apart from blocked_evidence
+    expect(row.blocked_evidence).toBeUndefined();
+    expect(must(row.operator_blocked_evidence)).toMatchObject({
       timeout_ms: 60000,
       evidence_path: OPERATOR_EVIDENCE_REL,
       outcome: "blocked",
@@ -257,9 +286,10 @@ describe("recordGisRunner", () => {
     expect(readFileSync(f.catalogPath, "utf8")).not.toContain(SYNTHETIC_COOKIE);
   });
 
-  it("rounds the gap to two decimals against the roll", () => {
+  it("CR-9: rounds the gap with computeGap (3 decimals) against the roll", () => {
     expect(gapPct(493246, 373683)).toBe(24.24);
     expect(gapPct(1000, 1000)).toBe(0);
+    expect(gapPct(3, 2)).toBe(33.333);
   });
 
   it("passes the validator's PASS through", async () => {
@@ -267,12 +297,63 @@ describe("recordGisRunner", () => {
     expect((await run(f, { validatorCode: 0 })).code).toBe(0);
   });
 
-  it("is idempotent: a second run on the same artifact gives the same catalog", async () => {
+  it("is idempotent: a second run on the same artifact gives the same catalog (plus one amendment)", async () => {
     const f = fixture();
     await run(f);
-    const once = readFileSync(f.catalogPath, "utf8");
+    const once = readCatalog(f.catalogPath);
     await run(f);
-    expect(readFileSync(f.catalogPath, "utf8")).toBe(once);
+    const twice = readCatalog(f.catalogPath);
+    const { amendments: a1, ...c1 } = once;
+    const { amendments: a2, ...c2 } = twice;
+    expect(c2).toEqual(c1);
+    expect(a1).toHaveLength(1);
+    expect(a2).toHaveLength(2);
+    expect(must(a2?.[1])).toMatchObject({ command: "record-gis-runner", egress_country: "US" });
+  });
+
+  it("CR-5: drops a gap_reconciliation made for a different GIS count and says to rerun reconcile-parcel-gap", async () => {
+    const f = fixture();
+    const cat = readCatalog(f.catalogPath);
+    const parcel = must(cat.parcel);
+    writeCatalog(
+      {
+        ...cat,
+        parcel: {
+          ...parcel,
+          separately_assessed_without_geometry: "acknowledged",
+          gap_reconciliation: RECONCILIATION(150),
+        },
+      },
+      f.catalogPath,
+    );
+    const { lines } = await run(f);
+    const p = must(readCatalog(f.catalogPath).parcel);
+    expect(p.gap_reconciliation).toBeUndefined();
+    expect(p.gap_reason).toMatch(/rerun reconcile-parcel-gap/);
+    // from the export alone, not from GIS: kept
+    expect(p.separately_assessed_without_geometry).toBe("acknowledged");
+    expect(lines.join("\n")).toMatch(/earlier reconciliation was dropped/);
+    expect(must(readCatalog(f.catalogPath).amendments?.at(-1)).fields).toContain(
+      "parcel.gap_reconciliation (dropped: stale)",
+    );
+  });
+
+  it("CR-5: keeps a gap_reconciliation made for this GIS count and rebuilds the gap texts from it", async () => {
+    const f = fixture();
+    const cat = readCatalog(f.catalogPath);
+    const parcel = must(cat.parcel);
+    writeCatalog(
+      {
+        ...cat,
+        parcel: { ...parcel, gap_reconciliation: RECONCILIATION(200), export_receipt: RECEIPT },
+      },
+      f.catalogPath,
+    );
+    await run(f);
+    const p = must(readCatalog(f.catalogPath).parcel);
+    expect(p.gap_reconciliation?.gap).toBe(200);
+    expect(p.gap_reason).toMatch(/reconciled by count from the certified export/);
+    expect(p.gap_reason).not.toMatch(/not yet explained/);
   });
 
   const refusals: Array<[string, Files, RegExp]> = [

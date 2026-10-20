@@ -387,7 +387,7 @@ export const TRAVIS_JURISDICTION_PROFILE: readonly JurisdictionProfileEntry[] = 
       request_portal_url: "https://sanleannatx.com/",
     },
     notes:
-      "board packets carry monthly zoning reports listing building permits; no online permit system found (the board packets are the only public trace). The HTTP 406 seen on 2026-10-19 is a content-negotiation refusal (the server would not answer the requested text/html for a PDF), not a block (noted 2026-10-20). unverified: request channel (homepage used; it answered HTTP 406 to the project user agent on 2026-10-19, not retried), earliest record date",
+      "board packets carry monthly zoning reports listing building permits; no online permit system found (the board packets are the only public trace). The HTTP 406 answers of 2026-10-19 and 2026-10-20 say the request was blocked by Mod Security: the site's web application firewall blocks the project user agent, so the site is not requested again (corrected in review on 2026-10-20: it was first read as a content-negotiation refusal). unverified: request channel (homepage used), earliest record date",
   },
   {
     key: "sunset_valley",
@@ -456,9 +456,10 @@ export const TRAVIS_JURISDICTION_PROFILE: readonly JurisdictionProfileEntry[] = 
       system_scope: scope("Village of Webberville building permit files"),
       route: "records-first",
       request_portal_url: "https://www.webberville.org/village_commission/",
+      channel_verified: false,
     },
     notes:
-      "unverified: no official village website could be read on 2026-10-19 (webbervilletx.gov did not resolve and webberville.org did not answer), so the evidence is only the Census listing; the permit system, the custodian, whether the village issues permits at all (delegated?) and the request channel must be confirmed by the operator",
+      "the village site did not answer on 2026-10-19 (webbervilletx.gov did not resolve and webberville.org did not answer), so the permit system is unknown and the row rests only on the Census place listing, which names the village but is not a permit page. unverified: the permit system, the custodian, whether the village issues permits at all (delegated?) and the request channel (the webberville.org page did not answer)",
   },
   {
     key: "west_lake_hills",

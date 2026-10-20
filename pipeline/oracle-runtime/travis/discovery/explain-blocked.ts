@@ -9,19 +9,32 @@
 //   read from the row's committed evidence file, never guessed;
 // - the pre-decision blocked-row note wording is replaced (classes and statuses untouched);
 // - the BBB source row and enrichment block get the not-filed next step and decision reason;
-// - a TCAD row that carries a records request gets the not-filed next step.
-// Then the readiness validator runs again.
+// - a TCAD row that carries a records request gets the not-filed next step;
+// - review fixes (CR-A-01): each permit row's profile part (notes, records request) is
+//   re-read from the current profile, its Austin-issued count is split into full purpose
+//   and ETJ from the Austin row's journaled group-by (OR-m6), and a stop whose committed
+//   evidence names a web application firewall is explained as that block (OR-M2).
+// The change is recorded in `amendments[]` (OR-M5). Then the readiness validator runs.
 //
 // Exit codes: 0 validator PASS, 1 validator BLOCKED (passed through), 2 refused (nothing written).
 import { pathToFileURL } from "node:url";
 import { redact } from "../lib/log.js";
 import { BBB_DECISION_REASON, BBB_NEXT_STEP } from "./assemble.js";
-import { DEFAULT_REPO_ROOT, readEvidenceFrontMatter } from "./blocked-evidence.js";
+import { austinIssuedFields } from "./assemble-permits.js";
+import {
+  DEFAULT_REPO_ROOT,
+  readEvidenceFrontMatter,
+  readEvidenceResponse,
+} from "./blocked-evidence.js";
 import type { Catalog, Jurisdiction, Source } from "./catalog.schema.js";
-import { migrateBlockedNote, withExplanation } from "./jurisdiction-explanation.js";
+import { firewallBlock, migrateBlockedNote, withExplanation } from "./jurisdiction-explanation.js";
+import {
+  TRAVIS_JURISDICTION_PROFILE,
+  type JurisdictionProfileEntry,
+} from "../profiles/jurisdictions.js";
 import { main as runValidatorMain } from "./run-validator.js";
 import { BBB_API_APPLICATION, withRecordsRequests } from "./workflow.js";
-import { DEFAULT_CATALOG_PATH, readCatalog, writeCatalog } from "./write-catalog.js";
+import { amendCatalog, DEFAULT_CATALOG_PATH, readCatalog } from "./write-catalog.js";
 
 /** Reads the challenge marker recorded for an evidence path (null when none). */
 export type SignalReader = (evidencePath: string) => string | null;
@@ -34,12 +47,47 @@ export function evidenceSignalReader(repoRoot: string): SignalReader {
   };
 }
 
+/** Reads the firewall a committed stop response names, if any (OR-M2). */
+export type FirewallReader = (evidencePath: string) => string | null;
+
+export function evidenceFirewallReader(repoRoot: string): FirewallReader {
+  return (path) => firewallBlock(readEvidenceResponse(repoRoot, path));
+}
+
+const PROFILE_MARK = ". Profile: ";
+
+/**
+ * The row's notes and records request re-read from the current profile entry: the profile
+ * part of a blocked row's notes follows ". Profile: "; other rows carry the profile notes.
+ */
+export function withProfile(row: Jurisdiction, entry: JurisdictionProfileEntry): Jurisdiction {
+  const out: Jurisdiction = { ...row };
+  if (entry.records_request !== undefined) out.records_request = entry.records_request;
+  const notes = row.notes;
+  if (notes !== undefined && notes.includes(PROFILE_MARK)) {
+    const head = notes.slice(0, notes.indexOf(PROFILE_MARK));
+    out.notes = entry.notes === undefined ? head : `${head}${PROFILE_MARK}${entry.notes}`;
+  } else if (notes === undefined || !notes.startsWith("evidence page blocked")) {
+    if (entry.notes === undefined) delete out.notes;
+    else out.notes = entry.notes;
+  }
+  return out;
+}
+
 /** One permit row under the PO decision: migrated note wording plus its explanation. */
-export function explainRow(row: Jurisdiction, readSignal: SignalReader): Jurisdiction {
+export function explainRow(
+  row: Jurisdiction,
+  readSignal: SignalReader,
+  readFirewall: FirewallReader = () => null,
+): Jurisdiction {
   const notes = migrateBlockedNote(row.notes);
   const path = row.blocked_evidence?.evidence_path;
   const challengeSignal = path ? readSignal(path) : null;
-  return withExplanation(notes === undefined ? row : { ...row, notes }, { challengeSignal });
+  const firewall = path ? readFirewall(path) : null;
+  return withExplanation(notes === undefined ? row : { ...row, notes }, {
+    challengeSignal,
+    firewall,
+  });
 }
 
 function explainSource(source: Source): Source {
@@ -64,12 +112,24 @@ function explainSource(source: Source): Source {
 }
 
 /** The catalog with every text the PO decision changes regenerated; idempotent. */
-export function applyPoDecision(catalog: Catalog, readSignal: SignalReader): Catalog {
+export function applyPoDecision(
+  catalog: Catalog,
+  readSignal: SignalReader,
+  readFirewall: FirewallReader = () => null,
+  profile: readonly JurisdictionProfileEntry[] | null = null,
+): Catalog {
   const out: Catalog = { ...catalog, sources: catalog.sources.map(explainSource) };
+  const located =
+    catalog.sources.find((s) => s.key === "austin_permits")?.located_in_other_jurisdictions ?? [];
   if (catalog.permits) {
     out.permits = {
       ...catalog.permits,
-      jurisdictions: catalog.permits.jurisdictions.map((row) => explainRow(row, readSignal)),
+      jurisdictions: catalog.permits.jurisdictions.map((row) => {
+        const entry = profile?.find((e) => e.key === row.key);
+        const base = entry ? withProfile(row, entry) : row;
+        const split = profile ? austinIssuedFields(row.jurisdiction, row.key, located) : {};
+        return explainRow({ ...base, ...split }, readSignal, readFirewall);
+      }),
     };
   }
   if (catalog.enrichment) {
@@ -86,6 +146,9 @@ export interface ExplainOptions {
   catalogPath?: string;
   validate?: () => Promise<number>;
   out?: (line: string) => void;
+  profile?: readonly JurisdictionProfileEntry[];
+  /** Amendment time (tests). */
+  now?: () => Date;
 }
 
 export async function explainBlocked(options: ExplainOptions = {}): Promise<number> {
@@ -99,8 +162,30 @@ export async function explainBlocked(options: ExplainOptions = {}): Promise<numb
   const say = (line: string): void => out(redact(line));
   try {
     const catalog = readCatalog(catalogPath);
-    const next = applyPoDecision(catalog, evidenceSignalReader(root));
-    writeCatalog(next, catalogPath);
+    const next = applyPoDecision(
+      catalog,
+      evidenceSignalReader(root),
+      evidenceFirewallReader(root),
+      options.profile ?? TRAVIS_JURISDICTION_PROFILE,
+    );
+    amendCatalog(
+      next,
+      {
+        command: "explain-blocked",
+        fields: [
+          "permits.jurisdictions[*].blocked_explanation",
+          "permits.jurisdictions[*].notes",
+          "permits.jurisdictions[*].records_request",
+          "permits.jurisdictions[*].austin_issued_full_purpose",
+          "permits.jurisdictions[*].austin_issued_etj",
+          "sources[bbb].next_step",
+          "enrichment.bbb.next_step",
+        ],
+        ref: "profile pipeline/oracle-runtime/travis/profiles/jurisdictions.ts and the committed evidence files; no request made",
+      },
+      catalogPath,
+      (options.now ?? (() => new Date()))(),
+    );
     const rows = next.permits?.jurisdictions ?? [];
     const explained = rows.filter((r) => r.blocked_explanation !== undefined).length;
     say(

@@ -12,12 +12,17 @@
 // `--html <saved page>` re-reads a page this command saved earlier, with its saved receipt's
 // provenance, and makes no request (for a parser fix without a second request).
 //
+// OR-B1: before the request, the egress country is checked against the run's recorded
+// egress (or ORACLE_EXPECT_EGRESS); a mismatch refuses with nothing sent. The country is
+// saved in the page receipt and the catalog amendment (OR-M5).
+//
 // Exit codes: 0 validator PASS, 1 validator BLOCKED (passed through), 2 refused (nothing written).
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { catalogEgressReference, checkEgress, type EgressCheck } from "../lib/egress.js";
 import { redact } from "../lib/log.js";
 import { createSourceClient, type SourceClient } from "../lib/source-client.js";
 import { DEFAULT_REPO_ROOT } from "./blocked-evidence.js";
@@ -27,7 +32,7 @@ import { missingReason } from "./probes/common.js";
 import { ChallengeFreePage } from "./probes/evidence.js";
 import { findTcadLinks, TCAD_PUBLIC_INFO_URL } from "./probes/tcad.js";
 import { main as runValidatorMain } from "./run-validator.js";
-import { DEFAULT_CATALOG_PATH, readCatalog, writeCatalog } from "./write-catalog.js";
+import { amendCatalog, DEFAULT_CATALOG_PATH, readCatalog } from "./write-catalog.js";
 
 export const CERTIFICATION_METHOD = "certification date as stated in the page text";
 const RAW_REL = "pipeline/data/raw/tcad";
@@ -42,6 +47,8 @@ const SavedReceiptSchema = z.object({
   user_agent: z.string(),
   attempts: z.int().positive(),
   outcome: z.string(),
+  /** Egress country of the request (OR-B1); absent on receipts saved before the check existed. */
+  egress_country: z.string().optional(),
 });
 type SavedReceipt = z.infer<typeof SavedReceiptSchema>;
 
@@ -53,6 +60,10 @@ export interface RefreshOptions {
   htmlPath?: string;
   validate?: () => Promise<number>;
   out?: (line: string) => void;
+  /** OR-B1 egress check before the request (default: Cloudflare trace). */
+  egress?: (reference: string | null) => Promise<EgressCheck>;
+  /** Amendment time (tests). */
+  now?: () => Date;
 }
 
 class Refusal extends Error {}
@@ -69,6 +80,7 @@ function compactUtc(iso: string): string {
 async function capturePage(
   root: string,
   client: SourceClient,
+  egressCountry: string,
 ): Promise<{ html: string; receipt: SavedReceipt; pageRel: string }> {
   const result = await client.capture({
     url: TCAD_PUBLIC_INFO_URL,
@@ -96,6 +108,7 @@ async function capturePage(
     user_agent: r.user_agent,
     attempts: r.attempts,
     outcome: r.outcome,
+    egress_country: egressCountry,
   };
   const pageRel = `${RAW_REL}/publicinformation-${compactUtc(r.captured_at)}.html`;
   const pageAbs = join(root, pageRel);
@@ -141,9 +154,18 @@ export async function refreshTcadLanding(options: RefreshOptions = {}): Promise<
     const current = catalog.parcel;
     if (!current) throw new Refusal("catalog has no parcel block; run discovery first");
 
-    const page = options.htmlPath
-      ? readSavedPage(root, options.htmlPath)
-      : await capturePage(root, options.client ?? createSourceClient());
+    let page: { html: string; receipt: SavedReceipt; pageRel: string };
+    if (options.htmlPath) {
+      page = readSavedPage(root, options.htmlPath);
+    } else {
+      const check = await (
+        options.egress ??
+        ((reference: string | null) => checkEgress({ reference, requireReference: true }))
+      )(catalogEgressReference(catalog));
+      if (!check.ok) throw new Refusal(check.reason);
+      say(`refresh-tcad-landing: egress country ${check.egress.country}`);
+      page = await capturePage(root, options.client ?? createSourceClient(), check.egress.country);
+    }
     say(
       `refresh-tcad-landing: ${options.htmlPath ? "re-read" : "captured"} ${page.receipt.url} (HTTP ${page.receipt.status}, ${page.receipt.bytes} bytes, attempts ${page.receipt.attempts}) -> ${page.pageRel}`,
     );
@@ -172,7 +194,18 @@ export async function refreshTcadLanding(options: RefreshOptions = {}): Promise<
       ...(date === null ? {} : { certification_date: date }),
       certification_date_measurement: measurement,
     };
-    writeCatalog({ ...catalog, parcel }, catalogPath);
+    amendCatalog(
+      { ...catalog, parcel },
+      {
+        command: "refresh-tcad-landing",
+        fields: ["parcel.certification_date", "parcel.certification_date_measurement"],
+        ref: `${page.pageRel} (SHA-256 ${page.receipt.sha256})`,
+        ...(page.receipt.egress_country ? { egress_country: page.receipt.egress_country } : {}),
+        ...(options.htmlPath ? { note: "re-read of a saved page; no request" } : {}),
+      },
+      catalogPath,
+      (options.now ?? (() => new Date()))(),
+    );
     say(
       date === null
         ? `refresh-tcad-landing: parcel.certification_date missing: ${measurement.missing_reason ?? ""}`

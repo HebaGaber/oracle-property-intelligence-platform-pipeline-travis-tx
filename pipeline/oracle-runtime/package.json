@@ -24,7 +24,10 @@
     "refresh-tcad-landing": "tsx travis/discovery/refresh-tcad-landing.ts",
     "record-gis-runner": "tsx travis/discovery/record-gis-runner.ts",
     "reprobe-jurisdictions": "tsx travis/discovery/reprobe-jurisdictions.ts",
-    "explain-blocked": "tsx travis/discovery/explain-blocked.ts"
+    "explain-blocked": "tsx travis/discovery/explain-blocked.ts",
+    "approve-exception": "tsx travis/discovery/approve-exception.ts",
+    "render-coverage": "tsx travis/discovery/render-coverage.ts",
+    "backfill-amendments": "tsx travis/discovery/backfill-amendments.ts"
   },
   "dependencies": {
     "p-limit": "^7.3.3",

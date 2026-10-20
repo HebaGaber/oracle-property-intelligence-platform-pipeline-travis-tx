@@ -16,6 +16,7 @@ import {
   TOTAL_LIMIT_MS,
   findTcadLinks,
   layoutNameFor,
+  priorExportFrom,
   probeTcad,
   scanExport,
   tcadExportPath,
@@ -100,7 +101,21 @@ describe("constants", () => {
     expect(TCAD_RAW_DIR.endsWith(["pipeline", "data", "raw", "tcad"].join(sep))).toBe(true);
     const path = tcadExportPath(`${BASE}/files/2026-certified-special-export.json`);
     expect(path.startsWith(TCAD_RAW_DIR + sep)).toBe(true);
-    expect(path.endsWith("2026-certified-special-export.json")).toBe(true);
+    expect(path).toMatch(/[\\/]2026-certified-special-export-[0-9a-f]{8}\.json$/);
+  });
+
+  it("CR-8: two URLs with the same basename get different local names", () => {
+    const a = tcadExportPath(`${BASE}/files/2026/export.zip`, "/raw");
+    const b = tcadExportPath(`${BASE}/files/2025/export.zip`, "/raw");
+    expect(a).not.toBe(b);
+    expect(a).toMatch(/^\/raw\/export-[0-9a-f]{8}\.zip$/);
+    expect(b).toMatch(/^\/raw\/export-[0-9a-f]{8}\.zip$/);
+    // the same URL always maps to the same name
+    expect(tcadExportPath(`${BASE}/files/2026/export.zip`, "/raw")).toBe(a);
+    // names stay inside one folder level (catalog file_path rule pipeline/data/raw/tcad/<name>)
+    expect(tcadExportPath(`${BASE}/`, "/raw")).toMatch(
+      /^\/raw\/tcad-certified-special-export-[0-9a-f]{8}$/,
+    );
   });
 });
 
@@ -409,7 +424,8 @@ describe("probeTcad", () => {
     expect(must(receipt.timeout_ms)).toBeGreaterThanOrEqual(40);
     expect(calls.filter((c) => c.url.endsWith("special-export.json"))).toHaveLength(1);
     expect(result.export_path).toBeNull();
-    expect(existsSync(join(dir, "2026-certified-special-export.json"))).toBe(false);
+    const dest = tcadExportPath(`${BASE}/files/2026-certified-special-export.json`, dir);
+    expect(existsSync(dest)).toBe(false);
     expect(result.assessed_parcel_count.missing_reason).toMatch(/timeout/);
   });
 
@@ -442,5 +458,106 @@ describe("probeTcad", () => {
     clearInterval(timer);
     expect(result.status).toBe("blocked");
     expect(must(must(result.blocked_receipt).timeout_ms)).toBeGreaterThanOrEqual(60);
+  });
+});
+
+describe("OR-m8: the export is not downloaded again when the prior file still matches", () => {
+  const EXPORT_URL = `${BASE}/files/2026-certified-special-export.json`;
+
+  async function firstRun(dir: string) {
+    const { fetch } = fakeHttp(routes());
+    return probeTcad({
+      client: client(fetch),
+      now: () => FIXED,
+      rawDir: dir,
+      landingUrl: `${BASE}/publicinformation`,
+    });
+  }
+
+  it("reuses the prior file by size and SHA-256: no request to the export URL", async () => {
+    const dir = tmp();
+    const first = await firstRun(dir);
+    const receipt = must(first.export_receipt);
+    const { fetch, calls } = fakeHttp(routes());
+    const second = await probeTcad({
+      client: client(fetch),
+      now: () => FIXED,
+      rawDir: dir,
+      landingUrl: `${BASE}/publicinformation`,
+      priorExport: { receipt, path: must(first.export_path), seconds: 1 },
+    });
+    expect(calls.filter((c) => c.url === EXPORT_URL)).toHaveLength(0);
+    expect(second.receipts.map((r) => r.url)).not.toContain(EXPORT_URL);
+    expect(second.export_receipt).toEqual(receipt);
+    expect(second.export_reused_from).toBe(receipt.captured_at);
+    expect(second.assessed_parcel_count.value).toBe(3);
+    expect(must(second.download_rate).bytes).toBe(receipt.bytes);
+  });
+
+  it("priorExportFrom resolves the catalog's repository-relative file_path unchanged", async () => {
+    const dir = tmp();
+    const first = await firstRun(dir);
+    const r = must(first.export_receipt);
+    const name = must(first.export_path).slice(dir.length + 1);
+    const prior = priorExportFrom(
+      {
+        url: r.url,
+        method: "GET",
+        status: 200,
+        bytes: r.bytes,
+        sha256: r.sha256,
+        captured_at: r.captured_at,
+        user_agent: r.user_agent,
+        attempts: 1,
+        outcome: "ok",
+        resumes: 0,
+        file_path: `pipeline/data/raw/tcad/${name}`,
+        seconds: 2,
+        megabytes_per_minute: 1,
+        roll_year: 2026,
+      },
+      "/repo",
+    );
+    expect(prior.path).toBe(`/repo/pipeline/data/raw/tcad/${name}`);
+    expect(prior.receipt).toMatchObject({
+      url: r.url,
+      bytes: r.bytes,
+      sha256: r.sha256,
+      outcome: "ok",
+    });
+  });
+
+  it("downloads again when the local file changed (SHA-256 mismatch)", async () => {
+    const dir = tmp();
+    const first = await firstRun(dir);
+    const path = must(first.export_path);
+    const original = readFileSync(path);
+    // same size, different bytes
+    writeFileSync(path, Buffer.from(original.toString("utf8").replace("1", "9")));
+    const { fetch, calls } = fakeHttp(routes());
+    const second = await probeTcad({
+      client: client(fetch),
+      now: () => FIXED,
+      rawDir: dir,
+      landingUrl: `${BASE}/publicinformation`,
+      priorExport: { receipt: must(first.export_receipt), path, seconds: 1 },
+    });
+    expect(calls.filter((c) => c.url === EXPORT_URL)).toHaveLength(1);
+    expect(second.export_reused_from).toBeUndefined();
+  });
+
+  it("downloads when the landing page links a different export URL than the prior receipt", async () => {
+    const dir = tmp();
+    const first = await firstRun(dir);
+    const receipt = { ...must(first.export_receipt), url: `${BASE}/files/2025-old-export.json` };
+    const { fetch, calls } = fakeHttp(routes());
+    await probeTcad({
+      client: client(fetch),
+      now: () => FIXED,
+      rawDir: dir,
+      landingUrl: `${BASE}/publicinformation`,
+      priorExport: { receipt, path: must(first.export_path), seconds: 1 },
+    });
+    expect(calls.filter((c) => c.url === EXPORT_URL)).toHaveLength(1);
   });
 });

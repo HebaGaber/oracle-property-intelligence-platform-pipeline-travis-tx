@@ -25,6 +25,7 @@
 import { createHash } from "node:crypto";
 import { createWriteStream, mkdirSync, renameSync, rmSync, type WriteStream } from "node:fs";
 import { dirname } from "node:path";
+import { finished } from "node:stream/promises";
 import { performance } from "node:perf_hooks";
 import pLimit, { type LimitFunction } from "p-limit";
 import type { ZodType } from "zod";
@@ -254,11 +255,44 @@ const REFUSAL_MARKERS =
 const REFUSAL_STATUSES = new Set([403, 429, 503]);
 
 /**
+ * A web application firewall naming itself in the body (OR-M2: San Leanna's HTTP 406 page
+ * says "a request has been blocked by Mod Security"). Trusted on any status: a WAF refusal
+ * may come as 406, 403, 501 or even 200.
+ */
+const WAF_BODY = /\bmod[_ ]?security\b|\brequest (?:has been |was )?blocked\b/i;
+/** Response header values naming a WAF (e.g. `server: Mod_Security`). */
+const WAF_HEADER = /\bmod[_ ]?security\b/i;
+/** A 2xx body larger than this is a document, not a WAF error page (avoids false positives). */
+const WAF_MAX_2XX_BODY = 8 * 1024;
+
+/**
+ * Returns the quoted explicit WAF/block signal of a saved response, or null (OR-M2): a body
+ * that names the firewall, whatever the status (on a 2xx only for a small page), or a
+ * header that names it on a non-2xx answer.
+ */
+export function wafSignal(saved: SavedResponse): string | null {
+  const ok2xx = saved.status !== null && saved.status >= 200 && saved.status < 300;
+  // A Server header may list mod_security as an installed module on every answer, so a
+  // header counts only on a refusal (non-2xx) status.
+  for (const [name, value] of Object.entries(saved.headers)) {
+    if (!ok2xx && WAF_HEADER.test(value)) return `${name.toLowerCase()}: ${value}`.slice(0, 200);
+  }
+  if (ok2xx && Buffer.byteLength(saved.body, "utf8") > WAF_MAX_2XX_BODY) return null;
+  const match = WAF_BODY.exec(saved.body);
+  if (!match) return null;
+  const status = saved.status === null ? "no HTTP status" : `HTTP ${saved.status}`;
+  return `${status} names a web application firewall: "${match[0]}"`;
+}
+
+/**
  * Returns the quoted explicit bot-challenge signal of a saved response, or null. A normal
  * page that merely carries an injected beacon (for example Cloudflare's
- * `/cdn-cgi/challenge-platform/` bot-detection script) is never a challenge.
+ * `/cdn-cgi/challenge-platform/` bot-detection script) is never a challenge. A web
+ * application firewall that names itself (`wafSignal`) is a block on any status (OR-M2).
  */
 export function detectChallengeSignal(saved: SavedResponse): string | null {
+  const waf = wafSignal(saved);
+  if (waf !== null) return waf;
   const mitigated = Object.entries(saved.headers).find(
     ([name]) => name.toLowerCase() === "cf-mitigated",
   );
@@ -344,12 +378,62 @@ function advertisedLength(headers: Record<string, string>): number | null {
  */
 function supportsResume(headers: Record<string, string>, advertised: number | null): boolean {
   const ranges = (headers["accept-ranges"] ?? "").toLowerCase().split(",");
-  const encoding = (headers["content-encoding"] ?? "identity").trim().toLowerCase();
   return (
-    ranges.some((r) => r.trim() === "bytes") &&
-    advertised !== null &&
-    (encoding === "" || encoding === "identity")
+    ranges.some((r) => r.trim() === "bytes") && advertised !== null && identityEncoded(headers)
   );
+}
+
+/** True when the body is not content-encoded (its byte count can match Content-Length). */
+function identityEncoded(headers: Record<string, string>): boolean {
+  const encoding = (headers["content-encoding"] ?? "identity").trim().toLowerCase();
+  return encoding === "" || encoding === "identity";
+}
+
+/**
+ * Reads at most `limit` bytes of a body, then cancels the stream (CR-1). Never buffers a
+ * whole body: a refused answer may be a multi-GB file.
+ */
+async function readBounded(response: Response, limit: number): Promise<Buffer> {
+  const reader = response.body?.getReader() ?? null;
+  if (reader === null) return Buffer.alloc(0);
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    while (total < limit) {
+      const { done, value } = await reader.read();
+      if (done) return Buffer.concat(chunks).subarray(0, limit);
+      chunks.push(Buffer.from(value));
+      total += value.byteLength;
+    }
+  } catch {
+    // a body that breaks while its excerpt is read keeps what arrived
+  }
+  await reader.cancel().catch(() => undefined);
+  return Buffer.concat(chunks).subarray(0, limit);
+}
+
+/** Waits for `drain`, or returns at once when the stream errors or closes (CR-2: no hang). */
+function drained(out: WriteStream): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => {
+      out.off("drain", done);
+      out.off("error", done);
+      out.off("close", done);
+      resolve();
+    };
+    out.once("drain", done);
+    out.once("error", done);
+    out.once("close", done);
+  });
+}
+
+/** Removes a `.part` file; never throws (it may be missing, or not a file at all). */
+function removePart(part: string): void {
+  try {
+    rmSync(part, { force: true });
+  } catch {
+    // nothing to clean up that we may delete
+  }
 }
 
 /** Range (and If-Range, so a changed file is never spliced) for a resume from `from`. */
@@ -579,6 +663,8 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
         > & {
           bytes: number;
           sha256: string;
+          /** Size of the whole refused body (advertised or read) for the stop evidence. */
+          body_bytes?: number;
           headers: Record<string, string>;
           excerpt: Buffer;
           path: string | null;
@@ -616,7 +702,7 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       if (fields.incomplete_body !== undefined) receipt.incomplete_body = fields.incomplete_body;
       if (fields.outcome === "blocked" || fields.outcome === "failed") {
         receipt.stop_evidence = stopEvidence(fields.headers, fields.excerpt, secrets);
-        receipt.stop_evidence.body_bytes = fields.bytes;
+        receipt.stop_evidence.body_bytes = fields.body_bytes ?? fields.bytes;
       }
       emit("source.download", loggable(receipt));
       return {
@@ -679,27 +765,38 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
         path: null,
       });
 
-    /** A refused (non-2xx, or HTML) answer: never streamed to disk, a bounded excerpt kept. */
+    /**
+     * A refused (non-2xx, or HTML) answer: never streamed to disk and never buffered whole
+     * (CR-1: a full 200 of the multi-GB export answering a resume must not fill the heap).
+     * At most EXCERPT_BYTES are read, then the body stream is cancelled. `excerpt` is what
+     * was read; the receipt's bytes and sha256 are of that excerpt, and `bodyBytes` is the
+     * advertised Content-Length when there is one, otherwise the bytes read.
+     */
     const refusal = async (
       response: Response,
       responseHeaders: Record<string, string>,
       guard: StreamGuard,
-    ): Promise<{ body: Buffer; excerpt: Buffer; challenge: string | null }> => {
-      const body = Buffer.from(await response.arrayBuffer().catch(() => new ArrayBuffer(0)));
+    ): Promise<{ excerpt: Buffer; bodyBytes: number; challenge: string | null }> => {
+      const excerpt = await readBounded(response, EXCERPT_BYTES);
       guard.clear();
       return {
-        body,
-        excerpt: body.subarray(0, EXCERPT_BYTES),
-        challenge: challengeOf(response.status, responseHeaders, body),
+        excerpt,
+        bodyBytes: advertisedLength(responseHeaders) ?? excerpt.byteLength,
+        challenge: challengeOf(response.status, responseHeaders, excerpt),
       };
     };
 
-    /** Streams one response body into `out`, hashing as it arrives; the stream error or null. */
+    /**
+     * Streams one response body into `out`, hashing as it arrives; the stream error or null.
+     * A write error on `out` (CR-2: disk full, EISDIR) is reported through `writeFailed`,
+     * stops reading at once and is never answered with a Range resume.
+     */
     const pump = async (
       response: Response,
       guard: StreamGuard,
       out: WriteStream,
       onChunk: (chunk: Uint8Array) => void,
+      writeFailed: () => string | null,
     ): Promise<string | null> => {
       const reader = response.body?.getReader() ?? null;
       const onAbort = (): void => {
@@ -708,12 +805,17 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       guard.controller.signal.addEventListener("abort", onAbort);
       try {
         while (reader) {
+          if (writeFailed() !== null) {
+            await reader.cancel().catch(() => undefined);
+            break;
+          }
           const { done, value } = await reader.read();
           if (done || timedOut) break;
           guard.resetIdle();
           onChunk(value);
-          if (!out.write(value)) await new Promise((r) => out.once("drain", r));
+          if (!out.write(value)) await drained(out);
         }
+        if (writeFailed() !== null) await reader?.cancel().catch(() => undefined);
         return null;
       } catch (error) {
         return timedOut ? null : error instanceof Error ? error.message : String(error);
@@ -730,6 +832,12 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
     ): Promise<DownloadResult> => {
       mkdirSync(dirname(request.destPath), { recursive: true });
       const out = createWriteStream(part);
+      // CR-2: without a listener a write error would crash the process.
+      let writeError: string | null = null;
+      out.on("error", (error: NodeJS.ErrnoException) => {
+        writeError ??= error.code ?? error.message;
+      });
+      const writeFailed = (): string | null => writeError;
       const hash = createHash("sha256");
       let bytes = 0;
       let resumes = 0;
@@ -737,12 +845,22 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
         hash.update(chunk);
         bytes += chunk.byteLength;
       };
-      const closeOut = (): Promise<void> => new Promise((resolve) => out.end(() => resolve()));
+      // Safe on an errored or destroyed stream: resolves once the stream has finished or closed.
+      const closeOut = async (): Promise<void> => {
+        if (!out.destroyed && !out.writableEnded) out.end();
+        await finished(out).catch(() => undefined);
+      };
       const advertised = advertisedLength(firstHeaders);
       const rangeable = supportsResume(firstHeaders, advertised);
 
-      let streamError = await pump(response, firstGuard, out, onChunk);
-      while (streamError !== null && !timedOut && rangeable && resumes < MAX_RESUMES) {
+      let streamError = await pump(response, firstGuard, out, onChunk, writeFailed);
+      while (
+        streamError !== null &&
+        writeError === null &&
+        !timedOut &&
+        rangeable &&
+        resumes < MAX_RESUMES
+      ) {
         resumes += 1;
         const guard = openGuard();
         let resumed: Response;
@@ -766,14 +884,15 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
           if (refused.challenge !== null || resumed.status === 403) {
             // StopOnBlocked is unchanged on a resume: stop, no further request.
             await closeOut();
-            rmSync(part, { force: true });
+            removePart(part);
             return finish({
               status: resumed.status,
               outcome: "blocked",
               blocked_reason: refused.challenge !== null ? "challenge" : "http-403",
               ...(refused.challenge === null ? {} : { challenge_signal: refused.challenge }),
-              bytes: refused.body.byteLength,
-              sha256: sha256(refused.body),
+              bytes: refused.excerpt.byteLength,
+              sha256: sha256(refused.excerpt),
+              body_bytes: refused.bodyBytes,
               headers: resumedHeaders,
               excerpt: refused.excerpt,
               path: null,
@@ -790,12 +909,12 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
           streamError = `resume ${resumes} rejected: ${mismatch}`;
           break;
         }
-        streamError = await pump(resumed, guard, out, onChunk);
+        streamError = await pump(resumed, guard, out, onChunk, writeFailed);
       }
       await closeOut();
 
       if (timedOut) {
-        rmSync(part, { force: true });
+        removePart(part);
         return timeoutStop({
           status: response.status,
           bytes,
@@ -804,11 +923,44 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
           resumes,
         });
       }
-      if (streamError === null && resumes > 0 && bytes !== advertised) {
-        streamError = `resumed file size ${bytes} does not equal the advertised length ${advertised ?? "unknown"}`;
+      if (writeError !== null) {
+        // CR-2: the .part file could not be written; nothing is resumed or renamed.
+        removePart(part);
+        return finish({
+          status: response.status,
+          outcome: "failed",
+          error: redact(`writing the .part file failed: ${writeError}`, secrets),
+          incomplete_body: { bytes, content_length: advertised },
+          bytes,
+          sha256: hash.digest("hex"),
+          headers: firstHeaders,
+          excerpt: Buffer.alloc(0),
+          path: null,
+          resumes,
+        });
+      }
+      // CR-6: every completed stream is checked against the advertised whole-file length
+      // (resumed or not), unless the body is content-encoded (the length is then of the
+      // encoded body). A size mismatch keeps the .part file for inspection; it is never
+      // renamed to the final path.
+      if (streamError === null && advertised !== null && identityEncoded(firstHeaders)) {
+        if (bytes !== advertised) {
+          return finish({
+            status: response.status,
+            outcome: "failed",
+            error: `file size ${bytes} does not equal the advertised length ${advertised}${resumes > 0 ? ` after ${resumes} resume(s)` : ""}; the .part file is kept`,
+            incomplete_body: { bytes, content_length: advertised },
+            bytes,
+            sha256: hash.digest("hex"),
+            headers: firstHeaders,
+            excerpt: Buffer.alloc(0),
+            path: null,
+            resumes,
+          });
+        }
       }
       if (streamError !== null) {
-        rmSync(part, { force: true });
+        removePart(part);
         return finish({
           status: response.status,
           outcome: "failed",
@@ -876,7 +1028,7 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
 
       if (response.status < 200 || response.status >= 300 || isHtml) {
         // Read a bounded excerpt only; never stream an error or challenge body to disk.
-        const { body, excerpt, challenge } = await refusal(response, responseHeaders, guard);
+        const { excerpt, bodyBytes, challenge } = await refusal(response, responseHeaders, guard);
         if (isRetryable(response.status) && challenge === null && attempts < MAX_ATTEMPTS) {
           const retryAfterHeader = responseHeaders["retry-after"] ?? null;
           observed.push(
@@ -897,8 +1049,9 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
           blocked_reason: blocked ? (challenge !== null ? "challenge" : "http-403") : null,
           ...(challenge === null ? {} : { challenge_signal: challenge }),
           ...(!blocked && ok2xx ? { error: UNEXPECTED_HTML_DOWNLOAD } : {}),
-          bytes: body.byteLength,
-          sha256: sha256(body),
+          bytes: excerpt.byteLength,
+          sha256: sha256(excerpt),
+          body_bytes: bodyBytes,
           headers: responseHeaders,
           excerpt,
           path: null,

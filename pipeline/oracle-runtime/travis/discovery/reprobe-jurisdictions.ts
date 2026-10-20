@@ -15,9 +15,19 @@
 //   (constitution: stop on 403/challenge, no retry, no identity change);
 // - a row that is not blocked, an unknown or duplicate key, a status other than network
 //   error / 404 / 406 / 5xx;
-// - a row already re-probed once (more than one evidence file for it);
+// - a row whose saved stop response names a web application firewall, whatever its status
+//   (OR-M2: San Leanna's HTTP 406 names Mod Security; that is a block, not a failure);
+// - a row already re-probed once: `reprobe_count` on the row (OR-m2), or, for rows written
+//   before that field, more than one evidence file for it;
 // - a host name that does not resolve locally (a local DNS failure is not evidence about
-//   the source, so nothing is sent and nothing is recorded).
+//   the source, so nothing is sent and nothing is recorded);
+// - an egress country that differs from the run's recorded egress or ORACLE_EXPECT_EGRESS
+//   (OR-B1), checked after every other rule and before the first request.
+//
+// A re-probed row records `reprobe_count`, `reprobed_at`, `reprobe_url_changed` (a new URL
+// makes it a new probe rather than a re-probe of the same page) and the evidence file it
+// supersedes; the committed evidence files are never edited. The change is recorded in
+// `amendments[]` with the egress country (OR-M5).
 //
 // Exit codes: 0 validator PASS, 1 validator BLOCKED (passed through), 2 refused (nothing written).
 import { lookup } from "node:dns/promises";
@@ -25,8 +35,9 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { catalogEgressReference, checkEgress, type EgressCheck } from "../lib/egress.js";
 import { redact } from "../lib/log.js";
-import { createSourceClient, type SourceClient } from "../lib/source-client.js";
+import { createSourceClient, type SavedResponse, type SourceClient } from "../lib/source-client.js";
 import {
   TRAVIS_JURISDICTION_PROFILE,
   type JurisdictionProfileEntry,
@@ -37,14 +48,16 @@ import type { AustinLocatedEntry } from "./austin-issued.js";
 import {
   DEFAULT_REPO_ROOT,
   readEvidenceFrontMatter,
+  readEvidenceResponse,
   renderBlockedEvidence,
   writeBlockedEvidence,
 } from "./blocked-evidence.js";
+import { firewallBlock } from "./jurisdiction-explanation.js";
 import type { Catalog, Jurisdiction } from "./catalog.schema.js";
 import { missingReason } from "./probes/common.js";
 import { probeEvidencePage, type EvidenceProbe } from "./probes/evidence.js";
 import { main as runValidatorMain } from "./run-validator.js";
-import { DEFAULT_CATALOG_PATH, readCatalog, writeCatalog } from "./write-catalog.js";
+import { amendCatalog, DEFAULT_CATALOG_PATH, readCatalog } from "./write-catalog.js";
 
 const KeysSchema = z
   .array(z.string().regex(/^[a-z][a-z0-9_]*$/, "a key is snake_case"))
@@ -60,6 +73,8 @@ export interface ReprobeOptions {
   now?: () => Date;
   validate?: () => Promise<number>;
   out?: (line: string) => void;
+  /** OR-B1 egress check before the first request (default: Cloudflare trace). */
+  egress?: (reference: string | null) => Promise<EgressCheck>;
 }
 
 class Refusal extends Error {}
@@ -73,10 +88,18 @@ export function reprobeRefusal(
   row: Jurisdiction,
   front: Record<string, unknown> | null,
   evidenceFiles: number,
+  saved: SavedResponse | null = null,
 ): string | null {
+  if ((row.reprobe_count ?? 0) >= 1) {
+    return `row ${row.key} was re-probed already (reprobe_count ${row.reprobe_count ?? 0}, at ${row.reprobed_at ?? "unknown"}); a row is re-probed once only`;
+  }
   const be = row.blocked_evidence;
   if (row.status !== "blocked" || !be) {
     return `row ${row.key} is ${row.status} with no failed evidence; only failed rows are re-probed`;
+  }
+  const firewall = firewallBlock(saved);
+  if (firewall !== null) {
+    return `row ${row.key} was blocked by ${firewall} (HTTP ${be.http_status ?? "none"}); it is never requested again`;
   }
   if (be.outcome === "blocked" || front?.outcome === "blocked") {
     return `row ${row.key} was blocked (outcome blocked); it is never requested again`;
@@ -98,6 +121,33 @@ export function reprobeRefusal(
     return `row ${row.key} already has ${evidenceFiles} evidence files; it was re-probed once already`;
   }
   return null;
+}
+
+/** The rebuilt row with its re-probe record and the evidence it supersedes (OR-m2). */
+export function withReprobe(
+  next: Jurisdiction,
+  previous: Jurisdiction,
+  newEvidencePath: string | null,
+  probe: { at: string; status: number | null },
+): Jurisdiction {
+  const oldPath = previous.blocked_evidence?.evidence_path;
+  const oldUrl = previous.blocked_evidence?.url ?? previous.evidence_url;
+  const superseded = [...(previous.superseded_evidence ?? [])];
+  if (oldPath !== undefined && oldPath !== newEvidencePath) {
+    superseded.push({
+      evidence_path: oldPath,
+      superseded_by:
+        newEvidencePath ??
+        `re-probe at ${probe.at} answered HTTP ${probe.status ?? "none"} (no new evidence file)`,
+    });
+  }
+  return {
+    ...next,
+    reprobe_count: (previous.reprobe_count ?? 0) + 1,
+    reprobed_at: probe.at,
+    reprobe_url_changed: oldUrl !== next.evidence_url,
+    ...(superseded.length > 0 ? { superseded_evidence: superseded } : {}),
+  };
 }
 
 function evidenceFileCount(root: string, key: string): number {
@@ -156,7 +206,8 @@ export async function reprobeJurisdictions(
       if (!entry) throw new Refusal(`no profile entry with key ${key}`);
       const path = row.blocked_evidence?.evidence_path;
       const front = path ? readEvidenceFrontMatter(root, path) : null;
-      const why = reprobeRefusal(row, front, evidenceFileCount(root, key));
+      const saved = path ? readEvidenceResponse(root, path) : null;
+      const why = reprobeRefusal(row, front, evidenceFileCount(root, key), saved);
       if (why) throw new Refusal(why);
       targets.push({ row, entry });
     }
@@ -170,6 +221,15 @@ export async function reprobeJurisdictions(
         );
       }
     }
+
+    // OR-B1: same egress as the run, or nothing is sent.
+    const check = await (
+      options.egress ??
+      ((reference: string | null) => checkEgress({ reference, requireReference: true }))
+    )(catalogEgressReference(catalog));
+    if (!check.ok) throw new Refusal(check.reason);
+    const egressCountry = check.egress.country;
+    say(`reprobe-jurisdictions: egress country ${egressCountry}`);
 
     // 2. One request per row, one at a time, attempt budget 1 (inside probeEvidencePage).
     const client = options.client ?? createSourceClient();
@@ -185,21 +245,26 @@ export async function reprobeJurisdictions(
     const evidenceWrites: Array<{ path: string; content: string }> = [];
     for (const { row, entry } of targets) {
       const probe = probes.get(entry.key) as EvidenceProbe;
-      const next = assembleJurisdictionRow(entry, probe, located);
-      rebuilt.set(entry.key, next);
       const stop = probe.blocked_receipt;
       const receipt = stop ?? probe.receipts.at(-1);
-      if (stop) {
-        const path = defaultJurisdictionEvidencePath(entry.key, stop);
+      const newPath = stop ? defaultJurisdictionEvidencePath(entry.key, stop) : null;
+      if (stop && newPath) {
         evidenceWrites.push({
-          path,
+          path: newPath,
           content: renderBlockedEvidence({
-            path,
+            path: newPath,
             subject: { kind: "jurisdiction", key: entry.key },
             receipt: stop,
+            identity: "unchanged",
+            egressCountry,
           }),
         });
       }
+      const next = withReprobe(assembleJurisdictionRow(entry, probe, located), row, newPath, {
+        at: receipt?.captured_at ?? (options.now ?? (() => new Date()))().toISOString(),
+        status: receipt?.status ?? null,
+      });
+      rebuilt.set(entry.key, next);
       say(
         `reprobe-jurisdictions: ${entry.key} ${entry.evidence_url} -> ${
           receipt
@@ -213,7 +278,7 @@ export async function reprobeJurisdictions(
       say(`reprobe-jurisdictions: ${entry.key} after:  ${rowState(next)}`);
     }
     for (const w of evidenceWrites) writeBlockedEvidence(root, w.path, w.content);
-    writeCatalog(
+    amendCatalog(
       {
         ...catalog,
         permits: {
@@ -221,7 +286,17 @@ export async function reprobeJurisdictions(
           jurisdictions: permits.jurisdictions.map((r) => rebuilt.get(r.key) ?? r),
         },
       },
+      {
+        command: "reprobe-jurisdictions",
+        fields: targets.map(({ entry }) => `permits.jurisdictions[${entry.key}]`),
+        ref:
+          evidenceWrites.length > 0
+            ? evidenceWrites.map((w) => w.path).join(", ")
+            : "no new evidence file (every re-probe answered)",
+        egress_country: egressCountry,
+      },
       catalogPath,
+      (options.now ?? (() => new Date()))(),
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -199,7 +199,19 @@ describe("rule 7: Austin-issued counts located elsewhere stay under Austin", () 
       /synthetic austin_issued_located_here 5 != Austin entries 8/,
     );
     (row(c, "synthetic").austin_issued_located_here as Json).value = 8;
+    expect(rule(c, 7).join("\n")).toMatch(/synthetic austin_issued_etj 0 != Austin entries 3/);
+    (row(c, "synthetic").austin_issued_etj as Json).value = 3;
     expect(rule(c, 7)).toEqual([]);
+  });
+
+  it("OR-m6: the full-purpose and ETJ parts must match their Austin labels", () => {
+    const c = cat();
+    (row(c, "synthetic").austin_issued_full_purpose as Json).value = 4;
+    expect(rule(c, 7).join("\n")).toMatch(
+      /synthetic austin_issued_full_purpose 4 != Austin entries 5/,
+    );
+    delete row(c, "synthetic").austin_issued_etj;
+    expect(rule(c, 7).join("\n")).toMatch(/synthetic austin_issued_etj missing/);
   });
 
   it("an Austin entry that matches a city row without austin_issued_located_here fails", () => {
@@ -224,6 +236,7 @@ describe("rule 7: Austin-issued counts located elsewhere stay under Austin", () 
       captured_at: "2026-01-01T00:00:00Z",
     };
     (row(c, "synthetic").austin_issued_located_here as Json).value = 50_000;
+    (row(c, "synthetic").austin_issued_full_purpose as Json).value = 50_000;
     expect(row(c, "synthetic").status).toBe("manual-only");
     expect(rule(c, 6)).toEqual([]);
     expect(rule(c, 7)).toEqual([]);

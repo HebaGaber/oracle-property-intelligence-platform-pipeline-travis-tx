@@ -2,7 +2,7 @@
 // JSON). Reads the central directory from the end of the file (ZIP64 aware) and streams
 // one entry, inflating it on the fly; the archive is never loaded into memory.
 import { closeSync, createReadStream, fstatSync, openSync, readSync } from "node:fs";
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
 import { createInflateRaw } from "node:zlib";
 
 export interface ZipEntry {
@@ -110,7 +110,12 @@ export function listZipEntries(path: string): ZipEntry[] {
   }
 }
 
-/** A readable stream of one entry's uncompressed bytes (stored or deflated only). */
+/**
+ * A readable stream of one entry's uncompressed bytes (stored or deflated only). Destroying
+ * the returned stream also destroys the underlying file stream (CR-7: an early exit, as in
+ * a record-path probe, must not leak the file descriptor). An entry with no stored bytes
+ * streams nothing (CR-10).
+ */
 export function openZipEntry(path: string, entry: ZipEntry): Readable {
   if (entry.method !== 0 && entry.method !== 8) {
     throw new Error(`zip: entry ${entry.name} uses unsupported method ${entry.method}`);
@@ -124,12 +129,15 @@ export function openZipEntry(path: string, entry: ZipEntry): Readable {
   } finally {
     closeSync(fd);
   }
+  // createReadStream's `end` is inclusive, so a zero-length range cannot be expressed.
+  if (entry.compressedSize === 0) return Readable.from([]);
   const raw = createReadStream(path, {
     start: dataStart,
-    end: Math.max(dataStart, dataStart + entry.compressedSize - 1),
+    end: dataStart + entry.compressedSize - 1,
   });
   if (entry.method === 0) return raw;
   const inflate = createInflateRaw();
   raw.on("error", (err) => inflate.destroy(err));
+  inflate.once("close", () => raw.destroy());
   return raw.pipe(inflate);
 }

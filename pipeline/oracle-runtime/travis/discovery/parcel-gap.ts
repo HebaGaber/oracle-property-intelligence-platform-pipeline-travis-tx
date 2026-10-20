@@ -10,6 +10,12 @@
 //
 // The reconciliation is count-level: it subtracts category totals, it does not join GIS
 // features to accounts. Whatever is left is reported as an unexplained residual.
+//
+// OR-m1: no official table of the TCAD state subcodes (A4, F4, O1, C1) was found (web
+// search 2026-10-20: neither TCAD's published reports nor the Comptroller's Property
+// Classification Guide snippets define them), so every subcode meaning is labelled
+// "state-code reading, unverified". "No export geometry point" is what the export shows;
+// it stands in for "no parcel polygon of its own" and is never stated as that fact.
 import type {
   AccountBreakdownBlock,
   ExportReceipt,
@@ -30,22 +36,40 @@ export const PROP_TYPE_MEANINGS: Readonly<Record<string, string>> = {
 const PROP_TYPE_MEANING_SOURCE =
   "TCAD Export Layouts (Legacy 8.0.33 Appraisal Export Layout, prop_type_cd: R = Real, P = Business Personal Property, M = Mobile Home, MN = Mineral); the 2026 JSON export prints the mobile-home type as MH";
 
-/** State property tax codes the reconciliation relies on. */
+export const UNVERIFIED = "state-code reading, unverified";
+
+/** State property tax codes the reconciliation relies on (readings, not official meanings). */
 export const STATE_CD_MEANINGS: Readonly<Record<string, string>> = {
-  A4: "residential condominium",
-  F4: "commercial condominium",
-  O1: "residential inventory (new lots)",
-  C1: "vacant lots and tracts",
+  A4: `residential condominium (${UNVERIFIED})`,
+  F4: `commercial condominium (${UNVERIFIED})`,
+  O1: `inventory (${UNVERIFIED})`,
+  C1: `vacant lots and tracts (${UNVERIFIED})`,
 };
 const STATE_CD_MEANING_SOURCE =
-  "Category letters follow the Texas Comptroller property categories (A residential, C vacant lots and tracts, F commercial, O residential inventory); the subcodes A4 and F4 (condominium) and O1 (new inventory lots) are TCAD codes whose descriptions are not printed in the JSON export (the Export Layouts define a STATE_CD file but it is not part of the download); the condominium reading rests on the state code: with_condo_unit shows how often propertyCharacteristics[].condoUnit is filled and is not used as proof";
+  "Category letters follow the Texas Comptroller property categories (A residential, C vacant lots and tracts, F commercial, O residential inventory); the subcodes A4, F4, O1 and C1 are TCAD codes whose descriptions are not printed in the JSON export (the Export Layouts define a STATE_CD file but it is not part of the download), and no official TCAD or Comptroller table defining them was found (web search 2026-10-20), so each subcode meaning is a state-code reading, unverified; with_condo_unit shows how often propertyCharacteristics[].condoUnit is filled and is not used as proof";
+
+/** Above this share of filled condoUnit, an inventory code reads as mostly condo inventory. */
+const MOSTLY = 0.5;
+
+/** The meaning of a no-geometry state code, with the condoUnit evidence where it decides. */
+function stateCdMeaning(row: { state_cd: string; count: number; with_condo_unit: number }) {
+  const base = STATE_CD_MEANINGS[row.state_cd];
+  if (base === undefined) return undefined;
+  if (INVENTORY_STATE_CODES.includes(row.state_cd) && row.count > 0) {
+    const share = row.with_condo_unit / row.count;
+    if (share > MOSTLY) {
+      return `inventory; mostly condo inventory by the condoUnit field (${Math.round(share * 100)}% filled; ${UNVERIFIED})`;
+    }
+  }
+  return base;
+}
 
 /** Non-land account types: no parcel polygon of their own in the GIS. */
 export const NON_LAND_PROP_TYPES = ["P", "MH", "MN"] as const;
-/** Condominium state codes: units share their building's parcel. */
+/** Condominium state codes (a state-code reading): units would share their building's parcel. */
 export const CONDO_STATE_CODES = ["A4", "F4"] as const;
-/** New inventory lots: platted but often not yet drawn in the county GIS. */
-export const INVENTORY_STATE_CODES = ["O1"] as const;
+/** Inventory state codes (a state-code reading). */
+export const INVENTORY_STATE_CODES: readonly string[] = ["O1"];
 
 const LIKELY_RESIDUAL_CAUSE =
   "unexplained; consistent with the county GIS refreshing every 1 to 2 months while the roll is certified once (a likely cause, not verified)";
@@ -91,7 +115,7 @@ export function accountBreakdownBlock(
     state_cd: r.state_cd,
     count: r.count,
     with_condo_unit: r.with_condo_unit,
-    ...(STATE_CD_MEANINGS[r.state_cd] ? { meaning: STATE_CD_MEANINGS[r.state_cd] } : {}),
+    ...(stateCdMeaning(r) ? { meaning: stateCdMeaning(r) } : {}),
   }));
   return {
     source_url: receipt.url,
@@ -146,17 +170,17 @@ export function reconcileGap(
     {
       component: "non_land_accounts",
       count: nonLand,
-      reason: `business personal property, mobile-home and mineral accounts (${typeList}) are appraisal accounts, not land parcels, so they have no polygon of their own in the GIS`,
+      reason: `business personal property, mobile-home and mineral accounts (${typeList}) are appraisal accounts, not land parcels, so they are not expected to have a parcel polygon of their own in the GIS`,
     },
     {
-      component: "condo_units_without_own_geometry",
+      component: "condo_accounts_without_export_point",
       count: condos,
-      reason: `real-property condominium units (state codes ${condoList}) with no export geometry point: units share their building's parcel polygon (reading from the state code; ${condoUnitCoverage(b, CONDO_STATE_CODES)})`,
+      reason: `real-property accounts with state codes ${condoList} and no export geometry point, read as condominium units that share their building's parcel polygon (${UNVERIFIED}; ${condoUnitCoverage(b, CONDO_STATE_CODES)})`,
     },
     {
-      component: "new_inventory_lots_without_geometry",
+      component: "inventory_accounts_without_export_point",
       count: inventory,
-      reason: `real-property new inventory lots (state code ${INVENTORY_STATE_CODES.join(", ")}) with no export geometry point: newly platted lots likely not yet drawn in the county GIS (reading from the state code; ${condoUnitCoverage(b, INVENTORY_STATE_CODES)})`,
+      reason: `real-property accounts with state code ${INVENTORY_STATE_CODES.join(", ")} and no export geometry point: inventory; mostly condo inventory by the condoUnit field (${condoUnitCoverage(b, INVENTORY_STATE_CODES)}; ${UNVERIFIED})`,
     },
   ];
   const gap = assessed - gis;

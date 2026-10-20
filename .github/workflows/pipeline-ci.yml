@@ -7,10 +7,14 @@ on:
   push:
     paths:
       - "pipeline/oracle-runtime/**"
+      - "pipeline/docs/travis-sources.yaml"
+      - "docs/evidence/A-01-readiness.json"
       - ".github/workflows/pipeline-ci.yml"
   pull_request:
     paths:
       - "pipeline/oracle-runtime/**"
+      - "pipeline/docs/travis-sources.yaml"
+      - "docs/evidence/A-01-readiness.json"
       - ".github/workflows/pipeline-ci.yml"
 
 permissions:
@@ -62,3 +66,21 @@ jobs:
 
       - name: Readiness validator self-test (vendored kit, unmodified)
         run: python3 kit/use-oracle/scripts/validate-county-readiness.py --self-test
+
+      # OR-M5: the committed catalog passes the A-01 checker, and the vendored validator's
+      # report on it is byte-identical to the committed readiness report (no network: both
+      # read only the YAML file).
+      - name: Check the committed catalog (check-catalog rules 1-11)
+        run: npm run check-catalog
+
+      - name: Validator on the committed catalog equals docs/evidence/A-01-readiness.json
+        working-directory: .
+        run: |
+          set +e
+          python3 pipeline/oracle-runtime/kit/use-oracle/scripts/validate-county-readiness.py \
+            pipeline/docs/travis-sources.yaml > "$RUNNER_TEMP/readiness.json"
+          code=$?
+          set -e
+          echo "validator exit $code"
+          diff -u docs/evidence/A-01-readiness.json "$RUNNER_TEMP/readiness.json"
+          test "$code" -eq 0

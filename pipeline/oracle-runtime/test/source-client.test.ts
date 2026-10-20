@@ -7,10 +7,12 @@ import {
   USER_AGENT,
   backoffDelayMs,
   createSourceClient,
+  detectChallengeSignal,
   detectGeoSignal,
   isGeoBlock,
   type FetchLike,
   type SourceClientOptions,
+  wafSignal,
 } from "../travis/lib/source-client.js";
 import { must } from "./helpers.js";
 
@@ -359,5 +361,73 @@ describe("isGeoBlock (FR-006b): only an explicit signal counts", () => {
     const geo = scripted([() => respond(403, "Not available in your region")]);
     const r2 = await client({ fetch: geo.fetch }).capture({ url: "https://example.test/x" });
     expect(r2.receipt.geo_signal).toMatch(/not available in your region/i);
+  });
+});
+
+describe("OR-M2: a web application firewall that names itself is a block on any status", () => {
+  // The exact body saved in docs/evidence/blocked/jurisdiction-san_leanna-20261020T085313Z.md
+  // (300 bytes, SHA-256 8970d3ea...); copied here, the evidence file is not read at test time.
+  const SAN_LEANNA_406 =
+    "<html><head><title>Error 406 - Not Acceptable</title><head><body><h1>Error 406 - Not Acceptable</h1><p>Generally a 406 error is caused because a request has been blocked by Mod Security. If you believe that your request has been blocked by mistake please contact the web site owner.</p></body></html>";
+  const SAN_LEANNA_HEADERS = {
+    connection: "Keep-Alive",
+    "content-length": "300",
+    "content-type": "text/html; charset=iso-8859-1",
+    server: "Apache",
+  };
+
+  it("the fixture is byte-identical to the saved evidence body", () => {
+    expect(Buffer.byteLength(SAN_LEANNA_406)).toBe(300);
+    expect(createHash("sha256").update(SAN_LEANNA_406).digest("hex")).toBe(
+      "8970d3ea6059606600e849b7d48adcae7d56b01a70cc5fa34b558cab199eb021",
+    );
+  });
+
+  it("the San Leanna HTTP 406 Mod Security page is a challenge/block signal", () => {
+    const saved = { status: 406, headers: SAN_LEANNA_HEADERS, body: SAN_LEANNA_406 };
+    expect(wafSignal(saved)).toMatch(
+      /HTTP 406 .*web application firewall.*request has been blocked|Mod Security/i,
+    );
+    expect(detectChallengeSignal(saved)).toBe(wafSignal(saved));
+  });
+
+  it("capture records the 406 Mod Security page as blocked (challenge), one attempt", async () => {
+    const s = scripted([() => respond(406, SAN_LEANNA_406, SAN_LEANNA_HEADERS)]);
+    const r = await client({ fetch: s.fetch }).capture({ url: "https://example.test/packet.pdf" });
+    expect(s.calls).toHaveLength(1);
+    expect(r.receipt).toMatchObject({
+      outcome: "blocked",
+      blocked_reason: "challenge",
+      status: 406,
+    });
+    expect(r.receipt.challenge_signal).toMatch(/web application firewall/);
+  });
+
+  it("names Mod Security, mod_security, ModSecurity and Request blocked on any status", () => {
+    for (const body of [
+      "blocked by mod_security",
+      "ModSecurity Action",
+      "<p>Request blocked.</p>",
+    ]) {
+      expect(wafSignal({ status: 200, headers: {}, body })).not.toBeNull();
+      expect(wafSignal({ status: 501, headers: {}, body })).not.toBeNull();
+    }
+    expect(wafSignal({ status: 403, headers: { server: "Mod_Security 2.9" }, body: "" })).toMatch(
+      /server: Mod_Security/,
+    );
+  });
+
+  it("a normal page is not a WAF block", () => {
+    const page =
+      "<html><head><title>Building permits</title></head><body>Apply online.</body></html>";
+    expect(wafSignal({ status: 200, headers: { server: "Apache" }, body: page })).toBeNull();
+    expect(detectChallengeSignal({ status: 200, headers: {}, body: page })).toBeNull();
+    // a Server header listing the module on a 200 is not a block
+    expect(
+      wafSignal({ status: 200, headers: { server: "Apache mod_security/2.9" }, body: page }),
+    ).toBeNull();
+    // a large 2xx document that mentions the firewall is a document, not a block page
+    const doc = `<html><body>${"x".repeat(9_000)} ModSecurity rules guide</body></html>`;
+    expect(wafSignal({ status: 200, headers: {}, body: doc })).toBeNull();
   });
 });

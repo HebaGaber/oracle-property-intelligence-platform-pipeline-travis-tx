@@ -9,12 +9,24 @@
 //   `records request` / `blocked` with blocked_evidence and keeps its records request;
 // - every row that is not supported gets `blocked_explanation` (PO decision 2026-10-20:
 //   no request is filed), built from the assembled row only (jurisdiction-explanation.ts);
-// - Austin-issued counts located in a city are attached to that row as information only.
+// - Austin-issued counts located in a city are attached to that row as information only,
+//   with their full-purpose (inside the city limits) and ETJ parts (OR-m6);
+// - a stop whose saved response names a web application firewall is explained as a block
+//   by that firewall, whatever its status (OR-M2).
 import type { CaptureReceipt } from "../lib/source-client.js";
 import type { Catalog, Jurisdiction } from "./catalog.schema.js";
 import { BLOCKED_EVIDENCE_DIR, blockedEvidence } from "./assemble.js";
-import { austinIssuedMeasurement, type AustinLocatedEntry } from "./austin-issued.js";
-import { BLOCKED_NOTE, withExplanation } from "./jurisdiction-explanation.js";
+import {
+  austinIssuedMeasurement,
+  austinIssuedSplit,
+  type AustinLocatedEntry,
+} from "./austin-issued.js";
+import {
+  BLOCKED_NOTE,
+  firewallBlock,
+  savedStop,
+  withExplanation,
+} from "./jurisdiction-explanation.js";
 import { missingReason, stopsSource } from "./probes/common.js";
 import type { CensusProbe, CensusReference } from "./probes/census.js";
 import type { EvidenceProbe } from "./probes/evidence.js";
@@ -103,9 +115,31 @@ export function assembleJurisdictionRow(
     // An intake portal kind stays recorded; it is consistent with historical_records: false.
   }
 
-  const austin = austinIssuedMeasurement(entry.jurisdiction, located);
-  if (austin && entry.key !== "austin") row.austin_issued_located_here = austin;
-  return withExplanation(row, { challengeSignal: receipt.challenge_signal ?? null });
+  Object.assign(row, austinIssuedFields(entry.jurisdiction, entry.key, located));
+  return withExplanation(row, {
+    challengeSignal: receipt.challenge_signal ?? null,
+    firewall: stopsSource(receipt) ? firewallBlock(savedStop(receipt)) : null,
+  });
+}
+
+/** The Austin-issued total and its full-purpose / ETJ parts for one city row (FR-004c). */
+export function austinIssuedFields(
+  name: string,
+  key: string,
+  located: readonly AustinLocatedEntry[],
+): Pick<
+  Jurisdiction,
+  "austin_issued_located_here" | "austin_issued_full_purpose" | "austin_issued_etj"
+> {
+  if (key === "austin") return {};
+  const total = austinIssuedMeasurement(name, located);
+  const split = austinIssuedSplit(name, located);
+  if (!total || !split) return {};
+  return {
+    austin_issued_located_here: total,
+    austin_issued_full_purpose: split.full_purpose,
+    austin_issued_etj: split.etj,
+  };
 }
 
 export function assemblePermits(

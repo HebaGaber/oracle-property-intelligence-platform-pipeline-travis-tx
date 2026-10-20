@@ -72,14 +72,14 @@ describe("T043 checker rule 9: catalog hygiene", () => {
     expect(lines[0]).not.toContain("s3cr3t-token-value");
   });
 
-  it("main() checks the SOCRATA_APP_TOKEN value from the environment and prints rules 1-9 on PASS", () => {
+  it("main() checks the SOCRATA_APP_TOKEN value from the environment and prints rules 1-11 on PASS", () => {
     const d = mkdtempSync(join(tmpdir(), "hygiene-"));
     tmpDirs.push(d);
     const clean = join(d, "clean.yaml");
     writeFileSync(clean, stringify(cat()));
     const out: string[] = [];
     expect(main([clean], (l) => out.push(l), { SOCRATA_APP_TOKEN: "env-token-xyz" })).toBe(0);
-    expect(out.join("\n")).toMatch(/PASS check-catalog rules 1-9/);
+    expect(out.join("\n")).toMatch(/PASS check-catalog rules 1-11/);
 
     const dirty = cat();
     austin(dirty).notes = "token env-token-xyz";

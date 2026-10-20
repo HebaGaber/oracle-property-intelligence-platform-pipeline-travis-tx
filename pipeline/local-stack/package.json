@@ -9,7 +9,8 @@
     "dev": "tsx watch services/app.ts",
     "start": "tsx services/app.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "prove-destination": "tsx services/prove-destination.ts"
   },
   "keywords": [],
   "type": "module",

@@ -14,6 +14,13 @@
 // - T037/T038: blocked rows get their evidence file and, for TCAD and BBB, the records
 //   request / API application that is the next human step.
 // - READY never auto-advances to seed (kit default overridden; seed is A-04).
+// - CR-3 / OR-M1: the catalog write refuses (terminal error, no retry) when the catalog on
+//   disk carries offline amendments or approved exceptions, was written by another run, or
+//   changed after this snapshot (`catalogWriteRefusal`). The catalog records the run id.
+// - CR-4: permanent failures inside a journaled step (catalog schema or write refusal,
+//   evidence write, validator hash mismatch or crash) are terminal errors, never retried.
+// - OR-B1: `discover` passes the egress country it checked; the run records it in the
+//   run record and the catalog (`discovery_egress`).
 //
 // One SDK instance: this file imports the Restate SDK **type-only**. The host
 // (pipeline/local-stack/services/app.ts) passes in its own SDK module, so only the
@@ -21,12 +28,14 @@
 import type * as restate from "@restatedev/restate-sdk";
 import { z } from "zod";
 import {
+  EgressSchema,
   SourceKeySchema,
   type Catalog,
   type RecordsRequest,
   type Source,
   type SourceKey,
 } from "./catalog.schema.js";
+import { catalogWriteRefusal } from "./write-catalog.js";
 import type { CaptureReceipt } from "../lib/source-client.js";
 import { renderBlockedEvidence } from "./blocked-evidence.js";
 import type { Destination } from "./destination-proof.js";
@@ -57,7 +66,7 @@ import {
   type PriorObservation,
 } from "./probes/evidence.js";
 import { probeAustinPermits, probeComptroller } from "./probes/socrata.js";
-import { probeTcad } from "./probes/tcad.js";
+import { probeTcad, type PriorExport } from "./probes/tcad.js";
 import {
   TRAVIS_JURISDICTION_PROFILE,
   type JurisdictionProfileEntry,
@@ -120,7 +129,14 @@ export interface RunRecord {
   completed_at: string | null;
   /** Always false: READY never starts seed (A-04 does). */
   auto_advance_to_seed: false;
+  /** Egress country `discover` checked before it started the run (OR-B1); null if none. */
+  egress?: Egress | null;
 }
+
+export type Egress = z.infer<typeof EgressSchema>;
+
+/** The run handler's optional input: the egress `discover` checked (OR-B1). */
+export const RunInputSchema = z.strictObject({ egress: EgressSchema.optional() });
 
 export interface ValidatorResult {
   exit_code: number;
@@ -190,6 +206,24 @@ export interface DiscoveryIO {
   run<T>(name: string, fn: () => Promise<T>): Promise<T>;
   /** Persists the run record (workflow state). */
   save(record: RunRecord): void;
+  /**
+   * A permanent-failure error to throw inside `run` (CR-4): the Restate host returns its SDK's
+   * TerminalError, so the step is not retried. Defaults to PermanentFailure.
+   */
+  fail?(message: string): Error;
+}
+
+/** A permanent failure (no retry) when no Restate host supplies its TerminalError. */
+export class PermanentFailure extends Error {
+  override name = "PermanentFailure";
+}
+
+function permanent(io: DiscoveryIO, message: string): Error {
+  return io.fail ? io.fail(message) : new PermanentFailure(message);
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? (error.message.split("\n")[0] ?? error.name) : String(error);
 }
 
 const KEY_PART = /^[a-z0-9_]+$/;
@@ -245,7 +279,7 @@ export async function runDiscovery(
 }
 
 /** The subset of the SDK this module needs; the host passes its own SDK module. */
-export type RestateSdk = Pick<typeof restate, "workflow" | "RestatePromise">;
+export type RestateSdk = Pick<typeof restate, "workflow" | "RestatePromise" | "TerminalError">;
 
 /** Workflow step timeouts sit above the TCAD probe's own limits (10 min idle, 2 h total). */
 export const WORKFLOW_OPTIONS = {
@@ -255,14 +289,13 @@ export const WORKFLOW_OPTIONS = {
 
 const RUN_STATE_KEY = "run";
 
-/** Workflow key the operator commands use unless TRAVIS_DISCOVERY_RUN_ID says otherwise. */
-export const DEFAULT_RUN_ID = "travis";
-
 export interface TravisDiscoveryOptions {
   /** US1 probes (built per run). Without them the workflow records an empty run. */
   probes?: () => Us1Probes;
   /** Writes the assembled catalog (pipeline/docs/travis-sources.yaml in production). */
   writeCatalog?: (catalog: Catalog) => void;
+  /** Reads the catalog on disk (null when none) for the overwrite guard (CR-3). */
+  readCatalog?: () => Catalog | null;
   /** US2 jurisdiction probes (built per run). Without them no permits block is written. */
   jurisdictions?: () => JurisdictionProbes;
   /** The curated profile (defaults to the Travis profile). */
@@ -282,11 +315,14 @@ export function createTravisDiscovery(sdk: RestateSdk, options: TravisDiscoveryO
     name: WORKFLOW_NAME,
     options: WORKFLOW_OPTIONS,
     handlers: {
-      run: async (ctx: restate.WorkflowContext): Promise<RunRecord> => {
+      run: async (ctx: restate.WorkflowContext, input?: unknown): Promise<RunRecord> => {
+        const parsed = RunInputSchema.safeParse(input ?? {});
+        if (!parsed.success) throw new sdk.TerminalError("run input must be {egress?}");
         const io: HumanIO = {
           now: async () => new Date(await ctx.date.now()),
           run: (name, fn) => ctx.run(name, fn),
           save: (record) => ctx.set(RUN_STATE_KEY, record),
+          fail: (message) => new sdk.TerminalError(message),
           // Durable promises: the invocation suspends until the resolve handler completes one.
           awaitResolution: (names) =>
             sdk.RestatePromise.race(names.map((name) => ctx.promise<Resolution>(name).get())),
@@ -296,6 +332,8 @@ export function createTravisDiscovery(sdk: RestateSdk, options: TravisDiscoveryO
         if (options.jurisdictions) deps.jurisdictions = options.jurisdictions();
         if (options.profile) deps.profile = options.profile;
         if (options.writeCatalog) deps.writeCatalog = options.writeCatalog;
+        if (options.readCatalog) deps.readCatalog = options.readCatalog;
+        if (parsed.data.egress) deps.egress = parsed.data.egress;
         if (options.runValidator) deps.runValidator = options.runValidator;
         if (options.writeEvidence) deps.writeEvidence = options.writeEvidence;
         if (options.secrets) deps.secrets = options.secrets();
@@ -343,6 +381,8 @@ export interface Us1Deps extends ProbeDeps {
   gisTimeoutMs?: number;
   /** The recorded BBB challenge observation to reuse instead of a new request. */
   bbbPrior?: PriorObservation;
+  /** The export already held (its receipt and file): reused with no request (OR-m8). */
+  priorExport?: PriorExport;
 }
 
 export function createUs1Probes(deps: Us1Deps): Us1Probes {
@@ -357,6 +397,7 @@ export function createUs1Probes(deps: Us1Deps): Us1Probes {
         ...(deps.tcadLandingUrl === undefined ? {} : { landingUrl: deps.tcadLandingUrl }),
         ...(deps.tcadLimits === undefined ? {} : { limits: deps.tcadLimits }),
         ...(deps.tcadRecordPath === undefined ? {} : { recordPath: deps.tcadRecordPath }),
+        ...(deps.priorExport === undefined ? {} : { priorExport: deps.priorExport }),
       }),
     gis: () =>
       probeGisCount(base, deps.gisTimeoutMs === undefined ? {} : { timeoutMs: deps.gisTimeoutMs }),
@@ -467,6 +508,7 @@ export function buildUs1Catalog(
   blocks: Us1Blocks,
   snapshotTime: string,
   waitingHumanHours: number,
+  runId?: string,
 ): Catalog {
   return {
     county: "Travis",
@@ -474,6 +516,7 @@ export function buildUs1Catalog(
     slug: "travis",
     fips: "48453",
     snapshot_time: snapshotTime,
+    ...(runId === undefined ? {} : { discovery_run_id: runId }),
     waiting_human_hours: waitingHumanHours,
     parcel: blocks.parcel,
     enrichment: blocks.enrichment,
@@ -709,10 +752,13 @@ export interface DiscoveryDeps {
   jurisdictions?: JurisdictionProbes;
   profile?: readonly JurisdictionProfileEntry[];
   writeCatalog?: (catalog: Catalog) => void;
+  readCatalog?: () => Catalog | null;
   runValidator?: () => Promise<ValidatorResult>;
   writeEvidence?: (relPath: string, content: string) => void;
   secrets?: readonly string[];
   destinationProof?: () => Promise<Destination>;
+  /** Egress country checked by `discover` before the run started (OR-B1). */
+  egress?: Egress;
 }
 
 export type ResolvePlan = { accepted: true; promise: string } | { accepted: false; reason: string };
@@ -768,7 +814,13 @@ function assembleCatalog(session: Session, snapshot: string): Catalog {
     tcad_certified: tcadStop,
     tcad_supplemental: tcadStop,
   });
-  const us1 = buildUs1Catalog(blocks, snapshot, session.record.waiting_human_hours);
+  const us1 = buildUs1Catalog(
+    blocks,
+    snapshot,
+    session.record.waiting_human_hours,
+    session.record.run_id,
+  );
+  if (session.record.egress) us1.discovery_egress = session.record.egress;
   if (session.destination) us1.destination = session.destination;
   const j = session.jurisdictions;
   if (!j) return us1;
@@ -840,28 +892,61 @@ async function publishCatalog(
   const jobs = evidenceJobs(session, catalog);
   if (write && jobs.length > 0) {
     await io.run(`evidence:write:${snapshot.slice(0, 10)}${suffix}`, async () => {
-      for (const job of jobs) {
-        write(
-          job.path,
-          renderBlockedEvidence({
-            path: job.path,
-            subject: { kind: job.kind, key: job.key },
-            receipt: job.receipt,
-            secrets: deps.secrets ?? [],
-          }),
-        );
+      try {
+        for (const job of jobs) {
+          write(
+            job.path,
+            renderBlockedEvidence({
+              path: job.path,
+              subject: { kind: job.kind, key: job.key },
+              receipt: job.receipt,
+              secrets: deps.secrets ?? [],
+              identity: "unchanged",
+              ...(session.record.egress ? { egressCountry: session.record.egress.country } : {}),
+            }),
+          );
+        }
+      } catch (error) {
+        throw permanent(io, `evidence write failed: ${errorText(error)}`);
       }
       return jobs.length;
     });
   }
   const writeCatalog = deps.writeCatalog;
   if (writeCatalog) {
+    const readOnDisk = deps.readCatalog;
     await io.run(`catalog:write:${snapshot.slice(0, 10)}${suffix}`, async () => {
-      writeCatalog(catalog);
+      let refusal: string | null;
+      try {
+        refusal = readOnDisk ? catalogWriteRefusal(readOnDisk(), catalog) : null;
+      } catch (error) {
+        refusal = `catalog write refused: the catalog on disk is unreadable (${errorText(error)})`;
+      }
+      if (refusal !== null) throw permanent(io, refusal);
+      try {
+        writeCatalog(catalog);
+      } catch (error) {
+        throw permanent(io, `catalog write failed (schema or emit): ${errorText(error)}`);
+      }
       return true;
     });
   }
   return catalog;
+}
+
+/** Runs the validator as a journaled step; any failure of the runner is permanent (CR-4). */
+function validatorStep(
+  io: HumanIO,
+  name: string,
+  validate: () => Promise<ValidatorResult>,
+): Promise<ValidatorResult> {
+  return io.run(name, async () => {
+    try {
+      return await validate();
+    } catch (error) {
+      throw permanent(io, `validator step failed: ${errorText(error)}`);
+    }
+  });
 }
 
 /** Sources whose row is produced by the same probe step as `source`. */
@@ -943,6 +1028,7 @@ export async function runTravisDiscovery(
 ): Promise<RunRecord> {
   const us1 = await runSourceDiscovery(io, runId, deps.probes);
   const record = us1.record;
+  record.egress = deps.egress ?? null;
   record.state = "DISCOVERING";
   io.save(record);
   const profile = deps.profile ?? TRAVIS_JURISDICTION_PROFILE;
@@ -969,7 +1055,7 @@ export async function runTravisDiscovery(
   const first = await publishCatalog(io, session, deps, 0);
   record.blockers = sessionBlockers(session, first).map((b) => newBlocker(b));
   const validateFirst = deps.runValidator;
-  if (validateFirst) record.validator = await io.run("validator:run:r0", validateFirst);
+  if (validateFirst) record.validator = await validatorStep(io, "validator:run:r0", validateFirst);
   io.save(record);
 
   let round = 0;
@@ -1018,7 +1104,7 @@ export async function runTravisDiscovery(
     const catalog = await publishCatalog(io, session, deps, round);
     mergeBlockers(record, sourcesOfStep(target.source_key), sessionBlockers(session, catalog));
     const validate = deps.runValidator;
-    if (validate) record.validator = await io.run(`validator:run:r${round}`, validate);
+    if (validate) record.validator = await validatorStep(io, `validator:run:r${round}`, validate);
     io.save(record);
   }
 

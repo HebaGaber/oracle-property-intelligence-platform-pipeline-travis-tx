@@ -1,8 +1,9 @@
 // Operator command `npm --prefix pipeline/oracle-runtime run discover` (contracts/cli.md).
 //
-// Starts the TravisDiscovery workflow (run id "travis", or TRAVIS_DISCOVERY_RUN_ID) through
-// the local Restate ingress (RESTATE_INGRESS_URL, default http://localhost:8080) with a
-// one-way send, then polls the workflow's shared `status` handler and prints each state
+// Starts the TravisDiscovery workflow with the run id TRAVIS_DISCOVERY_RUN_ID (required: no
+// default, so a superseded run is never addressed by accident, CR-3) through the local
+// Restate ingress (RESTATE_INGRESS_URL, default http://localhost:8080) with a one-way send,
+// then polls the workflow's shared `status` handler and prints each state
 // change. It stops when the run has finished (READY, or WAITING_HUMAN with documented
 // blockers) or is waiting on a human, prints the run state, the blockers with their next
 // step and the validator result, and exits 0. It exits 1 when the stack cannot be reached,
@@ -11,12 +12,22 @@
 //
 // A Restate workflow runs once per id: a second `discover` with the same id shows the
 // existing run's state instead of starting a new one.
+//
+// Before a NEW run is sent (exit 2, nothing sent, when refused):
+// - CR-3: the committed catalog must be one the new run may write (`catalogWriteRefusal`:
+//   no offline amendments or approved exceptions, not another run's); otherwise the run
+//   would probe every source and then be refused at the write;
+// - OR-B1: the egress country is read from the Cloudflare trace (never the IP) and checked
+//   against ORACLE_EXPECT_EGRESS when set; the run records it (`discovery_egress`).
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { redact } from "../lib/log.js";
+import { checkEgress, type EgressCheck } from "../lib/egress.js";
+import type { Catalog } from "./catalog.schema.js";
 import { CATALOG_REL_PATH } from "./run-validator.js";
-import { DEFAULT_RUN_ID, WORKFLOW_NAME } from "./workflow.js";
-import { DEFAULT_INGRESS_URL } from "./resolve.js";
+import { WORKFLOW_NAME } from "./workflow.js";
+import { DEFAULT_INGRESS_URL, RUN_ID_ENV } from "./resolve.js";
+import { catalogWriteRefusal, readCatalogIfPresent } from "./write-catalog.js";
 
 const DEFAULT_POLL_MS = 10_000;
 const DEFAULT_MAX_HOURS = 9;
@@ -39,6 +50,7 @@ const StatusSchema = z.looseObject({
   waiting_human_hours: z.number(),
   waiting_since: z.string().nullable().optional(),
   completed_at: z.string().nullable().optional(),
+  egress: z.looseObject({ country: z.string() }).nullable().optional(),
 });
 type Status = z.infer<typeof StatusSchema>;
 
@@ -50,6 +62,12 @@ export interface DiscoverCliDeps {
   out?: (line: string) => void;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  /** OR-B1 egress check (default: Cloudflare trace through `fetch`). */
+  egress?: (reference: string | null) => Promise<EgressCheck>;
+  /** The committed catalog (default pipeline/docs/travis-sources.yaml; null when none). */
+  readCatalog?: () => Catalog | null;
+  /** Wall-clock time for the catalog guard (default new Date()). */
+  clock?: () => Date;
 }
 
 /** The run has nothing more to do without a human, or has finished. */
@@ -95,14 +113,73 @@ export async function main(deps: DiscoverCliDeps = {}): Promise<number> {
   const now = deps.now ?? (() => Date.now());
 
   const ingress = (env.RESTATE_INGRESS_URL ?? DEFAULT_INGRESS_URL).replace(/\/+$/, "");
-  const runId = env.TRAVIS_DISCOVERY_RUN_ID ?? DEFAULT_RUN_ID;
+  const runId = (env[RUN_ID_ENV] ?? "").trim();
+  if (runId === "") {
+    say(
+      `discover: refused: set ${RUN_ID_ENV} to the run id (there is no default run id; a new id starts a new run)`,
+    );
+    return 2;
+  }
   const pollMs = Number(env.DISCOVER_POLL_MS ?? DEFAULT_POLL_MS);
   const maxMs = Number(env.DISCOVER_MAX_HOURS ?? DEFAULT_MAX_HOURS) * 3_600_000;
   const base = `${ingress}/${WORKFLOW_NAME}/${encodeURIComponent(runId)}`;
 
+  // Does this run exist already? A new run gets the catalog guard and the egress check.
+  let existing: Status | null;
+  try {
+    const res = await fetchImpl(`${base}/status`, { method: "POST" });
+    const parsed = res.ok ? StatusSchema.nullable().safeParse(await res.json()) : null;
+    existing = parsed?.success ? parsed.data : null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    say(
+      `discover: not started: Restate ingress unreachable (${message}); is the local stack up and the deployment registered?`,
+    );
+    return 1;
+  }
+  let body: string | undefined;
+  if (existing === null) {
+    try {
+      const onDisk = (deps.readCatalog ?? (() => readCatalogIfPresent()))();
+      const snapshot = (deps.clock ?? (() => new Date()))().toISOString();
+      const refusal =
+        onDisk === null
+          ? null
+          : catalogWriteRefusal(onDisk, {
+              ...onDisk,
+              amendments: undefined,
+              approved_exceptions: undefined,
+              discovery_run_id: runId,
+              snapshot_time: snapshot,
+            });
+      if (refusal !== null) {
+        say(`discover: refused: a new run could not write the catalog: ${refusal}`);
+        return 2;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? (error.message.split("\n")[0] ?? "") : String(error);
+      say(`discover: refused: the committed catalog is unreadable (${message})`);
+      return 2;
+    }
+    const check = await (
+      deps.egress ??
+      ((reference: string | null) =>
+        checkEgress({ fetch: fetchImpl, env, reference, requireReference: false }))
+    )(null);
+    if (!check.ok) {
+      say(`discover: refused: ${check.reason}`);
+      return 2;
+    }
+    say(`discover: egress country ${check.egress.country} (recorded with the run)`);
+    body = JSON.stringify({ egress: check.egress });
+  }
+
   let sent: Response;
   try {
-    sent = await fetchImpl(`${base}/run/send`, { method: "POST" });
+    sent = await fetchImpl(`${base}/run/send`, {
+      method: "POST",
+      ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body }),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     say(

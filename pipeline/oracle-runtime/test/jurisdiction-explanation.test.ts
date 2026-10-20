@@ -1,7 +1,7 @@
 // PO decision 2026-10-20: every non-supported permit row explains why it has no captured
 // history, what was tried and what would unblock it, and says the request is not filed.
 // Synthetic rows only (example.test); no request is made.
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -77,7 +77,7 @@ describe("explainJurisdiction", () => {
     expect(text).not.toContain('"'); // the catalog writer refuses double quotes
   });
 
-  it("names an Access Denied page and a 406 content-negotiation refusal in plain words", () => {
+  it("names an Access Denied page; a plain 406 is never called a content-negotiation refusal", () => {
     expect(
       explainJurisdiction(blocked403(), { challengeSignal: 'title: "Access Denied"' }),
     ).toMatch(/HTTP 403 \(an Access Denied page\)/);
@@ -87,8 +87,63 @@ describe("explainJurisdiction", () => {
       ...r,
       blocked_evidence: { ...be, http_status: 406, outcome: "failed" as const },
     };
-    expect(explainJurisdiction(failed406)).toMatch(
-      /could not be read on 2026-01-01 \(HTTP 406, a content-negotiation refusal of the requested text\/html, not a block\)/,
+    const text = must(explainJurisdiction(failed406));
+    expect(text).toMatch(/could not be read on 2026-01-01 \(HTTP 406\)/);
+    expect(text).not.toMatch(/content-negotiation|not a block/);
+  });
+
+  it("OR-M2: a 406 whose body names Mod Security reads as a firewall block", () => {
+    const r = blocked403();
+    const be = must(r.blocked_evidence);
+    const text = must(
+      explainJurisdiction(
+        { ...r, blocked_evidence: { ...be, http_status: 406, outcome: "failed" as const } },
+        { firewall: "the site's web application firewall (Mod Security)" },
+      ),
+    );
+    expect(text).toMatch(
+      /^No permit history was captured: blocked by the site's web application firewall \(Mod Security\), HTTP 406, on 2026-01-01, and it is not requested again/,
+    );
+    expect(text).not.toContain('"');
+  });
+
+  it("OR-m5: a row resting only on the Census listing says the site did not answer", () => {
+    const text = must(
+      explainJurisdiction(
+        base({
+          status: "custodian-only",
+          evidence_url:
+            "https://www2.census.gov/geo/docs/reference/codes2020/place_by_cou/st48_tx_place_by_county2020.txt",
+          records_request: {
+            recipient_office: "Village of Synthetic, Village Hall",
+            system_scope: "synthetic",
+            route: "records-first",
+            request_portal_url: `${BASE}/village`,
+            channel_verified: false,
+          },
+        }),
+      ),
+    );
+    expect(text).toMatch(
+      /^No permit history can be captured: the village site did not answer; permit system unknown\./,
+    );
+    expect(text).toMatch(
+      /the only evidence is the Census place listing https:\/\/www2\.census\.gov\//,
+    );
+    expect(text).not.toMatch(/official page/);
+    expect(text).toMatch(/\(channel unverified: it did not answer\); not filed/);
+  });
+
+  it("OR-m6: splits Austin-issued permits located here into full purpose and ETJ", () => {
+    const m = (value: number) => ({ value, source_url: `${BASE}/g`, captured_at: AT, method: "x" });
+    const row = base({
+      jurisdiction: "Lakeside",
+      austin_issued_located_here: m(42),
+      austin_issued_full_purpose: m(40),
+      austin_issued_etj: m(2),
+    });
+    expect(explainJurisdiction(row)).toContain(
+      "Lakeside's own permits are not captured, but Austin-issued permits located here are captured through Austin dataset 3syk-w9eu: 40 permits inside the city limits (full purpose), 2 permits in its ETJ (outside the city limits).",
     );
   });
 
@@ -131,7 +186,7 @@ describe("explainJurisdiction", () => {
     );
   });
 
-  it("states a 406 once in plain words, then the short status in what was tried", () => {
+  it("states a 406 in the reason and the short status in what was tried", () => {
     const r = blocked403();
     const be = must(r.blocked_evidence);
     const text = must(
@@ -140,7 +195,7 @@ describe("explainJurisdiction", () => {
         blocked_evidence: { ...be, http_status: 406, outcome: "failed" },
       }),
     );
-    expect(text.match(/content-negotiation/g)).toHaveLength(1);
+    expect(text.match(/HTTP 406/g)).toHaveLength(2);
     expect(text).toMatch(/on 2026-01-01 \(HTTP 406\); evidence/);
   });
 
@@ -251,8 +306,13 @@ describe("applyPoDecision / explain-blocked (offline)", () => {
     );
     expect(town.blocked_explanation).toMatch(/HTTP 403 \(an Access Denied page\)/);
     expect(lines.join("\n")).toMatch(/no request made/);
-    const once = readFileSync(catalogPath, "utf8");
+    const strip = (c: Catalog) => {
+      const { amendments: _a, ...rest } = c;
+      return rest;
+    };
+    const once = readCatalog(catalogPath);
+    expect(must(once.amendments?.at(-1)).command).toBe("explain-blocked");
     await explainBlocked({ repoRoot: root, catalogPath, validate: async () => 1, out: () => {} });
-    expect(readFileSync(catalogPath, "utf8")).toBe(once);
+    expect(strip(readCatalog(catalogPath))).toEqual(strip(once));
   });
 });

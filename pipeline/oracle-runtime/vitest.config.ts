@@ -7,5 +7,7 @@ export default defineConfig({
     include: ["test/**/*.test.ts"],
     exclude: ["test/acceptance/**", "node_modules/**"],
     environment: "node",
+    // A real fetch in a unit test is a bug: it is replaced by one that always rejects.
+    setupFiles: ["test/setup-no-network.ts"],
   },
 });

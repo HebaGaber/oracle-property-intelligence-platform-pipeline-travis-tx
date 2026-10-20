@@ -127,9 +127,15 @@ describe("rescanTcad", () => {
         identifier_format: _f,
         ...rest
       } = parcelOf(c);
-      return { ...c, parcel: rest };
+      const { amendments: _a, ...cat } = c;
+      return { ...cat, parcel: rest };
     };
     expect(strip(after)).toEqual(strip(before));
+    // OR-M5: the change is recorded as an amendment naming the fields and the export
+    const amendment = must(after.amendments?.at(-1));
+    expect(amendment.command).toBe("rescan-tcad");
+    expect(amendment.fields).toContain("parcel.identifier_name");
+    expect(amendment.ref).toContain(parcelOf(before).export_receipt?.sha256 ?? "missing");
     expect(lines.join("\n")).toMatch(/sha256 matches the export receipt/);
     expect(lines.join("\n")).not.toMatch(/G101|101,/);
   });

@@ -60,12 +60,13 @@ function rig(
   return { dockerCalls, sqlCalls, docker, sql };
 }
 
-function prove(r: Rig) {
+function prove(r: Rig, configured: (() => Promise<string>) | null = async () => SYSTEM_ID) {
   return proveDestination({
     docker: r.docker,
     sql: r.sql,
     composeFile: "/abs/compose/docker-compose.yml",
     now: () => AT,
+    ...(configured === null ? {} : { configured }),
   });
 }
 
@@ -76,9 +77,9 @@ describe("T040 destination proof: two independent identities (FR-001c)", () => {
     expect(dest.writes_in_scope).toBe(true);
     expect(dest.proven).toBe(true);
     const ids = must(dest.independent_identity_sources);
-    expect(ids).toHaveLength(2);
-    expect(new Set(ids).size).toBe(2);
-    const [dockerSide, sqlSide] = ids as [string, string];
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
+    const [dockerSide, sqlSide] = ids as [string, string, string];
     expect(dockerSide).toMatch(/^docker-side: /);
     expect(dockerSide).toContain(CONTAINER.slice(0, 12));
     expect(dockerSide).toContain(IMAGE_DIGEST);
@@ -157,5 +158,36 @@ describe("T040 destination proof: two independent identities (FR-001c)", () => {
     });
     expect(dest.proven).toBe(false);
     expect(must(dest.missing_reason)).toMatch(/docker-side/);
+  });
+});
+
+describe("OR-m4 destination proof: the configured loader connection", () => {
+  it("records a config-side identity equal to the sql-side system identifier", async () => {
+    const dest = await prove(rig());
+    const ids = must(dest.independent_identity_sources);
+    expect(ids[2]).toMatch(/^config-side: .*system_identifier \d+, equal to the sql-side/);
+    expect(ids.join(" ")).not.toMatch(/DATABASE_URL|postgres(?:ql)?:\/\//);
+  });
+
+  it("is not proven without the configured-connection check", async () => {
+    const dest = await prove(rig(), null);
+    expect(dest.proven).toBe(false);
+    expect(must(dest.missing_reason)).toMatch(
+      /config-side: the configured connection was not checked/,
+    );
+  });
+
+  it("is not proven when the configured connection reaches another database", async () => {
+    const dest = await prove(rig(), async () => "1234567890123456789");
+    expect(dest.proven).toBe(false);
+    expect(must(dest.missing_reason)).toMatch(/config-side: .*different database/);
+  });
+
+  it("is not proven when the configured connection fails, and never repeats its message", async () => {
+    const dest = await prove(rig(), async () => {
+      throw new Error("connect ECONNREFUSED postgres://u:secret@h:5432/db");
+    });
+    expect(dest.proven).toBe(false);
+    expect(must(dest.missing_reason)).not.toMatch(/secret|postgres:/);
   });
 });

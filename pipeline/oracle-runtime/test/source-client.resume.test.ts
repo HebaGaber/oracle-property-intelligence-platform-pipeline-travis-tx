@@ -4,11 +4,12 @@
 // SYNTHETIC TEST FIXTURE (test-only): an in-process fake server that serves an invented
 // payload and breaks its streams at scripted byte offsets. No real source is called.
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  EXCERPT_BYTES,
   MAX_RESUMES,
   USER_AGENT,
   createSourceClient,
@@ -352,5 +353,94 @@ describe("FR-003 range resume of a broken TCAD export download", () => {
       status: 403,
       resumes: 1,
     });
+  });
+});
+
+/** A body that never ends: 16 KiB chunks for as long as it is read; counts what was pulled. */
+function endlessBody(): { stream: ReadableStream<Uint8Array>; pulled: () => number } {
+  let pulled = 0;
+  const chunk = new Uint8Array(16 * 1024);
+  const stream = new ReadableStream<Uint8Array>({
+    pull: (controller) => {
+      pulled += chunk.byteLength;
+      controller.enqueue(chunk);
+    },
+  });
+  return { stream, pulled: () => pulled };
+}
+
+describe("CR-1, CR-2, CR-6: bounded refusals, write errors and the final size check", () => {
+  it("CR-1: a full 200 answer to a resume is never buffered; only a bounded excerpt is read", async () => {
+    const payload = payloadOf(10_000);
+    const base = fakeServer({ payload, dropAt: [4_096] });
+    const endless = endlessBody();
+    let n = 0;
+    const fetch: FetchLike = async (url, init) => {
+      n += 1;
+      if (n === 2) {
+        // a "3.5 GB" whole file instead of 206 Partial Content
+        return new Response(endless.stream, {
+          status: 200,
+          headers: { "content-type": "application/zip", "content-length": "3554021795" },
+        });
+      }
+      return base.fetch(url, init);
+    };
+    const dir = tempDir();
+    const dl = await download(fetch, dir);
+    expect(n).toBe(2);
+    expect(endless.pulled()).toBeLessThanOrEqual(EXCERPT_BYTES + 64 * 1024);
+    expect(dl.receipt).toMatchObject({ outcome: "failed", status: 200, resumes: 1 });
+    expect(dl.receipt.error).toMatch(/instead of 206/);
+    expect(dl.path).toBeNull();
+    expect(existsSync(join(dir, "export.zip.part"))).toBe(false);
+  });
+
+  it("CR-1: a refused first answer with a huge body keeps a bounded excerpt and the advertised size", async () => {
+    const endless = endlessBody();
+    const fetch: FetchLike = async () =>
+      new Response(endless.stream, {
+        status: 404,
+        headers: { "content-type": "text/html", "content-length": "999999999" },
+      });
+    const dl = await download(fetch, tempDir());
+    expect(endless.pulled()).toBeLessThanOrEqual(EXCERPT_BYTES + 64 * 1024);
+    expect(dl.receipt.outcome).toBe("failed");
+    expect(dl.receipt.bytes).toBe(EXCERPT_BYTES);
+    expect(dl.receipt.stop_evidence?.body_bytes).toBe(999_999_999);
+    expect(dl.excerpt.byteLength).toBe(EXCERPT_BYTES);
+  });
+
+  it("CR-2: a .part write error (EISDIR) gives a failed receipt, no crash, no hang, no resume", async () => {
+    const payload = payloadOf(200_000);
+    const dir = tempDir();
+    mkdirSync(join(dir, "export.zip.part"));
+    const server = fakeServer({ payload, dropAt: [] });
+    const dl = await download(server.fetch, dir);
+    expect(server.requests).toHaveLength(1);
+    expect(dl.receipt.outcome).toBe("failed");
+    expect(dl.receipt.error).toMatch(/writing the \.part file failed: EISDIR/);
+    expect(dl.path).toBeNull();
+    expect(existsSync(join(dir, "export.zip"))).toBe(false);
+    // the directory that stood in the way is not deleted
+    expect(statSync(join(dir, "export.zip.part")).isDirectory()).toBe(true);
+  });
+
+  it("CR-6: a first download that ends short without an error is failed and keeps its .part", async () => {
+    const payload = payloadOf(10_000);
+    const fetch: FetchLike = async () =>
+      new Response(new Uint8Array(payload.subarray(0, 4_096)), {
+        status: 200,
+        // advertised 10,000 bytes, only 4,096 sent, then a clean end of stream
+        headers: { "content-type": "application/zip", "content-length": "10000" },
+      });
+    const dir = tempDir();
+    const dl = await download(fetch, dir);
+    expect(dl.receipt).toMatchObject({ outcome: "failed", status: 200, resumes: 0, bytes: 4_096 });
+    expect(dl.receipt.error).toMatch(/does not equal the advertised length 10000/);
+    expect(dl.receipt.incomplete_body).toEqual({ bytes: 4_096, content_length: 10_000 });
+    expect(dl.path).toBeNull();
+    expect(existsSync(join(dir, "export.zip"))).toBe(false);
+    expect(statSync(join(dir, "export.zip.part")).size).toBe(4_096);
   });
 });

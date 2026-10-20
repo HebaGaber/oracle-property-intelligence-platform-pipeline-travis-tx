@@ -7,12 +7,17 @@
 // - A null value shows its `missing_reason`, never 0.
 // - Deterministic: the output depends only on the catalog (no clock, no locale, no host
 //   paths); times are shown to the second; a re-run with the same catalog gives no diff.
+// - Review additions (CR-A-01): the run id beside waiting_human_hours (OR-n2), the
+//   seed-gating statement (OR-m7), "Approved exceptions" (OR-M3) and "Amendments" (OR-M5)
+//   sections; only a blocked row is listed as blocked, an available source captured another
+//   way is listed under operator-side blocks (OR-M5); Austin-issued counts are split into
+//   full purpose and ETJ (OR-m6); re-probes and superseded evidence are listed (OR-m2).
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { redact } from "../lib/log.js";
 import { DEFAULT_REPO_ROOT } from "./blocked-evidence.js";
-import type { Catalog, Measurement, Source } from "./catalog.schema.js";
+import type { Catalog, Jurisdiction, Measurement, Source } from "./catalog.schema.js";
 import { DEFAULT_CATALOG_PATH, readCatalog } from "./write-catalog.js";
 
 export const SOURCES_MD_REL_PATH = "docs/sources.md";
@@ -332,6 +337,7 @@ function jurisdictionsSection(catalog: Catalog): string[] {
         "Historical records",
         "Supported from",
         "Issued by",
+        "Austin-issued here: full purpose / ETJ",
         "Evidence URL",
         "Captured (UTC)",
       ],
@@ -342,6 +348,7 @@ function jurisdictionsSection(catalog: Catalog): string[] {
         String(j.historical_records),
         j.earliest_record_date ?? "",
         cell(j.issued_by ?? ""),
+        austinSplitCell(j),
         j.evidence_url,
         utc(j.evidence_captured_at),
       ]),
@@ -349,11 +356,39 @@ function jurisdictionsSection(catalog: Catalog): string[] {
   );
   if (rows.length > 0) {
     out.push(
-      "Austin-issued permits located in another jurisdiction are counted under `austin_permits` (see Measurements); the city rows show them as informational `austin_issued_located_here` counts that never set a city's class.",
+      "Austin-issued permits located in another jurisdiction are counted under `austin_permits` (see Measurements); the city rows show them as informational counts that never set a city's class, split into full purpose (inside the city limits, the count AC-4 uses) and ETJ (the city's extraterritorial jurisdiction, outside its limits).",
       "",
     );
   }
+  const reprobed = rows.filter((j) => j.reprobe_count !== undefined);
+  if (reprobed.length > 0) {
+    out.push("Re-probes (`reprobe-jurisdictions`, once per row at most):", "");
+    for (const j of reprobed) {
+      const url = j.reprobe_url_changed
+        ? "a new evidence URL, so it was a new probe rather than a re-probe of the same page"
+        : "the same evidence URL";
+      out.push(
+        `- ${cell(j.jurisdiction)}: re-probed ${j.reprobe_count ?? 0} time(s), at ${utc(j.reprobed_at ?? j.evidence_captured_at)}, with ${url}`,
+      );
+      for (const e of j.superseded_evidence ?? []) {
+        out.push(`  - \`${e.evidence_path}\` is superseded by ${supersededBy(e.superseded_by)}`);
+      }
+    }
+    out.push("");
+  }
   return out;
+}
+
+function austinSplitCell(j: Jurisdiction): string {
+  const fp = j.austin_issued_full_purpose?.value;
+  const etj = j.austin_issued_etj?.value;
+  if (typeof fp === "number" && typeof etj === "number") return `${num(fp)} / ${num(etj)}`;
+  const total = j.austin_issued_located_here?.value;
+  return typeof total === "number" ? `${num(total)} (not split)` : "";
+}
+
+function supersededBy(by: string): string {
+  return by.startsWith("docs/") ? `\`${by}\`` : cell(by);
 }
 
 function blockedSection(catalog: Catalog): string[] {
@@ -364,7 +399,8 @@ function blockedSection(catalog: Catalog): string[] {
     next?: string | undefined;
   }> = [];
   for (const s of catalog.sources) {
-    if (s.blocked_evidence) {
+    // Only a blocked row is listed as blocked (OR-M5); see operatorBlocksSection.
+    if (s.status === "blocked" && s.blocked_evidence) {
       rows.push({
         subject: `source \`${s.key}\``,
         ev: s.blocked_evidence,
@@ -374,7 +410,7 @@ function blockedSection(catalog: Catalog): string[] {
     }
   }
   for (const j of catalog.permits?.jurisdictions ?? []) {
-    if (j.blocked_evidence) {
+    if (j.status === "blocked" && j.blocked_evidence) {
       rows.push({
         subject: `jurisdiction ${cell(j.jurisdiction)}`,
         ev: j.blocked_evidence,
@@ -427,6 +463,120 @@ function blockedSection(catalog: Catalog): string[] {
   return out;
 }
 
+/** Available sources the operator machine could not reach, captured another way (OR-M5). */
+function operatorBlocksSection(catalog: Catalog): string[] {
+  const rows = catalog.sources.filter(
+    (s) => s.status === "available" && s.operator_blocked_evidence,
+  );
+  if (rows.length === 0) return [];
+  const out = [
+    "Operator-side blocks: these sources are **available**; the operator machine could not reach them, and they were captured another way.",
+    "",
+    ...table(
+      [
+        "Source",
+        "Status",
+        "Operator-side block",
+        "Operator-side stop",
+        "How it was captured",
+        "Evidence file",
+        "Captured (UTC)",
+      ],
+      rows.map((s) => {
+        const ev = s.operator_blocked_evidence as NonNullable<Source["operator_blocked_evidence"]>;
+        const stop =
+          ev.timeout_ms !== undefined
+            ? `timeout after ${num(ev.timeout_ms)} ms`
+            : ev.http_status !== undefined
+              ? `HTTP ${ev.http_status}`
+              : `network error: ${cell(ev.error ?? "no HTTP response")}`;
+        const via = s.denominator.captured_via;
+        const label =
+          via !== undefined && /\bUS\b/.test(via)
+            ? "operator egress blocked; captured via US runner"
+            : "operator egress blocked; captured another way";
+        return [
+          `\`${s.key}\``,
+          "available",
+          label,
+          `${stop}; geo signal: ${cell(ev.geo_signal)}`,
+          via ? `captured via ${cell(via)}` : "captured another way",
+          `\`${ev.evidence_path}\``,
+          utc(s.denominator.captured_at),
+        ];
+      }),
+    ),
+  ];
+  return out;
+}
+
+function exceptionsSection(catalog: Catalog): string[] {
+  const list = catalog.approved_exceptions ?? [];
+  if (list.length === 0) return ["No approved exceptions.", ""];
+  const out: string[] = [];
+  for (const e of list) {
+    out.push(`### Gate \`${e.gate}\``, "");
+    const p = catalog.parcel;
+    if (e.gate === "parcel" && p && p.gap_pct !== "unknown") {
+      out.push(
+        `The readiness validator reports the parcel gate as **PASS because of this exception**; the raw gap stays ${num(p.gap_pct)}% (above the ${num(p.discrepancy_threshold_pct)}% threshold) and is printed in the validator's evidence line.`,
+        "",
+      );
+    }
+    out.push(
+      ...table(
+        ["Approved", "Value"],
+        [
+          ["Approved by", cell(e.approved_by ?? "not recorded")],
+          ["Approved on", e.approved_at ?? "not recorded"],
+          [
+            "Gap (gap_pct)",
+            e.approved_gap_pct === undefined ? "not bound" : `${num(e.approved_gap_pct)}%`,
+          ],
+          [
+            "GIS features (gis_feature_count)",
+            e.approved_gis_count === undefined ? "not bound" : num(e.approved_gis_count),
+          ],
+          [
+            "Roll accounts (assessed_parcel_count)",
+            e.approved_assessed_count === undefined ? "not bound" : num(e.approved_assessed_count),
+          ],
+          ["Decision record", e.decision_ref ? `\`${e.decision_ref}\`` : "not recorded"],
+        ],
+      ),
+      `- Reason: ${e.reason}`,
+    );
+    if (e.coverage_effect) out.push(`- Coverage effect: ${e.coverage_effect}`);
+    out.push(
+      "- Bound to the values above: check-catalog rule 10 fails as soon as the catalog's GIS count, roll count or gap differ.",
+      "",
+    );
+  }
+  return out;
+}
+
+function amendmentsSection(catalog: Catalog): string[] {
+  const list = catalog.amendments ?? [];
+  if (list.length === 0) {
+    return ["No offline command has changed the catalog since the workflow wrote it.", ""];
+  }
+  return [
+    `The discovery workflow wrote the catalog at ${utc(catalog.snapshot_time)}; these offline commands changed named fields since, in order. The workflow refuses to overwrite a catalog that carries amendments.`,
+    "",
+    ...table(
+      ["At (UTC)", "Command", "Fields", "Based on", "Egress", "Note"],
+      list.map((a) => [
+        utc(a.at),
+        `\`${a.command}\``,
+        cell(a.fields.join(", ")),
+        cell(a.ref),
+        a.egress_country ?? "not recorded",
+        cell(a.note ?? ""),
+      ]),
+    ),
+  ];
+}
+
 function destinationSection(catalog: Catalog): string[] {
   const d = catalog.destination;
   if (!d) return ["_No destination block in the catalog._", ""];
@@ -464,7 +614,9 @@ export function renderSourcesMd(catalog: Catalog): string {
     "",
     `Generated by \`npm --prefix pipeline/oracle-runtime run render-sources\` from \`${CATALOG_REL_PATH}\` (snapshot ${utc(catalog.snapshot_time)}). Do not edit by hand. Every number below sits in a row with its source URL and UTC capture time; a missing value shows why it is missing.`,
     "",
-    `Time the discovery run spent waiting for a human: ${num(catalog.waiting_human_hours)} h (recorded in the catalog, SC-006).`,
+    `Time the discovery run${catalog.discovery_run_id ? ` \`${catalog.discovery_run_id}\`` : ""} spent waiting for a human: ${num(catalog.waiting_human_hours)} h (recorded in the catalog, SC-006).${catalog.discovery_egress ? ` Run egress country: ${catalog.discovery_egress.country}.` : ""}`,
+    "",
+    "Seed gating: the kit's auto-advance on PASS is overridden; seed is A-04 behind G4–G7, and a PASS never starts seed, pilot or ingest.",
     "",
     "## Sources",
     "",
@@ -481,12 +633,19 @@ export function renderSourcesMd(catalog: Catalog): string {
     "## Blocked sources",
     "",
     ...blockedSection(catalog),
+    ...operatorBlocksSection(catalog),
+    "## Approved exceptions",
+    "",
+    ...exceptionsSection(catalog),
     "## Destination proof",
     "",
     ...destinationSection(catalog),
     "## Enrichment",
     "",
     ...enrichmentSection(catalog),
+    "## Amendments",
+    "",
+    ...amendmentsSection(catalog),
     "## Measurements",
     "",
     "Every measurement in the catalog, with how it was measured.",

@@ -22,6 +22,7 @@ import {
   createJurisdictionProbes,
   createTravisDiscovery,
   createUs1Probes,
+  PermanentFailure,
   planResolution,
   runTravisDiscovery,
   type DiscoveryDeps,
@@ -699,6 +700,7 @@ describe("A-01-TC-027 resolve (FR-006f)", () => {
   it("resolve CLI exits 0 for a waiting source and 1 for one that is not waiting", async () => {
     const posted: Array<{ url: string; body: unknown }> = [];
     const ingress = (accepted: boolean) => async (url: string, init: RequestInit) => {
+      if (url.endsWith("/status")) return json(null);
       posted.push({ url, body: JSON.parse(String(init.body)) as unknown });
       return json(
         accepted
@@ -714,32 +716,61 @@ describe("A-01-TC-027 resolve (FR-006f)", () => {
       RESTATE_INGRESS_URL: "http://ingress.test:8080",
       TRAVIS_DISCOVERY_RUN_ID: "run-x",
     };
+    const offline = {
+      readCatalog: () => null,
+      egress: async () => ({
+        ok: true as const,
+        egress: { country: "EG", captured_at: "2026-01-01T00:00:00.000Z", method: "trace" },
+      }),
+    };
 
     expect(
-      await resolveMain(["tcad_certified", "still-blocked"], { fetch: ingress(true), env, out }),
+      await resolveMain(["tcad_certified", "still-blocked"], {
+        ...offline,
+        fetch: ingress(true),
+        env,
+        out,
+      }),
     ).toBe(0);
     expect(posted[0]).toEqual({
       url: "http://ingress.test:8080/TravisDiscovery/run-x/resolve",
       body: { source_key: "tcad_certified", outcome: "still-blocked" },
     });
     expect(
-      await resolveMain(["austin_permits", "captured"], { fetch: ingress(false), env, out }),
+      await resolveMain(["austin_permits", "captured"], {
+        ...offline,
+        fetch: ingress(false),
+        env,
+        out,
+      }),
     ).toBe(1);
     // bad arguments never reach the ingress
     const sent = posted.length;
-    expect(await resolveMain(["tcad_certified", "maybe"], { fetch: ingress(true), env, out })).toBe(
-      1,
-    );
     expect(
-      await resolveMain(["not_a_source", "captured"], { fetch: ingress(true), env, out }),
+      await resolveMain(["tcad_certified", "maybe"], {
+        ...offline,
+        fetch: ingress(true),
+        env,
+        out,
+      }),
     ).toBe(1);
-    expect(await resolveMain([], { fetch: ingress(true), env, out })).toBe(1);
+    expect(
+      await resolveMain(["not_a_source", "captured"], {
+        ...offline,
+        fetch: ingress(true),
+        env,
+        out,
+      }),
+    ).toBe(1);
+    expect(await resolveMain([], { ...offline, fetch: ingress(true), env, out })).toBe(1);
     expect(posted.length).toBe(sent);
     // an unreachable stack is reported, not a crash
     const down = async () => {
       throw new Error("connect ECONNREFUSED");
     };
-    expect(await resolveMain(["tcad_certified", "captured"], { fetch: down, env, out })).toBe(1);
+    expect(
+      await resolveMain(["tcad_certified", "captured"], { ...offline, fetch: down, env, out }),
+    ).toBe(1);
     expect(lines.join("\n")).not.toMatch(/\/Users\//);
   });
 });
@@ -905,5 +936,84 @@ describe("Phase 6 wiring: destination proof, first validator run, waiting and co
     expect(record.state).toBe("WAITING_HUMAN");
     expect(record.waiting_since).toBeNull();
     expect(record.completed_at).toMatch(/Z$/);
+  });
+});
+
+describe("CR-3 / OR-M1 and CR-4: the catalog write guard and permanent failures", () => {
+  const amendedOnDisk = (c: Catalog): Catalog => ({
+    ...c,
+    amendments: [
+      { command: "explain-blocked", at: "2026-01-02T00:00:00Z", fields: ["x"], ref: "y" },
+    ],
+  });
+
+  it("records its run id (and the egress discover checked) in the catalog", async () => {
+    const h = harness({});
+    h.extra.egress = { country: "EG", captured_at: "2026-01-01T00:00:00.000Z", method: "trace" };
+    const record = await h.run();
+    const catalog = must(h.catalogs.at(-1));
+    expect(catalog.discovery_run_id).toBe("run-us4");
+    expect(catalog.discovery_egress?.country).toBe("EG");
+    expect(record.egress?.country).toBe("EG");
+  });
+
+  it("refuses, as a permanent failure, to overwrite a catalog that offline commands amended", async () => {
+    const first = harness({});
+    await first.run();
+    const onDisk = amendedOnDisk(must(first.catalogs.at(-1)));
+    const h = harness({});
+    h.extra.readCatalog = () => onDisk;
+    const failure = await h.run().catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(PermanentFailure);
+    expect(String((failure as Error).message)).toMatch(
+      /catalog write refused for run run-us4: it carries 1 offline amendment\(s\) \(explain-blocked\)/,
+    );
+    expect(h.catalogs).toEqual([]);
+  });
+
+  it("refuses a catalog written by another run, and one with approved exceptions", async () => {
+    const first = harness({});
+    await first.run();
+    const base = must(first.catalogs.at(-1));
+    for (const onDisk of [
+      { ...base, discovery_run_id: "travis-old" },
+      { ...base, approved_exceptions: [{ gate: "parcel", reason: "synthetic" }] },
+    ]) {
+      const h = harness({});
+      h.extra.readCatalog = () => onDisk;
+      await expect(h.run()).rejects.toBeInstanceOf(PermanentFailure);
+      expect(h.catalogs).toEqual([]);
+    }
+  });
+
+  it("uses the host's terminal error when the IO supplies one (Restate TerminalError)", async () => {
+    class Terminal extends Error {}
+    const first = harness({});
+    await first.run();
+    const onDisk = amendedOnDisk(must(first.catalogs.at(-1)));
+    const h = harness({});
+    h.extra.readCatalog = () => onDisk;
+    h.io.fail = (message) => new Terminal(message);
+    await expect(h.run()).rejects.toBeInstanceOf(Terminal);
+  });
+
+  it("CR-4: a validator crash or hash mismatch is permanent, not retried", async () => {
+    const h = harness({});
+    h.extra.runValidator = async () => {
+      throw new Error("run-validator: vendored validator SHA-256 abc does not match");
+    };
+    const failure = await h.run().catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(PermanentFailure);
+    expect(String((failure as Error).message)).toMatch(/validator step failed: run-validator/);
+  });
+
+  it("CR-4: a schema-invalid catalog (writer throws) is permanent", async () => {
+    const h = harness({});
+    h.extra.writeCatalog = () => {
+      throw new Error("write-catalog: catalog.x contains a quote");
+    };
+    const failure = await h.run().catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(PermanentFailure);
+    expect(String((failure as Error).message)).toMatch(/catalog write failed \(schema or emit\)/);
   });
 });

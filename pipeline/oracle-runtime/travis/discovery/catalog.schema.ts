@@ -124,11 +124,25 @@ export const RecordsRequestSchema = z
     route: z.enum(["api-first", "records-first"]),
     request_portal_url: Url.optional(),
     request_email: z.email().optional(),
+    /**
+     * False when the recorded channel was never seen answering (OR-m5: Webberville's village
+     * site did not answer). Absent means the channel page was read.
+     */
+    channel_verified: z.boolean().optional(),
   })
   .refine((r) => r.request_portal_url !== undefined || r.request_email !== undefined, {
     message: "records_request needs request_portal_url or request_email",
   });
 export type RecordsRequest = z.infer<typeof RecordsRequestSchema>;
+
+/**
+ * An evidence file that a later probe replaced (OR-m2). The committed file is never edited;
+ * the catalog row names what superseded it.
+ */
+export const SupersededEvidenceSchema = z.strictObject({
+  evidence_path: Text,
+  superseded_by: Text,
+});
 
 export const SourceSchema = z
   .strictObject({
@@ -146,10 +160,17 @@ export const SourceSchema = z
     decision_reason: Text.optional(),
     captured_at: UtcTimestamp,
     blocked_evidence: BlockedEvidenceSchema.optional(),
+    /**
+     * An available source that the operator machine could not reach but that was captured
+     * another way (tcad_gis: operator egress blocked; captured via the US runner). Kept out
+     * of `blocked_evidence`, which only a blocked row carries (check-catalog rule 11).
+     */
+    operator_blocked_evidence: BlockedEvidenceSchema.optional(),
     records_request: RecordsRequestSchema.optional(),
     next_step: Text.optional(),
     tcad_id_null_count: MeasurementSchema.optional(),
     located_in_other_jurisdictions: z.array(LocatedElsewhereSchema).optional(),
+    superseded_evidence: z.array(SupersededEvidenceSchema).optional(),
     notes: Text.optional(),
   })
   .refine((s) => s.status !== "blocked" || s.blocked_evidence !== undefined, {
@@ -180,8 +201,19 @@ export const JurisdictionSchema = z.strictObject({
   earliest_record_date: DateString.optional(),
   records_request: RecordsRequestSchema.optional(),
   issued_by: Text.optional(),
+  /** All Austin-issued permits located here (full purpose + ETJ + other), FR-004c. */
   austin_issued_located_here: MeasurementSchema.optional(),
+  /** The part inside the city limits ("<NAME> FULL PURPOSE"), the AC-4 count (OR-m6). */
+  austin_issued_full_purpose: MeasurementSchema.optional(),
+  /** The part in the city's extraterritorial jurisdiction ("<NAME> ETJ"), outside its limits. */
+  austin_issued_etj: MeasurementSchema.optional(),
   blocked_evidence: BlockedEvidenceSchema.optional(),
+  /** Re-probes made by `reprobe-jurisdictions` (at most 1, OR-m2) and when. */
+  reprobe_count: z.int().min(0).max(1).optional(),
+  reprobed_at: UtcTimestamp.optional(),
+  /** True when the re-probe used a different evidence URL (then it was a new probe). */
+  reprobe_url_changed: z.boolean().optional(),
+  superseded_evidence: z.array(SupersededEvidenceSchema).optional(),
   /**
    * Evaluator-readable reason a non-supported row has no captured history: why, what was
    * tried, what would unblock it (PO decision 2026-10-20: no request is filed).
@@ -448,7 +480,49 @@ export const CensusReferenceSchema = z.strictObject({
   notes: Text.optional(),
 });
 
-export const ApprovedExceptionSchema = z.strictObject({ gate: Text, reason: Text });
+/**
+ * A PO-approved validator exception (OR-M3). The kit validator reads only `gate` and
+ * `reason`; the other fields bind the approval to the values it was given for, and
+ * check-catalog rule 10 fails when the catalog no longer carries those values.
+ */
+export const ApprovedExceptionSchema = z.strictObject({
+  gate: Text,
+  reason: Text,
+  approved_by: Text.optional(),
+  approved_at: DateString.optional(),
+  approved_gap_pct: z.number().nonnegative().optional(),
+  approved_gis_count: z.int().nonnegative().optional(),
+  approved_assessed_count: z.int().nonnegative().optional(),
+  coverage_effect: Text.optional(),
+  decision_ref: Text.optional(),
+});
+export type ApprovedException = z.infer<typeof ApprovedExceptionSchema>;
+
+/**
+ * One change an offline command made to the catalog after the workflow wrote it (OR-M5).
+ * The workflow refuses to overwrite a catalog that carries any (CR-3).
+ */
+export const AmendmentSchema = z.strictObject({
+  command: Text,
+  at: UtcTimestamp,
+  fields: z.array(Text).min(1),
+  /** The run, artifact, evidence file or commit the change rests on. */
+  ref: Text,
+  /** Egress country (Cloudflare trace `loc`) of a command that sent a request (OR-B1). */
+  egress_country: z
+    .string()
+    .regex(/^[A-Z]{2}$/)
+    .optional(),
+  note: Text.optional(),
+});
+export type Amendment = z.infer<typeof AmendmentSchema>;
+
+/** Egress country of the discovery run, from the Cloudflare trace `loc` (OR-B1). */
+export const EgressSchema = z.strictObject({
+  country: z.string().regex(/^[A-Z]{2}$/),
+  captured_at: UtcTimestamp,
+  method: Text,
+});
 
 export const CatalogSchema = z.strictObject({
   county: Text,
@@ -456,7 +530,10 @@ export const CatalogSchema = z.strictObject({
   slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   fips: z.string().regex(/^\d{5}$/, "fips must be the 5-digit string"),
   snapshot_time: UtcTimestamp,
+  /** The workflow run (Restate key) that wrote this catalog; `waiting_human_hours` is its. */
+  discovery_run_id: Text.optional(),
   waiting_human_hours: z.number().nonnegative(),
+  discovery_egress: EgressSchema.optional(),
   parcel: ParcelSchema.optional(),
   permits: PermitsSchema.optional(),
   destination: DestinationSchema.optional(),
@@ -464,5 +541,6 @@ export const CatalogSchema = z.strictObject({
   census_reference: CensusReferenceSchema.optional(),
   approved_exceptions: z.array(ApprovedExceptionSchema).optional(),
   sources: z.array(SourceSchema),
+  amendments: z.array(AmendmentSchema).optional(),
 });
 export type Catalog = z.infer<typeof CatalogSchema>;

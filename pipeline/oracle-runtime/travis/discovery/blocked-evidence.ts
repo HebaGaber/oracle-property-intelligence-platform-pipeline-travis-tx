@@ -9,12 +9,18 @@
 //
 // The catalog's `blocked_evidence.evidence_path` names the same file (assemble.ts); the
 // workflow writes it from the journaled receipt, so a replay never asks the source again.
+//
+// OR-B1: the sentence "No retry with a changed identity was made" is written only when it
+// is true: for a stop inside the workflow or a command that passed the egress check
+// (`identity: "unchanged"`, the default). An operator retest outside the workflow
+// (`identity: "operator-retest"`) says so instead. The egress country, when known, is in
+// the front matter.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
 import { redact } from "../lib/log.js";
-import { safeHeaders, type CaptureReceipt } from "../lib/source-client.js";
+import { safeHeaders, type CaptureReceipt, type SavedResponse } from "../lib/source-client.js";
 import { BLOCKED_EVIDENCE_DIR } from "./assemble.js";
 import { resumesText } from "./probes/common.js";
 
@@ -36,6 +42,20 @@ export interface RenderInput {
   receipt: CaptureReceipt;
   /** Extra secrets to redact (for example the Socrata app token). */
   secrets?: readonly string[];
+  /**
+   * "unchanged": the request kept the run's identity and egress (workflow, or a command that
+   * passed the egress check); "operator-retest": an operator request outside the workflow.
+   */
+  identity?: "unchanged" | "operator-retest";
+  /** Egress country of the request (Cloudflare trace loc), when it was checked. */
+  egressCountry?: string;
+}
+
+/** The identity sentence of the evidence file; true for its context only (OR-B1). */
+export function identitySentence(identity: RenderInput["identity"]): string {
+  return identity === "operator-retest"
+    ? "This request was an operator retest outside the discovery workflow (see docs/decisions/DEC-A-01-source-access.md); the workflow's no-retry and same-identity guarantee does not cover it, and no challenge was solved (FR-006a)."
+    : "No retry with a changed identity was made and no challenge was solved (FR-006a).";
 }
 
 const WINDOWS_HOME = /[A-Za-z]:\\(?:Users|Documents and Settings)\\[^\\\s"']+/g;
@@ -99,6 +119,7 @@ export function renderBlockedEvidence(input: RenderInput): string {
     }
   }
   front.geo_signal = clean(receipt.geo_signal);
+  if (input.egressCountry !== undefined) front.egress_country = input.egressCountry;
   front.body_bytes = receipt.stop_evidence?.body_bytes ?? receipt.bytes;
   front.body_sha256 = receipt.sha256;
   if (receipt.rate_limits_observed !== null) {
@@ -121,7 +142,7 @@ export function renderBlockedEvidence(input: RenderInput): string {
     "",
     `# Blocked evidence: ${subject.kind} ${subject.key}`,
     "",
-    `The source ${what} at ${receipt.captured_at} after ${receipt.attempts} attempt(s)${resumesText(receipt)} with the project User-Agent; outcome \`${receipt.outcome}\`. No retry with a changed identity was made and no challenge was solved (FR-006a). Geo signal: ${front.geo_signal === "none" ? "none" : `"${String(front.geo_signal)}"`} (FR-006b).`,
+    `The source ${what} at ${receipt.captured_at} after ${receipt.attempts} attempt(s)${resumesText(receipt)} with the project User-Agent; outcome \`${receipt.outcome}\`. ${identitySentence(input.identity)} Geo signal: ${front.geo_signal === "none" ? "none" : `"${String(front.geo_signal)}"`} (FR-006b).`,
     "",
     "## Response headers",
     "",
@@ -193,4 +214,34 @@ export function readEvidenceFrontMatter(
   return front !== null && typeof front === "object" && !Array.isArray(front)
     ? (front as Record<string, unknown>)
     : null;
+}
+
+/** The text inside the first ```text fence after `heading`, or null. */
+function fencedAfter(text: string, heading: string): string | null {
+  const at = text.indexOf(`\n${heading}\n`);
+  if (at < 0) return null;
+  const open = text.indexOf("```text\n", at);
+  if (open < 0) return null;
+  const close = text.indexOf("\n```", open + 8);
+  return close < 0 ? null : text.slice(open + 8, close);
+}
+
+/**
+ * The saved stop response of a committed evidence file (status, safe headers, body
+ * excerpt), or null when the file is missing or saved none. Used to re-read what a stop
+ * said (for example a web application firewall naming itself, OR-M2) without a request.
+ */
+export function readEvidenceResponse(repoRoot: string, relPath: string): SavedResponse | null {
+  const front = readEvidenceFrontMatter(repoRoot, relPath);
+  if (front === null) return null;
+  const text = readFileSync(join(repoRoot, relPath), "utf8");
+  const body = fencedAfter(text, "## Body excerpt");
+  if (body === null) return null;
+  const headers: Record<string, string> = {};
+  for (const line of (fencedAfter(text, "## Response headers") ?? "").split("\n")) {
+    const i = line.indexOf(":");
+    if (i > 0) headers[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
+  }
+  const status = typeof front.http_status === "number" ? front.http_status : null;
+  return { status, headers, body };
 }

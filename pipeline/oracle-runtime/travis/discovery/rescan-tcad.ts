@@ -9,7 +9,7 @@
 // captured_at), the roll-count measurement and snapshot_time are never touched. Before any
 // scan the file must match the receipt byte-for-byte (size and SHA-256), and the rescan's
 // record count must equal the recorded assessed_parcel_count; any mismatch writes nothing
-// and asks for a fresh discovery run instead.
+// and asks for a fresh discovery run instead. The change is recorded in `amendments[]`.
 //
 // Exit codes: 0 validator PASS, 1 validator BLOCKED (passed through), 2 refused (nothing written).
 import { pathToFileURL } from "node:url";
@@ -19,7 +19,7 @@ import type { Parcel } from "./assemble.js";
 import { FRESH_RUN, Refusal, verifyExportFile } from "./export-file-check.js";
 import { scanExport, type ExportScan } from "./probes/tcad.js";
 import { main as runValidatorMain } from "./run-validator.js";
-import { DEFAULT_CATALOG_PATH, readCatalog, writeCatalog } from "./write-catalog.js";
+import { amendCatalog, DEFAULT_CATALOG_PATH, readCatalog } from "./write-catalog.js";
 
 export interface RescanOptions {
   repoRoot?: string;
@@ -28,6 +28,8 @@ export interface RescanOptions {
   validate?: () => Promise<number>;
   scan?: (path: string) => Promise<ExportScan>;
   out?: (line: string) => void;
+  /** Amendment time (tests). */
+  now?: () => Date;
 }
 
 export async function rescanTcad(options: RescanOptions = {}): Promise<number> {
@@ -42,7 +44,11 @@ export async function rescanTcad(options: RescanOptions = {}): Promise<number> {
 
   try {
     const catalog = readCatalog(catalogPath);
-    const { parcel: current, file } = await verifyExportFile(catalog, root, say, "rescan-tcad");
+    const {
+      parcel: current,
+      receipt,
+      file,
+    } = await verifyExportFile(catalog, root, say, "rescan-tcad");
 
     const scan = await (options.scan ?? ((p: string) => scanExport(p)))(file);
     const recorded = current.assessed_parcel_count;
@@ -75,7 +81,21 @@ export async function rescanTcad(options: RescanOptions = {}): Promise<number> {
         : {}),
       ...(scan.identifier_format ? { identifier_format: scan.identifier_format } : {}),
     };
-    writeCatalog({ ...catalog, parcel }, catalogPath);
+    amendCatalog(
+      { ...catalog, parcel },
+      {
+        command: "rescan-tcad",
+        fields: [
+          "parcel.identifier_name",
+          "parcel.identifier_layout_name",
+          "parcel.identifier_proven",
+          "parcel.identifier_format",
+        ],
+        ref: `${receipt.file_path} (export SHA-256 ${receipt.sha256})`,
+      },
+      catalogPath,
+      (options.now ?? (() => new Date()))(),
+    );
     for (const c of scan.identifier_candidates ?? []) {
       say(
         `rescan-tcad: candidate ${c.name}: present on ${c.present} of ${c.records} records, ${c.distinct} distinct, proven ${String(c.proven)}`,

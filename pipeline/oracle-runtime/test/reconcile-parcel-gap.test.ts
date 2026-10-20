@@ -244,9 +244,18 @@ describe("reconcileGap arithmetic", () => {
     expect(r.gap).toBe(119563);
     expect(r.components.map((c) => [c.component, c.count])).toEqual([
       ["non_land_accounts", 51285],
-      ["condo_units_without_own_geometry", 56139],
-      ["new_inventory_lots_without_geometry", 3534],
+      ["condo_accounts_without_export_point", 56139],
+      ["inventory_accounts_without_export_point", 3534],
     ]);
+    // OR-m1: every subcode reading is labelled unverified; never "no own GIS polygon"
+    for (const c of r.components.slice(1)) {
+      expect(c.reason).toMatch(/state-code reading, unverified/);
+      expect(c.reason).toMatch(/no export geometry point/);
+      expect(c.reason).not.toMatch(/own geometry|own GIS polygon/);
+    }
+    expect(r.components[2]?.reason).toMatch(
+      /inventory; mostly condo inventory by the condoUnit field/,
+    );
     expect(r.explained).toBe(110958);
     expect(r.residual).toBe(8605);
     expect(r.residual_pct_of_roll).toBe(1.74);
@@ -287,8 +296,12 @@ describe("reconcileParcelGap", () => {
     expect(b.zip_entry).toBe("Synthetic-protaxExport.json");
     expect(b.by_prop_type.find((r) => r.prop_type === "MH")?.meaning).toBe("mobile home");
     const codes = must(b.real_estate.without_geometry_by_state_cd);
-    expect(codes.find((r) => r.state_cd === "A4")?.meaning).toBe("residential condominium");
-    expect(codes.find((r) => r.state_cd === "F4")?.meaning).toBe("commercial condominium");
+    expect(codes.find((r) => r.state_cd === "A4")?.meaning).toBe(
+      "residential condominium (state-code reading, unverified)",
+    );
+    expect(codes.find((r) => r.state_cd === "F4")?.meaning).toBe(
+      "commercial condominium (state-code reading, unverified)",
+    );
     expect(codes.find((r) => r.state_cd === "O1")?.meaning).toMatch(/inventory/);
     expect(codes.find((r) => r.state_cd === "C1")?.meaning).toMatch(/vacant/);
     expect(codes.find((r) => r.state_cd === "none")?.meaning).toBeUndefined();
@@ -324,9 +337,14 @@ describe("reconcileParcelGap", () => {
     const afterText = readFileSync(f.catalogPath, "utf8");
     const after = readCatalog(f.catalogPath);
     const head = (t: string) => t.slice(0, t.indexOf("\nparcel:"));
-    const tail = (t: string) => t.slice(t.indexOf("\npermits:"));
+    // the tail up to the appended amendments[] (OR-M5) stays byte-identical
+    const tail = (t: string) => {
+      const end = t.indexOf("\namendments:");
+      return t.slice(t.indexOf("\npermits:"), end < 0 ? undefined : end + 1);
+    };
     expect(head(afterText)).toBe(head(beforeText));
     expect(tail(afterText)).toBe(tail(beforeText));
+    expect(must(after.amendments?.at(-1)).command).toBe("reconcile-parcel-gap");
     expect(untouched(after)).toEqual(untouched(before));
     // Reverting only the changed parcel keys gives back the original file, byte for byte.
     const original: Rec = must(before.parcel, "parcel");
@@ -335,7 +353,10 @@ describe("reconcileParcelGap", () => {
         .filter(([k]) => !isChanged(k) || k in original)
         .map(([k, v]) => [k, isChanged(k) ? original[k] : v]),
     );
-    expect(emitCatalogYaml({ ...after, parcel: reverted as Catalog["parcel"] })).toBe(beforeText);
+    const { amendments: _a, ...withoutAmendments } = after;
+    expect(emitCatalogYaml({ ...withoutAmendments, parcel: reverted as Catalog["parcel"] })).toBe(
+      beforeText,
+    );
   });
 
   it("sets acknowledged only when condo units without geometry are measured", async () => {
@@ -346,7 +367,7 @@ describe("reconcileParcelGap", () => {
     expect(p.separately_assessed_without_geometry).toBeUndefined();
     const g = must(p.gap_reconciliation);
     expect(
-      g.components.find((c) => c.component === "condo_units_without_own_geometry")?.count,
+      g.components.find((c) => c.component === "condo_accounts_without_export_point")?.count,
     ).toBe(0);
     expect(g.explained).toBe(2); // P 1 + O1 1
     expect(g.residual).toBe(1); // the C1 lot
