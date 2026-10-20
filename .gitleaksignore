@@ -3,3 +3,5 @@
 # credential and grants no access. Suppressed by exact fingerprint only (A-01 T053; the 2026-10-20 re-probe saved the same page).
 docs/evidence/blocked/jurisdiction-rollingwood-20261019T210933Z.md:generic-api-key:62
 docs/evidence/blocked/jurisdiction-rollingwood-20261020T085309Z.md:generic-api-key:62
+# A-02: sorted_keys_sha256 is the SHA-256 of the public sorted permit-number list (AC-3 sample), not a secret
+docs/evidence/A-02-classifier-review.md:generic-api-key:9
