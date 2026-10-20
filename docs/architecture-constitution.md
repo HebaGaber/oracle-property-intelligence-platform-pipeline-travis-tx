@@ -7,10 +7,10 @@ classification: project
 owner: HebaGaber           # Architect
 status: Approved           # Draft → In Review → Approved → Superseded
 gate: G3
-version: 0.2
+version: 0.2.2
 created: 2026-10-19
 ratified: 2026-10-19
-last_amended: 2026-10-19
+last_amended: 2026-10-20
 approved_by: [HebaGaber]
 sources:
   - docs/decisions/0000-agent-architecture.md   # ADR-0000: AD-01..AD-16 (PO-confirmed 2026-10-19) + kit consult re-run 2026-10-19
@@ -396,6 +396,8 @@ Breaking any of these fails a review or a gate (ADR-0000 § 6, plus the oracle, 
 | D-04 | PagerDuty (article IX) substituted by one SNS email subscriber per alarm | Article IX allows a documented substitute; no company PagerDuty access | Accepted; listed in `kit-usage.md` and the PR |
 | D-05 | Company shared CI workflows and Lexicon metric registration not reachable from the fork | Same justfile recipes and stage order in local workflows | Accepted; listed in `kit-usage.md` |
 | D-06 | MCP exposes fixed typed tools instead of the task guide's "read-only SQL" | P0-13 (AD-21) | Accepted |
+| D-07 | `contract/v1/sample.parquet` (20 rows) is committed to git, while P0-17 bans Parquet in git | § 15 (A-02 row) and AC-8 require Task B to get 20 real rows cut from the pilot `export-tables` output, in git only and never on IPFS or the hosted site. The exception covers that one file; every other Parquet file stays out of git. PO decision D-4c, 2026-10-20 (A-02) | Accepted |
+| D-08 | AD-25 says a lexicon extension request "is filed" for each no-carrier field; A-02 drafts the requests but does not file them | The PO rule "no official requests" (D-1, 2026-10-20) and D-8 (2026-10-21: "Draft only, don't file"). The drafts R1–R7 are in `docs/decisions/0002-lexicon-carriers.md`; they are revisited at release | Accepted |
 
 ## 14. Drift handling
 

@@ -16,7 +16,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | AC-2 | Run the Oracle pipeline until all available county data is uploaded. | A1 | FEAT-A04–A09, FEAT-A11 | A-04–A-09, A-11 | | | | |
 | AC-3 | Load available property records into the database. | A1 | FEAT-A04 | A-04 | | | | |
 | AC-4 | Load available permit records into the database, with emphasis on roofing-related permits. | A1 | FEAT-A06 | A-06 | | | | |
-| AC-5 | Preserve permit status, open/close dates (or equivalent), and duration-open signals so long-open permits can be identified. | A5 (A1) | FEAT-A06, FEAT-A02 | A-06, A-02 | | | | |
+| AC-5 | Preserve permit status, open/close dates (or equivalent), and duration-open signals so long-open permits can be identified. | A5 (A1) | FEAT-A06, FEAT-A02 | A-06, A-02 | A-02: FR-004, FR-005 (status map, open_days, stalled) | A-02-TC-016, A-02-TC-017, A-02-TC-018, A-02-TC-019 | `docs/evidence/A-02.md` (profile `travis-austin@1.0.0`, 19,031 candidates) |  |
 | AC-6 | Load available ownership records into the database. | A1 | FEAT-A04 | A-04 | | | | |
 | AC-7 | Load available contractor records into the database. | A1 | FEAT-A07 | A-07 | | | | |
 | AC-8 | Load available BBB / contractor rating scores where publicly available. | A1 | FEAT-A08 | A-08 | | | | |
@@ -24,7 +24,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | AC-10 | Load available location and coordinate data into the database (required for GPS/pin-drop radius queries in the CRM). | A1 (A5) | FEAT-A05 | A-05 | | | | |
 | AC-11 | Capture roof age or best-available proxies (year built, last roofing permit/completion date) so properties with roofs older than a configurable threshold (default 15 years) can be queried. | A5 (A1) | FEAT-A10 | A-10 | | | | |
 | AC-12 | Reconcile duplicate entities across all uploaded datasets. | A2 | FEAT-A10, FEAT-A07 | A-10, A-07 | | | | |
-| AC-13 | Preserve source provenance for uploaded records. | A2 | FEAT-A10, FEAT-A02 | A-10, A-02 | | | | |
+| AC-13 | Preserve source provenance for uploaded records. | A2 | FEAT-A10, FEAT-A02 | A-10, A-02 | A-02: FR-007, FR-008, FR-010 (Provenance on every view row) | A-02-TC-024, A-02-TC-026, A-02-TC-028 | `docs/evidence/A-02.md` (sample: 0 null provenance) |  |
 | AC-14 | Continuous / incremental: support ongoing ingestion of new and changed records (scheduled or on-demand refreshes, change detection or bounded windows, idempotent steps). | A3 | FEAT-A12, FEAT-A17 | A-12, A-06, A-17 (on-demand refresh) | | | | |
 | AC-15 | Continuous / incremental: maintain a visible history of pipeline runs (timestamps, source list, record counts, deltas, any source limitations). | A3 | FEAT-A12, FEAT-A13 | A-12, A-13 | | | | |
 | AC-16 | Continuous / incremental: demonstrate that data continues to be ingested and published over time (multiple runs or simulated ongoing updates). | A3 (A4) | FEAT-A12 | A-12 | | | | |
@@ -34,8 +34,8 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | AC-19 | Document pipeline speed limitations and source constraints. | A1 | FEAT-A16 | A-16 | | | | |
 | AC-20 | Design the infrastructure so Oracle does not carry ongoing infrastructure cost by default. | A4 | FEAT-A16, FEAT-A03 | A-16, A-03 | | | | |
 | AC-21 | Use IPFS for decentralized storage of eligible dataset artifacts. | A4 | FEAT-A11, FEAT-A03 | A-11, A-03 | | | | |
-| AC-22 | Use DuckDB for local or portable analytical querying. | A5 | FEAT-A02, FEAT-A03 | A-02, A-03, A-13 | | | | |
-| AC-23 | Structure the database to support MCP access. | A6 | FEAT-A15, FEAT-A02 | A-15, A-02 | | | | |
+| AC-22 | Use DuckDB for local or portable analytical querying. | A5 | FEAT-A02, FEAT-A03 | A-02, A-03, A-13 | A-02: FR-002 (four DuckDB views over export-tables) | A-02-TC-008, A-02-TC-009 | `docs/evidence/A-02.md` (frozen columns, Vitest) |  |
+| AC-23 | Structure the database to support MCP access. | A6 | FEAT-A15, FEAT-A02 | A-15, A-02 | A-02: FR-002, FR-010 (one contract for UI, agent, MCP) | A-02-TC-008, A-02-TC-028 | `docs/evidence/A-02.md` (`contract/v1/columns.json`) |  |
 | AC-24 | Enable agent access to query the database. | A6 | FEAT-A14 | A-14 | | | | |
 | AC-25 | Provide a UI for exploring the uploaded data. | A5 | FEAT-A13, FEAT-A03, FEAT-A18 | A-13, A-03, A-18 | | | | |
 | **IPFS publication** | | | | | | | | |
@@ -55,7 +55,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | AC-38 | Support returning permit details with contractor name and BBB rating score where available. | A5 | FEAT-A13, FEAT-A08 | A-13, A-08 | | | | |
 | AC-39 | Support questions about properties that have not exchanged ownership in more than 10 years. | A5 | FEAT-A13, FEAT-A04 | A-13, A-04 | | | | |
 | AC-40 | Support questions about properties with regional (or out-of-area) owners. | A5 | FEAT-A13, FEAT-A04 | A-13, A-04 | | | | |
-| AC-41 | Return source-backed answers where source data is available. | A2 (A5, A6) | FEAT-A13, FEAT-A14, FEAT-A02 | A-13, A-14, A-02 | | | | |
+| AC-41 | Return source-backed answers where source data is available. | A2 (A5, A6) | FEAT-A13, FEAT-A14, FEAT-A02 | A-13, A-14, A-02 | A-02: FR-001, FR-007 (carrier verdicts; missing says why) | A-02-TC-001, A-02-TC-003, A-02-TC-024 | `docs/evidence/A-02.md`, `docs/decisions/0002-lexicon-carriers.md` |  |
 | **Demonstration** | | | | | | | | |
 | AC-42 | Demonstrate the uploaded dataset through the UI. | A5 | FEAT-A13 | A-13 | | | | |
 | AC-43 | Demonstrate the uploaded dataset through an agent query aligned to roofing lead discovery. | A6 | FEAT-A14 | A-14 | | | | |
@@ -67,7 +67,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | D-1 | Opening: the pipeline has loaded the available Travis County dataset, it is queryable through DuckDB, eligible artifacts are on IPFS as content-addressed snapshots, and the UI and agent answer roofing-lead questions. | A1–A6 (framing) | FEAT-A03, FEAT-A13, FEAT-A18 | A-03, A-13, A-16, A-18 (Hub) | | | | |
 | D-2 | Open the pipeline run summary → completed run, source list, county coverage, record counts, timestamps, documented source limitations. | A1 (A3) | FEAT-A13, FEAT-A12 | A-13, A-12, A-03, A-01 | | | | |
 | D-3 | Show total uploaded records by source → property, permit, ownership, contractor (with BBB where available), business and coordinate records with collection timestamps and provenance. | A1 (A2) | FEAT-A13, FEAT-A04–A09 | A-13, A-01, A-04–A-10 | | | | |
-| D-4 | Open the DuckDB-backed query layer → data available for structured querying without Oracle-hosted database infrastructure. | A5 (A4) | FEAT-A03, FEAT-A02 | A-03, A-13, A-02, A-16 | | | | |
+| D-4 | Open the DuckDB-backed query layer → data available for structured querying without Oracle-hosted database infrastructure. | A5 (A4) | FEAT-A03, FEAT-A02 | A-03, A-13, A-02, A-16 | A-02: FR-002 | A-02-TC-008 | `docs/evidence/A-02.md` (views compile over pilot tables) |  |
 | D-5 | Show the published artifact manifest for this run → every eligible artifact with CID, size, name, codec, digest; gateway URLs derived from CIDs; IPNS name with resolved CID if used. | A4 | FEAT-A11, FEAT-A13 | A-11, A-13 | | | | |
 | D-6 | Retrieve one artifact by CID from two independent public gateways → both succeed and bytes match manifest size/digest; private, local or authenticated serving fails. | A4 | FEAT-A11, FEAT-A13 | A-11, A-13 | | | | |
 | D-7 | Show a later incremental publish produced a new CID → prior CID still resolves, new run has a distinct CID, IPNS (if used) points to it, both in run history, CAR for any directory root. | A3 (A4) | FEAT-A12 | A-12, A-13 | | | | |
@@ -75,7 +75,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | D-9 | UI: properties in that area with open roofing permits, longest-open first → permit status/open duration, contractor identity, BBB score when present, source backing. | A5 | FEAT-A13, FEAT-A06, FEAT-A08 | A-13, A-06, A-07, A-08 | | | | |
 | D-10 | Agent: "Which properties in Travis County within five miles of [city xyz] have roofs older than 15 years?" → matching properties, reasoning, source-backed evidence. | A6 | FEAT-A14 | A-14 | | | | |
 | D-11 | Agent: "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?" → filtered list with open duration, contractor, BBB when available, assumptions and missing data stated. | A6 | FEAT-A14 | A-14 | | | | |
-| D-12 | Show the system is MCP-ready → an MCP-ready interface or documented MCP-compatible query structure usable by agents and the CRM without changing the data model. | A6 | FEAT-A15 | A-15, A-02 | | | | |
+| D-12 | Show the system is MCP-ready → an MCP-ready interface or documented MCP-compatible query structure usable by agents and the CRM without changing the data model. | A6 | FEAT-A15 | A-15, A-02 | A-02: FR-002, FR-010 | A-02-TC-008, A-02-TC-028 | `docs/evidence/A-02.md` (`contract/v1`) |  |
 
 **Coverage by evaluation point** (primary tags): A1 16 rows · A2 3 · A3 4 · A4 15 · A5 14 · A6 6 · framing 1. All 47 acceptance criteria and 12 demo lines are tagged. The README's Acceptance Criteria section has 54 bullets: the heading bullet "Design and implement the pipeline as continuous / incremental" is covered by its sub-bullets AC-14 to AC-16, and the six manifest field names (`cid`, name, `size`, codec, digest, `origins`) are part of AC-29.
 
@@ -105,5 +105,9 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G5 | specs/001-discover-sources (spec, plan, tasks) | 2026-10-19 | PASS (0 FAIL; C-05 via the G4 C-04 exception), `docs/gates/G5-A-01-precheck.md`; analyze CRITICAL/HIGH fixed, 3 MEDIUM open | Approved (HebaGaber) | 2026-10-19 |
 | G6 | testplans/A-01-test-cases.md | 0.4 | FAIL (2) → PASS → FAIL (1) → PASS, `docs/gates/G6-A-01-precheck.md`; C-05/C-07/C-09 justified exceptions (Project story) | Approved (HebaGaber, QC Lead) | 2026-10-19 |
 | G7 | A-01 (branch `001-discover-sources`) | `f3e4ceb` + fixes | FAIL (2) → PASS, `docs/gates/G7-A-01-precheck.md`; C-04/C-07 justified exceptions (Project story); CI run 39490116172 green; oracle 83/100; ERR-1 to ERR-8 closed | Validated (HebaGaber) | 2026-10-20 |
+| G4 | stories/A-02-data-contract.md | rev 2 | FAIL (2) → PASS, `docs/gates/G4-A-02-precheck.md`; C-04 and C-10/G4-8 justified exceptions (Project story; pilot made in A-02) | Ready (HebaGaber) | 2026-10-20 |
+| G5 | specs/002-data-contract (spec, plan, tasks) | 2026-10-21 | FAIL (2) → PASS, `docs/gates/G5-A-02-precheck.md`; C-05 TZ02–TZ04 N/A (Project story); analyze 0 CRITICAL, 3 HIGH fixed | Approved (HebaGaber) | 2026-10-21 |
+| G6 | testplans/A-02-test-cases.md | 0.2 | FAIL (1) → PASS, `docs/gates/G6-A-02-precheck.md`; C-05/C-09 justified exceptions (Project story) | Approved (HebaGaber, QC Lead) | 2026-10-21 |
+| G7 | A-02 (branch `002-data-contract`) | `323ae0b` | PASS (run 1), `docs/gates/G7-A-02-precheck.md`; C-02/C-04/C-07 justified exceptions (Project story); tests 33/33; oracle 80, donphan 76; ERR-9 closed | Validated (HebaGaber) | 2026-10-21 |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |

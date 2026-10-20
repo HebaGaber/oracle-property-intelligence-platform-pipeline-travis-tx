@@ -1,0 +1,170 @@
+// T030 (A-02, FR-006 / AC-6): travis-places@1.0.0, the Travis County place and ZCTA gazetteer.
+// Data is built by scripts/build-gazetteer.ts from public US Census files and committed as
+// versioned code (AD-26). Every JSON file is Zod-validated when the module loads.
+import { createHash } from "node:crypto";
+import ownerAreaJson from "./owner-area.json" with { type: "json" };
+import placesJson from "./places.json" with { type: "json" };
+import sourcesJson from "./sources.json" with { type: "json" };
+import zctasJson from "./zctas.json" with { type: "json" };
+import {
+  GAZETTEER_VERSION,
+  OwnerAreaFile,
+  PlaceRow,
+  REGIONAL_COUNTY_FIPS,
+  SourcesFile,
+  TRAVIS_FIPS,
+  ZctaRow,
+  canonicalize,
+  decodeZctaBitmap,
+  type SourceStamp,
+} from "./schema.js";
+
+export { GAZETTEER_VERSION, REGIONAL_COUNTY_FIPS, TRAVIS_FIPS, canonicalize };
+export type { SourceStamp };
+
+const sha256 = (s: string): string => createHash("sha256").update(s, "utf8").digest("hex");
+
+const sources = SourcesFile.parse(sourcesJson);
+const places = PlaceRow.array().parse(placesJson);
+const zctas = ZctaRow.array().parse(zctasJson);
+const ownerAreaFile = OwnerAreaFile.parse(ownerAreaJson);
+
+/** Version and SHA-256 of JCS({version, places, zctas, owner-area, sources}); equals DIGEST. */
+export const GAZETTEER: { readonly version: string; readonly sha256: string } = Object.freeze({
+  version: GAZETTEER_VERSION,
+  sha256: sha256(
+    canonicalize({
+      version: GAZETTEER_VERSION,
+      places,
+      zctas,
+      "owner-area": ownerAreaFile,
+      sources,
+    }),
+  ),
+});
+
+function stampFor(url: string): SourceStamp {
+  const s = sources.find((f) => f.url === url);
+  if (!s) throw new Error(`gazetteer: no source stamp for ${url}`);
+  return { url: s.url, file_date: s.last_modified, sha256: s.sha256 };
+}
+
+interface FoundBase {
+  status: "found";
+  name: string;
+  point: { lat: number; lon: number };
+  partial_in_travis: boolean;
+  counties: string[];
+  source: SourceStamp;
+  gazetteer: { version: string; sha256: string };
+}
+export interface FoundPlace extends FoundBase {
+  kind: "place";
+  geoid: string;
+}
+export interface FoundZcta extends FoundBase {
+  kind: "zcta";
+  zcta: string;
+}
+export type Found = FoundPlace | FoundZcta;
+/** Outside Travis County (or unknown): never carries a point. */
+export interface OutOfScope {
+  status: "out_of_scope";
+  query: string;
+}
+export type LookupResult = Found | OutOfScope;
+
+const gazetteerStamp = (): { version: string; sha256: string } => ({ ...GAZETTEER });
+
+const LSAD_WORDS = /\s+(city|town|village|cdp)$/;
+const ZIP_QUERY = /^(?:zip\s*)?(\d{5})$/;
+const normalise = (q: string): string => q.trim().replace(/\s+/g, " ").toLowerCase();
+
+const placesByName = new Map<string, PlaceRow[]>();
+for (const p of places) {
+  const key = p.name.toLowerCase();
+  placesByName.set(key, [...(placesByName.get(key) ?? []), p]);
+}
+const zctaByCode = new Map(zctas.map((z) => [z.zcta, z]));
+
+function foundPlace(p: PlaceRow): FoundPlace {
+  return {
+    status: "found",
+    kind: "place",
+    geoid: p.geoid,
+    name: p.name_lsad,
+    point: { lat: p.lat, lon: p.lon },
+    partial_in_travis: p.partial_in_travis,
+    counties: [...p.counties],
+    source: stampFor(p.source_file),
+    gazetteer: gazetteerStamp(),
+  };
+}
+
+function foundZcta(z: ZctaRow): FoundZcta {
+  return {
+    status: "found",
+    kind: "zcta",
+    zcta: z.zcta,
+    name: `ZCTA5 ${z.zcta}`,
+    point: { lat: z.lat, lon: z.lon },
+    partial_in_travis: z.partial_in_travis,
+    counties: [...z.counties],
+    source: stampFor(z.source_file),
+    gazetteer: gazetteerStamp(),
+  };
+}
+
+/**
+ * Looks up a Travis place by name (case-insensitive; the LSAD word is optional) or a ZCTA by
+ * a 5-digit code ("78753" or "ZIP 78753"). Anything not in Travis County is out_of_scope.
+ */
+export function lookup(query: string): LookupResult {
+  const q = normalise(query);
+  const outOfScope: OutOfScope = { status: "out_of_scope", query };
+
+  const zip = ZIP_QUERY.exec(q)?.[1];
+  if (zip !== undefined) {
+    const z = zctaByCode.get(zip);
+    return z ? foundZcta(z) : outOfScope;
+  }
+
+  const lsad = LSAD_WORDS.exec(q)?.[1];
+  const base = lsad ? q.slice(0, -lsad.length).trim() : q;
+  const candidates = placesByName.get(base) ?? [];
+  const chosen = lsad
+    ? candidates.find((p) => p.name_lsad.toLowerCase() === q)
+    : // Without an LSAD word prefer the incorporated place over a same-named CDP.
+      (candidates.find((p) => !/ CDP$/.test(p.name_lsad)) ?? candidates[0]);
+  return chosen ? foundPlace(chosen) : outOfScope;
+}
+
+const travisZctas = new Set(ownerAreaFile.travis_zctas);
+const regionalZctas = new Set(ownerAreaFile.regional_zctas);
+const allUsZctas = (() => {
+  const list = decodeZctaBitmap(ownerAreaFile.all_us_zctas.bitmap_base64);
+  const meta = ownerAreaFile.all_us_zctas;
+  if (list.length !== meta.count || sha256(list.join("\n")) !== meta.sha256) {
+    throw new Error("gazetteer: all-US ZCTA list does not match its count and sha256");
+  }
+  return new Set(list);
+})();
+
+export type OwnerArea =
+  | { class: "in_county" | "regional" | "out_of_area"; zcta: string }
+  | { class: "unknown"; reason: "no_mailing_address" | "zip_not_zcta" };
+
+/**
+ * Classifies an owner's mailing ZIP: a Travis ZCTA → in_county; a ZCTA with land in a
+ * regional county → regional; any other US ZCTA → out_of_area. ZIP+4 is accepted.
+ */
+export function ownerArea(zip: string | null | undefined): OwnerArea {
+  const raw = (zip ?? "").trim();
+  if (raw === "") return { class: "unknown", reason: "no_mailing_address" };
+  const code = /^(\d{5})(?:-?\d{4})?$/.exec(raw)?.[1];
+  if (code === undefined || !allUsZctas.has(code))
+    return { class: "unknown", reason: "zip_not_zcta" };
+  if (travisZctas.has(code)) return { class: "in_county", zcta: code };
+  if (regionalZctas.has(code)) return { class: "regional", zcta: code };
+  return { class: "out_of_area", zcta: code };
+}

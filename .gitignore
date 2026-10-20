@@ -14,3 +14,11 @@ test-results/
 # raw source downloads and local pipeline state (never commit)
 pipeline/data/
 *.car
+
+# elephant-cli debug log (written into the working folder)
+elephant-cli.log
+
+# A-02 workspace: census downloads, Parquet outputs (only the published contract sample is tracked, ARD D-07)
+pipeline/data/raw/census/
+**/*.parquet
+!contract/v1/sample.parquet

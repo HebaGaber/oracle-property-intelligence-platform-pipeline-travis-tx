@@ -1,0 +1,348 @@
+// T059 (A-02, mew § B.5, data-model.md § Derivation rules): one function per derived column.
+// Each rule exists twice, side by side: a TypeScript function (unit-tested, used by tools and the
+// UI) and the SQL macro that views.sql calls. test/derive.test.ts runs the same table of cases
+// through both. No macro matches text: only enum equality, date arithmetic and prefix equality of
+// ISO dates at the roof date's own precision. `as_of` is always the manifest finishedAt.
+import { RULES } from "@countylens/profile-travis-austin";
+import { ownerArea } from "../gazetteer/travis-places@1.0.0/index.js";
+import { decodeZctaBitmap } from "../gazetteer/travis-places@1.0.0/schema.js";
+import ownerAreaJson from "../gazetteer/travis-places@1.0.0/owner-area.json" with { type: "json" };
+
+export type RoofAgeBasis = "permit" | "new_construction" | "built_year" | "unknown";
+export type RoofAgeConfidence = "high" | "medium" | "low" | "none";
+export type StatusClass = "open" | "stalled" | "closed";
+export type AreaClass = "in_county" | "regional" | "out_of_area" | "unknown";
+
+/** The UTC calendar date of an ISO instant, as [year, month, day]. */
+function utcDate(iso: string): [number, number, number] {
+  const d = new Date(iso);
+  return [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()];
+}
+
+function ymd(date: string): [number, number, number] {
+  return [Number(date.slice(0, 4)), Number(date.slice(5, 7)), Number(date.slice(8, 10))];
+}
+
+/** Completed years from a full date to the as_of date. */
+function completedYears(date: string, asOf: string): number {
+  const [y, m, d] = ymd(date);
+  const [ay, am, ad] = utcDate(asOf);
+  return ay - y - (am < m || (am === m && ad < d) ? 1 : 0);
+}
+
+/** Whole years from structure.roof_date (YYYY, YYYY-MM or YYYY-MM-DD) to as_of; 0 allowed. */
+export function roofAgeYears(roofDate: string | null, asOf: string): number | null {
+  if (roofDate === null) return null;
+  const [ay, am] = utcDate(asOf);
+  if (roofDate.length === 4) return ay - Number(roofDate);
+  if (roofDate.length === 7) {
+    const months = ay * 12 + am - (Number(roofDate.slice(0, 4)) * 12 + Number(roofDate.slice(5)));
+    return Math.floor(months / 12);
+  }
+  if (roofDate.length === 10) return completedYears(roofDate, asOf);
+  return null;
+}
+
+/** True when `date` (an ISO date) equals `roofDate` at the roof date's own precision. */
+export function dateMatchesAtPrecision(roofDate: string | null, date: string | null): boolean {
+  return roofDate !== null && date !== null && date.slice(0, roofDate.length) === roofDate;
+}
+
+/**
+ * mew B.5. `replacementMatch`: a linked Roofing/Replacement permit's completion_date or
+ * permit_close_date matches roof_date; `newMatch`: the same with improvement_action New.
+ */
+export function roofAgeBasis(
+  roofDate: string | null,
+  replacementMatch: boolean,
+  newMatch: boolean,
+  builtYear: number | null,
+): RoofAgeBasis {
+  if (roofDate === null) return "unknown";
+  if (replacementMatch) return "permit";
+  if (newMatch) return "new_construction";
+  if (roofDate.length === 4 && Number(roofDate) === builtYear) return "built_year";
+  return "unknown";
+}
+
+const CONFIDENCE: Record<RoofAgeBasis, RoofAgeConfidence> = {
+  permit: "high",
+  new_construction: "medium",
+  built_year: "low",
+  unknown: "none",
+};
+
+export const roofAgeConfidence = (basis: RoofAgeBasis): RoofAgeConfidence => CONFIDENCE[basis];
+
+/** Why an unknown basis is unknown. */
+export const roofBasisReason = (roofDate: string | null): "no_roof_date" | "basis_unmatched" =>
+  roofDate === null ? "no_roof_date" : "basis_unmatched";
+
+/** Whole years from the latest ownership_transfer_date to as_of. */
+export const tenureYears = (date: string | null, asOf: string): number | null =>
+  date === null ? null : completedYears(date, asOf);
+
+export const tenureBasis = (date: string | null): "sale_date" | "unknown" =>
+  date === null ? "unknown" : "sale_date";
+
+/** More than 10 years; null (never "long") when the tenure is unknown. */
+export const isLongTenure = (years: number | null): boolean | null =>
+  years === null ? null : years > 10;
+
+/** The owner's mailing ZIP against the travis-places lists (gazetteer ownerArea()). */
+export const ownerAreaClass = (zip: string | null): AreaClass => ownerArea(zip).class;
+
+export const ownerIsOutOfArea = (cls: AreaClass): boolean | null =>
+  cls === "unknown" ? null : cls !== "in_county";
+
+/** Every US ZCTA with its area class, the lookup bindManifest() loads as meta.zcta_area. */
+export function zctaAreaRows(): { zcta: string; area_class: Exclude<AreaClass, "unknown"> }[] {
+  return decodeZctaBitmap(ownerAreaJson.all_us_zctas.bitmap_base64).map((zcta) => {
+    const area = ownerArea(zcta);
+    if (area.class === "unknown") throw new Error(`zcta ${zcta} has no area class`);
+    return { zcta, area_class: area.class };
+  });
+}
+
+export function coordinateSource(
+  lat: number | null,
+  lon: number | null,
+  permitLat: number | null,
+  permitLon: number | null,
+): "gis_centroid" | "permit_point" | "none" {
+  if (lat !== null && lon !== null) return "gis_centroid";
+  if (permitLat !== null && permitLon !== null) return "permit_point";
+  return "none";
+}
+
+/** (jurisdiction, improvement_status) → status_class, from the profile's jurisdictions,
+ *  status_map and published_encoding (the same rows as the generated SQL status map). */
+const STATUS_TO_CLASS = (() => {
+  const map = new Map<string, StatusClass>();
+  for (const j of Object.keys(RULES.jurisdictions)) {
+    for (const cls of ["open", "stalled", "closed"] as const) {
+      for (const word of RULES.status_map[cls]) {
+        map.set(`${j}\u0000${RULES.published_encoding.by_word[word] ?? "\u0000null"}`, cls);
+      }
+    }
+  }
+  return map;
+})();
+
+/**
+ * D-4a, scoped to the profile's jurisdictions (donphan M2): a null status is stalled only for a
+ * profile jurisdiction and only when the permit has an issue date. Any other jurisdiction, an
+ * unmapped status (e.g. InProgress) or a null status without an issue date has no class (null;
+ * the view records needs_review).
+ */
+export function statusClass(
+  jurisdiction: string | null,
+  status: string | null,
+  issueDate: string | null,
+): StatusClass | null {
+  if (jurisdiction === null || (status === null && issueDate === null)) return null;
+  return STATUS_TO_CLASS.get(`${jurisdiction}\u0000${status ?? "\u0000null"}`) ?? null;
+}
+
+export const isOpen = (cls: StatusClass | null): boolean => cls === "open";
+
+/** final_date is empty because the permit is not closed, (closed) the source lacks it, or the
+ *  class itself is unknown. */
+export const finalDateReason = (
+  cls: StatusClass | null,
+): "not_closed" | "source_missing" | "needs_review" =>
+  cls === null ? "needs_review" : cls === "closed" ? "source_missing" : "not_closed";
+
+/** as_of − issue_date in days for open and stalled permits (≥ 0); otherwise null. */
+export function openDays(
+  cls: StatusClass | null,
+  issueDate: string | null,
+  asOf: string,
+): number | null {
+  if ((cls !== "open" && cls !== "stalled") || issueDate === null) return null;
+  const [y, m, d] = utcDate(asOf);
+  const days = (Date.UTC(y, m - 1, d) - Date.parse(`${issueDate}T00:00:00Z`)) / 86_400_000;
+  return Math.max(0, days);
+}
+
+/** Why open_days is empty. */
+export const openDaysReason = (
+  cls: StatusClass | null,
+  issueDate: string | null,
+): "not_open" | "source_missing" | "needs_review" =>
+  cls === null
+    ? "needs_review"
+    : (cls === "open" || cls === "stalled") && issueDate === null
+      ? "source_missing"
+      : "not_open";
+
+/** Why a published improvement_status is null: stalled means the carrier exists but its enum has
+ *  no value for the source word (Expired); otherwise the null is unexplained. */
+export const statusMissingReason = (
+  cls: StatusClass | null,
+): "enum_lacks_value" | "needs_review" => (cls === "stalled" ? "enum_lacks_value" : "needs_review");
+
+/** The kit estimator's terminal-date rule: present, not after as_of, not before the issue date. */
+export function terminalDateAccepted(
+  date: string | null,
+  issueDate: string | null,
+  asOf: string,
+): boolean {
+  if (date === null) return false;
+  const [y, m, d] = utcDate(asOf);
+  const asOfDay = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return date <= asOfDay && (issueDate === null || date >= issueDate);
+}
+
+/** Owner kind on the latest dated sale: company when any company, else person, else unknown. */
+export const ownerKind = (persons: number, companies: number): "person" | "company" | "unknown" =>
+  companies > 0 ? "company" : persons > 0 ? "person" : "unknown";
+
+export type OwnerGapReason =
+  "owner_unparsed" | "owner_confidential" | "no_owner_record" | "needs_review";
+
+/**
+ * Why a property with a dated sale has no owner. The export cannot tell the cases apart, so the
+ * run's coverage counts decide: when exactly one of owner_unparsed / owner_confidential /
+ * owner_no_record is non-zero every such row is in it; when several are, needs_review.
+ */
+export function ownerGapReason(
+  unparsed: number | null,
+  confidential: number | null,
+  noRecord: number | null,
+): OwnerGapReason {
+  const u = (unparsed ?? 0) > 0;
+  const c = (confidential ?? 0) > 0;
+  const n = (noRecord ?? 0) > 0;
+  if (Number(u) + Number(c) + Number(n) > 1) return "needs_review";
+  return u ? "owner_unparsed" : c ? "owner_confidential" : "no_owner_record";
+}
+
+/** No dated sale: nothing to link an owner to (no_dated_sale); else the run's gap reason. */
+export const ownerMissingReason = (
+  hasDatedSale: boolean,
+  gap: OwnerGapReason,
+): OwnerGapReason | "no_dated_sale" => (hasDatedSale ? gap : "no_dated_sale");
+
+export const contractorResolution = (companyCid: string | null): "resolved" | "unresolved" =>
+  companyCid === null ? "unresolved" : "resolved";
+
+/** The company CID only when the permit has exactly one contractor edge (never pick one). */
+export const soleContractor = (edges: number, minCid: string | null): string | null =>
+  edges === 1 ? minCid : null;
+
+/** Several contractor edges are ambiguous (needs_review); none is unresolved. */
+export const contractorMissingReason = (edges: number): "contractor_unresolved" | "needs_review" =>
+  edges > 1 ? "needs_review" : "contractor_unresolved";
+
+/** v1 never looks up BBB (no lexicon carrier for a rating). */
+export const bbbStatus = (): "not_checked" => "not_checked";
+
+export const bbbStatusReason = (
+  resolution: "resolved" | "unresolved",
+): "no_lexicon_carrier" | "contractor_unresolved" =>
+  resolution === "resolved" ? "no_lexicon_carrier" : "contractor_unresolved";
+
+interface HttpRequest {
+  url?: string;
+  multiValueQueryString?: Record<string, string[]>;
+}
+
+/** The record's request URL with its query string (as fetched), from source_http_request. */
+export function sourceUrl(request: string | null): string | null {
+  if (request === null) return null;
+  const r = JSON.parse(request) as HttpRequest;
+  if (r.url === undefined) return null;
+  const query = Object.entries(r.multiValueQueryString ?? {}).flatMap(([k, values]) =>
+    values.map((v) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`),
+  );
+  return query.length > 0 ? `${r.url}?${query.join("&")}` : r.url;
+}
+
+export const urlHost = (url: string | null): string | null =>
+  url === null ? null : new URL(url).host;
+
+/** The SQL macros views.sql calls, keyed by name. */
+export const DERIVE_MACROS: Readonly<Record<string, string>> = {
+  as_of_date: "(ts) AS CAST(timezone('UTC', ts) AS DATE)",
+  miss: "(f, r) AS struct_pack(field := CAST(f AS VARCHAR), reason := CAST(r AS VARCHAR))",
+  roof_age_years: `(roof_date, as_of) AS CAST(CASE length(roof_date)
+      WHEN 4 THEN year(as_of_date(as_of)) - TRY_CAST(roof_date AS INTEGER)
+      WHEN 7 THEN (year(as_of_date(as_of)) * 12 + month(as_of_date(as_of))
+        - (TRY_CAST(left(roof_date, 4) AS INTEGER) * 12 + TRY_CAST(right(roof_date, 2) AS INTEGER))) // 12
+      WHEN 10 THEN date_sub('year', TRY_CAST(roof_date AS DATE), as_of_date(as_of))
+    END AS INTEGER)`,
+  date_matches_at_precision:
+    "(roof_date, d) AS coalesce(left(d, length(roof_date)) = roof_date, false)",
+  roof_age_basis: `(roof_date, replacement_match, new_match, built_year) AS CASE
+      WHEN roof_date IS NULL THEN 'unknown'
+      WHEN replacement_match THEN 'permit'
+      WHEN new_match THEN 'new_construction'
+      WHEN length(roof_date) = 4 AND TRY_CAST(roof_date AS BIGINT) = built_year THEN 'built_year'
+      ELSE 'unknown'
+    END`,
+  roof_age_confidence: `(basis) AS CASE basis
+      WHEN 'permit' THEN 'high' WHEN 'new_construction' THEN 'medium'
+      WHEN 'built_year' THEN 'low' ELSE 'none' END`,
+  roof_basis_reason:
+    "(roof_date) AS CASE WHEN roof_date IS NULL THEN 'no_roof_date' ELSE 'basis_unmatched' END",
+  tenure_years: "(d, as_of) AS CAST(date_sub('year', d, as_of_date(as_of)) AS INTEGER)",
+  tenure_basis: "(d) AS CASE WHEN d IS NULL THEN 'unknown' ELSE 'sale_date' END",
+  is_long_tenure: "(years) AS years > 10",
+  owner_area_class: "(zcta_class) AS coalesce(zcta_class, 'unknown')",
+  owner_is_out_of_area: `(cls) AS CASE cls
+      WHEN 'in_county' THEN false WHEN 'regional' THEN true WHEN 'out_of_area' THEN true END`,
+  coordinate_source: `(lat, lon, permit_lat, permit_lon) AS CASE
+      WHEN lat IS NOT NULL AND lon IS NOT NULL THEN 'gis_centroid'
+      WHEN permit_lat IS NOT NULL AND permit_lon IS NOT NULL THEN 'permit_point'
+      ELSE 'none' END`,
+  status_class_of: `(juris, status, issue_date) AS (
+      SELECT sm.status_class FROM travis_austin_status_map sm
+      WHERE sm.jurisdiction = juris
+        AND sm.improvement_status IS NOT DISTINCT FROM status
+        AND (status IS NOT NULL OR issue_date IS NOT NULL))`,
+  is_open: "(cls) AS coalesce(cls = 'open', false)",
+  final_date_reason: `(cls) AS CASE WHEN cls IS NULL THEN 'needs_review'
+      WHEN cls = 'closed' THEN 'source_missing' ELSE 'not_closed' END`,
+  open_days: `(cls, issue_date, as_of) AS CASE
+      WHEN cls IN ('open', 'stalled') AND issue_date IS NOT NULL
+      THEN CAST(greatest(as_of_date(as_of) - issue_date, 0) AS INTEGER) END`,
+  open_days_reason: `(cls, issue_date) AS CASE WHEN cls IS NULL THEN 'needs_review'
+      WHEN cls IN ('open', 'stalled') AND issue_date IS NULL THEN 'source_missing'
+      ELSE 'not_open' END`,
+  status_missing_reason:
+    "(cls) AS CASE WHEN cls = 'stalled' THEN 'enum_lacks_value' ELSE 'needs_review' END",
+  terminal_date_accepted: `(d, issue_date, as_of) AS coalesce(d <= as_of_date(as_of)
+      AND (issue_date IS NULL OR d >= issue_date), false)`,
+  owner_kind_of: `(persons, companies) AS CASE WHEN companies > 0 THEN 'company'
+      WHEN persons > 0 THEN 'person' ELSE 'unknown' END`,
+  owner_gap_reason: `(u, c, n) AS CASE
+      WHEN CAST(coalesce(u, 0) > 0 AS INTEGER) + CAST(coalesce(c, 0) > 0 AS INTEGER)
+        + CAST(coalesce(n, 0) > 0 AS INTEGER) > 1 THEN 'needs_review'
+      WHEN coalesce(u, 0) > 0 THEN 'owner_unparsed'
+      WHEN coalesce(c, 0) > 0 THEN 'owner_confidential'
+      ELSE 'no_owner_record' END`,
+  owner_missing_reason:
+    "(has_dated_sale, gap) AS CASE WHEN has_dated_sale THEN gap ELSE 'no_dated_sale' END",
+  contractor_resolution:
+    "(company_cid) AS CASE WHEN company_cid IS NULL THEN 'unresolved' ELSE 'resolved' END",
+  sole_contractor: "(edges, min_cid) AS CASE WHEN edges = 1 THEN min_cid END",
+  contractor_missing_reason:
+    "(edges) AS CASE WHEN edges > 1 THEN 'needs_review' ELSE 'contractor_unresolved' END",
+  bbb_status: "() AS 'not_checked'",
+  bbb_status_reason:
+    "(resolution) AS CASE WHEN resolution = 'resolved' THEN 'no_lexicon_carrier' ELSE 'contractor_unresolved' END",
+  source_url: `(req) AS json_extract_string(req, '$.url') || coalesce('?' || nullif(array_to_string(
+      flatten(list_transform(
+        coalesce(json_keys(req, '$.multiValueQueryString'), []::VARCHAR[]),
+        lambda k: list_transform(
+          CAST(json_extract(req, '$.multiValueQueryString."' || k || '"') AS VARCHAR[]),
+          lambda v: url_encode(k) || '=' || url_encode(v)))), '&'), ''), '')`,
+  url_host: "(u) AS split_part(u, '/', 3)",
+};
+
+/** CREATE OR REPLACE MACRO statements for every derivation. */
+export const deriveMacrosSql = (): string =>
+  Object.entries(DERIVE_MACROS)
+    .map(([name, body]) => `CREATE OR REPLACE MACRO ${name}${body};`)
+    .join("\n");
