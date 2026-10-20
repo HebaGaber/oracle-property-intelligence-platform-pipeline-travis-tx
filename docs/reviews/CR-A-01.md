@@ -3,7 +3,7 @@ id: CR-A-01
 type: code-review-log
 story: A-01
 branch: 001-discover-sources
-reviewed_commit: d0c540e (run 2; run 1 at 672f14f)
+reviewed_commit: 7824e3b (run 3; run 2 at d0c540e; run 1 at 672f14f)
 tools: [/code-review, soofi-xyz-team-kit:oracle]
 created: 2026-10-20
 ---
@@ -20,6 +20,7 @@ Scope: `git diff feature/oracle-pipeline...HEAD`. Reviewers: `/code-review` (def
 | 1 | `soofi-xyz-team-kit:oracle` (read-only) | n/a | 2026-10-20 | `672f14f` | 16 (1 blocker, 5 major, 8 minor, 2 nits) | **72 / 100** (below 75) |
 | 2 | `/code-review` (fix commits `672f14f..d0c540e`) | default | 2026-10-20 | `d0c540e` | 10 new | n/a |
 | 2 | `soofi-xyz-team-kit:oracle` (read-only) | n/a | 2026-10-20 | `d0c540e` | 8 new (1 major, 4 minor, 3 nits) | **83 / 100** (pass) |
+| 3 | `/code-review` (fix commit `cb6a808..7824e3b` only) | default | 2026-10-20 | `7824e3b` | 9 new, none Critical | n/a |
 
 ## Findings
 
@@ -59,11 +60,11 @@ Severity: Critical = blocks G7 (oracle "blocker", or data loss / evidence that m
 | --- | --- | --- | --- | --- | --- |
 | OR-N1 | Major | `docs/decisions/DEC-A-01-source-access.md:18` | D-1 said no request was repeated on 2026-10-19; the GIS host was contacted 4 times from the runs (two run ids, two `captured` rounds) and twice more by the operator | Fixed: D-1 lists all 7 GIS contacts with run, egress and result; review notes added to the three older GIS evidence files | this commit |
 | OR-N6 | Nit | `docs/evidence/blocked/bbb-20261020T072323Z.md` | rewritten whole with changed line endings | Fixed: rebuilt from its first commit, only the corrected paragraph changed | this commit |
-| CR2-1 / OR-N5 | Major | `travis/discovery/resolve.ts:87` | `resolve … captured` passes its checks, re-probes the county source, then the workflow refuses to write the amended catalog: a wasted county request and a dead run | Open | |
-| CR2-2 | Major | `travis/lib/source-client.ts:816` | if the write stream fails during `reader.read()`, `drained()` waits on events that already fired: the disk-full hang can still happen | Open | |
-| CR2-3 / OR-N2 | Major | `travis/lib/egress.ts:111` | the egress reference is the newest amendment, which can be the US runner's: the operator's own network would be refused and a US VPN accepted | Open | |
+| CR2-1 / OR-N5 | Major | `travis/discovery/resolve.ts:87` | `resolve … captured` passes its checks, re-probes the county source, then the workflow refuses to write the amended catalog: a wasted county request and a dead run | Fixed: `resolutionWriteRefusal` refuses before sending (`resolve.ts:58`, test `review-a01.test.ts:202`) | `7824e3b` |
+| CR2-2 | Major | `travis/lib/source-client.ts:816` | if the write stream fails during `reader.read()`, `drained()` waits on events that already fired: the disk-full hang can still happen | Fixed: write failure checked after each read; no wait on a dead stream (`source-client.ts:814`, test `source-client.resume.test.ts:429`, which timed out before the fix) | `7824e3b` |
+| CR2-3 / OR-N2 | Major | `travis/lib/egress.ts:111` | the egress reference is the newest amendment, which can be the US runner's: the operator's own network would be refused and a US VPN accepted | Fixed: amendments carry `venue`; only operator amendments set the reference (`egress.ts:117`); catalog backfilled | `7824e3b` |
 | CR2-4 | Major | `travis/discovery/write-catalog.ts:169` | design: the workflow refuses any amended catalog, so it can never write again; it should merge onto the amended catalog | Deferred to A-12 (PO 2026-10-20): incremental runs must write over an existing catalog, so the merge belongs there; for A-01 the committed catalog is final and the workflow refusing to overwrite it is the safe behaviour | |
-| CR2-5 | Major | `pipeline/local-stack/services/app.ts:47` | the catalog is read outside a journaled step; a read or schema error is retried forever, and a replay can see a different catalog | Open | |
+| CR2-5 | Major | `pipeline/local-stack/services/app.ts:47` | the catalog is read outside a journaled step; a read or schema error is retried forever, and a replay can see a different catalog | Fixed: catalog read in the journaled step `catalog:prior-export`, terminal on failure (`workflow.ts:299-358`, tests `workflow.shell.test.ts:147`) | `7824e3b` |
 | OR-N3 | Minor | `travis/lib/egress.ts`, `discover.ts` | the guard compares countries only; `discover` checks only when `ORACLE_EXPECT_EGRESS` is set | Deferred to A-04 (PO 2026-10-20): require `ORACLE_EXPECT_EGRESS` before the first ingest run; limit recorded in D-1 | |
 | OR-N4 | Minor | `specs/001-discover-sources/spec.md:155` | the amendment asks for both checks to be saved; the TCP test and sibling-host control exist only as prose | Deferred (PO 2026-10-20): the checks are recorded as prose with times in the evidence file; no further GIS requests are made from the operator machine, so they cannot be re-captured lawfully | |
 | CR2-6 | Minor | `travis/discovery/discover.ts:131` | any non-OK status answer is treated as "no existing run" | Deferred to A-12 (PO 2026-10-20): run handling is reworked there | |
@@ -73,6 +74,22 @@ Severity: Critical = blocks G7 (oracle "blocker", or data loss / evidence that m
 | CR2-10 | Minor | `travis/discovery/probes/tcad.ts:317` | the export reuse check re-hashes the whole 3.5 GB file every run | Deferred to A-04 (PO 2026-10-20): A-04 builds a one-time summary of the export so it is not re-read | |
 | OR-N7 | Nit | `travis/discovery/reprobe-jurisdictions.ts` header | comment says the egress check runs last; DNS lookups run before it | Deferred (PO 2026-10-20): comment-only, fixed when the file is next changed | |
 | OR-N8 | Nit | `travis/lib/source-client.ts` `WAF_BODY` | the "request blocked" pattern is broad (fails closed) | Deferred to A-06 (PO 2026-10-20): fails closed; tighten when more city portals are probed | |
+
+### Run 3 findings (`/code-review` on the run-2 fixes only)
+
+Closed by PO decision 2026-10-20 ("fix 4 majors, defer the rest"): no further review round for A-01. None is Critical, and none changes the A-01 catalog, validator result or evidence.
+
+| # | Severity | File:line | Finding | Resolution | Commit |
+| --- | --- | --- | --- | --- | --- |
+| CR3-1 | Major | `travis/discovery/resolve.ts:103` | every `resolve` is refused against the amended catalog, so a waiting run could not be resolved | Deferred to A-12 with CR2-4 (workflow merges onto the amended catalog). No run is waiting today: `travis-2` completed, `travis` killed (D-5) | |
+| CR3-2 | Major | `travis/discovery/resolve.ts:59` | the CLI pre-check is a copy of the workflow guard and can disagree with it; the root fix is the workflow skipping or reporting the publish | Deferred to A-12 with CR2-4 | |
+| CR3-3 | Major | `travis/lib/egress.ts:123` | the newest operator amendment now outranks the run's own `discovery_egress`; an amendment written under an `ORACLE_EXPECT_EGRESS` override could move the reference | Deferred to A-04 (before the first ingest run): put `discovery_egress` first and require `ORACLE_EXPECT_EGRESS` (with OR-N3). Today every operator amendment records `EG` | |
+| CR3-4 | Minor | `travis/lib/egress.ts:126` | amendments without `venue` are ignored as references | Deferred to A-04; the committed catalog is migrated | |
+| CR3-5 | Minor | `travis/lib/source-client.ts:852` | `writeFailed()` treats an ended stream as failed if ever called after `closeOut()` | Deferred to A-04 (next large download); no current call path does this | |
+| CR3-6 | Minor | `travis/discovery/workflow.ts:348` | the journaled prior export can be stale by the time a later re-probe uses it | Deferred to A-12 (long-lived runs) | |
+| CR3-7 | Minor | `travis/discovery/backfill-amendments.ts:239` | venue knowledge in three places | Deferred (one-off migration, already run) | |
+| CR3-8 | Minor | `travis/discovery/backfill-amendments.ts:273` | duplicated refusal-handling block | Deferred (one-off migration) | |
+| CR3-9 | Minor | `travis/discovery/resolve.ts:106` | every exception reported as "catalog unreadable" | Deferred to A-12 with CR3-1 | |
 
 ## Oracle reviewer, run 1 (72/100)
 
@@ -98,4 +115,6 @@ Every run-1 finding is Fixed or Accepted as a recorded PO decision (table above)
 
 Checks at `d0c540e`: 490/490 unit tests, typecheck, lint, format; `check-catalog` rules 1–11 PASS; validator exit 0, overall PASS.
 
-**Open Critical findings:** 0 (run 1's two Critical findings are fixed). Open Major findings: 5 from run 2 (CR2-1 to CR2-5).
+Checks at `7824e3b`: 496/496 unit tests, typecheck, lint, format; `check-catalog` rules 1–11 PASS; validator exit 0, overall PASS.
+
+**Open Critical findings:** 0. Run 2's four fixed majors are closed; CR2-4 and run 3's findings are deferred with an owning story (A-04 or A-12) by PO decision 2026-10-20. Final oracle reviewer score: **83 / 100** (run 2).
