@@ -261,7 +261,7 @@ Task: "Evidence probes in pipeline/oracle-runtime/travis/discovery/probes/eviden
 
 ## Phase 7: Convergence
 
-- [ ] T056 CRITICAL: make `planResolution` (`pipeline/oracle-runtime/travis/discovery/workflow.ts`) and `resolve.ts` refuse `captured` for a waiting source whose stop receipt is HTTP 403, a challenge or a WAF block (only `still-blocked` is allowed), with a test that a `captured` BBB sends nothing per Constitution (stop on BBB 403s), AC-6, FR-006a (contradicts) **(builder: oracle)**
+- [X] T056 CRITICAL: make `planResolution` (`pipeline/oracle-runtime/travis/discovery/workflow.ts`) and `resolve.ts` refuse `captured` for a waiting source whose stop receipt is HTTP 403, a challenge or a WAF block (only `still-blocked` is allowed), with a test that a `captured` BBB sends nothing per Constitution (stop on BBB 403s), AC-6, FR-006a (contradicts) **(builder: oracle)**
 - [ ] T057 Push branch `001-discover-sources`, confirm the first `pipeline-ci` run passes, and record its URL in `docs/reports/A-01-unit-test-report.md` (`ci_run`) per FR-007, AC-7 (partial)
 - [ ] T058 Run every scenario in `specs/001-discover-sources/quickstart.md` (offline steps only; no request to a blocked source) and record the results in `docs/evidence/A-01.md` per T054 (missing)
 - [X] T059 Record the outcome of each success criterion SC-001 to SC-006 in `docs/evidence/A-01.md`, stating SC-005 as not met with the recorded deviations (DEC-A-01-source-access D-1, D-3) and the egress guard added since per SC-005 (contradicts)

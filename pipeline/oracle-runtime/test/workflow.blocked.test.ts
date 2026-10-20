@@ -25,6 +25,7 @@ import {
   PermanentFailure,
   planResolution,
   runTravisDiscovery,
+  stoppedOnBlock,
   type DiscoveryDeps,
   type HumanIO,
   type Resolution,
@@ -637,21 +638,22 @@ describe("A-01-TC-027 resolve (FR-006f)", () => {
   });
 
   it("planResolution accepts a waiting source and refuses one that is not waiting", async () => {
-    const h = harness({ tcadBlocked: true });
+    // T056: a 429-exhausted failure may be `captured`; a 403 block may not (see A-01-TC-019)
+    const h = harness({ austinThrottled: true });
     await expect(h.run()).rejects.toBeInstanceOf(Suspended);
     const record = lastSaved(h);
-    expect(planResolution(record, { source_key: "tcad_certified", outcome: "captured" })).toEqual({
+    expect(planResolution(record, { source_key: "austin_permits", outcome: "captured" })).toEqual({
       accepted: true,
-      promise: "resolve:tcad_certified:1",
+      promise: "resolve:austin_permits:1",
     });
     expect(
-      planResolution(record, { source_key: "austin_permits", outcome: "captured" }),
+      planResolution(record, { source_key: "tcad_certified", outcome: "captured" }),
     ).toMatchObject({ accepted: false });
     expect(
-      planResolution(record, { source_key: "tcad_certified", outcome: "maybe" }),
+      planResolution(record, { source_key: "austin_permits", outcome: "maybe" }),
     ).toMatchObject({ accepted: false });
     expect(
-      planResolution(null, { source_key: "tcad_certified", outcome: "captured" }),
+      planResolution(null, { source_key: "austin_permits", outcome: "captured" }),
     ).toMatchObject({ accepted: false });
   });
 
@@ -772,6 +774,172 @@ describe("A-01-TC-027 resolve (FR-006f)", () => {
       await resolveMain(["tcad_certified", "captured"], { ...offline, fetch: down, env, out }),
     ).toBe(1);
     expect(lines.join("\n")).not.toMatch(/\/Users\//);
+  });
+});
+
+describe("A-01-TC-019 / T056: a 403, challenge or WAF block is never re-probed (AC-6)", () => {
+  const REFUSAL =
+    /stopped on HTTP 403 \/ challenge; a blocked source is never re-probed \(AC-6\); only still-blocked is allowed/;
+
+  /** The Restate handlers of the workflow, with a context reading `record`. */
+  function resolveHandler(record: RunRecord) {
+    let handlers: Record<string, (ctx: unknown, input?: unknown) => Promise<unknown>> = {};
+    const sdk = {
+      workflow: (def: { handlers: typeof handlers }) => {
+        handlers = def.handlers;
+        return def;
+      },
+    };
+    createTravisDiscovery(sdk as unknown as Parameters<typeof createTravisDiscovery>[0]);
+    const resolved: Array<{ name: string; value: unknown }> = [];
+    const ctx = {
+      key: "run-us4",
+      get: async () => record,
+      promise: (name: string) => ({
+        resolve: async (value: unknown) => {
+          resolved.push({ name, value });
+        },
+      }),
+    };
+    return {
+      resolved,
+      resolve: (input: unknown) => must(handlers.resolve)(ctx, input),
+    };
+  }
+
+  const blockedCases: Array<{ name: string; scenario: Scenario; key: "tcad_certified" | "bbb" }> = [
+    { name: "plain HTTP 403", scenario: { tcadBlocked: true }, key: "tcad_certified" },
+    { name: "BBB 403 + cf-mitigated: challenge", scenario: { bbbCfChallenge: true }, key: "bbb" },
+    { name: "BBB 200 challenge interstitial", scenario: { bbbTitle: true }, key: "bbb" },
+  ];
+
+  for (const c of blockedCases) {
+    it(`${c.name}: captured is refused and nothing is probed; still-blocked is accepted`, async () => {
+      const h = harness(c.scenario);
+      await expect(h.run()).rejects.toBeInstanceOf(Suspended);
+      const record = lastSaved(h);
+      expect(must(record.blockers.find((b) => b.source_key === c.key)).waiting).toBe(true);
+      const callsBefore = h.calls.length;
+
+      const plan = planResolution(record, { source_key: c.key, outcome: "captured" });
+      expect(plan.accepted).toBe(false);
+      expect(plan.accepted ? "" : plan.reason).toMatch(REFUSAL);
+      expect(plan.accepted ? "" : plan.reason).toContain(c.key);
+
+      const handler = resolveHandler(record);
+      expect(await handler.resolve({ source_key: c.key, outcome: "captured" })).toMatchObject({
+        accepted: false,
+      });
+      // no durable promise completed, so the workflow never re-probes; no request was made
+      expect(handler.resolved).toEqual([]);
+      expect(h.calls.length).toBe(callsBefore);
+      expect(h.journal.some((k) => /reprobe/.test(k))).toBe(false);
+
+      expect(planResolution(record, { source_key: c.key, outcome: "still-blocked" })).toEqual({
+        accepted: true,
+        promise: `resolve:${c.key}:1`,
+      });
+      expect(await handler.resolve({ source_key: c.key, outcome: "still-blocked" })).toMatchObject({
+        accepted: true,
+      });
+      expect(handler.resolved).toHaveLength(1);
+    });
+  }
+
+  it("a WAF page (Mod Security, HTTP 406) is a block: captured is refused", () => {
+    const body = "<html><body>This request has been blocked by Mod Security.</body></html>";
+    const receipt = {
+      status: 406,
+      blocked_reason: null,
+      stop_evidence: {
+        headers: { "content-type": "text/html" },
+        excerpt_base64: Buffer.from(body, "utf8").toString("base64"),
+        body_bytes: body.length,
+      },
+    };
+    expect(stoppedOnBlock(receipt)).toBe(true);
+    expect(stoppedOnBlock({ status: 406, blocked_reason: null })).toBe(false);
+    expect(stoppedOnBlock({ status: null, blocked_reason: "timeout" })).toBe(false);
+    expect(stoppedOnBlock({ status: 200, challenge_signal: "cf-mitigated: challenge" })).toBe(true);
+  });
+
+  it("failures may still be captured (FR-006f): timeout, network error, 429 exhausted, broken download", async () => {
+    const timeout = { status: null, blocked_reason: "timeout" as const, error: "timeout" };
+    expect(stoppedOnBlock(timeout)).toBe(false);
+
+    const cases: Array<{
+      scenario: Scenario;
+      key: "tcad_gis" | "austin_permits" | "tcad_certified";
+    }> = [
+      { scenario: { gisOddError: true }, key: "tcad_gis" },
+      { scenario: { austinThrottled: true }, key: "austin_permits" },
+      { scenario: { tcadBroken: true }, key: "tcad_certified" },
+    ];
+    for (const c of cases) {
+      const h = harness(c.scenario);
+      await expect(h.run()).rejects.toBeInstanceOf(Suspended);
+      const record = lastSaved(h);
+      expect(planResolution(record, { source_key: c.key, outcome: "captured" })).toEqual({
+        accepted: true,
+        promise: `resolve:${c.key}:1`,
+      });
+    }
+
+    // a source that timed out is still re-probed once on `captured`
+    const h = harness({ tcadBlocked: true });
+    await expect(h.run()).rejects.toBeInstanceOf(Suspended);
+    const record = structuredClone(lastSaved(h));
+    const tcad = must(record.blockers.find((b) => b.source_key === "tcad_certified"));
+    tcad.receipt = {
+      ...tcad.receipt,
+      status: null,
+      outcome: "blocked",
+      blocked_reason: "timeout",
+      timeout_ms: 60_000,
+    };
+    delete tcad.receipt.stop_evidence;
+    delete tcad.receipt.challenge_signal;
+    expect(planResolution(record, { source_key: "tcad_certified", outcome: "captured" })).toEqual({
+      accepted: true,
+      promise: "resolve:tcad_certified:1",
+    });
+  });
+
+  it("resolve CLI: `bbb captured` on a 403 challenge exits 2 and sends no resolve request", async () => {
+    const h = harness({ bbbCfChallenge: true });
+    await expect(h.run()).rejects.toBeInstanceOf(Suspended);
+    const record = lastSaved(h);
+    const posted: string[] = [];
+    let egressCalls = 0;
+    const lines: string[] = [];
+    const deps = {
+      readCatalog: () => null,
+      egress: async () => {
+        egressCalls += 1;
+        return {
+          ok: true as const,
+          egress: { country: "EG", captured_at: "2026-01-01T00:00:00.000Z", method: "trace" },
+        };
+      },
+      fetch: async (url: string) => {
+        posted.push(url);
+        if (url.endsWith("/status")) return json(record);
+        return json({ accepted: true, promise: "resolve:bbb:1" });
+      },
+      env: { RESTATE_INGRESS_URL: "http://ingress.test:8080", TRAVIS_DISCOVERY_RUN_ID: "run-x" },
+      out: (l: string) => {
+        lines.push(l);
+      },
+    };
+    expect(await resolveMain(["bbb", "captured"], deps)).toBe(2);
+    expect(posted.some((u) => u.endsWith("/resolve"))).toBe(false);
+    expect(egressCalls).toBe(0);
+    expect(lines.join("\n")).toMatch(REFUSAL);
+    expect(lines.join("\n")).toMatch(/nothing sent/);
+
+    // still-blocked is still sent
+    expect(await resolveMain(["bbb", "still-blocked"], deps)).toBe(0);
+    expect(posted.filter((u) => u.endsWith("/resolve"))).toHaveLength(1);
   });
 });
 

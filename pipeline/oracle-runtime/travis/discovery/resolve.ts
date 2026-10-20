@@ -16,6 +16,9 @@
 //   outcomes re-publish the catalog, and its write guard (`catalogWriteRefusal`) refuses a
 //   catalog that offline commands amended. The same guard runs here first, so no source is
 //   re-probed (and no run is left dead) for a result that could never be written;
+// - T056 / AC-6: the outcome is `captured` and the run status shows the source waiting on a
+//   receipt that stopped on HTTP 403, a bot challenge or a WAF block: a blocked source is
+//   never re-probed, only `still-blocked` is allowed (the workflow handler refuses too);
 // - OR-B1: the outcome is `captured` (the workflow then re-probes the source) and the
 //   egress country differs from the run's recorded egress or ORACLE_EXPECT_EGRESS.
 //
@@ -26,15 +29,43 @@ import { z } from "zod";
 import { checkEgress, type EgressCheck } from "../lib/egress.js";
 import { redact } from "../lib/log.js";
 import { SOURCE_KEYS, type Catalog } from "./catalog.schema.js";
-import { ResolveRequestSchema, WORKFLOW_NAME } from "./workflow.js";
+import {
+  blockedReprobeReason,
+  ResolveRequestSchema,
+  stoppedOnBlock,
+  WORKFLOW_NAME,
+  type StopReceipt,
+} from "./workflow.js";
 import { catalogWriteRefusal, readCatalogIfPresent } from "./write-catalog.js";
 
 export const DEFAULT_INGRESS_URL = "http://localhost:8080";
 /** The workflow key (run id) every operator command must name explicitly. */
 export const RUN_ID_ENV = "TRAVIS_DISCOVERY_RUN_ID";
 
-const RunEgressSchema = z
-  .looseObject({ egress: z.looseObject({ country: z.string() }).nullable().optional() })
+const RunStatusSchema = z
+  .looseObject({
+    egress: z.looseObject({ country: z.string() }).nullable().optional(),
+    blockers: z
+      .array(
+        z.looseObject({
+          source_key: z.string(),
+          waiting: z.boolean(),
+          receipt: z.looseObject({
+            status: z.number().nullable(),
+            blocked_reason: z.enum(["http-403", "challenge", "timeout"]).nullable().optional(),
+            challenge_signal: z.string().optional(),
+            stop_evidence: z
+              .looseObject({
+                headers: z.record(z.string(), z.string()),
+                excerpt_base64: z.string(),
+                body_bytes: z.number(),
+              })
+              .optional(),
+          }),
+        }),
+      )
+      .optional(),
+  })
   .nullable();
 
 /** Why `runId` may not be resolved against the committed catalog, or null. */
@@ -117,12 +148,23 @@ export async function main(argv: readonly string[], deps: ResolveCliDeps = {}): 
   if (request.outcome === "captured") {
     // The workflow re-probes the source: the same egress as the run, or nothing (OR-B1).
     let reference: string | null;
+    let receipt: StopReceipt | null = null;
     try {
       const res = await fetchImpl(`${base}/status`, { method: "POST" });
-      const parsed = res.ok ? RunEgressSchema.safeParse(await res.json()) : null;
-      reference = parsed?.success ? (parsed.data?.egress?.country ?? null) : null;
+      const parsed = res.ok ? RunStatusSchema.safeParse(await res.json()) : null;
+      const status = parsed?.success ? parsed.data : null;
+      reference = status?.egress?.country ?? null;
+      const blocker = status?.blockers?.find(
+        (b) => b.source_key === request.source_key && b.waiting,
+      );
+      if (blocker) receipt = blocker.receipt;
     } catch {
       reference = null;
+    }
+    // T056 / AC-6: a source stopped by 403, a challenge or a WAF is never re-probed.
+    if (receipt !== null && stoppedOnBlock(receipt)) {
+      say(`resolve: refused: ${blockedReprobeReason(request.source_key)}; nothing sent`);
+      return 2;
     }
     const check = await (
       deps.egress ??

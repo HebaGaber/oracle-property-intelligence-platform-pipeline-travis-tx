@@ -36,7 +36,7 @@ import {
   type SourceKey,
 } from "./catalog.schema.js";
 import { catalogWriteRefusal } from "./write-catalog.js";
-import type { CaptureReceipt } from "../lib/source-client.js";
+import { detectChallengeSignal, type CaptureReceipt } from "../lib/source-client.js";
 import { renderBlockedEvidence } from "./blocked-evidence.js";
 import type { Destination } from "./destination-proof.js";
 import {
@@ -46,7 +46,7 @@ import {
   type Us1Blocks,
   type Us1Results,
 } from "./assemble.js";
-import { NOT_FILED } from "./jurisdiction-explanation.js";
+import { NOT_FILED, savedStop } from "./jurisdiction-explanation.js";
 import { catalogSafe } from "./catalog-text.js";
 import {
   assemblePermits,
@@ -791,6 +791,34 @@ export interface DiscoveryDeps {
 
 export type ResolvePlan = { accepted: true; promise: string } | { accepted: false; reason: string };
 
+/** The receipt fields that tell a block (403, challenge, WAF) from a failure (T056). */
+export interface StopReceipt {
+  status: CaptureReceipt["status"];
+  blocked_reason?: CaptureReceipt["blocked_reason"] | undefined;
+  challenge_signal?: string | undefined;
+  stop_evidence?: { headers: Record<string, string>; excerpt_base64: string } | undefined;
+}
+
+/**
+ * T056 / AC-6: true when the receipt stopped on HTTP 403, a bot challenge or a WAF block.
+ * Such a source is never re-probed (`captured`); a human may only document it
+ * (`still-blocked`). Timeouts, network errors, 429/5xx after 5 attempts and broken downloads
+ * are failures, not blocks, and may still be `captured` (FR-006f). The saved stop response
+ * is re-read with the source client's own detectors (challenge, `cf-mitigated`, WAF).
+ */
+export function stoppedOnBlock(receipt: StopReceipt): boolean {
+  if (receipt.status === 403) return true;
+  if (receipt.blocked_reason === "http-403" || receipt.blocked_reason === "challenge") return true;
+  if (receipt.challenge_signal !== undefined && receipt.challenge_signal !== "") return true;
+  const saved = savedStop(receipt);
+  return saved !== null && detectChallengeSignal(saved) !== null;
+}
+
+/** The refusal reason for `captured` on a blocked source (T056, AC-6). */
+export function blockedReprobeReason(key: SourceKey): string {
+  return `${key} stopped on HTTP 403 / challenge; a blocked source is never re-probed (AC-6); only still-blocked is allowed`;
+}
+
 /** Decides whether a resolve request names a source that is waiting (FR-006f). */
 export function planResolution(record: RunRecord | null, request: unknown): ResolvePlan {
   const parsed = ResolveRequestSchema.safeParse(request);
@@ -802,7 +830,12 @@ export function planResolution(record: RunRecord | null, request: unknown): Reso
   }
   const key = parsed.data.source_key;
   const waiting = record.blockers.find((b) => b.source_key === key && b.waiting);
-  if (waiting) return { accepted: true, promise: waiting.promise };
+  if (waiting) {
+    if (parsed.data.outcome === "captured" && stoppedOnBlock(waiting.receipt)) {
+      return { accepted: false, reason: blockedReprobeReason(key) };
+    }
+    return { accepted: true, promise: waiting.promise };
+  }
   const documented = record.blockers.some(
     (b) => b.source_key === key && b.resolution === "still-blocked",
   );
