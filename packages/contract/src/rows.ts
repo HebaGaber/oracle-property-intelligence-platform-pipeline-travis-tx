@@ -29,7 +29,10 @@ function base(column: Column): z.ZodType {
     case "json":
       return z.unknown();
     case "list":
-      return z.array(z.record(z.string(), z.unknown()));
+      // A VARCHAR[] holds strings (v_run.limitations); every other list holds STRUCTs.
+      return column.type === "VARCHAR[]"
+        ? z.array(z.string())
+        : z.array(z.record(z.string(), z.unknown()));
   }
 }
 

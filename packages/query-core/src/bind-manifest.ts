@@ -176,7 +176,8 @@ export async function bindManifest(
     ${str(areaList)} AS area_list_sha256,
     CAST(${str(JSON.stringify(roots))} AS JSON) AS tables_root_cids,
     CAST(${str(JSON.stringify(manifest.sources))} AS JSON) AS sources,
-    CAST(${str(JSON.stringify(manifest.coverage))} AS JSON) AS coverage`);
+    CAST(${str(JSON.stringify(manifest.coverage))} AS JSON) AS coverage,
+    CAST(${str(JSON.stringify(manifest.limitations))} AS JSON) AS limitations`);
 
   const sources = manifest.sources.map(
     (s) => `(${str(s.name)}, ${str(s.url)}, CAST(${str(s.captured_at)} AS TIMESTAMPTZ))`,

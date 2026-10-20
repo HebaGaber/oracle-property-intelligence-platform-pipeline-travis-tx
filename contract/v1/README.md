@@ -129,6 +129,8 @@ Every row of `v_property`, `v_roofing_permit` and `v_contractor` carries `cid`, 
 `captured_at`, `table`, `table_cid`, `run_id`, `manifest_cid`, `as_of` and `missing`.
 `missing` holds one `{field, reason}` entry for every null column and every field the contract
 cannot carry. Reasons are a closed list: `no_lexicon_carrier`, `not_in_export`, `source_missing`, `no_coordinates`, `no_roof_date`, `basis_unmatched`, `no_dated_sale`, `no_owner_record`, `no_mailing_address`, `zip_not_zcta`, `not_open`, `not_closed`, `contractor_unresolved`, `bbb_blocked`, `bbb_not_found`, `needs_review`, `first_run`, `out_of_scope`, `enum_lacks_value`, `owner_unparsed`, `owner_confidential`.
+`v_run` carries the same `missing` list: `previous_manifest_cid` is null on a first run and is
+listed as `first_run`; every other `v_run` column is never null.
 `captured_at` is source-level: it is the manifest `sources[].captured_at` of the record's source
 (the latest successful capture receipt of that source), not a per-record time. `source_url` is
 the record's own request URL; when the record has none (or its URL is not a manifest source) it
@@ -343,6 +345,8 @@ Two further notes from the pilot export:
 | `profile_version` | `VARCHAR` | no | Classification profile version | manifest profiles[] (travis-austin) | never empty |
 | `profile_sha256` | `VARCHAR` | no | Classification profile digest | manifest profiles[] (travis-austin) | never empty |
 | `area_list_sha256` | `VARCHAR` | no | Area list digest | manifest profiles[] (travis-places) | never empty |
+| `limitations` | `VARCHAR[]` | no | The run's stated limitations, in manifest order (empty list when none) | manifest limitations[] | never empty |
+| `missing` | `STRUCT(field VARCHAR, reason VARCHAR)[]` | no | One {field, reason} entry for every null column (previous_manifest_cid on a first run); every other v_run column is never null | built per row | never empty |
 
 ## Change rule
 

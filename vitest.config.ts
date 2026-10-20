@@ -12,7 +12,12 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      include: ["packages/*/src/**/*.ts", "profiles/*/*.ts", "pipeline/publish/src/**/*.ts"],
+      include: [
+        "packages/*/src/**/*.ts",
+        "packages/query-core/gazetteer/**/*.ts",
+        "profiles/*/*.ts",
+        "pipeline/publish/src/**/*.ts",
+      ],
     },
   },
 });

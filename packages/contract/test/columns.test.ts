@@ -99,6 +99,8 @@ const EXPECTED: Record<ViewName, string[]> = {
     "profile_version",
     "profile_sha256",
     "area_list_sha256",
+    "limitations",
+    "missing",
   ],
 };
 
@@ -317,6 +319,42 @@ describe("row schemas (generated from columns.ts)", () => {
       const col = VIEWS[view].find((c) => c.name === "area_list_sha256");
       expect(col?.source).toBe("manifest profiles[] (travis-places)");
     }
+  });
+
+  it("v_run carries the standard missing list; previous_manifest_cid is null only as first_run (T069)", () => {
+    const missing = VIEWS.v_run.find((c) => c.name === "missing");
+    expect(missing).toMatchObject({ kind: "missing", nullable: false });
+    expect(missing?.type).toBe(PROVENANCE_COLUMNS.find((c) => c.name === "missing")?.type);
+    const prev = VIEWS.v_run.find((c) => c.name === "previous_manifest_cid");
+    expect(prev).toMatchObject({ nullable: true, missingReason: "first_run" });
+    // Every other v_run column is never null, so it needs no reason.
+    for (const c of VIEWS.v_run.filter((x) => x.name !== "previous_manifest_cid")) {
+      expect(c.nullable, c.name).toBe(false);
+      expect(c.missingReason, c.name).toBeNull();
+    }
+    const schema = rowSchema("v_run").shape.missing;
+    expect(
+      schema?.safeParse([{ field: "previous_manifest_cid", reason: "first_run" }]).success,
+    ).toBe(true);
+    expect(schema?.safeParse([{ field: "previous_manifest_cid", reason: "nope" }]).success).toBe(
+      false,
+    );
+  });
+
+  it("v_run.limitations is the manifest's top-level limitations[] as VARCHAR[] (T070)", () => {
+    const col = VIEWS.v_run.find((c) => c.name === "limitations");
+    expect(col).toMatchObject({
+      kind: "list",
+      type: "VARCHAR[]",
+      nullable: false,
+      source: "manifest limitations[]",
+      missingReason: null,
+    });
+    const schema = rowSchema("v_run").shape.limitations;
+    expect(schema?.safeParse(["pilot: local, unpublished"]).success).toBe(true);
+    expect(schema?.safeParse([]).success).toBe(true);
+    expect(schema?.safeParse([{ name: "x" }]).success).toBe(false);
+    expect(schema?.safeParse(null).success).toBe(false);
   });
 
   it("owner_name is missing for no_dated_sale first (the other owner reasons are per row)", () => {

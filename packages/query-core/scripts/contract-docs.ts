@@ -212,6 +212,8 @@ Every row of \`v_property\`, \`v_roofing_permit\` and \`v_contractor\` carries \
 \`captured_at\`, \`table\`, \`table_cid\`, \`run_id\`, \`manifest_cid\`, \`as_of\` and \`missing\`.
 \`missing\` holds one \`{field, reason}\` entry for every null column and every field the contract
 cannot carry. Reasons are a closed list: ${MISSING_REASONS.map((r) => `\`${r}\``).join(", ")}.
+\`v_run\` carries the same \`missing\` list: \`previous_manifest_cid\` is null on a first run and is
+listed as \`first_run\`; every other \`v_run\` column is never null.
 \`captured_at\` is source-level: it is the manifest \`sources[].captured_at\` of the record's source
 (the latest successful capture receipt of that source), not a per-record time. \`source_url\` is
 the record's own request URL; when the record has none (or its URL is not a manifest source) it

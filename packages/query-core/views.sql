@@ -447,5 +447,10 @@ SELECT
   coverage,
   profile_version,
   profile_sha256,
-  area_list_sha256
+  area_list_sha256,
+  from_json(limitations, '["VARCHAR"]') AS limitations,
+  -- Every other v_run column is never null (manifest fields the schema requires).
+  list_filter([
+    CASE WHEN previous_manifest_cid IS NULL THEN miss('previous_manifest_cid', 'first_run') END
+  ], lambda e: e IS NOT NULL) AS missing
 FROM meta.run;

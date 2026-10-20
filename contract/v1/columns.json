@@ -866,6 +866,24 @@
         "meaning": "Area list digest",
         "source": "manifest profiles[] (travis-places)",
         "missingReason": null
+      },
+      {
+        "name": "limitations",
+        "type": "VARCHAR[]",
+        "kind": "list",
+        "nullable": false,
+        "meaning": "The run's stated limitations, in manifest order (empty list when none)",
+        "source": "manifest limitations[]",
+        "missingReason": null
+      },
+      {
+        "name": "missing",
+        "type": "STRUCT(field VARCHAR, reason VARCHAR)[]",
+        "kind": "missing",
+        "nullable": false,
+        "meaning": "One {field, reason} entry for every null column (previous_manifest_cid on a first run); every other v_run column is never null",
+        "source": "built per row",
+        "missingReason": null
       }
     ]
   },

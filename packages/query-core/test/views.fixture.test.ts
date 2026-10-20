@@ -334,6 +334,48 @@ describe("manifest digests (code-review #8, oracle F5)", () => {
   });
 });
 
+describe("v_run missing (T069)", () => {
+  it("lists previous_manifest_cid as first_run when the manifest has none", async () => {
+    const rows = await fx.rows("SELECT previous_manifest_cid, missing FROM v_run");
+    expect(rows).toEqual([
+      {
+        previous_manifest_cid: null,
+        missing: [{ field: "previous_manifest_cid", reason: "first_run" }],
+      },
+    ]);
+  });
+
+  it("has an empty missing list when the manifest names its previous run", async () => {
+    const prev = fx.bound.manifestCid;
+    const f = await bindFixture(TABLES, (m) => {
+      m.previousManifestCid = prev;
+    });
+    try {
+      const rows = await f.rows("SELECT previous_manifest_cid, missing FROM v_run");
+      expect(rows).toEqual([{ previous_manifest_cid: prev, missing: [] }]);
+    } finally {
+      f.close();
+    }
+  });
+});
+
+describe("v_run limitations (T070)", () => {
+  it.each([[["first limitation", "it's quoted"]], [[]]])(
+    "carries the manifest's top-level limitations[] %j in order",
+    async (limitations) => {
+      const f = await bindFixture(TABLES, (m) => {
+        m.limitations = limitations;
+      });
+      try {
+        const rows = await f.rows("SELECT limitations FROM v_run");
+        expect(rows).toEqual([{ limitations }]);
+      } finally {
+        f.close();
+      }
+    },
+  );
+});
+
 describe("tcadRequest helper", () => {
   it("is the TCAD export GET", () => {
     expect(JSON.parse(tcadRequest())).toEqual({ method: "GET", url: TCAD_URL });

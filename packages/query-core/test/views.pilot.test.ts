@@ -52,16 +52,32 @@ if (!PILOT_DIR) {
     });
 
     it("every null nullable column has a missing entry (SC-007), and every uncarried field is listed", () => {
-      for (const view of ["v_property", "v_roofing_permit", "v_contractor"] as const) {
+      for (const view of Object.keys(VIEWS) as ViewName[]) {
+        const uncarried = view === "v_run" ? [] : UNCARRIED[view];
         for (const row of viewRows(view)) {
           const missing = new Map((row.missing as Missing).map((m) => [m.field, m.reason]));
-          for (const col of VIEWS[view].filter((c) => c.nullable)) {
-            if (row[col.name] === null)
-              expect(missing.has(col.name), `${view}.${col.name}`).toBe(true);
+          for (const col of VIEWS[view]) {
+            if (row[col.name] !== null) continue;
+            expect(col.nullable, `${view}.${col.name} is never null`).toBe(true);
+            expect(missing.has(col.name), `${view}.${col.name}`).toBe(true);
           }
-          for (const u of UNCARRIED[view]) expect(missing.get(u.field), u.field).toBe(u.reason);
+          for (const u of uncarried) expect(missing.get(u.field), u.field).toBe(u.reason);
         }
       }
+    });
+
+    it("v_run.limitations equals the pilot manifest's top-level limitations[] (T070)", () => {
+      const manifest = JSON.parse(
+        readFileSync(new URL("../../../contract/v1/pilot-manifest.json", import.meta.url), "utf8"),
+      ) as { limitations: string[] };
+      expect(manifest.limitations.length).toBeGreaterThan(0);
+      expect(viewRows("v_run")[0]?.limitations).toEqual(manifest.limitations);
+    });
+
+    it("v_run of the first pilot run lists previous_manifest_cid as first_run (T069)", () => {
+      const run = viewRows("v_run")[0];
+      expect(run?.previous_manifest_cid).toBeNull();
+      expect(run?.missing).toEqual([{ field: "previous_manifest_cid", reason: "first_run" }]);
     });
 
     it("v_property count = distinct cid in the county property table (mew M4)", async () => {

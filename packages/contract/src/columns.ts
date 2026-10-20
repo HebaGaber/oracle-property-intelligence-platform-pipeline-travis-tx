@@ -627,6 +627,24 @@ const V_RUN: readonly Column[] = [
     "Area list digest",
     null,
   ),
+  col(
+    "limitations",
+    "list",
+    "VARCHAR[]",
+    false,
+    "manifest limitations[]",
+    "The run's stated limitations, in manifest order (empty list when none)",
+    null,
+  ),
+  col(
+    "missing",
+    "missing",
+    MISSING_TYPE,
+    false,
+    "built per row",
+    "One {field, reason} entry for every null column (previous_manifest_cid on a first run); every other v_run column is never null",
+    null,
+  ),
 ];
 
 export const VIEWS = {
