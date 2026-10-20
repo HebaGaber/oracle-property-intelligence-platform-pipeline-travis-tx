@@ -69,7 +69,7 @@ The fake-timer loop in `test/source-client.resume.test.ts`.
 
 | Field | Value |
 | --- | --- |
-| Root cause | A fixed step budget (40) for a loop that also waits on real file I/O. |
-| Fix | Budget raised to 400 steps with three `setImmediate` turns per step; the loop still stops as soon as the download settles, and every asserted time comes from the fake clock. Five local runs pass. |
-| Re-test | the next `pipeline-ci` run on the fix commit |
+| Root cause | Two parts. (1) A fixed step budget (40) for a test loop that also waits on real file I/O. (2) In the client, `timeout_ms` was measured when the receipt was written, after the cleanup that follows the abort, not when the limit fired; on the slower CI disk the fake clock moved on during cleanup, so the second CI run recorded 2,750 ms for a 1,000 ms limit (`expected 2750 to be less than 1200`, run 39489908500). In production this added the cleanup time to the reported value. |
+| Fix | Test: budget raised to 400 steps with three `setImmediate` turns per step (commit `024d9c0`). Client (`travis/lib/source-client.ts`): the elapsed time is taken when the limit fires (`firedAt`), so `timeout_ms` reports when the download was stopped and is never below the limit. |
+| Re-test | `pipeline-ci` on the fix commit (see `docs/reports/A-01-unit-test-report.md`) |
 | Status | ☒ Closed ☐ Reopened (after the CI re-test) |

@@ -716,9 +716,12 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
 
     // A timer can fire a fraction of a millisecond before the monotonic clock reaches its
     // limit, so a timeout records at least the limit that fired (FR-003: >= 10 min / 2 h).
+    // ERR-8: the elapsed time is taken when the limit fires, not after the cleanup that
+    // follows, so `timeout_ms` reports when the download was stopped.
     let limitHit = 0;
+    let firedAt: number | null = null;
     let timedOut = false;
-    const elapsed = (): number => Math.max(1, limitHit, Math.round(clock() - startedMs));
+    const elapsed = (): number => Math.max(1, limitHit, firedAt ?? Math.round(clock() - startedMs));
 
     /**
      * One request's abort controller with the shared 2-hour total limit (measured from the
@@ -729,6 +732,7 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       const fire = (limit: number) => (): void => {
         timedOut = true;
         limitHit = Math.max(limitHit, limit);
+        firedAt ??= Math.round(clock() - startedMs);
         controller.abort();
       };
       const total = setTimeout(
