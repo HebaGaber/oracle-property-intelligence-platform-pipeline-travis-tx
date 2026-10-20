@@ -6,11 +6,11 @@ story: A-01
 test_case: A-01-TC-019 (also A-01-TC-008, A-01-TC-NF-01)
 ac_reference: A-01-AC-6
 severity: Medium
-status: Fixed
+status: Closed
 found_by: Claude (QC run 2026-10-20)
 found_date: 2026-10-20
 fix_branch: 001-discover-sources
-fix_commit:
+fix_commit: 9c7579a
 retest_date: 2026-10-20
 ---
 

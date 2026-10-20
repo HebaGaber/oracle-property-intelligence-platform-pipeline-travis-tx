@@ -6,11 +6,11 @@ story: A-01
 test_case: A-01-TC-005, A-01-TC-007, A-01-TC-010, A-01-TC-013, A-01-TC-NF-02, A-01-TC-NF-03
 ac_reference: A-01-AC-1 to AC-5
 severity: High
-status: Fixed
+status: Closed
 found_by: Claude (QC run 2026-10-20)
 found_date: 2026-10-20
 fix_branch: 001-discover-sources
-fix_commit:
+fix_commit: 9c7579a
 retest_date: 2026-10-20
 ---
 
