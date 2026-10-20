@@ -215,7 +215,84 @@ function parcelSection(catalog: Catalog): string[] {
     );
   }
   lines.push("");
+  lines.push(...gapReconciliationSection(catalog));
   return lines;
+}
+
+/** The account breakdown and the count-level gap reconciliation, each row with provenance. */
+function gapReconciliationSection(catalog: Catalog): string[] {
+  const p = catalog.parcel;
+  const b = p?.account_breakdown;
+  if (!p || !b) return [];
+  const url = b.source_url;
+  const at = utc(b.captured_at);
+  const rows: string[][] = [["Records in the certified export", num(b.records), url, at]];
+  rows.push(["Records flagged inactive", num(b.inactive_flagged), url, at]);
+  for (const t of b.by_prop_type) {
+    const meaning = t.meaning ? ` (${t.meaning})` : "";
+    rows.push([`Accounts with propType ${cell(t.prop_type)}${meaning}`, num(t.count), url, at]);
+  }
+  const re = b.real_estate;
+  rows.push(["Real-property accounts: distinct geoIDs", num(re.distinct_geo_ids), url, at]);
+  rows.push([
+    "Real-property accounts sharing a geoID with another account",
+    num(re.accounts_sharing_a_geo_id),
+    url,
+    at,
+  ]);
+  rows.push(["Real-property accounts without a geoID", num(re.accounts_without_geo_id), url, at]);
+  rows.push([
+    "Real-property accounts with an export geometry point",
+    num(re.with_geometry_point),
+    url,
+    at,
+  ]);
+  rows.push([
+    "Real-property accounts without an export geometry point",
+    num(re.without_geometry_point),
+    url,
+    at,
+  ]);
+  for (const s of re.without_geometry_by_state_cd ?? []) {
+    const meaning = s.meaning ? ` (${s.meaning})` : "";
+    rows.push([
+      `No geometry point, state code ${cell(s.state_cd)}${meaning}; with a condo unit: ${num(s.with_condo_unit)}`,
+      num(s.count),
+      url,
+      at,
+    ]);
+  }
+  const out = [
+    `Account breakdown (${cell(b.method)}; export SHA-256 \`${b.export_sha256}\`):`,
+    "",
+    ...table(["Measure", "Value", "Source URL", "Captured (UTC)"], rows),
+    `- propType meanings: ${b.prop_type_meaning_source}`,
+    `- State code meanings: ${b.state_cd_meaning_source}`,
+    "",
+  ];
+  const g = p.gap_reconciliation;
+  if (!g) return out;
+  const gis = p.gis_feature_count_measurement;
+  const recRows: string[][] = [
+    ["Gap: roll minus GIS", num(g.gap), gis.source_url, utc(gis.captured_at)],
+    ...g.components.map((c) => [`\`${c.component}\`: ${cell(c.reason)}`, num(c.count), url, at]),
+    ["Explained by the components", num(g.explained), url, at],
+    [
+      "Residual (unexplained)",
+      `${num(g.residual)} (${num(g.residual_pct_of_roll)} % of the roll)`,
+      gis.source_url,
+      utc(gis.captured_at),
+    ],
+  ];
+  out.push(
+    "Gap reconciliation:",
+    "",
+    ...table(["Component", "Count", "Source URL", "Captured (UTC)"], recRows),
+    `- Method: ${g.method}`,
+    `- Residual: ${g.residual_note}`,
+    "",
+  );
+  return out;
 }
 
 function jurisdictionsSection(catalog: Catalog): string[] {

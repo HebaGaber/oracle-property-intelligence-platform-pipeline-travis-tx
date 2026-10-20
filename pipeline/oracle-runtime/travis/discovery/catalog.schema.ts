@@ -241,6 +241,107 @@ export const CertificationDateMeasurementSchema = z
   });
 export type CertificationDateMeasurement = z.infer<typeof CertificationDateMeasurementSchema>;
 
+const Count = z.int().nonnegative();
+const Sha256 = z.string().regex(/^[0-9a-f]{64}$/);
+
+/**
+ * Account-type breakdown of the certified export (PO decision 2026-10-20: explain the GIS
+ * gap from data already held). Counts only, taken in one streaming pass over the file the
+ * export receipt names; provenance is that receipt's URL and captured_at. Deliberately has
+ * no `value` key, so the measurement walkers do not read it as a Measurement.
+ */
+export const AccountBreakdownSchema = z
+  .strictObject({
+    source_url: Url,
+    captured_at: UtcTimestamp,
+    method: Text,
+    /** SHA-256 of the scanned file, equal to export_receipt.sha256. */
+    export_sha256: Sha256,
+    zip_entry: Text.optional(),
+    records: Count,
+    inactive_flagged: Count,
+    by_prop_type: z
+      .array(z.strictObject({ prop_type: Text, count: Count, meaning: Text.optional() }))
+      .min(1),
+    prop_type_meaning_source: Text,
+    real_estate: z.strictObject({
+      prop_type: Text,
+      accounts: Count,
+      distinct_geo_ids: Count,
+      accounts_sharing_a_geo_id: Count,
+      accounts_without_geo_id: Count,
+      with_geometry_point: Count,
+      without_geometry_point: Count,
+      without_geometry_by_state_cd: z
+        .array(
+          z.strictObject({
+            state_cd: Text,
+            count: Count,
+            with_condo_unit: Count,
+            meaning: Text.optional(),
+          }),
+        )
+        .optional(),
+    }),
+    state_cd_meaning_source: Text,
+  })
+  .refine((b) => b.by_prop_type.reduce((n, r) => n + r.count, 0) === b.records, {
+    message: "by_prop_type counts must sum to records",
+    path: ["by_prop_type"],
+  })
+  .refine(
+    (b) =>
+      b.real_estate.with_geometry_point + b.real_estate.without_geometry_point ===
+      b.real_estate.accounts,
+    {
+      message: "real_estate with + without geometry must equal accounts",
+      path: ["real_estate"],
+    },
+  )
+  .refine(
+    (b) =>
+      (b.real_estate.without_geometry_by_state_cd ?? []).reduce((n, r) => n + r.count, 0) ===
+      b.real_estate.without_geometry_point,
+    {
+      message: "without_geometry_by_state_cd counts must sum to without_geometry_point",
+      path: ["real_estate", "without_geometry_by_state_cd"],
+    },
+  );
+export type AccountBreakdownBlock = z.infer<typeof AccountBreakdownSchema>;
+
+/**
+ * Count-level reconciliation of the roll-minus-GIS gap (not a feature-to-account join):
+ * each explained component, the explained total and the unexplained residual.
+ */
+export const GapReconciliationSchema = z
+  .strictObject({
+    /** assessed_parcel_count - gis_feature_count. */
+    gap: z.int(),
+    components: z
+      .array(
+        z.strictObject({
+          component: z.string().regex(/^[a-z][a-z0-9_]*$/),
+          count: Count,
+          reason: Text,
+        }),
+      )
+      .min(1),
+    explained: z.int(),
+    residual: z.int(),
+    residual_pct_of_roll: z.number(),
+    method: Text,
+    residual_note: Text,
+  })
+  .refine((g) => g.components.reduce((n, c) => n + c.count, 0) === g.explained, {
+    message: "explained must equal the sum of the components",
+    path: ["explained"],
+  })
+  .refine((g) => g.gap - g.explained === g.residual, {
+    message: "residual must equal gap - explained",
+    path: ["residual"],
+  });
+export type GapReconciliation = z.infer<typeof GapReconciliationSchema>;
+
 export const ParcelSchema = z
   .strictObject({
     canonical_source: Text,
@@ -256,6 +357,8 @@ export const ParcelSchema = z
     discrepancy_threshold_pct: z.number().positive(),
     discrepancy_explanation: Text.optional(),
     separately_assessed_without_geometry: z.enum(["acknowledged", "none"]).optional(),
+    account_breakdown: AccountBreakdownSchema.optional(),
+    gap_reconciliation: GapReconciliationSchema.optional(),
     /** The key exactly as printed in the export (e.g. `pID`). */
     identifier_name: Text.optional(),
     /** The TCAD Export Layouts name of that key (e.g. `prop_id`), FR-003a. */
@@ -273,6 +376,17 @@ export const ParcelSchema = z
     message: "gis_feature_count must equal its measurement value",
     path: ["gis_feature_count"],
   })
+  .refine(
+    (p) =>
+      p.gap_reconciliation === undefined ||
+      p.assessed_parcel_count === null ||
+      p.gis_feature_count === null ||
+      p.gap_reconciliation.gap === p.assessed_parcel_count - p.gis_feature_count,
+    {
+      message: "gap_reconciliation.gap must equal assessed_parcel_count - gis_feature_count",
+      path: ["gap_reconciliation", "gap"],
+    },
+  )
   .refine(
     (p) =>
       p.certification_date_measurement === undefined ||

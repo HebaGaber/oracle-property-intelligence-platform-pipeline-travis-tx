@@ -63,6 +63,42 @@ export interface ExportScan {
   /** Every prop-id / geo-id field seen, with counts only (never values). */
   identifier_candidates?: IdentifierCandidate[];
   deed_or_sale_dates_present: boolean;
+  /** Account-type counts from the same streaming pass (counts only, never values). */
+  account_breakdown?: AccountBreakdown;
+}
+
+/** One count per state code among real-estate accounts with no export geometry point. */
+export interface StateCodeCount {
+  /** `propertyProfile[].stateCd` as printed, or "none" when the record has none. */
+  state_cd: string;
+  count: number;
+  /** Of those, records with a non-empty `propertyCharacteristics[].condoUnit`. */
+  with_condo_unit: number;
+}
+
+/**
+ * Account-type breakdown of the certified export (PO decision 2026-10-20: explain the
+ * GIS gap from data already held). Reads top-level `propType`, `inactive` and `geometry`,
+ * `propertyIdentification[].geoID`, `propertyCharacteristics[].condoUnit` and
+ * `propertyProfile[].stateCd`.
+ */
+export interface AccountBreakdown {
+  records: number;
+  /** Records whose `inactive` flag is set (anything but empty, 0 or false). */
+  inactive_flagged: number;
+  /** Counts by `propType` ("none" when absent), largest first. */
+  by_prop_type: Array<{ prop_type: string; count: number }>;
+  real_estate: {
+    accounts: number;
+    distinct_geo_ids: number;
+    /** Real-estate accounts whose geoID is also printed on another real-estate account. */
+    accounts_sharing_a_geo_id: number;
+    accounts_without_geo_id: number;
+    with_geometry_point: number;
+    without_geometry_point: number;
+    /** Largest first, then by code. */
+    without_geometry_by_state_cd: StateCodeCount[];
+  };
 }
 
 export interface IdentifierCandidate {
@@ -330,6 +366,108 @@ function keyCandidates(
   return out;
 }
 
+/** The first non-empty scalar `field` of `record[key]` (an array of objects, or one object). */
+function firstChildValue(
+  record: Record<string, unknown>,
+  key: string,
+  field: string,
+): string | null {
+  const v = record[key];
+  const children = Array.isArray(v) ? v : [v];
+  for (const child of children) {
+    if (child === null || typeof child !== "object" || Array.isArray(child)) continue;
+    const value = (child as Record<string, unknown>)[field];
+    if (isScalar(value) && nonEmpty(value)) return String(value).trim();
+  }
+  return null;
+}
+
+function isFlagSet(v: unknown): boolean {
+  if (!nonEmpty(v) || !isScalar(v)) return false;
+  return v !== false && v !== 0 && String(v).trim() !== "0";
+}
+
+/**
+ * True when `geometry` is a point: a "[lat, lon]" string of two finite numbers. The 2026
+ * protax JSON prints a missing point as the string "[null, null]", not as null, so a
+ * non-empty string is not enough.
+ */
+export function isGeometryPoint(v: unknown): boolean {
+  if (typeof v !== "string") return false;
+  const m = /^\s*\[\s*([^,\]]+?)\s*,\s*([^,\]]+?)\s*\]\s*$/.exec(v);
+  if (!m) return false;
+  return [m[1], m[2]].every((x) => x !== undefined && x !== "" && Number.isFinite(Number(x)));
+}
+
+/** The real-estate property type in the TCAD protax JSON (Export Layouts: R = Real). */
+const REAL_ESTATE = "R";
+
+class BreakdownTracker {
+  private records = 0;
+  private inactive = 0;
+  private readonly byType = new Map<string, number>();
+  private readonly geoIds = new Map<string, number>();
+  private realEstate = 0;
+  private withoutGeoId = 0;
+  private withGeometry = 0;
+  private readonly noGeometry = new Map<string, { count: number; with_condo_unit: number }>();
+
+  add(record: Record<string, unknown>): void {
+    this.records += 1;
+    if (isFlagSet(record.inactive)) this.inactive += 1;
+    const rawType = record.propType;
+    const type = isScalar(rawType) && nonEmpty(rawType) ? String(rawType).trim() : "none";
+    this.byType.set(type, (this.byType.get(type) ?? 0) + 1);
+    if (type !== REAL_ESTATE) return;
+
+    this.realEstate += 1;
+    const geoId = firstChildValue(record, "propertyIdentification", "geoID");
+    if (geoId === null) this.withoutGeoId += 1;
+    else this.geoIds.set(geoId, (this.geoIds.get(geoId) ?? 0) + 1);
+
+    if (isGeometryPoint(record.geometry)) {
+      this.withGeometry += 1;
+      return;
+    }
+    const code = firstChildValue(record, "propertyProfile", "stateCd") ?? "none";
+    const row = this.noGeometry.get(code) ?? { count: 0, with_condo_unit: 0 };
+    row.count += 1;
+    if (firstChildValue(record, "propertyCharacteristics", "condoUnit") !== null)
+      row.with_condo_unit += 1;
+    this.noGeometry.set(code, row);
+  }
+
+  result(): AccountBreakdown {
+    let sharing = 0;
+    for (const n of this.geoIds.values()) if (n > 1) sharing += n;
+    const byCount = <T extends { count: number }>(a: [string, T], b: [string, T]): number =>
+      b[1].count - a[1].count || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+    return {
+      records: this.records,
+      inactive_flagged: this.inactive,
+      by_prop_type: [...this.byType.entries()]
+        .map(([k, count]): [string, { count: number }] => [k, { count }])
+        .sort(byCount)
+        .map(([prop_type, { count }]) => ({ prop_type, count })),
+      real_estate: {
+        accounts: this.realEstate,
+        distinct_geo_ids: this.geoIds.size,
+        accounts_sharing_a_geo_id: sharing,
+        accounts_without_geo_id: this.withoutGeoId,
+        with_geometry_point: this.withGeometry,
+        without_geometry_point: this.realEstate - this.withGeometry,
+        without_geometry_by_state_cd: [...this.noGeometry.entries()]
+          .sort(byCount)
+          .map(([state_cd, r]) => ({
+            state_cd,
+            count: r.count,
+            with_condo_unit: r.with_condo_unit,
+          })),
+      },
+    };
+  }
+}
+
 export async function scanExport(
   path: string,
   opts: { recordPath?: string } = {},
@@ -345,6 +483,7 @@ export async function scanExport(
 
   const fields = new Set<string>();
   const ids = new Map<string, IdTracker>();
+  const breakdown = new BreakdownTracker();
   let deedOrSale = false;
   let count = 0;
 
@@ -370,6 +509,7 @@ export async function scanExport(
   for await (const item of records) {
     const record = RecordSchema.parse((item as { value: unknown }).value);
     count += 1;
+    breakdown.add(record);
     for (const [name, { rank, values }] of keyCandidates(record)) {
       let t = ids.get(name);
       if (!t) {
@@ -403,6 +543,7 @@ export async function scanExport(
       proven: t.proven(count),
     })),
     deed_or_sale_dates_present: deedOrSale,
+    account_breakdown: breakdown.result(),
   };
 }
 

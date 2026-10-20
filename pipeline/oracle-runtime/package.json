@@ -18,6 +18,7 @@
     "check-catalog": "tsx travis/discovery/check-catalog.ts",
     "validate": "tsx travis/discovery/run-validator.ts",
     "rescan-tcad": "tsx travis/discovery/rescan-tcad.ts",
+    "reconcile-parcel-gap": "tsx travis/discovery/reconcile-parcel-gap.ts",
     "resolve": "tsx travis/discovery/resolve.ts",
     "render-sources": "tsx travis/discovery/render-sources-md.ts",
     "refresh-tcad-landing": "tsx travis/discovery/refresh-tcad-landing.ts",

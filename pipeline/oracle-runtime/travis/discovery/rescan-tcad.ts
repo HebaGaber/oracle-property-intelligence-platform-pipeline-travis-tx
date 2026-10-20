@@ -12,13 +12,11 @@
 // and asks for a fresh discovery run instead.
 //
 // Exit codes: 0 validator PASS, 1 validator BLOCKED (passed through), 2 refused (nothing written).
-import { createHash } from "node:crypto";
-import { createReadStream, existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { redact } from "../lib/log.js";
 import { DEFAULT_REPO_ROOT } from "./blocked-evidence.js";
 import type { Parcel } from "./assemble.js";
+import { FRESH_RUN, Refusal, verifyExportFile } from "./export-file-check.js";
 import { scanExport, type ExportScan } from "./probes/tcad.js";
 import { main as runValidatorMain } from "./run-validator.js";
 import { DEFAULT_CATALOG_PATH, readCatalog, writeCatalog } from "./write-catalog.js";
@@ -32,16 +30,6 @@ export interface RescanOptions {
   out?: (line: string) => void;
 }
 
-const FRESH_RUN = "a fresh discovery run (npm run discover) is needed";
-
-async function sha256File(path: string): Promise<string> {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
-  return hash.digest("hex");
-}
-
-class Refusal extends Error {}
-
 export async function rescanTcad(options: RescanOptions = {}): Promise<number> {
   const root = options.repoRoot ?? DEFAULT_REPO_ROOT;
   const catalogPath = options.catalogPath ?? DEFAULT_CATALOG_PATH;
@@ -54,32 +42,7 @@ export async function rescanTcad(options: RescanOptions = {}): Promise<number> {
 
   try {
     const catalog = readCatalog(catalogPath);
-    const current = catalog.parcel;
-    if (!current) throw new Refusal(`catalog has no parcel block; ${FRESH_RUN}`);
-    const receipt = current.export_receipt;
-    if (!receipt) {
-      throw new Refusal(
-        `parcel has no export_receipt (nothing downloaded to rescan); ${FRESH_RUN}`,
-      );
-    }
-    const file = join(root, receipt.file_path);
-    if (!existsSync(file)) {
-      throw new Refusal(`export ${receipt.file_path} not found; ${FRESH_RUN}`);
-    }
-    const size = statSync(file).size;
-    if (size !== receipt.bytes) {
-      throw new Refusal(
-        `export ${receipt.file_path} is ${size} bytes but the receipt says ${receipt.bytes}; ${FRESH_RUN}`,
-      );
-    }
-    say(`rescan-tcad: hashing ${receipt.file_path} (${size} bytes)`);
-    const digest = await sha256File(file);
-    if (digest !== receipt.sha256) {
-      throw new Refusal(
-        `export SHA-256 ${digest} does not match the receipt ${receipt.sha256}; ${FRESH_RUN}`,
-      );
-    }
-    say(`rescan-tcad: sha256 matches the export receipt (captured_at ${receipt.captured_at})`);
+    const { parcel: current, file } = await verifyExportFile(catalog, root, say, "rescan-tcad");
 
     const scan = await (options.scan ?? ((p: string) => scanExport(p)))(file);
     const recorded = current.assessed_parcel_count;
