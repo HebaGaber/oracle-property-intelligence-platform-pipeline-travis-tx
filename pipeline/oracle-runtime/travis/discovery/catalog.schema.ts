@@ -50,6 +50,21 @@ export const MeasurementSchema = z
     captured_at: UtcTimestamp,
     method: Text.optional(),
     query: Text.optional(),
+    /**
+     * Where the request ran when it was not the operator machine (record-gis-runner.ts:
+     * the PO-approved US GitHub Actions runner, ARD § 8), with the run, the body digest and
+     * the runner's egress country. Absent on measurements taken by discovery itself.
+     */
+    captured_via: Text.optional(),
+    run_url: Url.optional(),
+    body_sha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    egress_country: z
+      .string()
+      .regex(/^[A-Z]{2}$/)
+      .optional(),
   })
   .refine((m) => m.value !== null || m.missing_reason !== undefined, {
     message: "value null requires missing_reason",

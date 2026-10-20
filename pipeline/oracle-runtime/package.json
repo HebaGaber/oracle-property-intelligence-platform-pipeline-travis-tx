@@ -20,7 +20,8 @@
     "rescan-tcad": "tsx travis/discovery/rescan-tcad.ts",
     "resolve": "tsx travis/discovery/resolve.ts",
     "render-sources": "tsx travis/discovery/render-sources-md.ts",
-    "refresh-tcad-landing": "tsx travis/discovery/refresh-tcad-landing.ts"
+    "refresh-tcad-landing": "tsx travis/discovery/refresh-tcad-landing.ts",
+    "record-gis-runner": "tsx travis/discovery/record-gis-runner.ts"
   },
   "dependencies": {
     "p-limit": "^7.3.3",
