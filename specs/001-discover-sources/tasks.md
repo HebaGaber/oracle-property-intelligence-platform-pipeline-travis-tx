@@ -258,3 +258,16 @@ Task: "Evidence probes in pipeline/oracle-runtime/travis/discovery/probes/eviden
 - Every number in committed files is a real measurement with URL and capture time; synthetic fixtures live only under `RT/test/` and are never shown as real data.
 - Never print `pipeline/local-stack/.env`; never push to `elephant-xyz/Counties-trasform-scripts` (PO decision 2026-10-19).
 - Commit after each task group with the `A-01:` prefix.
+
+## Phase 7: Convergence
+
+- [ ] T056 CRITICAL: make `planResolution` (`pipeline/oracle-runtime/travis/discovery/workflow.ts`) and `resolve.ts` refuse `captured` for a waiting source whose stop receipt is HTTP 403, a challenge or a WAF block (only `still-blocked` is allowed), with a test that a `captured` BBB sends nothing per Constitution (stop on BBB 403s), AC-6, FR-006a (contradicts) **(builder: oracle)**
+- [ ] T057 Push branch `001-discover-sources`, confirm the first `pipeline-ci` run passes, and record its URL in `docs/reports/A-01-unit-test-report.md` (`ci_run`) per FR-007, AC-7 (partial)
+- [ ] T058 Run every scenario in `specs/001-discover-sources/quickstart.md` (offline steps only; no request to a blocked source) and record the results in `docs/evidence/A-01.md` per T054 (missing)
+- [ ] T059 Record the outcome of each success criterion SC-001 to SC-006 in `docs/evidence/A-01.md`, stating SC-005 as not met with the recorded deviations (DEC-A-01-source-access D-1, D-3) and the egress guard added since per SC-005 (contradicts)
+- [ ] T060 Record the PO acceptance of the missing certification date (ERR-4, 2026-10-20) against FR-003a in `specs/001-discover-sources/spec.md` (dated amendment, as for FR-006b) per FR-003a (partial)
+- [ ] T061 Have the PO run A-01-TC-023 (trace any number in `docs/sources.md` to its URL and capture time, timed) and record the result in `docs/reports/A-01-test-report.md` per SC-002 (partial)
+- [ ] T062 Update `testplans/A-01-test-cases.md` to match the automation: the § 6 setup (identified User-Agent, compound-expression helper), TC-006 drift recount, TC-009 documented missing date, and TC-003, TC-020, TC-027, TC-NF-02 expectations (ERR-1, ERR-2, ERR-3, ERR-4, ERR-6) per T055 (partial)
+- [ ] T063 Record in `specs/001-discover-sources/plan.md` the commands and modules added after planning (`record-gis-runner`, `reprobe-jurisdictions`, `explain-blocked`, `reconcile-parcel-gap`, `approve-exception`, `backfill-amendments`, `render-coverage`, `travis/lib/egress.ts`, `pipeline/local-stack/services/prove-destination.ts`), each with the PO decision or review finding behind it, per plan: touch-points (unrequested)
+- [ ] T064 Reconcile the test report's name with TZ06 (`docs/reports/TR-A-01.md` vs the template's `docs/reports/A-01-test-report.md`) per TZ06 (partial)
+- [ ] T065 Verify T039, T048–T053, TZ01, TZ05 and TZ06 against their committed evidence and tick each one that is met per T039, T048–T053, TZ01, TZ05, TZ06 (partial)
