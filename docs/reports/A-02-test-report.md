@@ -8,10 +8,10 @@ runtime_url: "N/A: Project story, no hosted runtime until A-03"
 build: f3ddcbe
 data_snapshot: "bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka (local pilot manifest contract/v1/pilot-manifest.json, unpublished; recomputed with pipeline/publish/src/cid.ts cidOfFile)"
 owner: HebaGaber             # QC Lead
-status: Complete              # Draft → Complete → Signed Off
+status: Signed Off              # Draft → Complete → Signed Off
 gate: G7
 created: 2026-10-21
-signed_off_date:
+signed_off_date: 2026-10-21
 ---
 
 # QC Test Report: A-02 Freeze the property-intelligence data contract

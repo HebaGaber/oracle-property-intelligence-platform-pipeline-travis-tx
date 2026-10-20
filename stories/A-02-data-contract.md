@@ -19,8 +19,8 @@ agents:
   verify: "Vitest on views; `contract/v1/sample.parquet` readable"
 skills: [use-oracle, use-neutral-lexicon, apply-engineering-guidelines]
 ui: false
-status: Ready
-gate: G4
+status: Done
+gate: G7
 qc_testability_signoff: true
 created: 2026-10-19
 ---

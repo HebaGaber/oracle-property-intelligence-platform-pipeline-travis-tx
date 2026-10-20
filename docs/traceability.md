@@ -108,5 +108,6 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G4 | stories/A-02-data-contract.md | rev 2 | FAIL (2) → PASS, `docs/gates/G4-A-02-precheck.md`; C-04 and C-10/G4-8 justified exceptions (Project story; pilot made in A-02) | Ready (HebaGaber) | 2026-10-20 |
 | G5 | specs/002-data-contract (spec, plan, tasks) | 2026-10-21 | FAIL (2) → PASS, `docs/gates/G5-A-02-precheck.md`; C-05 TZ02–TZ04 N/A (Project story); analyze 0 CRITICAL, 3 HIGH fixed | Approved (HebaGaber) | 2026-10-21 |
 | G6 | testplans/A-02-test-cases.md | 0.2 | FAIL (1) → PASS, `docs/gates/G6-A-02-precheck.md`; C-05/C-09 justified exceptions (Project story) | Approved (HebaGaber, QC Lead) | 2026-10-21 |
+| G7 | A-02 (branch `002-data-contract`) | `323ae0b` | PASS (run 1), `docs/gates/G7-A-02-precheck.md`; C-02/C-04/C-07 justified exceptions (Project story); tests 33/33; oracle 80, donphan 76; ERR-9 closed | Validated (HebaGaber) | 2026-10-21 |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
