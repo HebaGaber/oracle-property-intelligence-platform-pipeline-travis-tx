@@ -563,7 +563,7 @@ Full results for every case: `docs/reports/A-01-test-report.md` (2026-10-20, 27/
 | TC ID | Run date | Build (sha) | Catalog SHA-256 | Result | Evidence | Defect |
 | --- | --- | --- | --- | --- | --- | --- |
 | A-01-TC-001 | 2026-10-20 | `9c7579a` | `0616593dccae3c67cb59fd60a1b945116ebe6aae5c6c5a6436fa6a1ea4fef701` | PASS (outcome A) | `docs/evidence/A-01-readiness.json` | — |
-| A-01-TC-023 | pending (PO, task T061) | | | PASS / FAIL (times: …) | `docs/evidence/A-01.md` | |
+| A-01-TC-023 | 2026-10-20 | `8a1145a` | `0616593dccae3c67cb59fd60a1b945116ebe6aae5c6c5a6436fa6a1ea4fef701` | PASS (about 1 min, PO) | `docs/reports/A-01-test-report.md` | — |
 
 ---
 

@@ -26,9 +26,9 @@ Every case in `testplans/A-01-test-cases.md` (v0.6 at execution, updated to v0.7
 | --- | --- |
 | Environment | N/A: Project story, no hosted runtime until A-03 · terminal at repo root, macOS (darwin-arm64), Node 22.23.3, Vitest 5.0.5, Python 3.15.0 · build `9c7579a` · 2026-10-20 |
 | Total TC in the plan | 30 |
-| Executed | 27 (26 automated acceptance tests, of which 2 skipped by design, plus 3 unit-only cases; TC-023 is a timed human check) |
-| Passed / failed / blocked | **27 / 0 / 0**; 2 not applicable (TC-011, TC-018); 1 not run (TC-023, manual) |
-| Pass rate | **100%** of executed applicable cases (27 of 27) |
+| Executed | 28 (26 automated acceptance tests, of which 2 skipped by design, plus 3 unit-only cases, plus TC-023 timed by the PO) |
+| Passed / failed / blocked | **28 / 0 / 0**; 2 not applicable (TC-011, TC-018) |
+| Pass rate | **100%** of executed applicable cases (28 of 28) |
 | Open Critical defects | **0** (no open defects; ERR-4 closed as accepted by the PO) |
 | Unit test report | `docs/reports/A-01-unit-test-report.md` |
 | Code review log | `docs/reviews/CR-A-01.md` |
@@ -72,7 +72,7 @@ Live requests made by the suite (open-data sources only, each with the project's
 | A-01-TC-020 | AC-6 | Security | PASS | ERR-6 | suspected geo signal on GIS (operator side); exactly 1 run of `a01-us-gis-probe.yml`; HTTP 200 recorded in `A-01-us-gis-runner.md` |
 | A-01-TC-021 | AC-6 | Error | PASS | — | BBB `blocked`, decision `runtime retrieval`; no bypass; advertised count not used |
 | A-01-TC-022 | AC-7 | Happy path | PASS | ERR-5 | catalog, `docs/sources.md` and report committed; re-render gives no diff; 0 numeric rows without URL and UTC time |
-| A-01-TC-023 | AC-7 | Usability (timed) | Not run | — | needs a person with a timer (trace any number to its URL and time in under 2 minutes); for the PO |
+| A-01-TC-023 | AC-7 | Usability (timed) | PASS | — | run by the PO (HebaGaber), 2026-10-20: a number in `docs/sources.md` traced to its source URL and UTC capture time in about 1 minute (threshold under 2 minutes) |
 | A-01-TC-024 | AC-1 | Security, negative | PASS | — | no secrets, connection strings or absolute home paths in evidence |
 | A-01-TC-025 | AC-1 | Integration | PASS | — | vendored validator SHA-256 `5c5b8515…abb3d` matches; parser parity |
 | A-01-TC-026 | AC-6 | Error, missing data | PASS | — | unit `A-01-TC-026`: 3 tests pass (throttled after 5 attempts → null with reason; download limits → blocked) |
@@ -104,4 +104,4 @@ ERR-1, ERR-2, ERR-3, ERR-6 and ERR-7 were defects in the tests, not the product;
 
 **Decision:** ☐ Validated (counts toward G7) ☐ Returned, reason: {…} · {date}
 
-Open before sign-off: TC-023 (timed check by a person). The certification date (ERR-4) is a documented, PO-accepted gap.
+All cases are executed. The certification date (ERR-4) is a documented, PO-accepted gap.
