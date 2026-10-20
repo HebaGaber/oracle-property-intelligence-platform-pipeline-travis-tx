@@ -8,7 +8,7 @@ runtime_url: "N/A: Project story, no hosted runtime until A-03"
 build: f3ddcbe
 data_snapshot: "bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka (local pilot manifest contract/v1/pilot-manifest.json, unpublished; recomputed with pipeline/publish/src/cid.ts cidOfFile)"
 owner: HebaGaber             # QC Lead
-status: Draft                # Draft → Complete → Signed Off
+status: Complete              # Draft → Complete → Signed Off
 gate: G7
 created: 2026-10-21
 signed_off_date:
@@ -28,9 +28,9 @@ Every case in `testplans/A-02-test-cases.md` (v0.2.1, 33 cases: TC-001 to TC-030
 | --- | --- |
 | Environment | N/A: Project story, no hosted runtime until A-03 · terminal at repo root on `002-data-contract`, macOS, Node 22.23.3, Vitest 5.0.5, DuckDB CLI 1.5.6 · build `f3ddcbe` · 2026-10-21 |
 | Total TC executed | 33 (30 functional + 3 NFR) |
-| Passed / failed / blocked | **32 / 1 / 0** |
-| Pass rate | **97.0%** (32 of 33) |
-| Open Critical defects | **0** (1 open Low defect: ERR-9, TC-004) |
+| Passed / failed / blocked | **33 / 0 / 0** (run 1: 32 / 1 / 0; TC-004 re-tested after ERR-9 fix `c18f125`) |
+| Pass rate | **100%** (33 of 33) |
+| Open Critical defects | **0** (ERR-9 Low, Closed) |
 | Unit test report | `docs/reports/A-02-unit-test-report.md` |
 | Code review log | `docs/reviews/CR-A-02.md` |
 | Playwright run | N/A: Vitest instead of Playwright (G6 C-09 exception) |
@@ -45,7 +45,7 @@ Every case in `testplans/A-02-test-cases.md` (v0.2.1, 33 cases: TC-001 to TC-030
 | A-02-TC-001 | AC-1 | Doc / smoke | PASS (see Note 1) | — | Plan grep → `0` (it misses the record's leading `#` column). Same grep allowing `\| n \|` and the verdict column → `9`; rows 1–9 = the 9 fields, verdicts 8 `no_carrier` + 1 `carrier`, no duplicates. Covering test `carriers.test.ts › has exactly the nine AC-1 fields, each with one verdict` ✓ |
 | A-02-TC-002 | AC-1 | Integration | PASS | — | Record row 9: `sales_history.ownership_transfer_date`, schema cache `bafkreifxchneb27…gku.json` (file exists, 2,984 B), pilot row `{table: sales_history, cid: baguqeeratr5…bxljh7a}`. `duckdb … WHERE cid = 'baguqeeratr5…bxljh7a'` → 1 row, `1993-12-17`. Covering test `carriers.test.ts › each carrier's pilot row exists in the pilot Parquet with a non-null value` ✓ |
 | A-02-TC-003 | AC-1 | Missing data | PASS (see Note 2) | — | `status_raw`: `no_carrier`, fallback "AD-25: Expired published as `improvement_status` null (D-4a); reason `no_lexicon_carrier`", request R1 `property_improvement.permit_status_text`. Status line: "drafted, not filed (PO decision D-1) … D-8 … Not filed". `grep -i filed` → only that line. Contractor state → AD-24 (`resolved`/`unresolved` + five-state totals, R4). All 8 no-carrier rows have a fallback and R1–R6. Covering test `carriers.test.ts › every no-carrier verdict names its fallback (AD-24 or AD-25) and a drafted request` ✓ |
-| A-02-TC-004 | AC-1 | Edge | **FAIL** | ERR-9 | Pilot half holds: the only carrier (`ownership_transfer_date`) is a column of `county/sales_history` (`carriers.test.ts › each carrier's pilot row exists…` ✓). Fixture half is missing: no test or checker takes a fixture table without the property and returns `no carrier (not emitted by the export)`; `git grep no_carrier_not_emitted` finds only the verdict list in `carriers.test.ts`. Nearest behaviour: `views.shape.test.ts › fails loudly when an emitted table lacks a column the views read` (throws, does not mark the field). The real-data case is handled by hand: ADR-0002 Decision 3 marks `address` fields `no_carrier_not_emitted`, and `columns.test.ts › address-only fields are not v1 columns; each is listed as not_in_export` ✓ |
+| A-02-TC-004 | AC-1 | Edge | PASS (re-test 2026-10-21, run 1 FAIL) | ERR-9 (Closed) | Re-test: `PILOT_DIR=… pnpm vitest run -t "A-02-TC-004"` → 6 passed (`carrier-emission.test.ts`: ADR carriers present, view-sourced properties present, fixture table without the property → `no_carrier_not_emitted`, `not_in_export` list not stale). Run 1: Pilot half holds: the only carrier (`ownership_transfer_date`) is a column of `county/sales_history` (`carriers.test.ts › each carrier's pilot row exists…` ✓). Fixture half is missing: no test or checker takes a fixture table without the property and returns `no carrier (not emitted by the export)`; `git grep no_carrier_not_emitted` finds only the verdict list in `carriers.test.ts`. Nearest behaviour: `views.shape.test.ts › fails loudly when an emitted table lacks a column the views read` (throws, does not mark the field). The real-data case is handled by hand: ADR-0002 Decision 3 marks `address` fields `no_carrier_not_emitted`, and `columns.test.ts › address-only fields are not v1 columns; each is listed as not_in_export` ✓ |
 | A-02-TC-005 | AC-1 | Edge / error | PASS | — | ADR-0002 § Sources: live MCP tools "**Failed** on 2026-10-20 ("Internal error")… Not used". Each of the 9 rows cites `~/.elephant-cli/schema-cache/<cid>.json` (all 4 cited files exist), plus the live lexicon manifest (sha256 `7084b933…0640`) and the pilot export. `grep -iE "memory\|assumed"` → no verdict hit (the only "Assumption" is the owner-linkage rule in #9, not a verdict source) |
 | A-02-TC-006 | FR-011 | Integration | PASS (see Note 3) | — | `ls $PILOT_DIR/reports/` lists the 8 files (+ `sequence.json`, `submit_errors.csv`, `transform-counts.json`). Each `*errors.csv` → `1` line. `shasum`: county `6f16dda9…9c3b`, PI `af7caa18…cdf5`; equal to `reports/sequence.json`, **not** to the run-log values `d989414c…639c` / `72715bf7…084b` (pre-D-9 run). `sequence.json`: 8 steps, all `exitCode 0`, `ok: true`, cli `44bb182b`. `grep -E "upload\|--atlas-page"` run-log → nothing; sequence.json → 0. Tables: county `property` 22 rows; PI `property` 22, `property_improvement` 43. `countyRoot` = hash `carRoot` for both groups (`baguqeerarr6…cssytha`, `baguqeeral3h…zaqq`) |
 | A-02-TC-007 | FR-011, AC-8 | Integration | PASS | — | `pnpm exec tsx` with `pipeline/publish/src/cid.ts cidOfFile` → `bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka` (starts `bafkrei`) = sample `manifest_cid` (duckdb DISTINCT, 1 value) = run log 02:07. `runId travis-pilot-20261020`, `previousManifestCid null`, limitation "pilot: local, unpublished; …". 23 of 23 `table` artifact CIDs re-derive from their Parquet parts, 0 mismatches. Covering tests `sample.test.ts › manifest_cid = the CID recomputed…`, `views.pilot.test.ts › table_cid equals the re-derived raw-leaves CID of its part`, `manifest.test.ts › accepts the pilot shape` ✓ |
@@ -85,7 +85,7 @@ Every case in `testplans/A-02-test-cases.md` (v0.2.1, 33 cases: TC-001 to TC-030
 
 | ERR | TC | Severity | Status | Fix commit |
 | --- | --- | --- | --- | --- |
-| ERR-9 | A-02-TC-004 | Low | Open: QC does not fix. The fixture check is missing: nothing takes a table without the cited property and returns `no carrier (not emitted by the export)` with the field left out of every view. The pilot half passes, and real data is handled by hand (ADR-0002 Decision 3 for `address`). The fix is either a small checker plus a fixture test, or a test-plan change approved by the PO that limits TC-004 to the pilot check and the ADR-0002 rule | — |
+| ERR-9 | A-02-TC-004 | Low | Closed (`c18f125`, re-tested PASS 2026-10-21). Was: The fixture check is missing: nothing takes a table without the cited property and returns `no carrier (not emitted by the export)` with the field left out of every view. The pilot half passes, and real data is handled by hand (ADR-0002 Decision 3 for `address`). The fix is either a small checker plus a fixture test, or a test-plan change approved by the PO that limits TC-004 to the pilot check and the ADR-0002 rule | — |
 
 ## Notes
 

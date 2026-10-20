@@ -6,12 +6,12 @@ story: A-02
 test_case: A-02-TC-004 (carrier not emitted by the export → "no carrier (not emitted)")
 ac_reference: A-02-AC-1 (story edge case 2)
 severity: Low
-status: Open
+status: Closed
 found_by: Claude (Stage 6 test-case run, build f3ddcbe)
 found_date: 2026-10-21
 fix_branch: 002-data-contract
-fix_commit: pending
-retest_date:
+fix_commit: c18f125
+retest_date: 2026-10-21
 ---
 
 # ERR-9: The "carrier not emitted by the export" rule is applied by hand, not checked
@@ -63,4 +63,4 @@ There is no checker and no fixture test. The rule holds today only because the a
 
 ## Resolution
 
-Open. The oracle builder is adding `packages/query-core/src/carrier-emission.ts` with the test `A-02-TC-004 …`, written first.
+Closed. `packages/query-core/src/carrier-emission.ts` (`checkCarrierEmission`, pure, no engine import) and `test/carrier-emission.test.ts` › "A-02-TC-004 …" (written first: "Cannot find module"; now 6 passed with PILOT_DIR). Covers ADR carriers, every view column sourced from a `class.property`, a fixture table lacking the property → `no_carrier_not_emitted`, and the `not_in_export` list not stale. Re-test 2026-10-21: PASS.
