@@ -57,4 +57,4 @@ The design agents were consulted read-only before Gate G3, first on 2026-10-18 a
 
 | Agent | Score (0–100) | Main deviations fixed |
 | --- | --- | --- |
-| {oracle} | {n} | {…} |
+| oracle (A-01) | 83 | Stale-run guard and terminal errors; honest deviation record (DEC-A-01-source-access D-1, D-3); WAF detection and no re-probe of 403/challenge sources (T056); parcel exception bound to its values; download robustness; amendments trail (`docs/reviews/CR-A-01.md`) |

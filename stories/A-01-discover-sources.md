@@ -19,9 +19,9 @@ agents:
   verify: "readiness validator exits 0"
 skills: [onboard-county, county-discovery, county-readiness-preflight, bootstrap-oracle-infra, apply-engineering-guidelines]
 ui: false
-status: Ready
-gate: G4
-qc_testability_signoff: false
+status: Done
+gate: G7
+qc_testability_signoff: true
 created: 2026-10-19
 ---
 
@@ -117,3 +117,22 @@ Not a UI story. Its numbers appear later on the Coverage screen (`design/prototy
 | G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ |
 
 **Decision:** ☑ Ready ☐ Returned · 2026-10-19 (HebaGaber). C-04 accepted as a justified exception (Project feature; hosted display in A-11/A-13).
+
+---
+
+## Gate G7: Validated build
+
+| # | Criterion | Status |
+| --- | --- | --- |
+| G7-1 | Every task in `specs/001-discover-sources/tasks.md` is checked (72/72) | ☑ |
+| G7-2 | Unit tests green in CI ([run 39490116172](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39490116172), 502/502); new-code coverage ≥ 80% (lines 92.85%) | ☑ |
+| G7-3 | Code review log with `/code-review` findings and the `oracle` score ≥ 75 (83/100); 0 open Critical | ☑ |
+| G7-4 | Every TC executed with a result and build sha (28/28 applicable pass); hosted URL N/A under the G4 C-04 exception | ☑ |
+| G7-5 | Every failing TC has a closed ERR with a re-test (ERR-1 to ERR-8) | ☑ |
+| G7-6 | No open Critical defect | ☑ |
+| G7-7 | `docs/evidence/A-01.md` with observed counts; URL, screenshot and trace N/A under the G4 C-04 exception | ☑ |
+| G7-8 | Traceability rows and the kit-usage line complete | ☑ |
+| G7-9 | Every commit starts with `A-01`; no secrets in the diff | ☑ |
+| G7-10 | AI pre-check (`developmentsupport-g7-precheck`): PASS (`docs/gates/G7-A-01-precheck.md`, run 2) | ☑ |
+
+**Decision:** ☑ Validated ☐ Returned · 2026-10-20 (HebaGaber). C-04 and C-07 accepted under the G4 C-04 exception (Project feature; hosted display in A-11/A-13). Recorded as not met or accepted, with reasons: SC-005 (DEC-A-01-source-access D-1, D-3), the certification date (ERR-4), and the deferred review findings in `docs/reviews/CR-A-01.md`.

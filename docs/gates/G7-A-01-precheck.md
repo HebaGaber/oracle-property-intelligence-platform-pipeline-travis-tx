@@ -1,13 +1,13 @@
 ---
 gate: G7
 artifact: stories/A-01-discover-sources.md
-artifact_version: "branch 001-discover-sources @ 56e1426 (story rev 3 + AC-6 amendment 2026-10-20)"
+artifact_version: "run 2; branch 001-discover-sources @ f3e4ceb + fixes (story rev 3 + AC-6 amendment 2026-10-20)"
 run_date: 2026-10-20
 tool: Claude
-verdict: FAIL
+verdict: PASS
 ---
 
-# G7 pre-check: A-01 Discover Travis County sources and pass readiness preflight
+# G7 pre-check (run 2): A-01 Discover Travis County sources and pass readiness preflight
 
 Inputs read: `specs/001-discover-sources/tasks.md`; `docs/reports/A-01-unit-test-report.md`; `docs/reports/A-01-test-report.md`; `docs/reviews/CR-A-01.md`; `docs/defects/ERR-1.md` to `ERR-8.md`; `docs/evidence/A-01.md`; `docs/traceability.md`; `docs/kit-usage.md`; the story front matter; `git log feature/oracle-pipeline..HEAD` (43 commits); `gh run list --branch 001-discover-sources`; `.specify/memory/constitution.md`.
 
@@ -22,11 +22,14 @@ Found and fixed during this pre-check (before judging): the latest CI run was re
 | C-05 | Defects closed | PASS | ERR-1 to ERR-8 all Closed: 7 fixed with a re-test, ERR-4 accepted by the PO (documented gap, FR-003a amendment) with TC-009 re-tested PASS. |
 | C-06 | No open Critical | PASS | No Critical defect; no open defect. |
 | C-07 | Evidence | PASS (justified exception) | `docs/evidence/A-01.md` from the template: validator command, full output and `exit=0`; catalog SHA-256; one row per source; every jurisdiction; TCAD decision; SC outcomes; quickstart results. URL, screenshot and trace id are "N/A: Project story, no hosted runtime until A-03" (same exception as C-04); the local Restate run journal and blocked-evidence files stand in for the trace. |
-| C-08 | Traceability | FAIL | `docs/traceability.md` AC-1, AC-18 and the FEAT-A01 chain row are complete (merge commit "pending (G7)", as expected before the merge). `docs/kit-usage.md` has the A-01 line, but its "Reviewer scores before submission" table still holds the template placeholder `\| {oracle} \| {n} \| {…} \|` (line 60) instead of the oracle score. |
+| C-08 | Traceability | PASS | `docs/traceability.md` AC-1, AC-18 and the FEAT-A01 chain row are complete (merge commit "pending (G7)", as expected before the merge). `docs/kit-usage.md` has the A-01 line, but its "Reviewer scores before submission" table still holds the template placeholder `\| {oracle} \| {n} \| {…} \|` (line 60) instead of the oracle score. **Run 2:** replaced with the oracle row (83/100, main deviations fixed). |
 | C-09 | Commits | PASS | 43 of 43 commits on the branch start with `A-01`; gitleaks on git history: no leaks (one public Application Insights key suppressed by exact fingerprint, explained in `.gitleaksignore`). |
-| C-10 | Story status | FAIL | Front matter reads `status: Ready`, `gate: G4` and **`qc_testability_signoff: false`**, while the test plan records `qc_signoff: true` (G6 approved by the QC Lead, 2026-10-19). The story is not ready to be set to Done until the sign-off field matches G6. |
+| C-10 | Story status | PASS | Front matter reads `status: Ready`, `gate: G4` and **`qc_testability_signoff: false`**, while the test plan records `qc_signoff: true` (G6 approved by the QC Lead, 2026-10-19). The story is not ready to be set to Done until the sign-off field matches G6. **Run 2:** `qc_testability_signoff: true`; the story is ready to be set to Done. |
 
 ## Fix list (ordered by impact on the assessment score)
+
+Run 1 (same day) failed C-08 and C-10; both fixes below are applied, and run 2 has no failing check.
+
 
 1. **C-10:** set `qc_testability_signoff: true` in `stories/A-01-discover-sources.md` (it records the G6 approval already given). After your G7 decision, set `status: Done` and `gate: G7`.
 2. **C-08:** replace the placeholder row in `docs/kit-usage.md` "Reviewer scores before submission" with `| oracle (A-01) | 83 | stale-run guard, honest deviation record (D-1, D-3), WAF detection, bound parcel exception, download robustness (CR-A-01) |`.
