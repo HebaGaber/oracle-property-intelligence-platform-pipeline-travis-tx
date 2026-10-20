@@ -10,6 +10,7 @@ export {
   type BoundTable,
   type RequiredTable,
 } from "./bind-manifest.js";
+export * from "./carrier-emission.js";
 export * as derive from "./derive.js";
 export { rawCid } from "./raw-cid.js";
 export { SAMPLE_RULE, SAMPLE_SIZE, sampleSql } from "./sample.js";
