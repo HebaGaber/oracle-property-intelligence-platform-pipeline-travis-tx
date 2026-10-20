@@ -169,7 +169,7 @@ description: "Tasks for A-01 Discover Travis County sources and pass readiness p
 
 - [X] T052 [P] Add `.github/workflows/pipeline-ci.yml`: on push and pull request for `pipeline/oracle-runtime/**`, run `npm ci`, `typecheck`, `lint`, `format:check`, `test`, and `python3 …/validate-county-readiness.py --self-test` (research R12) **(builder: oracle)**
 - [X] T053 Hygiene: run gitleaks on the branch; grep `docs/evidence/`, `docs/sources.md` and `pipeline/docs/` for `postgres://`, token values and `/Users/`; confirm `git check-ignore` on the TCAD file and that no TCAD rows are committed **(builder: oracle)**
-- [ ] T054 Run every scenario in `specs/001-discover-sources/quickstart.md` and record the results in `docs/evidence/A-01.md`; then run every test case in `testplans/A-01-test-cases.md` (the G6 cases derived from AC-1 to AC-7, constitution XXII) against the committed catalog, `docs/sources.md`, the validator report and the unit-test results, since there is no hosted URL (G4 C-04 exception), and record pass/fail per TC with evidence links in `docs/reports/TR-A-01.md` (front matter `id: TR-A-01`, `parent: QC-TC-A-01`, FR-007b); open `docs/defects/ERR-{n}.md` for every failing TC (constitution XXIII) **(builder: oracle)**
+- [X] T054 Run every scenario in `specs/001-discover-sources/quickstart.md` and record the results in `docs/evidence/A-01.md`; then run every test case in `testplans/A-01-test-cases.md` (the G6 cases derived from AC-1 to AC-7, constitution XXII) against the committed catalog, `docs/sources.md`, the validator report and the unit-test results, since there is no hosted URL (G4 C-04 exception), and record pass/fail per TC with evidence links in `docs/reports/TR-A-01.md` (front matter `id: TR-A-01`, `parent: QC-TC-A-01`, FR-007b); open `docs/defects/ERR-{n}.md` for every failing TC (constitution XXIII) **(builder: oracle)**
 
 ---
 
@@ -262,8 +262,8 @@ Task: "Evidence probes in pipeline/oracle-runtime/travis/discovery/probes/eviden
 ## Phase 7: Convergence
 
 - [X] T056 CRITICAL: make `planResolution` (`pipeline/oracle-runtime/travis/discovery/workflow.ts`) and `resolve.ts` refuse `captured` for a waiting source whose stop receipt is HTTP 403, a challenge or a WAF block (only `still-blocked` is allowed), with a test that a `captured` BBB sends nothing per Constitution (stop on BBB 403s), AC-6, FR-006a (contradicts) **(builder: oracle)**
-- [ ] T057 Push branch `001-discover-sources`, confirm the first `pipeline-ci` run passes, and record its URL in `docs/reports/A-01-unit-test-report.md` (`ci_run`) per FR-007, AC-7 (partial)
-- [ ] T058 Run every scenario in `specs/001-discover-sources/quickstart.md` (offline steps only; no request to a blocked source) and record the results in `docs/evidence/A-01.md` per T054 (missing)
+- [X] T057 Push branch `001-discover-sources`, confirm the first `pipeline-ci` run passes, and record its URL in `docs/reports/A-01-unit-test-report.md` (`ci_run`) per FR-007, AC-7 (partial)
+- [X] T058 Run every scenario in `specs/001-discover-sources/quickstart.md` (offline steps only; no request to a blocked source) and record the results in `docs/evidence/A-01.md` per T054 (missing)
 - [X] T059 Record the outcome of each success criterion SC-001 to SC-006 in `docs/evidence/A-01.md`, stating SC-005 as not met with the recorded deviations (DEC-A-01-source-access D-1, D-3) and the egress guard added since per SC-005 (contradicts)
 - [X] T060 Record the PO acceptance of the missing certification date (ERR-4, 2026-10-20) against FR-003a in `specs/001-discover-sources/spec.md` (dated amendment, as for FR-006b) per FR-003a (partial)
 - [ ] T061 Have the PO run A-01-TC-023 (trace any number in `docs/sources.md` to its URL and capture time, timed) and record the result in `docs/reports/A-01-test-report.md` per SC-002 (partial)

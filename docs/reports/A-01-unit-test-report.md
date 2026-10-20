@@ -3,8 +3,8 @@ id: UT-A-01
 type: unit-test-report
 story: A-01
 branch: 001-discover-sources
-commit: e5f5d77
-ci_run: none (see "CI status")
+commit: 2200636 (CI run); e5f5d77 (first local run)
+ci_run: https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39488773733
 created: 2026-10-20
 ---
 
@@ -12,11 +12,18 @@ created: 2026-10-20
 
 ## CI status
 
-The template asks for numbers from the CI run. This report uses a **local run** instead, because no CI run of the unit tests exists for this branch yet:
+**CI run (the numbers the template asks for):** [`pipeline-ci` run 39488773733](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39488773733) on commit `2200636`, branch `001-discover-sources`, 2026-10-20T20:04Z, conclusion **success**. Its steps: `npm ci`, typecheck, lint, format check, unit tests, the validator self-test, `check-catalog` rules 1–11, and the validator on the committed catalog equal to `docs/evidence/A-01-readiness.json`, all passing.
 
-- The project-wide Turborepo CI (`pnpm turbo test`) does not exist before A-03, which builds it.
-- Until then, A-01 has an interim workflow, `.github/workflows/pipeline-ci.yml` (task T052): `npm ci`, typecheck, lint, format check, unit tests and the validator self-test on every push or pull request that touches `pipeline/oracle-runtime/**`. It was committed in `e5f5d77`, after the branch's last push (`53e0aee`), so it has not run yet. The only workflow run on this branch is the one-off US-runner GIS probe ([run 39387019700](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39387019700)), which runs no tests.
-- Once the branch is pushed, `pipeline-ci` gives the first CI run; its URL replaces `ci_run` above.
+| Item | CI value |
+| --- | --- |
+| Command | `npm test` (Vitest 5.0.5, `pipeline/oracle-runtime`) in `pipeline-ci` |
+| Suites / tests | 35 files / 502 tests |
+| Passed / failed / skipped | 502 / 0 / 0 |
+| Duration | 7.12 s |
+
+The project-wide Turborepo CI arrives in A-03; `pipeline-ci` (task T052) is the interim workflow for A-01. CI does not run coverage; coverage below comes from the local run.
+
+### First local run (before CI existed on the branch)
 
 Local run: 2026-10-20T14:03:34Z, macOS (darwin-arm64), Node 22.23.3, Vitest 5.0.5, Python 3.15.0 with PyYAML 6.0.3, commit `e5f5d77`, in `pipeline/oracle-runtime/`.
 
