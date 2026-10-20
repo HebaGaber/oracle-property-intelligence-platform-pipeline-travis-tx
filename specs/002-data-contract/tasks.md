@@ -79,7 +79,7 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
 ### Tests for User Story 3 (write first, must fail) ⚠️
 
-- [ ] T013 [P] [US3] Test `profiles/travis-austin@1.0.0/test/classify-permit.test.ts`, with real Austin descriptions from oracle § E.1 as fixtures:
+- [X] T013 [P] [US3] Test `profiles/travis-austin@1.0.0/test/classify-permit.test.ts`, with real Austin descriptions from oracle § E.1 as fixtures:
   - REROOF, RE-ROOF and ROOF REPLACE on BP → Roofing/Replacement;
   - `work_class = 'Auxiliary Power'` → not roofing, even with "ROOF" in the text;
   - SOLAR, PV, PHOTOVOLTAIC, RTU/RTUS and ROOF-MOUNTED → excluded with a reason id;
@@ -87,31 +87,31 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
   - EP/MP/PP with an include term → not Roofing (`trade_permit`, D-4b);
   - `work_class = 'Roof'` with no include term → `needs_review`;
   - exclude > trade permit > include.
-- [ ] T014 [P] [US3] Test `profiles/travis-austin@1.0.0/test/classify-status.test.ts`:
+- [X] T014 [P] [US3] Test `profiles/travis-austin@1.0.0/test/classify-status.test.ts`:
   - Active, Pending, Pending Permit, On Hold, Suspended, Inactive Pending Revision and Re Review → `open`;
   - Expired and Expired - License → `stalled` with `improvement_status = null` (D-4a), never Completed or Cancelled;
   - Final and Closed → `closed`/`Completed`;
   - VOID, Withdrawn, any `Cancelled*`, Aborted, Denied but Closed, Revoked and Rejected → `exclude`;
   - an unseen word (e.g. "Archived") → `needs_review`.
-- [ ] T015 [P] [US3] Test `profiles/travis-austin@1.0.0/test/digest.test.ts`. `digest()` = SHA-256 of the canonical form (Zod-parse, recursively sorted keys, `JSON.stringify(...) + "\n"`) and equals the committed `DIGEST`. Changing any rule without a version bump fails. `expectations.json` is outside the digest.
-- [ ] T016 [P] [US3] Test `profiles/travis-austin@1.0.0/test/generators.test.ts`. `toSoqlInclude()` produces the exact SoQL predicate for the three include terms. `toSqlStatusMap()` produces a `VALUES` table with a digest header equal to `packages/query-core/generated/travis-austin@1.0.0.status-map.sql`. Every class in `published_encoding` is in {open, stalled, closed}.
-- [ ] T017 [P] [US3] Test `profiles/travis-austin@1.0.0/test/measure.test.ts` (unit, with a fake Socrata client). The candidates = include − excluded − trade − needs_review assertion holds. Fetched rows ≠ count gives one re-measure, then a stop with a reason. A 403 stops with a `blocked` receipt. The 3 SoQL Auxiliary Power permit numbers equal the classifier's `aux_power` set.
-- [ ] T018 [P] [US3] Test `profiles/travis-austin@1.0.0/test/sample.test.ts`. Ranking by `sha256(seed + "\n" + permit_number)` is deterministic and independent of input order. Exactly 25 rows are drawn. The seed, population count, `captured_at` and the sha256 of the sorted key list are recorded.
+- [X] T015 [P] [US3] Test `profiles/travis-austin@1.0.0/test/digest.test.ts`. `digest()` = SHA-256 of the canonical form (Zod-parse, recursively sorted keys, `JSON.stringify(...) + "\n"`) and equals the committed `DIGEST`. Changing any rule without a version bump fails. `expectations.json` is outside the digest.
+- [X] T016 [P] [US3] Test `profiles/travis-austin@1.0.0/test/generators.test.ts`. `toSoqlInclude()` produces the exact SoQL predicate for the three include terms. `toSqlStatusMap()` produces a `VALUES` table with a digest header equal to `packages/query-core/generated/travis-austin@1.0.0.status-map.sql`. Every class in `published_encoding` is in {open, stalled, closed}.
+- [X] T017 [P] [US3] Test `profiles/travis-austin@1.0.0/test/measure.test.ts` (unit, with a fake Socrata client). The candidates = include − excluded − trade − needs_review assertion holds. Fetched rows ≠ count gives one re-measure, then a stop with a reason. A 403 stops with a `blocked` receipt. The 3 SoQL Auxiliary Power permit numbers equal the classifier's `aux_power` set.
+- [X] T018 [P] [US3] Test `profiles/travis-austin@1.0.0/test/sample.test.ts`. Ranking by `sha256(seed + "\n" + permit_number)` is deterministic and independent of input order. Exactly 25 rows are drawn. The seed, population count, `captured_at` and the sha256 of the sorted key list are recorded.
 
 ### Implementation for User Story 3
 
-- [ ] T019 [US3] [oracle] Create `profiles/travis-austin@1.0.0/package.json` (`@countylens/profile-travis-austin`, `zod`) and `profiles/travis-austin@1.0.0/rules.json`: `roofing.include` [REROOF, RE-ROOF, ROOF REPLACE], token-aware `roofing.exclude` (ids `aux_power`, `solar_pv`, `rtu`, `roof_mounted`, `roof_deck`), `trade_permit` (BP only), `needs_review`, `status_map` (AD-08 lists, `Cancelled*` prefix), `published_encoding` (closed→Completed; Active→Permitted; Pending/Pending Permit/Re Review→Planned; On Hold/Suspended/Inactive Pending Revision→OnHold; stalled→null; exclude and needs_review → not emitted), `sample_population`, and a `jurisdictions` map (`austin`)
-- [ ] T020 [US3] [oracle] Implement `profiles/travis-austin@1.0.0/index.ts`: Zod schema for `rules.json`, `digest()`, the `PROFILE {name, version, sha256}` constant. Write `DIGEST` and `CHANGELOG.md`. Green T015.
-- [ ] T021 [US3] [oracle] Implement `classifyPermit()` and `classifyStatus()` in `profiles/travis-austin@1.0.0/index.ts`. Every result carries `PROFILE.sha256`. Green T013, T014. **Track A's T049 depends on this task.**
-- [ ] T022 [US3] [oracle] Implement `toSoqlInclude()` and `toSqlStatusMap()`, and generate `packages/query-core/generated/travis-austin@1.0.0.status-map.sql` with a digest header. Green T016.
-- [ ] T023 [US3] [oracle] Implement `profiles/travis-austin@1.0.0/scripts/measure.ts` (research R-09):
+- [X] T019 [US3] [oracle] Create `profiles/travis-austin@1.0.0/package.json` (`@countylens/profile-travis-austin`, `zod`) and `profiles/travis-austin@1.0.0/rules.json`: `roofing.include` [REROOF, RE-ROOF, ROOF REPLACE], token-aware `roofing.exclude` (ids `aux_power`, `solar_pv`, `rtu`, `roof_mounted`, `roof_deck`), `trade_permit` (BP only), `needs_review`, `status_map` (AD-08 lists, `Cancelled*` prefix), `published_encoding` (closed→Completed; Active→Permitted; Pending/Pending Permit/Re Review→Planned; On Hold/Suspended/Inactive Pending Revision→OnHold; stalled→null; exclude and needs_review → not emitted), `sample_population`, and a `jurisdictions` map (`austin`)
+- [X] T020 [US3] [oracle] Implement `profiles/travis-austin@1.0.0/index.ts`: Zod schema for `rules.json`, `digest()`, the `PROFILE {name, version, sha256}` constant. Write `DIGEST` and `CHANGELOG.md`. Green T015.
+- [X] T021 [US3] [oracle] Implement `classifyPermit()` and `classifyStatus()` in `profiles/travis-austin@1.0.0/index.ts`. Every result carries `PROFILE.sha256`. Green T013, T014. **Track A's T049 depends on this task.**
+- [X] T022 [US3] [oracle] Implement `toSoqlInclude()` and `toSqlStatusMap()`, and generate `packages/query-core/generated/travis-austin@1.0.0.status-map.sql` with a digest header. Green T016.
+- [X] T023 [US3] [oracle] Implement `profiles/travis-austin@1.0.0/scripts/measure.ts` (research R-09):
   1. count include + total;
   2. key-page the include set (≤ 50,000 per page, ≤ 1 request/s, receipts with sha256, stop on 403);
   3. classify locally and re-count in the same run;
   4. write `profiles/travis-austin@1.0.0/expectations.json` (`measured_at`, `dataset_rows`, `include_matches`, `excluded{by id}`, `trade_permits`, `needs_review`, `candidates`, `rules_sha256`, `query_urls`).
 
   Green T017. Then run it live (AC-5) and record the counts in run-log.md.
-- [ ] T024 [US3] [oracle] Implement `profiles/travis-austin@1.0.0/scripts/sample.ts` (research R-10): population = description or work class mentioning ROOF; seed `travis-austin@1.0.0/AC-3/2026-10-20`; 25 smallest digests. Write `docs/evidence/A-02-classifier-review.md` with columns permit, work_class, status, description, verdict, reason and PO ✔/✘. Green T018. Then run it live.
+- [X] T024 [US3] [oracle] Implement `profiles/travis-austin@1.0.0/scripts/sample.ts` (research R-10): population = description or work class mentioning ROOF; seed `travis-austin@1.0.0/AC-3/2026-10-21`; 25 smallest digests. Write `docs/evidence/A-02-classifier-review.md` with columns permit, work_class, status, description, verdict, reason and PO ✔/✘. Green T018. Then run it live.
 - [ ] T025 [US3] 🛑 **D-7**: show the 25-permit table to the PO. Pass = ≥ 24 right, ≤ 1 `needs_review`, 0 solar/PV/RTU accepted. On a fail: adjust `rules.json`, bump to `1.0.1` (DIGEST, CHANGELOG), draw a new seed, ask again. Record the answers word for word in run-log.md.
 
 **Checkpoint**: the profile is green, AC-5 is measured, and AC-3 is reviewed.
