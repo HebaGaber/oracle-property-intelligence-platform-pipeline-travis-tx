@@ -173,7 +173,7 @@ Re-probes (`reprobe-jurisdictions`, once per row at most):
 | jurisdiction San Leanna | failed | HTTP 406 | 1 | none | `docs/evidence/blocked/jurisdiction-san_leanna-20261020T085313Z.md` | https://sanleannatx.com/wp-content/uploads/2023/07/Packet-for-July-20-2023.pdf | 2026-10-20T08:53:13Z |
 | jurisdiction Sunset Valley | blocked | HTTP 403 | 1 | none | `docs/evidence/blocked/jurisdiction-sunset_valley-20261019T210936Z.md` | https://www.sunsetvalley.gov/departments/planning-development/building-and-sign-permits | 2026-10-19T21:09:36Z |
 
-While any source is blocked the discovery run waits in `WAITING_HUMAN` for a human to resolve it (`resolve -- <source_key> captured|still-blocked`); nothing is bypassed and seed, pilot and ingest stay stopped for a blocked parcel source.
+While any source is blocked the discovery run waits in `WAITING_HUMAN` for a human to resolve it: `resolve -- <source_key> still-blocked` after a 403, challenge or WAF block (such a source is never re-probed), or `captured` only after a timeout, network error, throttling or broken download; nothing is bypassed and seed, pilot and ingest stay stopped for a blocked parcel source.
 
 - source `bbb`:
   - Records request (api-first): IABBB (International Association of Better Business Bureaus), BBB API program; scope: BBB business profiles (accreditation, rating, complaints) for Travis County contractors through the official BBB API, requested with the BBB API Registration Form; channel: https://developer.bbb.org/

@@ -622,6 +622,11 @@ describe("OR-M5: rule 11 and the sources.md sections", () => {
     );
     expect(md).toMatch(/Time the discovery run `run-a` spent waiting for a human/);
     expect(md).toMatch(/the kit's auto-advance on PASS is overridden; seed is A-04 behind G4–G7/);
+    // T066: the resolve wording matches T056 (never `captured` after a 403, challenge or WAF block).
+    expect(md).toMatch(
+      /still-blocked` after a 403, challenge or WAF block \(such a source is never re-probed\)/,
+    );
+    expect(md).not.toMatch(/captured\|still-blocked/);
     expect(md).toMatch(
       /## Approved exceptions\n\n### Gate `parcel`\n\nThe readiness validator reports the parcel gate as \*\*PASS because of this exception\*\*; the raw gap stays 0.99%/,
     );

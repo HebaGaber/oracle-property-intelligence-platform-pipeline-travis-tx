@@ -165,7 +165,8 @@ export function promiseName(source: SourceKey, attempt: number): string {
 }
 
 function resolveHint(source: SourceKey): string {
-  return `then run: npm --prefix pipeline/oracle-runtime run resolve -- ${source} captured|still-blocked`;
+  // T066: `captured` is refused for a 403, challenge or WAF block (T056), so the hint says when it applies.
+  return `then run: npm --prefix pipeline/oracle-runtime run resolve -- ${source} still-blocked (after a 403, challenge or WAF block) or captured (only after a timeout, network error, throttling or broken download)`;
 }
 
 export interface BlockerInput {

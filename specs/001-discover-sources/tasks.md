@@ -274,4 +274,4 @@ Task: "Evidence probes in pipeline/oracle-runtime/travis/discovery/probes/eviden
 
 ## Phase 8: Convergence
 
-- [ ] T066 Make the "resolve" wording in `pipeline/oracle-runtime/travis/discovery/render-sources-md.ts` (rendered to `docs/sources.md`) and the run's `resolveHint` in `workflow.ts` say that `captured` applies only to a timeout, network error, throttling or broken download, and `still-blocked` to a 403, challenge or WAF block, then re-render `docs/sources.md`, per AC-6, FR-006a (contradicts)
+- [X] T066 Make the "resolve" wording in `pipeline/oracle-runtime/travis/discovery/render-sources-md.ts` (rendered to `docs/sources.md`) and the run's `resolveHint` in `workflow.ts` say that `captured` applies only to a timeout, network error, throttling or broken download, and `still-blocked` to a 403, challenge or WAF block, then re-render `docs/sources.md`, per AC-6, FR-006a (contradicts)

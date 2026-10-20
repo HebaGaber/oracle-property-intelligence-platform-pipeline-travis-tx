@@ -446,7 +446,7 @@ function blockedSection(catalog: Catalog): string[] {
     ]),
   );
   out.push(
-    "While any source is blocked the discovery run waits in `WAITING_HUMAN` for a human to resolve it (`resolve -- <source_key> captured|still-blocked`); nothing is bypassed and seed, pilot and ingest stay stopped for a blocked parcel source.",
+    "While any source is blocked the discovery run waits in `WAITING_HUMAN` for a human to resolve it: `resolve -- <source_key> still-blocked` after a 403, challenge or WAF block (such a source is never re-probed), or `captured` only after a timeout, network error, throttling or broken download; nothing is bypassed and seed, pilot and ingest stay stopped for a blocked parcel source.",
     "",
   );
   for (const { subject, req, next } of rows) {
