@@ -33,3 +33,9 @@ One line per step: time (local, 2026-10-20 unless stated) · stage · step · re
 | 10-21 00:08 | 3 | `/developmentsupport-g5-precheck` | run 1 FAIL (2: C-02 phase order, C-05 Polish after Z) → reordered sections, data-flow diagram added to plan → run 2 PASS |
 | 10-21 00:08 | 3 | 🛑 D-5 answer, G5 | "Approve (Recommended)" |
 | 10-21 00:08 | 3 | Commit | `A-02: agent design, plan and tasks (G5)` |
+| 10-21 00:12 | 4 | `/developmentsupport-testcases` | `testplans/A-02-test-cases.md` v0.1: TC-001–TC-030 + NF-01–NF-03; all 8 ACs, 11 FRs, 2 NFRs mapped |
+| 10-21 00:12 | 4 | `/developmentsupport-g6-precheck` run 1 | FAIL (1): C-06 (TC-028 rejection states, TC-022 Pflugerville clause) |
+| 10-21 00:12 | 4 | 🛑 D-6 answer, G6 | "Fix, approve if PASS (Recommended)" |
+| 10-21 00:12 | 4 | G6 run 2 | PASS, 0 FAILs; test cases v0.2 Approved, qc_signoff true; gate log row added |
+| 10-21 00:13 | 4 | `/speckit-checklist` | `checklists/governance.md`: CHK001–CHK048 (constitution Parts 1–3, Task A addendum, ACs, test cases); all unchecked (reviewer-owned) |
+| 10-21 00:13 | 4 | Commit | `A-02: test cases (G6) and checklist` |
