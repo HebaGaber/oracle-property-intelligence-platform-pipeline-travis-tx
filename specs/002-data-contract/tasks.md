@@ -308,7 +308,7 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 - [ ] TZ03 N/A: Project story, no hosted runtime until A-03 (G6 C-05/C-09 exception; the test cases run from a terminal at the repo root and use Vitest instead of Playwright)
 - [ ] TZ04 N/A: Project story, no hosted runtime until A-03 (`ui: false`)
 - [X] TZ05 Run the story's independent test (`agents.verify`): `docs/decisions/0002-lexicon-carriers.md` has a verdict for every field; `PILOT_DIR=pipeline/data/pilot/travis-pilot-20261020 pnpm vitest packages/query-core` passes; `duckdb -c "SELECT count(*) FROM 'contract/v1/sample.parquet'"` returns 20; plus `pnpm vitest --coverage` ≥ 80% on `packages/query-core` and `packages/contract` (NFR-002)
-- [ ] TZ06 Write docs/reports/A-02-test-report.md, docs/evidence/A-02.md, the docs/traceability.md row and one docs/kit-usage.md line
+- [X] TZ06 Write docs/reports/A-02-test-report.md, docs/evidence/A-02.md, the docs/traceability.md row and one docs/kit-usage.md line
 
 ---
 
@@ -357,3 +357,9 @@ oracle subagent 3 (Track A): T006–T012, then T031–T048 (T049 after T021)
 - `[oracle]` = delegated to the `soofi-xyz-team-kit:oracle` builder subagent. Test tasks are written first and shown failing.
 - The 🛑 tasks (T025 D-7, T054 D-8) stop for the PO.
 - Never: upload, `--atlas-page`, Query DB reads, Homebrew elephant-cli, retry after a 403.
+
+## Phase 9: Convergence
+
+- [ ] T069 [oracle] Add a `missing` list to `v_run` in `packages/query-core/views.sql` (at least `previous_manifest_cid → first_run` when `previousManifestCid` is null), update `packages/contract/src/columns.ts` (V_RUN), `contract/v1/columns.json` and `contract/v1/README.md`, and include `v_run` in the SC-007 no-blank loop of `packages/query-core/test/views.pilot.test.ts` (test first) per FR-007, SC-007 (partial)
+- [ ] T070 [oracle] Add a `limitations VARCHAR[]` column to `v_run` from the manifest's top-level `limitations[]` in `packages/query-core/views.sql` / `src/bind-manifest.ts`, with the column in `columns.ts`, `columns.json` and the README (test first) per spec Key Entities "Run view row … limitations" (partial)
+- [ ] T071 [oracle] Add `packages/query-core/gazetteer/**/*.ts` to the coverage include in `vitest.config.ts` so NFR-002 measures the gazetteer code, and record the figure in `docs/reports/A-02-unit-test-report.md` per NFR-002, SC-008 (partial)
