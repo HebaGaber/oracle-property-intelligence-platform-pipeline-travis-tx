@@ -18,3 +18,18 @@ One line per step: time (local, 2026-10-20 unless stated) · stage · step · re
 | 23:38 | 2 | 🛑 D-2 answer, pilot `run_id`/`manifest_cid` | "Local pilot manifest (Recommended)" |
 | 23:39 | 2 | Spec updated | Clarifications section, FR-002, FR-006, FR-011, Key Entities; quality checklist 16/16 unchanged |
 | 23:40 | 2 | Commits | `A-02: story ready (G4)`, `A-02: spec and clarifications` |
+| 23:37 | 3 | ✋ A-1 | PO ran `/soofi-xyz-team-kit:use-neutral-lexicon` |
+| 23:37 | 3 | Design agents started | `mew` and `oracle`, in parallel, read-only |
+| 23:55 | 3 | Design agents done | mew: 8 of 9 AC-1 fields no carrier (owner sale date carried, provisional); live lexicon MCP tools "Internal error"; bundled reference used. oracle: pilot commands, slice confirmed (42 Sept: 29 Active, 13 Final; 19 distinct tcad_id + 1 null), live schema via lexicon manifest; Austin rows 2,380,939 |
+| 23:55 | 3 | `agent-design.md` | mew + oracle sections word for word; Disagreements table |
+| 23:55 | 3 | 🛑 D-3 answer, pilot slice | "42 + 5 + 3 older Final (Recommended)" |
+| 23:55 | 3 | 🛑 D-4a answer, Expired | "Empty means stalled (Recommended)" |
+| 23:55 | 3 | 🛑 D-4b answer, trade permits | "BP only (Recommended)" |
+| 23:55 | 3 | 🛑 D-4c answer, names / no carrier / sample.parquet | "Yes to all three (Recommended)" |
+| 23:55 | 3 | ARD § 13 | deviation D-07 added (sample.parquet in git); ARD v0.2 → v0.2.1 |
+| 23:58 | 3 | `/speckit-plan` | plan.md (PO decisions D-1–D-4 copied, Kit Agent Ownership, Constitution Check all rows; 4 Complexity Tracking rows), research.md R-01…R-12, data-model.md, contracts/ ×4, quickstart.md |
+| 10-21 00:00 | 3 | `/speckit-tasks` | tasks.md: T001–T068 + TZ01–TZ06; Track B (US3) and C (US4) after Setup; Track A US1/US2/US5; only T049 waits on T021; 🛑 T025 (D-7), T054 (D-8) |
+| 10-21 00:01 | 3 | `/speckit-analyze` | 0 CRITICAL, 3 HIGH (F1 FR-005 formula, F2 US3 'source word stays', F3 term literal in capture vs grep gate), 2 MEDIUM, 1 LOW; F1–F4 fixed; F5/F6 accepted |
+| 10-21 00:08 | 3 | `/developmentsupport-g5-precheck` | run 1 FAIL (2: C-02 phase order, C-05 Polish after Z) → reordered sections, data-flow diagram added to plan → run 2 PASS |
+| 10-21 00:08 | 3 | 🛑 D-5 answer, G5 | "Approve (Recommended)" |
+| 10-21 00:08 | 3 | Commit | `A-02: agent design, plan and tasks (G5)` |
