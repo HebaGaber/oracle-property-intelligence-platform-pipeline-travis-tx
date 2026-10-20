@@ -43,9 +43,9 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
 ### Tests (write first, must fail) ⚠️
 
-- [ ] T006 [P] Test `packages/contract/test/provenance.test.ts`. The missing-reason enum is exactly: "`no_lexicon_carrier`, `not_in_export`, `source_missing`, `no_coordinates`, `no_roof_date`, `basis_unmatched`, `no_dated_sale`, `no_owner_record`, `no_mailing_address`, `zip_not_zcta`, `not_open`, `not_closed`, `contractor_unresolved`, `bbb_blocked`, `bbb_not_found`, `needs_review`, `first_run`, `out_of_scope`". `Provenance` rejects null `cid`/`table`/`table_cid`/`run_id`/`manifest_cid`/`as_of`.
-- [ ] T007 [P] Test `packages/contract/test/manifest.test.ts`. `RunManifestV1` rejects: a non-CIDv1 value (a `Qm…` v0), a gateway URL anywhere, a `directory` artifact without `carCid`, and any IPNS field. It requires `sources[].captured_at` and `profiles[] {name, version, sha256, path, gitCommit}`. Each `coverage` count needs `derivation` ∈ `published_rows|capture_receipt|aggregate_match`. `RunsIndexV1` orders `runs[]` by `finishedAt`.
-- [ ] T008 [P] Test `packages/contract/test/columns.test.ts`.
+- [X] T006 [P] Test `packages/contract/test/provenance.test.ts`. The missing-reason enum is exactly: "`no_lexicon_carrier`, `not_in_export`, `source_missing`, `no_coordinates`, `no_roof_date`, `basis_unmatched`, `no_dated_sale`, `no_owner_record`, `no_mailing_address`, `zip_not_zcta`, `not_open`, `not_closed`, `contractor_unresolved`, `bbb_blocked`, `bbb_not_found`, `needs_review`, `first_run`, `out_of_scope`". `Provenance` rejects null `cid`/`table`/`table_cid`/`run_id`/`manifest_cid`/`as_of`.
+- [X] T007 [P] Test `packages/contract/test/manifest.test.ts`. `RunManifestV1` rejects: a non-CIDv1 value (a `Qm…` v0), a gateway URL anywhere, a `directory` artifact without `carCid`, and any IPNS field. It requires `sources[].captured_at` and `profiles[] {name, version, sha256, path, gitCommit}`. Each `coverage` count needs `derivation` ∈ `published_rows|capture_receipt|aggregate_match`. `RunsIndexV1` orders `runs[]` by `finishedAt`.
+- [X] T008 [P] Test `packages/contract/test/columns.test.ts`.
   - The four view column lists equal data-model.md § Views (mew § B.2–B.6 with the D-4 adjustments).
   - `ALIASES` holds exactly `issue_date → permit_issue_date` and `final_date → completion_date`.
   - No column named `status_raw`, `expiry_date`, `contractor_name_raw`, `bbb_rating`, `bbb_url`, `description` or `work_class_raw`.
@@ -62,10 +62,10 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
 ### Implementation
 
-- [ ] T009 [oracle] Create `packages/contract/package.json` (`@countylens/contract`, depends only on `zod` ^4) and `packages/contract/src/index.ts`
-- [ ] T010 [P] [oracle] Implement `packages/contract/src/provenance.ts` (`Provenance`, `MissingReason`, `Missing {field, reason}`)
-- [ ] T011 [P] [oracle] Implement `packages/contract/src/manifest.ts` and `packages/contract/src/runs-index.ts` (`RunManifestV1` per contracts/manifest.md with refinements; `RunsIndexV1`)
-- [ ] T012 [oracle] Implement `packages/contract/src/columns.ts` (the single column list with name, type, meaning, source class.property or derivation, missing reason, `ALIASES`) and `packages/contract/src/rows.ts` (Zod row schemas generated from `columns.ts` for `v_property`, `v_roofing_permit`, `v_contractor`, `v_run`). Green T006–T008.
+- [X] T009 [oracle] Create `packages/contract/package.json` (`@countylens/contract`, depends only on `zod` ^4) and `packages/contract/src/index.ts`
+- [X] T010 [P] [oracle] Implement `packages/contract/src/provenance.ts` (`Provenance`, `MissingReason`, `Missing {field, reason}`)
+- [X] T011 [P] [oracle] Implement `packages/contract/src/manifest.ts` and `packages/contract/src/runs-index.ts` (`RunManifestV1` per contracts/manifest.md with refinements; `RunsIndexV1`)
+- [X] T012 [oracle] Implement `packages/contract/src/columns.ts` (the single column list with name, type, meaning, source class.property or derivation, missing reason, `ALIASES`) and `packages/contract/src/rows.ts` (Zod row schemas generated from `columns.ts` for `v_property`, `v_roofing_permit`, `v_contractor`, `v_run`). Green T006–T008.
 
 **Checkpoint**: the contract schemas are green. Track A can build the manifest and the views.
 
@@ -126,19 +126,19 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
 ### Tests for User Story 1 (write first, must fail) ⚠️
 
-- [ ] T031 [P] [US1] Test `pipeline/publish/test/sequence.test.ts`. `runSequence()` spawns, per group and in this exact order: `validate <dir>` → `hash <dir> --output-zip --output-csv --output-car` → `validate <car>` → `export-tables <car> --output --part-size 1g --output-json`. There is no `--atlas-page` and no upload. A non-zero exit stops the sequence. Argv, exit code, stdout roots and output sha256 values are recorded.
-- [ ] T032 [P] [US1] Test `pipeline/publish/test/cid.test.ts`. The JCS serialization matches the RFC 8785 vectors. `cidOfBytes()` (ipfs-unixfs-importer, cidVersion 1, rawLeaves true) gives `bafkrei…` for < 256 KiB. CIDs are compared by multihash digest across raw, dag-pb and dag-json.
-- [ ] T033 [P] [US1] Test `pipeline/publish/test/manifest.test.ts` (fixture CLI outputs). `buildManifest()` reads only CLI outputs and capture receipts (no `pg`). Part CIDs come from the `CountyTables` block in `tables.car`, are re-derived from each file, and a mismatch fails. The output parses with `RunManifestV1`, with `runId: "travis-pilot-20261020"`, `previousManifestCid: null` and the "pilot: local, unpublished" limitation.
-- [ ] T034 [P] [US1] Test `pipeline/oracle-runtime/test/pilot/capture-austin.test.ts`. The fixed slice per D-3 is: 42 issued 2026-09-01…30 with an include term; 5 Expired by oracle § B's rule (`status_current='Expired' AND permittype='BP' AND tcad_id IS NOT NULL ORDER BY issue_date DESC, permit_number LIMIT 5`); 3 older Final BP reroofs by the same ordering rule on `status_current='Final'` before 2025-10-20. Captures are one GET per permit, ≤ 1 request/s. Receipts hold url, method, multiValueQueryString, status, bytes, sha256 and captured_at. A 403 or challenge → `blocked` receipt and stop.
-- [ ] T035 [P] [US1] Test `pipeline/oracle-runtime/test/pilot/capture-tcad-subset.test.ts`, on a fixture of the pretty-printed array format. Only records whose `geoID` equals a wanted `tcad_id` as a string are parsed. Exactly one residential `pID` → matched; zero → `no_tcad_geoid`; more than one → `ambiguous_geoid`; all are kept and counted. A null `tcad_id` → unmatched. The receipt has the zip sha256, entry name, record ordinals and per-record sha256.
-- [ ] T036 [P] [US1] Test `pipeline/oracle-runtime/test/transforms/tcad-county.test.ts`:
+- [X] T031 [P] [US1] Test `pipeline/publish/test/sequence.test.ts`. `runSequence()` spawns, per group and in this exact order: `validate <dir>` → `hash <dir> --output-zip --output-csv --output-car` → `validate <car>` → `export-tables <car> --output --part-size 1g --output-json`. There is no `--atlas-page` and no upload. A non-zero exit stops the sequence. Argv, exit code, stdout roots and output sha256 values are recorded.
+- [X] T032 [P] [US1] Test `pipeline/publish/test/cid.test.ts`. The JCS serialization matches the RFC 8785 vectors. `cidOfBytes()` (ipfs-unixfs-importer, cidVersion 1, rawLeaves true) gives `bafkrei…` for < 256 KiB. CIDs are compared by multihash digest across raw, dag-pb and dag-json.
+- [X] T033 [P] [US1] Test `pipeline/publish/test/manifest.test.ts` (fixture CLI outputs). `buildManifest()` reads only CLI outputs and capture receipts (no `pg`). Part CIDs come from the `CountyTables` block in `tables.car`, are re-derived from each file, and a mismatch fails. The output parses with `RunManifestV1`, with `runId: "travis-pilot-20261020"`, `previousManifestCid: null` and the "pilot: local, unpublished" limitation.
+- [X] T034 [P] [US1] Test `pipeline/oracle-runtime/test/pilot/capture-austin.test.ts`. The fixed slice per D-3 is: 42 issued 2026-09-01…30 with an include term; 5 Expired by oracle § B's rule (`status_current='Expired' AND permittype='BP' AND tcad_id IS NOT NULL ORDER BY issue_date DESC, permit_number LIMIT 5`); 3 older Final BP reroofs by the same ordering rule on `status_current='Final'` before 2025-10-20. Captures are one GET per permit, ≤ 1 request/s. Receipts hold url, method, multiValueQueryString, status, bytes, sha256 and captured_at. A 403 or challenge → `blocked` receipt and stop.
+- [X] T035 [P] [US1] Test `pipeline/oracle-runtime/test/pilot/capture-tcad-subset.test.ts`, on a fixture of the pretty-printed array format. Only records whose `geoID` equals a wanted `tcad_id` as a string are parsed. Exactly one residential `pID` → matched; zero → `no_tcad_geoid`; more than one → `ambiguous_geoid`; all are kept and counted. A null `tcad_id` → unmatched. The receipt has the zip sha256, entry name, record ordinals and per-record sha256.
+- [X] T036 [P] [US1] Test `pipeline/oracle-runtime/test/transforms/tcad-county.test.ts`:
   - the county group layout per oracle § A.2;
   - every entity has `source_http_request` + `request_identifier` (`pID` as printed);
   - every entity is linked;
   - `confidentialCode` owners have name and mailing suppressed before validate, and are counted;
   - `structure.roof_date` comes only from the vendored estimator ledger;
   - the seed files and `property.json` are byte-identical to the PI group's.
-- [ ] T037 [P] [US1] Test `pipeline/oracle-runtime/test/transforms/austin-property-improvement.test.ts`:
+- [X] T037 [P] [US1] Test `pipeline/oracle-runtime/test/transforms/austin-property-improvement.test.ts`:
   - permits are emitted with `improvement_type`/`improvement_action`/`improvement_status` from the profile only;
   - Expired → `improvement_status` null;
   - an **assertion fails if any emitted permit's class is outside {open, stalled, closed}** (D-4a guard);
@@ -146,20 +146,20 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
   - `request_identifier` = `permit_number` as printed;
   - `property_has_property_improvement` links to the same property CID as the county group;
   - no description, work class, status word, expiry or contractor name is written.
-- [ ] T038 [P] [US1] Test `pipeline/oracle-runtime/test/roof-age/vendored.test.ts`. The SHA-256 of `kit/use-oracle/runtime/src/roof-age/estimator.ts` equals its `VENDORED.md` row. With the Travis roof-age profile, a Final BP reroof with `completed_date` gives anchor `permit_terminal_date`/high, an Active replacement never resets roof age (P0-8), and `as_of` = run `finishedAt`.
-- [ ] T039 [P] [US1] Test `pipeline/oracle-runtime/test/transforms/lexicon-manifest.test.ts`. The Seed, County and Property Improvement data-group schema CIDs are read from `https://lexicon.elephant.xyz/api/manifest` (fixture), never hardcoded. A fetch failure stops the run.
+- [X] T038 [P] [US1] Test `pipeline/oracle-runtime/test/roof-age/vendored.test.ts`. The SHA-256 of `kit/use-oracle/runtime/src/roof-age/estimator.ts` equals its `VENDORED.md` row. With the Travis roof-age profile, a Final BP reroof with `completed_date` gives anchor `permit_terminal_date`/high, an Active replacement never resets roof age (P0-8), and `as_of` = run `finishedAt`.
+- [X] T039 [P] [US1] Test `pipeline/oracle-runtime/test/transforms/lexicon-manifest.test.ts`. The Seed, County and Property Improvement data-group schema CIDs are read from `https://lexicon.elephant.xyz/api/manifest` (fixture), never hardcoded. A fetch failure stops the run.
 
 ### Implementation for User Story 1
 
-- [ ] T040 [US1] [oracle] Create `pipeline/publish/package.json` (`@countylens/publish`; deps `@countylens/contract`, `multiformats`, `ipfs-unixfs-importer`, `zod`) and implement `pipeline/publish/src/jcs.ts` and `pipeline/publish/src/cid.ts`. Green T032.
-- [ ] T041 [US1] [oracle] Implement `pipeline/publish/src/sequence.ts`, which spawns `elephant-cli` from the workspace pin in the fixed order. Green T031.
-- [ ] T042 [US1] [oracle] Implement `pipeline/publish/src/manifest.ts` (`buildManifest()`, which reads `tables.car` blocks and receipts only). Green T033.
-- [ ] T043 [P] [US1] [oracle] Vendor `skills/use-oracle/runtime/src/roof-age/estimator.ts` (kit 0.99.1) unmodified into `pipeline/oracle-runtime/kit/use-oracle/runtime/src/roof-age/`, add its SHA-256 row to `pipeline/oracle-runtime/kit/VENDORED.md`, and implement `pipeline/oracle-runtime/travis/roof-age/travis-roof-age-profile.ts`. Green T038.
-- [ ] T044 [P] [US1] [oracle] Implement `pipeline/oracle-runtime/travis/transforms/lexicon-manifest.ts`. Green T039.
+- [X] T040 [US1] [oracle] Create `pipeline/publish/package.json` (`@countylens/publish`; deps `@countylens/contract`, `multiformats`, `ipfs-unixfs-importer`, `zod`) and implement `pipeline/publish/src/jcs.ts` and `pipeline/publish/src/cid.ts`. Green T032.
+- [X] T041 [US1] [oracle] Implement `pipeline/publish/src/sequence.ts`, which spawns `elephant-cli` from the workspace pin in the fixed order. Green T031.
+- [X] T042 [US1] [oracle] Implement `pipeline/publish/src/manifest.ts` (`buildManifest()`, which reads `tables.car` blocks and receipts only). Green T033.
+- [X] T043 [P] [US1] [oracle] Vendor `skills/use-oracle/runtime/src/roof-age/estimator.ts` (kit 0.99.1) unmodified into `pipeline/oracle-runtime/kit/use-oracle/runtime/src/roof-age/`, add its SHA-256 row to `pipeline/oracle-runtime/kit/VENDORED.md`, and implement `pipeline/oracle-runtime/travis/roof-age/travis-roof-age-profile.ts`. Green T038.
+- [X] T044 [P] [US1] [oracle] Implement `pipeline/oracle-runtime/travis/transforms/lexicon-manifest.ts`. Green T039.
 - [ ] T045 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/capture-austin.ts` (reusing `travis/lib/source-client.ts` for backoff and the stop on 403). The slice query's include predicate comes from `toSoqlInclude()` in `profiles/travis-austin@1.0.0`, with no term literal in this file (**depends on T022**). Green T034.
-- [ ] T046 [P] [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/capture-tcad-subset.ts` (reusing `travis/lib/zip-entry.ts` streaming). Green T035.
-- [ ] T047 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/build-seed.ts` (county-seed-data contract: `parcel_id` = `pID`, extra `geo_id`) and `pipeline/oracle-runtime/travis/transforms/shared-seed.ts` (one builder for the seed files and `property.json`, used by both groups)
-- [ ] T048 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/transforms/tcad-county.ts` (build-county-transform custom-code mode, output contract). Green T036.
+- [X] T046 [P] [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/capture-tcad-subset.ts` (reusing `travis/lib/zip-entry.ts` streaming). Green T035.
+- [X] T047 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/build-seed.ts` (county-seed-data contract: `parcel_id` = `pID`, extra `geo_id`) and `pipeline/oracle-runtime/travis/transforms/shared-seed.ts` (one builder for the seed files and `property.json`, used by both groups)
+- [X] T048 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/transforms/tcad-county.ts` (build-county-transform custom-code mode, output contract). Green T036.
 - [ ] T049 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/transforms/austin-property-improvement.ts`, which uses `classifyPermit`/`classifyStatus` from `profiles/travis-austin@1.0.0` (**depends on T021**). Green T037.
 - [ ] T050 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/run-pilot.ts`, which runs, in order:
   1. lexicon manifest;

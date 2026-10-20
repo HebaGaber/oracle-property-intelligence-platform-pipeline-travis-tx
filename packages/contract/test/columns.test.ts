@@ -1,0 +1,258 @@
+// T008: the frozen column lists (data-model.md § Views = mew § B.2–B.6 with the D-4 adjustments).
+import { describe, expect, it } from "vitest";
+import {
+  ALIASES,
+  COLUMN_ENUMS,
+  PROVENANCE_COLUMNS,
+  VIEWS,
+  columnNames,
+  rowSchema,
+  type ViewName,
+} from "../src/index.js";
+
+const PROVENANCE = [
+  "cid",
+  "source_url",
+  "captured_at",
+  "table",
+  "table_cid",
+  "run_id",
+  "manifest_cid",
+  "as_of",
+  "missing",
+];
+
+const EXPECTED: Record<ViewName, string[]> = {
+  v_property: [
+    "property_cid",
+    "request_identifier",
+    "parcel_identifier",
+    "property_type",
+    "property_usage_type",
+    "property_structure_built_year",
+    "unnormalized_address",
+    "city_name",
+    "postal_code",
+    "latitude",
+    "longitude",
+    "coordinate_source",
+    "roof_date",
+    "roof_age_years",
+    "roof_age_basis",
+    "roof_age_confidence",
+    "last_ownership_transfer_date",
+    "tenure_years",
+    "tenure_basis",
+    "is_long_tenure",
+    "owner_kind",
+    "owner_name",
+    "owner_mailing_postal_code",
+    "owner_mailing_state_code",
+    "owner_area_class",
+    "owner_is_out_of_area",
+    "area_list_sha256",
+    ...PROVENANCE,
+  ],
+  v_roofing_permit: [
+    "permit_cid",
+    "property_cid",
+    "jurisdiction",
+    "permit_number",
+    "improvement_type",
+    "improvement_action",
+    "improvement_status",
+    "status_class",
+    "is_open",
+    "issue_date",
+    "final_date",
+    "permit_close_date",
+    "final_inspection_date",
+    "open_days",
+    "contractor_resolution",
+    "contractor_company_cid",
+    "bbb_status",
+    "bbb_status_reason",
+    "profile_version",
+    "profile_sha256",
+    ...PROVENANCE,
+  ],
+  v_contractor: [
+    "contractor_company_cid",
+    "name",
+    "contractor_resolution",
+    "identity_source",
+    "bbb_status",
+    "bbb_status_reason",
+    "permit_count",
+    "roofing_permit_count",
+    ...PROVENANCE,
+  ],
+  v_run: [
+    "run_id",
+    "county_fips",
+    "started_at",
+    "finished_at",
+    "manifest_cid",
+    "previous_manifest_cid",
+    "tables_root_cids",
+    "sources",
+    "coverage",
+    "profile_version",
+    "profile_sha256",
+    "area_list_sha256",
+  ],
+};
+
+describe("columns", () => {
+  it("has exactly the four views", () => {
+    expect(Object.keys(VIEWS).sort()).toEqual([
+      "v_contractor",
+      "v_property",
+      "v_roofing_permit",
+      "v_run",
+    ]);
+  });
+
+  for (const view of Object.keys(EXPECTED) as ViewName[]) {
+    it(`${view} has exactly the frozen columns, in order`, () => {
+      expect(columnNames(view)).toEqual(EXPECTED[view]);
+    });
+  }
+
+  it("the provenance block is mew B.1 in order", () => {
+    expect(PROVENANCE_COLUMNS.map((c) => c.name)).toEqual(PROVENANCE);
+  });
+
+  it("ALIASES holds exactly issue_date and final_date (mew C.2)", () => {
+    expect(ALIASES).toEqual({
+      issue_date: "property_improvement.permit_issue_date",
+      final_date: "property_improvement.completion_date",
+    });
+  });
+
+  it("has no v1 column for an uncarried field (D-4c)", () => {
+    const all = Object.values(VIEWS).flatMap((cols) => cols.map((c) => c.name));
+    for (const banned of [
+      "status_raw",
+      "expiry_date",
+      "contractor_name_raw",
+      "bbb_rating",
+      "bbb_url",
+      "description",
+      "work_class_raw",
+    ]) {
+      expect(all).not.toContain(banned);
+    }
+  });
+
+  it("every CID column ends in _cid and is typed as a CID", () => {
+    for (const cols of Object.values(VIEWS)) {
+      for (const c of cols) {
+        if (c.kind === "cid")
+          expect(c.name.endsWith("_cid") || c.name === "cid", c.name).toBe(true);
+        if (c.name.endsWith("_cid") || c.name === "cid") expect(c.kind, c.name).toBe("cid");
+      }
+    }
+  });
+
+  it("every column has a type, a meaning and a source", () => {
+    for (const cols of Object.values(VIEWS)) {
+      for (const c of cols) {
+        expect(c.type.length, c.name).toBeGreaterThan(0);
+        expect(c.meaning.length, c.name).toBeGreaterThan(0);
+        expect(c.source.length, c.name).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("enums are exactly the frozen sets", () => {
+    expect(COLUMN_ENUMS).toEqual({
+      roof_age_basis: ["permit", "new_construction", "built_year", "unknown"],
+      roof_age_confidence: ["high", "medium", "low", "none"],
+      bbb_status: ["rated", "not_found", "blocked", "not_checked"],
+      status_class: ["open", "stalled", "closed"],
+      owner_area_class: ["in_county", "regional", "out_of_area", "unknown"],
+      coordinate_source: ["gis_centroid", "permit_point", "none"],
+      tenure_basis: ["sale_date", "unknown"],
+      contractor_resolution: ["resolved", "unresolved"],
+      owner_kind: ["person", "company", "unknown"],
+    });
+  });
+});
+
+describe("row schemas (generated from columns.ts)", () => {
+  const RAW = "bafkreibhurphpjdq33ysit57jtzmdldgngepsdbsw4vm7esawth2ezgaxu";
+  const DAG = "baguqeerasords4njcts6vs7qvdjfcvgnume4hqohf65zsfguprqphs3icwea";
+  const provenance = {
+    cid: DAG,
+    source_url:
+      "https://data.austintexas.gov/resource/3syk-w9eu.json?permit_number=2026-034767%20BP",
+    captured_at: "2026-10-20T22:10:00.000Z",
+    table: "property_improvement",
+    table_cid: RAW,
+    run_id: "travis-pilot-20261020",
+    manifest_cid: RAW,
+    as_of: "2026-10-20T23:00:00.000Z",
+    missing: [
+      { field: "improvement_status", reason: "no_lexicon_carrier" },
+      { field: "status_raw", reason: "no_lexicon_carrier" },
+    ],
+  };
+  const permit = {
+    permit_cid: DAG,
+    property_cid: DAG,
+    jurisdiction: "austin",
+    permit_number: "2026-034767 BP",
+    improvement_type: "Roofing",
+    improvement_action: "Replacement",
+    improvement_status: null,
+    status_class: "stalled",
+    is_open: false,
+    issue_date: "2026-03-10",
+    final_date: null,
+    permit_close_date: null,
+    final_inspection_date: null,
+    open_days: 224,
+    contractor_resolution: "unresolved",
+    contractor_company_cid: null,
+    bbb_status: "not_checked",
+    bbb_status_reason: "contractor_unresolved",
+    profile_version: "travis-austin@1.0.0",
+    profile_sha256: "b".repeat(64),
+    ...provenance,
+  };
+
+  it("parses a stalled permit row", () => {
+    expect(rowSchema("v_roofing_permit").parse(permit)).toEqual(permit);
+  });
+
+  it("rejects an enum outside its set, a missing column and an extra column", () => {
+    const s = rowSchema("v_roofing_permit");
+    expect(s.safeParse({ ...permit, status_class: "expired" }).success).toBe(false);
+    const { open_days: _drop, ...noOpenDays } = permit;
+    expect(s.safeParse(noOpenDays).success).toBe(false);
+    expect(s.safeParse({ ...permit, description: "REROOF" }).success).toBe(false);
+  });
+
+  it("rejects null in a never-null column and a v0 CID", () => {
+    const s = rowSchema("v_roofing_permit");
+    expect(s.safeParse({ ...permit, permit_cid: null }).success).toBe(false);
+    expect(s.safeParse({ ...permit, run_id: null }).success).toBe(false);
+    expect(
+      s.safeParse({ ...permit, property_cid: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("rejects a date column that is not YYYY-MM-DD", () => {
+    expect(
+      rowSchema("v_roofing_permit").safeParse({ ...permit, issue_date: "03/10/2026" }).success,
+    ).toBe(false);
+  });
+
+  it("builds a schema for every view", () => {
+    for (const view of Object.keys(VIEWS) as ViewName[]) {
+      expect(rowSchema(view)).toBeDefined();
+    }
+  });
+});
