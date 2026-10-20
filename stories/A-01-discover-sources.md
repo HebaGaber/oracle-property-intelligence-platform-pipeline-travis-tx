@@ -19,9 +19,9 @@ agents:
   verify: "readiness validator exits 0"
 skills: [onboard-county, county-discovery, county-readiness-preflight, bootstrap-oracle-infra, apply-engineering-guidelines]
 ui: false
-status: Ready
-gate: G4
-qc_testability_signoff: false
+status: Done
+gate: G7
+qc_testability_signoff: true
 created: 2026-10-19
 ---
 
@@ -57,7 +57,7 @@ When done, `pipeline/docs/travis-sources.yaml` (shaped like the kit's `duval-sou
 3. **AC-3** · **Given** the TCAD Certified Special Export (JSON), downloaded once into `pipeline/data/raw/tcad/` (gitignored) with its file size, SHA-256 and capture time, **When** discovery counts its accounts and lists its fields, **Then** the YAML records the **certified account count** (the property denominator, ASM-6), the chosen property key (`prop_id` or `geo_id`, exactly as printed; ARD § 7), whether deed or sale dates are present (needed for tenure), the GIS feature count, its difference from the roll as a percentage, and `separately_assessed_without_geometry` (`acknowledged` or `none`) when GIS is below the roll; a gap above 2% blocks GIS-only seeding (validator rule 1). It also records the anti-bot posture of the TCAD and GIS sources. ☑ testable
 4. **AC-4** (scale) · **Given** every permit jurisdiction in Travis County (at least the 18 named in `reference/A-oracle.md` § 4: Travis County unincorporated, Austin, Pflugerville, Lakeway, Bee Cave, West Lake Hills, Manor, Sunset Valley, Rollingwood, Lago Vista, Jonestown, Briarcliff, Creedmoor, Mustang Ridge, Webberville, and the Travis parts of Cedar Park, Leander and Round Rock; the expected set is the U.S. Census Bureau list of incorporated places with land in Travis County, vintage and capture date recorded, plus Travis County unincorporated), **When** preflight classifies them, **Then** the YAML's jurisdiction count equals the expected count, no row is `needs-review`, each has exactly one class (supported / records request / no public history) with an evidence URL and date, and Austin-issued records located elsewhere (Lakeway 6,825; Bee Cave 4,822; Pflugerville 1,117 full purpose + 592 ETJ) are recorded as Austin-issued, not as those cities' own permits. ☑ testable
 5. **AC-5** · **Given** any source whose full capture is projected above 48 hours, **When** the YAML is written, **Then** it carries an explicit decision (`bulk download`, `ingest` or `runtime retrieval`) and the measurement behind it. ☑ testable
-6. **AC-6** (missing data / error) · **Given** `traviscad.org/publicinformation` returns HTTP 403 (as on 2026-10-17 and 2026-10-19) or the GIS layer times out, **When** discovery reaches it, **Then** the source is recorded as `blocked` with the response code, time and evidence, the run moves to `WAITING_HUMAN`, nothing is retried with a changed IP or user agent. If the response evidence shows a geo-block (for example a country-block page or header), one identified request from a US GitHub Actions runner checks it (ARD § 8); a plain 403 or bot challenge is never retried and goes straight to a records request. **Outcome:** if the US runner gets HTTP 200, the source is captured from there and AC-1 and AC-3 must pass; otherwise the source stays `blocked` with a complete `records_request`, the run stays at `WAITING_HUMAN`, and the story is judged on AC-2, AC-4, AC-5 and AC-7, with the validator's exit 1 and the missing roll count recorded as the documented blocker in `docs/sources.md` and `docs/evidence/A-01.md`. Seed, pilot and full ingest for that source stay stopped until it is resolved. ☑ testable
+6. **AC-6** (missing data / error) · **Given** `traviscad.org/publicinformation` returns HTTP 403 (as on 2026-10-17 and 2026-10-19) or the GIS layer times out, **When** discovery reaches it, **Then** the source is recorded as `blocked` with the response code, time and evidence, the run moves to `WAITING_HUMAN`, nothing is retried with a changed IP or user agent. If the response evidence shows a geo-block (for example a country-block page or header), one identified request from a US GitHub Actions runner checks it (ARD § 8). *Amended 2026-10-20 (PO, `docs/decisions/DEC-A-01-source-access.md` D-2):* a host that never accepts a TCP connection from non-US egress, while a sibling host on the same domain answers, counts as suspected geo evidence for one count request; a plain 403 or bot challenge is never retried and goes straight to a records request. **Outcome:** if the US runner gets HTTP 200, the source is captured from there and AC-1 and AC-3 must pass; otherwise the source stays `blocked` with a complete `records_request`, the run stays at `WAITING_HUMAN`, and the story is judged on AC-2, AC-4, AC-5 and AC-7, with the validator's exit 1 and the missing roll count recorded as the documented blocker in `docs/sources.md` and `docs/evidence/A-01.md`. Seed, pilot and full ingest for that source stay stopped until it is resolved. ☑ testable
 7. **AC-7** · **Given** discovery is complete, **When** the story branch is pushed, **Then** `pipeline/docs/travis-sources.yaml`, `docs/sources.md` and the validator JSON report are committed (visible in the PR), and every number in `docs/sources.md` has a source URL and a UTC capture time. ☑ testable
 
 ## Edge cases (at least two)
@@ -117,3 +117,22 @@ Not a UI story. Its numbers appear later on the Coverage screen (`design/prototy
 | G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ |
 
 **Decision:** ☑ Ready ☐ Returned · 2026-10-19 (HebaGaber). C-04 accepted as a justified exception (Project feature; hosted display in A-11/A-13).
+
+---
+
+## Gate G7: Validated build
+
+| # | Criterion | Status |
+| --- | --- | --- |
+| G7-1 | Every task in `specs/001-discover-sources/tasks.md` is checked (72/72) | ☑ |
+| G7-2 | Unit tests green in CI ([run 39490116172](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39490116172), 502/502); new-code coverage ≥ 80% (lines 92.85%) | ☑ |
+| G7-3 | Code review log with `/code-review` findings and the `oracle` score ≥ 75 (83/100); 0 open Critical | ☑ |
+| G7-4 | Every TC executed with a result and build sha (28/28 applicable pass); hosted URL N/A under the G4 C-04 exception | ☑ |
+| G7-5 | Every failing TC has a closed ERR with a re-test (ERR-1 to ERR-8) | ☑ |
+| G7-6 | No open Critical defect | ☑ |
+| G7-7 | `docs/evidence/A-01.md` with observed counts; URL, screenshot and trace N/A under the G4 C-04 exception | ☑ |
+| G7-8 | Traceability rows and the kit-usage line complete | ☑ |
+| G7-9 | Every commit starts with `A-01`; no secrets in the diff | ☑ |
+| G7-10 | AI pre-check (`developmentsupport-g7-precheck`): PASS (`docs/gates/G7-A-01-precheck.md`, run 2) | ☑ |
+
+**Decision:** ☑ Validated ☐ Returned · 2026-10-20 (HebaGaber). C-04 and C-07 accepted under the G4 C-04 exception (Project feature; hosted display in A-11/A-13). Recorded as not met or accepted, with reasons: SC-005 (DEC-A-01-source-access D-1, D-3), the certification date (ERR-4), and the deferred review findings in `docs/reviews/CR-A-01.md`.

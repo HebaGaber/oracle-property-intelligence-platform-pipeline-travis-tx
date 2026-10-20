@@ -4,7 +4,7 @@ Built with the [soofi-xyz team kit](https://github.com/soofi-xyz/soofi-xyz-team-
 
 | Story | Primary agent | Skills loaded | Reviewer | What the kit decided or produced |
 | --- | --- | --- | --- | --- |
-| {A-01} | `oracle` | `onboard-county`, `county-discovery`, `county-readiness-preflight` | — | {sources YAML, readiness PASS} |
+| A-01 | `oracle` (designed: read-only consult in `specs/001-discover-sources/agent-design.md`; built: every task group and review fix as the `soofi-xyz-team-kit:oracle` builder) | `onboard-county`, `county-discovery`, `county-readiness-preflight`, `bootstrap-oracle-infra`, `apply-engineering-guidelines` | `oracle` (read-only): 72/100 at run 1, **83/100** at run 2; `/code-review` 3 runs (`docs/reviews/CR-A-01.md`) | Source catalog `pipeline/docs/travis-sources.yaml` (9 sources, 23 jurisdictions) and `docs/sources.md`; **verified by the kit readiness validator** `validate-county-readiness.py` (vendored, unmodified): exit 0, overall PASS (parcel gate by PO-approved exception) |
 
 ## Kit routing decisions (P1)
 
@@ -57,4 +57,4 @@ The design agents were consulted read-only before Gate G3, first on 2026-10-18 a
 
 | Agent | Score (0–100) | Main deviations fixed |
 | --- | --- | --- |
-| {oracle} | {n} | {…} |
+| oracle (A-01) | 83 | Stale-run guard and terminal errors; honest deviation record (DEC-A-01-source-access D-1, D-3); WAF detection and no re-probe of 403/challenge sources (T056); parcel exception bound to its values; download robustness; amendments trail (`docs/reviews/CR-A-01.md`) |

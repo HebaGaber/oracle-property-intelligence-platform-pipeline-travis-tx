@@ -1,6 +1,66 @@
 import "dotenv/config";
 import * as restate from "@restatedev/restate-sdk";
+import { createSourceClient, type SourceClient } from "../../oracle-runtime/travis/lib/source-client.js";
+import {
+  createJurisdictionProbes,
+  createTravisDiscovery,
+  createUs1Probes,
+} from "../../oracle-runtime/travis/discovery/workflow.js";
+import {
+  readCatalogIfPresent,
+  writeCatalog,
+} from "../../oracle-runtime/travis/discovery/write-catalog.js";
+import { priorExportFrom } from "../../oracle-runtime/travis/discovery/probes/tcad.js";
+import {
+  DEFAULT_REPO_ROOT,
+  writeBlockedEvidence,
+} from "../../oracle-runtime/travis/discovery/blocked-evidence.js";
+import { proveDestination } from "../../oracle-runtime/travis/discovery/destination-proof.js";
+import { configuredSystemIdentifier } from "./configured-db.js";
+import { runValidator } from "../../oracle-runtime/travis/discovery/run-validator.js";
+import { TRAVIS_JURISDICTION_PROFILE } from "../../oracle-runtime/travis/profiles/jurisdictions.js";
 
 // Local Oracle services endpoint. Services are bound here as they are authored
-// (durable-workflow-builder); it starts empty.
-restate.serve({ services: [], port: 9080 });
+// (durable-workflow-builder).
+//
+// One Restate SDK instance: oracle-runtime imports the SDK type-only and receives this
+// module's SDK here, so only pipeline/local-stack/node_modules/@restatedev/restate-sdk is
+// loaded at runtime.
+//
+// TravisDiscovery (A-01): the probes run only when a run is started (`discover`). Every
+// request (US1 sources and US2 jurisdiction evidence) goes through one shared source client
+// (2 per host, identified User-Agent, StopOnBlocked). The catalog is written to
+// pipeline/docs/travis-sources.yaml with the destination proof (Docker side + SQL side,
+// T044); each blocked source gets its evidence file under docs/evidence/blocked/ (T037);
+// the vendored readiness validator runs on the first catalog and after each `captured`
+// re-probe, saving docs/evidence/A-01-readiness.json (T045). A blocked source waits on a
+// durable promise until `npm --prefix pipeline/oracle-runtime run resolve` (T036).
+// The catalog write refuses to overwrite a catalog that offline commands amended (CR-3);
+// a TCAD export already held with a matching receipt is reused with no request (OR-m8);
+// the destination proof also reads system_identifier through DATABASE_URL (OR-m4).
+let client: SourceClient | null = null;
+const sharedClient = (): SourceClient => (client ??= createSourceClient());
+const now = (): Date => new Date();
+
+const travisDiscovery = createTravisDiscovery(restate, {
+  // CR2-5: the catalog read runs inside the workflow's journaled step (readPriorExport), so
+  // a replay sees the same value and a bad catalog is a terminal error, not a retry loop.
+  probes: ({ priorExport }) =>
+    createUs1Probes({ client: sharedClient(), now, ...(priorExport ? { priorExport } : {}) }),
+  readPriorExport: () => {
+    const receipt = readCatalogIfPresent()?.parcel?.export_receipt;
+    return receipt ? priorExportFrom(receipt, DEFAULT_REPO_ROOT) : null;
+  },
+  jurisdictions: () => createJurisdictionProbes({ client: sharedClient(), now }),
+  profile: TRAVIS_JURISDICTION_PROFILE,
+  writeCatalog: (catalog) => writeCatalog(catalog),
+  readCatalog: () => readCatalogIfPresent(),
+  writeEvidence: (relPath, content) => {
+    writeBlockedEvidence(DEFAULT_REPO_ROOT, relPath, content);
+  },
+  secrets: () => [process.env.SOCRATA_APP_TOKEN ?? ""].filter((s) => s.length > 0),
+  destinationProof: () => proveDestination({ configured: configuredSystemIdentifier }),
+  runValidator: () => runValidator(),
+});
+
+restate.serve({ services: [travisDiscovery], port: 9080 });
