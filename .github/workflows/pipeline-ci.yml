@@ -1,0 +1,64 @@
+# A-01 T052 (research R12): CI for the discovery runtime until A-03 folds it into the
+# Turborepo CI. No network calls to county sources and no secrets: unit tests use injected
+# fetches and synthetic fixtures only; the acceptance suite (live recounts) is not run here.
+name: pipeline-ci
+
+on:
+  push:
+    paths:
+      - "pipeline/oracle-runtime/**"
+      - ".github/workflows/pipeline-ci.yml"
+  pull_request:
+    paths:
+      - "pipeline/oracle-runtime/**"
+      - ".github/workflows/pipeline-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  oracle-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: pipeline/oracle-runtime
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: pipeline/oracle-runtime/package-lock.json
+
+      # The vendored kit validator reads YAML with PyYAML when it is installed (parser parity
+      # with its built-in reader is checked in the story evidence, T050).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: python3 -m pip install --disable-pip-version-check "pyyaml==6.0.3"
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Readiness validator self-test (vendored kit, unmodified)
+        run: python3 kit/use-oracle/scripts/validate-county-readiness.py --self-test
