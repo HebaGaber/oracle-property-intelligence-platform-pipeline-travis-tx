@@ -194,6 +194,114 @@ describe("scanExport (streaming)", () => {
   });
 });
 
+// The real 2026 TCAD JSON ("protaxExport") prints the property key as top-level `pID` (a
+// number) and the geographic ID as `geoID` inside a one-element `propertyIdentification`
+// array; every child array repeats `pID`. These records copy that SHAPE only: every value
+// is invented (test-only), and no real owner, address or account appears here.
+function protaxRecord(pID: number, geoIDs: Array<string | null> = [`0${pID}000`]): object {
+  return {
+    pID,
+    pYear: 2026,
+    pVersion: 0,
+    propType: "R",
+    geometry: "SYNTHETIC",
+    propertyIdentification: geoIDs.map((geoID) => ({ geoID, refID2: null, pID })),
+    deeds: [
+      { deedID: 1, deedDt: "2001-01-01T00:00:00", pID },
+      { deedID: 2, deedDt: null, pID },
+    ],
+    owners: [{ ownerID: 9, name: "SYNTHETIC OWNER", pID }],
+    sales: [],
+  };
+}
+
+describe("scanExport on the protax JSON shape (pID, nested geoID)", () => {
+  async function scanOf(records: object[], zip = false) {
+    const dir = tmp();
+    const json = JSON.stringify(records);
+    const path = join(dir, zip ? "export.zip" : "export.json");
+    writeFileSync(
+      path,
+      zip ? buildZip([{ name: "Synthetic-protaxExport.json", data: Buffer.from(json) }]) : json,
+    );
+    return scanExport(path);
+  }
+
+  it("names top-level pID exactly as printed and proves it present and unique on every record", async () => {
+    const scan = await scanOf([protaxRecord(11), protaxRecord(12), protaxRecord(13)], true);
+    expect(scan.zip_entry).toBe("Synthetic-protaxExport.json");
+    expect(scan.count).toBe(3);
+    expect(scan.identifier_name).toBe("pID");
+    expect(scan.identifier_proven).toBe(true);
+    expect(scan.identifier_format).toBe("integer, 2 digits");
+    expect(scan.deed_or_sale_dates_present).toBe(true);
+    expect(scan.fields).toEqual(
+      expect.arrayContaining(["pID", "propertyIdentification", "propertyIdentification[].geoID"]),
+    );
+  });
+
+  it("reports every key candidate with presence and distinct counts (no values)", async () => {
+    const scan = await scanOf([protaxRecord(11), protaxRecord(12)]);
+    expect(scan.identifier_candidates).toEqual([
+      { name: "pID", records: 2, present: 2, distinct: 2, proven: true },
+      { name: "propertyIdentification[].geoID", records: 2, present: 2, distinct: 2, proven: true },
+    ]);
+  });
+
+  it("a duplicated pID is not proven; a unique nested geoID is then the proven key", async () => {
+    const scan = await scanOf([
+      protaxRecord(11, ["A1"]),
+      protaxRecord(11, ["A2"]),
+      protaxRecord(12, ["A3"]),
+    ]);
+    expect(scan.identifier_name).toBe("propertyIdentification[].geoID");
+    expect(scan.identifier_proven).toBe(true);
+    expect(scan.identifier_format).toBe("string, 2 characters");
+    expect(scan.identifier_candidates?.[0]).toMatchObject({
+      name: "pID",
+      distinct: 2,
+      proven: false,
+    });
+  });
+
+  it("when no candidate is proven, keeps the printed pID name with identifier_proven false", async () => {
+    const scan = await scanOf([protaxRecord(11, ["A1"]), protaxRecord(11, ["A1"])]);
+    expect(scan.identifier_name).toBe("pID");
+    expect(scan.identifier_proven).toBe(false);
+  });
+
+  it("a record missing pID breaks the proof (presence on every record)", async () => {
+    const { pID: _drop, ...noKey } = protaxRecord(12) as { pID: number };
+    const scan = await scanOf([protaxRecord(11, [null]), noKey, protaxRecord(13, [null])]);
+    expect(scan.identifier_name).toBe("pID");
+    expect(scan.identifier_proven).toBe(false);
+    expect(scan.identifier_candidates?.[0]).toMatchObject({ records: 3, present: 2 });
+  });
+
+  it("a record with two geoIDs is ambiguous, so the nested geoID is not proven", async () => {
+    const scan = await scanOf([protaxRecord(11, ["A1", "A9"]), protaxRecord(11, ["A2"])]);
+    const geo = scan.identifier_candidates?.find((c) => c.name.endsWith("geoID"));
+    expect(geo).toMatchObject({ present: 1, proven: false });
+    expect(scan.identifier_proven).toBe(false);
+  });
+
+  it("does not take a child array's repeated pID (e.g. deeds[].pID) as the key", async () => {
+    const records = [protaxRecord(11), protaxRecord(12)].map((r) => {
+      const { pID: _drop, ...rest } = r as { pID: number };
+      return { ...rest, propertyIdentification: [] };
+    });
+    const scan = await scanOf(records);
+    expect(scan.identifier_name).toBeNull();
+    expect(scan.identifier_proven).toBe(false);
+  });
+
+  it("recognises other printed spellings of the property id (propID)", async () => {
+    const scan = await scanOf([{ propID: "1" }, { propID: "2" }]);
+    expect(scan.identifier_name).toBe("propID");
+    expect(scan.identifier_proven).toBe(true);
+  });
+});
+
 describe("probeTcad", () => {
   it("downloads once, records bytes, SHA-256, download rate, roll year and certification date", async () => {
     const dir = tmp();

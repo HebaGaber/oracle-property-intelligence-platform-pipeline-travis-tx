@@ -17,6 +17,7 @@
     "discover": "tsx travis/discovery/discover.ts",
     "check-catalog": "tsx travis/discovery/check-catalog.ts",
     "validate": "tsx travis/discovery/run-validator.ts",
+    "rescan-tcad": "tsx travis/discovery/rescan-tcad.ts",
     "resolve": "tsx travis/discovery/resolve.ts",
     "render-sources": "tsx travis/discovery/render-sources-md.ts"
   },

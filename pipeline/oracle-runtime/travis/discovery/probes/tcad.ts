@@ -53,10 +53,23 @@ export interface ExportScan {
   zip_entry: string | null;
   count: number;
   fields: string[];
+  /** The key field exactly as printed: a top-level name, or `parent[].child` when nested. */
   identifier_name: string | null;
+  /** True only when the key is present exactly once on every record and unique across all. */
   identifier_proven: boolean;
   identifier_format: string | null;
+  /** Every prop-id / geo-id field seen, with counts only (never values). */
+  identifier_candidates?: IdentifierCandidate[];
   deed_or_sale_dates_present: boolean;
+}
+
+export interface IdentifierCandidate {
+  name: string;
+  records: number;
+  /** Records carrying exactly one non-empty value for this field. */
+  present: number;
+  distinct: number;
+  proven: boolean;
 }
 
 export interface TcadProbe {
@@ -217,7 +230,10 @@ async function detectRecordPath(path: string): Promise<string> {
 }
 
 const RecordSchema = z.record(z.string(), z.unknown());
-const PROP_ID = /^prop[_ ]?id$/i;
+// Printed spellings of the property id: prop_id / PROP_ID (legacy layout), propID, property_id
+// and pID (the 2026 TCAD protax JSON). Only a TOP-LEVEL field counts: every child array of
+// the protax JSON (deeds, owners, sales...) repeats pID, which is a foreign key there.
+const PROP_ID = /^p(?:rop(?:erty)?)?[_ ]?id$/i;
 const GEO_ID = /^geo[_ ]?id$/i;
 const DEED_OR_SALE_DATE = /(deed|sale).*(date|dt)|(date|dt).*(deed|sale)/i;
 const MAX_FIELD_DEPTH = 3;
@@ -228,28 +244,73 @@ function nonEmpty(v: unknown): boolean {
   return true;
 }
 
+function isScalar(v: unknown): boolean {
+  return v === null || typeof v !== "object";
+}
+
+/** Rank: top-level prop id, then top-level geo id, then a geo id nested one level down. */
+type IdRank = 0 | 1 | 2;
+
 class IdTracker {
   readonly seen = new Set<string>();
   present = 0;
+  allNumbers = true;
   allDigits = true;
   minLen = Number.POSITIVE_INFINITY;
   maxLen = 0;
-  add(v: unknown): void {
-    if (!nonEmpty(v)) return;
+  constructor(
+    readonly rank: IdRank,
+    readonly order: number,
+  ) {}
+  /** One record's values for this field: proven only when there is exactly one. */
+  addRecord(values: readonly unknown[]): void {
+    const present = values.filter((v) => isScalar(v) && nonEmpty(v));
+    if (present.length !== 1) return;
+    const v = present[0];
     const s = String(v);
     this.present += 1;
     this.seen.add(s);
+    if (typeof v !== "number") this.allNumbers = false;
     if (!/^\d+$/.test(s)) this.allDigits = false;
     this.minLen = Math.min(this.minLen, s.length);
     this.maxLen = Math.max(this.maxLen, s.length);
   }
+  proven(count: number): boolean {
+    return count > 0 && this.present === count && this.seen.size === count;
+  }
   format(): string {
-    const kind = this.allDigits ? "integer" : "string";
-    const unit = this.allDigits ? "digits" : "characters";
+    const kind = this.allNumbers ? "integer" : this.allDigits ? "string of digits" : "string";
+    const unit = this.allNumbers ? "digits" : "characters";
     return this.minLen === this.maxLen
       ? `${kind}, ${this.minLen} ${unit}`
       : `${kind}, ${this.minLen}-${this.maxLen} ${unit}`;
   }
+}
+
+/** Collects one record's key candidates: top-level prop/geo ids and nested geo ids. */
+function keyCandidates(
+  record: Record<string, unknown>,
+): Map<string, { rank: IdRank; values: unknown[] }> {
+  const out = new Map<string, { rank: IdRank; values: unknown[] }>();
+  for (const [k, v] of Object.entries(record)) {
+    if (PROP_ID.test(k)) out.set(k, { rank: 0, values: [v] });
+    else if (GEO_ID.test(k)) out.set(k, { rank: 1, values: [v] });
+    else if (v !== null && typeof v === "object") {
+      const children = Array.isArray(v) ? v : [v];
+      const base = Array.isArray(v) ? `${k}[]` : k;
+      for (const child of children) {
+        if (child === null || typeof child !== "object" || Array.isArray(child)) continue;
+        for (const [ck, cv] of Object.entries(child)) {
+          if (!GEO_ID.test(ck)) continue;
+          const name = `${base}.${ck}`;
+          const entry = out.get(name) ?? { rank: 2 as const, values: [] };
+          entry.values.push(cv);
+          out.set(name, entry);
+        }
+      }
+    }
+  }
+  return out;
 }
 
 export async function scanExport(
@@ -292,32 +353,37 @@ export async function scanExport(
   for await (const item of records) {
     const record = RecordSchema.parse((item as { value: unknown }).value);
     count += 1;
-    for (const [k, v] of Object.entries(record)) {
-      if (PROP_ID.test(k) || GEO_ID.test(k)) {
-        let t = ids.get(k);
-        if (!t) {
-          t = new IdTracker();
-          ids.set(k, t);
-        }
-        t.add(v);
+    for (const [name, { rank, values }] of keyCandidates(record)) {
+      let t = ids.get(name);
+      if (!t) {
+        t = new IdTracker(rank, ids.size);
+        ids.set(name, t);
       }
+      t.addRecord(values);
     }
     walk(record, "", 1);
   }
 
-  const names = [...ids.keys()];
-  const identifier =
-    names.find((n) => PROP_ID.test(n)) ?? names.find((n) => GEO_ID.test(n)) ?? null;
-  const tracker = identifier ? (ids.get(identifier) as IdTracker) : null;
+  // Ranked candidates; the first proven one is the key, otherwise the best-ranked one is
+  // named with identifier_proven false (the printed name is still evidence).
+  const ranked = [...ids.entries()].sort(([, a], [, b]) => a.rank - b.rank || a.order - b.order);
+  const chosen = ranked.find(([, t]) => t.proven(count)) ?? ranked[0] ?? null;
+  const tracker = chosen ? chosen[1] : null;
   return {
     record_path: recordPath,
     zip_entry,
     count,
     fields: [...fields].sort(),
-    identifier_name: identifier,
-    identifier_proven:
-      tracker !== null && count > 0 && tracker.present === count && tracker.seen.size === count,
+    identifier_name: chosen ? chosen[0] : null,
+    identifier_proven: tracker !== null && tracker.proven(count),
     identifier_format: tracker && tracker.present > 0 ? tracker.format() : null,
+    identifier_candidates: ranked.map(([name, t]) => ({
+      name,
+      records: count,
+      present: t.present,
+      distinct: t.seen.size,
+      proven: t.proven(count),
+    })),
     deed_or_sale_dates_present: deedOrSale,
   };
 }
