@@ -164,3 +164,20 @@ docs/
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
 | Article I / XXII: no hosted-URL proof for A-01 | A-01 is a `Project` feature (FEAT-A01, approved at G1) that produces a catalog and a validator verdict, not a screen. Its proof is the committed catalog, summary and validator report in the PR (FR-007). Hosted display is tested in A-11 AC-4 and A-13 AC-1/AC-2. Accepted by the PO at G4 (C-04 exception, 2026-10-19) | Building a hosted page now would duplicate A-13 before the A-03 skeleton exists and would delay the critical path A-01 → A-03 |
+
+## Additions after planning (T063, 2026-10-20)
+
+These touch-points were not in the plan when it was approved. Each was added during the live run or the reviews, for the reason given. All are offline TypeScript commands in `pipeline/oracle-runtime` (no new service, no AWS), each writes only its own catalog fields through `amendCatalog` (recorded in the catalog's `amendments` list), and each reruns the validator.
+
+| Touch-point | Added for | Network |
+| --- | --- | --- |
+| `travis/discovery/record-gis-runner.ts` | Record the GIS count from the one approved US GitHub Actions runner request (DEC-A-01-source-access D-2; FR-006b amendment) | none (reads the runner artifact) |
+| `travis/discovery/reprobe-jurisdictions.ts` | One re-probe of jurisdictions whose evidence fetch failed (network error, 404, 5xx); refuses 403, challenge and WAF rows (OR-M2) | one identified request per named row |
+| `travis/discovery/explain-blocked.ts`, `travis/discovery/jurisdiction-explanation.ts` | A plain `blocked_explanation` on every non-supported row; no records request filed (PO decision 2026-10-20) | none |
+| `travis/discovery/reconcile-parcel-gap.ts`, `travis/discovery/parcel-gap.ts` | Explain the 24.24% GIS-vs-roll gap from the certified export (account breakdown) | none (streams the held export) |
+| `travis/discovery/approve-exception.ts` | Write the PO-approved parcel exception, bound to its values (OR-M3; DEC-A-01-parcel-gap-exception) | none |
+| `travis/discovery/backfill-amendments.ts` | One-off: record the amendments made before the `amendments` list existed (OR-M5) | none |
+| `travis/discovery/render-coverage.ts` | Regenerate `docs/evidence/A-01-coverage.md` from the catalog (OR-M5) | none |
+| `travis/lib/egress.ts` | Check and record the egress country before any request-sending command (OR-B1) | one request to the Cloudflare trace (country only) |
+| `pipeline/local-stack/services/prove-destination.ts`, `configured-db.ts` | A third destination identity through the configured connection (OR-m4) | local database only |
+| `travis/discovery/refresh-tcad-landing.ts` | One identified request for the TCAD certification date (PO decision 2026-10-20; FR-003a amendment) | one identified request |

@@ -8,7 +8,7 @@ spec: specs/001-discover-sources/spec.md
 owner: HebaGaber             # QC Lead
 status: Approved             # Draft → In Review → Approved
 gate: G6
-version: 0.6
+version: 0.7
 created: 2026-10-19
 runtime_url: "none: Project story (G4 C-04 exception); every case runs from a terminal at the repo root on branch 001-discover-sources"
 reviewed_code: 7311edd
@@ -99,9 +99,12 @@ V=pipeline/oracle-runtime/kit/use-oracle/scripts/validate-county-readiness.py
 CAT=pipeline/docs/travis-sources.yaml
 REP=docs/evidence/A-01-readiness.json
 # catq EXPR [FILE]: print one catalog field as JSON, e.g. catq 'parcel.roll_year'
-catq() { node -e "const y=require('./pipeline/oracle-runtime/node_modules/yaml');const c=y.parse(require('fs').readFileSync(process.argv[2]||'$CAT','utf8'));console.log(JSON.stringify(new Function('c','return c.'+process.argv[1])(c)))" "$1" "$2"; }
+catq() { node -e "const y=require('./pipeline/oracle-runtime/node_modules/yaml');const c=y.parse(require('fs').readFileSync(process.argv[2]||'$CAT','utf8'));console.log(JSON.stringify(new Function('c','with(c){return '+process.argv[1]+'}')(c)))" "$1" "$2"; }
 # repq EXPR: print one validator-report field as JSON, e.g. repq 'overall'
-repq() { node -e "const r=JSON.parse(require('fs').readFileSync('$REP','utf8'));console.log(JSON.stringify(new Function('r','return r.'+process.argv[1])(r)))" "$1"; }
+repq() { node -e "const r=JSON.parse(require('fs').readFileSync('$REP','utf8'));console.log(JSON.stringify(new Function('r','with(r){return '+process.argv[1]+'}')(r)))" "$1"; }
+# every source request carries the project's identified User-Agent (NFR-001, ERR-1)
+ORACLE_UA='oracle-travis-discovery/0.1 (PrismTeam Oracle Travis County pipeline; +https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-travis-tx)'
+curl() { command curl -A "$ORACLE_UA" "$@"; }
 ```
 
 - **Risks:** source counts drift daily (handled by capture-bounded recounts); TCAD may stay blocked (outcome B in § 3); Socrata may throttle without an app token (TC-008).
@@ -183,11 +186,11 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
   1. **Open** the terminal at the repo root on `001-discover-sources`.
   2. **Run** `catq 'destination.writes_in_scope'` → `true`.
   3. **Run** `catq 'destination.proven'` → `true`.
-  4. **Run** `catq 'destination.independent_identity_sources.length'` → `2`.
-  5. **Run** `catq 'new Set(destination.independent_identity_sources).size'` → `2`.
+  4. **Run** `catq 'destination.independent_identity_sources.length >= 2'` → `true` (3 since OR-m4: Docker side, SQL side and the configured connection; ERR-6).
+  5. **Run** `catq 'new Set(destination.independent_identity_sources).size === destination.independent_identity_sources.length'` → `true`.
   6. **Run** `catq 'JSON.stringify(destination)' | grep -cE 'postgres://|password|DATABASE_URL'` → `0`.
   7. **Run** `repq 'gates.find(g=>g.gate==="destination").status'` → `"PASS"`.
-- **Expected result:** two distinct identity entries (one Docker-side, one SQL-side); no connection URL, password or variable name recorded; the destination gate passes.
+- **Expected result:** at least two distinct identity entries (Docker side, SQL side, and since OR-m4 the configured connection); no connection URL, password or variable name recorded; the destination gate passes.
 
 ### A-01-TC-004: Incomplete records request blocks the gate (negative)
 
@@ -223,11 +226,11 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
 - **Steps:**
   1. **Open** the terminal at the repo root on `001-discover-sources`.
   2. **Run** `A='sources.find(s=>s.key==="austin_permits")'; catq "$A.denominator"` → `{value: <integer>, source_url: "…data.austintexas.gov/resource/3syk-w9eu…", captured_at: "<UTC>", method: "count(*)"}`.
-  3. **Run** `TS=$(catq "$A.denominator.captured_at" | tr -d '"'); curl -sG https://data.austintexas.gov/resource/3syk-w9eu.json --data-urlencode '$select=count(*)' --data-urlencode "\$where=:created_at <= '${TS%Z}'"` → `[{"count":"N"}]` where N equals step 2's `value`.
+  3. **Run** `TS=$(catq "$A.denominator.captured_at" | tr -d '"'); curl -sG https://data.austintexas.gov/resource/3syk-w9eu.json --data-urlencode '$select=count(*)' --data-urlencode '$where=1=1'` → `[{"count":"N"}]` where |N − step 2's `value`| ≤ 0.5% of `value`. The city reloads `3syk-w9eu` in full (every row has the same `:created_at`), so a recount bounded by `:created_at` is always 0 (ERR-3).
   4. **Run** `catq "$A.tcad_id_null_count"` → an object with integer `value`, `source_url`, `captured_at`.
-  5. **Run** `curl -sG https://data.austintexas.gov/resource/3syk-w9eu.json --data-urlencode '$select=count(*)' --data-urlencode "\$where=tcad_id IS NULL AND :created_at <= '${TS%Z}'"` → count M.
-  6. **Run** `curl -sG https://data.austintexas.gov/resource/3syk-w9eu.json --data-urlencode '$select=count(*)' --data-urlencode "\$where=:updated_at > '${TS%Z}'"` → count U; |M − step 4's `value`| ≤ U.
-- **Expected result:** the denominator equals the capture-bounded recount exactly (reference 2,380,725 on 2026-10-19); the null-`tcad_id` count matches its recount within rows updated since capture (reference 63,019 on 2026-10-17).
+  5. **Run** `curl -sG https://data.austintexas.gov/resource/3syk-w9eu.json --data-urlencode '$select=count(*)' --data-urlencode '$where=tcad_id IS NULL'` → count M.
+  6. **Check** |M − step 4's `value`| ≤ 0.5% of step 4's `value`.
+- **Expected result:** the denominator and the null-`tcad_id` count match today's recounts within 0.5% (references 2,380,725 and 63,019; on 2026-10-20 the recounts were 2,380,939 and 63,019).
 
 ### A-01-TC-007: Austin throughput, projection and decision (happy path)
 
@@ -262,7 +265,7 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
   1. **Open** the terminal at the repo root on `001-discover-sources`.
   2. **Run** `catq 'parcel.assessed_parcel_count_measurement'` → `{value: <integer > 0> (equal to `parcel.assessed_parcel_count`), source_url, captured_at}` (first measurement; no reference value).
   3. **Run** `catq 'parcel.roll_year'` → `2026`.
-  4. **Run** `catq 'parcel.certification_date'` → a string matching `YYYY-MM-DD`.
+  4. **Run** `catq 'parcel.certification_date'` → a string matching `YYYY-MM-DD`; **or**, when no official TCAD source states it (FR-003a amendment, ERR-4), `catq 'parcel.certification_date_measurement'` → `value: null` with a `missing_reason`, a `traviscad.org` `source_url` and a UTC `captured_at`.
   5. **Run** `catq 'parcel.identifier_name + "/" + parcel.identifier_layout_name'` → `"pID/prop_id"` (the key as printed in the 2026 JSON export, with its layout name; or a geo id with its layout name).
   6. **Run** `catq 'typeof parcel.deed_or_sale_dates_present'` → `"boolean"`.
   7. **Run** `F=$(catq 'parcel.export_receipt.file_path' | tr -d '"'); shasum -a 256 "$F" | cut -d' ' -f1` → a 64-character hash H.
@@ -416,11 +419,11 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
 - **Maps to:** AC-6, FR-006b
 - **Steps:**
   1. **Open** the terminal at the repo root on `001-discover-sources`.
-  2. **Run** `catq 'sources.filter(s=>s.blocked_evidence).map(s=>s.key+":"+s.blocked_evidence.geo_signal)'` → each entry is `<key>:none` or `<key>:<quoted signal text>`.
+  2. **Run** `catq 'sources.flatMap(s=>[s.blocked_evidence,s.operator_blocked_evidence].filter(Boolean).map(e=>s.key+":"+e.geo_signal))'` → each entry is `<key>:none` or `<key>:<quoted signal text>` (a source captured from the US runner keeps its operator-side stop in `operator_blocked_evidence`; ERR-6).
   3. **If every signal is `none`: run** `test -e .github/workflows/geo-check.yml; echo "exit=$?"` → `exit=1`.
   4. **If every signal is `none`: run** `grep -c "N/A: no geo signal" docs/evidence/A-01.md` → `1`.
-  5. **If a signal is quoted: run** `gh run list --workflow geo-check.yml --branch 001-discover-sources --json conclusion --jq length` → `1`.
-  6. **If a signal is quoted: run** `grep -cE "geo-check.*HTTP [0-9]{3}" docs/evidence/A-01.md` → `1` or more (the US run's status code is recorded).
+  5. **If a signal is quoted: run** `gh run list -R HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx --workflow a01-us-gis-probe.yml --branch 001-discover-sources --json conclusion --jq length` → `1` (the US check, FR-006b amendment, DEC-A-01-source-access D-2).
+  6. **If a signal is quoted: run** `grep -cE "^http_status: 200|HTTP 200" docs/evidence/A-01-us-gis-runner.md` → `1` or more (the US run's status code is recorded).
 - **Expected result:** a plain 403 (signal `none`) never triggers a US request, and the workflow does not exist; only a saved, quoted geo signal leads to exactly one US run, with its result recorded.
 
 ### A-01-TC-021: BBB challenge recorded as blocked, no bypass (error)
@@ -500,7 +503,7 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
 - **Maps to:** AC-6, FR-006f
 - **Steps:**
   1. **Open** the terminal at the repo root on `001-discover-sources`.
-  2. **Run** `npm --prefix pipeline/oracle-runtime run resolve -- austin_permits captured; echo "exit=$?"` while `austin_permits` is not waiting → last line `exit=1`.
+  2. **Run** `npm --prefix pipeline/oracle-runtime run resolve -- austin_permits captured; echo "exit=$?"` while `austin_permits` is not waiting → last line `exit=2` (refused before anything is sent: no run id, or the catalog could not be rewritten; ERR-6).
   3. **Run** `npm --prefix pipeline/oracle-runtime test -- -t "A-01-TC-027"; echo "exit=$?"` → output lists `A-01-TC-027 resolve` with 0 failed assertions; last line `exit=0`.
   4. **If TCAD is blocked (outcome B): run** `npm --prefix pipeline/oracle-runtime run resolve -- tcad_certified still-blocked; echo "exit=$?"` → last line `exit=0`.
   5. **If step 4 ran: run** `grep -cE "tcad_certified.*still blocked" docs/evidence/A-01.md` → `1` or more.
@@ -522,7 +525,7 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
 - **Steps:**
   1. **Open** the terminal at the repo root on `001-discover-sources`.
   2. **Run** `catq 'sources.find(s=>s.key==="austin_permits").throughput.pages_read * sources.find(s=>s.key==="austin_permits").throughput.page_size'` → a number ≤ `150000` when `pages_read` is `3` (≈ 6% of 2,380,725).
-  3. **Run** `ls pipeline/data/raw 2>/dev/null` → only `tcad` (no Austin, Comptroller or GIS row dumps).
+  3. **Run** `ls pipeline/data/raw 2>/dev/null` → only `tcad`, plus `gis/us-runner-<run id>` holding the 16-byte US-runner count answer (no Austin, Comptroller or GIS row dumps; ERR-6).
 - **Expected result:** throughput measurement reads at most 3 pages of 50,000 Austin rows by default (more pages only if documented), and no dataset other than the one TCAD export is downloaded in A-01.
 
 ### A-01-TC-NF-03: Discovery run finishes within 8 hours (NFR)
@@ -553,10 +556,14 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
 
 ## 11. Execution log (filled in Phase 5)
 
+Full results for every case: `docs/reports/A-01-test-report.md` (2026-10-20, 27/27 applicable pass).
+
+**v0.7 (2026-10-20):** updated after the first end-to-end QC run to match the automation: the § 6 setup (identified User-Agent, ERR-1; compound expressions, ERR-2), TC-006 recount (ERR-3), TC-009 step 4 (ERR-4, FR-003a amendment), TC-003, TC-020, TC-027 and TC-NF-02 (ERR-6). The G6 approval above was given on v0.6; these edits follow approved PO decisions and fixed defects, and re-approval is the PO's call.
+
 | TC ID | Run date | Build (sha) | Catalog SHA-256 | Result | Evidence | Defect |
 | --- | --- | --- | --- | --- | --- | --- |
-| A-01-TC-001 | | | | PASS / FAIL / N/A (outcome B) | `docs/evidence/A-01-readiness.json` | |
-| A-01-TC-023 | | | | PASS / FAIL (times: …) | `docs/evidence/A-01.md` | |
+| A-01-TC-001 | 2026-10-20 | `9c7579a` | `0616593dccae3c67cb59fd60a1b945116ebe6aae5c6c5a6436fa6a1ea4fef701` | PASS (outcome A) | `docs/evidence/A-01-readiness.json` | — |
+| A-01-TC-023 | pending (PO, task T061) | | | PASS / FAIL (times: …) | `docs/evidence/A-01.md` | |
 
 ---
 

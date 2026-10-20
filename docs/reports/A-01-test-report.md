@@ -16,7 +16,9 @@ signed_off_date:
 
 # QC Test Report: A-01 Discover Travis County sources and pass readiness preflight
 
-Every case in `testplans/A-01-test-cases.md` (v0.6, 30 cases) was run from the repository root on branch `001-discover-sources`, through its automated test: `pipeline/oracle-runtime/test/acceptance/a01.acceptance.test.ts` (one test per CLI case, `npm run test:acceptance`) and the unit tests the plan names for UNIT cases. There is no hosted URL in A-01 (G4 C-04 exception), so every hosted-URL field reads "N/A: Project story, no hosted runtime until A-03".
+This is the report task TZ06 calls `docs/reports/TR-A-01.md`; it uses the template's name `docs/reports/A-01-test-report.md` (task T064).
+
+Every case in `testplans/A-01-test-cases.md` (v0.6 at execution, updated to v0.7 to match the automation; 30 cases) was run from the repository root on branch `001-discover-sources`, through its automated test: `pipeline/oracle-runtime/test/acceptance/a01.acceptance.test.ts` (one test per CLI case, `npm run test:acceptance`) and the unit tests the plan names for UNIT cases. There is no hosted URL in A-01 (G4 C-04 exception), so every hosted-URL field reads "N/A: Project story, no hosted runtime until A-03".
 
 ## Summary
 
