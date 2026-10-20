@@ -625,7 +625,13 @@ describe("OR-M5: rule 11 and the sources.md sections", () => {
     expect(md).toMatch(
       /## Approved exceptions\n\n### Gate `parcel`\n\nThe readiness validator reports the parcel gate as \*\*PASS because of this exception\*\*; the raw gap stays 0.99%/,
     );
-    expect(md).toMatch(/\| GIS features \(gis_feature_count\) \| 1,000 \|/);
+    expect(md).toMatch(/\| GIS features \(gis_feature_count\) \| 1,000 \| https?:\/\//);
+    // ERR-5 (FR-007a, A-01-TC-022 step 5): no numeric table row without a URL and a UTC time.
+    const bare = md
+      .split("\n")
+      .filter((l) => /\| *[0-9][0-9,]* *\|/.test(l))
+      .filter((l) => !/https?:\/\/.*[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z/.test(l));
+    expect(bare).toEqual([]);
     expect(md).toMatch(/## Amendments\n\n.*\n\n\| At \(UTC\) \| Command \|/);
     expect(md).toMatch(
       /\| 2026-01-03T00:00:00Z \| `approve-exception` \| approved_exceptions\[parcel\] \|/,

@@ -523,25 +523,35 @@ function exceptionsSection(catalog: Catalog): string[] {
         "",
       );
     }
+    // ERR-5 (FR-007a): every number carries the source URL and capture time of the
+    // measurement it is bound to; text rows have none.
+    const roll = p?.assessed_parcel_count_measurement;
+    const gis = p?.gis_feature_count_measurement;
+    const from = (m: { source_url: string; captured_at: string } | undefined): string[] =>
+      m ? [m.source_url, utc(m.captured_at)] : ["not recorded", "not recorded"];
+    const none = ["n/a", "n/a"];
     out.push(
       ...table(
-        ["Approved", "Value"],
+        ["Approved", "Value", "Source", "Captured (UTC)"],
         [
-          ["Approved by", cell(e.approved_by ?? "not recorded")],
-          ["Approved on", e.approved_at ?? "not recorded"],
+          ["Approved by", cell(e.approved_by ?? "not recorded"), ...none],
+          ["Approved on", e.approved_at ?? "not recorded", ...none],
           [
             "Gap (gap_pct)",
             e.approved_gap_pct === undefined ? "not bound" : `${num(e.approved_gap_pct)}%`,
+            ...from(gis),
           ],
           [
             "GIS features (gis_feature_count)",
             e.approved_gis_count === undefined ? "not bound" : num(e.approved_gis_count),
+            ...from(gis),
           ],
           [
             "Roll accounts (assessed_parcel_count)",
             e.approved_assessed_count === undefined ? "not bound" : num(e.approved_assessed_count),
+            ...from(roll),
           ],
-          ["Decision record", e.decision_ref ? `\`${e.decision_ref}\`` : "not recorded"],
+          ["Decision record", e.decision_ref ? `\`${e.decision_ref}\`` : "not recorded", ...none],
         ],
       ),
       `- Reason: ${e.reason}`,

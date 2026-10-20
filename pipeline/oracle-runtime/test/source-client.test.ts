@@ -85,7 +85,7 @@ describe("source-client: success path", () => {
   });
 });
 
-describe("source-client: StopOnBlocked (403, challenge, timeout)", () => {
+describe("A-01-TC-019 no evasion: source-client StopOnBlocked (403, challenge, timeout)", () => {
   it("403 makes exactly one attempt and gives outcome blocked", async () => {
     const sleep = vi.fn(async () => undefined);
     const { fetch, calls } = scripted([() => respond(403, "Forbidden")]);
@@ -150,7 +150,7 @@ describe("source-client: StopOnBlocked (403, challenge, timeout)", () => {
   });
 });
 
-describe("source-client: backoff only on 429/5xx", () => {
+describe("A-01-TC-008 429 backoff: source-client backoff only on 429/5xx", () => {
   it("backoffDelayMs is full jitter with 1 s base and 60 s cap", () => {
     expect(backoffDelayMs(1, () => 1)).toBe(1000);
     expect(backoffDelayMs(2, () => 1)).toBe(2000);
@@ -209,7 +209,7 @@ describe("source-client: backoff only on 429/5xx", () => {
   });
 });
 
-describe("source-client: identity and network posture", () => {
+describe("A-01-TC-NF-01 etiquette: source-client identity and network posture", () => {
   it("the User-Agent is constant across attempts and names the project and repo, no email", async () => {
     const { fetch, calls } = scripted([
       () => respond(503, ""),

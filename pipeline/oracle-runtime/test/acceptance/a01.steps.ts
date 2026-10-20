@@ -8,6 +8,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
+import { USER_AGENT } from "../../travis/lib/source-client.js";
 
 export const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 
@@ -15,8 +16,11 @@ export const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url))
 const SETUP = String.raw`V=pipeline/oracle-runtime/kit/use-oracle/scripts/validate-county-readiness.py
 CAT=pipeline/docs/travis-sources.yaml
 REP=docs/evidence/A-01-readiness.json
-catq() { node -e "const y=require('./pipeline/oracle-runtime/node_modules/yaml');const c=y.parse(require('fs').readFileSync(process.argv[2]||'$CAT','utf8'));console.log(JSON.stringify(new Function('c','return c.'+process.argv[1])(c)))" "$1" "$2"; }
-repq() { node -e "const r=JSON.parse(require('fs').readFileSync('$REP','utf8'));console.log(JSON.stringify(new Function('r','return r.'+process.argv[1])(r)))" "$1"; }
+catq() { node -e "const y=require('./pipeline/oracle-runtime/node_modules/yaml');const c=y.parse(require('fs').readFileSync(process.argv[2]||'$CAT','utf8'));console.log(JSON.stringify(new Function('c','with(c){return '+process.argv[1]+'}')(c)))" "$1" "$2"; }
+repq() { node -e "const r=JSON.parse(require('fs').readFileSync('$REP','utf8'));console.log(JSON.stringify(new Function('r','with(r){return '+process.argv[1]+'}')(r)))" "$1"; }
+# ERR-2: catq/repq resolve every top-level name in a compound expression (with), not only the first.
+# ERR-1 (NFR-001): every source request in a case carries the project's identified User-Agent.
+curl() { command curl -A "$ORACLE_UA" "$@"; }
 `;
 
 export interface ShellResult {
@@ -29,7 +33,7 @@ export interface ShellResult {
 export function sh(command: string, env: Record<string, string> = {}): ShellResult {
   const r = spawnSync("bash", ["-c", `${SETUP}\n${command}`], {
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env },
+    env: { ...process.env, ORACLE_UA: USER_AGENT, ...env },
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
@@ -203,8 +207,14 @@ export const tc002 = {
 export const tc003 = {
   step2Writes: () => expectCatq("destination.writes_in_scope", true),
   step3Proven: () => expectCatq("destination.proven", true),
-  step4Two: () => expectCatq("destination.independent_identity_sources.length", 2),
-  step5Distinct: () => expectCatq("new Set(destination.independent_identity_sources).size", 2),
+  // ERR-6: OR-m4 (review 2026-10-20) added a third identity, the configured connection the
+  // loader uses; FR-001c asks for at least two independent ones, all distinct.
+  step4Two: () => expectCatq("destination.independent_identity_sources.length >= 2", true),
+  step5Distinct: () =>
+    expectCatq(
+      "new Set(destination.independent_identity_sources).size === destination.independent_identity_sources.length",
+      true,
+    ),
   step6NoSecrets: () =>
     expect(
       grepCount(
@@ -287,8 +297,11 @@ export const tc006 = {
     expect(d.method).toBe("count(*)");
     return d.value as number;
   },
+  // ERR-3: the city reloads 3syk-w9eu in full (every row carries the same :created_at, the
+  // reload time), so a recount bounded by :created_at is always 0. Recount now and allow the
+  // same 0.5% drift as A-01-TC-005 and A-01-TC-014.
   step3Recount: (value: number) =>
-    expect(socrataCount("\\$where=:created_at <= '${TS%Z}'")).toBe(value),
+    expect(Math.abs(socrataCount("\\$where=1=1") - value)).toBeLessThanOrEqual(value * 0.005),
   step4NullCount: () => {
     const m = catq(`${A}.tcad_id_null_count`) as {
       value: unknown;
@@ -300,11 +313,9 @@ export const tc006 = {
     expect(m.captured_at).toMatch(UTC);
     return m.value as number;
   },
-  step5NullRecount: () => socrataCount("\\$where=tcad_id IS NULL AND :created_at <= '${TS%Z}'"),
-  step6UpdatedSince: (nullCount: number, recount: number) => {
-    const updated = socrataCount("\\$where=:updated_at > '${TS%Z}'");
-    expect(Math.abs(recount - nullCount)).toBeLessThanOrEqual(updated);
-  },
+  step5NullRecount: () => socrataCount("\\$where=tcad_id IS NULL"),
+  step6NullDrift: (nullCount: number, recount: number) =>
+    expect(Math.abs(recount - nullCount)).toBeLessThanOrEqual(nullCount * 0.005),
 };
 
 // ---------- A-01-TC-007 ----------
@@ -634,7 +645,7 @@ export const tc020 = {
   /** Returns true when every saved geo signal is `none`. */
   step2Signals: (): boolean => {
     const entries = catq(
-      'sources.filter(s=>s.blocked_evidence).map(s=>s.key+":"+s.blocked_evidence.geo_signal)',
+      'sources.flatMap(s=>[s.blocked_evidence,s.operator_blocked_evidence].filter(Boolean).map(e=>s.key+":"+e.geo_signal))',
     ) as string[];
     for (const e of entries) expect(e).toMatch(/^[a-z_]+:.+$/);
     return entries.every((e) => e.endsWith(":none"));
@@ -642,15 +653,17 @@ export const tc020 = {
   step3NoWorkflow: () => exitLine("test -e .github/workflows/geo-check.yml", 1),
   step4NotApplicable: () =>
     expect(grepCount('grep -c "N/A: no geo signal" docs/evidence/A-01.md')).toBe(1),
+  // ERR-6: the US check ran as workflow a01-us-gis-probe.yml under the FR-006b amendment
+  // (DEC-A-01-source-access D-2); its one run and HTTP status are recorded in the evidence.
   step5OneUsRun: () =>
     expect(
       sh(
-        "gh run list --workflow geo-check.yml --branch 001-discover-sources --json conclusion --jq length",
+        "gh run list -R HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx --workflow a01-us-gis-probe.yml --branch 001-discover-sources --json conclusion --jq length",
       ).stdout.trim(),
     ).toBe("1"),
   step6UsStatusRecorded: () =>
     expect(
-      grepCount('grep -cE "geo-check.*HTTP [0-9]{3}" docs/evidence/A-01.md'),
+      grepCount('grep -cE "^http_status: 200|HTTP 200" docs/evidence/A-01-us-gis-runner.md'),
     ).toBeGreaterThanOrEqual(1),
 };
 
@@ -742,8 +755,10 @@ export const tc025 = {
 
 // ---------- A-01-TC-027 ----------
 export const tc027 = {
+  // ERR-6: since the review fixes (CR-3, CR2-1) resolve refuses with exit 2 and sends nothing
+  // when no run id is given or the catalog could not be rewritten; still a refusal.
   step2RefuseNotWaiting: () =>
-    exitLine("npm --prefix pipeline/oracle-runtime run resolve -- austin_permits captured", 1),
+    exitLine("npm --prefix pipeline/oracle-runtime run resolve -- austin_permits captured", 2),
   step3Unit: () => unitTest("A-01-TC-027"),
   /**
    * Outcome B only. The first run records the resolution (exit 0); a later re-run of this
@@ -772,7 +787,13 @@ export const tcNf02 = {
   },
   step3OnlyTcad: () => {
     const dirs = sh("ls pipeline/data/raw 2>/dev/null").stdout.trim().split("\n").filter(Boolean);
-    expect(dirs.filter((d) => d !== "tcad")).toEqual([]);
+    // ERR-6: gis/ holds only the US-runner count artifact (a 16-byte answer), not a download.
+    expect(dirs.filter((d) => d !== "tcad" && d !== "gis")).toEqual([]);
+    const gis = sh("ls pipeline/data/raw/gis 2>/dev/null")
+      .stdout.trim()
+      .split("\n")
+      .filter(Boolean);
+    expect(gis.every((d) => /^us-runner-\d+$/.test(d))).toBe(true);
   },
 };
 

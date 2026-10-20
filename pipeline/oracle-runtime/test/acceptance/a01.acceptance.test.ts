@@ -114,7 +114,7 @@ describe("A-01 acceptance (testplans/A-01-test-cases.md)", () => {
     tc006.step3Recount(value);
     const nulls = tc006.step4NullCount();
     const recount = tc006.step5NullRecount();
-    tc006.step6UpdatedSince(nulls, recount);
+    tc006.step6NullDrift(nulls, recount);
   });
 
   it("A-01-TC-007 austin throughput", () => {

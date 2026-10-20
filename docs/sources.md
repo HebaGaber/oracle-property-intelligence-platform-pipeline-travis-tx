@@ -203,14 +203,14 @@ Operator-side blocks: these sources are **available**; the operator machine coul
 
 The readiness validator reports the parcel gate as **PASS because of this exception**; the raw gap stays 24.24% (above the 2% threshold) and is printed in the validator's evidence line.
 
-| Approved | Value |
-| --- | --- |
-| Approved by | HebaGaber |
-| Approved on | 2026-10-20 |
-| Gap (gap_pct) | 24.24% |
-| GIS features (gis_feature_count) | 373,683 |
-| Roll accounts (assessed_parcel_count) | 493,246 |
-| Decision record | `docs/decisions/DEC-A-01-parcel-gap-exception.md` |
+| Approved | Value | Source | Captured (UTC) |
+| --- | --- | --- | --- |
+| Approved by | HebaGaber | n/a | n/a |
+| Approved on | 2026-10-20 | n/a | n/a |
+| Gap (gap_pct) | 24.24% | https://gis.traviscountytx.gov/server1/rest/services/CIPStoryMap/Main_Location_Map2/MapServer/6/query?where=1%3D1&returnCountOnly=true&f=json | 2026-10-20T07:31:05Z |
+| GIS features (gis_feature_count) | 373,683 | https://gis.traviscountytx.gov/server1/rest/services/CIPStoryMap/Main_Location_Map2/MapServer/6/query?where=1%3D1&returnCountOnly=true&f=json | 2026-10-20T07:31:05Z |
+| Roll accounts (assessed_parcel_count) | 493,246 | https://traviscad.org/wp-content/largefiles/2026%20Certified%20JSON%20SUPP%200%2007182026.zip | 2026-10-19T21:33:41Z |
+| Decision record | `docs/decisions/DEC-A-01-parcel-gap-exception.md` | n/a | n/a |
 
 - Reason: PO-approved 2026-10-20 (HebaGaber) for the raw GIS-vs-roll gap 24.24% (GIS 373,683 vs certified roll 493,246; 119,563 accounts). 110,958 are explained by count from the certified export: 51,285 non-land accounts (business personal property, mobile homes, minerals), 56,139 real-estate accounts with state codes A4 or F4 and no export geometry point, read as condominium units (state-code reading, unverified), and 3,534 with state code O1 and no export geometry point (inventory; mostly condo inventory by the condoUnit field; state-code reading, unverified); the residual 8,605 (1.74% of the roll) is unexplained. This is a count-level reconciliation, not a feature-to-account join. The exception is bound to these values (check-catalog rule 10); the certified roll stays the denominator and GIS never seeds alone.
 - Coverage effect: The certified roll (493,246 accounts) stays the denominator and GIS never seeds alone or replaces it; 51,285 non-land accounts and about 56,139 accounts read as condominium units are not expected to get a parcel polygon of their own, so A-05 reports coordinate coverage against real-estate accounts and says how condominium units get coordinates; 8,605 accounts remain unexplained.
