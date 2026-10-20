@@ -239,19 +239,19 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 
 ### Tests for User Story 4 (write first, must fail) ⚠️
 
-- [ ] T026 [P] [US4] Test `packages/query-core/test/gazetteer.test.ts`:
+- [X] T026 [P] [US4] Test `packages/query-core/test/gazetteer.test.ts`:
   - "Pflugerville" → `{status:'found', kind:'place', geoid:'4857176', point:{lat:30.447765, lon:-97.602116}}` with `source.url`, `source.file_date`, `source.sha256` and `gazetteer.sha256`;
   - "Manor", "Lakeway" and "78753" → found;
   - "Pflugerville city" (LSAD) and case variants → found;
   - "99999" and "Georgetown" → `{status:'out_of_scope'}` with no point;
   - "Round Rock", "Cedar Park" and "Leander" → `partial_in_travis: true`.
-- [ ] T027 [P] [US4] Test `packages/query-core/test/owner-area.test.ts`. `ownerArea()`: a Travis ZCTA → `in_county`; a Williamson/Hays/Bastrop/Caldwell/Burnet/Blanco ZCTA → `regional`; any other US ZCTA → `out_of_area`; a non-ZCTA ZIP → `unknown` with reason `zip_not_zcta`; missing → `unknown` with reason `no_mailing_address`.
-- [ ] T028 [P] [US4] Test `packages/query-core/test/gazetteer-digest.test.ts`. `DIGEST` = SHA-256 of the JCS form of `{version, places, zctas, owner-area, sources}`, and the committed value matches. `sources.json` has url, Last-Modified, retrieved_at, bytes and sha256 per file.
+- [X] T027 [P] [US4] Test `packages/query-core/test/owner-area.test.ts`. `ownerArea()`: a Travis ZCTA → `in_county`; a Williamson/Hays/Bastrop/Caldwell/Burnet/Blanco ZCTA → `regional`; any other US ZCTA → `out_of_area`; a non-ZCTA ZIP → `unknown` with reason `zip_not_zcta`; missing → `unknown` with reason `no_mailing_address`.
+- [X] T028 [P] [US4] Test `packages/query-core/test/gazetteer-digest.test.ts`. `DIGEST` = SHA-256 of the JCS form of `{version, places, zctas, owner-area, sources}`, and the committed value matches. `sources.json` has url, Last-Modified, retrieved_at, bytes and sha256 per file.
 
 ### Implementation for User Story 4
 
-- [ ] T029 [US4] [oracle] Implement `packages/query-core/scripts/build-gazetteer.ts`. Download into `pipeline/data/raw/census/` (gitignored): `2024_Gaz_place_national.zip`, `2024_Gaz_zcta_national.zip`, `rel2020/zcta520/tab20_zcta520_county20_natl.txt` and `codes2020/place_by_cou/st48_tx_place_by_county2020.txt`. Use one identified request each and stop on 403. Filter by Travis (FIPS 48453; ZCTA `AREALAND_PART > 0`), mark `partial_in_travis`, and write `packages/query-core/gazetteer/travis-places@1.0.0/{sources,places,zctas,owner-area}.json` and `DIGEST`.
-- [ ] T030 [US4] [oracle] Implement `packages/query-core/gazetteer/travis-places@1.0.0/index.ts`: `lookup()`, `ownerArea()` and `GAZETTEER {version, sha256}`, with Zod-validated JSON and `out_of_scope` never carrying a point. Run T029 live, then green T026–T028.
+- [X] T029 [US4] [oracle] Implement `packages/query-core/scripts/build-gazetteer.ts`. Download into `pipeline/data/raw/census/` (gitignored): `2024_Gaz_place_national.zip`, `2024_Gaz_zcta_national.zip`, `rel2020/zcta520/tab20_zcta520_county20_natl.txt` and `codes2020/place_by_cou/st48_tx_place_by_county2020.txt`. Use one identified request each and stop on 403. Filter by Travis (FIPS 48453; ZCTA `AREALAND_PART > 0`), mark `partial_in_travis`, and write `packages/query-core/gazetteer/travis-places@1.0.0/{sources,places,zctas,owner-area}.json` and `DIGEST`.
+- [X] T030 [US4] [oracle] Implement `packages/query-core/gazetteer/travis-places@1.0.0/index.ts`: `lookup()`, `ownerArea()` and `GAZETTEER {version, sha256}`, with Zod-validated JSON and `out_of_scope` never carrying a point. Run T029 live, then green T026–T028.
 
 **Checkpoint**: the gazetteer is green and committed.
 
