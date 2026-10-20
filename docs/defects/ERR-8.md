@@ -6,11 +6,11 @@ story: A-01
 test_case: unit test `source-client.resume.test.ts` › "the 2-hour total limit spans all resumes" (A-01-TC-026, FR-003 download limits)
 ac_reference: A-01-AC-3, A-01-AC-6
 severity: Medium
-status: Fixed
+status: Closed
 found_by: Claude (G7 pre-check, CI run 39489669571)
 found_date: 2026-10-20
 fix_branch: 001-discover-sources
-fix_commit:
+fix_commit: 024d9c0, 56e1426
 retest_date: 2026-10-20
 ---
 
@@ -71,5 +71,5 @@ The fake-timer loop in `test/source-client.resume.test.ts`.
 | --- | --- |
 | Root cause | Two parts. (1) A fixed step budget (40) for a test loop that also waits on real file I/O. (2) In the client, `timeout_ms` was measured when the receipt was written, after the cleanup that follows the abort, not when the limit fired; on the slower CI disk the fake clock moved on during cleanup, so the second CI run recorded 2,750 ms for a 1,000 ms limit (`expected 2750 to be less than 1200`, run 39489908500). In production this added the cleanup time to the reported value. |
 | Fix | Test: budget raised to 400 steps with three `setImmediate` turns per step (commit `024d9c0`). Client (`travis/lib/source-client.ts`): the elapsed time is taken when the limit fires (`firedAt`), so `timeout_ms` reports when the download was stopped and is never below the limit. |
-| Re-test | `pipeline-ci` on the fix commit (see `docs/reports/A-01-unit-test-report.md`) |
+| Re-test | `pipeline-ci` run 39490116172 on `56e1426`: success on attempt 1 and on rerun attempt 2 (502/502) |
 | Status | ☒ Closed ☐ Reopened (after the CI re-test) |

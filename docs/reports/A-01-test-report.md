@@ -97,6 +97,7 @@ Live requests made by the suite (open-data sources only, each with the project's
 | ERR-5 | TC-022 | High | Fixed + re-tested ✅ | `9c7579a` |
 | ERR-6 | TC-003, 020, 027, NF-02 | Low | Fixed + re-tested ✅ | `9c7579a` |
 | ERR-7 | TC-019 (also 008, NF-01) | Medium | Fixed + re-tested ✅ | `9c7579a` |
+| ERR-8 | TC-026 (unit, download total limit) | Medium | Fixed + re-tested in CI ✅ (found at G7: flaky on the CI runner) | `024d9c0`, `56e1426` |
 
 ERR-1, ERR-2, ERR-3, ERR-6 and ERR-7 were defects in the tests, not the product; ERR-5 was a product defect (a deliverable); ERR-4 is a missing value in the data, accepted by the PO as a documented gap. The test plan (QC-owned, approved at G6) still carries the old wording for ERR-1, ERR-2, ERR-3, ERR-4 and ERR-6; its § 6 shell setup and those cases should be updated to match the automation.
 

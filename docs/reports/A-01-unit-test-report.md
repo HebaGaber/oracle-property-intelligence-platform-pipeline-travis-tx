@@ -3,8 +3,8 @@ id: UT-A-01
 type: unit-test-report
 story: A-01
 branch: 001-discover-sources
-commit: 2200636 (CI run); e5f5d77 (first local run)
-ci_run: https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39488773733
+commit: 56e1426 (CI run); e5f5d77 (first local run)
+ci_run: https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39490116172
 created: 2026-10-20
 ---
 
@@ -12,14 +12,14 @@ created: 2026-10-20
 
 ## CI status
 
-**CI run (the numbers the template asks for):** [`pipeline-ci` run 39488773733](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39488773733) on commit `2200636`, branch `001-discover-sources`, 2026-10-20T20:04Z, conclusion **success**. Its steps: `npm ci`, typecheck, lint, format check, unit tests, the validator self-test, `check-catalog` rules 1–11, and the validator on the committed catalog equal to `docs/evidence/A-01-readiness.json`, all passing.
+**CI run (the numbers the template asks for):** [`pipeline-ci` run 39490116172](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39490116172) on commit `56e1426`, branch `001-discover-sources`, 2026-10-20, conclusion **success** on both attempts (attempt 2 rerun to confirm the ERR-8 fix). Earlier: run 39488773733 on `2200636` green; run 39489669571 on `de1b54e` and run 39489908500 on `024d9c0` red, 1 of 502 (ERR-8, a timing-sensitive download test, fixed). Its steps: `npm ci`, typecheck, lint, format check, unit tests, the validator self-test, `check-catalog` rules 1–11, and the validator on the committed catalog equal to `docs/evidence/A-01-readiness.json`, all passing.
 
 | Item | CI value |
 | --- | --- |
 | Command | `npm test` (Vitest 5.0.5, `pipeline/oracle-runtime`) in `pipeline-ci` |
 | Suites / tests | 35 files / 502 tests |
 | Passed / failed / skipped | 502 / 0 / 0 |
-| Duration | 7.12 s |
+| Duration | 13.45 s (attempt 2) |
 
 The project-wide Turborepo CI arrives in A-03; `pipeline-ci` (task T052) is the interim workflow for A-01. CI does not run coverage; coverage below comes from the local run.
 
@@ -34,6 +34,8 @@ Local run: 2026-10-20T14:03:34Z, macOS (darwin-arm64), Node 22.23.3, Vitest 5.0.
 | Passed / failed / skipped | 422 / 0 / 0 |
 | Coverage of new and changed code | **92.6% lines** (2,556 / 2,760); statements 89.73%, functions 87.72%, branches 77.64%. All 36 source files under `travis/` are new on this branch, so whole-folder coverage is new-code coverage (target 80% or more: met on lines, statements and functions; branches are below it). |
 | Duration | 5.45 s with coverage (3.35 s without) |
+
+Coverage re-measured on the current code after the review fixes and T056: lines 92.85% (3,156 / 3,399), statements 89.87%, functions 86.63%, branches 77.51%.
 
 Coverage needed the dev dependency `@vitest/coverage-v8` (`^5.0.5`, matching Vitest), added for this report.
 
@@ -98,7 +100,7 @@ The remaining files (`catalog-text`, `discover`, `log`, `probes/evidence`, `resc
 
 ## Failures and flakes
 
-No failures and no flakes in this run.
+One flaky test, fixed: ERR-8 (`source-client.resume.test.ts`, the download total-limit test; red on two CI runs, green on the fix commit, twice).
 
 Defects found on real data, each fixed with a test:
 
