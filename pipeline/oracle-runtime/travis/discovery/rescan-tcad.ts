@@ -2,7 +2,8 @@
 //
 // Re-reads the TCAD Certified Special Export that discovery ALREADY downloaded and refreshes
 // only the parcel key fields of pipeline/docs/travis-sources.yaml (identifier_name,
-// identifier_proven, identifier_format), then re-runs the readiness validator.
+// identifier_layout_name, identifier_proven, identifier_format), then re-runs the
+// readiness validator.
 //
 // Provenance stays the original download's: the export receipt (URL, bytes, SHA-256,
 // captured_at), the roll-count measurement and snapshot_time are never touched. Before any
@@ -96,11 +97,19 @@ export async function rescanTcad(options: RescanOptions = {}): Promise<number> {
       );
     }
 
-    const { identifier_name: _name, identifier_format: _format, ...rest } = current;
+    const {
+      identifier_name: _name,
+      identifier_layout_name: _layout,
+      identifier_format: _format,
+      ...rest
+    } = current;
     const parcel: Parcel = {
       ...rest,
       identifier_proven: scan.identifier_proven,
       ...(scan.identifier_name ? { identifier_name: scan.identifier_name } : {}),
+      ...(scan.identifier_layout_name
+        ? { identifier_layout_name: scan.identifier_layout_name }
+        : {}),
       ...(scan.identifier_format ? { identifier_format: scan.identifier_format } : {}),
     };
     writeCatalog({ ...catalog, parcel }, catalogPath);
@@ -110,7 +119,7 @@ export async function rescanTcad(options: RescanOptions = {}): Promise<number> {
       );
     }
     say(
-      `rescan-tcad: parcel.identifier_name ${scan.identifier_name ?? "(none)"}, identifier_proven ${String(scan.identifier_proven)}, identifier_format ${scan.identifier_format ?? "(none)"}; ${scan.count} records`,
+      `rescan-tcad: parcel.identifier_name ${scan.identifier_name ?? "(none)"} (layout ${scan.identifier_layout_name ?? "none"}), identifier_proven ${String(scan.identifier_proven)}, identifier_format ${scan.identifier_format ?? "(none)"}; ${scan.count} records`,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

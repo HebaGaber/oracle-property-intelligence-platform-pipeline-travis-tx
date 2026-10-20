@@ -15,6 +15,7 @@ import {
   TCAD_RAW_DIR,
   TOTAL_LIMIT_MS,
   findTcadLinks,
+  layoutNameFor,
   probeTcad,
   scanExport,
   tcadExportPath,
@@ -232,6 +233,7 @@ describe("scanExport on the protax JSON shape (pID, nested geoID)", () => {
     expect(scan.zip_entry).toBe("Synthetic-protaxExport.json");
     expect(scan.count).toBe(3);
     expect(scan.identifier_name).toBe("pID");
+    expect(scan.identifier_layout_name).toBe("prop_id");
     expect(scan.identifier_proven).toBe(true);
     expect(scan.identifier_format).toBe("integer, 2 digits");
     expect(scan.deed_or_sale_dates_present).toBe(true);
@@ -255,6 +257,7 @@ describe("scanExport on the protax JSON shape (pID, nested geoID)", () => {
       protaxRecord(12, ["A3"]),
     ]);
     expect(scan.identifier_name).toBe("propertyIdentification[].geoID");
+    expect(scan.identifier_layout_name).toBe("geo_id");
     expect(scan.identifier_proven).toBe(true);
     expect(scan.identifier_format).toBe("string, 2 characters");
     expect(scan.identifier_candidates?.[0]).toMatchObject({
@@ -292,6 +295,7 @@ describe("scanExport on the protax JSON shape (pID, nested geoID)", () => {
     });
     const scan = await scanOf(records);
     expect(scan.identifier_name).toBeNull();
+    expect(scan.identifier_layout_name).toBeNull();
     expect(scan.identifier_proven).toBe(false);
   });
 
@@ -299,6 +303,23 @@ describe("scanExport on the protax JSON shape (pID, nested geoID)", () => {
     const scan = await scanOf([{ propID: "1" }, { propID: "2" }]);
     expect(scan.identifier_name).toBe("propID");
     expect(scan.identifier_proven).toBe(true);
+  });
+});
+
+describe("layoutNameFor (TCAD Export Layouts names, FR-003a PO 2026-10-20)", () => {
+  it("maps every printed property-id spelling to the layout name prop_id", () => {
+    for (const printed of ["pID", "prop_id", "PROP_ID", "propID", "property_id"]) {
+      expect(layoutNameFor(printed)).toBe("prop_id");
+    }
+  });
+  it("maps a top-level or nested geo id to the layout name geo_id", () => {
+    expect(layoutNameFor("geoID")).toBe("geo_id");
+    expect(layoutNameFor("geo_id")).toBe("geo_id");
+    expect(layoutNameFor("propertyIdentification[].geoID")).toBe("geo_id");
+  });
+  it("returns null for anything else", () => {
+    expect(layoutNameFor("owner_id")).toBeNull();
+    expect(layoutNameFor("deeds[].pID")).toBeNull();
   });
 });
 

@@ -165,4 +165,59 @@ describe("Catalog", () => {
       }).success,
     ).toBe(false);
   });
+  it("accepts identifier_layout_name beside the printed key (FR-003a, PO 2026-10-20)", () => {
+    const c = syntheticCatalog();
+    const parcel = { ...must(c.parcel), identifier_name: "pID", identifier_layout_name: "prop_id" };
+    expect(CatalogSchema.safeParse({ ...c, parcel }).success).toBe(true);
+    expect(
+      CatalogSchema.safeParse({ ...c, parcel: { ...parcel, identifier_layout_name: "" } }).success,
+    ).toBe(false);
+  });
+
+  it("certification_date carries provenance, and a missing date needs its reason", () => {
+    const c = syntheticCatalog();
+    const m = {
+      value: "2026-07-25",
+      source_url: "https://example.test/publicinformation",
+      captured_at: "2026-01-01T00:00:00Z",
+      method: "synthetic",
+      page_path: "pipeline/data/raw/tcad/publicinformation-20260101T000000Z.html",
+      page_sha256: "a".repeat(64),
+    };
+    const ok = {
+      ...must(c.parcel),
+      certification_date: "2026-07-25",
+      certification_date_measurement: m,
+    };
+    expect(CatalogSchema.safeParse({ ...c, parcel: ok }).error?.issues ?? []).toEqual([]);
+    // the plain date must equal the measurement value
+    expect(
+      CatalogSchema.safeParse({ ...c, parcel: { ...ok, certification_date: "2026-07-26" } })
+        .success,
+    ).toBe(false);
+    // missing: value null, no plain date, reason required
+    const { certification_date: _d, ...noDate } = ok;
+    expect(
+      CatalogSchema.safeParse({
+        ...c,
+        parcel: { ...noDate, certification_date_measurement: { ...m, value: null } },
+      }).success,
+    ).toBe(false);
+    expect(
+      CatalogSchema.safeParse({
+        ...c,
+        parcel: {
+          ...noDate,
+          certification_date_measurement: { ...m, value: null, missing_reason: "page states none" },
+        },
+      }).success,
+    ).toBe(true);
+    // the saved page must stay under the gitignored raw folder
+    expect(
+      CatalogSchema.safeParse({
+        ...c,
+        parcel: { ...ok, certification_date_measurement: { ...m, page_path: "docs/page.html" } },
+      }).success,
+    ).toBe(false);
+  });
 });

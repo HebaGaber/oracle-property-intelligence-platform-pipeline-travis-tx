@@ -19,7 +19,8 @@
     "validate": "tsx travis/discovery/run-validator.ts",
     "rescan-tcad": "tsx travis/discovery/rescan-tcad.ts",
     "resolve": "tsx travis/discovery/resolve.ts",
-    "render-sources": "tsx travis/discovery/render-sources-md.ts"
+    "render-sources": "tsx travis/discovery/render-sources-md.ts",
+    "refresh-tcad-landing": "tsx travis/discovery/refresh-tcad-landing.ts"
   },
   "dependencies": {
     "p-limit": "^7.3.3",

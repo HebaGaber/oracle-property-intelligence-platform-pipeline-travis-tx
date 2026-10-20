@@ -193,6 +193,34 @@ export const ExportReceiptSchema = z.strictObject({
 });
 export type ExportReceipt = z.infer<typeof ExportReceiptSchema>;
 
+/**
+ * Provenance of parcel.certification_date (FR-003a, PO decision 2026-10-20): the date as
+ * stated on the TCAD public-information page, or null with the reason when the page states
+ * none. The export file name's date is never used. The saved page stays gitignored.
+ */
+export const CertificationDateMeasurementSchema = z
+  .strictObject({
+    value: DateString.nullable(),
+    missing_reason: Text.optional(),
+    source_url: Url,
+    captured_at: UtcTimestamp,
+    method: Text.optional(),
+    /** Repository-relative path of the saved page, under pipeline/data/raw/tcad/. */
+    page_path: z
+      .string()
+      .regex(/^pipeline\/data\/raw\/tcad\/[^/]+$/)
+      .optional(),
+    page_sha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+  })
+  .refine((m) => m.value !== null || m.missing_reason !== undefined, {
+    message: "value null requires missing_reason",
+    path: ["missing_reason"],
+  });
+export type CertificationDateMeasurement = z.infer<typeof CertificationDateMeasurementSchema>;
+
 export const ParcelSchema = z
   .strictObject({
     canonical_source: Text,
@@ -200,6 +228,7 @@ export const ParcelSchema = z
     assessed_parcel_count_measurement: MeasurementSchema,
     roll_year: z.int(),
     certification_date: DateString.optional(),
+    certification_date_measurement: CertificationDateMeasurementSchema.optional(),
     gis_feature_count: z.number().nullable(),
     gis_feature_count_measurement: MeasurementSchema,
     gap_pct: z.union([z.number().nonnegative(), z.literal("unknown")]),
@@ -207,7 +236,10 @@ export const ParcelSchema = z
     discrepancy_threshold_pct: z.number().positive(),
     discrepancy_explanation: Text.optional(),
     separately_assessed_without_geometry: z.enum(["acknowledged", "none"]).optional(),
+    /** The key exactly as printed in the export (e.g. `pID`). */
     identifier_name: Text.optional(),
+    /** The TCAD Export Layouts name of that key (e.g. `prop_id`), FR-003a. */
+    identifier_layout_name: Text.optional(),
     identifier_proven: z.boolean(),
     identifier_format: Text.optional(),
     deed_or_sale_dates_present: z.boolean().optional(),
@@ -220,7 +252,16 @@ export const ParcelSchema = z
   .refine((p) => p.gis_feature_count === p.gis_feature_count_measurement.value, {
     message: "gis_feature_count must equal its measurement value",
     path: ["gis_feature_count"],
-  });
+  })
+  .refine(
+    (p) =>
+      p.certification_date_measurement === undefined ||
+      (p.certification_date ?? null) === p.certification_date_measurement.value,
+    {
+      message: "certification_date must equal its measurement value (absent when null)",
+      path: ["certification_date"],
+    },
+  );
 
 export const PermitsSchema = z.strictObject({
   expected_jurisdiction_count: z.int().nonnegative(),

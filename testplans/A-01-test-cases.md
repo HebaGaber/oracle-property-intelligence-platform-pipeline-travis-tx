@@ -8,7 +8,7 @@ spec: specs/001-discover-sources/spec.md
 owner: HebaGaber             # QC Lead
 status: Approved             # Draft → In Review → Approved
 gate: G6
-version: 0.5
+version: 0.6
 created: 2026-10-19
 runtime_url: "none: Project story (G4 C-04 exception); every case runs from a terminal at the repo root on branch 001-discover-sources"
 reviewed_code: 7311edd
@@ -263,9 +263,9 @@ Common step 1 for every case: **Open** a terminal at the repository root and run
   2. **Run** `catq 'parcel.assessed_parcel_count_measurement'` → `{value: <integer > 0> (equal to `parcel.assessed_parcel_count`), source_url, captured_at}` (first measurement; no reference value).
   3. **Run** `catq 'parcel.roll_year'` → `2026`.
   4. **Run** `catq 'parcel.certification_date'` → a string matching `YYYY-MM-DD`.
-  5. **Run** `catq 'parcel.identifier_name'` → `"prop_id"` or `"geo_id"`.
+  5. **Run** `catq 'parcel.identifier_name + "/" + parcel.identifier_layout_name'` → `"pID/prop_id"` (the key as printed in the 2026 JSON export, with its layout name; or a geo id with its layout name).
   6. **Run** `catq 'typeof parcel.deed_or_sale_dates_present'` → `"boolean"`.
-  7. **Run** `F=$(ls pipeline/data/raw/tcad/*.json | head -1); shasum -a 256 "$F" | cut -d' ' -f1` → a 64-character hash H.
+  7. **Run** `F=$(catq 'parcel.export_receipt.file_path' | tr -d '"'); shasum -a 256 "$F" | cut -d' ' -f1` → a 64-character hash H.
   8. **Run** `catq 'parcel.export_receipt.sha256'` → `"H"` (the same hash as step 7).
   9. **Run** `git check-ignore -q "$F"; echo "exit=$?"` → `exit=0`.
   10. **Run** `git ls-files pipeline/data | wc -l` → `0`.

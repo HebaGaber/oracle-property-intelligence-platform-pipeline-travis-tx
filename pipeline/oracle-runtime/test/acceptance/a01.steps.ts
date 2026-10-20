@@ -331,6 +331,8 @@ export const tc007 = {
 };
 
 // ---------- A-01-TC-009 ----------
+/** Test plan v0.6 step 7: the export file named in parcel.export_receipt.file_path. */
+const TCAD_FILE_CMD = `catq 'parcel.export_receipt.file_path' | tr -d '"'`;
 export const tc009 = {
   step2Count: () => {
     const m = catq("parcel.assessed_parcel_count_measurement") as {
@@ -344,20 +346,23 @@ export const tc009 = {
     expect(m.captured_at).toMatch(UTC);
   },
   step3RollYear: () => expectCatq("parcel.roll_year", 2026),
+  // Step 4 (v0.6): the date as stated on the TCAD public-information page (PO 2026-10-20).
   step4Certification: () =>
     expect(String(catq("parcel.certification_date"))).toMatch(/^\d{4}-\d{2}-\d{2}$/),
-  step5Identifier: () => expect(["prop_id", "geo_id"]).toContain(catq("parcel.identifier_name")),
+  // Step 5 (v0.6): the key as printed in the 2026 JSON export, with its TCAD layout name.
+  step5Identifier: () =>
+    expect(catq('parcel.identifier_name + "/" + parcel.identifier_layout_name')).toMatch(
+      /^(pID\/prop_id|.*geo_?id\/geo_id)$/i,
+    ),
   step6DeedDates: () => expectCatq("typeof parcel.deed_or_sale_dates_present", "boolean"),
+  // Step 7 (v0.6): hash the file named in the receipt (TCAD_FILE_CMD), not the first *.json.
   step7FileHash: () => {
-    const h = sh(
-      `F=$(ls pipeline/data/raw/tcad/*.json | head -1); shasum -a 256 "$F" | cut -d' ' -f1`,
-    ).stdout.trim();
+    const h = sh(`F=$(${TCAD_FILE_CMD}); shasum -a 256 "$F" | cut -d' ' -f1`).stdout.trim();
     expect(h).toMatch(/^[0-9a-f]{64}$/);
     return h;
   },
   step8ReceiptHash: (hash: string) => expectCatq("parcel.export_receipt.sha256", hash),
-  step9Ignored: () =>
-    exitLine(`F=$(ls pipeline/data/raw/tcad/*.json | head -1); git check-ignore -q "$F"`, 0),
+  step9Ignored: () => exitLine(`F=$(${TCAD_FILE_CMD}); git check-ignore -q "$F"`, 0),
   step10NotTracked: () => expect(sh("git ls-files pipeline/data | wc -l").stdout.trim()).toBe("0"),
 };
 

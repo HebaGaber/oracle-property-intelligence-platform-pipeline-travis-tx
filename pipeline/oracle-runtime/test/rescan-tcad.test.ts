@@ -110,6 +110,7 @@ describe("rescanTcad", () => {
     expect(validatorCalls()).toBe(1);
     const after = readCatalog(f.catalogPath);
     expect(parcelOf(after).identifier_name).toBe("pID");
+    expect(parcelOf(after).identifier_layout_name).toBe("prop_id");
     expect(parcelOf(after).identifier_proven).toBe(true);
     expect(parcelOf(after).identifier_format).toBe("integer, 3 digits");
     // provenance stays the original download's: receipt, count measurement, snapshot time
@@ -121,6 +122,7 @@ describe("rescanTcad", () => {
     const strip = (c: Catalog) => {
       const {
         identifier_name: _n,
+        identifier_layout_name: _l,
         identifier_proven: _p,
         identifier_format: _f,
         ...rest

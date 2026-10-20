@@ -183,9 +183,21 @@ function parcelSection(catalog: Catalog): string[] {
     ],
   );
   lines.push(`- Canonical source: ${p.canonical_source}`);
-  if (p.certification_date) lines.push(`- Certification date: ${p.certification_date}`);
+  const cert = p.certification_date_measurement;
+  if (cert) {
+    const stated =
+      cert.value === null
+        ? `missing: ${cell(cert.missing_reason ?? "no reason recorded")}`
+        : cert.value;
+    lines.push(
+      `- Certification date: ${stated} (source ${cert.source_url}, captured ${utc(cert.captured_at)})`,
+    );
+  } else if (p.certification_date) {
+    lines.push(`- Certification date: ${p.certification_date}`);
+  }
+  const layout = p.identifier_layout_name ? ` (TCAD layout name: ${p.identifier_layout_name})` : "";
   lines.push(
-    `- Parcel identifier: ${p.identifier_name ?? "not yet read"} (proven unique: ${String(p.identifier_proven)})${p.identifier_format ? `; format: ${p.identifier_format}` : ""}`,
+    `- Parcel identifier: ${p.identifier_name ?? "not yet read"}${layout} (proven unique: ${String(p.identifier_proven)})${p.identifier_format ? `; format: ${p.identifier_format}` : ""}`,
   );
   if (p.deed_or_sale_dates_present !== undefined) {
     lines.push(`- Deed or sale dates present: ${String(p.deed_or_sale_dates_present)}`);

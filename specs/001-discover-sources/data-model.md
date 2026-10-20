@@ -44,7 +44,7 @@ Overture (`overture`): `denominator.value` is `null` with `missing_reason: "not 
 
 ## Parcel (TCAD roll vs GIS)
 
-`canonical_source` (TCAD 2026 certified roll), `assessed_parcel_count` (Measurement), `roll_year` (2026), `certification_date`, `identifier_name` (`prop_id` or `geo_id`, as printed), `identifier_proven`, `identifier_format`, `deed_or_sale_dates_present`, `gis_feature_count` (Measurement), `gap_pct` (number or `unknown` + reason), `discrepancy_threshold_pct: 2.0`, `discrepancy_explanation`, `separately_assessed_without_geometry` (`acknowledged` | `none`, required when GIS is below the roll), `export_receipt` (Capture receipt of the one download).
+`canonical_source` (TCAD 2026 certified roll), `assessed_parcel_count` (Measurement), `roll_year` (2026), `certification_date`, `identifier_name` (as printed in the export, e.g. `pID`), `identifier_layout_name` (the TCAD layout name, e.g. `prop_id`), `identifier_proven`, `identifier_format`, `deed_or_sale_dates_present`, `gis_feature_count` (Measurement), `gap_pct` (number or `unknown` + reason), `discrepancy_threshold_pct: 2.0`, `discrepancy_explanation`, `separately_assessed_without_geometry` (`acknowledged` | `none`, required when GIS is below the roll), `export_receipt` (Capture receipt of the one download).
 
 Implementation note (2026-10-19, Phase 2): the kit validator reads `assessed_parcel_count` and `gis_feature_count` as plain numbers, so they stay `number | null`; their provenance sits in sibling Measurements `assessed_parcel_count_measurement` and `gis_feature_count_measurement`, and the schema requires each plain value to equal its measurement's `value`.
 

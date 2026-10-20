@@ -91,6 +91,45 @@ describe("T042 render docs/sources.md", () => {
     expect(line).not.toMatch(/\| *0 *\|/);
   });
 
+  it("shows the printed key with its layout name, and the certification date with its source and time", () => {
+    const c = full();
+    const parcel = must(c.parcel);
+    parcel.identifier_name = "pID";
+    parcel.identifier_layout_name = "prop_id";
+    parcel.certification_date = "2026-07-24";
+    parcel.certification_date_measurement = {
+      value: "2026-07-24",
+      source_url: "https://example.test/publicinformation",
+      captured_at: "2026-01-01T00:00:00.000Z",
+      method: "synthetic",
+    };
+    const md = renderSourcesMd(c);
+    expect(md).toContain("- Parcel identifier: pID (TCAD layout name: prop_id)");
+    const line = must(md.split("\n").find((l) => l.startsWith("- Certification date:")));
+    expect(line).toContain("2026-07-24");
+    expect(line).toContain("https://example.test/publicinformation");
+    expect(line).toContain("2026-01-01T00:00:00Z");
+  });
+
+  it("a missing certification date shows its reason", () => {
+    const c = full();
+    const parcel = must(c.parcel);
+    delete parcel.certification_date;
+    parcel.certification_date_measurement = {
+      value: null,
+      missing_reason: "synthetic: page states no certification date",
+      source_url: "https://example.test/publicinformation",
+      captured_at: "2026-01-01T00:00:00.000Z",
+    };
+    const line = must(
+      renderSourcesMd(c)
+        .split("\n")
+        .find((l) => l.startsWith("- Certification date:")),
+    );
+    expect(line).toMatch(/missing/i);
+    expect(line).toContain("synthetic: page states no certification date");
+  });
+
   it("documents blocked sources with their status, evidence and records request", () => {
     const c = full();
     const md = renderSourcesMd(c);

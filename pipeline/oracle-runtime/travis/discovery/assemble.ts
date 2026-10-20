@@ -442,6 +442,7 @@ export function assembleParcel(r: Pick<Us1Results, "tcad" | "gis">): Parcel {
   const scan = r.tcad.scan;
   if (scan) {
     if (scan.identifier_name) parcel.identifier_name = scan.identifier_name;
+    if (scan.identifier_layout_name) parcel.identifier_layout_name = scan.identifier_layout_name;
     if (scan.identifier_format) parcel.identifier_format = scan.identifier_format;
     parcel.deed_or_sale_dates_present = scan.deed_or_sale_dates_present;
   }

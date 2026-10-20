@@ -55,6 +55,8 @@ export interface ExportScan {
   fields: string[];
   /** The key field exactly as printed: a top-level name, or `parent[].child` when nested. */
   identifier_name: string | null;
+  /** The TCAD Export Layouts name of that key (`prop_id` or `geo_id`), see layoutNameFor. */
+  identifier_layout_name: string | null;
   /** True only when the key is present exactly once on every record and unique across all. */
   identifier_proven: boolean;
   identifier_format: string | null;
@@ -248,6 +250,21 @@ function isScalar(v: unknown): boolean {
   return v === null || typeof v !== "object";
 }
 
+/**
+ * The TCAD Export Layouts name of a printed key (FR-003a, PO decision 2026-10-20). The
+ * Legacy 8.0.33 Appraisal Export Layout (the "Export Layouts" download) defines File #2
+ * Property with `prop_id` ("Property ID") and `geo_id` ("Geographic ID"); the 2026 JSON
+ * export prints them as `pID` and `propertyIdentification[].geoID`. Only a top-level
+ * property id or a top-level / one-level-nested geo id maps; a child array's repeated pID
+ * (for example `deeds[].pID`) is a foreign key and maps to nothing.
+ */
+export function layoutNameFor(printed: string): "prop_id" | "geo_id" | null {
+  if (PROP_ID.test(printed)) return "prop_id";
+  const leaf = printed.split(".").at(-1) ?? printed;
+  if (GEO_ID.test(leaf) && printed.split(".").length <= 2) return "geo_id";
+  return null;
+}
+
 /** Rank: top-level prop id, then top-level geo id, then a geo id nested one level down. */
 type IdRank = 0 | 1 | 2;
 
@@ -375,6 +392,7 @@ export async function scanExport(
     count,
     fields: [...fields].sort(),
     identifier_name: chosen ? chosen[0] : null,
+    identifier_layout_name: chosen ? layoutNameFor(chosen[0]) : null,
     identifier_proven: tracker !== null && tracker.proven(count),
     identifier_format: tracker && tracker.present > 0 ? tracker.format() : null,
     identifier_candidates: ranked.map(([name, t]) => ({
