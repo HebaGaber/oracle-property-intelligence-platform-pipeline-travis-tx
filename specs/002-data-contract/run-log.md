@@ -59,3 +59,4 @@ One line per step: time (local, 2026-10-20 unless stated) · stage · step · re
 | 10-21 01:11 | 5 | Pilot manifest | `bafkreigsajz46cynavcigh37p2xdimucngkpid3r3mvdka45id4kscefma`, 9,710 B → `contract/v1/pilot-manifest.json` |
 | 10-21 01:11 | 5 | ADR-0002 verdicts | 8 no carrier, owner sale date carrier (`sales_history.ownership_transfer_date`, pilot row `baguqeeratr5…bxljh7a` = 1993-12-17). Export emits no `address` properties → address/mailing fields no_carrier_not_emitted. D-8 + confidentiality answers added; T054 done |
 | 10-21 01:11 | 5 | Test-data note | TC-018 example `2026-034767 BP` is ambiguous_geoid (not published); TC-018 uses the 3 published Expired permits instead (same AC) |
+| 10-21 01:12 | 5 | Test plan v0.2.1 | TC-018 test data → the 3 published Expired permits (2026-034767 BP ambiguous, 2026-024100 BP no geoID); AC unchanged. Track A part 3 started (views T055–T062, sample T063–T065) |

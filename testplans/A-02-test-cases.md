@@ -8,7 +8,7 @@ spec: specs/002-data-contract/spec.md
 owner: HebaGaber             # QC Lead
 status: Approved              # Draft → In Review → Approved
 gate: G6
-version: 0.2
+version: 0.2.1
 created: 2026-10-21
 runtime_url: "none: Project story (G4 C-04 exception); every case runs from a terminal at the repo root on branch 002-data-contract"
 reviewed_code: 9fcffcf
@@ -304,14 +304,14 @@ Every case starts with: **Open** a terminal at the repository root and run `git 
 ### A-02-TC-018: Expired pilot permit is stalled and never relabelled (missing data)
 
 - **Priority / tags:** P1 · `@demo @missing-data` · **Maps to:** AC-4, FR-004 · demo D-11
-- **Test data:** `2026-034767 BP` (Expired; issued March 2026).
+- **Test data:** the 3 published Expired BP reroofs `2026-029405 BP`, `2026-022834 BP`, `2026-022879 BP` (issued March 2026). The other 2 Expired pilot permits are not published: `2026-034767 BP` (ambiguous_geoid) and `2026-024100 BP` (no_tcad_geoid). Test-data update v0.2.1, 2026-10-21, after the pilot; the AC is unchanged.
 - **Steps:**
-  1. Step 0. **Run** `pnpm vitest run -t "A-02-TC-018"`. It reads the `v_roofing_permit` row with `permit_number = '2026-034767 BP'`.
+  1. Step 0. **Run** `pnpm vitest run -t "A-02-TC-018"`. It reads the `v_roofing_permit` row with `permit_number = '2026-029405 BP'`.
 - **Expected result:**
   - `improvement_status` is null, never `Completed` or `Cancelled`; `status_class = 'stalled'`; `open_days` = `as_of − issue_date` ≥ 0.
   - `missing` contains `{field: "status_raw", reason: "no_lexicon_carrier"}` and `{field: "expiry_date", reason: "no_lexicon_carrier"}`.
   - `source_url` is the Socrata record URL showing "Expired".
-  - The same holds for all 5 Expired pilot permits.
+  - The same holds for all 3 published Expired pilot permits.
 
 ### A-02-TC-019: Full-dataset reroof count equals matches minus excludes (scale)
 
