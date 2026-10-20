@@ -271,3 +271,7 @@ Task: "Evidence probes in pipeline/oracle-runtime/travis/discovery/probes/eviden
 - [X] T063 Record in `specs/001-discover-sources/plan.md` the commands and modules added after planning (`record-gis-runner`, `reprobe-jurisdictions`, `explain-blocked`, `reconcile-parcel-gap`, `approve-exception`, `backfill-amendments`, `render-coverage`, `travis/lib/egress.ts`, `pipeline/local-stack/services/prove-destination.ts`), each with the PO decision or review finding behind it, per plan: touch-points (unrequested)
 - [X] T064 Reconcile the test report's name with TZ06 (`docs/reports/TR-A-01.md` vs the template's `docs/reports/A-01-test-report.md`) per TZ06 (partial)
 - [X] T065 Verify T039, T048–T053, TZ01, TZ05 and TZ06 against their committed evidence and tick each one that is met per T039, T048–T053, TZ01, TZ05, TZ06 (partial)
+
+## Phase 8: Convergence
+
+- [ ] T066 Make the "resolve" wording in `pipeline/oracle-runtime/travis/discovery/render-sources-md.ts` (rendered to `docs/sources.md`) and the run's `resolveHint` in `workflow.ts` say that `captured` applies only to a timeout, network error, throttling or broken download, and `still-blocked` to a 403, challenge or WAF block, then re-render `docs/sources.md`, per AC-6, FR-006a (contradicts)
