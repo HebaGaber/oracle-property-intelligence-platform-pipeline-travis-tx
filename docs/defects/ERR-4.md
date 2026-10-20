@@ -6,12 +6,12 @@ story: A-01
 test_case: A-01-TC-009
 ac_reference: A-01-AC-3
 severity: Medium
-status: Open
+status: Closed (accepted by the PO)
 found_by: Claude (QC run 2026-10-20)
 found_date: 2026-10-20
 fix_branch: 001-discover-sources
 fix_commit:
-retest_date: 
+retest_date: 2026-10-20
 ---
 
 # ERR-4: TCAD roll – certification date not recorded: the public-information page states none
@@ -70,6 +70,6 @@ Needs a PO decision on another official source (for example TCAD's 2026 Certifie
 | Field | Value |
 | --- | --- |
 | Root cause | Needs a PO decision on another official source (for example TCAD's 2026 Certified Totals report) or acceptance of the documented gap. |
-| Fix | Not fixed: needs a PO decision (see the test report). |
-| Re-test | pending PO decision |
-| Status | ☐ Closed ☐ Reopened |
+| Fix | Accepted by the PO (HebaGaber) on 2026-10-20: the date stays missing with its reason; no other source is fetched. TC-009 step 4 now passes on a stated date, or on a missing date with its reason, source and capture time. FR-003a's certification-date part is knowingly unmet and disclosed in the catalog. The test plan's TC-009 step 4 needs the same wording (QC-owned). |
+| Re-test | A-01-TC-009 PASS on 2026-10-20 |
+| Status | ☒ Closed (accepted) ☐ Reopened |

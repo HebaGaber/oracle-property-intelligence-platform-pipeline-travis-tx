@@ -358,8 +358,25 @@ export const tc009 = {
   },
   step3RollYear: () => expectCatq("parcel.roll_year", 2026),
   // Step 4 (v0.6): the date as stated on the TCAD public-information page (PO 2026-10-20).
-  step4Certification: () =>
-    expect(String(catq("parcel.certification_date"))).toMatch(/^\d{4}-\d{2}-\d{2}$/),
+  // ERR-4 (accepted by the PO, 2026-10-20): the page states no date, so a missing date with
+  // its reason, source and capture time also passes; the export file name's date is never used.
+  step4Certification: () => {
+    const date = catq("parcel.certification_date");
+    if (date !== undefined && date !== null) {
+      expect(String(date)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      return;
+    }
+    const m = catq("parcel.certification_date_measurement") as {
+      value: unknown;
+      missing_reason?: string;
+      source_url: string;
+      captured_at: string;
+    };
+    expect(m.value).toBeNull();
+    expect(m.missing_reason).toMatch(/does not state a certification date/);
+    expect(m.source_url).toContain("traviscad.org");
+    expect(m.captured_at).toMatch(UTC);
+  },
   // Step 5 (v0.6): the key as printed in the 2026 JSON export, with its TCAD layout name.
   step5Identifier: () =>
     expect(catq('parcel.identifier_name + "/" + parcel.identifier_layout_name')).toMatch(
