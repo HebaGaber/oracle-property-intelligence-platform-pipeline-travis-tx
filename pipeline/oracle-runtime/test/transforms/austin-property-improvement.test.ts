@@ -281,3 +281,21 @@ describe("assertEmittedClasses (D-4a guard)", () => {
     ).not.toThrow();
   });
 });
+
+describe("excluded statuses never reach the export (the view has no status filter; donphan m6)", () => {
+  it.each(["Cancelled", "Cancelled - Customer Request", "VOID", "Withdrawn"])(
+    "a %s permit is classified exclude by the real profile and is not emitted",
+    async (word) => {
+      const travisAustin = await import("../../../../profiles/travis-austin@1.0.0/index.js");
+      const { profileApi } = await import("../../travis/pilot/profile-api.js");
+      const profile = profileApi(travisAustin as unknown as Parameters<typeof profileApi>[0]);
+      const out = transformAustinPropertyImprovement({
+        ...setup([capture("2026-100009 BP", { status_current: word })]),
+        profile,
+      });
+      expect(out.ledger[0]).toMatchObject({ status_class: "exclude", emitted: false });
+      expect(out.counts).toMatchObject({ emitted: 0, excluded: 1 });
+      expect(out.files).toEqual({});
+    },
+  );
+});

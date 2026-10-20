@@ -29,6 +29,8 @@ import {
   type SequenceReport,
 } from "../../../publish/src/index.js";
 import { PILOT_LIMITATION } from "../../../../packages/contract/src/manifest.js";
+
+const GAZETTEER_PATH = "packages/query-core/gazetteer/travis-places@1.0.0";
 import { createLogger } from "../lib/log.js";
 import {
   estimateTravisRoofAge,
@@ -63,6 +65,74 @@ import { profileApi, type TravisAustinProfileModule } from "./profile-api.js";
 
 export const PILOT_RUN_ID = "travis-pilot-20261020";
 export const COUNTY = { slug: "travis", state: "TX", fips: "48453" } as const;
+
+/** The code paths that produce a run (git status is checked on these, not on docs). */
+export const BUILD_PATHS = [
+  "pipeline/oracle-runtime/travis",
+  "pipeline/oracle-runtime/kit",
+  "pipeline/publish",
+  "packages",
+  "profiles",
+] as const;
+
+export const DIRTY_TREE_LIMITATION =
+  "built from a dirty working tree: the code under profiles[].gitCommit had uncommitted changes";
+
+/** A limitations[] line when `git status --porcelain -- <BUILD_PATHS>` lists any change. */
+export const dirtyTreeLimitations = (porcelain: string): string[] =>
+  porcelain.trim() === "" ? [] : [DIRTY_TREE_LIMITATION];
+
+type Coverage = Record<
+  string,
+  {
+    count: number;
+    derivation: "aggregate_match" | "capture_receipt" | "published_rows";
+    note?: string;
+  }
+>;
+
+/** AD-24: the five contractor identity states over the published permits. A-02 resolves no
+ *  contractor (no official license or registry match is attempted), so all are unresolved. */
+export function contractorCoverage(publishedPermits: number): Coverage {
+  return {
+    contractor_resolved: { count: 0, derivation: "aggregate_match" },
+    contractor_candidate: { count: 0, derivation: "aggregate_match" },
+    contractor_ambiguous: { count: 0, derivation: "aggregate_match" },
+    contractor_conflicting: { count: 0, derivation: "aggregate_match" },
+    contractor_unresolved: {
+      count: publishedPermits,
+      derivation: "aggregate_match",
+      note: "no official license or registry evidence is matched in A-02; no contractor edge is written",
+    },
+  };
+}
+
+/** Owner gaps per published property, from the transform's outcome on each TCAD record. */
+export function ownerCoverage(outcomes: Record<string, number>): Coverage {
+  const n = (k: string): number => outcomes[k] ?? 0;
+  return {
+    owner_no_dated_sale: {
+      count: n("no_dated_sale"),
+      derivation: "capture_receipt",
+      note: "owners[] present but no dated sale to link them to (linking without a sale: A-04)",
+    },
+    owner_unparsed: {
+      count: n("unparsed"),
+      derivation: "capture_receipt",
+      note: "a dated sale, but no owner name splits into a person or reads as a company",
+    },
+    owner_confidential: {
+      count: n("suppressed"),
+      derivation: "capture_receipt",
+      note: "owner name and mailing withheld: owners[]/sales[] confidentialCode, sales[] confidentialSale, or an unmodeled confid* key (P0-15)",
+    },
+    owner_no_record: {
+      count: n("none"),
+      derivation: "capture_receipt",
+      note: "the TCAD record has no owners[]",
+    },
+  };
+}
 
 export interface RunPilotOptions {
   repoRoot: string;
@@ -289,7 +359,11 @@ export async function runPilot(options: RunPilotOptions): Promise<RunPilotResult
       record: p.record,
       seed: p.seed,
       cids,
-      roofAge: roof && { pID, roof_date: roof.roof_date },
+      roofAge: roof && {
+        pID,
+        roof_date: roof.roof_date,
+        anchor: roof.estimate.anchor?.type ?? null,
+      },
     });
     for (const [name, text] of Object.entries(county.files)) {
       const path = join(groupsDir, "county", county.dir, name);
@@ -395,6 +469,16 @@ export async function runPilot(options: RunPilotOptions): Promise<RunPilotResult
     cwd: repoRoot,
     encoding: "utf8",
   }).trim();
+  const dirty = dirtyTreeLimitations(
+    execFileSync("git", ["status", "--porcelain", "--", ...BUILD_PATHS], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    }),
+  );
+  const gazetteerSha = readFileSync(join(repoRoot, GAZETTEER_PATH, "DIGEST"), "utf8").trim();
+  const roofCaveats = [
+    ...new Set(roofAge.flatMap((r) => r.estimate.historicalCoverage.caveats)),
+  ].sort();
   const watermark =
     slice.slices
       .map((s) => s.max_updated_at)
@@ -456,6 +540,13 @@ export async function runPilot(options: RunPilotOptions): Promise<RunPilotResult
             },
           ]
         : []),
+      {
+        name: "travis-places",
+        version: "1.0.0",
+        sha256: gazetteerSha,
+        path: GAZETTEER_PATH,
+        gitCommit,
+      },
     ],
     coverage: {
       permits_captured: { count: captures.length, derivation: "capture_receipt" },
@@ -494,23 +585,24 @@ export async function runPilot(options: RunPilotOptions): Promise<RunPilotResult
         derivation: "aggregate_match",
         note: "not emitted",
       },
-      owner_confidential_suppressed: {
-        count: transformReport.confidential_suppressed,
-        derivation: "aggregate_match",
-        note: "owner name and mailing withheld when owners[] or sales[] carry confidentialCode",
-      },
+      ...ownerCoverage(transformReport.owner_outcomes),
+      ...contractorCoverage(transformReport.emitted),
       roof_age_permit_anchor: {
         count: transformReport.roof_age.permit_terminal_date ?? 0,
         derivation: "published_rows",
+        note: `estimator confidence high; caveats: ${roofCaveats.join(", ") || "none"}`,
       },
       roof_age_built_year: {
         count: transformReport.roof_age.property_built_year ?? 0,
         derivation: "published_rows",
+        note: `estimator confidence low; caveats: ${roofCaveats.join(", ") || "none"}`,
       },
     },
     limitations: [
       PILOT_LIMITATION,
       "finishedAt is the end of the capture phase (the data's as-of instant)",
+      `roof age: the estimator saw a slice of each parcel's Austin permits, not its full history (${roofCaveats.join(", ") || "no caveat"})`,
+      ...dirty,
     ],
   });
   mkdirSync(join(P, "manifest"), { recursive: true });

@@ -58,6 +58,8 @@ const Receipt = z.object({
 type Receipt = z.infer<typeof Receipt>;
 
 const sha256 = (b: Buffer | string): string => createHash("sha256").update(b).digest("hex");
+/** Code-unit order: locale-independent, byte-stable output (code-review #5). */
+const codeUnitOrder = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /** One identified GET per file. Reuses an existing raw file only when its receipt matches. */
 async function acquire(
@@ -196,7 +198,7 @@ async function main(): Promise<void> {
   const placeStamp = stamp(got.place.receipt);
   const zctaStamp = stamp(got.zcta.receipt);
   const sortCounties = (s: Set<string>): string[] =>
-    [...s].sort((a, b) => (a === TRAVIS_FIPS ? -1 : b === TRAVIS_FIPS ? 1 : a.localeCompare(b)));
+    [...s].sort((a, b) => (a === TRAVIS_FIPS ? -1 : b === TRAVIS_FIPS ? 1 : codeUnitOrder(a, b)));
 
   const places: PlaceRow[] = [];
   const txPlacesWithoutCountyRow: string[] = [];
@@ -221,7 +223,7 @@ async function main(): Promise<void> {
       source_file: placeStamp.url,
     });
   }
-  places.sort((a, b) => a.geoid.localeCompare(b.geoid));
+  places.sort((a, b) => codeUnitOrder(a.geoid, b.geoid));
 
   const zctas: ZctaRow[] = [];
   const allUsZctas: string[] = [];
@@ -239,7 +241,7 @@ async function main(): Promise<void> {
       source_file: zctaStamp.url,
     });
   }
-  zctas.sort((a, b) => a.zcta.localeCompare(b.zcta));
+  zctas.sort((a, b) => codeUnitOrder(a.zcta, b.zcta));
   allUsZctas.sort();
 
   const travisZctas = new Set(zctas.map((z) => z.zcta));

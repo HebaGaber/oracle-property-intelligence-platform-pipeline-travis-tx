@@ -67,7 +67,7 @@ describe("A-02 acceptance: static", () => {
   it("A-02-TC-011 no text classification in views.sql (the grep prints nothing)", () => {
     const sql = readFileSync(VIEWS_SQL, "utf8");
     expect(sql.split("\n").filter((l) => TC011_GREP.test(l))).toEqual([]);
-    expect(sql).toContain("improvement_type = 'Roofing' AND pi.improvement_action = 'Replacement'");
+    expect(sql).toMatch(/improvement_type = 'Roofing' AND \w+\.improvement_action = 'Replacement'/);
   });
 
   it("A-02-TC-025 the sample file has exactly 20 rows; no other Parquet file is tracked", async () => {
@@ -264,7 +264,7 @@ if (!PILOT_DIR) {
           expect.arrayContaining([
             { field: "status_raw", reason: "no_lexicon_carrier" },
             { field: "expiry_date", reason: "no_lexicon_carrier" },
-            { field: "improvement_status", reason: "no_lexicon_carrier" },
+            { field: "improvement_status", reason: "enum_lacks_value" },
           ]),
         );
         // source_url is the Socrata record URL; that record shows "Expired".

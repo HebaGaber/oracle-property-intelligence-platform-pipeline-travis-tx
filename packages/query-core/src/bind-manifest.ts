@@ -5,7 +5,7 @@
 // Tables the export did not emit become empty typed relations (oracle R10). No engine import:
 // SQL goes through the QueryEngine interface.
 import { RunManifestV1 } from "@countylens/contract";
-import { RULES } from "@countylens/profile-travis-austin";
+import { PROFILE, RULES } from "@countylens/profile-travis-austin";
 import { GAZETTEER } from "../gazetteer/travis-places@1.0.0/index.js";
 import { deriveMacrosSql, zctaAreaRows } from "./derive.js";
 import type { QueryEngine } from "./engine.js";
@@ -13,6 +13,8 @@ import { rawCid } from "./raw-cid.js";
 import { STATUS_MAP_SQL, VIEWS_SQL } from "./sql.js";
 
 const V = "VARCHAR";
+/** The manifest profiles[] name of the travis-places gazetteer (area_list_sha256). */
+export const PLACES_PROFILE = "travis-places";
 const ENTITY = { cid: V, property_cid: V, data_group_cid: V, request_identifier: V };
 const EDGE = { relationship_cid: V, from_cid: V, to_cid: V, property_cid: V, data_group_cid: V };
 
@@ -135,8 +137,21 @@ export async function bindManifest(
   const manifestCid = await rawCid(manifestBytes);
   const profile = manifest.profiles.find((p) => p.name === RULES.name);
   if (!profile) throw new Error(`bindManifest: manifest has no ${RULES.name} profile`);
-  const areaList =
-    manifest.profiles.find((p) => p.name === "travis-places")?.sha256 ?? GAZETTEER.sha256;
+  // The status map below is generated from the in-repo profile: a run classified by another
+  // digest must not be read through it (oracle F5).
+  if (profile.sha256 !== PROFILE.sha256 || profile.version !== PROFILE.version)
+    throw new Error(
+      `bindManifest: manifest ${RULES.name}@${profile.version} sha256 ${profile.sha256} is not the in-repo profile DIGEST ${PROFILE.version} ${PROFILE.sha256}`,
+    );
+  // area_list_sha256 comes from the manifest only (code-review #8); the ZCTA lookup is the
+  // in-repo gazetteer, so its digest must be the one the run recorded.
+  const places = manifest.profiles.find((p) => p.name === PLACES_PROFILE);
+  if (!places) throw new Error(`bindManifest: manifest has no ${PLACES_PROFILE} profile`);
+  if (places.sha256 !== GAZETTEER.sha256)
+    throw new Error(
+      `bindManifest: manifest ${PLACES_PROFILE} sha256 ${places.sha256} is not the in-repo gazetteer DIGEST ${GAZETTEER.sha256}`,
+    );
+  const areaList = places.sha256;
   const groupSources = options.groupSources ?? TRAVIS_GROUP_SOURCES;
 
   const sql: string[] = [

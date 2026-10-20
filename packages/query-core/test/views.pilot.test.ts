@@ -86,7 +86,7 @@ if (!PILOT_DIR) {
       }
     });
 
-    it("each Expired pilot permit is stalled, never Completed or Cancelled, with status_raw/no_lexicon_carrier", () => {
+    it("each Expired pilot permit is stalled, never Completed or Cancelled, with status_raw/no_lexicon_carrier and improvement_status/enum_lacks_value", () => {
       for (const number of EXPIRED) {
         const row = viewRows("v_roofing_permit").find((r) => r.permit_number === number);
         expect(row, number).toBeDefined();
@@ -96,6 +96,7 @@ if (!PILOT_DIR) {
           expect.arrayContaining([
             { field: "status_raw", reason: "no_lexicon_carrier" },
             { field: "expiry_date", reason: "no_lexicon_carrier" },
+            { field: "improvement_status", reason: "enum_lacks_value" },
           ]),
         );
       }
@@ -109,6 +110,68 @@ if (!PILOT_DIR) {
       const numbers = viewRows("v_roofing_permit").map((r) => r.permit_number);
       expect(numbers).not.toContain("2026-038825 MP");
       expect(numbers).not.toContain("2026-089033 EP");
+    });
+
+    it("roof_date, roof_age_years, basis and confidence agree with the estimator ledger for every pilot property (oracle F1)", () => {
+      const ledger = readFileSync(join(pilotDir, "ledger/roof-age.jsonl"), "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map(
+          (l) =>
+            JSON.parse(l) as {
+              pID: string;
+              roof_date: string | null;
+              estimate: {
+                anchor: { type: string } | null;
+                confidence: string;
+                estimatedAgeYears: number | null;
+              };
+            },
+        );
+      const basisOf = (e: (typeof ledger)[number]["estimate"]): string =>
+        e.anchor === null
+          ? "unknown"
+          : e.anchor.type === "property_built_year"
+            ? "built_year"
+            : e.confidence === "high"
+              ? "permit"
+              : "new_construction";
+      const props = viewRows("v_property");
+      expect(ledger.length).toBe(props.length);
+      let agree = 0;
+      for (const l of ledger) {
+        const row = props.find((r) => r.request_identifier === l.pID);
+        expect(row, l.pID).toBeDefined();
+        expect(
+          {
+            roof_date: row?.roof_date,
+            roof_age_years: row?.roof_age_years,
+            roof_age_basis: row?.roof_age_basis,
+            roof_age_confidence: row?.roof_age_confidence,
+          },
+          l.pID,
+        ).toEqual({
+          roof_date: l.roof_date,
+          roof_age_years: l.estimate.estimatedAgeYears,
+          roof_age_basis: basisOf(l.estimate),
+          roof_age_confidence: l.estimate.anchor === null ? "none" : l.estimate.confidence,
+        });
+        agree += 1;
+      }
+      expect(agree).toBe(props.length);
+    });
+
+    it("structure.roof_date carries only the TCAD built year, never a permit date (oracle F1)", async () => {
+      const rows = await pilot.db.all(`SELECT s.roof_date, p.property_structure_built_year AS built
+        FROM county.structure s
+        JOIN (SELECT DISTINCT from_cid, to_cid FROM county.property_has_structure) ps ON ps.to_cid = s.cid
+        JOIN county.property p ON p.cid = ps.from_cid
+        WHERE s.roof_date IS NOT NULL`);
+      expect(rows.length).toBeGreaterThan(0);
+      for (const r of rows) expect(String(r.roof_date)).toBe(String(r.built));
+      const permitBasis = viewRows("v_property").filter((r) => r.roof_age_basis === "permit");
+      expect(permitBasis.length).toBeGreaterThan(0);
+      expect(rows.length + permitBasis.length).toBe(viewRows("v_property").length);
     });
 
     it("table_cid equals the re-derived raw-leaves CID of its part", async () => {

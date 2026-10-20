@@ -145,24 +145,33 @@ describe("open_days (as_of − issue_date for open/stalled; else null with not_o
   });
 });
 
-describe("status_class (generated status map; D-4a)", () => {
+describe("status_class (generated status map, scoped to the profile's jurisdictions; D-4a)", () => {
   it.each([
-    ["Permitted", "2026-09-17", "open"],
-    ["Planned", "2026-09-17", "open"],
-    ["OnHold", "2026-09-17", "open"],
-    ["Completed", "2026-09-17", "closed"],
-    [null, "2026-03-11", "stalled"],
-    [null, null, null],
-    ["Cancelled", "2026-03-11", null],
-  ])("improvement_status %s, issued %s → %s", async (status, issue, expected) => {
-    expect(d.statusClass(status, issue)).toBe(expected);
-    expect(await sql(`status_class_of(${lit(status)}, ${lit(issue)})`)).toBe(expected);
-  });
+    ["austin", "Permitted", "2026-09-17", "open"],
+    ["austin", "Planned", "2026-09-17", "open"],
+    ["austin", "OnHold", "2026-09-17", "open"],
+    ["austin", "Completed", "2026-09-17", "closed"],
+    ["austin", null, "2026-03-11", "stalled"],
+    ["austin", null, null, null],
+    ["austin", "Cancelled", "2026-03-11", null],
+    ["austin", "InProgress", "2026-03-11", null],
+    // donphan M2: the NULL → stalled rule is Austin's; any other jurisdiction gets no class.
+    ["pflugerville", null, "2026-03-11", null],
+    ["pflugerville", "Completed", "2026-03-11", null],
+    [null, null, "2026-03-11", null],
+    [null, "Permitted", "2026-03-11", null],
+  ])(
+    "jurisdiction %s, improvement_status %s, issued %s → %s",
+    async (j, status, issue, expected) => {
+      expect(d.statusClass(j, status, issue)).toBe(expected);
+      expect(await sql(`status_class_of(${lit(j)}, ${lit(status)}, ${lit(issue)})`)).toBe(expected);
+    },
+  );
 
   it("agrees with the profile's classifyStatus for every published word", () => {
     for (const word of ["Active", "Pending", "On Hold", "Final", "Closed", "Expired"]) {
       const c = classifyStatus(word);
-      expect(d.statusClass(c.improvement_status, "2026-01-01"), word).toBe(c.class);
+      expect(d.statusClass("austin", c.improvement_status, "2026-01-01"), word).toBe(c.class);
     }
   });
 
@@ -173,11 +182,102 @@ describe("status_class (generated status map; D-4a)", () => {
     expect(await sql(`is_open('closed')`)).toBe(false);
   });
 
-  it("final_date reason: not_closed unless the permit is closed", async () => {
+  it("final_date reason: not_closed unless closed; needs_review when the class is unknown", async () => {
     expect(d.finalDateReason("open")).toBe("not_closed");
     expect(d.finalDateReason("closed")).toBe("source_missing");
+    expect(d.finalDateReason(null)).toBe("needs_review");
     expect(await sql(`final_date_reason('stalled')`)).toBe("not_closed");
     expect(await sql(`final_date_reason('closed')`)).toBe("source_missing");
+    expect(await sql(`final_date_reason(NULL::VARCHAR)`)).toBe("needs_review");
+  });
+
+  it.each([
+    ["open", "2026-09-17", "not_open"],
+    ["stalled", null, "source_missing"],
+    ["closed", "2026-09-17", "not_open"],
+    [null, "2026-09-17", "needs_review"],
+  ] as const)("open_days reason: class %s issued %s → %s", async (cls, issue, expected) => {
+    expect(d.openDaysReason(cls, issue)).toBe(expected);
+    expect(await sql(`open_days_reason(${lit(cls)}, ${lit(issue, "DATE")})`)).toBe(expected);
+  });
+
+  it.each([
+    // improvement_status is null: stalled means the enum has no value for the source word
+    // (Expired); otherwise the null is unexplained (needs_review).
+    ["stalled", "enum_lacks_value"],
+    [null, "needs_review"],
+  ] as const)("null improvement_status with class %s → %s", async (cls, expected) => {
+    expect(d.statusMissingReason(cls)).toBe(expected);
+    expect(await sql(`status_missing_reason(${lit(cls)})`)).toBe(expected);
+  });
+});
+
+describe("roof terminal date (estimator rule: ≤ as_of, ≥ issue date)", () => {
+  it.each([
+    ["2026-09-15", "2026-09-01", true],
+    ["2026-09-15", null, true],
+    ["2026-10-20", "2026-09-01", true],
+    ["2026-10-21", "2026-09-01", false],
+    ["2026-08-31", "2026-09-01", false],
+    [null, "2026-09-01", false],
+  ] as const)("terminal %s, issued %s → accepted %s", async (date, issue, expected) => {
+    expect(d.terminalDateAccepted(date, issue, AS_OF)).toBe(expected);
+    expect(
+      await sql(
+        `terminal_date_accepted(${lit(date, "DATE")}, ${lit(issue, "DATE")}, ${AS_OF_SQL})`,
+      ),
+    ).toBe(expected);
+  });
+});
+
+describe("owner kind, name and missing reason (code-review #2, donphan M1)", () => {
+  it.each([
+    [2, 2, "company"],
+    [0, 1, "company"],
+    [2, 0, "person"],
+    [0, 0, "unknown"],
+  ] as const)("%s persons, %s companies → %s", async (persons, companies, kind) => {
+    expect(d.ownerKind(persons, companies)).toBe(kind);
+    expect(await sql(`owner_kind_of(${persons}, ${companies})`)).toBe(kind);
+  });
+
+  it.each([
+    // coverage counts (unparsed, confidential, no_record) → reason for a dated sale with no owner
+    [4, 0, 0, "owner_unparsed"],
+    [0, 2, 0, "owner_confidential"],
+    [0, 0, 3, "no_owner_record"],
+    [0, 0, 0, "no_owner_record"],
+    [1, 1, 0, "needs_review"],
+    [null, null, null, "no_owner_record"],
+  ] as const)("coverage %s/%s/%s → %s", async (u, c, n, reason) => {
+    expect(d.ownerGapReason(u, c, n)).toBe(reason);
+    expect(
+      await sql(
+        `owner_gap_reason(${lit(u, "INTEGER")}, ${lit(c, "INTEGER")}, ${lit(n, "INTEGER")})`,
+      ),
+    ).toBe(reason);
+  });
+
+  it("an owner without a dated sale is missing for no_dated_sale, else for the gap reason", async () => {
+    expect(d.ownerMissingReason(false, "owner_unparsed")).toBe("no_dated_sale");
+    expect(d.ownerMissingReason(true, "owner_unparsed")).toBe("owner_unparsed");
+    expect(await sql(`owner_missing_reason(false, 'owner_unparsed')`)).toBe("no_dated_sale");
+    expect(await sql(`owner_missing_reason(true, 'owner_confidential')`)).toBe(
+      "owner_confidential",
+    );
+  });
+});
+
+describe("contractor edge count (donphan M4: never pick one of several)", () => {
+  it.each([
+    [0, null, null, "contractor_unresolved"],
+    [1, "baguqeeraone", "baguqeeraone", "contractor_unresolved"],
+    [2, "baguqeeraone", null, "needs_review"],
+  ] as const)("%s edge(s), min cid %s → company %s, reason %s", async (n, cid, company, reason) => {
+    expect(d.soleContractor(n, cid)).toBe(company);
+    expect(d.contractorMissingReason(n)).toBe(reason);
+    expect(await sql(`sole_contractor(${n}, ${lit(cid)})`)).toBe(company);
+    expect(await sql(`contractor_missing_reason(${n})`)).toBe(reason);
   });
 });
 

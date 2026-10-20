@@ -41,6 +41,11 @@ describe("MissingReason", () => {
       "needs_review",
       "first_run",
       "out_of_scope",
+      // D-9 (additive): the carrier exists but its enum has no value for the source word.
+      "enum_lacks_value",
+      // D-9 (additive, donphan M1): why an owner is missing although a dated sale exists.
+      "owner_unparsed",
+      "owner_confidential",
     ]);
     expect(MissingReason.options).toEqual([...MISSING_REASONS]);
   });

@@ -19,7 +19,7 @@ Expected (mew § A.2): owner sale date → `carrier`; the other 8 → `no_carrie
 
 `cid` · `source_url` · `captured_at` (from manifest `sources[].captured_at`) · `table` · `table_cid` (part CID) · `run_id` · `manifest_cid` · `as_of` (= manifest `finishedAt`) · `missing: [{field, reason}]`.
 
-**Missing-reason enum (closed list, mew B.7 plus oracle's `zip_not_zcta`, D-4c):** `no_lexicon_carrier`, `not_in_export`, `source_missing`, `no_coordinates`, `no_roof_date`, `basis_unmatched`, `no_dated_sale`, `no_owner_record`, `no_mailing_address`, `zip_not_zcta`, `not_open`, `not_closed`, `contractor_unresolved`, `bbb_blocked`, `bbb_not_found`, `needs_review`, `first_run`, `out_of_scope`.
+**Missing-reason enum (closed list, mew B.7 plus oracle's `zip_not_zcta`, D-4c; additive D-9 members last):** `no_lexicon_carrier`, `not_in_export`, `source_missing`, `no_coordinates`, `no_roof_date`, `basis_unmatched`, `no_dated_sale`, `no_owner_record`, `no_mailing_address`, `zip_not_zcta`, `not_open`, `not_closed`, `contractor_unresolved`, `bbb_blocked`, `bbb_not_found`, `needs_review`, `first_run`, `out_of_scope`, `enum_lacks_value` (the carrier exists but its enum has no value for the source word, e.g. an Expired permit's `improvement_status`), `owner_unparsed`, `owner_confidential`.
 
 ## Views
 
@@ -28,8 +28,8 @@ The column lists are mew § B.2 to B.6, with these PO-decided adjustments:
 - **`v_roofing_permit.status_class`** ∈ {`open`, `stalled`, `closed`}:
   - `open` = Permitted, Planned or OnHold;
   - `closed` = Completed;
-  - `stalled` = `improvement_status IS NULL` and `issue_date` present (D-4a).
-  - Never null for an emitted permit.
+  - `stalled` = `improvement_status IS NULL` and `issue_date` present (D-4a), only for the profile's jurisdictions (`austin`); the generated status map is keyed on (jurisdiction, improvement_status).
+  - Null with `missing {status_class, needs_review}` when it cannot be derived (other jurisdiction, unmapped lexicon value such as InProgress, null status without issue date). D-9: never silently empty.
 - **`v_roofing_permit`** filters `improvement_type = 'Roofing' AND improvement_action = 'Replacement'`. Trade sub-permits never qualify (D-4b).
 - **Profile stamp columns** use mew's names `profile_version`, `profile_sha256` (D-4c).
 - **No v1 columns** for `status_raw`, `expiry_date`, `contractor_name_raw`, `bbb_rating`, `bbb_url`, `description` or `work_class_raw`. Each one appears in `missing` with `no_lexicon_carrier`.
@@ -46,13 +46,15 @@ The column lists are mew § B.2 to B.6, with these PO-decided adjustments:
 | Column | Rule |
 |---|---|
 | `roof_age_years` | whole years from `structure.roof_date` to `as_of`; a year-only date uses year subtraction; never the stored `structure.roof_age_years` |
+| `roof_date` | latest accepted terminal date (`completion_date` / `permit_close_date`, ≤ `as_of`, ≥ issue date) of a closed Roofing permit (Replacement, else New); else `structure.roof_date` (TCAD built year only). Open/stalled replacements never reset it (P0-8). Agrees with the kit estimator ledger (D-9, oracle F1) |
 | `roof_age_basis` / `roof_age_confidence` | mew B.5: `permit`/high · `new_construction`/medium · `built_year`/low · `unknown`/none |
 | `tenure_years`, `tenure_basis`, `is_long_tenure` | from the max `ownership_transfer_date`; `> 10` years means long; no date → `unknown`, null, reason `no_dated_sale` |
 | `owner_area_class` | `in_county` (ZCTA on the Travis list) · `regional` (a regional-county ZCTA) · `out_of_area` · `unknown` (no mailing address, or `zip_not_zcta`) |
 | `owner_is_out_of_area` | true for `regional` or `out_of_area`; false for `in_county`; null for `unknown` |
 | `coordinate_source` | `gis_centroid` · `permit_point` · `none` |
 | `open_days` | `as_of − issue_date` for `open`/`stalled`; otherwise null with reason `not_open` |
-| `contractor_resolution` | `resolved` if a `property_improvement_has_contractor` edge exists, else `unresolved` |
+| `contractor_resolution` | `resolved` if exactly one `property_improvement_has_contractor` edge exists; several edges → `unresolved` with `needs_review` (no company picked); none → `unresolved`. Five-state totals in the manifest `coverage` (AD-24) |
+| `owner_kind` / `owner_name` | latest dated sale (assumed current owner); `company` when any company, else `person`, else `unknown`; names persons then companies, each once. Missing: `no_dated_sale`, else `owner_unparsed` / `owner_confidential` / `no_owner_record` from the coverage counts (`needs_review` when ambiguous) |
 | `bbb_status` | `not_checked` in v1; reason `contractor_unresolved` or `no_lexicon_carrier` |
 
 ## Roofing and status profile (`profiles/travis-austin@1.0.0/rules.json`)

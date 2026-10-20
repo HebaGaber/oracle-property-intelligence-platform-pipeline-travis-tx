@@ -131,15 +131,80 @@ The rows are read from the bound pilot views only (\`bindManifest()\` over the p
 | Null provenance (\`source_url\`, \`captured_at\`, \`table\`, \`table_cid\`, \`run_id\`, \`manifest_cid\`) | ${s.nullProvenance} |
 | Distinct \`run_id\` | 1 |
 
+## What the pilot is (and is not)
+
+The pilot is **a schema contract, not a distribution**. Its permit slice was chosen by PO decision
+D-3 (42 Austin permits issued in 2026-09, 5 Expired BP permits and 3 older Final BP permits), so it
+is skewed to open permits and to recent work. Do not read rates, shares or averages from the
+sample or the pilot views: they show the shape of every column and every missing reason, not how
+often each value occurs in Travis County.
+
 ## Status rule (PO decision D-4a): empty status means stalled
 
 The lexicon \`improvement_status\` enum has no Expired value. An Expired Austin permit is published
 with \`improvement_status\` **null**, and the views read **empty status means stalled**: a null
 \`improvement_status\` on a published permit with an \`issue_date\` gives \`status_class = 'stalled'\`.
 Permitted, Planned and OnHold give \`open\`; Completed gives \`closed\`. The mapping is generated from
-the profile (\`profiles/travis-austin@1.0.0\`, \`packages/query-core/generated/travis-austin@1.0.0.status-map.sql\`).
-Excluded and needs_review permits are never published. Every such row lists
-\`{field: "status_raw", reason: "no_lexicon_carrier"}\` and \`{field: "expiry_date", reason: "no_lexicon_carrier"}\` in \`missing\`.
+the profile (\`profiles/travis-austin@1.0.0\`, \`packages/query-core/generated/travis-austin@1.0.0.status-map.sql\`)
+and is keyed on (jurisdiction, \`improvement_status\`): the rule applies only for the profile's jurisdictions
+(\`austin\`, from the request host of \`source_http_request\`). Excluded and needs_review permits are
+never published, so the views carry no status filter of their own. Every row lists
+\`{field: "status_raw", reason: "no_lexicon_carrier"}\` and \`{field: "expiry_date", reason: "no_lexicon_carrier"}\`
+in \`missing\`, and a stalled row's null \`improvement_status\` is listed with \`enum_lacks_value\`
+(the carrier exists; its enum has no value for the source word).
+
+\`status_class\` is never silently empty: when it cannot be derived (a null status from another
+jurisdiction, a null status without an issue date, or a lexicon value the profile does not map,
+such as InProgress) it is null and the row lists \`{field: "status_class", reason: "needs_review"}\`;
+\`final_date\` and \`open_days\` then also give \`needs_review\`, and a null \`improvement_status\`
+gives \`needs_review\` instead of \`enum_lacks_value\`.
+
+**For raw-table consumers** (reading \`property_improvement\` Parquet without these views): a Travis
+permit whose \`improvement_status\` is null, whose \`source_http_request\` host is an Austin host
+(\`data.austintexas.gov\`, \`abc.austintexas.gov\`) and which has a \`permit_issue_date\` is an
+**Expired (stalled)** permit, not a permit with an unknown status. Any other null status is unknown.
+
+## Location, ZIP search and value
+
+The Travis export reaches a property's point only through **property_has_parcel → parcel_has_geometry → geometry**
+(the TCAD point). There is no \`address_has_geometry\` and no \`property_has_tax\` in the export, and
+\`address\` properties are not emitted, so there is no situs text, situs ZIP or owner mailing
+address in v1. A ZIP or place search therefore uses the travis-places gazetteer point of the ZIP
+or place and a bounding box around it over \`latitude\`/\`longitude\`; it never matches a ZIP
+column. Market value is absent: no assessed or market value is published in v1.
+
+## Roof date
+
+\`roof_date\` is the latest accepted terminal date (\`completion_date\` or \`permit_close_date\`, not
+after \`as_of\`, not before the issue date) of a **closed** Roofing permit linked to the property
+(Replacement → basis \`permit\`, confidence high; else New → \`new_construction\`, medium), read
+from the published permit rows. Otherwise it is \`structure.roof_date\`, which carries only the
+TCAD built year (basis \`built_year\`, confidence low); a permit-derived date is never written on
+\`structure\` with the TCAD request. An open or stalled replacement never resets the roof age
+(P0-8). These rules are the kit roof-age estimator's, and the pilot views agree with its ledger
+for every property. The estimator saw a slice of each parcel's Austin permits, not its full
+history (caveat \`partial_history\`, in the manifest).
+
+## Owner
+
+The current owner is read from the **latest dated sale**: the persons and companies linked to
+that \`sales_history\` record (an assumption: the latest dated sale is the current owner; TCAD
+\`owners[]\` are linked to it by the transform). \`owner_kind\` is \`company\` when any company is
+linked, else \`person\`, else \`unknown\`; \`owner_name\` lists the persons (by last, first name) and
+then the companies (by name), each once, separated by \`; \`. When there is no owner the reason is
+\`no_dated_sale\` (no dated sale to link to; linking without a sale is deferred to A-04), or for a
+dated sale without an owner \`owner_unparsed\`, \`owner_confidential\` (TCAD confidentiality flag,
+P0-15) or \`no_owner_record\`, read from the manifest \`coverage\` counts \`owner_unparsed\`,
+\`owner_confidential\` and \`owner_no_record\` (when more than one is non-zero the row cannot be
+told apart and lists \`needs_review\`).
+
+## Contractor
+
+\`contractor_resolution\` is \`resolved\` only when the permit has exactly one
+\`property_improvement_has_contractor\` edge; with several edges no company is picked: the row is
+\`unresolved\` and lists \`{field: "contractor_company_cid", reason: "needs_review"}\`. The AD-24
+five-state totals (\`contractor_resolved\`, \`contractor_candidate\`, \`contractor_ambiguous\`,
+\`contractor_conflicting\`, \`contractor_unresolved\`) are in the manifest \`coverage\`.
 
 ## Provenance and \`missing\`
 
@@ -147,6 +212,11 @@ Every row of \`v_property\`, \`v_roofing_permit\` and \`v_contractor\` carries \
 \`captured_at\`, \`table\`, \`table_cid\`, \`run_id\`, \`manifest_cid\`, \`as_of\` and \`missing\`.
 \`missing\` holds one \`{field, reason}\` entry for every null column and every field the contract
 cannot carry. Reasons are a closed list: ${MISSING_REASONS.map((r) => `\`${r}\``).join(", ")}.
+\`captured_at\` is source-level: it is the manifest \`sources[].captured_at\` of the record's source
+(the latest successful capture receipt of that source), not a per-record time. \`source_url\` is
+the record's own request URL; when the record has none (or its URL is not a manifest source) it
+falls back to the source-level URL of its data group, and no \`missing\` entry is added because a
+URL is present.
 In the sample, the property's own provenance is prefixed \`property_\` (\`property_source_url\`,
 \`property_captured_at\`, \`property_table\`, \`property_table_cid\`, \`property_missing\`); \`run_id\`,
 \`manifest_cid\` and \`as_of\` are the same for both records.

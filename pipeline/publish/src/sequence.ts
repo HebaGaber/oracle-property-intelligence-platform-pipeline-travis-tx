@@ -194,12 +194,54 @@ function plan(county: string, p: string, group: DataGroup): Planned[] {
   ];
 }
 
-function dataGroupCids(hashCsv: string): string[] {
-  const lines = readFileSync(hashCsv, "utf8")
-    .split("\n")
-    .slice(1)
-    .filter((l) => l.trim() !== "");
-  return [...new Set(lines.map((l) => l.split(",")[1] as string))];
+/** RFC 4180 CSV: quoted fields (commas, CR/LF and doubled quotes inside), CRLF or LF rows.
+ *  Blank lines are dropped. A small hand parser: no CSV dependency in this package. */
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  let i = 0;
+  const endRow = (): void => {
+    row.push(field);
+    if (!(row.length === 1 && row[0] === "")) rows.push(row);
+    row = [];
+    field = "";
+  };
+  while (i < text.length) {
+    const ch = text[i] as string;
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') {
+        field += '"';
+        i += 2;
+        continue;
+      }
+      if (ch === '"') quoted = false;
+      else field += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === '"') quoted = true;
+    else if (ch === ",") {
+      row.push(field);
+      field = "";
+    } else if (ch === "\n" || ch === "\r") {
+      endRow();
+      if (ch === "\r" && text[i + 1] === "\n") i += 1;
+    } else field += ch;
+    i += 1;
+  }
+  if (quoted) throw new Error("parseCsv: unterminated quoted field");
+  if (field !== "" || row.length > 0) endRow();
+  return rows;
+}
+
+/** Distinct dataGroupCid values of a hash.csv, read by header name, in first-seen order. */
+export function dataGroupCids(hashCsv: string): string[] {
+  const [header, ...rows] = parseCsv(readFileSync(hashCsv, "utf8"));
+  const col = header?.indexOf("dataGroupCid") ?? -1;
+  if (col < 0) throw new Error(`${hashCsv}: no dataGroupCid column`);
+  return [...new Set(rows.map((r) => r[col] ?? "").filter((v) => v !== ""))];
 }
 
 export async function runSequence(options: SequenceOptions): Promise<SequenceReport> {

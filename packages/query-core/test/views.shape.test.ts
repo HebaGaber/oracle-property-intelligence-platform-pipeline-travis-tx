@@ -13,45 +13,10 @@ import { bindManifest, REQUIRED_TABLES, type BoundRun } from "../src/bind-manife
 import { rawCid } from "../src/raw-cid.js";
 import { sampleSql } from "../src/sample.js";
 import { openDuckDb, type DuckDbEngine } from "../scripts/duckdb-engine.js";
+import { RELATIONSHIP, classColumns } from "./helpers/fixture-export.js";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
-const SCHEMAS = fileURLToPath(new URL("./fixtures/schemas/", import.meta.url));
 const MANIFEST = join(ROOT, "contract/v1/pilot-manifest.json");
-
-type JsonType = string | string[] | undefined;
-const duckType = (t: JsonType): string => {
-  const types = Array.isArray(t) ? t : [t];
-  if (types.includes("integer")) return "BIGINT";
-  if (types.includes("number")) return "DOUBLE";
-  if (types.includes("boolean")) return "BOOLEAN";
-  return "VARCHAR";
-};
-
-function classColumns(cls: string): [string, string][] {
-  const schema = JSON.parse(readFileSync(join(SCHEMAS, `${cls}.json`), "utf8")) as {
-    properties?: Record<string, { type?: JsonType }>;
-  };
-  const props = Object.entries(schema.properties ?? {}).map(([name, p]): [string, string] => [
-    name,
-    duckType(p.type),
-  ]);
-  const extras: [string, string][] = [
-    ["cid", "VARCHAR"],
-    ["property_cid", "VARCHAR"],
-    ["data_group_cid", "VARCHAR"],
-  ];
-  // address is a top-level oneOf: the export emits only the extras plus request_identifier.
-  if (props.length === 0) extras.push(["request_identifier", "VARCHAR"]);
-  return [...props, ...extras];
-}
-
-const RELATIONSHIP: [string, string][] = [
-  ["relationship_cid", "VARCHAR"],
-  ["from_cid", "VARCHAR"],
-  ["to_cid", "VARCHAR"],
-  ["property_cid", "VARCHAR"],
-  ["data_group_cid", "VARCHAR"],
-];
 
 /** What this synthetic export emits. person, sales_history_has_person, the contractor edge and the
  *  permit-group company are left out on purpose, as in the pilot. */

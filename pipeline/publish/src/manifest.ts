@@ -183,7 +183,8 @@ async function groupArtifacts(
       tables.push(artifact);
     }
   }
-  tables.sort((a, b) => a.name.localeCompare(b.name));
+  // Code-unit order: byte-stable across locales (code-review #5).
+  tables.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const directory: ManifestArtifact = {
     name: relative(pilotDir, g.tablesDir),
     cid: g.tablesRoot,

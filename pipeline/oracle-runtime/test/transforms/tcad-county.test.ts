@@ -22,16 +22,26 @@ const CIDS = {
 
 function input(
   over: Parameters<typeof tcadRecord>[0] = { pID: 100008, geoID: "0100030105" },
-  roofDate: string | null = "2026-09-20",
+  roofDate: string | null = "1985",
+  anchor: "property_built_year" | "permit_terminal_date" | null = "property_built_year",
+  edit: (raw: Record<string, unknown>) => void = () => undefined,
 ): CountyTransformInput {
-  const record = parseTcadRecord(tcadRecord(over));
+  const raw = tcadRecord(over);
+  edit(raw);
+  const record = parseTcadRecord(raw);
   return {
     record,
     seed: buildSeedRow(record, "0100030105"),
     cids: CIDS,
-    roofAge: roofDate === null ? null : { pID: String(over.pID), roof_date: roofDate },
+    roofAge: roofDate === null ? null : { pID: String(over.pID), roof_date: roofDate, anchor },
   };
 }
+
+const sales = (raw: Record<string, unknown>): Record<string, unknown>[] =>
+  raw.sales as Record<string, unknown>[];
+const owners = (raw: Record<string, unknown>): Record<string, unknown>[] =>
+  raw.owners as Record<string, unknown>[];
+const OWNER_FILE = /^(person|company|mailing_address)_/;
 
 type Json = Record<string, unknown>;
 const parse = (files: Record<string, string>, name: string): Json =>
@@ -235,6 +245,48 @@ describe("transformTcadCounty: provenance and links", () => {
 });
 
 describe("transformTcadCounty: confidentiality (P0-15)", () => {
+  it.each([1, -1, "1", "Y", true])(
+    "a sale-level confidentialSale %s hides the whole owner (PO decision) and is counted",
+    (flag) => {
+      const out = transformTcadCounty(
+        input({ pID: 100013, geoID: "0100030105" }, "1985", "property_built_year", (raw) => {
+          (sales(raw)[0] as Record<string, unknown>).confidentialSale = flag;
+        }),
+      );
+      expect(Object.keys(out.files).some((n) => OWNER_FILE.test(n))).toBe(false);
+      for (const text of Object.values(out.files)) expect(text).not.toContain("SAMPLE OWNER");
+      expect(out.counts).toMatchObject({
+        owner: "suppressed",
+        confidential: true,
+        confidential_basis: ["sales[].confidentialSale"],
+      });
+    },
+  );
+
+  it.each([0, "0", null, false, ""])("confidentialSale %s does not suppress the owner", (flag) => {
+    const out = transformTcadCounty(
+      input({ pID: 100014, geoID: "0100030105" }, "1985", "property_built_year", (raw) => {
+        (sales(raw)[0] as Record<string, unknown>).confidentialSale = flag;
+      }),
+    );
+    expect(out.counts).toMatchObject({ owner: "company", confidential: false });
+  });
+
+  it("fails closed on a confid* key the transform does not model, recording the key", () => {
+    const out = transformTcadCounty(
+      input({ pID: 100015, geoID: "0100030105" }, "1985", "property_built_year", (raw) => {
+        (owners(raw)[0] as Record<string, unknown>).confidentialOwner = null;
+        raw.ConfidentialFlag = 0;
+      }),
+    );
+    expect(Object.keys(out.files).some((n) => OWNER_FILE.test(n))).toBe(false);
+    expect(out.counts).toMatchObject({
+      owner: "suppressed",
+      confidential: true,
+      confidential_basis: ["unmodeled:ConfidentialFlag", "unmodeled:owners[].confidentialOwner"],
+    });
+  });
+
   it("suppresses owner name and mailing before validate when a confidentialCode is set, and counts it", () => {
     const out = transformTcadCounty(
       input({ pID: 100012, geoID: "0100030105", confidentialCode: "Q" }),
@@ -255,22 +307,34 @@ describe("transformTcadCounty: confidentiality (P0-15)", () => {
   });
 });
 
-describe("transformTcadCounty: roof date (kit estimator ledger only)", () => {
-  it("writes structure.roof_date from the ledger row", () => {
-    const out = transformTcadCounty(input(undefined, "2026-09-20"));
+describe("transformTcadCounty: roof date (TCAD-sourced anchors only, oracle F1)", () => {
+  it("writes structure.roof_date from a built-year anchor, with the TCAD request", () => {
+    const out = transformTcadCounty(input(undefined, "1985", "property_built_year"));
     const s = parse(out.files, "structure.json");
-    expect(s.roof_date).toBe("2026-09-20");
+    expect(s.roof_date).toBe("1985");
     expect(s.roof_age_years).toBeNull();
+    expect(s.source_http_request).toEqual(TCAD_EXPORT_REQUEST);
   });
 
-  it("writes roof_date null when the ledger has no date for the property", () => {
-    const out = transformTcadCounty(input(undefined, null));
+  it("never stamps the TCAD request on an Austin permit-derived date: roof_date stays null", () => {
+    const out = transformTcadCounty(input(undefined, "2026-09-20", "permit_terminal_date"));
     expect(parse(out.files, "structure.json").roof_date).toBeNull();
+    for (const text of Object.values(out.files)) expect(text).not.toContain("2026-09-20");
+    expect(out.counts.warnings).not.toContain("no_roof_age_ledger_row");
+  });
+
+  it("writes roof_date null when the ledger has no anchor for the property", () => {
+    expect(
+      parse(transformTcadCounty(input(undefined, null)).files, "structure.json").roof_date,
+    ).toBeNull();
+    expect(
+      parse(transformTcadCounty(input(undefined, "1985", null)).files, "structure.json").roof_date,
+    ).toBeNull();
   });
 
   it("refuses a ledger row for another property", () => {
     const i = input();
-    i.roofAge = { pID: "999", roof_date: "2020" };
+    i.roofAge = { pID: "999", roof_date: "2020", anchor: "property_built_year" };
     expect(() => transformTcadCounty(i)).toThrow(/roof-age/);
   });
 });

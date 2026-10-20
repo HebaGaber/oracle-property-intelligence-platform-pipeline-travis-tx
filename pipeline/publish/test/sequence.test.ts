@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { cliCommitFromPath, resolveCli, runSequence, type CliRunner } from "../src/sequence.js";
+import {
+  cliCommitFromPath,
+  dataGroupCids,
+  parseCsv,
+  resolveCli,
+  runSequence,
+  type CliRunner,
+} from "../src/sequence.js";
 
 const CAR_ROOT = "baguqeerasords4njcts6vs7qvdjfcvgnume4hqohf65zsfguprqphs3icwea";
 const TABLES_ROOT = "baguqeeraa5xaitdmh4ngbzsxbkfnjk5k6t2xd5v4wpxbs6vfzy2t3wnzqqia";
@@ -280,3 +287,36 @@ function at<T>(xs: readonly T[], i: number): T {
   if (v === undefined) throw new Error(`no element at ${i}`);
   return v;
 }
+
+describe("hash.csv parsing (oracle F9: a real CSV parser)", () => {
+  it("parses quoted fields with commas, doubled quotes, CRLF and a trailing newline", () => {
+    expect(parseCsv('a,"b,c",d\r\n"x ""y""",2,""\n')).toEqual([
+      ["a", "b,c", "d"],
+      ['x "y"', "2", ""],
+    ]);
+    expect(parseCsv("")).toEqual([]);
+  });
+
+  it("reads dataGroupCid by its header name, whatever the column order and quoting", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hashcsv-"));
+    const file = join(dir, "hash.csv");
+    writeFileSync(
+      file,
+      [
+        "filePath,dataGroupCid,propertyCid",
+        '"a,b.json",bafkreiseed,p1',
+        '"c.json","bafkreicounty",p1',
+        "d.json,bafkreicounty,p2",
+        "",
+      ].join("\n"),
+    );
+    expect(dataGroupCids(file)).toEqual(["bafkreiseed", "bafkreicounty"]);
+  });
+
+  it("throws when hash.csv has no dataGroupCid column", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hashcsv-"));
+    const file = join(dir, "hash.csv");
+    writeFileSync(file, "propertyCid,dataCid\np1,c1\n");
+    expect(() => dataGroupCids(file)).toThrow(/dataGroupCid/);
+  });
+});

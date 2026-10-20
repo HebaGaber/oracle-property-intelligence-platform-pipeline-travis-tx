@@ -95,7 +95,7 @@
         "kind": "string",
         "nullable": true,
         "meaning": "Roof date, YYYY[-MM[-DD]]",
-        "source": "structure.roof_date via property_has_structure (kit estimator only)",
+        "source": "latest accepted terminal date (completion_date or permit_close_date, ≤ as_of, ≥ issue date) of a closed Roofing permit via property_has_property_improvement (Replacement, else New); else structure.roof_date via property_has_structure (TCAD built year only)",
         "missingReason": "no_roof_date"
       },
       {
@@ -143,7 +143,7 @@
         "kind": "date",
         "nullable": true,
         "meaning": "Latest dated ownership transfer",
-        "source": "max sales_history.ownership_transfer_date via property_has_sales_history",
+        "source": "latest dated sales_history.ownership_transfer_date via property_has_sales_history",
         "missingReason": "no_dated_sale"
       },
       {
@@ -188,7 +188,7 @@
           "unknown"
         ],
         "meaning": "Owner kind",
-        "source": "derived from sales_history_has_person/_company on the latest sale",
+        "source": "derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown",
         "missingReason": null
       },
       {
@@ -196,9 +196,9 @@
         "type": "VARCHAR",
         "kind": "string",
         "nullable": true,
-        "meaning": "Owner display name",
-        "source": "person.first_name + last_name, or company.name",
-        "missingReason": "no_owner_record"
+        "meaning": "Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review",
+        "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale",
+        "missingReason": "no_dated_sale"
       },
       {
         "name": "owner_area_class",
@@ -230,7 +230,7 @@
         "kind": "string",
         "nullable": false,
         "meaning": "Digest of the ZIP and regional lists",
-        "source": "manifest profiles[] (travis-places); else the travis-places gazetteer DIGEST",
+        "source": "manifest profiles[] (travis-places)",
         "missingReason": null
       },
       {
@@ -248,7 +248,7 @@
         "kind": "string",
         "nullable": true,
         "meaning": "URL of the request that fetched the record's source page",
-        "source": "source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url",
+        "source": "source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback)",
         "missingReason": "not_in_export"
       },
       {
@@ -256,8 +256,8 @@
         "type": "TIMESTAMP WITH TIME ZONE",
         "kind": "timestamptz",
         "nullable": false,
-        "meaning": "When that source was captured",
-        "source": "manifest sources[].captured_at of the source whose url the record's request uses",
+        "meaning": "When that source was captured (source-level, not per record)",
+        "source": "manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt)",
         "missingReason": null
       },
       {
@@ -377,21 +377,21 @@
         "nullable": true,
         "meaning": "Lexicon status; null for Expired (D-4a)",
         "source": "property_improvement.improvement_status",
-        "missingReason": "no_lexicon_carrier"
+        "missingReason": "enum_lacks_value"
       },
       {
         "name": "status_class",
         "type": "VARCHAR",
         "kind": "enum",
-        "nullable": false,
+        "nullable": true,
         "enum": [
           "open",
           "stalled",
           "closed"
         ],
-        "meaning": "Open, stalled or closed",
-        "source": "generated status map: Permitted/Planned/OnHold → open, Completed → closed, null status + issue date → stalled (D-4a)",
-        "missingReason": null
+        "meaning": "Open, stalled or closed; null only when it cannot be derived",
+        "source": "generated status map on (jurisdiction, improvement_status): Austin Permitted/Planned/OnHold → open, Completed → closed, null status + issue date → stalled (D-4a); no map row (other jurisdiction, unmapped status, null status without issue date) → null",
+        "missingReason": "needs_review"
       },
       {
         "name": "is_open",
@@ -457,7 +457,7 @@
           "unresolved"
         ],
         "meaning": "Contractor identity state (AD-24)",
-        "source": "derived: resolved iff a property_improvement_has_contractor edge exists",
+        "source": "derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review)",
         "missingReason": null
       },
       {
@@ -466,7 +466,7 @@
         "kind": "cid",
         "nullable": true,
         "meaning": "Resolved contractor company",
-        "source": "to_cid of property_improvement_has_contractor",
+        "source": "to_cid of the only property_improvement_has_contractor edge",
         "missingReason": "contractor_unresolved"
       },
       {
@@ -526,7 +526,7 @@
         "kind": "string",
         "nullable": true,
         "meaning": "URL of the request that fetched the record's source page",
-        "source": "source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url",
+        "source": "source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback)",
         "missingReason": "not_in_export"
       },
       {
@@ -534,8 +534,8 @@
         "type": "TIMESTAMP WITH TIME ZONE",
         "kind": "timestamptz",
         "nullable": false,
-        "meaning": "When that source was captured",
-        "source": "manifest sources[].captured_at of the source whose url the record's request uses",
+        "meaning": "When that source was captured (source-level, not per record)",
+        "source": "manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt)",
         "missingReason": null
       },
       {
@@ -691,7 +691,7 @@
         "kind": "string",
         "nullable": true,
         "meaning": "URL of the request that fetched the record's source page",
-        "source": "source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url",
+        "source": "source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback)",
         "missingReason": "not_in_export"
       },
       {
@@ -699,8 +699,8 @@
         "type": "TIMESTAMP WITH TIME ZONE",
         "kind": "timestamptz",
         "nullable": false,
-        "meaning": "When that source was captured",
-        "source": "manifest sources[].captured_at of the source whose url the record's request uses",
+        "meaning": "When that source was captured (source-level, not per record)",
+        "source": "manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt)",
         "missingReason": null
       },
       {
@@ -864,7 +864,7 @@
         "kind": "string",
         "nullable": false,
         "meaning": "Area list digest",
-        "source": "manifest profiles[] (travis-places); else the travis-places gazetteer DIGEST",
+        "source": "manifest profiles[] (travis-places)",
         "missingReason": null
       }
     ]
@@ -931,21 +931,21 @@
       "nullable": true,
       "meaning": "Lexicon status; null for Expired (D-4a)",
       "source": "property_improvement.improvement_status",
-      "missingReason": "no_lexicon_carrier"
+      "missingReason": "enum_lacks_value"
     },
     {
       "name": "status_class",
       "type": "VARCHAR",
       "kind": "enum",
-      "nullable": false,
+      "nullable": true,
       "enum": [
         "open",
         "stalled",
         "closed"
       ],
-      "meaning": "Open, stalled or closed",
-      "source": "generated status map: Permitted/Planned/OnHold → open, Completed → closed, null status + issue date → stalled (D-4a)",
-      "missingReason": null
+      "meaning": "Open, stalled or closed; null only when it cannot be derived",
+      "source": "generated status map on (jurisdiction, improvement_status): Austin Permitted/Planned/OnHold → open, Completed → closed, null status + issue date → stalled (D-4a); no map row (other jurisdiction, unmapped status, null status without issue date) → null",
+      "missingReason": "needs_review"
     },
     {
       "name": "is_open",
@@ -1011,7 +1011,7 @@
         "unresolved"
       ],
       "meaning": "Contractor identity state (AD-24)",
-      "source": "derived: resolved iff a property_improvement_has_contractor edge exists",
+      "source": "derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review)",
       "missingReason": null
     },
     {
@@ -1020,7 +1020,7 @@
       "kind": "cid",
       "nullable": true,
       "meaning": "Resolved contractor company",
-      "source": "to_cid of property_improvement_has_contractor",
+      "source": "to_cid of the only property_improvement_has_contractor edge",
       "missingReason": "contractor_unresolved"
     },
     {
@@ -1080,7 +1080,7 @@
       "kind": "string",
       "nullable": true,
       "meaning": "URL of the request that fetched the record's source page",
-      "source": "source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url",
+      "source": "source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback)",
       "missingReason": "not_in_export"
     },
     {
@@ -1088,8 +1088,8 @@
       "type": "TIMESTAMP WITH TIME ZONE",
       "kind": "timestamptz",
       "nullable": false,
-      "meaning": "When that source was captured",
-      "source": "manifest sources[].captured_at of the source whose url the record's request uses",
+      "meaning": "When that source was captured (source-level, not per record)",
+      "source": "manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt)",
       "missingReason": null
     },
     {
@@ -1229,7 +1229,7 @@
       "kind": "string",
       "nullable": true,
       "meaning": "Roof date, YYYY[-MM[-DD]]",
-      "source": "structure.roof_date via property_has_structure (kit estimator only)",
+      "source": "latest accepted terminal date (completion_date or permit_close_date, ≤ as_of, ≥ issue date) of a closed Roofing permit via property_has_property_improvement (Replacement, else New); else structure.roof_date via property_has_structure (TCAD built year only)",
       "missingReason": "no_roof_date"
     },
     {
@@ -1277,7 +1277,7 @@
       "kind": "date",
       "nullable": true,
       "meaning": "Latest dated ownership transfer",
-      "source": "max sales_history.ownership_transfer_date via property_has_sales_history",
+      "source": "latest dated sales_history.ownership_transfer_date via property_has_sales_history",
       "missingReason": "no_dated_sale"
     },
     {
@@ -1322,7 +1322,7 @@
         "unknown"
       ],
       "meaning": "Owner kind",
-      "source": "derived from sales_history_has_person/_company on the latest sale",
+      "source": "derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown",
       "missingReason": null
     },
     {
@@ -1330,9 +1330,9 @@
       "type": "VARCHAR",
       "kind": "string",
       "nullable": true,
-      "meaning": "Owner display name",
-      "source": "person.first_name + last_name, or company.name",
-      "missingReason": "no_owner_record"
+      "meaning": "Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review",
+      "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale",
+      "missingReason": "no_dated_sale"
     },
     {
       "name": "owner_area_class",
@@ -1364,7 +1364,7 @@
       "kind": "string",
       "nullable": false,
       "meaning": "Digest of the ZIP and regional lists",
-      "source": "manifest profiles[] (travis-places); else the travis-places gazetteer DIGEST",
+      "source": "manifest profiles[] (travis-places)",
       "missingReason": null
     },
     {
@@ -1373,7 +1373,7 @@
       "kind": "string",
       "nullable": true,
       "meaning": "The property's uRL of the request that fetched the record's source page",
-      "source": "source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url",
+      "source": "source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback)",
       "missingReason": "not_in_export"
     },
     {
@@ -1381,8 +1381,8 @@
       "type": "TIMESTAMP WITH TIME ZONE",
       "kind": "timestamptz",
       "nullable": false,
-      "meaning": "The property's when that source was captured",
-      "source": "manifest sources[].captured_at of the source whose url the record's request uses",
+      "meaning": "The property's when that source was captured (source-level, not per record)",
+      "source": "manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt)",
       "missingReason": null
     },
     {
@@ -1436,6 +1436,9 @@
     "bbb_not_found",
     "needs_review",
     "first_run",
-    "out_of_scope"
+    "out_of_scope",
+    "enum_lacks_value",
+    "owner_unparsed",
+    "owner_confidential"
   ]
 }

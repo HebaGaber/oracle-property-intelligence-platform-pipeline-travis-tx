@@ -2,16 +2,21 @@
 // mode, reference/output-contract.md). Writes `<pID>/data/`:
 //   seed files + property.json (shared-seed.ts, byte-identical with the PI group)
 //   geometry.json        ← TCAD `geometry` point        (property_has_parcel → parcel_has_geometry)
-//   structure.json       ← roof_date from the kit estimator ledger only; every other field null
+//   structure.json       ← roof_date only from a TCAD-sourced estimator anchor (the built year);
+//                          a permit-anchored roof date is never written here (oracle F1): it is
+//                          derived in the view from the published Austin permit rows
+//                          (Roofing + Replacement, closed → completion_date / permit_close_date)
 //   sales_history_N.json ← sales[] with a saleDt, oldest first (ownership_transfer_date only)
 //   person_N / company_N + mailing_address_N ← current owners[], linked to the latest dated sale
 //   <County schema CID>.json
 // Rules: every entity carries source_http_request (the bulk export GET, no headers) and
 // request_identifier (pID as printed); relationships are only {from, to} relative links;
-// nothing unlinked is written. Confidential owners (P0-15, oracle R14): when any owner or
-// sale carries a confidentialCode, no owner name and no mailing address is written; the
-// suppression is counted for the manifest. Sale prices are never written (Texas is a
-// non-disclosure state and the pilot publishes no price).
+// nothing unlinked is written. Confidential owners (P0-15, oracle R14, oracle F2): when any
+// owner or sale carries a confidentialCode, any sale has a truthy/non-zero confidentialSale
+// (PO decision: a sale-level flag hides the whole owner), or the record carries any other
+// confid* key the transform does not model (fail closed), no owner name and no mailing
+// address is written; the suppression and its basis are counted for the manifest. Sale
+// prices are never written (Texas is a non-disclosure state and the pilot publishes no price).
 import {
   TCAD_EXPORT_REQUEST,
   buildSharedFiles,
@@ -80,6 +85,32 @@ const PERSON_NAME = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
 export interface RoofAgeEntry {
   pID: string;
   roof_date: string | null;
+  /** The estimator anchor type; only property_built_year (a TCAD field) is written. */
+  anchor: "property_built_year" | "permit_terminal_date" | null;
+}
+
+/** The confid* keys the transform reads; any other one fails closed. */
+const MODELED_CONFIDENTIAL = new Set([
+  "owners[].confidentialCode",
+  "sales[].confidentialCode",
+  "sales[].confidentialSale",
+]);
+
+/** Every key matching /^confid/i anywhere in the record, as a path with [] for array items. */
+function confidentialKeys(value: unknown, path = ""): string[] {
+  if (Array.isArray(value)) return value.flatMap((v) => confidentialKeys(v, `${path}[]`));
+  if (value === null || typeof value !== "object") return [];
+  return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) => {
+    const p = path === "" ? k : `${path}.${k}`;
+    return [...(/^confid/i.test(k) ? [p] : []), ...confidentialKeys(v, p)];
+  });
+}
+
+/** A confidentialSale flag is set unless it is absent, null, false, 0, "0" or blank. */
+function flagSet(v: unknown): boolean {
+  if (v === undefined || v === null || v === false || v === 0) return false;
+  if (typeof v === "string") return v.trim() !== "" && v.trim() !== "0";
+  return true;
 }
 
 export interface CountyTransformInput {
@@ -203,7 +234,9 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
 
   const structure: Record<string, unknown> = { ...base };
   for (const field of STRUCTURE_NULL_FIELDS) structure[field] = null;
-  structure.roof_date = input.roofAge?.roof_date ?? null;
+  // Only a TCAD-sourced anchor carries the TCAD request; a permit date is never stamped here.
+  structure.roof_date =
+    input.roofAge?.anchor === "property_built_year" ? input.roofAge.roof_date : null;
   files["structure.json"] = jsonFile(structure);
   rel.property_has_structure = link(
     relationship("relationship_property_has_structure.json", "property.json", "structure.json"),
@@ -227,6 +260,10 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
     basis.push("owners[].confidentialCode");
   if (record.sales.some((s) => nonEmpty(s.confidentialCode)))
     basis.push("sales[].confidentialCode");
+  if (record.sales.some((s) => flagSet((s as Record<string, unknown>).confidentialSale)))
+    basis.push("sales[].confidentialSale");
+  for (const key of [...new Set(confidentialKeys(record))].sort())
+    if (!MODELED_CONFIDENTIAL.has(key)) basis.push(`unmodeled:${key}`);
   const confidential = basis.length > 0;
 
   let owner: OwnerOutcome = "none";

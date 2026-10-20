@@ -29,10 +29,26 @@ describe("toSqlStatusMap", () => {
     expect(sql).toContain(`-- profile: ${PROFILE.name}@${PROFILE.version}`);
     expect(sql).toContain(`-- profile_sha256: ${PROFILE.sha256}`);
     expect(sql).toMatch(/VALUES/);
-    expect(sql).toContain("('Completed', 'closed')");
-    expect(sql).toContain("('Permitted', 'open')");
-    expect(sql).toContain("(NULL, 'stalled')");
+    expect(sql).toContain("('austin', 'Completed', 'closed')");
+    expect(sql).toContain("('austin', 'Permitted', 'open')");
+    expect(sql).toContain("('austin', NULL, 'stalled')");
+    expect(sql).toContain("AS t(jurisdiction, improvement_status, status_class)");
     expect(sql).not.toMatch(/Cancelled/);
+  });
+
+  it("scopes every row, and the NULL → stalled rule, to the profile's own jurisdictions (donphan M2)", () => {
+    const rows = sql.split("\n").filter((l) => /^ {2}\(/.test(l));
+    const jurisdictions = Object.keys(RULES.jurisdictions);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(
+        jurisdictions.some((j) => row.startsWith(`  ('${j}', `)),
+        row,
+      ).toBe(true);
+    }
+    expect(rows.filter((r) => r.includes("NULL, 'stalled'"))).toEqual(
+      jurisdictions.map((j) => `  ('${j}', NULL, 'stalled')`),
+    );
   });
 
   it("equals the committed generated file byte for byte", () => {

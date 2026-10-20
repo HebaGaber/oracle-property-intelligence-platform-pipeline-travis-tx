@@ -5,10 +5,45 @@
 --   travis_austin_status_map (generated from the profile) and the macros in src/derive.ts.
 -- Rules: columns, order and types are packages/contract/src/columns.ts; joins go only through
 -- relationship tables (from_cid / to_cid); roofing is enum equality on improvement_type and
--- improvement_action; every derivation is a derive.ts macro over meta.run.as_of (the manifest
--- finishedAt); every empty value gets a {field, reason} entry in `missing`.
+-- improvement_action; status_class comes only from the generated status map on (jurisdiction,
+-- improvement_status); every derivation is a derive.ts macro over meta.run.as_of (the manifest
+-- finishedAt); every empty value gets a {field, reason} entry in `missing`. Records are read
+-- once per cid and edges once per (from_cid, to_cid), whatever the number of parts.
 -- Address properties are not in the export (ADR-0002), so the address-only fields appear in
 -- `missing` as not_in_export and the owner mailing ZIP lookup has no input yet.
+
+-- One row per (permit, property edge) of a published county property, with its jurisdiction
+-- (request host → profile jurisdiction map) and its status_class. Shared by v_property (roof
+-- anchor) and v_roofing_permit.
+CREATE OR REPLACE VIEW meta.permit AS
+WITH
+pi AS (
+  SELECT * FROM property_improvement.property_improvement
+  QUALIFY row_number() OVER (PARTITION BY cid ORDER BY _part) = 1
+),
+edge AS (
+  SELECT DISTINCT from_cid, to_cid FROM property_improvement.property_has_property_improvement
+)
+SELECT
+  pi.cid AS permit_cid,
+  e.from_cid AS property_cid,
+  jh.jurisdiction,
+  pi.permit_number,
+  pi.improvement_type,
+  pi.improvement_action,
+  pi.improvement_status,
+  status_class_of(jh.jurisdiction, pi.improvement_status, pi.permit_issue_date) AS status_class,
+  TRY_CAST(pi.permit_issue_date AS DATE) AS issue_date,
+  TRY_CAST(pi.completion_date AS DATE) AS final_date,
+  TRY_CAST(pi.permit_close_date AS DATE) AS permit_close_date,
+  TRY_CAST(pi.final_inspection_date AS DATE) AS final_inspection_date,
+  pi.source_http_request,
+  pi._part
+FROM pi
+JOIN edge e ON e.to_cid = pi.cid
+JOIN (SELECT DISTINCT cid FROM county.property) cp ON cp.cid = e.from_cid
+LEFT JOIN meta.jurisdiction_host jh
+  ON jh.host = url_host(json_extract_string(pi.source_http_request, '$.url'));
 
 CREATE OR REPLACE VIEW v_property AS
 WITH
@@ -16,56 +51,86 @@ prop AS (
   SELECT * FROM county.property
   QUALIFY row_number() OVER (PARTITION BY cid ORDER BY _part) = 1
 ),
+-- Both coordinates from one geometry row: the lowest-cid geometry that has both.
 geo AS (
-  SELECT pp.from_cid AS property_cid,
-         arg_min(g.latitude, g.cid) AS latitude,
-         arg_min(g.longitude, g.cid) AS longitude
-  FROM county.property_has_parcel pp
-  JOIN county.parcel_has_geometry pg ON pg.from_cid = pp.to_cid
+  SELECT pp.from_cid AS property_cid, g.latitude, g.longitude
+  FROM (SELECT DISTINCT from_cid, to_cid FROM county.property_has_parcel) pp
+  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.parcel_has_geometry) pg
+    ON pg.from_cid = pp.to_cid
   JOIN county.geometry g ON g.cid = pg.to_cid
-  GROUP BY pp.from_cid
+  WHERE g.latitude IS NOT NULL AND g.longitude IS NOT NULL
+  QUALIFY row_number() OVER (PARTITION BY pp.from_cid ORDER BY g.cid) = 1
 ),
-roof AS (
-  SELECT ps.from_cid AS property_cid, arg_min(s.roof_date, s.cid) AS roof_date
-  FROM county.property_has_structure ps
+-- structure.roof_date carries only a TCAD-sourced value (the built year); the transform never
+-- stamps the TCAD request on a permit-derived date (oracle F1).
+structure_roof AS (
+  SELECT ps.from_cid AS property_cid,
+         arg_min(s.roof_date, s.cid) FILTER (WHERE s.roof_date IS NOT NULL) AS roof_date
+  FROM (SELECT DISTINCT from_cid, to_cid FROM county.property_has_structure) ps
   JOIN county.structure s ON s.cid = ps.to_cid
   GROUP BY ps.from_cid
 ),
-roof_match AS (
-  SELECT r.property_cid,
-         bool_or(pi.improvement_type = 'Roofing' AND pi.improvement_action = 'Replacement'
-           AND (date_matches_at_precision(r.roof_date, pi.completion_date)
-             OR date_matches_at_precision(r.roof_date, pi.permit_close_date))) AS replacement_match,
-         bool_or(pi.improvement_action = 'New'
-           AND (date_matches_at_precision(r.roof_date, pi.completion_date)
-             OR date_matches_at_precision(r.roof_date, pi.permit_close_date))) AS new_match
-  FROM roof r
-  JOIN property_improvement.property_has_property_improvement h ON h.from_cid = r.property_cid
-  JOIN property_improvement.property_improvement pi ON pi.cid = h.to_cid
-  GROUP BY r.property_cid
+-- mew B.5 and the kit estimator: the latest accepted terminal date (completion_date or
+-- permit_close_date, not after as_of, not before the issue date) of a closed Roofing permit.
+-- Open and stalled replacements never reset the roof age (P0-8).
+terminal AS (
+  SELECT pm.property_cid, pm.improvement_action, t.d
+  FROM meta.permit pm
+  CROSS JOIN meta.run run
+  CROSS JOIN LATERAL (SELECT unnest([pm.final_date, pm.permit_close_date]) AS d) t
+  WHERE pm.improvement_type = 'Roofing' AND pm.status_class = 'closed'
+    AND terminal_date_accepted(t.d, pm.issue_date, run.as_of)
+),
+roof_anchor AS (
+  SELECT property_cid,
+         max(d) FILTER (WHERE improvement_action = 'Replacement') AS replacement_date,
+         max(d) FILTER (WHERE improvement_action = 'New') AS new_date
+  FROM terminal
+  GROUP BY property_cid
 ),
 latest_sale AS (
   SELECT psh.from_cid AS property_cid, sh.cid AS sale_cid,
          TRY_CAST(sh.ownership_transfer_date AS DATE) AS transfer_date
-  FROM county.property_has_sales_history psh
+  FROM (SELECT DISTINCT from_cid, to_cid FROM county.property_has_sales_history) psh
   JOIN county.sales_history sh ON sh.cid = psh.to_cid
+  WHERE TRY_CAST(sh.ownership_transfer_date AS DATE) IS NOT NULL
   QUALIFY row_number() OVER (
     PARTITION BY psh.from_cid
-    ORDER BY TRY_CAST(sh.ownership_transfer_date AS DATE) DESC NULLS LAST, sh.cid) = 1
+    ORDER BY TRY_CAST(sh.ownership_transfer_date AS DATE) DESC, sh.cid) = 1
 ),
-owner AS (
-  SELECT ls.property_cid,
-         CASE WHEN count(pe.cid) > 0 THEN 'person'
-              WHEN count(co.cid) > 0 THEN 'company' ELSE 'unknown' END AS owner_kind,
-         CASE WHEN count(pe.cid) > 0
-              THEN string_agg(pe.first_name || ' ' || pe.last_name, '; ' ORDER BY pe.last_name, pe.first_name)
-              ELSE string_agg(co.name, '; ' ORDER BY co.name) END AS owner_name
+-- Persons and companies of the latest dated sale, aggregated separately (no cross join), each
+-- record once.
+owner_person AS (
+  SELECT ls.property_cid, count(*) AS n,
+         string_agg(pe.first_name || ' ' || pe.last_name, '; '
+           ORDER BY pe.last_name, pe.first_name, pe.cid) AS names
   FROM latest_sale ls
-  LEFT JOIN county.sales_history_has_person shp ON shp.from_cid = ls.sale_cid
-  LEFT JOIN county.person pe ON pe.cid = shp.to_cid
-  LEFT JOIN county.sales_history_has_company shc ON shc.from_cid = ls.sale_cid
-  LEFT JOIN county.company co ON co.cid = shc.to_cid
+  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.sales_history_has_person) shp
+    ON shp.from_cid = ls.sale_cid
+  JOIN (SELECT * FROM county.person
+        QUALIFY row_number() OVER (PARTITION BY cid ORDER BY _part) = 1) pe
+    ON pe.cid = shp.to_cid
   GROUP BY ls.property_cid
+),
+owner_company AS (
+  SELECT ls.property_cid, count(*) AS n,
+         string_agg(co.name, '; ' ORDER BY co.name, co.cid) AS names
+  FROM latest_sale ls
+  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.sales_history_has_company) shc
+    ON shc.from_cid = ls.sale_cid
+  JOIN (SELECT * FROM county.company
+        QUALIFY row_number() OVER (PARTITION BY cid ORDER BY _part) = 1) co
+    ON co.cid = shc.to_cid
+  GROUP BY ls.property_cid
+),
+-- Why a dated sale has no owner: the export cannot tell, so the run's capture-receipt counts
+-- decide (derive.ts ownerGapReason).
+owner_gap AS (
+  SELECT owner_gap_reason(
+    TRY_CAST(json_extract(coverage, '$.owner_unparsed.count') AS INTEGER),
+    TRY_CAST(json_extract(coverage, '$.owner_confidential.count') AS INTEGER),
+    TRY_CAST(json_extract(coverage, '$.owner_no_record.count') AS INTEGER)) AS reason
+  FROM meta.run
 ),
 -- The owner mailing ZIP: address.postal_code through *_has_mailing_address once the export
 -- emits address properties. Until then it has no value and the area class stays unknown.
@@ -87,20 +152,18 @@ base AS (
     geo.latitude,
     geo.longitude,
     coordinate_source(geo.latitude, geo.longitude, NULL::DOUBLE, NULL::DOUBLE) AS coordinate_source,
-    roof.roof_date,
-    roof_age_years(roof.roof_date, run.as_of) AS roof_age_years,
-    roof_age_basis(roof.roof_date, coalesce(rm.replacement_match, false),
-      coalesce(rm.new_match, false), p.property_structure_built_year) AS roof_age_basis,
+    coalesce(CAST(ra.replacement_date AS VARCHAR), CAST(ra.new_date AS VARCHAR),
+      sr.roof_date) AS roof_date,
+    ra.replacement_date IS NOT NULL AS replacement_match,
+    ra.replacement_date IS NULL AND ra.new_date IS NOT NULL AS new_match,
     ls.transfer_date AS last_ownership_transfer_date,
-    tenure_years(ls.transfer_date, run.as_of) AS tenure_years,
-    tenure_basis(ls.transfer_date) AS tenure_basis,
-    coalesce(o.owner_kind, 'unknown') AS owner_kind,
-    o.owner_name,
+    owner_kind_of(coalesce(op.n, 0), coalesce(oc.n, 0)) AS owner_kind,
+    nullif(concat_ws('; ', op.names, oc.names), '') AS owner_name,
+    owner_missing_reason(ls.transfer_date IS NOT NULL, og.reason) AS owner_reason,
     owner_area_class(za.area_class) AS owner_area_class,
     run.area_list_sha256,
     p.cid,
     source_url(p.source_http_request) AS record_url,
-    src.url AS record_source_url,
     src.captured_at AS record_captured_at,
     cs.url AS group_source_url,
     cs.captured_at AS group_captured_at,
@@ -111,15 +174,27 @@ base AS (
   FROM prop p
   CROSS JOIN meta.run run
   CROSS JOIN county_source cs
+  CROSS JOIN owner_gap og
   LEFT JOIN geo ON geo.property_cid = p.cid
-  LEFT JOIN roof ON roof.property_cid = p.cid
-  LEFT JOIN roof_match rm ON rm.property_cid = p.cid
+  LEFT JOIN structure_roof sr ON sr.property_cid = p.cid
+  LEFT JOIN roof_anchor ra ON ra.property_cid = p.cid
   LEFT JOIN latest_sale ls ON ls.property_cid = p.cid
-  LEFT JOIN owner o ON o.property_cid = p.cid
+  LEFT JOIN owner_person op ON op.property_cid = p.cid
+  LEFT JOIN owner_company oc ON oc.property_cid = p.cid
   LEFT JOIN mailing m ON m.property_cid = p.cid
   LEFT JOIN meta.zcta_area za ON za.zcta = m.postal_code
   LEFT JOIN meta.source src ON src.url = json_extract_string(p.source_http_request, '$.url')
   LEFT JOIN meta.part part ON part.name = p._part
+),
+derived AS (
+  SELECT *,
+    roof_age_years(roof_date, as_of) AS roof_age_years,
+    roof_age_basis(roof_date, replacement_match, new_match,
+      property_structure_built_year) AS roof_age_basis,
+    tenure_years(last_ownership_transfer_date, as_of) AS tenure_years,
+    tenure_basis(last_ownership_transfer_date) AS tenure_basis,
+    coalesce(record_url, group_source_url) AS source_url
+  FROM base
 )
 SELECT
   property_cid,
@@ -145,7 +220,7 @@ SELECT
   owner_is_out_of_area(owner_area_class) AS owner_is_out_of_area,
   area_list_sha256,
   cid,
-  coalesce(record_url, group_source_url) AS source_url,
+  source_url,
   coalesce(record_captured_at, group_captured_at) AS captured_at,
   'property' AS "table",
   table_cid,
@@ -175,21 +250,23 @@ SELECT
     CASE WHEN tenure_years IS NULL THEN miss('tenure_years', 'no_dated_sale') END,
     CASE WHEN tenure_basis = 'unknown' THEN miss('tenure_basis', 'no_dated_sale') END,
     CASE WHEN tenure_years IS NULL THEN miss('is_long_tenure', 'no_dated_sale') END,
-    CASE WHEN owner_kind = 'unknown' THEN miss('owner_kind', 'no_owner_record') END,
-    CASE WHEN owner_name IS NULL THEN miss('owner_name', 'no_owner_record') END,
+    CASE WHEN owner_kind = 'unknown' THEN miss('owner_kind', owner_reason) END,
+    CASE WHEN owner_name IS NULL THEN miss('owner_name', owner_reason) END,
     miss('owner_mailing_postal_code', 'not_in_export'),
     miss('owner_mailing_state_code', 'not_in_export'),
     CASE WHEN owner_area_class = 'unknown' THEN miss('owner_area_class', 'not_in_export') END,
     CASE WHEN owner_is_out_of_area(owner_area_class) IS NULL
       THEN miss('owner_is_out_of_area', 'not_in_export') END,
-    CASE WHEN record_url IS NULL THEN miss('source_url', 'not_in_export') END
+    CASE WHEN source_url IS NULL THEN miss('source_url', 'not_in_export') END
   ], lambda e: e IS NOT NULL) AS missing
-FROM base;
+FROM derived;
 
 CREATE OR REPLACE VIEW v_roofing_permit AS
 WITH
+-- Contractor edges per permit: exactly one → that company; several → none is picked.
 contractor AS (
-  SELECT from_cid AS permit_cid, min(to_cid) AS company_cid
+  SELECT from_cid AS permit_cid, CAST(count(DISTINCT to_cid) AS INTEGER) AS edges,
+         min(to_cid) AS min_cid
   FROM property_improvement.property_improvement_has_contractor
   GROUP BY from_cid
 ),
@@ -199,46 +276,42 @@ permit_source AS (
 ),
 base AS (
   SELECT
-    pi.cid AS permit_cid,
-    h.from_cid AS property_cid,
-    jh.jurisdiction,
-    pi.permit_number,
-    pi.improvement_type,
-    pi.improvement_action,
-    pi.improvement_status,
-    status_class_of(pi.improvement_status, pi.permit_issue_date) AS status_class,
-    TRY_CAST(pi.permit_issue_date AS DATE) AS issue_date,
-    TRY_CAST(pi.completion_date AS DATE) AS final_date,
-    TRY_CAST(pi.permit_close_date AS DATE) AS permit_close_date,
-    TRY_CAST(pi.final_inspection_date AS DATE) AS final_inspection_date,
-    contractor_resolution(c.company_cid) AS contractor_resolution,
-    c.company_cid AS contractor_company_cid,
+    pm.permit_cid,
+    pm.property_cid,
+    pm.jurisdiction,
+    pm.permit_number,
+    pm.improvement_type,
+    pm.improvement_action,
+    pm.improvement_status,
+    pm.status_class,
+    pm.issue_date,
+    pm.final_date,
+    pm.permit_close_date,
+    pm.final_inspection_date,
+    coalesce(c.edges, 0) AS contractor_edges,
+    sole_contractor(coalesce(c.edges, 0), c.min_cid) AS contractor_company_cid,
     run.profile_version,
     run.profile_sha256,
-    pi.cid,
-    source_url(pi.source_http_request) AS record_url,
-    src.captured_at AS record_captured_at,
-    ps.url AS group_source_url,
-    ps.captured_at AS group_captured_at,
+    pm.permit_cid AS cid,
+    coalesce(source_url(pm.source_http_request), ps.url) AS source_url,
+    coalesce(src.captured_at, ps.captured_at) AS captured_at,
     part.table_cid,
     run.run_id,
     run.manifest_cid,
     run.as_of
-  FROM property_improvement.property_improvement pi
-  JOIN property_improvement.property_has_property_improvement h ON h.to_cid = pi.cid
-  JOIN (SELECT DISTINCT cid FROM county.property) cp ON cp.cid = h.from_cid
+  FROM meta.permit pm
   CROSS JOIN meta.run run
   CROSS JOIN permit_source ps
-  LEFT JOIN contractor c ON c.permit_cid = pi.cid
-  LEFT JOIN meta.jurisdiction_host jh
-    ON jh.host = url_host(json_extract_string(pi.source_http_request, '$.url'))
-  LEFT JOIN meta.source src ON src.url = json_extract_string(pi.source_http_request, '$.url')
-  LEFT JOIN meta.part part ON part.name = pi._part
-  WHERE pi.improvement_type = 'Roofing' AND pi.improvement_action = 'Replacement'
-    AND pi.improvement_status IS DISTINCT FROM 'Cancelled'
+  LEFT JOIN contractor c ON c.permit_cid = pm.permit_cid
+  LEFT JOIN meta.source src ON src.url = json_extract_string(pm.source_http_request, '$.url')
+  LEFT JOIN meta.part part ON part.name = pm._part
+  WHERE pm.improvement_type = 'Roofing' AND pm.improvement_action = 'Replacement'
 ),
 derived AS (
-  SELECT *, open_days(status_class, issue_date, as_of) AS open_days FROM base
+  SELECT *,
+    contractor_resolution(contractor_company_cid) AS contractor_resolution,
+    open_days(status_class, issue_date, as_of) AS open_days
+  FROM base
 )
 SELECT
   permit_cid,
@@ -262,8 +335,8 @@ SELECT
   profile_version,
   profile_sha256,
   cid,
-  coalesce(record_url, group_source_url) AS source_url,
-  coalesce(record_captured_at, group_captured_at) AS captured_at,
+  source_url,
+  captured_at,
   'property_improvement' AS "table",
   table_cid,
   run_id,
@@ -272,7 +345,9 @@ SELECT
   list_filter([
     CASE WHEN jurisdiction IS NULL THEN miss('jurisdiction', 'needs_review') END,
     CASE WHEN permit_number IS NULL THEN miss('permit_number', 'source_missing') END,
-    CASE WHEN improvement_status IS NULL THEN miss('improvement_status', 'no_lexicon_carrier') END,
+    CASE WHEN improvement_status IS NULL
+      THEN miss('improvement_status', status_missing_reason(status_class)) END,
+    CASE WHEN status_class IS NULL THEN miss('status_class', 'needs_review') END,
     miss('status_raw', 'no_lexicon_carrier'),
     miss('expiry_date', 'no_lexicon_carrier'),
     CASE WHEN issue_date IS NULL THEN miss('issue_date', 'source_missing') END,
@@ -280,15 +355,16 @@ SELECT
     CASE WHEN permit_close_date IS NULL THEN miss('permit_close_date', 'source_missing') END,
     CASE WHEN final_inspection_date IS NULL
       THEN miss('final_inspection_date', 'source_missing') END,
-    CASE WHEN open_days IS NULL THEN miss('open_days', 'not_open') END,
+    CASE WHEN open_days IS NULL
+      THEN miss('open_days', open_days_reason(status_class, issue_date)) END,
     CASE WHEN contractor_company_cid IS NULL
-      THEN miss('contractor_company_cid', 'contractor_unresolved') END,
+      THEN miss('contractor_company_cid', contractor_missing_reason(contractor_edges)) END,
     miss('contractor_name_raw', 'no_lexicon_carrier'),
     miss('bbb_rating', 'no_lexicon_carrier'),
     miss('bbb_url', 'no_lexicon_carrier'),
     miss('description', 'no_lexicon_carrier'),
     miss('work_class_raw', 'no_lexicon_carrier'),
-    CASE WHEN record_url IS NULL THEN miss('source_url', 'not_in_export') END
+    CASE WHEN source_url IS NULL THEN miss('source_url', 'not_in_export') END
   ], lambda e: e IS NOT NULL) AS missing
 FROM derived;
 
@@ -318,10 +394,8 @@ base AS (
     n.permit_count,
     n.roofing_permit_count,
     co.cid,
-    source_url(co.source_http_request) AS record_url,
-    src.captured_at AS record_captured_at,
-    ps.url AS group_source_url,
-    ps.captured_at AS group_captured_at,
+    coalesce(source_url(co.source_http_request), ps.url) AS source_url,
+    coalesce(src.captured_at, ps.captured_at) AS captured_at,
     part.table_cid,
     run.run_id,
     run.manifest_cid,
@@ -344,8 +418,8 @@ SELECT
   permit_count,
   roofing_permit_count,
   cid,
-  coalesce(record_url, group_source_url) AS source_url,
-  coalesce(record_captured_at, group_captured_at) AS captured_at,
+  source_url,
+  captured_at,
   'company' AS "table",
   table_cid,
   run_id,
@@ -356,7 +430,7 @@ SELECT
     CASE WHEN identity_source IS NULL THEN miss('identity_source', 'needs_review') END,
     miss('bbb_rating', 'no_lexicon_carrier'),
     miss('bbb_url', 'no_lexicon_carrier'),
-    CASE WHEN record_url IS NULL THEN miss('source_url', 'not_in_export') END
+    CASE WHEN source_url IS NULL THEN miss('source_url', 'not_in_export') END
   ], lambda e: e IS NOT NULL) AS missing
 FROM base;
 

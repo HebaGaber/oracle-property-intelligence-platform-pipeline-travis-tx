@@ -240,7 +240,7 @@ describe("row schemas (generated from columns.ts)", () => {
     manifest_cid: RAW,
     as_of: "2026-10-20T23:00:00.000Z",
     missing: [
-      { field: "improvement_status", reason: "no_lexicon_carrier" },
+      { field: "improvement_status", reason: "enum_lacks_value" },
       { field: "status_raw", reason: "no_lexicon_carrier" },
     ],
   };
@@ -294,6 +294,34 @@ describe("row schemas (generated from columns.ts)", () => {
     expect(
       rowSchema("v_roofing_permit").safeParse({ ...permit, issue_date: "03/10/2026" }).success,
     ).toBe(false);
+  });
+
+  it("an Expired permit's null improvement_status is enum_lacks_value, not no_lexicon_carrier (D-9)", () => {
+    const col = VIEWS.v_roofing_permit.find((c) => c.name === "improvement_status");
+    expect(col?.missingReason).toBe("enum_lacks_value");
+    const uncarried = UNCARRIED.v_roofing_permit.filter((u) =>
+      ["status_raw", "expiry_date"].includes(u.field),
+    );
+    expect(uncarried.map((u) => u.reason)).toEqual(["no_lexicon_carrier", "no_lexicon_carrier"]);
+  });
+
+  it("status_class is nullable with reason needs_review, never silently empty (code-review #1)", () => {
+    const col = VIEWS.v_roofing_permit.find((c) => c.name === "status_class");
+    expect(col).toMatchObject({ nullable: true, missingReason: "needs_review" });
+    const s = rowSchema("v_roofing_permit");
+    expect(s.safeParse({ ...permit, status_class: null }).success).toBe(true);
+  });
+
+  it("area_list_sha256 comes only from the manifest (no gazetteer fallback)", () => {
+    for (const view of ["v_property", "v_run"] as const) {
+      const col = VIEWS[view].find((c) => c.name === "area_list_sha256");
+      expect(col?.source).toBe("manifest profiles[] (travis-places)");
+    }
+  });
+
+  it("owner_name is missing for no_dated_sale first (the other owner reasons are per row)", () => {
+    const col = VIEWS.v_property.find((c) => c.name === "owner_name");
+    expect(col?.missingReason).toBe("no_dated_sale");
   });
 
   it("builds a schema for every view", () => {

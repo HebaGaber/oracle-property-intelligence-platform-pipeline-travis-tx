@@ -115,28 +115,43 @@ export function coordinateSource(
   return "none";
 }
 
-/** improvement_status → status_class, from the profile's status_map + published_encoding. */
+/** (jurisdiction, improvement_status) → status_class, from the profile's jurisdictions,
+ *  status_map and published_encoding (the same rows as the generated SQL status map). */
 const STATUS_TO_CLASS = (() => {
-  const map = new Map<string | null, StatusClass>();
-  for (const cls of ["open", "stalled", "closed"] as const) {
-    for (const word of RULES.status_map[cls]) {
-      map.set(RULES.published_encoding.by_word[word] ?? null, cls);
+  const map = new Map<string, StatusClass>();
+  for (const j of Object.keys(RULES.jurisdictions)) {
+    for (const cls of ["open", "stalled", "closed"] as const) {
+      for (const word of RULES.status_map[cls]) {
+        map.set(`${j}\u0000${RULES.published_encoding.by_word[word] ?? "\u0000null"}`, cls);
+      }
     }
   }
   return map;
 })();
 
-/** D-4a: a null status is stalled only when the permit has an issue date. */
-export function statusClass(status: string | null, issueDate: string | null): StatusClass | null {
-  if (status === null && issueDate === null) return null;
-  return STATUS_TO_CLASS.get(status) ?? null;
+/**
+ * D-4a, scoped to the profile's jurisdictions (donphan M2): a null status is stalled only for a
+ * profile jurisdiction and only when the permit has an issue date. Any other jurisdiction, an
+ * unmapped status (e.g. InProgress) or a null status without an issue date has no class (null;
+ * the view records needs_review).
+ */
+export function statusClass(
+  jurisdiction: string | null,
+  status: string | null,
+  issueDate: string | null,
+): StatusClass | null {
+  if (jurisdiction === null || (status === null && issueDate === null)) return null;
+  return STATUS_TO_CLASS.get(`${jurisdiction}\u0000${status ?? "\u0000null"}`) ?? null;
 }
 
 export const isOpen = (cls: StatusClass | null): boolean => cls === "open";
 
-/** final_date is empty because the permit is not closed, or (closed) the source lacks it. */
-export const finalDateReason = (cls: StatusClass | null): "not_closed" | "source_missing" =>
-  cls === "closed" ? "source_missing" : "not_closed";
+/** final_date is empty because the permit is not closed, (closed) the source lacks it, or the
+ *  class itself is unknown. */
+export const finalDateReason = (
+  cls: StatusClass | null,
+): "not_closed" | "source_missing" | "needs_review" =>
+  cls === null ? "needs_review" : cls === "closed" ? "source_missing" : "not_closed";
 
 /** as_of − issue_date in days for open and stalled permits (≥ 0); otherwise null. */
 export function openDays(
@@ -150,8 +165,75 @@ export function openDays(
   return Math.max(0, days);
 }
 
+/** Why open_days is empty. */
+export const openDaysReason = (
+  cls: StatusClass | null,
+  issueDate: string | null,
+): "not_open" | "source_missing" | "needs_review" =>
+  cls === null
+    ? "needs_review"
+    : (cls === "open" || cls === "stalled") && issueDate === null
+      ? "source_missing"
+      : "not_open";
+
+/** Why a published improvement_status is null: stalled means the carrier exists but its enum has
+ *  no value for the source word (Expired); otherwise the null is unexplained. */
+export const statusMissingReason = (
+  cls: StatusClass | null,
+): "enum_lacks_value" | "needs_review" => (cls === "stalled" ? "enum_lacks_value" : "needs_review");
+
+/** The kit estimator's terminal-date rule: present, not after as_of, not before the issue date. */
+export function terminalDateAccepted(
+  date: string | null,
+  issueDate: string | null,
+  asOf: string,
+): boolean {
+  if (date === null) return false;
+  const [y, m, d] = utcDate(asOf);
+  const asOfDay = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return date <= asOfDay && (issueDate === null || date >= issueDate);
+}
+
+/** Owner kind on the latest dated sale: company when any company, else person, else unknown. */
+export const ownerKind = (persons: number, companies: number): "person" | "company" | "unknown" =>
+  companies > 0 ? "company" : persons > 0 ? "person" : "unknown";
+
+export type OwnerGapReason =
+  "owner_unparsed" | "owner_confidential" | "no_owner_record" | "needs_review";
+
+/**
+ * Why a property with a dated sale has no owner. The export cannot tell the cases apart, so the
+ * run's coverage counts decide: when exactly one of owner_unparsed / owner_confidential /
+ * owner_no_record is non-zero every such row is in it; when several are, needs_review.
+ */
+export function ownerGapReason(
+  unparsed: number | null,
+  confidential: number | null,
+  noRecord: number | null,
+): OwnerGapReason {
+  const u = (unparsed ?? 0) > 0;
+  const c = (confidential ?? 0) > 0;
+  const n = (noRecord ?? 0) > 0;
+  if (Number(u) + Number(c) + Number(n) > 1) return "needs_review";
+  return u ? "owner_unparsed" : c ? "owner_confidential" : "no_owner_record";
+}
+
+/** No dated sale: nothing to link an owner to (no_dated_sale); else the run's gap reason. */
+export const ownerMissingReason = (
+  hasDatedSale: boolean,
+  gap: OwnerGapReason,
+): OwnerGapReason | "no_dated_sale" => (hasDatedSale ? gap : "no_dated_sale");
+
 export const contractorResolution = (companyCid: string | null): "resolved" | "unresolved" =>
   companyCid === null ? "unresolved" : "resolved";
+
+/** The company CID only when the permit has exactly one contractor edge (never pick one). */
+export const soleContractor = (edges: number, minCid: string | null): string | null =>
+  edges === 1 ? minCid : null;
+
+/** Several contractor edges are ambiguous (needs_review); none is unresolved. */
+export const contractorMissingReason = (edges: number): "contractor_unresolved" | "needs_review" =>
+  edges > 1 ? "needs_review" : "contractor_unresolved";
 
 /** v1 never looks up BBB (no lexicon carrier for a rating). */
 export const bbbStatus = (): "not_checked" => "not_checked";
@@ -214,18 +296,39 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
       WHEN lat IS NOT NULL AND lon IS NOT NULL THEN 'gis_centroid'
       WHEN permit_lat IS NOT NULL AND permit_lon IS NOT NULL THEN 'permit_point'
       ELSE 'none' END`,
-  status_class_of: `(status, issue_date) AS (
+  status_class_of: `(juris, status, issue_date) AS (
       SELECT sm.status_class FROM travis_austin_status_map sm
-      WHERE sm.improvement_status IS NOT DISTINCT FROM status
+      WHERE sm.jurisdiction = juris
+        AND sm.improvement_status IS NOT DISTINCT FROM status
         AND (status IS NOT NULL OR issue_date IS NOT NULL))`,
   is_open: "(cls) AS coalesce(cls = 'open', false)",
-  final_date_reason:
-    "(cls) AS CASE WHEN cls = 'closed' THEN 'source_missing' ELSE 'not_closed' END",
+  final_date_reason: `(cls) AS CASE WHEN cls IS NULL THEN 'needs_review'
+      WHEN cls = 'closed' THEN 'source_missing' ELSE 'not_closed' END`,
   open_days: `(cls, issue_date, as_of) AS CASE
       WHEN cls IN ('open', 'stalled') AND issue_date IS NOT NULL
       THEN CAST(greatest(as_of_date(as_of) - issue_date, 0) AS INTEGER) END`,
+  open_days_reason: `(cls, issue_date) AS CASE WHEN cls IS NULL THEN 'needs_review'
+      WHEN cls IN ('open', 'stalled') AND issue_date IS NULL THEN 'source_missing'
+      ELSE 'not_open' END`,
+  status_missing_reason:
+    "(cls) AS CASE WHEN cls = 'stalled' THEN 'enum_lacks_value' ELSE 'needs_review' END",
+  terminal_date_accepted: `(d, issue_date, as_of) AS coalesce(d <= as_of_date(as_of)
+      AND (issue_date IS NULL OR d >= issue_date), false)`,
+  owner_kind_of: `(persons, companies) AS CASE WHEN companies > 0 THEN 'company'
+      WHEN persons > 0 THEN 'person' ELSE 'unknown' END`,
+  owner_gap_reason: `(u, c, n) AS CASE
+      WHEN CAST(coalesce(u, 0) > 0 AS INTEGER) + CAST(coalesce(c, 0) > 0 AS INTEGER)
+        + CAST(coalesce(n, 0) > 0 AS INTEGER) > 1 THEN 'needs_review'
+      WHEN coalesce(u, 0) > 0 THEN 'owner_unparsed'
+      WHEN coalesce(c, 0) > 0 THEN 'owner_confidential'
+      ELSE 'no_owner_record' END`,
+  owner_missing_reason:
+    "(has_dated_sale, gap) AS CASE WHEN has_dated_sale THEN gap ELSE 'no_dated_sale' END",
   contractor_resolution:
     "(company_cid) AS CASE WHEN company_cid IS NULL THEN 'unresolved' ELSE 'resolved' END",
+  sole_contractor: "(edges, min_cid) AS CASE WHEN edges = 1 THEN min_cid END",
+  contractor_missing_reason:
+    "(edges) AS CASE WHEN edges > 1 THEN 'needs_review' ELSE 'contractor_unresolved' END",
   bbb_status: "() AS 'not_checked'",
   bbb_status_reason:
     "(resolution) AS CASE WHEN resolution = 'resolved' THEN 'no_lexicon_carrier' ELSE 'contractor_unresolved' END",

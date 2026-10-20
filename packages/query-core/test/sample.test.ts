@@ -80,6 +80,29 @@ describe("contract/v1 sample (T063)", () => {
     expect(readme).toContain(SAMPLE_RULE);
   });
 
+  it("README states the location path, source-level provenance, owner assumption, pilot skew and status rules (D-9)", () => {
+    const readme = readFileSync(README, "utf8");
+    for (const text of [
+      "property_has_parcel → parcel_has_geometry → geometry",
+      "no `address_has_geometry`",
+      "no `property_has_tax`",
+      "gazetteer point",
+      "bounding box",
+      "Market value is absent",
+      "`captured_at` is source-level",
+      "falls back to the source-level URL",
+      "latest dated sale is the current owner",
+      "a schema contract, not a distribution",
+      "skewed to open permits",
+      "For raw-table consumers",
+      "`enum_lacks_value`",
+      "only for the profile's jurisdictions",
+      "never resets the roof age",
+      "five-state totals",
+    ])
+      expect(readme, text).toContain(text);
+  });
+
   if (!PILOT_DIR) {
     it.skip(`row-for-row comparison with the pilot views: ${SKIP_MESSAGE}`, () => undefined);
   } else {

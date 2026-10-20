@@ -42,7 +42,7 @@ interface Fixture {
 }
 
 async function fixture(
-  opts: { corruptPart?: boolean; wrongCountyRoot?: boolean } = {},
+  opts: { corruptPart?: boolean; wrongCountyRoot?: boolean; countyTables?: string[] } = {},
 ): Promise<Fixture> {
   const p = mkdtempSync(join(tmpdir(), "pilot-"));
   const groups: BuildManifestInput["groups"] = [];
@@ -51,7 +51,9 @@ async function fixture(
     const countyRoot = await writeCar(carPath, { label: "CountyIndex", group });
     const tablesDir = join(p, `tables/${group}`);
     const tableNames =
-      group === "county" ? ["property", "structure"] : ["property", "property_improvement"];
+      group === "county"
+        ? (opts.countyTables ?? ["property", "structure"])
+        : ["property", "property_improvement"];
     const tables: Record<
       string,
       { rows: number; parts: Array<{ cid: CID; rows: number; bytes: number }> }
@@ -64,7 +66,7 @@ async function fixture(
         parts: [{ cid: CID.parse(await cidOfBytes(bytes)), rows: i + 1, bytes: bytes.length }],
       };
     }
-    if (opts.corruptPart && group === "county")
+    if (opts.corruptPart && group === "county" && tableNames.includes("property"))
       write(join(tablesDir, "property", "part-00000.parquet"), "tampered");
     const otherRoot = CID.create(
       1,
@@ -168,6 +170,18 @@ async function fixture(
 }
 
 describe("buildManifest", () => {
+  it("sorts table artifacts by code-unit order, not locale ('/' before '_'; code-review #5)", async () => {
+    const { input } = await fixture({ countyTables: ["address_has_parcel", "address"] });
+    const { manifest } = await buildManifest(input);
+    const names = manifest.artifacts
+      .filter((a) => a.kind === "table" && a.name.startsWith("tables/county/"))
+      .map((a) => a.name);
+    expect(names).toEqual([
+      "tables/county/address/part-00000.parquet",
+      "tables/county/address_has_parcel/part-00000.parquet",
+    ]);
+  });
+
   it("builds a RunManifestV1 for the pilot", async () => {
     const { input } = await fixture();
     const { manifest } = await buildManifest(input);

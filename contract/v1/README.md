@@ -16,8 +16,8 @@ of the local pilot run they came from.
 ## The pilot run and its CIDs
 
 - `run_id`: `travis-pilot-20261020`; `as_of` (manifest `finishedAt`): `2026-10-20T22:00:10.663Z`.
-- `manifest_cid`: `bafkreigsajz46cynavcigh37p2xdimucngkpid3r3mvdka45id4kscefma`.
-- Tables roots: county `baguqeera733t6fl7vyfzzkawrkykjrxl5ynni4au5unyyhcycfeab2wg7vcq`; property_improvement `baguqeerahdudplmrd4lnzglb7qlhvbeptzjey24sepiyfu6rapmryuw6haxq`.
+- `manifest_cid`: `bafkreic5ryg5mrqw3cwxwwz5ia65bsavi6m5ch4t7lslwqkmckiqwpjgnq`.
+- Tables roots: county `baguqeeraw6ig6khaxqllae7jb25iqrl2ohmwgaajarta3dd676u5x6l742ca`; property_improvement `baguqeerahdudplmrd4lnzglb7qlhvbeptzjey24sepiyfu6rapmryuw6haxq`.
 - Every CID in the sample and the manifest (`cid`, `permit_cid`, `property_cid`, `table_cid`, `manifest_cid`, the tables roots) is one of the **real content addresses of unpublished local files, replaced in A-03** (when the run is published through Atlas). Nothing here was uploaded; a gateway will not resolve them.
 
 ### How to recompute `manifest_cid`
@@ -31,7 +31,7 @@ ipfs add --only-hash --cid-version 1 --raw-leaves -Q contract/v1/pilot-manifest.
 # (base32 of 0x01 0x55 0x12 0x20 + sha256(bytes), prefixed "b")
 ```
 
-Both print `bafkreigsajz46cynavcigh37p2xdimucngkpid3r3mvdka45id4kscefma`. `table_cid` is computed the same way from each Parquet part.
+Both print `bafkreic5ryg5mrqw3cwxwwz5ia65bsavi6m5ch4t7lslwqkmckiqwpjgnq`. `table_cid` is computed the same way from each Parquet part.
 
 ## The sample cut
 
@@ -48,22 +48,92 @@ The rows are read from the bound pilot views only (`bindManifest()` over the pil
 | Null provenance (`source_url`, `captured_at`, `table`, `table_cid`, `run_id`, `manifest_cid`) | 0 |
 | Distinct `run_id` | 1 |
 
+## What the pilot is (and is not)
+
+The pilot is **a schema contract, not a distribution**. Its permit slice was chosen by PO decision
+D-3 (42 Austin permits issued in 2026-09, 5 Expired BP permits and 3 older Final BP permits), so it
+is skewed to open permits and to recent work. Do not read rates, shares or averages from the
+sample or the pilot views: they show the shape of every column and every missing reason, not how
+often each value occurs in Travis County.
+
 ## Status rule (PO decision D-4a): empty status means stalled
 
 The lexicon `improvement_status` enum has no Expired value. An Expired Austin permit is published
 with `improvement_status` **null**, and the views read **empty status means stalled**: a null
 `improvement_status` on a published permit with an `issue_date` gives `status_class = 'stalled'`.
 Permitted, Planned and OnHold give `open`; Completed gives `closed`. The mapping is generated from
-the profile (`profiles/travis-austin@1.0.0`, `packages/query-core/generated/travis-austin@1.0.0.status-map.sql`).
-Excluded and needs_review permits are never published. Every such row lists
-`{field: "status_raw", reason: "no_lexicon_carrier"}` and `{field: "expiry_date", reason: "no_lexicon_carrier"}` in `missing`.
+the profile (`profiles/travis-austin@1.0.0`, `packages/query-core/generated/travis-austin@1.0.0.status-map.sql`)
+and is keyed on (jurisdiction, `improvement_status`): the rule applies only for the profile's jurisdictions
+(`austin`, from the request host of `source_http_request`). Excluded and needs_review permits are
+never published, so the views carry no status filter of their own. Every row lists
+`{field: "status_raw", reason: "no_lexicon_carrier"}` and `{field: "expiry_date", reason: "no_lexicon_carrier"}`
+in `missing`, and a stalled row's null `improvement_status` is listed with `enum_lacks_value`
+(the carrier exists; its enum has no value for the source word).
+
+`status_class` is never silently empty: when it cannot be derived (a null status from another
+jurisdiction, a null status without an issue date, or a lexicon value the profile does not map,
+such as InProgress) it is null and the row lists `{field: "status_class", reason: "needs_review"}`;
+`final_date` and `open_days` then also give `needs_review`, and a null `improvement_status`
+gives `needs_review` instead of `enum_lacks_value`.
+
+**For raw-table consumers** (reading `property_improvement` Parquet without these views): a Travis
+permit whose `improvement_status` is null, whose `source_http_request` host is an Austin host
+(`data.austintexas.gov`, `abc.austintexas.gov`) and which has a `permit_issue_date` is an
+**Expired (stalled)** permit, not a permit with an unknown status. Any other null status is unknown.
+
+## Location, ZIP search and value
+
+The Travis export reaches a property's point only through **property_has_parcel → parcel_has_geometry → geometry**
+(the TCAD point). There is no `address_has_geometry` and no `property_has_tax` in the export, and
+`address` properties are not emitted, so there is no situs text, situs ZIP or owner mailing
+address in v1. A ZIP or place search therefore uses the travis-places gazetteer point of the ZIP
+or place and a bounding box around it over `latitude`/`longitude`; it never matches a ZIP
+column. Market value is absent: no assessed or market value is published in v1.
+
+## Roof date
+
+`roof_date` is the latest accepted terminal date (`completion_date` or `permit_close_date`, not
+after `as_of`, not before the issue date) of a **closed** Roofing permit linked to the property
+(Replacement → basis `permit`, confidence high; else New → `new_construction`, medium), read
+from the published permit rows. Otherwise it is `structure.roof_date`, which carries only the
+TCAD built year (basis `built_year`, confidence low); a permit-derived date is never written on
+`structure` with the TCAD request. An open or stalled replacement never resets the roof age
+(P0-8). These rules are the kit roof-age estimator's, and the pilot views agree with its ledger
+for every property. The estimator saw a slice of each parcel's Austin permits, not its full
+history (caveat `partial_history`, in the manifest).
+
+## Owner
+
+The current owner is read from the **latest dated sale**: the persons and companies linked to
+that `sales_history` record (an assumption: the latest dated sale is the current owner; TCAD
+`owners[]` are linked to it by the transform). `owner_kind` is `company` when any company is
+linked, else `person`, else `unknown`; `owner_name` lists the persons (by last, first name) and
+then the companies (by name), each once, separated by `; `. When there is no owner the reason is
+`no_dated_sale` (no dated sale to link to; linking without a sale is deferred to A-04), or for a
+dated sale without an owner `owner_unparsed`, `owner_confidential` (TCAD confidentiality flag,
+P0-15) or `no_owner_record`, read from the manifest `coverage` counts `owner_unparsed`,
+`owner_confidential` and `owner_no_record` (when more than one is non-zero the row cannot be
+told apart and lists `needs_review`).
+
+## Contractor
+
+`contractor_resolution` is `resolved` only when the permit has exactly one
+`property_improvement_has_contractor` edge; with several edges no company is picked: the row is
+`unresolved` and lists `{field: "contractor_company_cid", reason: "needs_review"}`. The AD-24
+five-state totals (`contractor_resolved`, `contractor_candidate`, `contractor_ambiguous`,
+`contractor_conflicting`, `contractor_unresolved`) are in the manifest `coverage`.
 
 ## Provenance and `missing`
 
 Every row of `v_property`, `v_roofing_permit` and `v_contractor` carries `cid`, `source_url`,
 `captured_at`, `table`, `table_cid`, `run_id`, `manifest_cid`, `as_of` and `missing`.
 `missing` holds one `{field, reason}` entry for every null column and every field the contract
-cannot carry. Reasons are a closed list: `no_lexicon_carrier`, `not_in_export`, `source_missing`, `no_coordinates`, `no_roof_date`, `basis_unmatched`, `no_dated_sale`, `no_owner_record`, `no_mailing_address`, `zip_not_zcta`, `not_open`, `not_closed`, `contractor_unresolved`, `bbb_blocked`, `bbb_not_found`, `needs_review`, `first_run`, `out_of_scope`.
+cannot carry. Reasons are a closed list: `no_lexicon_carrier`, `not_in_export`, `source_missing`, `no_coordinates`, `no_roof_date`, `basis_unmatched`, `no_dated_sale`, `no_owner_record`, `no_mailing_address`, `zip_not_zcta`, `not_open`, `not_closed`, `contractor_unresolved`, `bbb_blocked`, `bbb_not_found`, `needs_review`, `first_run`, `out_of_scope`, `enum_lacks_value`, `owner_unparsed`, `owner_confidential`.
+`captured_at` is source-level: it is the manifest `sources[].captured_at` of the record's source
+(the latest successful capture receipt of that source), not a per-record time. `source_url` is
+the record's own request URL; when the record has none (or its URL is not a manifest source) it
+falls back to the source-level URL of its data group, and no `missing` entry is added because a
+URL is present.
 In the sample, the property's own provenance is prefixed `property_` (`property_source_url`,
 `property_captured_at`, `property_table`, `property_table_cid`, `property_missing`); `run_id`,
 `manifest_cid` and `as_of` are the same for both records.
@@ -115,23 +185,23 @@ Two further notes from the pilot export:
 | `permit_number` | `VARCHAR` | yes | Permit number as printed | property_improvement.permit_number | `source_missing` |
 | `improvement_type` | `VARCHAR` | no | Lexicon improvement type | property_improvement.improvement_type (set only by the profile) | never empty |
 | `improvement_action` | `VARCHAR` | no | Lexicon improvement action | property_improvement.improvement_action (set only by the profile) | never empty |
-| `improvement_status` | `VARCHAR` | yes | Lexicon status; null for Expired (D-4a) | property_improvement.improvement_status | `no_lexicon_carrier` |
-| `status_class` | `VARCHAR` | no | Open, stalled or closed (`open`, `stalled`, `closed`) | generated status map: Permitted/Planned/OnHold → open, Completed → closed, null status + issue date → stalled (D-4a) | never empty |
+| `improvement_status` | `VARCHAR` | yes | Lexicon status; null for Expired (D-4a) | property_improvement.improvement_status | `enum_lacks_value` |
+| `status_class` | `VARCHAR` | yes | Open, stalled or closed; null only when it cannot be derived (`open`, `stalled`, `closed`) | generated status map on (jurisdiction, improvement_status): Austin Permitted/Planned/OnHold → open, Completed → closed, null status + issue date → stalled (D-4a); no map row (other jurisdiction, unmapped status, null status without issue date) → null | `needs_review` |
 | `is_open` | `BOOLEAN` | no | Open flag | derived: status_class = 'open' | never empty |
 | `issue_date` | `DATE` | yes | Issue date (frozen alias) | property_improvement.permit_issue_date | `source_missing` |
 | `final_date` | `DATE` | yes | Final date (frozen alias) | property_improvement.completion_date | `not_closed` |
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
 | `open_days` | `INTEGER` | yes | Days open | derived: as_of − issue_date for open and stalled | `not_open` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved iff a property_improvement_has_contractor edge exists | never empty |
-| `contractor_company_cid` | `VARCHAR` | yes | Resolved contractor company | to_cid of property_improvement_has_contractor | `contractor_unresolved` |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review) | never empty |
+| `contractor_company_cid` | `VARCHAR` | yes | Resolved contractor company | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
 | `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | always not_checked in v1 | never empty |
 | `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | contractor_unresolved if unresolved, else no_lexicon_carrier | never empty |
 | `profile_version` | `VARCHAR` | no | Classification profile version | manifest profiles[] (travis-austin) | never empty |
 | `profile_sha256` | `VARCHAR` | no | Classification profile digest | manifest profiles[] (travis-austin) | never empty |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
-| `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url | `not_in_export` |
-| `captured_at` | `TIMESTAMP WITH TIME ZONE` | no | When that source was captured | manifest sources[].captured_at of the source whose url the record's request uses | never empty |
+| `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
+| `captured_at` | `TIMESTAMP WITH TIME ZONE` | no | When that source was captured (source-level, not per record) | manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt) | never empty |
 | `table` | `VARCHAR` | no | The export table the row's main record came from | export table name | never empty |
 | `table_cid` | `VARCHAR` | no | CIDv1 of the Parquet part holding the row | tables.car CountyTables part link → manifest artifacts[] | never empty |
 | `run_id` | `VARCHAR` | no | The run that produced the row | manifest runId | never empty |
@@ -146,21 +216,21 @@ Two further notes from the pilot export:
 | `latitude` | `DOUBLE` | yes | Latitude | geometry.latitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
 | `longitude` | `DOUBLE` | yes | Longitude | geometry.longitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
 | `coordinate_source` | `VARCHAR` | no | Where the coordinates came from (`gis_centroid`, `permit_point`, `none`) | derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none | never empty |
-| `roof_date` | `VARCHAR` | yes | Roof date, YYYY[-MM[-DD]] | structure.roof_date via property_has_structure (kit estimator only) | `no_roof_date` |
+| `roof_date` | `VARCHAR` | yes | Roof date, YYYY[-MM[-DD]] | latest accepted terminal date (completion_date or permit_close_date, ≤ as_of, ≥ issue date) of a closed Roofing permit via property_has_property_improvement (Replacement, else New); else structure.roof_date via property_has_structure (TCAD built year only) | `no_roof_date` |
 | `roof_age_years` | `INTEGER` | yes | Roof age in whole years; 0 allowed | derived: whole years from roof_date to as_of (never structure.roof_age_years) | `no_roof_date` |
 | `roof_age_basis` | `VARCHAR` | no | Evidence behind roof_date (`permit`, `new_construction`, `built_year`, `unknown`) | derived (mew B.5) | never empty |
 | `roof_age_confidence` | `VARCHAR` | no | Confidence of roof_age_years (`high`, `medium`, `low`, `none`) | derived (mew B.5) | never empty |
-| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | max sales_history.ownership_transfer_date via property_has_sales_history | `no_dated_sale` |
+| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | latest dated sales_history.ownership_transfer_date via property_has_sales_history | `no_dated_sale` |
 | `tenure_years` | `INTEGER` | yes | Owner tenure | derived: whole years from last_ownership_transfer_date to as_of | `no_dated_sale` |
 | `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `unknown`) | derived: sale_date when dated, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
-| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest sale | never empty |
-| `owner_name` | `VARCHAR` | yes | Owner display name | person.first_name + last_name, or company.name | `no_owner_record` |
+| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown | never empty |
+| `owner_name` | `VARCHAR` | yes | Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale | `no_dated_sale` |
 | `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1 | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
-| `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places); else the travis-places gazetteer DIGEST | never empty |
-| `property_source_url` | `VARCHAR` | yes | The property's uRL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url | `not_in_export` |
-| `property_captured_at` | `TIMESTAMP WITH TIME ZONE` | no | The property's when that source was captured | manifest sources[].captured_at of the source whose url the record's request uses | never empty |
+| `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
+| `property_source_url` | `VARCHAR` | yes | The property's uRL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
+| `property_captured_at` | `TIMESTAMP WITH TIME ZONE` | no | The property's when that source was captured (source-level, not per record) | manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt) | never empty |
 | `property_table` | `VARCHAR` | no | The property's the export table the row's main record came from | export table name | never empty |
 | `property_table_cid` | `VARCHAR` | no | The property's cIDv1 of the Parquet part holding the row | tables.car CountyTables part link → manifest artifacts[] | never empty |
 | `property_missing` | `STRUCT(field VARCHAR, reason VARCHAR)[]` | no | The property's one {field, reason} entry for every null or uncarried field in the row | built per row | never empty |
@@ -178,22 +248,22 @@ Two further notes from the pilot export:
 | `latitude` | `DOUBLE` | yes | Latitude | geometry.latitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
 | `longitude` | `DOUBLE` | yes | Longitude | geometry.longitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
 | `coordinate_source` | `VARCHAR` | no | Where the coordinates came from (`gis_centroid`, `permit_point`, `none`) | derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none | never empty |
-| `roof_date` | `VARCHAR` | yes | Roof date, YYYY[-MM[-DD]] | structure.roof_date via property_has_structure (kit estimator only) | `no_roof_date` |
+| `roof_date` | `VARCHAR` | yes | Roof date, YYYY[-MM[-DD]] | latest accepted terminal date (completion_date or permit_close_date, ≤ as_of, ≥ issue date) of a closed Roofing permit via property_has_property_improvement (Replacement, else New); else structure.roof_date via property_has_structure (TCAD built year only) | `no_roof_date` |
 | `roof_age_years` | `INTEGER` | yes | Roof age in whole years; 0 allowed | derived: whole years from roof_date to as_of (never structure.roof_age_years) | `no_roof_date` |
 | `roof_age_basis` | `VARCHAR` | no | Evidence behind roof_date (`permit`, `new_construction`, `built_year`, `unknown`) | derived (mew B.5) | never empty |
 | `roof_age_confidence` | `VARCHAR` | no | Confidence of roof_age_years (`high`, `medium`, `low`, `none`) | derived (mew B.5) | never empty |
-| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | max sales_history.ownership_transfer_date via property_has_sales_history | `no_dated_sale` |
+| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | latest dated sales_history.ownership_transfer_date via property_has_sales_history | `no_dated_sale` |
 | `tenure_years` | `INTEGER` | yes | Owner tenure | derived: whole years from last_ownership_transfer_date to as_of | `no_dated_sale` |
 | `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `unknown`) | derived: sale_date when dated, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
-| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest sale | never empty |
-| `owner_name` | `VARCHAR` | yes | Owner display name | person.first_name + last_name, or company.name | `no_owner_record` |
+| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown | never empty |
+| `owner_name` | `VARCHAR` | yes | Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale | `no_dated_sale` |
 | `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1 | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
-| `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places); else the travis-places gazetteer DIGEST | never empty |
+| `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
-| `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url | `not_in_export` |
-| `captured_at` | `TIMESTAMP WITH TIME ZONE` | no | When that source was captured | manifest sources[].captured_at of the source whose url the record's request uses | never empty |
+| `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
+| `captured_at` | `TIMESTAMP WITH TIME ZONE` | no | When that source was captured (source-level, not per record) | manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt) | never empty |
 | `table` | `VARCHAR` | no | The export table the row's main record came from | export table name | never empty |
 | `table_cid` | `VARCHAR` | no | CIDv1 of the Parquet part holding the row | tables.car CountyTables part link → manifest artifacts[] | never empty |
 | `run_id` | `VARCHAR` | no | The run that produced the row | manifest runId | never empty |
@@ -211,23 +281,23 @@ Two further notes from the pilot export:
 | `permit_number` | `VARCHAR` | yes | Permit number as printed | property_improvement.permit_number | `source_missing` |
 | `improvement_type` | `VARCHAR` | no | Lexicon improvement type | property_improvement.improvement_type (set only by the profile) | never empty |
 | `improvement_action` | `VARCHAR` | no | Lexicon improvement action | property_improvement.improvement_action (set only by the profile) | never empty |
-| `improvement_status` | `VARCHAR` | yes | Lexicon status; null for Expired (D-4a) | property_improvement.improvement_status | `no_lexicon_carrier` |
-| `status_class` | `VARCHAR` | no | Open, stalled or closed (`open`, `stalled`, `closed`) | generated status map: Permitted/Planned/OnHold → open, Completed → closed, null status + issue date → stalled (D-4a) | never empty |
+| `improvement_status` | `VARCHAR` | yes | Lexicon status; null for Expired (D-4a) | property_improvement.improvement_status | `enum_lacks_value` |
+| `status_class` | `VARCHAR` | yes | Open, stalled or closed; null only when it cannot be derived (`open`, `stalled`, `closed`) | generated status map on (jurisdiction, improvement_status): Austin Permitted/Planned/OnHold → open, Completed → closed, null status + issue date → stalled (D-4a); no map row (other jurisdiction, unmapped status, null status without issue date) → null | `needs_review` |
 | `is_open` | `BOOLEAN` | no | Open flag | derived: status_class = 'open' | never empty |
 | `issue_date` | `DATE` | yes | Issue date (frozen alias) | property_improvement.permit_issue_date | `source_missing` |
 | `final_date` | `DATE` | yes | Final date (frozen alias) | property_improvement.completion_date | `not_closed` |
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
 | `open_days` | `INTEGER` | yes | Days open | derived: as_of − issue_date for open and stalled | `not_open` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved iff a property_improvement_has_contractor edge exists | never empty |
-| `contractor_company_cid` | `VARCHAR` | yes | Resolved contractor company | to_cid of property_improvement_has_contractor | `contractor_unresolved` |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review) | never empty |
+| `contractor_company_cid` | `VARCHAR` | yes | Resolved contractor company | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
 | `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | always not_checked in v1 | never empty |
 | `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | contractor_unresolved if unresolved, else no_lexicon_carrier | never empty |
 | `profile_version` | `VARCHAR` | no | Classification profile version | manifest profiles[] (travis-austin) | never empty |
 | `profile_sha256` | `VARCHAR` | no | Classification profile digest | manifest profiles[] (travis-austin) | never empty |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
-| `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url | `not_in_export` |
-| `captured_at` | `TIMESTAMP WITH TIME ZONE` | no | When that source was captured | manifest sources[].captured_at of the source whose url the record's request uses | never empty |
+| `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
+| `captured_at` | `TIMESTAMP WITH TIME ZONE` | no | When that source was captured (source-level, not per record) | manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt) | never empty |
 | `table` | `VARCHAR` | no | The export table the row's main record came from | export table name | never empty |
 | `table_cid` | `VARCHAR` | no | CIDv1 of the Parquet part holding the row | tables.car CountyTables part link → manifest artifacts[] | never empty |
 | `run_id` | `VARCHAR` | no | The run that produced the row | manifest runId | never empty |
@@ -248,8 +318,8 @@ Two further notes from the pilot export:
 | `permit_count` | `INTEGER` | no | Permits | count of property_improvement_has_contractor rows | never empty |
 | `roofing_permit_count` | `INTEGER` | no | Roofing permits | the same count limited to v_roofing_permit | never empty |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
-| `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the manifest sources[].url | `not_in_export` |
-| `captured_at` | `TIMESTAMP WITH TIME ZONE` | no | When that source was captured | manifest sources[].captured_at of the source whose url the record's request uses | never empty |
+| `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
+| `captured_at` | `TIMESTAMP WITH TIME ZONE` | no | When that source was captured (source-level, not per record) | manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt) | never empty |
 | `table` | `VARCHAR` | no | The export table the row's main record came from | export table name | never empty |
 | `table_cid` | `VARCHAR` | no | CIDv1 of the Parquet part holding the row | tables.car CountyTables part link → manifest artifacts[] | never empty |
 | `run_id` | `VARCHAR` | no | The run that produced the row | manifest runId | never empty |
@@ -272,7 +342,7 @@ Two further notes from the pilot export:
 | `coverage` | `JSON` | no | Coverage counts with derivations (AD-04, AD-28) | manifest coverage | never empty |
 | `profile_version` | `VARCHAR` | no | Classification profile version | manifest profiles[] (travis-austin) | never empty |
 | `profile_sha256` | `VARCHAR` | no | Classification profile digest | manifest profiles[] (travis-austin) | never empty |
-| `area_list_sha256` | `VARCHAR` | no | Area list digest | manifest profiles[] (travis-places); else the travis-places gazetteer DIGEST | never empty |
+| `area_list_sha256` | `VARCHAR` | no | Area list digest | manifest profiles[] (travis-places) | never empty |
 
 ## Change rule
 

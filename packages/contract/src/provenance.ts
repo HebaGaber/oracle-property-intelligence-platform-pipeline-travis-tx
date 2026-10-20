@@ -2,7 +2,8 @@
 import { z } from "zod";
 import { CidV1, IsoDateTime } from "./cid.js";
 
-/** Closed list (mew B.7 plus oracle's zip_not_zcta, D-4c). Adding is additive; renaming needs v2. */
+/** Closed list (mew B.7 plus oracle's zip_not_zcta, D-4c; enum_lacks_value, owner_unparsed and
+ *  owner_confidential added by D-9). Adding is additive; renaming needs v2. */
 export const MISSING_REASONS = [
   "no_lexicon_carrier",
   "not_in_export",
@@ -22,6 +23,12 @@ export const MISSING_REASONS = [
   "needs_review",
   "first_run",
   "out_of_scope",
+  /** The lexicon carrier exists but its enum has no value for the source word (e.g. Expired). */
+  "enum_lacks_value",
+  /** A dated sale exists but no owner name could be parsed into a person or company. */
+  "owner_unparsed",
+  /** The owner is withheld because a TCAD confidentiality flag is set (P0-15). */
+  "owner_confidential",
 ] as const;
 
 export const MissingReason = z.enum(MISSING_REASONS);
