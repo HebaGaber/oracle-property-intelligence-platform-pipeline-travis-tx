@@ -15,7 +15,21 @@ The rules these decisions touch: FR-006a (never retry a 403 or a challenge, neve
 
 - **What happened:** the operator machine was connected to a VPN during the 2026-10-19 discovery runs (`travis`, `travis-2`). This was not known to the run, and it was not recorded at intake: intake item 5 recorded the egress as `EG` from a check made outside the run.
 - **What the receipts show:** Cloudflare edge codes in the saved responses are mixed within the same minute: `LHR` (TCAD export 21:01, Cedar Park 21:09:16.263, Leander 21:09:26) and `CAI` (BBB 21:08:55, Creedmoor 21:09:16.768). An edge code is not an exit address, so the exit address per request cannot be reconstructed.
-- **Effect:** every 2026-10-19 request was made with the project User-Agent and one attempt, and none was repeated within that run. But the run's egress was not the operator's own network, which R10 does not allow.
+- **Effect:** every request was made with the project User-Agent and one attempt each, with no automatic retry. But the egress was not the operator's own network, which R10 does not allow. Some sources were requested more than once, through a second run id and through `resolve … captured` rounds (FR-006f allows one more attempt per resolution, with the same identity; with the VPN on, the same identity cannot be confirmed).
+- **Every contact with the GIS host** (`gis.traviscountytx.gov`), from the run journals and evidence files:
+
+  | # | Time (UTC) | Run or command | How | Egress | Result |
+  | --- | --- | --- | --- | --- | --- |
+  | 1 | 2026-10-19 20:43:16 | run `travis`, first probe | count query | VPN on | no response |
+  | 2 | 2026-10-19 21:08:45 | run `travis-2`, first probe (a new run id, so a second request) | count query | VPN on | no response (`tcad_gis-20261019T210845Z.md`) |
+  | 3 | 2026-10-19 21:24:23 | run `travis-2`, `resolve tcad_gis captured` (attempt 1) | count query | VPN on | no response (`tcad_gis-20261019T212423Z.md`) |
+  | 4 | 2026-10-20 05:33:44 | run `travis-2`, `resolve tcad_gis captured` (attempt 2) | count query | **not recorded** | no response (`tcad_gis-20261020T053344Z.md`) |
+  | 5 | 2026-10-20 07:22:23 | operator retest at the PO's direction (D-3) | count query | VPN off, `EG` | timed out after 60 s (`tcad_gis-20261020T072223Z.md`) |
+  | 6 | 2026-10-20 07:22–07:23 | operator check (D-3) | TCP connect test (`nc -z`, no HTTP) | VPN off, `EG` | no connection |
+  | 7 | 2026-10-20 07:31:05 | US GitHub Actions runner (D-2) | count query | US | HTTP 200, `{"count":373683}` |
+
+  Run `travis-2` then recorded `tcad_gis` as `still-blocked` (attempt 3, 2026-10-20T05:43:09Z). Contacts 1 to 4 each made one HTTP request; their evidence files' sentence "No retry with a changed identity was made" is qualified by this record.
+- **Limit of the new guard:** it compares the egress **country** only, so a VPN or hotspot exit in the same country would pass. `discover` checks the country only when `ORACLE_EXPECT_EGRESS` is set (finding N3).
 - **Decision:** recorded as a deviation. From 2026-10-20 every request-sending command checks and records the egress country first and refuses on a mismatch (finding OR-B1 in `docs/reviews/CR-A-01.md`). No 2026-10-19 result is relied on where a later request from the operator's own network exists.
 
 ## D-2. One US-runner count request for the county GIS layer (approved)
