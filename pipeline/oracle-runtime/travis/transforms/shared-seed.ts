@@ -208,10 +208,11 @@ export function buildSharedFiles(input: SharedFilesInput): Record<string, string
   if (fields.property_usage_type !== null)
     property.property_usage_type = fields.property_usage_type;
   return {
+    // No county_name: the live address.county_name enum has no "Travis" (optional field;
+    // lexicon gap recorded in ADR-0002). The seed CSV keeps the county.
     "address.json": jsonFile({
       source_http_request: request,
       request_identifier: pID,
-      county_name: COUNTY_NAME,
       unnormalized_address: seed.situs_address === "" ? null : seed.situs_address,
       latitude: point?.latitude ?? null,
       longitude: point?.longitude ?? null,

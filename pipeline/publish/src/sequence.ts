@@ -6,8 +6,16 @@
 // the repository root (node_modules/.bin/elephant-cli), never a global or Homebrew copy.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import {
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
+import { join, sep } from "node:path";
 
 export type DataGroup = "county" | "property_improvement";
 export type StepName = "validate" | "hash" | "validate-car" | "export-tables";
@@ -117,6 +125,21 @@ export async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
+/**
+ * SHA-256 of a file, or of a directory as the sorted lines "<relative path>\t<sha256>\n"
+ * of every file beneath it.
+ */
+export async function sha256Output(path: string): Promise<string> {
+  if (!statSync(path).isDirectory()) return sha256File(path);
+  const files = (readdirSync(path, { recursive: true }) as string[])
+    .map((f) => f.split(sep).join("/"))
+    .filter((f) => statSync(join(path, f)).isFile())
+    .sort();
+  const lines: string[] = [];
+  for (const f of files) lines.push(`${f}\t${await sha256File(join(path, f))}\n`);
+  return createHash("sha256").update(lines.join("")).digest("hex");
+}
+
 interface Planned {
   step: StepName;
   argv: string[];
@@ -140,13 +163,14 @@ function plan(county: string, p: string, group: DataGroup): Planned[] {
         "hash",
         dir,
         "--output-zip",
-        join(p, "hashed", `${group}.zip`),
+        // elephant-cli 44bb182 writes --output-zip as a directory of per-property zips.
+        join(p, "hashed", group),
         "--output-csv",
         report("hash.csv"),
         "--output-car",
         car,
       ],
-      outputs: [join(p, "hashed", `${group}.zip`), report("hash.csv"), car],
+      outputs: [join(p, "hashed", group), report("hash.csv"), car],
     },
     {
       step: "validate-car",
@@ -211,7 +235,7 @@ export async function runSequence(options: SequenceOptions): Promise<SequenceRep
       for (const out of planned.outputs) {
         if (!existsSync(out))
           return stop(group, planned.step, `missing output ${out}`, result.stderr);
-        record.outputs.push({ path: out, sha256: await sha256File(out) });
+        record.outputs.push({ path: out, sha256: await sha256Output(out) });
       }
       if (planned.step === "hash") {
         const m = CAR_WRITTEN.exec(result.stdout);

@@ -229,7 +229,15 @@ describe("transformAustinPropertyImprovement", () => {
     const out = transformAustinPropertyImprovement(
       setup([capture("2026-100001 BP"), capture("2026-034767 BP", { status_current: "Expired" })]),
     );
-    const all = Object.values(out.files).join("\n");
+    // The permit files only: the shared property.json legitimately carries TCAD's
+    // `property_legal_description_text`, which is not a permit description.
+    const all = Object.entries(out.files)
+      .filter(
+        ([name]) => /property_improvement/.test(name) || name.startsWith(CIDS.propertyImprovement),
+      )
+      .map(([, text]) => text)
+      .join("\n");
+    expect(all).toContain("property_improvement_1.json");
     for (const banned of [
       "REROOF SFR",
       "ACME",

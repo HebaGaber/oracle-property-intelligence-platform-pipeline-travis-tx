@@ -31,7 +31,8 @@ function fakeCli(failOn?: (argv: string[]) => boolean): { run: CliRunner; calls:
     const cmd = argv[0];
     if (cmd === "validate") write(arg(argv, "--output-csv"), "property_cid,file,error\n");
     if (cmd === "hash") {
-      write(arg(argv, "--output-zip"), "zip");
+      // elephant-cli 44bb182 writes --output-zip as a directory of per-property zips.
+      write(join(arg(argv, "--output-zip"), "100008.zip"), "zip");
       write(
         arg(argv, "--output-csv"),
         `propertyCid,dataGroupCid,dataCid,filePath,uploadedAt\n${SEED},${COUNTY},${CAR_ROOT},x/${COUNTY}.json,\n`,
@@ -84,7 +85,7 @@ describe("runSequence", () => {
         "hash",
         `${p}/groups/county`,
         "--output-zip",
-        `${p}/hashed/county.zip`,
+        `${p}/hashed/county`,
         "--output-csv",
         `${p}/reports/county-hash.csv`,
         "--output-car",
@@ -116,7 +117,7 @@ describe("runSequence", () => {
         "hash",
         `${p}/groups/property_improvement`,
         "--output-zip",
-        `${p}/hashed/property_improvement.zip`,
+        `${p}/hashed/property_improvement`,
         "--output-csv",
         `${p}/reports/property_improvement-hash.csv`,
         "--output-car",
@@ -197,10 +198,12 @@ describe("runSequence", () => {
     expect(hash).toMatchObject({ step: "hash", exitCode: 0, carRoot: CAR_ROOT, blocks: 12 });
     expect(hash?.argv[0]).toBe("hash");
     expect(hash?.outputs.map((o) => o.path)).toEqual([
-      `${p}/hashed/county.zip`,
+      `${p}/hashed/county`,
       `${p}/reports/county-hash.csv`,
       `${p}/car/travis-county.car`,
     ]);
+    // A directory output is digested as sorted "<relative path>\t<sha256>\n" lines.
+    expect(hash?.outputs[0]?.sha256).toBe(sha(`100008.zip\t${sha("zip")}\n`));
     expect(validateCar).toMatchObject({ step: "validate-car", exitCode: 0 });
     expect(exportTables).toMatchObject({
       step: "export-tables",

@@ -6,6 +6,7 @@ export {
   resolveCli,
   runSequence,
   sha256File,
+  sha256Output,
   spawnRunner,
   type CliResult,
   type CliRunner,

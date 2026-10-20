@@ -156,12 +156,12 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
 - [X] T042 [US1] [oracle] Implement `pipeline/publish/src/manifest.ts` (`buildManifest()`, which reads `tables.car` blocks and receipts only). Green T033.
 - [X] T043 [P] [US1] [oracle] Vendor `skills/use-oracle/runtime/src/roof-age/estimator.ts` (kit 0.99.1) unmodified into `pipeline/oracle-runtime/kit/use-oracle/runtime/src/roof-age/`, add its SHA-256 row to `pipeline/oracle-runtime/kit/VENDORED.md`, and implement `pipeline/oracle-runtime/travis/roof-age/travis-roof-age-profile.ts`. Green T038.
 - [X] T044 [P] [US1] [oracle] Implement `pipeline/oracle-runtime/travis/transforms/lexicon-manifest.ts`. Green T039.
-- [ ] T045 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/capture-austin.ts` (reusing `travis/lib/source-client.ts` for backoff and the stop on 403). The slice query's include predicate comes from `toSoqlInclude()` in `profiles/travis-austin@1.0.0`, with no term literal in this file (**depends on T022**). Green T034.
+- [X] T045 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/capture-austin.ts` (reusing `travis/lib/source-client.ts` for backoff and the stop on 403). The slice query's include predicate comes from `toSoqlInclude()` in `profiles/travis-austin@1.0.0`, with no term literal in this file (**depends on T022**). Green T034.
 - [X] T046 [P] [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/capture-tcad-subset.ts` (reusing `travis/lib/zip-entry.ts` streaming). Green T035.
 - [X] T047 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/build-seed.ts` (county-seed-data contract: `parcel_id` = `pID`, extra `geo_id`) and `pipeline/oracle-runtime/travis/transforms/shared-seed.ts` (one builder for the seed files and `property.json`, used by both groups)
 - [X] T048 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/transforms/tcad-county.ts` (build-county-transform custom-code mode, output contract). Green T036.
-- [ ] T049 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/transforms/austin-property-improvement.ts`, which uses `classifyPermit`/`classifyStatus` from `profiles/travis-austin@1.0.0` (**depends on T021**). Green T037.
-- [ ] T050 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/run-pilot.ts`, which runs, in order:
+- [X] T049 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/transforms/austin-property-improvement.ts`, which uses `classifyPermit`/`classifyStatus` from `profiles/travis-austin@1.0.0` (**depends on T021**). Green T037.
+- [X] T050 [US1] [oracle] Implement `pipeline/oracle-runtime/travis/pilot/run-pilot.ts`, which runs, in order:
   1. lexicon manifest;
   2. captures;
   3. TCAD subset;
@@ -173,12 +173,12 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
   9. `buildManifest()`.
 
   Output goes to `pipeline/data/pilot/travis-pilot-20261020/`. `ELEPHANT_IPFS_GATEWAYS` stays unset, and nothing is uploaded.
-- [ ] T051 [US1] [oracle] Run the pilot live. If `validate` reports errors, fix the transform until it is clean; never skip validation. Record in run-log.md, for each of the 8 CLI commands: argv, exit code, the printed CAR and tables root CIDs, both `tables-export.json` SHA-256 values, the `hash.csv` `dataGroupCid`, the elephant-cli commit, the matched/unmatched/ambiguous counts and the manifest CID. Commit the exact manifest bytes to `contract/v1/pilot-manifest.json`.
-- [ ] T052 [US1] Test `packages/query-core/test/carriers.test.ts` (write first, must fail). It parses `docs/decisions/0002-lexicon-carriers.md` and asserts:
+- [X] T051 [US1] [oracle] Run the pilot live. If `validate` reports errors, fix the transform until it is clean; never skip validation. Record in run-log.md, for each of the 8 CLI commands: argv, exit code, the printed CAR and tables root CIDs, both `tables-export.json` SHA-256 values, the `hash.csv` `dataGroupCid`, the elephant-cli commit, the matched/unmatched/ambiguous counts and the manifest CID. Commit the exact manifest bytes to `contract/v1/pilot-manifest.json`.
+- [X] T052 [US1] Test `packages/query-core/test/carriers.test.ts` (write first, must fail). It parses `docs/decisions/0002-lexicon-carriers.md` and asserts:
   - exactly 9 fields, each with one verdict ∈ {`carrier`, `no_carrier`, `no_carrier_not_emitted`};
   - each `carrier` has a class.property, a `~/.elephant-cli/schema-cache` reference and a pilot row `{table, cid}` that exists in the pilot Parquet (when `PILOT_DIR` is set) with a non-null value;
   - each `no_carrier*` has a fallback (AD-24 or AD-25) and a drafted request.
-- [ ] T053 [US1] [oracle] Write `docs/decisions/0002-lexicon-carriers.md` (ADR format):
+- [X] T053 [US1] [oracle] Write `docs/decisions/0002-lexicon-carriers.md` (ADR format):
   - re-check each of mew's § A.2 verdicts against the populated `~/.elephant-cli/schema-cache/` and against `DESCRIBE` of each pilot table;
   - cite one pilot row per carrier;
   - include mew's § A.3 drafted requests (status: drafted, not filed; D-1);
@@ -186,7 +186,7 @@ description: "Task list for A-02 Freeze the property-intelligence data contract"
   - copy the used class schemas (public lexicon) from the cache to `packages/query-core/test/fixtures/schemas/`, with their CIDs, for T057.
 
   Any carrier that is not emitted becomes `no_carrier_not_emitted`. Green T052.
-- [ ] T054 [US1] 🛑 **D-8**: ask the PO whether to file the drafted lexicon extension requests outside the repo (recommended: draft only, revisit at release). Record the answer word for word in run-log.md and in the ADR.
+- [X] T054 [US1] 🛑 **D-8**: ask the PO whether to file the drafted lexicon extension requests outside the repo (recommended: draft only, revisit at release). Record the answer word for word in run-log.md and in the ADR.
 
 **Checkpoint**: a real pilot export exists and AC-1 has its verdicts.
 

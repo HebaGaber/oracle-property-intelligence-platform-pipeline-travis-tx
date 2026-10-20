@@ -6,6 +6,7 @@ import {
   TCAD_EXPORT_REQUEST,
   buildSharedFiles,
   parseTcadRecord,
+  propertyFields,
 } from "../../travis/transforms/shared-seed.js";
 import {
   transformTcadCounty,
@@ -161,11 +162,23 @@ describe("transformTcadCounty: provenance and links", () => {
       latitude: 30.2545186553,
       longitude: -97.7620645363,
     });
-    expect(parse(out.files, "address.json")).toMatchObject({
-      county_name: "Travis",
+    const address = parse(out.files, "address.json");
+    expect(address).toMatchObject({
       unnormalized_address: "1201 TESTING DR, AUSTIN, TX 78704",
       latitude: 30.2545186553,
       longitude: -97.7620645363,
+    });
+    // The live address.county_name enum (lexicon 2026-10-20) has no "Travis"; the field is
+    // optional, so it is not written (lexicon gap, ADR-0002).
+    expect(address).not.toHaveProperty("county_name");
+  });
+
+  it("propertyFields reports an unmapped TCAD state code and leaves property_type null", () => {
+    const record = parseTcadRecord(tcadRecord({ pID: 100010, geoID: "0100030105" }));
+    record.propertyProfile = [{ stateCd: "E1", imprvActualYearBuilt: 0 }];
+    expect(propertyFields(record)).toMatchObject({
+      property_type: null,
+      warnings: ["unmapped_state_code:E1"],
     });
   });
 
