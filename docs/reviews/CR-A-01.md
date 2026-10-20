@@ -90,6 +90,8 @@ Closed by PO decision 2026-10-20 ("fix 4 majors, defer the rest"): no further re
 | CR3-7 | Minor | `travis/discovery/backfill-amendments.ts:239` | venue knowledge in three places | Deferred (one-off migration, already run) | |
 | CR3-8 | Minor | `travis/discovery/backfill-amendments.ts:273` | duplicated refusal-handling block | Deferred (one-off migration) | |
 | CR3-9 | Minor | `travis/discovery/resolve.ts:106` | every exception reported as "catalog unreadable" | Deferred to A-12 with CR3-1 | |
+| T056-1 | Minor | `travis/discovery/workflow.ts:~167` (`resolveHint`) | after T056, the run's next-step hint still offers `captured` for 403/challenge blockers, which the CLI now refuses (misleading text, refusal holds) | Deferred to A-12 with CR3-1 (run handling); changing it changes catalog and next-step text | |
+| T056-2 | Minor | `travis/discovery/workflow.ts` resolution loop | the internal loop does not repeat the T056 check; every resolution reaches it through the guarded handler, so it is unreachable from outside | Deferred to A-12 with CR3-1 | |
 
 ## Oracle reviewer, run 1 (72/100)
 
