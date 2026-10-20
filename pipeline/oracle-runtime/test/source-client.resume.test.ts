@@ -321,9 +321,14 @@ describe("FR-003 range resume of a broken TCAD export download", () => {
     void pending.then(() => {
       settled = true;
     });
-    for (let step = 0; step < 40 && !settled; step += 1) {
+    // ERR-8: the .part writes are real I/O, so a slow CI disk needs more turns between fake
+    // timer steps; the loop stops as soon as the download settles, and every asserted time
+    // comes from the fake clock, so a larger budget does not change what is tested.
+    for (let step = 0; step < 400 && !settled; step += 1) {
       await vi.advanceTimersByTimeAsync(50);
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      for (let turn = 0; turn < 3; turn += 1) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
     }
     expect(settled).toBe(true);
     const dl = await pending;
