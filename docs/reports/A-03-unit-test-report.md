@@ -4,7 +4,7 @@ type: unit-test-report
 story: A-03
 branch: 003-walking-skeleton
 commit: fe2b26a
-ci_run: "Not used for these numbers: they are from local runs on the operator machine. GitHub Actions `ci` run 39638006386 on 86694cc was still in_progress at 19:59:05; the two runs before it (39626119607 on fbdb68b, 39617581666) ended in failure."
+ci_run: "Numbers are from local runs on the operator machine at fe2b26a. The first fully green GitHub Actions ci run is 39641644469 on 5fbc811 (workspace, oracle-runtime, gitleaks, e2e-hosted all success)."
 created: 2026-10-21
 ---
 

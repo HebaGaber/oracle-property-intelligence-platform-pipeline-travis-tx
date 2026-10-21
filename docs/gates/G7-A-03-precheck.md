@@ -1,54 +1,51 @@
 ---
 gate: G7
 artifact: stories/A-03-walking-skeleton.md
-artifact_version: "run 1; branch 003-walking-skeleton @ fe2b26a (not pushed; hosted preview built from 86694cc) + the regenerated unit-test report and this report, uncommitted"
+artifact_version: "run 2; branch 003-walking-skeleton @ 7563084 (pushed; origin/003-walking-skeleton = 7563084); hosted builds fbdb68b (run 2) and 86694cc (run 3)"
 run_date: 2026-10-21
 tool: Claude
-verdict: FAIL
+verdict: PASS
 ---
 
-# G7 pre-check (run 1): A-03 Publish one month of Austin roofing permits by CID and show them in the hosted UI
+# G7 pre-check (run 2): A-03 Publish one month of Austin roofing permits by CID and show them in the hosted UI
 
 This is an AI completeness pre-check. It reports gaps only and does not approve. The PO records the decision.
 
-**Inputs read:**
-- `specs/003-walking-skeleton/tasks.md` and `specs/003-walking-skeleton/run-log.md`
-- `docs/reports/A-03-unit-test-report.md` (regenerated on `fe2b26a`, 2026-10-21 19:56–19:59 EEST)
-- `docs/reports/A-03-test-report.md`
-- `docs/reviews/CR-A-03.md`
-- `docs/defects/ERR-10.md` … `ERR-19.md` (the A-03 defects)
-- `docs/evidence/A-03.md`
-- `docs/traceability.md` and `docs/kit-usage.md`
-- the story front matter (`stories/A-03-walking-skeleton.md`)
-- `git log feature/oracle-pipeline..HEAD` (23 commits) and `gitleaks git --log-opts=<merge-base>..HEAD`
-- `gh run list --repo HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx --branch 003-walking-skeleton --limit 3` (read at 19:59 and 20:01 EEST) and `gh run view 39638006386`
-- `.specify/memory/constitution.md` (articles X, XII, XVI)
+## Run 2 note
 
-Context taken as given: the hosted runtime is the Amplify branch URL `https://003-walking-skeleton.d2lx0utip89u18.amplifyapp.com` (ASM-8); `countylens.aldarraj.com` is AVAILABLE and serves production after the merge. The PO's private-window check (✋ A-5, run-log 19:05) reads "looks right".
+Run 1 (2026-10-21, branch at `fe2b26a`, not pushed) was **FAIL with 6 FAILs**:
+
+- **C-01:** T078, T079, TZ02, TZ03 and TZ06 were unticked (no green `ci` run for T078, no quickstart section for T079, no GitHub token decision recorded for TZ02).
+- **C-02:** no `ci` run on the branch had passed (39638006386 in progress, two earlier runs failed).
+- **C-03:** the CR Runs table held a template placeholder row, OR-3 and OR-11 were "deferred to G7" and still open, and the 14 commits after `327c11f` had no reviewer pass.
+- **C-04:** the test report did not record the run-3 TC-051 and TC-061 results, was `Draft`, and pointed at an old unit-test report.
+- **C-05:** ERR-10 to ERR-19 were `Re-tested`, not `Closed`.
+- **C-08:** the A-03 traceability row was stale (42/43, ERR-19 open), and the gate log had no A-03 G4, G5 or G6 rows.
+
+The run-log at 20:11 records the fixes. This run checks each one against the files, not against the run-log.
+
+**Inputs read:** `specs/003-walking-skeleton/tasks.md`, `specs/003-walking-skeleton/run-log.md`, `docs/reports/A-03-unit-test-report.md`, `docs/reports/A-03-test-report.md`, `docs/reviews/CR-A-03.md`, `docs/defects/ERR-10.md` to `ERR-19.md`, `docs/evidence/A-03.md`, `docs/traceability.md`, `docs/kit-usage.md`, `stories/A-03-walking-skeleton.md`, `git log feature/oracle-pipeline..HEAD` (27 commits), `gitleaks git` over the same range, `gh run list … --branch 003-walking-skeleton --limit 3` (read twice, 17:39Z and about 17:40Z) and `gh run view 39641644469`.
 
 | Check | Criterion | Result | Finding |
 | --- | --- | --- | --- |
-| C-01 | Tasks done | **FAIL** | Five tasks are unchecked in `tasks.md`: **T078** (delete `pipeline-ci.yml` "After the first green `ci.yml` run"; none exists yet), **T079** (quickstart steps 1 and 5 against the hosted URL; `docs/evidence/A-03.md` has no quickstart section), **TZ02** (deploy + push; the work is done per the evidence, but the box is unticked and the required "**[PO]** … revoke the GitHub PAT … record the revocation time in docs/evidence/A-03.md (constitution XII, P0-17)" is not recorded: no mention of the PAT, `GitHubAccessToken` or a revocation in the evidence or the run-log), **TZ03** (Playwright on the hosted URL; done in runs 2–3, box unticked) and **TZ06** (reports, evidence, traceability, kit-usage; done except the stale traceability row, box unticked). |
-| C-02 | Unit tests | **FAIL** | Report attached and green locally on `fe2b26a`: workspace 1,071 passed / 0 failed / 6 skipped (68 files), oracle-runtime 647 / 0 / 0, infra with bundling 84 / 0 / 0; typecheck, lint, format, grep gates and the bundle budget (178.8 KB of 300 KB) all exit 0. Coverage `packages/query-core` lines 96.15 % / branches 90.28 %, `packages/contract` 100 %: both ≥ 80 %. **Gap: "all green in CI" is not met.** `ci` run 39638006386 on `86694cc` was `in_progress` at 20:01 (workspace ✓, oracle-runtime ✓, gitleaks ✓, e2e-hosted still running). The two earlier `ci` runs (39626119607 on `fbdb68b`, 39617581666) ended in `failure`. No `ci` run on this branch has passed yet, and `fe2b26a` is not pushed, so it has no run. |
-| C-03 | Code review | **FAIL** | Both `agents.reviewers` passed the bar with 0 open Critical: oracle **88/100** and metagross **81/100** (re-scores at `327c11f`); `/code-review` found 0 Critical and 4 Major, all fixed. Gaps: (1) the Runs table still holds the template row `\| 2 \| /code-review \| {high} \| {date} \| \`{sha}\` \| {n} \| n/a \|`, and the front matter says `reviewed_commit: 071eb1b (early review …)` with the note "/code-review and the other reviewer agents are added before G7", so the log does not record its own runs. (2) Two oracle findings were deferred **to G7** and are still open: "OR-3 \| Open (deferred to G7) \| `StepRecord` still has no stdout" and "OR-11 \| Open (G7) \| There are still two GET policies". (3) Both scores are at `327c11f`; the 14 later commits (ERR-10…ERR-19 fixes, including Lambda 3,008 MB + read cache, bind-only-the-views-a-query-reads, self-hosted DuckDB extensions, CI changes) have no recorded reviewer or `/code-review` pass. |
-| C-04 | TC executed on hosted URL | **FAIL** | Every one of the 43 TCs has a hosted result with a build SHA from `/build.json` (run 2 on `fbdb68b`: 42/43; run 3 on `86694cc`: TC-050 and TC-NF-04 PASS, cold start 2,525 ms). No case ran on localhost (TC-060 refuses it). Build-time cases (TC-001, 002, 006, 029, 052, 053) ran at the deployed SHA per the G6 design. **Gap: the report does not record the run-3 results for TC-051 and TC-061** that the run-log records at 19:56 ("TC-051 + TC-061 PASS → all 43 hosted TCs passed across runs 2–3"). It still says "TC-051 to be re-confirmed on the new pair", the Non-functional table shows TC-NF-04 only as "**FAIL**" (run 2) with no run-3 value, the Summary row points at the old unit-test report ("at `570285d` … It must be regenerated"), and the report is `status: Draft` with the sign-off "☐ Validated … TC-051 re-run on the run 3 pair still to do". |
-| C-05 | Defects closed | **FAIL** | Every failing TC maps to an ERR with a re-test (ERR-10…18 re-tested PASS in run 2, ERR-19 in run 3); TC-041, TC-043 and TC-050 were harness defects fixed in `a1fd50a`. **Gap:** all ten files say `status: Re-tested`, not `Closed`. The defect lifecycle (`templates/defect.md`: "Open → In Fix → Fixed → Re-tested → Closed") and A-01/A-02 (ERR-1…9 `Closed`) close after the re-test. |
-| C-06 | No open Critical | PASS | No A-03 defect is Critical (six High, three Medium, one Low), and every one is re-tested PASS. CR-A-03 records 0 open Critical findings. |
-| C-07 | Evidence | PASS | `docs/evidence/A-03.md` has the hosted URL, the build SHA (`86694cc` run 3), the observed counts (38 accepted, 35 emitted, 3 explained; 27 artifacts; `verify-manifest` ALL ARTIFACTS VERIFIED on Pinata + Filebase), screenshots (smeargle 6 + TC images) and the trace ID `1-6ad8edc5-40a028cb6df370d02e8422da` with correlation ID `FmoW9j89Ai0EJQg=`. Note: its § CI table is stale ("`fbdb68b` (HEAD)"; "The three CI-configuration fixes are not committed yet"). It is fixed together with C-02. |
-| C-08 | Traceability | **FAIL** | The A-03 row in `docs/traceability.md` (line 93) is stale: "run 2 on `fbdb68b`: 42 / 43 pass, TC-NF-04 FAIL → ERR-19 open, cold start PENDING hosted run 3", "ERR-19 (TC-NF-04; NFR-004): open" and "branch `003-walking-skeleton` @ `fbdb68b`". The gate log has no A-03 rows for G4, G5 and G6, although `docs/gates/G4-A-03-precheck.md`, `G5-…` and `G6-…` exist (A-01 and A-02 have theirs). The `docs/kit-usage.md` A-03 line is complete; it could say 43/43 instead of "TC-010 and TC-020 PASS in hosted run 2". |
-| C-09 | Commits | PASS | All 23 commits in `feature/oracle-pipeline..HEAD` start with `A-03: `. gitleaks over those 23 commits: "no leaks found". The one key-shaped string in the diff, `AKIAIOSFODNN7EXAMPLE` in `apps/api/test/helpers/fakes.ts`, is AWS's documented example key in a test fake. |
-| C-10 | Story status | PASS | `status: Ready`, `qc_testability_signoff: true`, every AC ☑ testable. It can be set to `Done` and `gate: G7` once the PO approves G7 (same pattern as A-02). |
+| C-01 | Tasks done | PASS | `tasks.md`: 92 task lines, all `[x]`, 0 `[ ]` (T001–T086, TZ01–TZ06, including T078, T079, TZ02, TZ03 and TZ06). |
+| C-02 | Unit tests | PASS | Unit report attached (local at `fe2b26a`: workspace 1,071 / 0 / 6, runtime 647 / 0 / 0, infra 84 / 0 / 0; coverage `query-core` lines 96.15 % / branches 90.28 %, `contract` 100 %, both ≥ 80 %). **CI:** run [39641644469](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39641644469) on `5fbc811` (headSha verified) is `success` with all four jobs green (workspace, oracle-runtime, gitleaks, e2e-hosted). The runs on HEAD `7563084` (39645623413) and on `3deb5e8` (39645576534) were **still in progress** when this was read (gitleaks ✓, workspace and oracle-runtime running). The commits after `5fbc811` remove `pipeline-ci.yml` and tick boxes in docs only. Non-blocking: the unit report's `ci_run` field and its last paragraph still say "No green `ci` run exists yet". |
+| C-03 | Code review | PASS | Both `agents.reviewers` re-scored at `fe2b26a` (§ "Delta review"): oracle **90/100** and metagross **86/100**, both ≥ 75, no Critical or Major findings. The `/code-review` (high, `570285d`) found 0 Critical and 4 Major, all fixed in `327c11f`. "Open Critical findings: 0". OR-3 and OR-11 are re-targeted to A-11 with reasons. Non-blocking: the Runs table stops at row 6 (81/100 at `327c11f`), and the front matter `reviewed_commit` still names `327c11f`. Adding rows 7–8 (the delta reviews at `fe2b26a`) keeps the log self-consistent. |
+| C-04 | TC executed on hosted URL | PASS | `A-03-test-report.md`: "**Final tally: 43 / 43 cases passed on the hosted runtime across runs 2–3**". 39 cases count from run 2 on `fbdb68b` and 4 from run 3 on `86694cc` (TC-050, TC-NF-04, TC-051, TC-061). Each row names its build. "No case ran on localhost", and TC-060 refuses localhost. The Summary points at the regenerated unit report. The PO's "Validated" tick in the sign-off is a G7 decision. |
+| C-05 | Defects closed | PASS | ERR-10 to ERR-19 are all `status: Closed` with `closed_date: 2026-10-21` and "☒ Closed". ERR-10 to ERR-18 were re-tested PASS in run 2, and ERR-19 in run 3 (cold start 2,525 ms). The harness defects (TC-041, 043, 050, 051) are documented as test fixes. |
+| C-06 | No open Critical | PASS | No A-03 defect is Critical, all are Closed, and CR-A-03 has 0 open Critical findings. |
+| C-07 | Evidence | PASS | `docs/evidence/A-03.md` has the hosted URL and builds, manifest CID `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i`, the observed counts (38 / 35 / 3; 27 artifacts), `verify-manifest` ALL ARTIFACTS VERIFIED (28/28 on Pinata and Filebase), Playwright reports and screenshots, spike p95 and hosted Lambda p95 (radius 200 ms, roofAge 95 ms), TC-NF-04 (cold 2,525 ms, warm p95 243 ms), the log line with correlation `FmoW9j89Ai0EJQg=`, X-Ray trace `1-6ad8edc5-40a028cb6df370d02e8422da`, CDK assertions (TC-052), the CI link (§ CI (T078)), the concurrency finding (AD-11, no reserved concurrency), the quickstart check (T079) and the token decision (TZ02). Non-blocking staleness: the line 16 banner "**Status: DRAFT** … TC-051 re-runs … after this update", the same phrase at line 63, and the older § CI table ("`fbdb68b` (HEAD)", "No `ci` run is green on this branch yet"), which § CI (T078) further down supersedes. |
+| C-08 | Traceability | PASS | The A-03 row in `docs/traceability.md` (line 93) records 43/43 across runs 2–3, ERR-10 to ERR-19 Closed and the manifest CID. The gate log has the A-03 G4, G5 and G6 rows (lines 113–115). The `kit-usage.md` A-03 row is complete. Non-blocking: both rows still quote the review scores as "oracle 88/100, metagross 81/100 at `327c11f`" (now 90 and 86 at `fe2b26a`), the traceability row says "branch @ `fe2b26a`" (HEAD `7563084`), and kit-usage says "TC-010 and TC-020 PASS in hosted run 2" rather than 43/43. |
+| C-09 | Commits | PASS | All 27 commits in `feature/oracle-pipeline..HEAD` start with `A-03: `. `gitleaks git` over the 27 commits: "no leaks found". |
+| C-10 | Story status | PASS | `status: Ready`, `gate: G6`, `qc_testability_signoff: true`. It can be set to `Done` / `gate: G7` once the PO approves. The PO decisions are in the run-log: ✋ A-5 "looks right" (19:05) and the token "Keep for now" (expires by 2026-10-28, 20:11), which is recorded as the PO's decision under constitution XII. |
 
-**Verdict: FAIL** (6 FAILs: C-01, C-02, C-03, C-04, C-05, C-08).
+**Verdict: PASS** (0 FAILs, 10/10).
 
-## Fix list (ordered by impact on the assessment score)
+## Fix list (non-blocking cleanups, ordered by impact on the assessment score)
 
-1. **C-02, C-01 (T078): get a green `ci` run.** Wait for run 39638006386 (e2e-hosted is the last job). If it passes, record its URL in the unit-test report front matter (`ci_run`) and in the evidence § CI, then do T078: record the step parity, delete `.github/workflows/pipeline-ci.yml` and tick T078. If it fails, open an ERR for the failure, fix it, push and re-run. Push `fe2b26a` (and the doc fixes below) so the head commit has its own CI result.
-2. **C-01 (TZ02): record the GitHub PAT revocation.** The PO revokes the Amplify PAT on GitHub (if not done already) and the time goes into `docs/evidence/A-03.md`; optionally delete SSM `/countylens/github/amplify-access-token`. This is a constitution XII / P0-17 item. Then tick TZ02.
-3. **C-03: complete the review log.** Replace the `{high} {date} {sha} {n}` placeholder row with the real `/code-review` run (and add rows for the oracle and metagross re-scores at `327c11f`); update `reviewed_commit` and `tools`. Close OR-3 and OR-11 or move each to a named later story with a reason. Run a delta review (`/code-review` on `327c11f..HEAD`, or one short re-score per reviewer agent) of the ERR-10…19 fixes and record it.
-4. **C-04: update the test report.** Add the run-3 TC-051 and TC-061 PASS (run-log 19:56, the id-format test fix), the TC-NF-04 run-3 value (cold 2,525 ms, warm p95 243 ms) in the Non-functional table, point the Summary at the regenerated unit-test report (`fe2b26a`: 1,071 / 0 / 6, runtime 647 / 0 / 0), remove "to be re-confirmed", set `status: Complete`, and have the QC Lead tick the sign-off.
-5. **C-05: close the defects.** Set ERR-10…ERR-19 to `status: Closed` and tick "☑ Closed" in each closure table.
-6. **C-08: update traceability.** Rewrite the A-03 row: 43/43 across runs 2–3, ERR-19 re-tested PASS (cold start 2,525 ms), branch at the final SHA. Add the A-03 G4, G5 and G6 rows to the gate log (the G7 row comes after the decision). Optionally make the kit-usage line say 43/43.
-7. **C-01 (T079, TZ03, TZ06):** run the quickstart steps 1 and 5 against the hosted URL and add a quickstart section to the evidence, then tick T079, TZ03 and TZ06.
+1. **CI on HEAD:** confirm that runs 39645623413 (`7563084`) and 39645576534 (`3deb5e8`) finish green before the merge. If either fails, open an ERR and re-run this pre-check.
+2. **Stale review scores:** in `docs/traceability.md` row 93 and the `docs/kit-usage.md` A-03 row, write "oracle 90/100, metagross 86/100 at `fe2b26a`". Add Runs rows 7–8 to `CR-A-03.md` and update its `reviewed_commit`.
+3. **Stale evidence and unit-report text:** remove "Status: DRAFT" and "TC-051 re-runs … after this update" (evidence lines 16 and 63). Mark the old § CI table as history. Set the unit report's `ci_run` to run 39641644469.
+4. Update the traceability branch SHA to the final HEAD, and make kit-usage say 43/43.
 
-After these fixes, run the G7 pre-check again. When it passes, the PO ticks the gate checklist, records the decision and date, and adds the G7 row to the gate log in `docs/traceability.md`.
+When the PO approves: tick the G7 checklist in the story, set `status: Done` and `gate: G7`, record the decision and the date, and add the G7 row to the gate log in `docs/traceability.md`. Then merge with `--no-ff` and run `bash scripts/progress.sh`.
