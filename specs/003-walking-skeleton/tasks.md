@@ -231,7 +231,7 @@ Turborepo per plan.md § Project Structure: `apps/web`, `apps/api`, `packages/*`
 - [X] TZ03 Run the Playwright scenario tests (one per TC in testplans/A-03-test-cases.md, tagged @scenario:A-03-TC-nnn) against RUNTIME_URL; screenshots to docs/evidence/img/ (⏱ 15m) → done 2026-10-21: all 43 TCs passed on the hosted runtime across runs 2–3 (run 2 on `fbdb68b`: 39; run 3 on `86694cc`: TC-050, TC-NF-04, TC-051, TC-061; run-log 19:33, 19:53, 19:56); see `docs/reports/A-03-test-report.md` (Final column)
 - [x] TZ04 [UI stories] Run smeargle responsive-design-tests at 390 / 768 / 1440 on the hosted URL (Runs and Permits) (⏱ 10m) — ✅ done: smeargle 6/6 PASS at 390/768/1440 on build fbdb68b (docs/evidence/A-03.md § Screenshot, run-log 18:56)
 - [x] TZ05 Run the story's `agents.verify` check: `npx tsx scripts/verify-manifest.ts runs/<runId>/manifest.json` → `ALL ARTIFACTS VERIFIED` on Pinata + Filebase, output in docs/evidence/A-03.md (⏱ 10m) — ✅ done: verify-manifest ALL ARTIFACTS VERIFIED on Pinata + Filebase, re-run after hosted run 2 (docs/evidence/A-03.md § AC-6)
-- [ ] TZ06 Write docs/reports/TR-A-03.md, docs/evidence/A-03.md, the docs/traceability.md row and one docs/kit-usage.md line (⏱ 10m)
+- [X] TZ06 Write docs/reports/TR-A-03.md, docs/evidence/A-03.md, the docs/traceability.md row and one docs/kit-usage.md line (⏱ 10m) — done: docs/reports/A-03-test-report.md (walkthrough name for TR-A-03), docs/evidence/A-03.md, docs/traceability.md A-03 row, docs/kit-usage.md A-03 line
 
 ---
 
