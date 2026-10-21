@@ -5,6 +5,7 @@
 // without one is rejected here, so the page never has to invent a reason.
 import { COLUMN_ENUMS, RoofingPermitRow, type Missing } from "@countylens/contract";
 import type { Row } from "@countylens/query-core";
+import { PermitRowsError } from "./errors";
 
 export type StatusClass = (typeof COLUMN_ENUMS.status_class)[number];
 export type ContractorResolution = (typeof COLUMN_ENUMS.contractor_resolution)[number];
@@ -54,19 +55,19 @@ const schema = RoofingPermitRow.pick({
   missing: true,
 });
 
-/** Validates engine rows against contract/v1; throws naming the first bad row and field. */
+/** Validates engine rows against contract/v1; throws PermitRowsError whose `detail` names the first bad row and field. */
 export function parsePermitRows(rows: readonly Row[]): PermitListRow[] {
   return rows.map((row, index) => {
     const parsed = schema.safeParse(row);
     if (!parsed.success) {
-      throw new Error(
+      throw new PermitRowsError(
         `Permit row ${index} does not match contract/v1 v_roofing_permit: ${parsed.error.message}`,
       );
     }
     const permit = parsed.data as unknown as PermitListRow;
     for (const field of NULLABLE_DISPLAYED_FIELDS) {
       if (permit[field] === null && !permit.missing.some((m) => m.field === field)) {
-        throw new Error(
+        throw new PermitRowsError(
           `Permit row ${index} (${permit.cid}): ${field} is null without a missing reason`,
         );
       }

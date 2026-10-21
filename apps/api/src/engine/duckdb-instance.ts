@@ -8,7 +8,16 @@
 // packages/query-core/scripts/duckdb-engine.ts (DATE → "YYYY-MM-DD", TIMESTAMPTZ → ISO 8601 UTC,
 // BIGINT → number). duckdb-node.ts wraps this in the module-scope engine; the router tests
 // replace this module with a recording fake so they run without a database.
-import { DuckDBInstance, type DuckDBConnection } from "@duckdb/node-api";
+import {
+  ANY,
+  DuckDBArrayType,
+  DuckDBInstance,
+  DuckDBListType,
+  DuckDBStructType,
+  DuckDBTypeId,
+  type DuckDBConnection,
+  type DuckDBType,
+} from "@duckdb/node-api";
 import type { QueryEngine, Row } from "@countylens/query-core";
 
 export interface DuckDbOptions {
@@ -28,16 +37,31 @@ export interface DuckDbEngine extends QueryEngine {
   close(): void;
 }
 
-/** DuckDB JS values → JSON-shaped values (dates as strings, BIGINT as number). */
-function plain(value: unknown, type: string): unknown {
+/**
+ * DuckDB JS values → JSON-shaped values, led by the column's DuckDB type, recursively (ERR-10):
+ * DATE → "YYYY-MM-DD" and TIMESTAMP* → ISO 8601 UTC at any depth (inside a STRUCT or a LIST too),
+ * BIGINT → number, LIST / ARRAY → array, STRUCT → object by its entry names.
+ */
+function plain(value: unknown, type: DuckDBType): unknown {
   if (value === null || value === undefined) return null;
+  if (type instanceof DuckDBListType || type instanceof DuckDBArrayType) {
+    return Array.isArray(value) ? value.map((v) => plain(v, type.valueType)) : plain(value, ANY);
+  }
+  if (type instanceof DuckDBStructType && typeof value === "object" && !Array.isArray(value)) {
+    const entries = value as Record<string, unknown>;
+    return Object.fromEntries(
+      type.entryNames.map((name, i) => [name, plain(entries[name], type.entryTypes[i] ?? ANY)]),
+    );
+  }
   if (value instanceof Date) {
-    return type === "DATE" ? value.toISOString().slice(0, 10) : value.toISOString();
+    return type.typeId === DuckDBTypeId.DATE
+      ? value.toISOString().slice(0, 10)
+      : value.toISOString();
   }
   if (typeof value === "bigint") return Number(value);
-  if (Array.isArray(value)) return value.map((v) => plain(v, ""));
+  if (Array.isArray(value)) return value.map((v) => plain(v, ANY));
   if (typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, plain(v, "")]));
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, plain(v, ANY)]));
   }
   return value;
 }
@@ -67,11 +91,11 @@ export async function openDuckDb(options: DuckDbOptions): Promise<DuckDbEngine> 
     },
     async all(sql: string): Promise<Row[]> {
       const reader = await connection.runAndReadAll(sql);
-      const types = reader.columnTypes().map((t) => t.toString());
+      const types = reader.columnTypes();
       const names = reader.columnNames();
       return reader
         .getRowObjectsJS()
-        .map((row) => Object.fromEntries(names.map((n, i) => [n, plain(row[n], types[i] ?? "")])));
+        .map((row) => Object.fromEntries(names.map((n, i) => [n, plain(row[n], types[i] ?? ANY)])));
     },
     close(): void {
       connection.closeSync();

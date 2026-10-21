@@ -93,7 +93,14 @@ scan_list() {
   hits="$tmp/$gate.hits"
   : > "$hits"
   if [ -s "$list" ]; then
-    xargs grep -EniIH -e "$pat" < "$list" > "$hits"
+    # The list becomes grep's own arguments (one path per line), not an xargs pipe: GNU xargs
+    # turns grep's "no match" status 1 into 123, which fail_grep would read as an error, while
+    # BSD xargs keeps 1. Calling grep directly keeps its 0/1/2 meaning on both.
+    set --
+    while IFS= read -r f; do
+      set -- "$@" "$f"
+    done < "$list"
+    grep -EniIH -e "$pat" -- "$@" > "$hits"
     fail_grep "$gate" $?
   fi
   report "$gate" "$hits" "$allow"

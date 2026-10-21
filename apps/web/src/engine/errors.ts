@@ -11,3 +11,17 @@ export class EngineStartError extends Error {
     super(PERMITS_TEXTS.engineFailure, { cause });
   }
 }
+
+/**
+ * A listed row does not match contract/v1 `v_roofing_permit` (ERR-11): the banner shows the fixed
+ * text; `detail` (which row and field, the schema's own message) is for `console.error` only.
+ */
+export class PermitRowsError extends Error {
+  override readonly name = "PermitRowsError";
+  readonly detail: string;
+
+  constructor(detail: string) {
+    super(PERMITS_TEXTS.rowsUnreadable);
+    this.detail = detail;
+  }
+}

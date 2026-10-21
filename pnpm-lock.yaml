@@ -200,6 +200,9 @@ importers:
       aws-cdk:
         specifier: 2.1146.0
         version: 2.1146.0
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -691,7 +694,7 @@ packages:
     resolution: {integrity: sha512-VthQ+73BXaxJCAcMEb5/tsArNaDcQ1DusAzlh7F6VXgoWRnK3F/j5+IQaHnlbSVNuYH5aGDZZIpAUQZvJrshlA==}
 
   '@elephant-xyz/cli@https://codeload.github.com/elephant-xyz/elephant-cli/tar.gz/44bb182b9f7f904662e9b33e1fde70bdeab62322':
-    resolution: {gitHosted: true, integrity: sha512-dJO1bgx5QpfE6eBlidNuYqfNCzsnbrl6K4Zc+OCGhzegIri7oRO4V9qepclSRzI6BX7hfZQQZdVYc3hophZgqw==, tarball: https://codeload.github.com/elephant-xyz/elephant-cli/tar.gz/44bb182b9f7f904662e9b33e1fde70bdeab62322}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/elephant-xyz/elephant-cli/tar.gz/44bb182b9f7f904662e9b33e1fde70bdeab62322}
     version: 1.58.1
     engines: {node: '>=22.15'}
     hasBin: true

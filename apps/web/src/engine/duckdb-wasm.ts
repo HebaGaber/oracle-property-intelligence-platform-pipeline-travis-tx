@@ -51,12 +51,16 @@ export const SELF_HOSTED_BUNDLE = Object.freeze({
 /** The subset of an Arrow `Table` the row conversion reads (apache-arrow 17). */
 export interface ArrowFieldLike {
   readonly name: string;
-  readonly type: {
-    /** Arrow `Type` id from the IPC format: Date = 8, Timestamp = 10. */
-    readonly typeId: number;
-    /** Arrow `TimeUnit`: SECOND 0, MILLISECOND 1, MICROSECOND 2, NANOSECOND 3. */
-    readonly unit?: number;
-  };
+  readonly type: ArrowTypeLike;
+}
+
+export interface ArrowTypeLike {
+  /** Arrow `Type` id from the IPC format: Date 8, Timestamp 10, List 12, Struct 13, FixedSizeList 16. */
+  readonly typeId: number;
+  /** Arrow `TimeUnit`: SECOND 0, MILLISECOND 1, MICROSECOND 2, NANOSECOND 3. */
+  readonly unit?: number;
+  /** List: the one element field; Struct: the member fields (apache-arrow `DataType.children`). */
+  readonly children?: readonly ArrowFieldLike[] | null;
 }
 
 export interface ArrowTableLike {
@@ -185,6 +189,9 @@ export interface BrowserEngine extends QueryEngine {
 
 const ARROW_DATE = 8;
 const ARROW_TIMESTAMP = 10;
+const ARROW_LIST = 12;
+const ARROW_STRUCT = 13;
+const ARROW_FIXED_SIZE_LIST = 16;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -194,15 +201,47 @@ const hasFunction = <K extends string>(
   key: K,
 ): value is Record<string, unknown> & Record<K, () => unknown> => typeof value[key] === "function";
 
-/** Arrow vectors and struct rows → arrays and objects; bigint → number; Date → ISO 8601. */
+/**
+ * The elements of an Arrow list value as a JS array. A list cell is an Arrow `Vector`: iterating
+ * it yields each element (null where the element is null), whereas its `toArray()` is a typed
+ * array for numeric children (`Int32Array`, `BigInt64Array`, …, nulls lost) and an array of
+ * `StructRow`s for STRUCT children.
+ */
+function listElements(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (ArrayBuffer.isView(value)) return Array.from(value as unknown as ArrayLike<unknown>);
+  if (isObject(value) && Symbol.iterator in value) return Array.from(value as Iterable<unknown>);
+  if (isObject(value) && hasFunction(value, "toArray")) return listElements(value.toArray());
+  throw new Error(`arrowToRows: unsupported list value ${String(value)}`);
+}
+
+/** The members of an Arrow struct value: `StructRow.toJSON()` (never `toArray()`, which drops the names). */
+function structMembers(value: unknown): Record<string, unknown> {
+  if (!isObject(value)) throw new Error(`arrowToRows: unsupported struct value ${String(value)}`);
+  if (hasFunction(value, "toJSON")) {
+    const json = value.toJSON();
+    if (isObject(json) && !Array.isArray(json)) return json;
+  }
+  return value;
+}
+
+/**
+ * Untyped fallback (no Arrow type at hand): Arrow rows and vectors → objects and arrays, typed
+ * arrays → arrays, bigint → number, Date → ISO 8601. `toJSON` comes before `toArray`: a
+ * `StructRow` has both, and only `toJSON` keeps the member names (ERR-10).
+ */
 function plain(value: unknown): unknown {
   if (value === null || value === undefined) return null;
   if (typeof value === "bigint") return Number(value);
   if (value instanceof Date) return value.toISOString();
   if (!isObject(value)) return value;
-  if (hasFunction(value, "toArray")) return (value.toArray() as unknown[]).map(plain);
   if (Array.isArray(value)) return value.map(plain);
-  if (hasFunction(value, "toJSON")) return plain(value.toJSON());
+  if (ArrayBuffer.isView(value)) return listElements(value).map(plain);
+  if (hasFunction(value, "toJSON")) {
+    const json = value.toJSON();
+    if (json !== value) return plain(json);
+  }
+  if (hasFunction(value, "toArray")) return listElements(value.toArray()).map(plain);
   return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, plain(v)]));
 }
 
@@ -214,10 +253,25 @@ function epochMs(value: unknown): number {
   throw new Error(`arrowToRows: unsupported temporal value ${String(value)}`);
 }
 
-function convert(value: unknown, type: ArrowFieldLike["type"]): unknown {
+/**
+ * One Arrow value → its JSON shape, led by its Arrow type, recursively: DATE → YYYY-MM-DD,
+ * TIMESTAMP → ISO 8601 UTC, LIST → array, STRUCT → object (by the type's member fields),
+ * bigint → number. A type without children (a test double) falls back to `plain`.
+ */
+function convert(value: unknown, type: ArrowTypeLike): unknown {
   if (value === null || value === undefined) return null;
   if (type.typeId === ARROW_DATE) return new Date(epochMs(value)).toISOString().slice(0, 10);
   if (type.typeId === ARROW_TIMESTAMP) return new Date(epochMs(value)).toISOString();
+  const children = type.children ?? [];
+  if (type.typeId === ARROW_LIST || type.typeId === ARROW_FIXED_SIZE_LIST) {
+    const element = children[0];
+    const items = listElements(value);
+    return element === undefined ? items.map(plain) : items.map((v) => convert(v, element.type));
+  }
+  if (type.typeId === ARROW_STRUCT && children.length > 0) {
+    const members = structMembers(value);
+    return Object.fromEntries(children.map((c) => [c.name, convert(members[c.name], c.type)]));
+  }
   return plain(value);
 }
 

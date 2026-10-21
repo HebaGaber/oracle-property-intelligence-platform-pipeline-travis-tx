@@ -25,6 +25,9 @@
   color: inherit;
   background-color: transparent;
   cursor: pointer;
+  /* ERR-12: a <button> does not inherit the page font (UA default Arial 13.33px); take the
+     surrounding Atlas typescale (a tokens.css font) instead. */
+  font: inherit;
 }
 
 .copy:hover {

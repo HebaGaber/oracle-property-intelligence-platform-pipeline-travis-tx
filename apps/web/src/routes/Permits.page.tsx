@@ -33,7 +33,7 @@ import { Skeleton } from "../components/Skeleton";
 import { StatusPill, type StatusKind } from "../components/StatusPill";
 import { BothHostsDownError } from "../data/fetch-by-cid";
 import { RunIndexError } from "../data/runs-index";
-import { EngineStartError } from "../engine/errors";
+import { EngineStartError, PermitRowsError } from "../engine/errors";
 import type { PermitsLoaded, PermitsLoader } from "../engine/load-permits";
 import type { PermitListRow } from "../engine/permit-list";
 import { STAGE_TEXTS } from "../engine/stages";
@@ -66,6 +66,7 @@ export function resolvePermitsState(loaded: PermitsLoaded): PermitsState {
 /** The banner text of a failed load: the fixed texts where one applies, else the error's own message. */
 export function errorText(error: unknown): string {
   if (error instanceof EngineStartError) return PERMITS_TEXTS.engineFailure;
+  if (error instanceof PermitRowsError) return PERMITS_TEXTS.rowsUnreadable;
   if (error instanceof RunIndexError) return RUN_INDEX_TEXTS[error.reason];
   if (error instanceof BothHostsDownError) return error.message;
   if (error instanceof Error && error.message !== "") return error.message;
@@ -292,7 +293,14 @@ export function PermitsPage({ load }: PermitsPageProps): ReactElement {
         if (!signal.aborted) setState(resolvePermitsState(loaded));
       },
       (error: unknown) => {
-        if (!signal.aborted) setState({ kind: "error", message: errorText(error) });
+        if (signal.aborted) return;
+        // The banner shows a fixed text; the detail (schema message, cause) is for the console only.
+        console.error(
+          "Permits load failed",
+          error instanceof PermitRowsError ? error.detail : "",
+          error,
+        );
+        setState({ kind: "error", message: errorText(error) });
       },
     );
     return () => controller.abort();

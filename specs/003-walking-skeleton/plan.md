@@ -44,6 +44,7 @@ The build emits these strings verbatim; tests assert them. The same list is test
 | Run index empty | `No runs published yet` (`runs: []`) | `apps/web/src/data/runs-index.ts` → error banner (TC-014) |
 | Engine line | `DuckDB-WASM in your browser · read-only` | `apps/web/src/components/EngineLine.tsx` (TC-023) |
 | Engine failure | `Query engine could not start` | `apps/web/src/routes/Permits.tsx` → error banner |
+| Permit rows unreadable (ERR-11) | `Permit rows could not be read from this run` (a listed row fails the contract/v1 `v_roofing_permit` check; the detail goes to `console.error` only) | `apps/web/src/engine/permit-list.ts` → error banner |
 | Empty Permits list | `No permits published in this run` (only when `coverage.permits_emitted.count` = 0 and 0 rows) | `apps/web/src/routes/Permits.tsx` empty state (TC-029) |
 | Count mismatch | `Row count does not match the manifest: {rows} listed, {count} published` | `apps/web/src/routes/Permits.tsx` → error banner (TC-029 contrast case) |
 | Coverage label | `No TCAD id on source record` | `packages/shared/src/labels.ts` `COVERAGE_LABELS.permits_no_tcad_geoid` (TC-031) |

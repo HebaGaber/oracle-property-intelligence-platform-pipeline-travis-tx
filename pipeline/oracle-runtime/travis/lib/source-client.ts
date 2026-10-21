@@ -58,9 +58,7 @@ export type StopClass = "ok" | "blocked" | "error";
  * an explicit challenge; a timeout, a network error, an unexpected body or any other
  * failure is `error` (exit 1). The receipt itself is unchanged.
  */
-export function stopClass(
-  receipt: Pick<CaptureReceipt, "outcome" | "blocked_reason">,
-): StopClass {
+export function stopClass(receipt: Pick<CaptureReceipt, "outcome" | "blocked_reason">): StopClass {
   if (receipt.outcome === "ok" || receipt.outcome === "throttled-then-ok") return "ok";
   if (
     receipt.outcome === "blocked" &&

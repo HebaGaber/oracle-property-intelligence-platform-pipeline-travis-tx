@@ -20,7 +20,8 @@
 # `gitleaks` is meant to be a required status check on `feature/oracle-pipeline` and `0*`
 # (branch protection, a repository setting the PO makes; NFR-04).
 #
-# The `oracle-runtime` job reproduces every step of pipeline-ci.yml unchanged (A-01, D-03);
+# The `oracle-runtime` job reproduces every step of pipeline-ci.yml unchanged after one workspace
+# install prerequisite (A-01, D-03);
 # that file is deleted by T078 once this job is green with step parity in the evidence.
 name: ci
 
@@ -94,7 +95,9 @@ jobs:
       - name: Bundle gate (≤ 300 KB gzipped, DuckDB chunks excluded)
         run: pnpm exec tsx scripts/bundle-size.ts
 
-  # Every step below is pipeline-ci.yml's `oracle-runtime` job unchanged (A-01 T052). It runs on
+  # After one prerequisite (pnpm setup + `pnpm install --frozen-lockfile` at the root, because the
+  # runtime imports workspace packages), every step below is pipeline-ci.yml's `oracle-runtime`
+  # job unchanged (A-01 T052). It runs on
   # every push with no path filter. The Python 3.12 + PyYAML step is the vendored kit's own
   # validator (plan Complexity Tracking D-03); no Python is written in this repository.
   oracle-runtime:
@@ -106,11 +109,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The one prerequisite before the pipeline-ci.yml steps: travis/pilot/run-pilot.ts and
+      # travis/runs/run-month.ts import workspace source (packages/contract, packages/query-core,
+      # which pull zod, @duckdb/node-api and @countylens/query-core), so tsc and Vitest follow
+      # those imports into the pnpm workspace and need its node_modules. An `exclude` in the
+      # runtime tsconfig cannot stop that (tsc type-checks every imported file).
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: pipeline/oracle-runtime/package-lock.json
+
+      - name: pnpm install (workspace packages imported by the runtime)
+        working-directory: .
+        run: pnpm install --frozen-lockfile
 
       # The vendored kit validator reads YAML with PyYAML when it is installed (parser parity
       # with its built-in reader is checked in the story evidence, T050).

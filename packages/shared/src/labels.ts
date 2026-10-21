@@ -79,7 +79,7 @@ export const RUN_INDEX_TEXTS = Object.freeze({
   empty: "No runs published yet",
 });
 
-/** Permits-page empty state and error banners (TC-029; engine failure). */
+/** Permits-page empty state and error banners (TC-029; engine failure; unreadable rows). */
 export const PERMITS_TEXTS = Object.freeze({
   /** Only when `coverage.permits_emitted.count` is 0 and the query returns 0 rows. */
   empty: "No permits published in this run",
@@ -87,6 +87,8 @@ export const PERMITS_TEXTS = Object.freeze({
   countMismatch: (rows: number, count: number): string =>
     `Row count does not match the manifest: ${rows} listed, ${count} published`,
   engineFailure: "Query engine could not start",
+  /** A listed row does not match contract/v1 `v_roofing_permit` (ERR-11); the detail goes to the console. */
+  rowsUnreadable: "Permit rows could not be read from this run",
 });
 
 /** Accessible names of the two progress bars (TC-024); `aria-valuetext` carries the stage text. */

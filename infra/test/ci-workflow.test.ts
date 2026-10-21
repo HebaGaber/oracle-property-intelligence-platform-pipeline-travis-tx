@@ -67,6 +67,37 @@ describe("ci.yml (metagross M4): e2e-hosted environment", () => {
   });
 });
 
+describe("ci.yml: oracle-runtime installs the pnpm workspace before the pipeline-ci.yml steps", () => {
+  // travis/pilot/run-pilot.ts and travis/runs/run-month.ts import packages/contract and
+  // packages/query-core source, so the runtime's tsc and Vitest need the workspace node_modules.
+  const job = workflow.jobs["oracle-runtime"] as Job & {
+    steps: { "working-directory"?: string }[];
+  };
+
+  it("runs `pnpm install --frozen-lockfile` at the repository root, before npm ci", () => {
+    const setup = job.steps.findIndex((s) => s.uses?.startsWith("pnpm/action-setup@"));
+    const install = job.steps.findIndex((s) => s.run === "pnpm install --frozen-lockfile");
+    const npmCi = job.steps.findIndex((s) => s.run === "npm ci");
+    expect(setup).toBeGreaterThanOrEqual(0);
+    expect(install).toBeGreaterThan(setup);
+    expect(job.steps[install]?.["working-directory"]).toBe(".");
+    expect(npmCi).toBeGreaterThan(install);
+  });
+
+  it("keeps the pipeline-ci.yml steps in order after the prerequisite", () => {
+    const runs = job.steps.map((s) => s.run).filter((r): r is string => r !== undefined);
+    const after = runs.slice(runs.indexOf("pnpm install --frozen-lockfile") + 1);
+    expect(after.slice(0, 6)).toEqual([
+      'python3 -m pip install --disable-pip-version-check "pyyaml==6.0.3"',
+      "npm ci",
+      "npm run typecheck",
+      "npm run lint",
+      "npm run format:check",
+      "npm test",
+    ]);
+  });
+});
+
 describe("ci.yml (AM-08): CI never deploys and never needs AWS credentials", () => {
   it("keeps workspace, oracle-runtime, gitleaks and e2e-hosted; has no deploy job", () => {
     expect(Object.keys(workflow.jobs).sort()).toEqual([

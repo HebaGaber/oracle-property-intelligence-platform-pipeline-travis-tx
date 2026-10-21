@@ -16,6 +16,8 @@ import {
   extensionDirectory,
 } from "../src/engine/duckdb-node.js";
 import { PRESIGN_EXPIRES_S } from "../src/s3-read.js";
+import { rowSchema } from "@countylens/contract";
+import { viewRowFixtures } from "../../../packages/contract/test/helpers/view-row-literals.js";
 
 let dir: string;
 let file: string;
@@ -94,6 +96,32 @@ describe("openDuckDb (real @duckdb/node-api)", () => {
       }
     },
   );
+});
+
+// ERR-10 (A-03): the Lambda's conversion over every column of every contract/v1 view on the real
+// @duckdb/node-api (query.radius / query.roofAge return v_property rows; runs.summary reads
+// v_run): lists and structs come back as plain arrays and objects, nested BIGINT as number, and
+// each row passes the contract/v1 row schema. Same fixtures as apps/web/test/arrow-rows-real.test.ts.
+describe("ERR-10: openDuckDb rows over every contract/v1 column (real @duckdb/node-api)", () => {
+  for (const fixture of viewRowFixtures()) {
+    it(`${fixture.view} (${fixture.name}): every column is JSON-shaped and passes the contract/v1 row schema`, async () => {
+      const rows = await engine.all(fixture.sql);
+      expect(rows).toEqual([fixture.expected]);
+      const parsed = rowSchema(fixture.view).safeParse(rows[0]);
+      expect(parsed.success ? "ok" : parsed.error.message).toBe("ok");
+    });
+  }
+
+  it("keeps nested values JSON-shaped: STRUCT dates and timestamps per contract, BIGINT lists as numbers", async () => {
+    const [row] = await engine.all(`SELECT
+      {'d': DATE '2026-09-03', 't': TIMESTAMPTZ '2026-10-20 22:00:10.663+00', 'n': [5]::BIGINT[]} AS s,
+      [DATE '2026-09-03'] AS dates, [1, NULL]::BIGINT[] AS big`);
+    expect(row).toEqual({
+      s: { d: "2026-09-03", t: "2026-10-20T22:00:10.663Z", n: [5] },
+      dates: ["2026-09-03"],
+      big: [1, null],
+    });
+  });
 });
 
 describe("duckdb-node constants", () => {

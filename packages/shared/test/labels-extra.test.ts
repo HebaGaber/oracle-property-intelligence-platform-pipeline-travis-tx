@@ -35,6 +35,7 @@ const PLAN = {
   countMismatch: (rows: number, count: number) =>
     `Row count does not match the manifest: ${rows} listed, ${count} published`,
   engineFailure: "Query engine could not start",
+  rowsUnreadable: "Permit rows could not be read from this run",
   progressRuns: "Loading run",
   progressPermits: "Loading permits",
 };
@@ -110,6 +111,10 @@ describe("A-03-TC-027: fixed UI texts of packages/shared (plan § Fixed texts an
       expect(PERMITS_TEXTS.engineFailure).toBe(PLAN.engineFailure);
     });
 
+    it("has the rows-unreadable text (ERR-11), verbatim", () => {
+      expect(PERMITS_TEXTS.rowsUnreadable).toBe(PLAN.rowsUnreadable);
+    });
+
     it("countMismatch(rows, count) fills the plan template with the two numbers", () => {
       expect(PERMITS_TEXTS.countMismatch(37, 38)).toBe(PLAN.countMismatch(37, 38));
       expect(PERMITS_TEXTS.countMismatch(37, 38)).toBe(
@@ -120,11 +125,12 @@ describe("A-03-TC-027: fixed UI texts of packages/shared (plan § Fixed texts an
       );
     });
 
-    it("has exactly the keys empty, countMismatch and engineFailure", () => {
+    it("has exactly the keys empty, countMismatch, engineFailure and rowsUnreadable", () => {
       expect(Object.keys(PERMITS_TEXTS).sort()).toEqual([
         "countMismatch",
         "empty",
         "engineFailure",
+        "rowsUnreadable",
       ]);
     });
   });

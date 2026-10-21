@@ -95,6 +95,29 @@ describe("T080 shared ESLint rules (constitution V, AD-26)", () => {
     );
   });
 
+  describe("DuckDB imports in apps/web (AD-19; ERR-10)", () => {
+    const DUCKDB_FIXTURE =
+      'import { createDuckDB } from "@duckdb/duckdb-wasm/blocking";\nexport { createDuckDB };\n';
+    const restricted = (relPath: string): Report[] =>
+      lint(relPath, DUCKDB_FIXTURE).filter((r) => r.ruleId === "no-restricted-imports");
+
+    it("are banned in apps/web/src outside engine/", () => {
+      expect(restricted("apps/web/src/routes/x.ts")).toHaveLength(1);
+    });
+
+    it("are allowed in apps/web/src/engine and in apps/web/test (real-engine conversion tests)", () => {
+      expect(restricted("apps/web/src/engine/x.ts")).toEqual([]);
+      expect(restricted("apps/web/test/x.test.ts")).toEqual([]);
+    });
+
+    it("apps/web/test still bans the AWS SDK", () => {
+      const fixture = 'import { S3Client } from "@aws-sdk/client-s3";\nexport { S3Client };\n';
+      expect(lint("apps/web/test/x.test.ts", fixture)).toContainEqual(
+        expect.objectContaining({ ruleId: "no-restricted-imports", severity: ERROR }),
+      );
+    });
+  });
+
   it("a clean TypeScript file in infra/src reports nothing (fixtures parse; no false positives)", () => {
     expect(lint("infra/src/x.ts", "export const y: number = 1;\n")).toEqual([]);
   });

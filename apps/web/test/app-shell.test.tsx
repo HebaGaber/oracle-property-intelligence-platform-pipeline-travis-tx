@@ -3,6 +3,8 @@
 // Three fixed assertions from tasks.md: /runs and /permits are lazy routes, / redirects to /runs,
 // and nothing in apps/web/src uses an inline style literal (Atlas tokens through CSS Modules only).
 // The shell checks after them pin the A-03 bar (title only) and the two destinations.
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
@@ -104,5 +106,67 @@ describe("shell chrome (plan § Atlas element map → Shell)", () => {
     expect(links.map((l) => l.getAttribute("href"))).toEqual(["/runs", "/permits"]);
     expect(links[1]?.getAttribute("aria-current")).toBe("page");
     expect(links[0]?.getAttribute("aria-current")).toBeNull();
+  });
+});
+
+/** A CSS Module of the app, read as text by its glob-style path (`../src/…`); Vitest stubs CSS imports. */
+function cssModule(path: string): string | undefined {
+  const file = fileURLToPath(new URL(path, import.meta.url));
+  return existsSync(file) ? readFileSync(file, "utf8") : undefined;
+}
+
+/** The declarations of the first `.{name} {…}` rule of a CSS Module (a plain class selector). */
+function ruleBody(css: string, name: string): string | undefined {
+  return new RegExp(`(?:^|\\n)\\.${name}\\s*\\{([^}]*)\\}`).exec(css)?.[1];
+}
+
+describe("ERR-12: every <button> sets its font from the tokens (a UA button font is Arial 13.33px)", () => {
+  // `button` does not inherit the page font: without a font declaration it computes the user
+  // agent's (smeargle 2026-10-21: Copy CID = Arial / 13.33px). stylelint cannot see a missing
+  // declaration, so each button's CSS Module class must declare `font: inherit` or a token
+  // font-family plus font-size.
+  const buttons = Object.entries(SOURCES).flatMap(([file, source]) => {
+    const module = /import styles from "\.\/([\w.]+\.module\.css)"/.exec(source)?.[1];
+    return [...source.matchAll(/<button\b[^>]*className=\{styles\.(\w+)\}/g)].map((m) => ({
+      file,
+      cls: m[1] ?? "",
+      css: module === undefined ? undefined : cssModule(file.replace(/[^/]+$/, module)),
+    }));
+  });
+
+  it("finds the app's buttons (Copy CID, Retry)", () => {
+    expect(buttons.map((b) => b.cls).sort()).toEqual(["copy", "retry"]);
+  });
+
+  for (const name of ["copy", "retry"]) {
+    it(`.${name}: declares font: inherit, or a token font-family and font-size`, () => {
+      const button = buttons.find((b) => b.cls === name);
+      expect(button?.css, `${name}: CSS Module found`).toBeDefined();
+      const body = ruleBody(button?.css ?? "", name) ?? "";
+      const inherits = /(^|;|\s)font:\s*inherit\s*;/.test(body);
+      const tokens = /font-family:\s*var\(--md-/.test(body) && /font-size:\s*var\(--md-/.test(body);
+      expect(inherits || tokens, `.${name} {${body}}`).toBe(true);
+    });
+  }
+});
+
+describe("ERR-13: landmark order: banner, navigation, then main (keyboard reaches the rail first)", () => {
+  it("renders the navigation before main in DOM order; the grid areas place them visually", async () => {
+    await renderAt("/runs");
+    const bar = screen.getByRole("banner");
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    const main = screen.getByRole("main");
+    const precedes = (a: Element, b: Element): boolean =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(precedes(bar, nav), "banner before navigation").toBe(true);
+    expect(precedes(nav, main), "navigation before main").toBe(true);
+  });
+
+  it("keeps the layout in grid-template-areas (DOM order does not move anything visually)", () => {
+    const css = cssModule("../src/components/AppShell.module.css") ?? "";
+    expect(ruleBody(css, "nav")).toMatch(/grid-area:\s*nav/);
+    expect(ruleBody(css, "main")).toMatch(/grid-area:\s*main/);
+    expect(css).toMatch(/"nav main"/);
+    expect(css).toMatch(/"bar"\s*"main"\s*"nav"/);
   });
 });

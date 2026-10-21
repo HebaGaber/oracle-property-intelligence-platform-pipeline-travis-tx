@@ -3,6 +3,8 @@
 // the bar in A-03), bottom navigation below 600 px and navigation rail from 600 px, each with
 // the same pill indicator and the two destinations Runs and Permits (no locked "Coming soon"
 // items until A-13). Layout and colours come only from tokens.css through AppShell.module.css.
+// DOM order is banner, navigation, main (ERR-13: Tab reaches the rail before the page content);
+// the grid areas place the bottom navigation below main on compact widths, so nothing moves.
 import { useCallback, useState, type ReactElement, type UIEvent } from "react";
 import { NavLink, Outlet } from "react-router";
 import styles from "./AppShell.module.css";
@@ -34,9 +36,6 @@ export function AppShell(): ReactElement {
       <header className={scrolled ? `${styles.bar} ${styles.barScrolled}` : styles.bar}>
         <h1 className={styles.title}>{APP_TITLE}</h1>
       </header>
-      <main className={styles.main} onScroll={onScroll}>
-        <Outlet />
-      </main>
       <nav className={styles.nav} aria-label="Primary">
         {DESTINATIONS.map((destination) => (
           <NavLink
@@ -55,6 +54,9 @@ export function AppShell(): ReactElement {
           </NavLink>
         ))}
       </nav>
+      <main className={styles.main} onScroll={onScroll}>
+        <Outlet />
+      </main>
     </div>
   );
 }

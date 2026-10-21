@@ -62,6 +62,9 @@ export default defineConfig(
       "design/**",
       "spikes/**",
       "runs/**",
+      // Playwright HTML reports and traces (git-ignored build output of a test run).
+      "**/playwright-report/**",
+      "**/test-results/**",
     ],
   },
   js.configs.recommended,
@@ -110,6 +113,15 @@ export default defineConfig(
           message: "No inline style literals: use CSS Modules with the Atlas tokens.",
         },
       ],
+    },
+  },
+  {
+    // apps/web unit tests may drive the real DuckDB-WASM (its node blocking build) so the
+    // engine's Arrow → JSON conversion meets the runtime classes the browser sees (ERR-10). The
+    // tests never ship in the bundle; the AWS SDK stays banned.
+    files: ["apps/web/test/**"],
+    rules: {
+      "no-restricted-imports": restrictedImports([...providerSdkBan, ...engineBan], [awsSdkBan]),
     },
   },
   {

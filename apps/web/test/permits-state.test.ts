@@ -20,7 +20,7 @@ import { truncateCid } from "../src/components/CidDisplay";
 import { BOTH_HOSTS_DOWN_TEXT, BothHostsDownError } from "../src/data/fetch-by-cid";
 import { RunIndexError } from "../src/data/runs-index";
 import { EngineStartError } from "../src/engine/errors";
-import type { PermitListRow } from "../src/engine/permit-list";
+import { parsePermitRows, type PermitListRow } from "../src/engine/permit-list";
 import {
   PermitsPage,
   STAGE_TEXTS,
@@ -424,5 +424,41 @@ describe("error: engine failure and Retry", () => {
     await screen.findByRole("table");
     expect(load).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("ERR-11: a row that fails the contract/v1 check shows the fixed text; the detail goes to console.error only", () => {
+  /** What the engine returned on the preview before ERR-10: `missing` entries as value arrays. */
+  const unreadableRow = (): Record<string, unknown> => ({
+    ...row(1),
+    missing: [["status_raw", "no_lexicon_carrier"]],
+  });
+
+  it("parsePermitRows rejects the row with the fixed rows-unreadable text, keeping the zod detail off the message", () => {
+    let caught: unknown;
+    try {
+      parsePermitRows([unreadableRow()]);
+    } catch (error) {
+      caught = error;
+    }
+    expect(errorText(caught)).toBe(PERMITS_TEXTS.rowsUnreadable);
+    expect((caught as { detail?: unknown }).detail).toMatch(/expected object, received array/);
+  });
+
+  it("shows PERMITS_TEXTS.rowsUnreadable in the banner (never the zod message) and logs the detail with console.error", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const load: PermitsLoader = () =>
+      Promise.resolve().then(() => loaded({ rows: parsePermitRows([unreadableRow()]) }));
+    stubViewport(true);
+    renderPage(load);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(PERMITS_TEXTS.rowsUnreadable);
+    expect(alert.textContent).not.toMatch(/contract\/v1|expected object|path/);
+    expect(
+      document.querySelector('section[data-route="permits"]')?.getAttribute("data-state"),
+    ).toBe("error");
+    await waitFor(() => expect(consoleError).toHaveBeenCalled());
+    const logged = consoleError.mock.calls.flat().map(String).join(" ");
+    expect(logged).toMatch(/expected object, received array/);
   });
 });
