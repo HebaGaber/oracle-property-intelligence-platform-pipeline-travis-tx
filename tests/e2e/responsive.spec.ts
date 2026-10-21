@@ -6,11 +6,13 @@
 //   - at 390, every tap target ≥ 48 px (lib/atlas-tokens.ts `smallTapTargets`);
 //   - computed colour, font family, font size, spacing and border radius only from Atlas tokens
 //     (lib/atlas-tokens.ts `atlasTokenAudit`, the plan's token-check method), violations listed;
-//   - one full-page screenshot attached;
+//   - one full-page checkpoint screenshot per page and width
+//     (docs/evidence/img/A-03-TC-NF-03-{page}-{width}.png, also attached);
 //   - Permits: cards below 600 px, the data table from 600 px; at 390 the first provenance line
 //     (the first `[data-cid]`) is inside the first viewport.
 import type { Page } from "@playwright/test";
 import { AUDITED_PROPERTIES, atlasTokenAudit, smallTapTargets } from "./lib/atlas-tokens.js";
+import { checkpoint } from "./lib/evidence.js";
 import { expect, test } from "./lib/fixtures.js";
 import { SELECTORS } from "./lib/perf.js";
 import { runtimeUrl } from "./lib/runtime.js";
@@ -128,9 +130,8 @@ test.describe("A-03-TC-NF-03 responsive 390 / 768 / 1440, Atlas tokens only", ()
                 .toBeLessThanOrEqual(bp.viewport.height);
             }
 
-            await testInfo.attach(`${target.name}-${bp.viewport.width}.png`, {
-              body: await page.screenshot({ fullPage: true }),
-              contentType: "image/png",
+            await checkpoint(page, "NF-03", `${target.name}-${bp.viewport.width}`, {
+              fullPage: true,
             });
             report[label] = { overflow, smallTargets, audit, provenanceBottom };
           } finally {

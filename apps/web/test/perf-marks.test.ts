@@ -33,9 +33,11 @@ function runtime(options: { failOpen?: boolean } = {}): DuckDbRuntime {
       if (options.failOpen) throw new Error("open failed (fake)");
     },
     connect: async () => ({ query: async () => empty, close: async () => undefined }),
+    registerFileBuffer: async () => undefined,
     terminate: async () => undefined,
   };
   return {
+    extensions: [],
     bundle: {
       mainModule: "/m.wasm",
       mainModuleEncoding: "identity",
@@ -158,8 +160,10 @@ describe("createPermitsLoader runs the COUNT and checks it against the manifest 
     const manifest = {
       runId: "test-run",
       coverage: { permits_emitted: { count: emitted, derivation: "published_rows" } },
+      artifacts: [],
     } as unknown as RunManifestV1;
     const engine = {
+      registerFile: async () => undefined,
       run: async () => undefined,
       all: async () => [],
       close: async () => undefined,

@@ -4,7 +4,8 @@
 // verified bytes are cached under the sandbox's /tmp by CID and re-verified on every read.
 // `presignPart` presigns an in-region GET of `ipfs/<cid>` for DuckDB's range reads;
 // `presignPrefix` lists `*.parquet` under one `private/bench/<name>/` prefix (READPATH_PRIVATE_PREFIX
-// only, for the direct-invoke bench) and presigns each. No function reads any other key
+// only, for the direct-invoke bench) and presigns each, reusing a part's URL while its ETag is
+// unchanged (ERR-18: DuckDB caches footers and bytes by URL). No function reads any other key
 // (contracts/api.md). The region is the runtime's AWS_REGION, never a literal (P0-18). Presigned
 // URLs are returned to the engine and never logged (FR-007).
 // metagross N3: a GetObject 403 is reported to the client as NOT_FOUND (see isAbsent), so a broken
@@ -37,6 +38,11 @@ export interface PresignedObject {
 
 /** Presigned URLs live one hour; a bound run is replaced well before that (duckdb-node.ts). */
 export const PRESIGN_EXPIRES_S = 3600;
+/** ERR-18: how long presignPrefix hands out the same URL for an unchanged part (half its life). */
+export const PRESIGN_REUSE_MS = 30 * 60 * 1000;
+if (PRESIGN_REUSE_MS >= PRESIGN_EXPIRES_S * 1000) {
+  throw new Error("PRESIGN_REUSE_MS must be shorter than the presigned URL lifetime");
+}
 /** The /tmp cache of verified manifests: one file per CID under the sandbox's temp directory. */
 export const MANIFEST_CACHE_DIR = "countylens-manifests";
 
@@ -206,17 +212,49 @@ export async function presignPrefix(prefix: string): Promise<PresignedObject[]> 
   ) {
     throw new Error(`presignPrefix: ${prefix} is not ${readPathPrivatePrefix}<name>/`);
   }
-  const keys: string[] = [];
+  const keys: { key: string; etag: string }[] = [];
   let token: string | undefined;
   do {
     const page = await s3().send(
       new ListObjectsV2Command({ Bucket: cidCopyBucket, Prefix: prefix, ContinuationToken: token }),
     );
     for (const object of page.Contents ?? []) {
-      if (object.Key !== undefined && object.Key.endsWith(".parquet")) keys.push(object.Key);
+      if (object.Key !== undefined && object.Key.endsWith(".parquet"))
+        keys.push({ key: object.Key, etag: object.ETag ?? "" });
     }
     token = page.IsTruncated === true ? page.NextContinuationToken : undefined;
   } while (token !== undefined);
-  keys.sort();
-  return Promise.all(keys.map(async (key) => ({ key, url: await presign(cidCopyBucket, key) })));
+  keys.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return Promise.all(
+    keys.map(async ({ key, etag }) => ({
+      key,
+      url: await reusablePresign(cidCopyBucket, key, etag),
+    })),
+  );
+}
+
+interface ReusableUrl {
+  readonly url: string;
+  readonly signedAt: number;
+}
+
+/** bucket/key/ETag → the URL last signed for it (ERR-18). One sandbox, a handful of parts. */
+const prefixUrls = new Map<string, ReusableUrl>();
+
+/** Tests only: forget every reusable URL. */
+export function resetPresignedPrefixCache(): void {
+  prefixUrls.clear();
+}
+
+/** The URL signed for this exact object version within PRESIGN_REUSE_MS, else a fresh one. */
+async function reusablePresign(bucket: string, key: string, etag: string): Promise<string> {
+  const id = `${bucket}/${key}#${etag}`;
+  const now = Date.now();
+  const known = prefixUrls.get(id);
+  if (known !== undefined && now - known.signedAt < PRESIGN_REUSE_MS) return known.url;
+  const url = await presign(bucket, key);
+  for (const [other] of prefixUrls)
+    if (other.startsWith(`${bucket}/${key}#`)) prefixUrls.delete(other);
+  prefixUrls.set(id, { url, signedAt: now });
+  return url;
 }

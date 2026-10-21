@@ -37,6 +37,11 @@ async function renderAt(path: string) {
   const view = render(<RouterProvider router={router} />);
   await waitFor(() => expect(router.state.initialized).toBe(true));
   await waitFor(() => expect(router.state.navigation.state).toBe("idle"));
+  // React Router 7 applies router state inside a React transition: an idle router does not mean
+  // React has committed the shell yet. On a slow runner the waitFor interval fired before the
+  // commit and the queries below saw an empty container (CI 2026-10-21, ubuntu: `<body><div />`).
+  // Wait for the committed shell itself.
+  await screen.findByRole("navigation", { name: "Primary" }, { timeout: 5_000 });
   return { router, ...view };
 }
 

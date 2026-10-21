@@ -1,5 +1,5 @@
 // A-03 T072 (G-C2a): the Lambda's DuckDB engine behind the query-core QueryEngine interface
-// (research R-03, ADR-0001 Lambda sizing). One instance per sandbox (`threads = 2`, bundled httpfs
+// (research R-03, ADR-0001 Lambda sizing, ERR-18). One instance per sandbox (`threads = 4`, bundled httpfs
 // through `extension_directory`, remote autoinstall / autoload off). The contract views are bound
 // once per manifest CID through `bindManifest`, every table part read over a presigned in-region
 // `ipfs/<cid>` GET URL (s3-read.ts), and re-bound after BIND_TTL_MS so a warm sandbox never
@@ -20,9 +20,11 @@ import {
 import { PRESIGN_EXPIRES_S, getManifest, presignPart } from "../s3-read.js";
 import { openDuckDb, type DuckDbEngine } from "./duckdb-instance.js";
 
-/** ADR-0001 Lambda sizing: two DuckDB threads at 1,769 MB. */
-export const DUCKDB_THREADS = 2;
-/** DuckDB's own cap, under the 1,769 MB Lambda so Node and the runtime keep headroom. */
+/** ERR-18 (AM-06 sizing update for the PO; ADR-0001 sized 2 threads at 1,769 MB): four threads
+ *  at 3,008 MB (2 vCPU). The cold read is latency-bound range GETs, which DuckDB issues per
+ *  thread, so more threads mean more requests in flight; compute stays ≤ 175 ms. */
+export const DUCKDB_THREADS = 4;
+/** DuckDB's own cap, under the 3,008 MB Lambda so Node and the runtime keep headroom. */
 export const DUCKDB_MEMORY_LIMIT = "1GB";
 /** Overrides the extension directory (tests, local runs); the Lambda uses the bundled default. */
 export const EXTENSION_DIRECTORY_ENV = "DUCKDB_EXTENSION_DIRECTORY";
@@ -55,6 +57,7 @@ export function getEngine(): Promise<QueryEngine> {
     extensionDirectory: extensionDirectory(),
     tempDirectory: join(tmpdir(), "countylens-duckdb"),
     httpfs: true,
+    cacheRemoteReads: true, // ERR-18: a warm sandbox re-reads no footer or chunk it already holds
   }).catch((error: unknown) => {
     engine = undefined; // a failed open is not kept; the next request tries again
     throw error;

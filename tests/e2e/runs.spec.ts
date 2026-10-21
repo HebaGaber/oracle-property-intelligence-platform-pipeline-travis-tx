@@ -49,6 +49,7 @@ import {
   type CoverageLabelKey,
 } from "@countylens/shared";
 import { expect, test } from "./lib/fixtures.js";
+import { checkpoint } from "./lib/evidence.js";
 import { artifactsOf, groupOf } from "./lib/manifest.js";
 import { fetchBuildInfo, repoRoot, requireCidCopyHost, runtimeUrl } from "./lib/runtime.js";
 
@@ -160,15 +161,18 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       await expect(page.locator('[data-route="runs"]')).toBeVisible();
       await expect(page.locator('input[type="password"]')).toHaveCount(0);
       await expect(page.getByText(/sign in/i)).toHaveCount(0);
+      await checkpoint(page, "010", "1-page-public");
 
       // Step 3: the run card shows the run ID.
       const card = runCard(page, runId);
       await expect(card, "the run card for the manifest's runId").toBeVisible({ timeout: 60_000 });
       await expect(card.getByText(runId, { exact: true }).first()).toBeVisible();
+      await checkpoint(page, "010", "3-run-card");
 
       // Step 4: start and finish equal the manifest, in UTC.
       await expectUtcTime(card, manifest.startedAt, "startedAt");
       await expectUtcTime(card, manifest.finishedAt, "finishedAt");
+      await checkpoint(page, "010", "4-utc-times");
 
       // Step 2: the index (same origin) and the manifest (by CID from the copy) loaded with 200.
       await testInfo.attach("responses.json", {
@@ -195,6 +199,7 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       await cidElement.locator("..").getByRole("button", { name: /copy/i }).click();
       const clipboard = await page.evaluate(() => navigator.clipboard.readText());
       expect(clipboard, "the copy button copies the full CID").toBe(manifestCid);
+      await checkpoint(page, "010", "5-cid-copied");
 
       // Step 6: the publication state, verbatim, and no Atlas claim anywhere.
       await expect(page.getByText(PUBLICATION_STATE_TEXT, { exact: true })).toBeVisible();
@@ -202,6 +207,7 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       expect(pageText.toLowerCase(), "P0-4: no Atlas registration claim").not.toContain(
         ATLAS_CLAIM,
       );
+      await checkpoint(page, "010", "6-publication-state");
 
       // Expected result: no run controls (the only buttons copy CIDs).
       const buttonNames = await card
@@ -216,6 +222,7 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
         buttonNames.filter((name) => !/^copy /i.test(name)),
         "no button on the card besides the CID copy buttons",
       ).toEqual([]);
+      await checkpoint(page, "010", "expected-no-run-controls", { fullPage: true });
     });
   });
 
@@ -245,6 +252,8 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
           .evaluateAll((anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href));
         expect(hrefs, `${source.name}: its URL as a link`).toContain(new URL(source.url).href);
       }
+      await items.first().scrollIntoViewIfNeeded();
+      await checkpoint(page, "011", "5-sources-in-manifest-order");
 
       // Steps 3–4: Austin first, then the TCAD export with its id.
       const [austin, tcad] = manifest.sources;
@@ -253,6 +262,7 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       expect(await visibleText(items.nth(1)), "the TCAD item shows its source id").toContain(
         "tcad-2026-certified-json",
       );
+      await checkpoint(page, "011", "3-4-austin-first-tcad-id");
     });
   });
 
@@ -272,6 +282,8 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
         "published_rows",
       );
       await expect(row.getByText(DERIVATION_LABELS.published_rows, { exact: true })).toBeVisible();
+      await row.scrollIntoViewIfNeeded();
+      await checkpoint(page, "012", "1-3-permits-published-row");
 
       // Different label, different element from any source `records` line.
       const sources = page.getByRole("list", { name: "Sources" });
@@ -285,10 +297,12 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
           timeout: 120_000,
         });
         await expect(page.locator(PERMIT_ROW)).toHaveCount(0);
+        await checkpoint(page, "012", "4-permits-empty");
         return;
       }
       await expect(page.locator(PERMIT_ROW).first()).toBeVisible({ timeout: 120_000 });
       await expect(page.locator(PERMIT_ROW)).toHaveCount(published.count);
+      await checkpoint(page, "012", "4-permits-row-count");
     });
   });
 
@@ -311,6 +325,8 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
         await expect(item.getByText(group, { exact: true })).toBeVisible();
         await expectCidDisplay(item, directory.cid, `${group} tables CID`);
       }
+      await items.first().scrollIntoViewIfNeeded();
+      await checkpoint(page, "013", "data-groups");
     });
   });
 
@@ -350,12 +366,14 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
         await expect(page.getByRole("article"), `${label}: no run card`).toHaveCount(0);
         await expect(page.locator("[data-cid]"), `${label}: no CID`).toHaveCount(0);
         await expect(page.locator('[aria-busy="true"]'), `${label}: no skeleton`).toHaveCount(0);
+        await checkpoint(page, "014", `${label}-error-banner`);
 
         // Step 4: the app bar and the navigation keep working.
         await expect(page.getByRole("heading", { name: "CountyLens" })).toBeVisible();
         await page.getByRole("link", { name: "Permits" }).click();
         await expect(page).toHaveURL(/\/permits$/);
         await expect(page.locator('[data-route="permits"]')).toBeVisible();
+        await checkpoint(page, "014", `${label}-4-navigation-works`);
         await page.unroute(isIndex);
       }
     });
@@ -377,6 +395,8 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
         row.getByText(COVERAGE_LABELS.permits_no_tcad_geoid, { exact: true }),
       ).toBeVisible();
       await expect(row.getByText(String(noTcad.count), { exact: true })).toBeVisible();
+      await row.scrollIntoViewIfNeeded();
+      await checkpoint(page, "031", "2-3-no-tcad-geoid-count");
 
       // Step 4: the derivation helper text is visible (not a tooltip) and verbatim (AD-28).
       expect(noTcad.derivation, "permits_no_tcad_geoid comes from the internal match").toBe(
@@ -392,6 +412,7 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
           exact: true,
         }),
       ).toBeVisible();
+      await checkpoint(page, "031", "4-derivation-helper-text");
     });
   });
 
@@ -404,17 +425,23 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
 
       // Step 2: the evidence names that URL and that SHA (full, or a prefix of at least 7).
       const path = resolve(repoRoot, EVIDENCE_PATH);
-      expect(existsSync(path), `${EVIDENCE_PATH} exists`).toBe(true);
+      expect(
+        existsSync(path),
+        `${EVIDENCE_PATH} is missing: write it with the hosted RUNTIME_URL (${url}) and the deployed build SHA from ${url}/build.json (${build.sha}, full or a 7+ hex prefix)`,
+      ).toBe(true);
       const evidence = readFileSync(path, "utf8");
       await testInfo.attach("evidence-head.md", {
         body: evidence.slice(0, 4000),
         contentType: "text/markdown",
       });
-      expect(evidence, `${EVIDENCE_PATH} names RUNTIME_URL ${url}`).toContain(url);
+      expect(
+        evidence,
+        `${EVIDENCE_PATH} must contain the hosted RUNTIME_URL verbatim: ${url}`,
+      ).toContain(url);
       const shaTokens = evidence.match(/\b[0-9a-f]{7,40}\b/g) ?? [];
       expect(
         shaTokens.some((token) => build.sha.startsWith(token)),
-        `${EVIDENCE_PATH} names the deployed build SHA ${build.sha}`,
+        `${EVIDENCE_PATH} must name the deployed build SHA from ${url}/build.json: ${build.sha} (full, or a lowercase hex prefix of at least 7 characters)`,
       ).toBe(true);
     });
   });

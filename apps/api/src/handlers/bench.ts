@@ -9,12 +9,16 @@
 // queryDurationMs, initMs, bindMs, coldStart }`: `queryDurationMs` is the query alone (what
 // TC-NF-05 times), `initMs` the engine start and `bindMs` the view bind over the parts.
 // Presigned URLs live only in the SQL handed to the engine; nothing here logs.
+// ERR-18: the view is re-bound only when the parts' URLs change (presignPrefix reuses a part's URL
+// while its ETag is unchanged) or the engine was re-opened, so a warm sandbox keeps DuckDB's
+// footer and chunk caches (keyed by URL) across invocations; `bindMs` is then 0.
 import {
   BENCH_PRESETS,
   benchCountSql,
   benchRadiusSql,
   benchRoofAgeSql,
   type BenchPreset,
+  type QueryEngine,
   type Row,
 } from "@countylens/query-core";
 import { z } from "zod";
@@ -120,6 +124,14 @@ function jsonSafe(value: unknown): unknown {
 
 const whole = (ms: number): number => Math.round(ms);
 
+/** The view `t` this sandbox last bound: the engine it lives on and the statement that made it. */
+let bound: { readonly engine: QueryEngine; readonly sql: string } | undefined;
+
+/** Tests only: forget the bound view so the next run binds again. */
+export function resetBenchBinding(): void {
+  bound = undefined;
+}
+
 /**
  * Runs one bench query over the parts under `event.prefix`. Refuses any prefix outside the
  * configured `READPATH_PRIVATE_PREFIX` before listing anything (the Zod regex already pins
@@ -141,8 +153,13 @@ export async function runBench(event: BenchEvent, options: BenchRunOptions): Pro
   const engine = await getEngine();
   const initMs = whole(performance.now() - initStarted);
 
+  const bindSql = bindPartsSql(urls);
   const bindStarted = performance.now();
-  await engine.run(bindPartsSql(urls));
+  if (bound?.engine !== engine || bound.sql !== bindSql) {
+    bound = undefined; // a failed bind is not kept
+    await engine.run(bindSql);
+    bound = { engine, sql: bindSql };
+  }
   const bindMs = whole(performance.now() - bindStarted);
 
   const sql = benchSql(event.query, event.preset);

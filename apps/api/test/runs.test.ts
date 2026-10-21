@@ -15,7 +15,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { appRouter } from "../src/routers/index.js";
 import { runsRouter } from "../src/routers/runs.js";
 import { BIND_TTL_MS, DUCKDB_THREADS } from "../src/engine/duckdb-node.js";
-import { getManifest, presignPart, presignPrefix, PRESIGN_EXPIRES_S } from "../src/s3-read.js";
+import {
+  getManifest,
+  presignPart,
+  presignPrefix,
+  PRESIGN_EXPIRES_S,
+  PRESIGN_REUSE_MS,
+  resetPresignedPrefixCache,
+} from "../src/s3-read.js";
 import {
   ENV,
   FINISHED_AT,
@@ -69,6 +76,7 @@ beforeEach(() => {
   tmp = mkdtempSync(join(REAL_TMP, "countylens-api-runs-"));
   vi.stubEnv("TMPDIR", tmp); // the /tmp manifest cache starts empty for every test
   s3.reset();
+  resetPresignedPrefixCache();
   engine.statements.length = 0;
   engine.queries.length = 0;
   engine.rowsFor = summaryRow(fixture, 7);
@@ -193,8 +201,12 @@ describe("runs.summary (T070)", () => {
     expect(engine.statements).toHaveLength(bindStatements); // no re-bind
     expect(getCalls()).toBe(1); // second request read the /tmp cache
     expect(seam.opens).toHaveLength(1); // one DuckDB instance per sandbox
-    expect(seam.opens[0]).toMatchObject({ threads: DUCKDB_THREADS, httpfs: true });
-    expect(DUCKDB_THREADS).toBe(2);
+    expect(seam.opens[0]).toMatchObject({
+      threads: DUCKDB_THREADS,
+      httpfs: true,
+      cacheRemoteReads: true, // ERR-18: footers and chunks stay cached across warm requests
+    });
+    expect(DUCKDB_THREADS).toBe(4);
   });
 
   it("re-binds after BIND_TTL_MS so the presigned part URLs never outlive their signature", async () => {
@@ -280,5 +292,36 @@ describe("s3-read (T072)", () => {
     const pages = s3.commandCalls(ListObjectsV2Command);
     expect(pages).toHaveLength(2);
     expect(pages[1]?.args[0].input.ContinuationToken).toBe("page-2");
+  });
+
+  // ERR-18 lever 2: DuckDB caches footers and bytes by URL, so a warm sandbox must hand it the
+  // same URL for an unchanged object. The URL is reused while the object's ETag is unchanged and
+  // for PRESIGN_REUSE_MS at most (well inside the URL's lifetime); a new ETag is signed afresh.
+  it("ERR-18: presignPrefix reuses a part's URL while its ETag is unchanged, re-signs on a new ETag or after PRESIGN_REUSE_MS", async () => {
+    expect(PRESIGN_REUSE_MS).toBeLessThan(PRESIGN_EXPIRES_S * 1000);
+    const prefix = "private/bench/austin-48m/";
+    const key = `${prefix}part-00000.parquet`;
+    const listing = (etag: string) =>
+      s3.on(ListObjectsV2Command, { Bucket: "copy-bucket", Prefix: prefix }).resolves({
+        Contents: [{ Key: key, ETag: etag }],
+        IsTruncated: false,
+      });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-21T10:00:00Z"));
+    listing('"e1"');
+    const [first] = await presignPrefix(prefix);
+
+    vi.setSystemTime(new Date("2026-10-21T10:00:05Z"));
+    const [again] = await presignPrefix(prefix);
+    expect(again?.url).toBe(first?.url);
+
+    listing('"e2"');
+    const [changed] = await presignPrefix(prefix);
+    expect(changed?.url).not.toBe(first?.url);
+
+    vi.setSystemTime(new Date(Date.parse("2026-10-21T10:00:05Z") + PRESIGN_REUSE_MS + 1));
+    const [expired] = await presignPrefix(prefix);
+    expect(expired?.url).not.toBe(changed?.url);
+    expect(s3.commandCalls(ListObjectsV2Command)).toHaveLength(4); // the listing is never cached
   });
 });

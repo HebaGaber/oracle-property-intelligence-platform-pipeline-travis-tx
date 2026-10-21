@@ -14,7 +14,10 @@
 //    TC_NF_05 preset (plus the full-size COUNT, recorded), and once more with ADR_0001; timings
 //    are each response's `queryDurationMs` (engine init excluded). The COUNT equals the capture
 //    receipt's row count (AUSTIN_CAPTURE_SUMMARY), never a hard-coded figure.
-// 4. p50 and p95 per query; radius and roof-age p95 < 3,000 ms.
+// 4. p50 and p95 per query; radius and roof-age p95 < 3,000 ms (the hard AC-4 assertion). The
+//    untimed warm-up (`warmupMs`, the first query in a fresh sandbox) is recorded beside them for
+//    every query × preset: in the text summary attachment, a test annotation and a soft check
+//    that it was measured. It is reported against the 3,000 ms reference, never hidden.
 // 5. Delete every private object; `head-object` → 404, recorded.
 // Cleanup runs even when an assertion fails, so the private copy never outlives the case.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -29,6 +32,41 @@ import { harnessConfig, repoRoot, requireCidCopyHost, runtimeUrl } from "./lib/r
 import { childEnv, run as spawnRun } from "./lib/spawn.js";
 
 const PARQUET_CONTENT_TYPE = "application/vnd.apache.parquet";
+const FIRST_QUERY_LABEL = "first query in a fresh sandbox";
+
+interface BenchSummaryRow {
+  query: string;
+  preset: string;
+  runs: number;
+  p50Ms: number;
+  p95Ms: number;
+  /** The untimed warm-up invocation: the first query in a fresh sandbox. */
+  firstQueryMs: number | null;
+}
+
+function summaryRows(reports: readonly BenchReport[]): BenchSummaryRow[] {
+  return reports.flatMap((report) =>
+    report.results.map((r) => ({
+      query: r.query,
+      preset: r.preset,
+      runs: r.timingsMs.length,
+      p50Ms: r.p50Ms,
+      p95Ms: r.p95Ms,
+      firstQueryMs: r.warmupMs[0] ?? null,
+    })),
+  );
+}
+
+function summaryText(rows: readonly BenchSummaryRow[]): string {
+  const lines = rows.map(
+    (r) =>
+      `${r.query} ${r.preset}: p50 ${r.p50Ms} ms, p95 ${r.p95Ms} ms (${r.runs} warm runs); ${FIRST_QUERY_LABEL} ${r.firstQueryMs ?? "not measured"} ms`,
+  );
+  return [
+    `TC-NF-05 Lambda DuckDB fallback (queryDurationMs; limit p95 < ${LIMITS.queryP95Ms} ms)`,
+    ...lines,
+  ].join("\n");
+}
 
 async function benchLambda(args: string[], jsonPath: string): Promise<BenchReport> {
   const testInfo = test.info();
@@ -174,6 +212,35 @@ test.describe("A-03-TC-NF-05 radius and roof-age p95 < 3 s via Lambda DuckDB on 
         testInfo.outputPath("bench-ADR_0001.json"),
       );
       evidence.bench = { TC_NF_05: tcNf05, ADR_0001: adr };
+      const rows = summaryRows([tcNf05, adr]);
+      evidence.summary = rows.map((r) => ({
+        query: r.query,
+        preset: r.preset,
+        runs: r.runs,
+        p50Ms: r.p50Ms,
+        p95Ms: r.p95Ms,
+        [FIRST_QUERY_LABEL]: r.firstQueryMs,
+      }));
+      await testInfo.attach("tc-nf-05-summary.txt", {
+        body: summaryText(rows),
+        contentType: "text/plain",
+      });
+      for (const r of rows) {
+        const first = r.firstQueryMs;
+        testInfo.annotations.push({
+          type: `${r.query} ${r.preset}: ${FIRST_QUERY_LABEL}`,
+          description:
+            first === null
+              ? "not measured"
+              : `${first} ms (${first < LIMITS.queryP95Ms ? "under" : "AT OR ABOVE"} the ${LIMITS.queryP95Ms} ms reference); warm p50 ${r.p50Ms} ms, p95 ${r.p95Ms} ms`,
+        });
+        expect
+          .soft(
+            first,
+            `${r.query} ${r.preset}: ${FIRST_QUERY_LABEL} measured (${first ?? "none"} ms; warm p95 ${r.p95Ms} ms)`,
+          )
+          .not.toBeNull();
+      }
       for (const report of [tcNf05, adr]) {
         for (const r of report.results) {
           expect(r.timingsMs, `${r.query} ${r.preset}: ${TIMED_RUNS} timed runs`).toHaveLength(

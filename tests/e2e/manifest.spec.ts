@@ -4,6 +4,7 @@
 // manifest or the published tables CAR; nothing is hard-coded.
 import { isCidV1 } from "@countylens/contract";
 import { cidOfBytes } from "@countylens/publish";
+import { checkpointText } from "./lib/evidence.js";
 import { expect, test } from "./lib/fixtures.js";
 import {
   CID_V0_PATTERN,
@@ -140,6 +141,16 @@ test.describe("A-03 run manifest (FR-001)", () => {
       const cars = artifactsOf(manifest, "car");
       expect(directories, "two directory entries").toHaveLength(2);
       expect(cars, "two car entries (AM-05)").toHaveLength(2);
+      await checkpointText(
+        "004",
+        "carcids",
+        [...directories, ...cars]
+          .map(
+            (a) =>
+              `${a.kind}\t${a.name}\tcid=${a.cid}\tcarCid=${a.carCid ?? "-"}\tsize=${a.size}\tsha256=${a.sha256}`,
+          )
+          .join("\n"),
+      );
 
       for (const artifact of [...directories, ...cars]) {
         const label = `${artifact.kind} ${artifact.name}`;
@@ -179,6 +190,17 @@ test.describe("A-03 run manifest (FR-001)", () => {
         }
       }
       const tables = artifactsOf(manifest, "table");
+      await checkpointText(
+        "005",
+        "table-part-sizes",
+        [
+          `part size limit ${PART_SIZE_48M} bytes`,
+          ...tables.map(
+            (t) =>
+              `${t.name}\tcid=${t.cid}\tsize=${t.size}\texported=${partsByCid.get(t.cid) ?? "-"}`,
+          ),
+        ].join("\n"),
+      );
       expect(tables.length).toBeGreaterThan(0);
       for (const part of tables) {
         expect(

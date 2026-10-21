@@ -1,6 +1,7 @@
 // CountyLensApi (A-03 T074): the tRPC Lambda behind an HTTP API. Sizing from ADR-0001 and ARD
-// § 16 AM-06 (arm64, 1,769 MB, 15 s, DuckDB threads 2, no reserved or provisioned concurrency:
-// AD-11, account limit 10). The HTTP API is the only way in (AD-09: a Function URL would bypass
+// § 16 AM-06, updated by ERR-18 (arm64, 3,008 MB = 2 vCPU, 15 s, DuckDB threads 4, no reserved or
+// provisioned concurrency: AD-11, account limit 10; per-invocation cost only, $0 idle; the AM-06
+// text change is the PO's). The HTTP API is the only way in (AD-09: a Function URL would bypass
 // the stage throttle of 10 rps / burst 20) and its JSON access log is the 30-day "query log"
 // (AM-03); the function log group keeps 14 days. X-Ray is active on the function and a sampling
 // rule with FixedRate 1 for service countylens-api records every request (NFR-004, research
@@ -45,8 +46,8 @@ export const FILEBASE_GATEWAY_HOST = "ipfs.filebase.io";
 export const API_ROUTE_PATH = "/trpc/{proxy+}";
 /** Stage throttle (AD-11, FR-007; TC-053). */
 export const API_THROTTLE = { rateLimit: 10, burstLimit: 20 } as const;
-/** ADR-0001 Lambda sizing. */
-export const API_MEMORY_MB = 1769;
+/** ERR-18 sizing (ADR-0001 had 1,769 MB = 1 vCPU): 2 vCPU and more network for the cold read. */
+export const API_MEMORY_MB = 3008;
 export const API_TIMEOUT = Duration.seconds(15);
 /** Retention (AD-16 as amended by AM-03): function log 14 days, access (query) log 30 days. */
 export const FUNCTION_LOG_RETENTION = logs.RetentionDays.TWO_WEEKS;

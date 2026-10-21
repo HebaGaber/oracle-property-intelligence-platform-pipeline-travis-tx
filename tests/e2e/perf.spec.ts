@@ -17,6 +17,7 @@
 //   `permits_emitted` rows.
 // Timings are attached as JSON for docs/evidence/A-03.md and docs/decisions/0001-read-path.md.
 import type { Page } from "@playwright/test";
+import { checkpoint } from "./lib/evidence.js";
 import { expect, test } from "./lib/fixtures.js";
 import {
   LIMITS,
@@ -109,6 +110,7 @@ test.describe("A-03-TC-NF-01 browser first load ≤ 8 s with a progress bar", ()
           .locator(SELECTORS.permitRow)
           .first()
           .waitFor({ state: "visible", timeout: 60_000 });
+        if (load === 1) await checkpoint(page, "NF-01", "load-1-first-row");
         const probe = await page.evaluate(() => window.__nf01 ?? null);
         expect(probe, `load ${load}: the first-load probe ran`).not.toBeNull();
         const measured = await readMeasures(page, [MEASURES.init]);
@@ -195,6 +197,7 @@ test.describe("A-03-TC-NF-02 COUNT and listing p95 < 3 s in the browser (20 runs
           rows,
         });
       }
+      await checkpoint(page, "NF-02", `after-${TIMED_RUNS}-reloads-listing`);
     } finally {
       await context.close();
     }

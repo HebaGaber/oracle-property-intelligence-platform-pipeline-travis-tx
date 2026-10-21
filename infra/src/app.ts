@@ -49,7 +49,7 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
     ...base,
     data,
     description:
-      "CountyLens API: tRPC Lambda (arm64, 1,769 MB, 15 s) behind an HTTP API with a 30-day JSON access log and X-Ray (AD-09, AM-03, AM-06).",
+      "CountyLens API: tRPC Lambda (arm64, 3,008 MB, 15 s) behind an HTTP API with a 30-day JSON access log and X-Ray (AD-09, AM-03, AM-06).",
   });
   const web = new WebStack(app, "CountyLensWeb", {
     ...base,

@@ -3,7 +3,8 @@
 // settings ADR-0001 fixes (threads, TimeZone UTC, no remote autoinstall / autoload, extension
 // directory, memory limit) and the JSON-shaped values the builders rely on. Nothing here reaches
 // S3 or the network; the httpfs case runs only where a local DuckDB extension copy exists.
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer, type Server } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -47,7 +48,7 @@ afterAll(() => {
 });
 
 describe("openDuckDb (real @duckdb/node-api)", () => {
-  it("applies threads = 2, TimeZone UTC, the extension directory, the memory limit and no remote autoinstall / autoload", async () => {
+  it("applies threads = DUCKDB_THREADS, TimeZone UTC, the extension directory, the memory limit and no remote autoinstall / autoload", async () => {
     const [settings] = await engine.all(`SELECT
       current_setting('threads') AS threads,
       current_setting('TimeZone') AS tz,
@@ -55,9 +56,41 @@ describe("openDuckDb (real @duckdb/node-api)", () => {
       current_setting('autoinstall_known_extensions') AS autoinstall,
       current_setting('autoload_known_extensions') AS autoload,
       current_setting('memory_limit') AS mem`);
-    expect(settings).toMatchObject({ threads: 2, tz: "UTC", autoinstall: false, autoload: false });
+    expect(settings).toMatchObject({
+      threads: DUCKDB_THREADS,
+      tz: "UTC",
+      autoinstall: false,
+      autoload: false,
+    });
     expect(String(settings?.["ext"])).toContain(join(dir, "extensions"));
     expect(String(settings?.["mem"])).toBe("256.0 MiB");
+  });
+
+  it("ERR-18: without cacheRemoteReads the Parquet metadata cache stays off and the file cache validates every read", async () => {
+    const [settings] = await engine.all(`SELECT
+      current_setting('parquet_metadata_cache') AS parquet_meta,
+      current_setting('validate_external_file_cache') AS validate`);
+    expect(settings).toEqual({ parquet_meta: false, validate: "VALIDATE_ALL" });
+  });
+
+  it("ERR-18: cacheRemoteReads keeps Parquet footers and fetched bytes across queries without re-validation", async () => {
+    const cached = await openDuckDb({
+      threads: DUCKDB_THREADS,
+      memoryLimit: "256MiB",
+      extensionDirectory: join(dir, "extensions"),
+      tempDirectory: join(dir, "tmp"),
+      httpfs: false,
+      cacheRemoteReads: true,
+    });
+    try {
+      const [settings] = await cached.all(`SELECT
+        current_setting('parquet_metadata_cache') AS parquet_meta,
+        current_setting('enable_external_file_cache') AS file_cache,
+        current_setting('validate_external_file_cache') AS validate`);
+      expect(settings).toEqual({ parquet_meta: true, file_cache: true, validate: "NO_VALIDATION" });
+    } finally {
+      cached.close();
+    }
   });
 
   it("reads a Parquet file built in-test with JSON-shaped values (DATE → YYYY-MM-DD, TIMESTAMPTZ → ISO UTC, BIGINT → number, NULL → null)", async () => {
@@ -96,6 +129,66 @@ describe("openDuckDb (real @duckdb/node-api)", () => {
       }
     },
   );
+
+  // ERR-18 lever 2: a warm sandbox must not re-read the footer and column chunks of a part it
+  // already read through the same (stable) presigned URL. A local HTTP server with Range support
+  // stands in for S3 and counts every request.
+  it.skipIf(!existsSync(LOCAL_EXTENSIONS))(
+    "ERR-18: with cacheRemoteReads a repeated query over the same URL makes no HTTP request",
+    async () => {
+      const bytes = readFileSync(file);
+      let requests = 0;
+      const server: Server = createServer((req, res) => {
+        requests += 1;
+        const range = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? "");
+        const start = range ? Number(range[1]) : 0;
+        const end = range?.[2] ? Number(range[2]) : bytes.length - 1;
+        const headers = {
+          "accept-ranges": "bytes",
+          etag: '"t-parquet"',
+          "last-modified": new Date(0).toUTCString(),
+        };
+        if (req.method === "HEAD") {
+          res.writeHead(200, { ...headers, "content-length": bytes.length });
+          res.end();
+          return;
+        }
+        res.writeHead(range ? 206 : 200, {
+          ...headers,
+          "content-length": end - start + 1,
+          "content-range": `bytes ${start}-${end}/${bytes.length}`,
+        });
+        res.end(bytes.subarray(start, end + 1));
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const { port } = server.address() as { port: number };
+      const url = `http://127.0.0.1:${port}/ipfs/part.parquet?X-Amz-Signature=stable`;
+      const remote = await openDuckDb({
+        threads: DUCKDB_THREADS,
+        memoryLimit: "256MiB",
+        extensionDirectory: LOCAL_EXTENSIONS,
+        tempDirectory: join(dir, "tmp"),
+        httpfs: true,
+        cacheRemoteReads: true,
+      });
+      try {
+        const [setting] = await remote.all(
+          `SELECT current_setting('enable_http_metadata_cache') AS http_meta`,
+        );
+        expect(setting).toEqual({ http_meta: true });
+        await remote.run(`CREATE OR REPLACE TEMP VIEW t AS SELECT * FROM read_parquet(['${url}'])`);
+        const sql = "SELECT count(*) AS n, max(s) AS s FROM t";
+        expect(await remote.all(sql)).toEqual([{ n: 2, s: "a" }]);
+        const cold = requests;
+        expect(cold).toBeGreaterThan(0);
+        expect(await remote.all(sql)).toEqual([{ n: 2, s: "a" }]);
+        expect(requests - cold).toBe(0);
+      } finally {
+        remote.close();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+  );
 });
 
 // ERR-10 (A-03): the Lambda's conversion over every column of every contract/v1 view on the real
@@ -131,6 +224,10 @@ describe("duckdb-node constants", () => {
       join("/var/task", EXTENSION_DIRECTORY_NAME),
     );
     expect(extensionDirectory({})).toBe(join(process.cwd(), EXTENSION_DIRECTORY_NAME));
+  });
+
+  it("ERR-18 / AM-06 sizing update: four DuckDB threads (2 vCPU at 3,008 MB)", () => {
+    expect(DUCKDB_THREADS).toBe(4);
   });
 
   it("binds for less time than a presigned URL lives", () => {

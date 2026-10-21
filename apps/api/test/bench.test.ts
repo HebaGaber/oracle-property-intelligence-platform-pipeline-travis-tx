@@ -82,6 +82,7 @@ import {
   BenchEvent,
   benchBuilderName,
   isBenchEvent,
+  resetBenchBinding,
   runBench,
 } from "../src/handlers/bench.js";
 import { BENCH_VIA_API_MESSAGE, createHandler } from "../src/handlers/trpc.js";
@@ -114,7 +115,7 @@ function lambdaContext(awsRequestId = "bench-req-1"): Context {
     functionName: "countylens-api",
     functionVersion: "$LATEST",
     invokedFunctionArn: "arn:aws:lambda:local:000000000000:function:countylens-api",
-    memoryLimitInMB: "1769",
+    memoryLimitInMB: "3008",
     logGroupName: "/aws/lambda/countylens-api",
     logStreamName: "2026/10/21/[$LATEST]abcdef",
     callbackWaitsForEmptyEventLoop: false,
@@ -208,6 +209,7 @@ describe("runBench (apps/api/src/handlers/bench.ts)", () => {
     H.engine.all.mockClear();
     H.getEngine.mockClear();
     H.presignPrefix.mockClear();
+    resetBenchBinding();
   });
 
   it("lists and presigns the parts, binds them as the spike relation t and runs the preset's builder", async () => {
@@ -254,6 +256,40 @@ describe("runBench (apps/api/src/handlers/bench.ts)", () => {
     );
     expect(H.presignPrefix).not.toHaveBeenCalled();
     expect(H.engine.all).not.toHaveBeenCalled();
+  });
+
+  // ERR-18 lever 2: re-binding the view every invocation threw away DuckDB's footer and chunk
+  // caches (they are keyed by URL). A warm sandbox keeps the view while the parts' URLs are the
+  // same (presignPrefix reuses them per ETag) and re-binds only when they change.
+  it("ERR-18: keeps the bound view across invocations while the presigned URLs are unchanged", async () => {
+    await runBench(VALID, { config, coldStart: true });
+    const second = await runBench({ ...VALID, query: "roofAge" }, { config, coldStart: false });
+    expect(H.presignPrefix).toHaveBeenCalledTimes(2); // listed every time (a removed part is seen)
+    expect(H.engine.run).toHaveBeenCalledTimes(1); // bound once
+    expect(second.bindMs).toBe(0);
+    expect(H.engine.all).toHaveBeenLastCalledWith(benchRoofAgeSql(BENCH_PRESETS.TC_NF_05));
+  });
+
+  it("ERR-18: re-binds when the parts' URLs change (new ETag, re-signed URL or another prefix)", async () => {
+    await runBench(VALID, { config, coldStart: true });
+    H.presignPrefix.mockResolvedValueOnce([
+      {
+        key: `${H.PREFIX}part-00001.parquet`,
+        url: `${H.presigned("part-00001.parquet")}-resigned`,
+      },
+    ]);
+    await runBench(VALID, { config, coldStart: false });
+    expect(H.engine.run).toHaveBeenCalledTimes(2);
+    expect(H.engine.run.mock.calls[1]?.[0]).toContain("-resigned");
+    expect(H.engine.run.mock.calls[1]?.[0]).not.toContain("part-00002");
+  });
+
+  it("ERR-18: re-binds after the engine was re-opened (a failed open is not kept)", async () => {
+    await runBench(VALID, { config, coldStart: true });
+    const reopened = { run: vi.fn(async () => undefined), all: vi.fn(async () => H.rows) };
+    H.getEngine.mockResolvedValueOnce(reopened);
+    await runBench(VALID, { config, coldStart: false });
+    expect(reopened.run).toHaveBeenCalledTimes(1);
   });
 
   it("fails when the prefix holds no parquet part", async () => {

@@ -70,6 +70,7 @@ const IDENTIFIER_FIELDS = new Set([
   "prefix",
   "errorCode",
 ]);
+/** Our annotations allowed on the trace; AWS-added keys (`aws:*`) are ignored. */
 const ANNOTATION_KEYS = new Set([
   "query",
   "procedure",
@@ -78,6 +79,11 @@ const ANNOTATION_KEYS = new Set([
   "ColdStart",
   "Service",
 ]);
+/** Annotations our handler must add to the trace (FR-007 identifiers). */
+const REQUIRED_ANNOTATIONS = ["manifestCid", "query"] as const;
+const isAwsAnnotation = (key: string): boolean => key.startsWith("aws:");
+const LAMBDA_FUNCTION_ORIGIN = "AWS::Lambda::Function";
+const INIT_NAMES = new Set(["Initialization", "Init"]);
 const FORBIDDEN = [
   { name: "presigned URL", pattern: /X-Amz-Signature/i },
   { name: "URL", pattern: /https?:\/\//i },
@@ -220,6 +226,127 @@ function queryDurationOf(body: unknown): number | undefined {
   return undefined;
 }
 
+type ColdSource = "xray" | "report-log";
+
+interface ColdStartReading {
+  traceSegments: XraySegment[];
+  functionSegment: XraySegment | undefined;
+  initializationMs: number | null;
+  invocationMs: number | null;
+  initializationSource: ColdSource | null;
+  invocationSource: ColdSource | null;
+  requestId: string | null;
+  traceAttempts: number;
+}
+
+/** Lambda's `Initialization`/`Init` and `Invocation` subsegments of the function segment. */
+function lambdaPhases(segments: readonly XraySegment[]): {
+  fn: XraySegment | undefined;
+  init: XraySegment | undefined;
+  invocation: XraySegment | undefined;
+} {
+  const fn = segments.find((s) => s.origin === LAMBDA_FUNCTION_ORIGIN);
+  const children = fn?.subsegments ?? [];
+  return {
+    fn,
+    init: children.find((s) => INIT_NAMES.has(s.name)),
+    invocation: children.find((s) => s.name === "Invocation"),
+  };
+}
+
+/**
+ * Polls `batch-get-traces` with backoff (5 s, doubling, capped at 20 s; ~90 s in all) until the
+ * Lambda function segment has both an Initialization (or Init) and an Invocation subsegment.
+ */
+async function coldTrace(traceId: string): Promise<{ segments: XraySegment[]; attempts: number }> {
+  const deadline = Date.now() + 90_000;
+  let delay = 5_000;
+  let attempts = 0;
+  let segments: XraySegment[];
+  for (;;) {
+    attempts += 1;
+    segments = await traceSegments(traceId);
+    const { init, invocation } = lambdaPhases(segments);
+    const complete = segments.length > 0 && segments.every((s) => s.end_time !== undefined);
+    if (complete && init && invocation) break;
+    if (Date.now() + delay > deadline) break;
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 2, 20_000);
+  }
+  return { segments, attempts };
+}
+
+/** `Init Duration` / `Duration` of one request's REPORT line (text or JSON platform.report). */
+function reportDurations(line: string): { initMs?: number; durationMs?: number } {
+  const init = /Init Duration:\s*([\d.]+)\s*ms/.exec(line)?.[1];
+  const dur = /(?:^|\t)Duration:\s*([\d.]+)\s*ms/.exec(line)?.[1];
+  if (init || dur) {
+    return {
+      ...(init ? { initMs: Number(init) } : {}),
+      ...(dur ? { durationMs: Number(dur) } : {}),
+    };
+  }
+  try {
+    const parsed = JSON.parse(line) as {
+      type?: string;
+      record?: { metrics?: { initDurationMs?: number; durationMs?: number } };
+    };
+    if (parsed.type !== "platform.report") return {};
+    const m = parsed.record?.metrics ?? {};
+    return {
+      ...(typeof m.initDurationMs === "number" ? { initMs: m.initDurationMs } : {}),
+      ...(typeof m.durationMs === "number" ? { durationMs: m.durationMs } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The cold start's Initialization and Invocation durations: from X-Ray first; any phase still
+ * absent after ~90 s comes from the Lambda REPORT log line of the same request ID (found through
+ * the Powertools line with the call's correlation ID). Records which source gave each value.
+ */
+async function readColdStart(call: SummaryCall, sinceMs: number): Promise<ColdStartReading> {
+  const { segments, attempts } = await coldTrace(call.traceId);
+  const all = flattenSegments(segments);
+  const { fn, init, invocation } = lambdaPhases(segments);
+  const reading: ColdStartReading = {
+    traceSegments: all,
+    functionSegment: fn,
+    initializationMs: init ? durationMs(init) : null,
+    invocationMs: invocation ? durationMs(invocation) : null,
+    initializationSource: init ? "xray" : null,
+    invocationSource: invocation ? "xray" : null,
+    requestId: null,
+    traceAttempts: attempts,
+  };
+  if (init && invocation) return reading;
+
+  const ours = await logLinesFor(call.correlationId, sinceMs);
+  const requestId = ours.map((l) => l.function_request_id).find((v) => typeof v === "string");
+  if (typeof requestId !== "string") return reading;
+  reading.requestId = requestId;
+  const group = await functionLogGroup(nfrConfig().API_FUNCTION_NAME);
+  const report = await poll(
+    async () =>
+      (await findLogLines(group, requestId, sinceMs))
+        .map(reportDurations)
+        .find((d) => d.initMs !== undefined || d.durationMs !== undefined),
+    (found) => found !== undefined,
+    { timeoutMs: 90_000, intervalMs: 10_000 },
+  );
+  if (reading.initializationMs === null && report?.initMs !== undefined) {
+    reading.initializationMs = Math.round(report.initMs);
+    reading.initializationSource = "report-log";
+  }
+  if (reading.invocationMs === null && report?.durationMs !== undefined) {
+    reading.invocationMs = Math.round(report.durationMs);
+    reading.invocationSource = "report-log";
+  }
+  return reading;
+}
+
 test.describe("A-03 API observability", () => {
   test.describe.configure({ timeout: 15 * 60_000 });
 
@@ -277,11 +404,15 @@ test.describe("A-03 API observability", () => {
     expect
       .soft(forbiddenIn(JSON.stringify(line)), "log line has no URL, presigned URL or credential")
       .toEqual([]);
-    const annotations = segments.flatMap((s) => Object.entries(s.annotations ?? {}));
+    const ourAnnotationKeys = segments
+      .flatMap((s) => Object.keys(s.annotations ?? {}))
+      .filter((k) => !isAwsAnnotation(k));
+    for (const key of REQUIRED_ANNOTATIONS)
+      expect.soft(ourAnnotationKeys, `the trace carries our ${key} annotation`).toContain(key);
     expect
       .soft(
-        annotations.map(([k]) => k).filter((k) => !ANNOTATION_KEYS.has(k)),
-        "trace annotations are identifiers only",
+        [...new Set(ourAnnotationKeys.filter((k) => !ANNOTATION_KEYS.has(k)))],
+        "our trace annotations are identifiers only (aws:* keys ignored)",
       )
       .toEqual([]);
     const traceText = JSON.stringify(
@@ -326,15 +457,18 @@ test.describe("A-03 API observability", () => {
     // Steps 1–2: docs/evidence/A-03.md in the documented format (tests/e2e/README.md,
     // "Observability evidence").
     const evidencePath = resolve(repoRoot, "docs", "evidence", "A-03.md");
-    expect(existsSync(evidencePath), "docs/evidence/A-03.md exists").toBe(true);
+    expect(
+      existsSync(evidencePath),
+      `docs/evidence/A-03.md is missing: add the TC-050 block described in tests/e2e/README.md § "Observability evidence (TC-050 → TC-051)" (x-correlation-id and x-trace-id lines in backticks plus a \`\`\`json Powertools log line)`,
+    ).toBe(true);
     const recorded = parseObservabilityEvidence(readFileSync(evidencePath, "utf8"));
     expect(
       recorded.correlationId,
-      "docs/evidence/A-03.md records `x-correlation-id: `<id>`` (in backticks)",
+      `docs/evidence/A-03.md lacks the line \`x-correlation-id: \`<id>\`\` (ID in backticks), item 1 of tests/e2e/README.md § "Observability evidence (TC-050 → TC-051)"`,
     ).toBeDefined();
     expect(
       recorded.traceId,
-      "docs/evidence/A-03.md records `x-trace-id: `1-…`` (in backticks)",
+      `docs/evidence/A-03.md lacks the line \`x-trace-id: \`1-xxxxxxxx-<24 hex>\`\` (X-Ray root trace ID in backticks), item 2 of tests/e2e/README.md § "Observability evidence (TC-050 → TC-051)"`,
     ).toMatch(TRACE_ID);
     expect(
       idShape(recorded.correlationId ?? ""),
@@ -342,7 +476,7 @@ test.describe("A-03 API observability", () => {
     ).toBe(idShape(call.correlationId));
     expect(
       recorded.logLine,
-      "docs/evidence/A-03.md has a ```json excerpt holding the Powertools log line of that correlation_id",
+      `docs/evidence/A-03.md lacks a \`\`\`json fenced block whose JSON object has correlation_id = the recorded x-correlation-id, item 3 of tests/e2e/README.md § "Observability evidence (TC-050 → TC-051)"`,
     ).toBeDefined();
     const line = recorded.logLine ?? {};
     for (const key of POWERTOOLS_KEYS)
@@ -390,13 +524,14 @@ test.describe("A-03 API observability", () => {
     const functionName = nfrConfig().API_FUNCTION_NAME;
     const handle = await forceColdStart(functionName);
     let cold: SummaryCall | undefined;
-    let coldSegments: XraySegment[] | undefined;
+    let coldReading: ColdStartReading | undefined;
     let warm: { responseMs: number[]; queryDurationMs: number[]; statuses: number[] } | undefined;
     try {
       // Step 1: the first request after the change starts a new sandbox.
+      const coldSinceMs = Date.now() - 60_000;
       cold = await loadRunsPage(browser);
       expect(cold.traceId, "cold call x-trace-id").toMatch(TRACE_ID);
-      coldSegments = await traceWith(cold.traceId, "Initialization");
+      coldReading = await readColdStart(cold, coldSinceMs);
 
       // Step 2: one untimed warm-up, then 30 warm calls from the hosted page context.
       await page.goto(`${runtimeUrl()}/runs`, { waitUntil: "domcontentloaded" });
@@ -432,13 +567,9 @@ test.describe("A-03 API observability", () => {
       await handle.restore();
     }
 
-    const fn = (coldSegments ?? []).find(
-      (s) => s.origin === "AWS::Lambda::Function" || s.name === "Initialization",
-    );
-    const init = (coldSegments ?? []).find((s) => s.name === "Initialization");
-    const invocation = (coldSegments ?? []).find((s) => s.name === "Invocation");
-    const coldMs =
-      (init ? durationMs(init) : Number.NaN) + (invocation ? durationMs(invocation) : Number.NaN);
+    const initMs = coldReading?.initializationMs ?? null;
+    const invocationMs = coldReading?.invocationMs ?? null;
+    const coldMs = (initMs ?? Number.NaN) + (invocationMs ?? Number.NaN);
     const responses = summarize(warm?.responseMs ?? []);
     const queryDurations = summarize(
       (warm?.queryDurationMs ?? []).filter((v) => Number.isFinite(v)),
@@ -449,8 +580,16 @@ test.describe("A-03 API observability", () => {
           coldStartNonce: handle.nonce,
           coldTraceId: cold?.traceId,
           coldCorrelationId: cold?.correlationId,
-          initializationMs: init ? durationMs(init) : null,
-          invocationMs: invocation ? durationMs(invocation) : null,
+          initializationMs: initMs,
+          initializationSource: coldReading?.initializationSource ?? null,
+          invocationMs,
+          invocationSource: coldReading?.invocationSource ?? null,
+          coldRequestId: coldReading?.requestId ?? null,
+          traceAttempts: coldReading?.traceAttempts ?? 0,
+          functionSubsegments: (coldReading?.functionSegment?.subsegments ?? []).map((s) => ({
+            name: s.name,
+            ms: durationMs(s),
+          })),
           coldStartMs: coldMs,
           warm: { responses, queryDurations, statuses: warm?.statuses },
         },
@@ -460,15 +599,18 @@ test.describe("A-03 API observability", () => {
       contentType: "application/json",
     });
 
-    expect(fn, "the cold trace has the Lambda function segment").toBeDefined();
     expect(
-      init,
-      "the cold trace has an Initialization subsegment (a real cold start)",
+      coldReading?.functionSegment,
+      `the cold trace has the ${LAMBDA_FUNCTION_ORIGIN} segment`,
     ).toBeDefined();
     expect(
-      invocation,
-      "the cold trace has an Invocation subsegment (includes the DuckDB init)",
-    ).toBeDefined();
+      initMs,
+      "the cold start has an Initialization duration (X-Ray Initialization/Init subsegment, else the REPORT line's Init Duration)",
+    ).not.toBeNull();
+    expect(
+      invocationMs,
+      "the cold start has an Invocation duration (includes the DuckDB init)",
+    ).not.toBeNull();
     expect
       .soft(coldMs, `cold start incl. DuckDB init < ${LIMITS.apiColdStartMs} ms`)
       .toBeLessThan(LIMITS.apiColdStartMs);

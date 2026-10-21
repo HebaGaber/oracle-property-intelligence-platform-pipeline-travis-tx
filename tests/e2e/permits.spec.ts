@@ -42,6 +42,7 @@ import {
 } from "@countylens/shared";
 import { z } from "zod";
 import { expect, test } from "./lib/fixtures.js";
+import { checkpoint } from "./lib/evidence.js";
 import { artifactsOf, publicCid } from "./lib/manifest.js";
 import { harnessConfig, requireCidCopyHost, runtimeUrl } from "./lib/runtime.js";
 
@@ -403,6 +404,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       ).toBe(true);
       await expect(page.locator('input[type="password"]')).toHaveCount(0);
       await expect(page.getByText(/sign in/i)).toHaveCount(0);
+      await checkpoint(page, "020", "1-table-public");
 
       // Step 2: Parquet reads go to the CID copy, addressed by CIDs the manifest lists.
       const copyRequests = network.requests.filter((request) => request.url.hostname === copyHost);
@@ -419,6 +421,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       // Step 3: one row per published permit.
       const count = coverageCount(manifest, "permits_emitted");
       await expect(rows).toHaveCount(count);
+      await checkpoint(page, "020", "3-one-row-per-permit", { fullPage: true });
 
       // Step 4: every issue_date is in the published month.
       const snapshots = await snapshotRows(page);
@@ -430,6 +433,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
 
       // Expected result: read from the copy, so no fallback label.
       await expect(page.getByText(FALLBACK_LABEL)).toHaveCount(0);
+      await checkpoint(page, "020", "expected-no-fallback-label");
     });
   });
 
@@ -453,6 +457,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
           cells.map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),
         );
       expect(headers, "column headers").toEqual([...HEADERS]);
+      await checkpoint(page, "021", "2-headers");
 
       // Steps 3–4: every row's status class and its four provenance fields.
       expect(await rows.count()).toBeGreaterThan(0);
@@ -486,6 +491,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
         );
         expect(row.cells[COL.provenance], `row ${index}: run ID`).toContain(`run ${runId}`);
       }
+      await checkpoint(page, "021", "3-4-status-and-provenance", { fullPage: true });
     });
   });
 
@@ -554,6 +560,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
           ).toBe(false);
         }
       }
+      await checkpoint(page, "022", "2-5-missing-reason-labels", { fullPage: true });
     });
   });
 
@@ -572,6 +579,8 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
 
       // Step 2: the engine line, verbatim, as its own text element.
       await expect(page.getByText(ENGINE_LINE_TEXT, { exact: true })).toBeVisible();
+      await page.getByText(ENGINE_LINE_TEXT, { exact: true }).scrollIntoViewIfNeeded();
+      await checkpoint(page, "023", "2-engine-line");
 
       // Step 3: no API call, no database host; data requests are GETs by CID only.
       const http = network.requests.filter((request) =>
@@ -603,6 +612,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
           true,
         );
       }
+      await checkpoint(page, "023", "3-no-database-server");
     });
   });
 
@@ -636,6 +646,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
         expect(await busy.first().evaluate((element) => element.tagName)).not.toBe("TABLE");
         await expect(busy.locator("table, td"), "skeletons carry no data cells").toHaveCount(0);
       }
+      await checkpoint(page, "024", "2-3-progress-bar");
 
       // Step 4: every DOM state until rows appeared.
       const rows = await waitForPermitRows(page);
@@ -666,6 +677,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
         "the empty state never showed",
       ).toEqual([]);
       await expect(page.getByText(FALLBACK_LABEL), "2 s < 4 s: no fallback").toHaveCount(0);
+      await checkpoint(page, "024", "4-rows-after-loading");
     });
   });
 
@@ -736,6 +748,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
           }
         }
       }
+      await checkpoint(page, "025", "2-5-contractor-resolution", { fullPage: true });
     });
   });
 
@@ -765,6 +778,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
         reads.filter((read) => read.status === 200).map((read) => read.url.href),
         "no whole-file 200 for a table part",
       ).toEqual([]);
+      await checkpoint(page, "026", "rows-from-range-reads");
     });
   });
 
@@ -813,6 +827,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
           `${name}: transfer ${transfer.bodyBytes} B < ${MAX_TRANSFER_BYTES} B`,
         ).toBeLessThan(MAX_TRANSFER_BYTES);
       }
+      await checkpoint(page, "028", "rows-after-compressed-wasm");
     });
   });
 
@@ -838,6 +853,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
         expect(listed, `permit ${number} is not listed`).not.toContain(number);
         expect(pageText, `permit ${number} appears nowhere on the page`).not.toContain(number);
       }
+      await checkpoint(page, "030", "no-tcad-permits-absent", { fullPage: true });
     });
   });
 });

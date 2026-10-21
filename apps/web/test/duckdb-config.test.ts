@@ -31,6 +31,7 @@ import {
 import type { FetchByCidOptions } from "../src/data/fetch-by-cid";
 import { EngineStartError } from "../src/engine/errors";
 import { createPermitsLoader, type EngineModule } from "../src/engine/load-permits";
+import { registeredPartName, type FetchedPart, type PartToFetch } from "../src/data/fetch-parts";
 import { STAGE_TEXTS } from "../src/routes/Permits.page";
 import { GZIP_LEVEL, WASM_FILE_PATTERN, compressWasm } from "../scripts/compress-wasm";
 
@@ -44,17 +45,24 @@ interface FakeDb extends AsyncDuckDbLike {
   readonly calls: string[];
   readonly openConfigs: DuckDbOpenConfig[];
   readonly statements: string[];
+  readonly registered: Map<string, Uint8Array>;
 }
 
 function fakeDb(options: { failInstantiate?: boolean } = {}): FakeDb {
   const calls: string[] = [];
   const openConfigs: DuckDbOpenConfig[] = [];
   const statements: string[] = [];
+  const registered = new Map<string, Uint8Array>();
   const emptyTable: ArrowTableLike = { schema: { fields: [] }, toArray: () => [] };
   return {
     calls,
     openConfigs,
     statements,
+    registered,
+    async registerFileBuffer(name: string, buffer: Uint8Array) {
+      calls.push(`registerFileBuffer:${name}`);
+      registered.set(name, buffer);
+    },
     async instantiate(mainModule: string) {
       calls.push(`instantiate:${mainModule}`);
       if (options.failInstantiate) throw new Error("WebAssembly.instantiate failed (fake)");
@@ -85,8 +93,10 @@ function fakeRuntime(
   db: FakeDb,
   mainModule = "/assets/duckdb-eh-test.wasm",
   mainModuleEncoding: "gzip" | "identity" = "identity",
+  extensions: DuckDbRuntime["extensions"] = [],
 ): DuckDbRuntime {
   return {
+    extensions,
     bundle: {
       mainModule,
       mainModuleEncoding,
@@ -227,9 +237,29 @@ describe("createPermitsLoader: index → manifest → engine → bind → list (
       coverageCount === undefined
         ? {}
         : { permits_emitted: { count: coverageCount, derivation: "published_rows" } };
-    const manifest = { runId: "test-run", coverage } as unknown as RunManifestV1;
-    const engine: QueryEngine & { closed: boolean; close(): Promise<void> } = {
+    const part = {
+      kind: "table",
+      name: "tables/county/property/part-00000.parquet",
+      cid: partCid,
+      size: 2,
+      sha256: "0".repeat(64),
+    };
+    const manifest = {
+      runId: "test-run",
+      coverage,
+      artifacts: [part, { ...part, kind: "car", name: "car/x.car", size: 10_000 }],
+    } as unknown as RunManifestV1;
+    const partBytes = new Uint8Array([1, 2]);
+    const registered: [string, Uint8Array][] = [];
+    const engine: QueryEngine & {
+      closed: boolean;
+      close(): Promise<void>;
+      registerFile(name: string, bytes: Uint8Array): Promise<void>;
+    } = {
       closed: false,
+      registerFile: async (name: string, data: Uint8Array) => {
+        registered.push([name, data]);
+      },
       run: async () => undefined,
       all: async () => [],
       close: async () => {
@@ -258,12 +288,19 @@ describe("createPermitsLoader: index → manifest → engine → bind → list (
         partUrl,
       },
     }));
+    const fetchParts = vi.fn(async (parts: readonly PartToFetch[]): Promise<FetchedPart[]> =>
+      parts.map((p) => ({ ...p, bytes: partBytes })),
+    );
     return {
       engine,
       rows,
       engineModule,
       loadManifest,
+      fetchParts,
+      registered,
+      partBytes,
       loader: createPermitsLoader({
+        fetchParts,
         loadRunsIndex: vi.fn(async () => index),
         latestRun: (i: RunsIndexV1) => i.runs[0] as RunsIndexV1["runs"][number],
         loadManifest,
@@ -275,7 +312,7 @@ describe("createPermitsLoader: index → manifest → engine → bind → list (
     };
   }
 
-  it("binds the parts with the partUrl of the read that served the manifest and reports the stages in order", async () => {
+  it("reads the parts from the host that served the manifest, registers them and binds them by name; stages in order", async () => {
     const d = deps(1);
     const stages: string[] = [];
     const loaded = await d.loader((stage) => stages.push(stage), new AbortController().signal);
@@ -283,15 +320,22 @@ describe("createPermitsLoader: index → manifest → engine → bind → list (
     expect(d.loadManifest).toHaveBeenCalledTimes(1);
     expect(d.loadManifest.mock.calls[0]?.[0]).toBe(manifestCid);
     expect(d.loadManifest.mock.calls[0]?.[1]).toMatchObject({ urls });
+    // ERR-15/16/17: the table parts only (not the CAR), from the read that served the manifest.
+    expect(d.fetchParts).toHaveBeenCalledTimes(1);
+    const [partsArg, readArg] = d.fetchParts.mock.calls[0] as unknown as [PartToFetch[], unknown];
+    expect(partsArg).toEqual([
+      { name: "tables/county/property/part-00000.parquet", cid: partCid, size: 2 },
+    ]);
+    expect(readArg).toMatchObject({ source: { kind: "fallback", host: "gateway.test" }, partUrl });
+    expect(d.registered).toEqual([[registeredPartName({ cid: partCid }), d.partBytes]]);
     expect(d.engineModule.bindRun).toHaveBeenCalledTimes(1);
     const bindCall = vi.mocked(d.engineModule.bindRun).mock.calls[0];
     expect(bindCall).toBeDefined();
     const [engineArg, bytesArg, partUrlArg] = bindCall as NonNullable<typeof bindCall>;
     expect(engineArg).toBe(d.engine);
     expect(bytesArg).toBe(bytes);
-    expect(partUrlArg).toBe(partUrl);
     expect(partUrlArg({ name: "tables/county/property/part-00000.parquet", cid: partCid })).toBe(
-      `https://served.test/${partCid}`,
+      registeredPartName({ cid: partCid }),
     );
     expect(stages).toEqual([
       STAGE_TEXTS.engine,
@@ -306,7 +350,7 @@ describe("createPermitsLoader: index → manifest → engine → bind → list (
       rows: d.rows,
       fallbackLabel: "fallback · gateway.test",
     });
-    expect(d.engine.closed, "the engine is released after the single-page list").toBe(true);
+    await vi.waitFor(() => expect(d.engine.closed, "the engine is released").toBe(true));
   });
 
   it("refuses a manifest without coverage.permits_emitted (FR-009: counts only from the manifest)", async () => {

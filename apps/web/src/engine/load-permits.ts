@@ -1,7 +1,10 @@
 // The Permits load (A-03 T054/T056): run index → latest run → manifest by CID (the read decides
-// the host: CID copy or the labelled Filebase fallback, D-2) → engine → bind the parts with the
-// same read's `partUrl` (no mixed hosts in one load) → the page's COUNT (checked against the
-// manifest) → the single page of rows; the engine emits User Timing measures (./timing). The engine
+// the host: CID copy or the labelled Filebase fallback, D-2) → the table parts from that same host,
+// in parallel, CID-verified (../data/fetch-parts; no mixed hosts in one load) → bind them as
+// registered files → the page's COUNT (checked against the manifest) → the single page of rows.
+// ERR-17: the engine starts at the same moment as the index read, so its download and compile
+// overlap the manifest and part reads instead of preceding them. The engine emits User Timing
+// measures (./timing). The engine
 // module is imported dynamically, so DuckDB-WASM, apache-arrow and query-core stay in their own
 // chunk until this runs. Every count comes from the manifest (FR-009). Dependencies are
 // injectable for the unit tests; the defaults are the real modules.
@@ -12,6 +15,14 @@ import {
   type FetchByCidOptions,
   type ReadSource,
 } from "../data/fetch-by-cid";
+import {
+  fetchParts as defaultFetchParts,
+  partsToPrefetch,
+  registeredPartName,
+  type FetchedPart,
+  type FetchPartsOptions,
+  type PartToFetch,
+} from "../data/fetch-parts";
 import { loadManifest as defaultLoadManifest, type LoadedManifest } from "../data/manifest";
 import {
   latestRun as defaultLatestRun,
@@ -53,6 +64,11 @@ export interface PermitsLoaderDeps {
   readonly fallbackLabel: (source: ReadSource) => string | null;
   readonly urls: ReadPathUrls;
   readonly engine: () => Promise<EngineModule>;
+  readonly fetchParts: (
+    parts: readonly PartToFetch[],
+    read: LoadedManifest["read"],
+    options: FetchPartsOptions,
+  ) => Promise<FetchedPart[]>;
 }
 
 function envHost(key: "VITE_CID_COPY_HOST" | "VITE_FILEBASE_GATEWAY_HOST"): string {
@@ -84,6 +100,8 @@ function permitsEmitted(manifest: RunManifestV1): number {
   return count.count;
 }
 
+type OpenedEngine = Awaited<ReturnType<EngineModule["openEngine"]>>;
+
 export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}): PermitsLoader {
   return async (report, signal) => {
     const deps: PermitsLoaderDeps = {
@@ -93,19 +111,32 @@ export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}):
       fallbackLabel: overrides.fallbackLabel ?? defaultFallbackLabel,
       urls: overrides.urls ?? readPathUrlsFromEnv(),
       engine: overrides.engine ?? (() => import("./duckdb-wasm")),
+      fetchParts: overrides.fetchParts ?? defaultFetchParts,
     };
     report(STAGE_TEXTS.engine);
-    const engineModule = await deps.engine();
-    const engine = await engineModule.openEngine();
+    // ERR-17: started now, awaited only once the manifest and the parts are in hand.
+    const starting: Promise<{ module: EngineModule; engine: OpenedEngine }> = deps
+      .engine()
+      .then(async (module) => ({ module, engine: await module.openEngine() }));
+    starting.catch(() => undefined);
     try {
-      signal.throwIfAborted();
       report(STAGE_TEXTS.manifest);
       const index = await deps.loadRunsIndex({ signal });
       const entry = deps.latestRun(index);
       const loaded = await deps.loadManifest(entry.manifestCid, { urls: deps.urls, signal });
       signal.throwIfAborted();
+      const wanted = partsToPrefetch(loaded.manifest);
+      const parts = wanted === null ? null : await deps.fetchParts(wanted, loaded.read, { signal });
+      signal.throwIfAborted();
+      const { module: engineModule, engine } = await starting;
+      signal.throwIfAborted();
       report(STAGE_TEXTS.bind);
-      await engineModule.bindRun(engine, loaded.read.bytes, loaded.read.partUrl);
+      let partUrl = loaded.read.partUrl;
+      if (parts !== null) {
+        for (const part of parts) await engine.registerFile(registeredPartName(part), part.bytes);
+        partUrl = registeredPartName;
+      }
+      await engineModule.bindRun(engine, loaded.read.bytes, partUrl);
       signal.throwIfAborted();
       report(STAGE_TEXTS.query);
       const emitted = permitsEmitted(loaded.manifest);
@@ -122,8 +153,12 @@ export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}):
         fallbackLabel: deps.fallbackLabel(loaded.read.source),
       };
     } finally {
-      // A-03 lists once; the worker is released so the page holds no idle engine.
-      await engine.close().catch(() => undefined);
+      // A-03 lists once; the worker is released so the page holds no idle engine (also when the
+      // load failed before the engine was needed: it is closed once it has started).
+      starting.then(
+        ({ engine }) => engine.close().catch(() => undefined),
+        () => undefined,
+      );
     }
   };
 }

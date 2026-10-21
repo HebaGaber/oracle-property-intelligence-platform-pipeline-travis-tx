@@ -88,6 +88,7 @@ vi.mock("../src/s3-read.js", () => ({
   ]),
 }));
 
+import { resetBenchBinding } from "../src/handlers/bench.js";
 import { createHandler } from "../src/handlers/trpc.js";
 import {
   DIMENSION_PROCEDURE,
@@ -179,7 +180,7 @@ function lambdaContext(awsRequestId = "lambda-req-0001"): Context {
     functionName: "countylens-api",
     functionVersion: "$LATEST",
     invokedFunctionArn: "arn:aws:lambda:local:000000000000:function:countylens-api",
-    memoryLimitInMB: "1769",
+    memoryLimitInMB: "3008",
     logGroupName: "/aws/lambda/countylens-api",
     logStreamName: "2026/10/21/[$LATEST]abcdef",
     callbackWaitsForEmptyEventLoop: false,
@@ -310,6 +311,7 @@ describe("apps/api observability (T071)", () => {
   beforeEach(() => {
     H.engine.run.mockClear();
     H.engine.all.mockClear();
+    resetBenchBinding(); // ERR-18: every test binds its own view
     h = harness();
   });
 

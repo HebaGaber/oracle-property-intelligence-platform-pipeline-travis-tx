@@ -14,6 +14,7 @@ import type { Locator, Page, TestInfo } from "@playwright/test";
 import type { RunManifestV1 } from "@countylens/contract";
 import { PERMITS_TEXTS } from "@countylens/shared";
 import { expect, test } from "./lib/fixtures.js";
+import { checkpoint } from "./lib/evidence.js";
 import { artifactsOf, publicCid } from "./lib/manifest.js";
 import { harnessConfig, requireCidCopyHost } from "./lib/runtime.js";
 
@@ -175,6 +176,7 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
       expectGatewayReads(network, gatewayHost, manifest, manifestCid);
       await expect(rows).toHaveCount(permitsPublished(manifest));
       await expect(page.getByText(fallbackLabel(gatewayHost), { exact: true })).toBeVisible();
+      await checkpoint(page, "032", "2-4-gateway-fallback-labelled");
 
       // Step 5: with the gateway aborted too, the explicit error state, never a blank page.
       await context.route(byHost(gatewayHost), (route) => route.abort());
@@ -185,6 +187,7 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
       await expect(page.locator("table")).toHaveCount(0);
       await expect(page.locator(ROW)).toHaveCount(0);
       await expect(page.getByRole("heading", { name: "CountyLens" })).toBeVisible();
+      await checkpoint(page, "032", "5-both-hosts-down-error");
     });
   });
 
@@ -221,6 +224,7 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
       await expect(page.getByRole("alert")).toHaveCount(0);
       await expect(rows).toHaveCount(permitsPublished(manifest));
       await expect(page.getByText(fallbackLabel(gatewayHost), { exact: true })).toBeVisible();
+      await checkpoint(page, "033", "expected-rows-labelled-no-500");
     });
   });
 
@@ -269,6 +273,7 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
       // Expected result: rows from the gateway, labelled.
       await expect(rows).toHaveCount(permitsPublished(manifest));
       await expect(page.getByText(fallbackLabel(gatewayHost), { exact: true })).toBeVisible();
+      await checkpoint(page, "034", "expected-rows-labelled-after-timeout");
     });
   });
 });

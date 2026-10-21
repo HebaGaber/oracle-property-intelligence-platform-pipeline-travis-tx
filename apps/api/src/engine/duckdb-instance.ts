@@ -1,12 +1,16 @@
 // A-03 T072 (G-C2a): the one module that imports @duckdb/node-api (ESLint allows it under
 // apps/*/src/engine/** only, AD-19). `openDuckDb` returns the query-core QueryEngine over one
-// in-memory DuckDB: `threads` per ADR-0001 (2 on the 1,769 MB Lambda), `extension_directory`
+// in-memory DuckDB: `threads` per ADR-0001 as updated by ERR-18 (4 on the 3,008 MB Lambda), `extension_directory`
 // pointing at the httpfs copy the CDK Api stack (T074) bundles beside the handler, remote
 // autoinstall / autoload off so the Lambda never reaches extensions.duckdb.org, TimeZone UTC so
 // the builders' as_of date is the manifest's UTC calendar date, and a writable temp directory
 // (the Lambda task root is read-only). Values come back JSON-shaped, the same way as
 // packages/query-core/scripts/duckdb-engine.ts (DATE → "YYYY-MM-DD", TIMESTAMPTZ → ISO 8601 UTC,
-// BIGINT → number). duckdb-node.ts wraps this in the module-scope engine; the router tests
+// BIGINT → number). ERR-18: `cacheRemoteReads` keeps every part's footer and fetched column chunks
+// in DuckDB's memory across queries without re-validating them (http metadata cache, Parquet
+// metadata cache, external file cache with NO_VALIDATION). Safe because the Lambda only reads
+// immutable bytes: `ipfs/<cid>` is content-addressed, and a bench part gets a new presigned URL
+// (a new cache key) whenever its ETag changes (s3-read.ts). duckdb-node.ts wraps this in the module-scope engine; the router tests
 // replace this module with a recording fake so they run without a database.
 import {
   ANY,
@@ -31,6 +35,19 @@ export interface DuckDbOptions {
   readonly tempDirectory: string;
   /** `LOAD httpfs` after opening (the Lambda reads presigned HTTPS URLs); off over local files. */
   readonly httpfs: boolean;
+  /** ERR-18: cache footers, HTTP metadata and fetched bytes across queries, never re-validated.
+   *  Only for immutable reads (a URL whose bytes never change). Default off. */
+  readonly cacheRemoteReads?: boolean;
+}
+
+/** ERR-18: the cache settings `cacheRemoteReads` applies (http metadata only with httpfs loaded). */
+export function remoteReadCacheSql(httpfs: boolean): string[] {
+  return [
+    ...(httpfs ? ["SET enable_http_metadata_cache = true"] : []),
+    "SET parquet_metadata_cache = true",
+    "SET enable_external_file_cache = true",
+    "SET validate_external_file_cache = 'NO_VALIDATION'",
+  ];
 }
 
 export interface DuckDbEngine extends QueryEngine {
@@ -80,6 +97,9 @@ export async function openDuckDb(options: DuckDbOptions): Promise<DuckDbEngine> 
   try {
     await connection.run("SET TimeZone = 'UTC'");
     if (options.httpfs) await connection.run("LOAD httpfs");
+    if (options.cacheRemoteReads === true) {
+      for (const sql of remoteReadCacheSql(options.httpfs)) await connection.run(sql);
+    }
   } catch (error) {
     connection.closeSync();
     instance.closeSync();

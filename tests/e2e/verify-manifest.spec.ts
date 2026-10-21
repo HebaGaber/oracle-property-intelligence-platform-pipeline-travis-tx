@@ -3,7 +3,8 @@
 // byte-compare line per gateway, one line per artifact per gateway, the fixed refusal for
 // a non-allowlisted host, and `ALL ARTIFACTS VERIFIED` only when everything matches.
 import { existsSync, writeFileSync } from "node:fs";
-import type { ManifestArtifact } from "@countylens/contract";
+import { RunManifestV1, type ManifestArtifact } from "@countylens/contract";
+import { jcsBytes } from "@countylens/publish";
 import { expect, test } from "./lib/fixtures.js";
 import { artifactsOf, publicCid } from "./lib/manifest.js";
 import {
@@ -46,11 +47,22 @@ async function verify(args: string[], label: string): Promise<RunResult> {
   return result;
 }
 
+/** The `FAIL <gateway> <name> …` lines verify-manifest prints for one artifact. */
+function failLines(result: RunResult, name: string): string[] {
+  return lines(result.output).filter(
+    (line) => line.startsWith("FAIL") && line.includes(` ${name} `),
+  );
+}
+
 function lastLine(result: RunResult): string | undefined {
   return lines(result.stdout).at(-1);
 }
 
-/** A copy of the manifest JSON with one artifact changed, written under the test's output dir. */
+/**
+ * A copy of the manifest with one artifact changed, written under the test's output dir as the
+ * exact JCS bytes the publisher writes (`jcsBytes` from @countylens/publish), so verify-manifest
+ * passes its "exact JCS bytes" guard and reaches the per-artifact checks.
+ */
 function tamperedManifest(
   run: PublishedRun,
   label: string,
@@ -61,7 +73,7 @@ function tamperedManifest(
   if (!original) throw new Error("no artifact to tamper with");
   const artifacts = run.manifest.artifacts.map((a) => (a === original ? change(a) : a));
   const path = test.info().outputPath(`tampered-${label}.json`);
-  writeFileSync(path, JSON.stringify({ ...run.manifest, artifacts }));
+  writeFileSync(path, jcsBytes(RunManifestV1.parse({ ...run.manifest, artifacts })));
   return { path, artifact: original };
 }
 
@@ -144,6 +156,10 @@ test.describe("A-03 verify-manifest (FR-006)", () => {
       expect(shaResult.output).not.toContain(SUCCESS);
       expect(shaResult.output, "names the artifact").toContain(sha.artifact.name);
       expect(shaResult.output, "names the mismatched field").toMatch(/sha256/i);
+      expect(
+        failLines(shaResult, sha.artifact.name).length,
+        `a FAIL line names ${sha.artifact.name}`,
+      ).toBeGreaterThan(0);
 
       const size = tamperedManifest(run, "size", (a) => ({ ...a, size: a.size + 1 }), firstTable);
       const sizeResult = await verify([size.path], "tc-041-size");
@@ -151,6 +167,10 @@ test.describe("A-03 verify-manifest (FR-006)", () => {
       expect(sizeResult.output).not.toContain(SUCCESS);
       expect(sizeResult.output, "names the artifact").toContain(size.artifact.name);
       expect(sizeResult.output, "names the mismatched field").toMatch(/size/i);
+      expect(
+        failLines(sizeResult, size.artifact.name).length,
+        `a FAIL line names ${size.artifact.name}`,
+      ).toBeGreaterThan(0);
     });
   });
 
@@ -211,6 +231,10 @@ test.describe("A-03 verify-manifest (FR-006)", () => {
       expect(bad.code, "a corrupted carCid exits non-zero").not.toBe(0);
       expect(bad.output).not.toContain(SUCCESS);
       expect(bad.output, "names the artifact").toContain(corrupted.artifact.name);
+      expect(
+        failLines(bad, corrupted.artifact.name).length,
+        `a FAIL line names ${corrupted.artifact.name}`,
+      ).toBeGreaterThan(0);
     });
   });
 });

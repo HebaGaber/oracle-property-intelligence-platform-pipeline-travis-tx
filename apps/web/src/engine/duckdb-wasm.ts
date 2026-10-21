@@ -9,6 +9,12 @@
 // without them this build downloads every table part whole instead of range-reading it.
 // Values come back JSON-shaped as the QueryEngine contract says (dates YYYY-MM-DD, timestamps
 // ISO 8601 UTC, bigints as numbers, lists and structs as plain values).
+// ERR-14 (TC-023): DuckDB never downloads an extension itself. Autoinstall and autoload are off;
+// the three extensions the queries need (parquet, json, icu) are vendored gzip-compressed Vite
+// assets of this build (vendor/duckdb-extensions, scripts/vendor-duckdb-extensions.ts), fetched
+// in parallel with the engine, gunzipped like the engine and LOADed from same-origin object URLs.
+// ERR-15/16/17: prefetched table parts are handed to the engine as registered file buffers
+// (`registerFile`), so the engine itself makes no network request for them.
 import {
   bindManifest,
   listRoofingPermitsSql,
@@ -41,6 +47,39 @@ export const DUCKDB_FILESYSTEM_FLAGS: DuckDbFilesystemFlags = Object.freeze({
 export const DUCKDB_OPEN_CONFIG: DuckDbOpenConfig = Object.freeze({
   filesystem: DUCKDB_FILESYSTEM_FLAGS,
 });
+
+/**
+ * ERR-14: settings sent right after `connect`, before any other statement, so a query that needs an
+ * extension that is not loaded fails loudly instead of fetching it from extensions.duckdb.org.
+ */
+export const EXTENSION_SETTINGS_SQL: readonly string[] = Object.freeze([
+  "SET autoinstall_known_extensions = false",
+  "SET autoload_known_extensions = false",
+]);
+
+/** parquet: read_parquet; json: CAST(… AS JSON) in bindManifest; icu: SET TimeZone and TIMESTAMPTZ. */
+export const ENGINE_EXTENSIONS = Object.freeze(["parquet", "json", "icu"] as const);
+export type EngineExtension = (typeof ENGINE_EXTENSIONS)[number];
+
+/** One vendored extension as the build serves it: the gzip-compressed `.duckdb_extension.wasm.gz`. */
+export interface ExtensionAsset {
+  readonly name: EngineExtension;
+  /** Same-origin URL of the `.wasm.gz` Vite asset. */
+  readonly url: string;
+}
+
+/**
+ * The LOAD statement for an extension gunzipped into an object URL. DuckDB-WASM fetches the path
+ * with an XHR (the fragment is not sent) and takes the extension name, and with it the
+ * `<name>_duckdb_cpp_init` entry point, from the text after the last `/`, so the fragment carries
+ * the canonical file name. Only `blob:` URLs of this page are accepted (ERR-14: no other host).
+ */
+export function loadExtensionSql(objectUrl: string, name: EngineExtension): string {
+  if (!objectUrl.startsWith("blob:") || /['#\s]/.test(objectUrl)) {
+    throw new Error(`loadExtensionSql: ${name} must come from a same-origin object URL`);
+  }
+  return `LOAD '${objectUrl}#/${name}.duckdb_extension.wasm'`;
+}
 
 /** The self-hosted eh bundle files (`@duckdb/duckdb-wasm/dist`), by name; the build serves the WASM as `<name>.gz` (TC-028). */
 export const SELF_HOSTED_BUNDLE = Object.freeze({
@@ -78,6 +117,8 @@ export interface AsyncDuckDbLike {
   instantiate(mainModule: string, pthreadWorker?: string | null): Promise<unknown>;
   open(config: DuckDbOpenConfig): Promise<void>;
   connect(): Promise<DuckDbConnectionLike>;
+  /** Makes `name` readable by `read_parquet(name)` from memory (no network). */
+  registerFileBuffer(name: string, buffer: Uint8Array): Promise<void>;
   terminate(): Promise<void>;
 }
 
@@ -89,6 +130,8 @@ export interface DuckDbRuntime {
     readonly mainWorker: string;
     readonly pthreadWorker: string | null;
   };
+  /** The vendored extensions (ERR-14), LOADed after connect; empty for a runtime that needs none. */
+  readonly extensions: readonly ExtensionAsset[];
   createDb(workerUrl: string): AsyncDuckDbLike;
 }
 
@@ -101,10 +144,13 @@ export function compressedModuleUrl(wasmUrl: string): string {
 
 /** Lazy-loads the library and the self-hosted eh bundle (Vite emits both files as assets). */
 export const loadSelfHostedDuckDb: LoadDuckDb = async () => {
-  const [duckdb, wasm, worker] = await Promise.all([
+  const [duckdb, wasm, worker, parquet, json, icu] = await Promise.all([
     import("@duckdb/duckdb-wasm"),
     import("@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url"),
     import("@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url"),
+    import("../../vendor/duckdb-extensions/v1.5.4/wasm_eh/parquet.duckdb_extension.wasm.gz?url"),
+    import("../../vendor/duckdb-extensions/v1.5.4/wasm_eh/json.duckdb_extension.wasm.gz?url"),
+    import("../../vendor/duckdb-extensions/v1.5.4/wasm_eh/icu.duckdb_extension.wasm.gz?url"),
   ]);
   // The dev server has no compress step; every build (preview and hosted) runs it.
   const dev = import.meta.env.DEV;
@@ -115,6 +161,11 @@ export const loadSelfHostedDuckDb: LoadDuckDb = async () => {
       mainWorker: worker.default,
       pthreadWorker: null,
     },
+    extensions: [
+      { name: "parquet", url: parquet.default },
+      { name: "json", url: json.default },
+      { name: "icu", url: icu.default },
+    ],
     createDb: (workerUrl) => new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl)),
   };
 };
@@ -183,6 +234,8 @@ export async function fetchGzippedWasm(url: string, deps: WasmFetchDeps): Promis
 }
 
 export interface BrowserEngine extends QueryEngine {
+  /** Registers in-memory bytes under `name` (a prefetched table part); no network. */
+  registerFile(name: string, bytes: Uint8Array): Promise<void>;
   /** Closes the connection and terminates the worker. */
   close(): Promise<void>;
 }
@@ -304,20 +357,62 @@ async function instantiate(
   }
 }
 
+interface LoadedExtension {
+  readonly name: EngineExtension;
+  readonly module: WasmModuleUrl;
+}
+
+/** Fetches and gunzips every vendored extension in parallel (ERR-14); revokes what it made on failure. */
+async function fetchExtensions(
+  assets: readonly ExtensionAsset[],
+  deps: WasmFetchDeps,
+): Promise<LoadedExtension[]> {
+  const settled = await Promise.allSettled(
+    assets.map(async (asset) => ({
+      name: asset.name,
+      module: await fetchGzippedWasm(asset.url, deps),
+    })),
+  );
+  const loaded = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  const failed = settled.find((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (failed !== undefined) {
+    for (const extension of loaded) extension.module.revoke();
+    throw failed.reason;
+  }
+  return loaded;
+}
+
 async function start(
   load: LoadDuckDb,
   deps: WasmFetchDeps,
 ): Promise<{ db: AsyncDuckDbLike; conn: DuckDbConnectionLike }> {
   const runtime = await load();
   const db = runtime.createDb(runtime.bundle.mainWorker);
+  // The extension downloads run while the engine downloads and compiles (ERR-17).
+  const extensions = fetchExtensions(runtime.extensions, deps);
+  extensions.catch(() => undefined);
   try {
     await instantiate(db, runtime.bundle, deps);
     await db.open(DUCKDB_OPEN_CONFIG);
     const conn = await db.connect();
+    for (const sql of EXTENSION_SETTINGS_SQL) await conn.query(sql);
+    const loaded = await extensions;
+    try {
+      for (const extension of loaded) {
+        await conn.query(loadExtensionSql(extension.module.url, extension.name));
+      }
+    } finally {
+      for (const extension of loaded) extension.module.revoke();
+    }
     // builders.ts: the engine's TimeZone must be UTC so as_of is the manifest's UTC date.
     await conn.query("SET TimeZone = 'UTC'");
     return { db, conn };
   } catch (cause) {
+    // Object URLs of extensions that arrive after a failure are released too.
+    extensions.then(
+      (loaded) => loaded.forEach((extension) => extension.module.revoke()),
+      () => undefined,
+    );
     await db.terminate().catch(() => undefined);
     throw cause;
   }
@@ -344,6 +439,9 @@ export async function openEngine(
     },
     async all(sql: string): Promise<Row[]> {
       return arrowToRows(await conn.query(sql));
+    },
+    async registerFile(name: string, bytes: Uint8Array): Promise<void> {
+      await db.registerFileBuffer(name, bytes);
     },
     async close(): Promise<void> {
       await conn.close().catch(() => undefined);
