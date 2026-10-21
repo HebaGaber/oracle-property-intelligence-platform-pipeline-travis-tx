@@ -1,0 +1,319 @@
+// Playwright fixtures and page helpers of the A-13 Part 1 specs (T032, T033). Step 0 of every case
+// (test plan § 8): read `{RUNTIME_URL}/runs/index.json`, take the latest entry (greatest
+// `finishedAt`) and fetch its manifest by CID from Pinata as the oracle `M` (lib/a13.ts). The
+// `oracle` fixture does that once per worker; every expected value comes from it at run time.
+// Checkpoint screenshots go to docs/evidence/img/A-13-TC-{nnn}-{step}.png.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { test as base, expect, type Locator, type Page, type Request } from "@playwright/test";
+import type { RunManifestV1, RunsIndexV1 } from "@countylens/contract";
+import {
+  fetchA13RunsIndex,
+  fetchManifestFromPinata,
+  latestRunEntry,
+  runNumber,
+  runsByFinishedAt,
+  type OracleManifest,
+  type RunsIndexEntry,
+} from "./a13.js";
+import {
+  ExploreSearchResult,
+  SEL,
+  a11Branch,
+  a13EvidenceName,
+  trpcData,
+  type A13Route,
+  type GazetteerPlace,
+} from "./a13-ui.js";
+import { EVIDENCE_IMG_DIR } from "./evidence.js";
+import { repoRoot } from "./runtime.js";
+
+export interface A13Oracle {
+  readonly index: RunsIndexV1;
+  /** Index entries in `finishedAt` order (oldest first). */
+  readonly runs: readonly RunsIndexEntry[];
+  readonly latest: RunsIndexEntry;
+  /** Run {n} of the latest run (1-based `finishedAt` order). */
+  readonly n: number;
+  readonly manifestCid: string;
+  /** The latest manifest `M`, fetched by CID from Pinata and hash-checked. */
+  readonly M: RunManifestV1;
+  readonly manifestBytes: Uint8Array;
+  /** "Waits for A-11" switch (test plan § 3). */
+  readonly branch: "a11" | "today";
+}
+
+type WorkerFixtures = { oracle: A13Oracle };
+
+export const test = base.extend<Record<never, never>, WorkerFixtures>({
+  oracle: [
+    // Playwright reads the fixture list from the destructuring pattern, so it must stay `{}`.
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use) => {
+      const index = await fetchA13RunsIndex();
+      const latest = latestRunEntry(index);
+      const fetched: OracleManifest = await fetchManifestFromPinata(latest.manifestCid);
+      await use({
+        index,
+        runs: runsByFinishedAt(index),
+        latest,
+        n: runNumber(index, latest.runId),
+        manifestCid: latest.manifestCid,
+        M: fetched.manifest,
+        manifestBytes: fetched.bytes,
+        branch: a11Branch(index.runs.length, fetched.manifest),
+      });
+    },
+    { scope: "worker" },
+  ],
+});
+
+export { expect };
+
+/** Records which branch of a "Waits for A-11" case ran (test plan § 3). */
+export function noteBranch(oracle: A13Oracle, detail = ""): void {
+  test.info().annotations.push({
+    type: "a11-branch",
+    description: `${oracle.branch} (runs=${oracle.runs.length})${detail === "" ? "" : ` · ${detail}`}`,
+  });
+}
+
+/** Saves docs/evidence/img/A-13-TC-{nnn}-{step}.png and attaches it to the report. */
+export async function checkpoint(
+  page: Page,
+  tc: string,
+  step: string | number,
+  options: { fullPage?: boolean } = {},
+): Promise<string> {
+  const name = a13EvidenceName(tc, step);
+  mkdirSync(EVIDENCE_IMG_DIR, { recursive: true });
+  const path = resolve(EVIDENCE_IMG_DIR, name);
+  const body = await page.screenshot({ path, fullPage: options.fullPage ?? false });
+  await test.info().attach(name, { body, contentType: "image/png" });
+  return `docs/evidence/img/${name}`;
+}
+
+/** Writes a JSON evidence file under docs/evidence (timings of the perf cases) and attaches it. */
+export async function evidenceJson(fileName: string, value: unknown): Promise<string> {
+  const dir = resolve(repoRoot, "docs", "evidence");
+  mkdirSync(dir, { recursive: true });
+  const body = `${JSON.stringify(value, null, 2)}\n`;
+  writeFileSync(resolve(dir, fileName), body);
+  await test.info().attach(fileName, { body, contentType: "application/json" });
+  return `docs/evidence/${fileName}`;
+}
+
+// ---------------------------------------------------------------------------------------
+// Network recording
+// ---------------------------------------------------------------------------------------
+
+export interface Seen {
+  readonly url: URL;
+  readonly method: string;
+  readonly headers: Record<string, string>;
+  readonly resourceType: string;
+  readonly at: number;
+}
+
+export interface NetLog {
+  readonly requests: Seen[];
+  since(mark: number): Seen[];
+  mark(): number;
+}
+
+export function recordRequests(page: Page): NetLog {
+  const requests: Seen[] = [];
+  page.on("request", (req: Request) => {
+    requests.push({
+      url: new URL(req.url()),
+      method: req.method(),
+      headers: req.headers(),
+      resourceType: req.resourceType(),
+      at: Date.now(),
+    });
+  });
+  return {
+    requests,
+    mark: () => requests.length,
+    since: (mark) => requests.slice(mark),
+  };
+}
+
+export const isDuckdbWasm = (u: URL): boolean =>
+  /duckdb/i.test(u.pathname) && /\.(wasm|worker\.js|js)$/i.test(u.pathname);
+export const isApiCall = (u: URL): boolean =>
+  u.pathname.startsWith("/api/") || u.pathname.includes("/trpc/");
+export const EXPLORE_SEARCH = /\/api\/trpc\/(?:[^?]*,)?explore\.search(?:[,?]|$)/;
+
+// ---------------------------------------------------------------------------------------
+// Page helpers
+// ---------------------------------------------------------------------------------------
+
+/** Waits until the route's section leaves `loading` (ready or error) and returns it. */
+export async function settled(page: Page, route: A13Route, timeout = 60_000): Promise<Locator> {
+  const section = page.locator(SEL.page(route));
+  await expect(section).toBeVisible({ timeout });
+  await expect(section).not.toHaveAttribute("data-state", "loading", { timeout });
+  return section;
+}
+
+/** Waits for the page to be `ready`. */
+export async function ready(page: Page, route: A13Route, timeout = 60_000): Promise<Locator> {
+  const section = await settled(page, route, timeout);
+  await expect(section).toHaveAttribute("data-state", "ready");
+  return section;
+}
+
+/**
+ * Below 840 px the filter sheet is collapsed behind a "Filters" button; press it once so the
+ * controls can be reached. A no-op on desktop (button hidden) or when the sheet is open.
+ */
+export async function ensureFiltersOpen(page: Page): Promise<void> {
+  const toggle = page.getByRole("button", { name: "Filters", exact: true });
+  if ((await toggle.isVisible()) && (await toggle.getAttribute("aria-expanded")) === "false") {
+    await toggle.click();
+  }
+}
+
+/** Sets a labelled control: `<select>` by option value/label, checkbox on/off, else fill. */
+export async function setControl(control: Locator, value: string | boolean): Promise<void> {
+  await ensureFiltersOpen(control.page());
+  const tag = await control.evaluate((el) => el.tagName.toLowerCase());
+  const type = await control.getAttribute("type");
+  if (
+    typeof value === "boolean" ||
+    type === "checkbox" ||
+    (await control.getAttribute("role")) === "switch"
+  ) {
+    await control.setChecked(value === true || value === "true" || value === "1");
+    return;
+  }
+  if (tag === "select") {
+    await control.selectOption(value).catch(async () => control.selectOption({ label: value }));
+    return;
+  }
+  await control.fill(value);
+  await control.press("Enter").catch(() => undefined);
+}
+
+/** Opens Explore · SQL, waits for the engine, runs `sql` and returns the result locator text. */
+export async function runSql(page: Page, sql: string): Promise<void> {
+  const editor = page.getByRole("textbox", { name: "SQL" });
+  await expect(editor).toBeEditable({ timeout: 60_000 });
+  await editor.fill(sql);
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+}
+
+/** The single integer of a one-row, one-column SQL result. */
+export async function sqlScalar(page: Page): Promise<number> {
+  const grid = page.locator(SEL.sqlResult);
+  await expect(grid).toBeVisible({ timeout: 60_000 });
+  const cells = grid.locator("tbody tr td");
+  await expect(grid.locator("tbody tr")).toHaveCount(1);
+  await expect(cells).toHaveCount(1);
+  const text = (await cells.first().innerText()).replace(/[,\s]/g, "");
+  expect(text, "the SQL result is one integer").toMatch(/^\d+$/);
+  return Number(text);
+}
+
+/** Opens `/tx/travis/explore?mode=sql` in a new page of the same context and returns a count. */
+export async function sqlCountInNewTab(
+  page: Page,
+  explorePath: string,
+  sql: string,
+): Promise<number> {
+  const tab = await page.context().newPage();
+  try {
+    await tab.goto(`${explorePath}?mode=sql`);
+    await runSql(tab, sql);
+    return await sqlScalar(tab);
+  } finally {
+    await tab.close();
+  }
+}
+
+/** Integer in a text with optional en-US grouping. */
+export function intOf(text: string): number {
+  const m = /-?\d[\d,]*/.exec(text);
+  if (m === null) throw new Error(`no integer in "${text}"`);
+  return Number(m[0].replace(/,/g, ""));
+}
+
+// ---------------------------------------------------------------------------------------
+// explore.search and the gazetteer
+// ---------------------------------------------------------------------------------------
+
+/** Runs `action` and returns the next parsed `explore.search` response. */
+export async function nextSearch(
+  page: Page,
+  action: () => Promise<unknown>,
+  timeout = 30_000,
+): Promise<ExploreSearchResult> {
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (r) => EXPLORE_SEARCH.test(r.url()) && r.request().method() !== "OPTIONS",
+      {
+        timeout,
+      },
+    ),
+    action(),
+  ]);
+  expect(response.status(), `explore.search → HTTP ${response.status()}`).toBe(200);
+  return ExploreSearchResult.parse(trpcData(await response.json()));
+}
+
+const PLACES_JSON = resolve(
+  repoRoot,
+  "packages",
+  "query-core",
+  "gazetteer",
+  "travis-places@1.0.0",
+  "places.json",
+);
+
+/** A place of travis-places@1.0.0 by Census name (committed gazetteer file, read at run time). */
+export function gazetteerPlace(name: string): GazetteerPlace {
+  const rows = JSON.parse(readFileSync(PLACES_JSON, "utf8")) as GazetteerPlace[];
+  const row = rows.find((p) => p.name.toLowerCase() === name.toLowerCase());
+  if (row === undefined) throw new Error(`travis-places@1.0.0 has no place named ${name}`);
+  return row;
+}
+
+export interface DemoArea {
+  readonly place: GazetteerPlace;
+  readonly radiusMi: number;
+  /** Counts the presenter recorded for the current run, when the evidence file has them. */
+  readonly recorded: { readonly stalled: number; readonly open: number } | null;
+  readonly fromEvidence: boolean;
+}
+
+const OPEN_PERMITS_EVIDENCE = resolve(repoRoot, "docs", "evidence", "A-13-open-permits.md");
+
+/**
+ * TC-009 test data: the area in docs/evidence/A-13-open-permits.md (`place: {name}`,
+ * `radius: {r} mi`, `stalled: {n}`, `open: {n}` lines), else Pflugerville 5 mi.
+ */
+export function demoArea(): DemoArea {
+  if (!existsSync(OPEN_PERMITS_EVIDENCE)) {
+    return {
+      place: gazetteerPlace("Pflugerville"),
+      radiusMi: 5,
+      recorded: null,
+      fromEvidence: false,
+    };
+  }
+  const text = readFileSync(OPEN_PERMITS_EVIDENCE, "utf8");
+  const place = /^\s*[-*]?\s*place:\s*(.+?)\s*$/im.exec(text)?.[1] ?? "Pflugerville";
+  const radius = Number(/^\s*[-*]?\s*radius:\s*([\d.]+)\s*mi/im.exec(text)?.[1] ?? "5");
+  const stalled = /^\s*[-*]?\s*stalled:\s*(\d+)/im.exec(text)?.[1];
+  const open = /^\s*[-*]?\s*open:\s*(\d+)/im.exec(text)?.[1];
+  return {
+    place: gazetteerPlace(place),
+    radiusMi: radius,
+    recorded:
+      stalled === undefined || open === undefined
+        ? null
+        : { stalled: Number(stalled), open: Number(open) },
+    fromEvidence: true,
+  };
+}

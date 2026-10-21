@@ -268,6 +268,11 @@ describe("exploreSearchSql over a bound fixture (DuckDB)", () => {
       status_class: "stalled",
     });
     expect(row.permit?.open_years).toBeGreaterThan(11);
+    expect(Number.isInteger(row.permit?.open_days)).toBe(true);
+    expect(row.permit?.open_days).toBeGreaterThan(4000);
+    expect(Math.floor(((row.permit?.open_days ?? 0) / 365.25) * 10) / 10).toBe(
+      row.permit?.open_years,
+    );
     expect(row.contractor).toEqual({
       name_as_printed: null,
       resolution: "unresolved",

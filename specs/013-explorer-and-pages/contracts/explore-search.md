@@ -9,6 +9,8 @@ Input (Zod, all bounded):
 - `sort`: `"nearest" | "open_desc" | "roof_desc"` (default `nearest`)
 - `limit`: integer 1..1000 (default 200); `page`: integer ≥ 0
 
+Each `ExploreRow.permit` carries `open_years` (one decimal, rounded down) and `open_days` (integer, the exact `open_days` of `v_roofing_permit`; the Permit chip puts it in `data-open-days`).
+
 Output: `{ total_within_r, tenure_unknown, rows: ExploreRow[], close_matches: { row: ExploreRow, miles_outside: number }[], as_of: { runId, manifestCid }, engine: "server" }` — see [data-model.md](../data-model.md) ExploreResult.
 
 Rules: SQL only from `packages/query-core` `exploreSearchSql`; bounding box then haversine (A-oracle § 9); no `LIKE '%ROOF%'` (P0-9); Powertools log line with `procedure = explore.search`, `queryDurationMs`, X-Ray subsegment `duckdb.query`. Errors map to `BAD_REQUEST` (input) or `INTERNAL_SERVER_ERROR` with a plain message, never a stack trace.

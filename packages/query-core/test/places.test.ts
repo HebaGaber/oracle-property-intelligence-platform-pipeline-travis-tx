@@ -43,3 +43,31 @@ describe("resolvePlace (travis-places@1.0.0)", () => {
     );
   });
 });
+
+describe("searchPlaces (A-13 follow-up: suggestions while typing)", () => {
+  it('"Pflug" → Pflugerville first, with the resolvePlace label', async () => {
+    const { searchPlaces } = await import("../src/places.js");
+    const found = searchPlaces("Pflug", 5);
+    expect(found[0]?.label).toBe(
+      "Pflugerville city · Census 2024 Gazetteer · 30.447765, −97.602116",
+    );
+    expect(found[0]).toEqual(resolvePlace("Pflugerville"));
+    expect(found.length).toBeLessThanOrEqual(5);
+  });
+
+  it("matches case-insensitively, an exact ZIP, and nothing for empty or unknown text", async () => {
+    const { searchPlaces } = await import("../src/places.js");
+    expect(searchPlaces("pFLUG", 3)[0]?.name).toBe("Pflugerville city");
+    expect(searchPlaces("78753", 3)[0]).toEqual(resolvePlace("78753"));
+    expect(searchPlaces("", 5)).toEqual([]);
+    expect(searchPlaces("Zzzz", 5)).toEqual([]);
+  });
+
+  it("is exported from the gazetteer subpath and the barrel", async () => {
+    const g = await import("../gazetteer/travis-places@1.0.0/index.js");
+    const barrel = await import("../src/index.js");
+    expect(typeof g.searchPlaces).toBe("function");
+    expect(g.searchPlaces("Pflug", 1)[0]?.name).toBe("Pflugerville city");
+    expect(typeof barrel.searchPlaces).toBe("function");
+  });
+});

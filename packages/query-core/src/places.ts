@@ -3,7 +3,13 @@
 // search box: "{name_lsad} · Census {year} Gazetteer · {lat}, {lon}", with U+2212 for a negative
 // coordinate. The year comes from the Census source file's URL (".../2024_Gazetteer/..."), so no
 // year is written here. Outside Travis → out_of_scope with no point.
-import { GAZETTEER, lookup, type SourceStamp } from "../gazetteer/travis-places@1.0.0/index.js";
+import {
+  GAZETTEER,
+  lookup,
+  searchPlaces as searchGazetteer,
+  type Found,
+  type SourceStamp,
+} from "../gazetteer/travis-places@1.0.0/index.js";
 import placesJson from "../gazetteer/travis-places@1.0.0/places.json" with { type: "json" };
 
 export interface ResolvedPlace {
@@ -53,10 +59,13 @@ export function resolvePlace(text: string): PlaceResult {
   const trimmed = text.trim();
   const r = GEOID.test(trimmed) ? lookupGeoid(trimmed) : lookup(text);
   if (r === undefined || r.status !== "found") return outOfScope;
-  const id = r.kind === "place" ? r.geoid : r.zcta;
+  return resolved(r);
+}
+
+function resolved(r: Found): ResolvedPlace {
   return {
     status: "found",
-    id,
+    id: r.kind === "place" ? r.geoid : r.zcta,
     kind: r.kind,
     name: r.name,
     point: { lat: r.point.lat, lon: r.point.lon },
@@ -64,6 +73,11 @@ export function resolvePlace(text: string): PlaceResult {
     source: r.source,
     gazetteer: { version: GAZETTEER.version, sha256: GAZETTEER.sha256 },
   };
+}
+
+/** Typing suggestions: name-prefix matches (and an exact ZIP), shaped exactly like resolvePlace. */
+export function searchPlaces(prefix: string, limit: number): ResolvedPlace[] {
+  return searchGazetteer(prefix, limit).map(resolved);
 }
 
 const byGeoid = new Map<string, ReturnType<typeof lookup>>();

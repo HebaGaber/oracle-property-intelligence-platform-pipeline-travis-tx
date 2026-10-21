@@ -148,3 +148,10 @@ describe("A-13 routes and URL parameters (contracts/ui-routes.md)", () => {
     expect(EXPLORE_URL_PARAMS).not.toContain("z");
   });
 });
+
+describe("A-13 follow-up labels (shared by the app and the hosted tests)", () => {
+  it("coverage kind absent and the fallback chip wording", () => {
+    expect(COVERAGE_TEXTS.kindAbsent).toBe("not in this run's coverage section");
+    expect(VERIFY_TEXTS.fallback("ipfs.filebase.io")).toBe("fallback · ipfs.filebase.io");
+  });
+});

@@ -16,11 +16,13 @@ import {
   PROGRESS_LABELS,
   PUBLICATION_STATE_TEXT,
   RUN_INDEX_TEXTS,
+  RUNS_TEXTS,
   SOURCE_LABELS,
 } from "@countylens/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { BOTH_HOSTS_DOWN_TEXT } from "../src/data/fetch-by-cid";
 
@@ -118,7 +120,10 @@ interface Fixture {
   indexJson: string;
 }
 
-async function buildFixture(noTcadCount: number): Promise<Fixture> {
+async function buildFixture(
+  noTcadCount: number,
+  previousManifestCid: string | null = null,
+): Promise<Fixture> {
   const cid = (seed: string): Promise<string> => rawCid(encode(seed));
   const countyTablesCid = await cid("tables/county");
   const improvementTablesCid = await cid("tables/property_improvement");
@@ -130,7 +135,7 @@ async function buildFixture(noTcadCount: number): Promise<Fixture> {
     fips: "48453",
     startedAt: "2026-10-21T08:00:00.000Z",
     finishedAt: "2026-10-21T08:12:34.000Z",
-    previousManifestCid: null,
+    previousManifestCid,
     sources: [
       {
         name: "austin-3syk-w9eu",
@@ -206,7 +211,7 @@ async function buildFixture(noTcadCount: number): Promise<Fixture> {
       permits_emitted: { count: 37, derivation: "published_rows" },
       permits_no_tcad_geoid: { count: noTcadCount, derivation: "aggregate_match" },
     },
-    limitations: [],
+    limitations: ["finishedAt is the end of the capture phase (test run)"],
   };
   const manifestBytes = encode(JSON.stringify(manifest));
   const manifestCid = await rawCid(manifestBytes);
@@ -253,9 +258,11 @@ function Providers({ children }: { children: ReactNode }): ReactElement {
 async function renderRuns(): Promise<void> {
   const { Component } = await import("../src/routes/Runs");
   render(
-    <Providers>
-      <Component />
-    </Providers>,
+    <MemoryRouter initialEntries={["/runs"]}>
+      <Providers>
+        <Component />
+      </Providers>
+    </MemoryRouter>,
   );
 }
 
@@ -600,5 +607,99 @@ describe("Runs page: run index unreadable or empty (TC-014)", () => {
     await findCard();
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(attempts).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// A-13 T018 (AC-1, FR-001, FR-001c, FR-016, FR-021): deltas, limitations, the next-sync line,
+// the Compare link and the exact error texts of contracts/ui-routes.md.
+// ---------------------------------------------------------------------------------------------
+
+describe("Runs page: A-13 run facts (AC-1, FR-001)", () => {
+  it("shows `Next sync: none · scheduler off by default`", async () => {
+    await renderRuns();
+    const card = await findCard();
+    expect(within(card).getByText(RUNS_TEXTS.nextSync)).toBeDefined();
+  });
+
+  it("shows every source limitation and every run limitation from the manifest", async () => {
+    await renderRuns();
+    const card = await findCard();
+    const all = [
+      ...fixture.manifest.sources.flatMap((s) => s.limitations),
+      ...fixture.manifest.limitations,
+    ];
+    expect(all.length).toBeGreaterThan(0);
+    for (const text of all) expect(within(card).getByText(text)).toBeDefined();
+  });
+
+  it("shows `first run · nothing to compare against` as each source's delta on a first run", async () => {
+    await renderRuns();
+    await findCard();
+    for (const source of fixture.manifest.sources) {
+      const item = document.querySelector<HTMLElement>(`[data-source="${source.name}"]`);
+      expect(item?.querySelector("[data-delta]")).toBeNull();
+      expect(item?.textContent).toContain(RUNS_TEXTS.firstRun);
+    }
+  });
+
+  it("shows each source's added / changed / removed from the manifest when a previous run exists", async () => {
+    const withPrevious = await buildFixture(0, fixture.manifestCid);
+    installFetch({
+      index: () => json(withPrevious.indexJson),
+      copy: () => new Response(withPrevious.manifestBytes),
+    });
+    await renderRuns();
+    await findCard();
+    for (const source of withPrevious.manifest.sources) {
+      const item = document.querySelector<HTMLElement>(`[data-source="${source.name}"]`);
+      expect(item?.textContent).not.toContain(RUNS_TEXTS.firstRun);
+      expect(item?.querySelector('[data-delta="added"]')?.textContent).toBe(String(source.added));
+      expect(item?.querySelector('[data-delta="changed"]')?.textContent).toBe(
+        String(source.changed),
+      );
+      expect(item?.querySelector('[data-delta="removed"]')?.textContent).toBe(
+        String(source.removed),
+      );
+    }
+  });
+
+  it("links to Compare", async () => {
+    await renderRuns();
+    const card = await findCard();
+    const link = within(card).getByRole("link", { name: /compare/i });
+    expect(link.getAttribute("href")).toBe("/runs/compare");
+  });
+});
+
+describe("Runs page: exact error texts (contracts/ui-routes.md, FR-021)", () => {
+  it("says `Run index unavailable · {reason}` with a link to /runs/index.json, the A-03 reason as its own element", async () => {
+    installFetch({ index: () => json("{not json"), copy: () => new Response(null) });
+    await renderRuns();
+    const alert = await screen.findByRole("alert");
+    const text = alert.querySelector("[data-error-text]");
+    expect(text?.textContent).toBe(RUNS_TEXTS.indexUnavailable(RUN_INDEX_TEXTS.unreadable));
+    expect(within(alert).getByText(RUN_INDEX_TEXTS.unreadable).tagName).toBe("SPAN");
+    expect(within(alert).getByRole("link", { name: "/runs/index.json" }).getAttribute("href")).toBe(
+      "/runs/index.json",
+    );
+    expect(document.querySelector("[data-cid]")).toBeNull();
+  });
+
+  it("says `Manifest unavailable · {cid} · {reason}` with the full CID in data-cid when no host serves it", async () => {
+    installFetch({
+      index: () => json(fixture.indexJson),
+      copy: () => new Response(null, { status: 503 }),
+      gateway: () => new Response(null, { status: 503 }),
+    });
+    await renderRuns();
+    const alert = await screen.findByRole("alert");
+    const text = alert.querySelector("[data-error-text]");
+    expect(text?.textContent).toBe(
+      RUNS_TEXTS.manifestUnavailable(fixture.manifestCid, BOTH_HOSTS_DOWN_TEXT),
+    );
+    expect(alert.querySelector(`[data-cid="${fixture.manifestCid}"]`)).not.toBeNull();
+    expect(within(alert).getByText(BOTH_HOSTS_DOWN_TEXT).tagName).toBe("SPAN");
+    expect(screen.queryByRole("article")).toBeNull();
   });
 });

@@ -133,6 +133,26 @@ export function lookup(query: string): LookupResult {
   return chosen ? foundPlace(chosen) : outOfScope;
 }
 
+/**
+ * Suggestions while typing: places whose name starts with `prefix` (case-insensitive; incorporated
+ * places before CDPs, then A to Z), or the ZCTA when `prefix` is an exact 5-digit code.
+ */
+export function searchPlaces(prefix: string, limit: number): Found[] {
+  const q = normalise(prefix);
+  if (q === "" || limit <= 0) return [];
+  const zip = ZIP_QUERY.exec(q)?.[1];
+  const z = zip === undefined ? undefined : zctaByCode.get(zip);
+  const matches = places
+    .filter((p) => p.name_lsad.toLowerCase().startsWith(q))
+    .sort(
+      (a, b) =>
+        Number(/ CDP$/.test(a.name_lsad)) - Number(/ CDP$/.test(b.name_lsad)) ||
+        a.name_lsad.localeCompare(b.name_lsad),
+    )
+    .map(foundPlace);
+  return [...(z ? [foundZcta(z)] : []), ...matches].slice(0, limit);
+}
+
 const travisZctas = new Set(ownerAreaFile.travis_zctas);
 const regionalZctas = new Set(ownerAreaFile.regional_zctas);
 const allUsZctas = (() => {

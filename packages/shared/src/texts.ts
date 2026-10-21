@@ -44,6 +44,8 @@ export const VERIFY_TEXTS = Object.freeze({
     `Mismatch · size ${got.size} vs ${expected.size} · SHA-256 ${shortHash(got.sha256)} vs ${shortHash(expected.sha256)}`,
   /** A lane that ended without bytes to compare (no ✓). */
   notVerified: (detail: string): string => `Not verified · ${detail}`,
+  /** The Warning pill when a gateway other than the copy served the bytes. */
+  fallback: (host: string): string => `fallback · ${host}`,
 });
 
 /** Explore · Filters, the result rows, permits, owners and the SQL panel. */
@@ -78,6 +80,8 @@ export const EXPLORE_TEXTS = Object.freeze({
 
 /** Coverage denominators (research R10, PO D-4). */
 export const COVERAGE_TEXTS = Object.freeze({
+  /** A record kind with no key in the run manifest's coverage section (TC-017). */
+  kindAbsent: "not in this run's coverage section",
   denominatorMissing: "denominator not in this run's manifest",
   denominatorMissingFor: (source: string): string =>
     `denominator not in this run's manifest · A-01 source ${source}`,

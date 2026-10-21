@@ -205,6 +205,8 @@ export interface ExplorePermit {
   readonly status_raw: null;
   readonly status_class: string | null;
   readonly open_years: number | null;
+  /** The exact `open_days` of v_roofing_permit (an integer); `open_years` is its rounded-down view. */
+  readonly open_days: number | null;
   readonly table_cid: string | null;
 }
 
@@ -327,6 +329,7 @@ export function toExploreRow(row: Row, centre: { lat: number; lon: number }): Ex
           status_raw: null,
           status_class: str(row.permit_status_class),
           open_years: openDays === null ? null : Math.floor((openDays / DAYS_PER_YEAR) * 10) / 10,
+          open_days: openDays === null ? null : Math.trunc(openDays),
           table_cid: str(row.permit_table_cid),
         }
       : null,

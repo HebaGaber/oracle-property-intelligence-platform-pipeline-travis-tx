@@ -63,40 +63,40 @@ No file is owned by two groups at the same time. Page stubs created by G1 in wav
 
 **Independent test**: `/runs`, `/runs/compare`, `/tx/travis/coverage` counts equal the latest manifest's coverage section.
 
-- [ ] T018 [P] [US1] (G2 · metagross · 10m) Tests: Runs shows sources, counts, UTC times, per-source deltas from `sources[].added/changed/removed`, limitations, "Next sync: none · scheduler off by default"; first run → "first run · nothing to compare against"; Compare with one run explains why; with two, both CIDs + `previousManifestCid` link and "old manifest still resolves on Pinata and Filebase" only after both answered; index/manifest unreadable → the exact error texts; a read served by Filebase shows the "fallback" chip (FR-016) — `apps/web/test/runs.test.tsx`, `apps/web/test/compare.test.tsx`
-- [ ] T019 [P] [US1] (G2 · metagross · 5m) Tests: Coverage row per record kind with count, `derivation`, collected time, source table, `<Provenance/>`; absent kind → reason; denominator → "denominator not in this run's manifest · A-01 source {name}" — `apps/web/test/coverage.test.tsx`
-- [ ] T020 [US1] (G2 · metagross · 15m) Runs (extend) and RunsCompare with run chain — `apps/web/src/routes/Runs.*`, `apps/web/src/routes/RunsCompare.*`
-- [ ] T021 [US1] (G2 · metagross · 10m) Coverage page — `apps/web/src/routes/Coverage.*`
+- [x] T018 [P] [US1] (G2 · metagross · 10m) Tests: Runs shows sources, counts, UTC times, per-source deltas from `sources[].added/changed/removed`, limitations, "Next sync: none · scheduler off by default"; first run → "first run · nothing to compare against"; Compare with one run explains why; with two, both CIDs + `previousManifestCid` link and "old manifest still resolves on Pinata and Filebase" only after both answered; index/manifest unreadable → the exact error texts; a read served by Filebase shows the "fallback" chip (FR-016) — `apps/web/test/runs.test.tsx`, `apps/web/test/compare.test.tsx`
+- [x] T019 [P] [US1] (G2 · metagross · 5m) Tests: Coverage row per record kind with count, `derivation`, collected time, source table, `<Provenance/>`; absent kind → reason; denominator → "denominator not in this run's manifest · A-01 source {name}" — `apps/web/test/coverage.test.tsx`
+- [x] T020 [US1] (G2 · metagross · 15m) Runs (extend) and RunsCompare with run chain — `apps/web/src/routes/Runs.*`, `apps/web/src/routes/RunsCompare.*`
+- [x] T021 [US1] (G2 · metagross · 10m) Coverage page — `apps/web/src/routes/Coverage.*`
 
 ## Phase 4: US2 Manifest and Verify (P1, track C, wave 2) · AC-3, AC-7 · D-5, D-6
 
-- [ ] T022 [P] [US2] (G2 · metagross · 10m) Tests: Manifest lists every artifact (CID, name, codec, size, SHA-256, CAR) and the run chain; Verify lanes Pinata + Filebase with exact URLs; ✓ only on match; mismatch shows both values; 429 → "rate-limited, retrying"; network error → "no readable response (rate-limited or blocked), retrying"; directory or > 50 MB → "Verify via CAR"; no request to the CID copy; the manifest read via Filebase shows the "fallback" chip (FR-016) — `apps/web/test/manifest.test.tsx`, `apps/web/test/verify.test.tsx`
-- [ ] T023 [US2] (G2 · metagross · 20m) DataManifest, DataVerify and the VerifyLane component — `apps/web/src/routes/DataManifest.*`, `apps/web/src/routes/DataVerify.*`, `apps/web/src/components/VerifyLane.*`
+- [x] T022 [P] [US2] (G2 · metagross · 10m) Tests: Manifest lists every artifact (CID, name, codec, size, SHA-256, CAR) and the run chain; Verify lanes Pinata + Filebase with exact URLs; ✓ only on match; mismatch shows both values; 429 → "rate-limited, retrying"; network error → "no readable response (rate-limited or blocked), retrying"; directory or > 50 MB → "Verify via CAR"; no request to the CID copy; the manifest read via Filebase shows the "fallback" chip (FR-016) — `apps/web/test/manifest.test.tsx`, `apps/web/test/verify.test.tsx`
+- [x] T023 [US2] (G2 · metagross · 20m) DataManifest, DataVerify and the VerifyLane component — `apps/web/src/routes/DataManifest.*`, `apps/web/src/routes/DataVerify.*`, `apps/web/src/components/VerifyLane.*`
 
 ## Phase 5: US3 Lead finder: old roofs near a place (P1, track D, wave 2) · AC-4, AC-7 · D-8
 
-- [ ] T024 [P] [US3] (G2 · metagross · 10m) Tests: place search shows the gazetteer label; header "{n} within {r} mi of {place} · roof ≥ {years} yrs"; row fields (address, roof age, `roof_age_basis`, `roof_age_confidence`, Mi + bearing, Lat, lon, Source with run and table CID); 5 → 3 mi updates without reload (250 ms debounce); URL state per contracts/ui-routes.md, `view=map` → list; zero results → Close matches with "+{miles_outside} mi"; every gap shows the exact missing-reason text; engine line "DuckDB on the server · same views" — `apps/web/test/explore-filters.test.tsx`
-- [ ] T025 [US3] (G2 · metagross · 30m) Explore shell, Filters (FilterSheet collapses into a sheet at 390), ResultRow with `<Provenance/>` and `<MissingReason/>`, PropertyDrawer (`sel=`) — `apps/web/src/routes/{Explore,ExploreFilters,PropertyDrawer}.*`, `apps/web/src/components/{FilterSheet,ResultRow}.*`
+- [x] T024 [P] [US3] (G2 · metagross · 10m) Tests: place search shows the gazetteer label; header "{n} within {r} mi of {place} · roof ≥ {years} yrs"; row fields (address, roof age, `roof_age_basis`, `roof_age_confidence`, Mi + bearing, Lat, lon, Source with run and table CID); 5 → 3 mi updates without reload (250 ms debounce); URL state per contracts/ui-routes.md, `view=map` → list; zero results → Close matches with "+{miles_outside} mi"; every gap shows the exact missing-reason text; engine line "DuckDB on the server · same views" — `apps/web/test/explore-filters.test.tsx`
+- [x] T025 [US3] (G2 · metagross · 30m) Explore shell, Filters (FilterSheet collapses into a sheet at 390), ResultRow with `<Provenance/>` and `<MissingReason/>`, PropertyDrawer (`sel=`) — `apps/web/src/routes/{Explore,ExploreFilters,PropertyDrawer}.*`, `apps/web/src/components/{FilterSheet,ResultRow}.*`
 
 ## Phase 6: US4 Long-open roofing permits (P1, track D, wave 2) · AC-5 · D-9
 
-- [ ] T026 [P] [US4] (G2 · metagross · 5m) Tests: open/stalled + openYrs ≥ 5 sorted open longest; "Stalled {x} yrs · source status not published · no lexicon carrier" while `status_raw` has no carrier; contractor "not published · no lexicon carrier" + resolution badge (AD-24: resolved/unresolved); BBB reason texts; empty → "no open roofing permits in this radius on the current run" — `apps/web/test/explore-permits.test.tsx`
-- [ ] T027 [US4] (G2 · metagross · 15m) PermitChip and ContractorBadge, wired into ResultRow's permit column — `apps/web/src/components/{PermitChip,ContractorBadge}.*`
+- [x] T026 [P] [US4] (G2 · metagross · 5m) Tests: open/stalled + openYrs ≥ 5 sorted open longest; "Stalled {x} yrs · source status not published · no lexicon carrier" while `status_raw` has no carrier; contractor "not published · no lexicon carrier" + resolution badge (AD-24: resolved/unresolved); BBB reason texts; empty → "no open roofing permits in this radius on the current run" — `apps/web/test/explore-permits.test.tsx`
+- [x] T027 [US4] (G2 · metagross · 15m) PermitChip and ContractorBadge, wired into ResultRow's permit column — `apps/web/src/components/{PermitChip,ContractorBadge}.*`
 
 ## Phase 7: US5 SQL panel and scale (P1, track E, wave 2) · AC-6 · D-4
 
-- [ ] T028 [P] [US5] (G2 · metagross · 5m) Tests: `?mode=sql` lazy-imports the engine (no import elsewhere); progress bar on first load; "DuckDB-WASM in your browser · read-only"; write refused with "Read-only: only SELECT, WITH, DESCRIBE and SHOW run here"; error → "{first line} · Try: {fix}", no stack trace — `apps/web/test/explore-sql.test.tsx`
-- [ ] T029 [US5] (G2 · metagross · 15m) ExploreSql route over the existing `engine/duckdb-wasm` adapter — `apps/web/src/routes/ExploreSql.*`
+- [x] T028 [P] [US5] (G2 · metagross · 5m) Tests: `?mode=sql` lazy-imports the engine (no import elsewhere); progress bar on first load; "DuckDB-WASM in your browser · read-only"; write refused with "Read-only: only SELECT, WITH, DESCRIBE and SHOW run here"; error → "{first line} · Try: {fix}", no stack trace — `apps/web/test/explore-sql.test.tsx`
+- [x] T029 [US5] (G2 · metagross · 15m) ExploreSql route over the existing `engine/duckdb-wasm` adapter — `apps/web/src/routes/ExploreSql.*`
 
 ## Phase 8: US6 Tenure, out-of-area owners, Help · MCP (P1, tracks D + E, wave 2) · AC-8
 
-- [ ] T030 [P] [US6] (G2 · metagross · 5m) Tests: tenure > 10 and `ooa` (preset `ooa78753`) show `tenure_years`, `tenure_basis`, `owner_area_class`, a one-line definition of each filter, "tenure unknown: {n}"; Help · MCP lists the six AD-21 tools and "Try a tool" says why it is not available yet, never a sample response — `apps/web/test/explore-owner.test.tsx`, `apps/web/test/help-mcp.test.tsx`
-- [ ] T031 [US6] (G2 · metagross · 10m) Owner filters in FilterSheet/ResultRow; HelpMcp page — `apps/web/src/routes/HelpMcp.*` (FilterSheet/ResultRow already G2)
+- [x] T030 [P] [US6] (G2 · metagross · 5m) Tests: tenure > 10 and `ooa` (preset `ooa78753`) show `tenure_years`, `tenure_basis`, `owner_area_class`, a one-line definition of each filter, "tenure unknown: {n}"; Help · MCP lists the six AD-21 tools and "Try a tool" says why it is not available yet, never a sample response — `apps/web/test/explore-owner.test.tsx`, `apps/web/test/help-mcp.test.tsx`
+- [x] T031 [US6] (G2 · metagross · 10m) Owner filters in FilterSheet/ResultRow; HelpMcp page — `apps/web/src/routes/HelpMcp.*` (FilterSheet/ResultRow already G2)
 
 ### Part 1 hosted specs (G4, wave 2)
 
-- [ ] T032 [P] [US1–US6] ⏳ (G4 · metagross · 25m) Playwright specs for TC-001…TC-042 Part 1 of `testplans/A-13-test-cases.md` (one test per TC, `@scenario:A-13-TC-nnn`, checkpoint screenshots to `docs/evidence/img/A-13-TC-{nnn}-{step}.png`; Verify cases on one worker; `page.route()` fault injection) — `tests/e2e/A-13-explorer.spec.ts`, `tests/e2e/A-13-verify.spec.ts`
-- [ ] T033 [P] [US5] ⏳ (G4 · metagross · 10m) Perf spec: 20 timed runs each of radius + roof and open-permit (input change → header), p95; first load ≤ 8 s with progress bar; one SQL `count(*)` (no p95); 0 `duckdb`/`.wasm` requests on `/` — `tests/e2e/A-13-perf.spec.ts`
+- [x] T032 [P] [US1–US6] ⏳ (G4 · metagross · 25m) Playwright specs for TC-001…TC-042 Part 1 of `testplans/A-13-test-cases.md` (one test per TC, `@scenario:A-13-TC-nnn`, checkpoint screenshots to `docs/evidence/img/A-13-TC-{nnn}-{step}.png`; Verify cases on one worker; `page.route()` fault injection) — `tests/e2e/A-13-explorer.spec.ts`, `tests/e2e/A-13-verify.spec.ts`
+- [x] T033 [P] [US5] ⏳ (G4 · metagross · 10m) Perf spec: 20 timed runs each of radius + roof and open-permit (input change → header), p95; first load ≤ 8 s with progress bar; one SQL `count(*)` (no p95); 0 `duckdb`/`.wasm` requests on `/` — `tests/e2e/A-13-perf.spec.ts`
 
 **Checkpoint (end of wave 2):** integration check green; every Part 1 task ticked; commit `A-13: wave 2 explorer pages`. Wave 3 starts only now.
 
