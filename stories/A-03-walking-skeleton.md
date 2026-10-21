@@ -20,7 +20,7 @@ agents:
 skills: [build-frontend-backends, integrate-ci-cd, use-oracle, county-permit-adapter, responsive-design-tests, apply-engineering-guidelines]
 ui: true
 status: Ready
-gate: G4
+gate: G6
 qc_testability_signoff: true
 created: 2026-10-19
 ---

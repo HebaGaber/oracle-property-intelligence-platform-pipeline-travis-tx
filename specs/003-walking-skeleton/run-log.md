@@ -33,3 +33,8 @@ One line per step: time (local) · stage · step · result. PO answers are quote
 | 10:29 | 2S | paused | 05:18 → 10:28 PO away (logged as paused) |
 | 10:31 | 2S | 🛑 D-4 (R3) | PO: "Accept (Recommended)"; verify gateways "Pinata + Filebase (Recommended)"; Lambda proof "Private prefix + direct invoke (Recommended)" |
 | 10:36 | 2S | S2S.6 | PO amendments applied (story AC-4/AC-6, spec, ARD § 16 AM-01…05, 0001 Accepted, contract README carCid note); query-core tests 198/198 (one earlier run had 1 failure at 71 s duration, likely a timeout under load: watch as flaky) |
+| 10:42 | 4 | S4.1–S4.3 | test cases v1.0 (37+ TCs); G6 run 1 FAIL (C-05, C-09), run 2 PASS; agent-design.md Spike delta added |
+| 10:52 | 3 | S3.3–S3.5 | `/speckit-plan` + `/speckit-tasks` + `/speckit-analyze`: 85 tasks (T001–T079, TZ01–TZ06), 9 waves, critical path ≈ 139 min; analyze 1 CRITICAL + 3 HIGH fixed (ItemsProcessed/ItemsFailed metrics; Lambda-proof presets = TC-NF-05; full-size COUNT on the Lambda bench; T066 runs TC-NF-05); 3 MEDIUM, 1 LOW left. Gated: T047 (D-8), TZ02/T049/T066 (D-10) |
+| 10:53 | 3 | Claude | plan agent's open points settled without a stop: TC-NF-05 API check = 4xx with no data (400 for a non-CID key); row count = as captured 2,380,939 (2026-10-21), receipt-asserted; e2e tests stay per-area spec files (one test per TC, G6 matrix); AM-06 added (15 s timeout within AD-11; full-scale COUNT on Lambda noted for A-11/A-13) |
+| 10:58 | 3 | S3.6 | G5 run 1 FAIL (C-04, C-07: test task order, AM-06 citation), run 2 PASS 10/10 |
+| 11:00 | 3–4 | 🛑 D-6 + D-7 (R5) | PO: G5 "Approve (Recommended)"; G6 "Approve (Recommended)" |
