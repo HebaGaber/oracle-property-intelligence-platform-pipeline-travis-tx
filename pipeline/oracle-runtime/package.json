@@ -27,9 +27,11 @@
     "explain-blocked": "tsx travis/discovery/explain-blocked.ts",
     "approve-exception": "tsx travis/discovery/approve-exception.ts",
     "render-coverage": "tsx travis/discovery/render-coverage.ts",
-    "backfill-amendments": "tsx travis/discovery/backfill-amendments.ts"
+    "backfill-amendments": "tsx travis/discovery/backfill-amendments.ts",
+    "backbone": "tsx travis/backbone/cli.ts"
   },
   "dependencies": {
+    "@dsnp/parquetjs": "^1.8.8",
     "p-limit": "^7.3.3",
     "stream-json": "^3.7.0",
     "yaml": "^2.9.1",

@@ -6,6 +6,7 @@ import {
   GIS_TIMEOUT_MS,
   TCAD_GIS_LAYER_URL,
   computeGap,
+  gapPercent,
   gisCountUrl,
   probeGisCount,
 } from "../../travis/discovery/probes/arcgis.js";
@@ -120,5 +121,28 @@ describe("computeGap (GIS is never the denominator)", () => {
     const gap = computeGap(m(null, "TCAD blocked: HTTP 403"), m(1000));
     expect(gap.gap_pct).toBe("unknown");
     expect(gap.gap_reason).toMatch(/roll count missing: TCAD blocked: HTTP 403/);
+  });
+});
+
+// A-04 T004 (CR2-9): the pure gap rule G-GIS imports. Synthetic numbers only.
+describe("CR2-9 gapPercent(roll, gis)", () => {
+  it("is |roll - gis| / roll in percent at 3 decimals, the roll the denominator", () => {
+    expect(gapPercent(493246, 373683)).toBe(24.24);
+    expect(gapPercent(3, 2)).toBe(33.333);
+    expect(gapPercent(100, 150)).toBe(50);
+  });
+
+  it("is unknown when the roll is 0 or negative", () => {
+    expect(gapPercent(0, 10)).toBe("unknown");
+    expect(gapPercent(-5, 10)).toBe("unknown");
+  });
+
+  it("computeGap uses the same rule", () => {
+    const m = (value: number): Measurement => ({
+      value,
+      source_url: "https://gis.test/",
+      captured_at: AT,
+    });
+    expect(computeGap(m(493246), m(373683)).gap_pct).toBe(gapPercent(493246, 373683));
   });
 });

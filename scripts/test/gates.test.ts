@@ -371,3 +371,58 @@ describe("scripts/bundle-size.ts", () => {
     expect(r.out).toMatch(/not found/);
   });
 });
+
+// A-04 T012 (TC-NF-02, P0-1/2): the reroof-term gate also covers the A-04 permit modules, and
+// the Query-DB gate covers pipeline/oracle-runtime/travis/** (the runtime never holds a DB
+// client; only pipeline/local-stack/services tracks, report, loader and migrate do) and any
+// elephant-cli upload there. Fixture strings are assembled at run time (see the header).
+describe("scripts/grep-gates.sh A-04 paths", () => {
+  const PERMITS = "pipeline/oracle-runtime/travis/permits/classify.ts";
+  const PAGES = "pipeline/oracle-runtime/travis/adapters/socrata/socrata-pages.ts";
+  const RT = "pipeline/oracle-runtime/travis/backbone/commands/ingest.ts";
+  const UPLOAD = join2("elephant", "-cli ", "upload ", "county.car");
+
+  it.each([
+    [PERMITS, join2("// RE", "ROOF\n")],
+    [PAGES, join2("const s = 'shin", "gle';\n")],
+  ])("reroof-terms fails on a roof word in %s", (file, line) => {
+    const r = runGates(withViolation(file, line));
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`reroof-terms  ${file}:1:`);
+  });
+
+  it.each([
+    ["the pg module", `${PG_IMPORT}\n`],
+    ["the postgres module", `${POSTGRES_IMPORT}\n`],
+    ["the DATABASE_URL name", `const u = process.env.${DB_URL_KEY};\n`],
+    ["a bare pg word", "const client = pg.connect();\n"],
+  ])("query-db fails on %s in oracle-runtime/travis", (_what, line) => {
+    const r = runGates(withViolation(RT, line));
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`query-db  ${RT}:1:`);
+  });
+
+  it("query-db fails on an elephant-cli upload in oracle-runtime/travis", () => {
+    const r = runGates(withViolation(RT, `run("${UPLOAD}");\n`));
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`query-db  ${RT}:1:`);
+  });
+
+  it("accepts the same words outside oracle-runtime/travis (local-stack Loader, tests)", () => {
+    const r = runGates(
+      makeTree({
+        ...cleanTree,
+        "pipeline/local-stack/services/loader.ts": `${POSTGRES_IMPORT}\n`,
+        "pipeline/oracle-runtime/test/travis/a04/cli.test.ts": `const k = "${DB_URL_KEY}";\n`,
+      }),
+    );
+    expect(r.status, r.out).toBe(0);
+  });
+
+  it("the real tree passes the A-04 gates", () => {
+    const r = spawnSync("sh", [gateScript], { encoding: "utf8", cwd: repoRoot });
+    expect(`${r.stdout}${r.stderr}`).not.toMatch(
+      /(reroof-terms|query-db) {2}pipeline\/oracle-runtime\/travis\//,
+    );
+  });
+});

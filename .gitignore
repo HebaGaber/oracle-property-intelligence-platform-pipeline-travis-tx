@@ -11,8 +11,11 @@ test-results/
 !.env.example
 .DS_Store
 .claude/settings.local.json
-# raw source downloads and local pipeline state (never commit)
-pipeline/data/
+# raw source downloads and local pipeline state (never commit). A-04: no trailing slash, so
+# the worktree symlinks pipeline/data and pipeline/local-stack/data match too.
+pipeline/data
+pipeline/local-stack/data
+pipeline/oracle-runtime/test/.out/
 *.car
 
 # elephant-cli debug log (written into the working folder)
