@@ -9,10 +9,30 @@ export const BASE = "https://data.austintexas.gov/resource/3syk-w9eu.json";
 
 const pad = (n: number, w: number): string => String(n).padStart(w, "0");
 
-/** A synthetic Austin row; `i` fixes its `:id` order. */
+const B36 = "0123456789abcdefghijklmnopqrstuvwxyz";
+const tok = (n: number, len: number): string => {
+  let x = n >>> 0;
+  let out = "";
+  for (let k = 0; k < len; k += 1) {
+    out += B36[x % 36];
+    x = Math.floor(x / 36) + 7;
+  }
+  return out;
+};
+
+/**
+ * A Socrata-style `:id` for row `i` (`row-xxxx-xxxx`, with `.`/`_`/`~` separators on some).
+ * Deliberately NOT lexicographic in `i`: the fixture's own array order is the server order.
+ */
+export function synthId(i: number): string {
+  const sep = [".", "-", "_", "~"][i % 4] as string;
+  return `row-${tok(i * 2654435761, 4)}${sep}${tok(i * 40503 + 17, 4)}`;
+}
+
+/** A synthetic Austin row; `i` fixes its position in the fixture's (server) order. */
 export function synthRow(i: number, over: Partial<Row> = {}): Row {
   return {
-    ":id": `row-${pad(i, 6)}`,
+    ":id": synthId(i),
     ":created_at": "2026-01-01T00:00:00.000Z",
     ":updated_at": "2026-10-01T00:00:00.000Z",
     ":@computed_region_abcd_1234": "7",
@@ -50,21 +70,28 @@ export interface FakeSocrataOptions {
   clock: () => number;
 }
 
-const CLAUSE = /^(:id|:updated_at) (>|<=) '([^']+)'$/;
+const CLAUSE = /^(:id|:updated_at) (>|<=) '((?:[^']|'')+)'$/;
 
+/** `rows` is already in server order; `:id > x` means "after x in that order". */
 function filterRows(rows: readonly Row[], where: string | null): Row[] {
   if (where === null || where === "") return [...rows];
-  const clauses = where.split(" AND ").map((c) => {
+  let out = [...rows];
+  for (const c of where.split(" AND ")) {
     const m = CLAUSE.exec(c.trim());
     if (!m) throw new Error(`fake-socrata: unsupported clause ${c}`);
-    return { field: m[1] as string, op: m[2] as string, value: m[3] as string };
-  });
-  return rows.filter((r) =>
-    clauses.every((c) => {
-      const v = r[c.field] ?? "";
-      return c.op === ">" ? v > c.value : v <= c.value;
-    }),
-  );
+    const field = m[1] as string;
+    const value = (m[3] as string).replaceAll("''", "'");
+    if (field === ":id") {
+      const at = out.findIndex((r) => r[":id"] === value);
+      if (at < 0) throw new Error(`fake-socrata: cursor ${value} is not in the fixture`);
+      out = out.slice(at + 1);
+    } else {
+      out = out.filter((r) =>
+        m[2] === ">" ? (r[field] ?? "") > value : (r[field] ?? "") <= value,
+      );
+    }
+  }
+  return out;
 }
 
 export function fakeSocrata(options: FakeSocrataOptions): { fetch: FetchLike; calls: Call[] } {
@@ -87,10 +114,7 @@ export function fakeSocrata(options: FakeSocrataOptions): { fetch: FetchLike; ca
     }
     const p = url.searchParams;
     const select = p.get("$select") ?? "";
-    const sorted = [...options.rows()].sort((a, b) =>
-      (a[":id"] ?? "") < (b[":id"] ?? "") ? -1 : 1,
-    );
-    const matched = filterRows(sorted, p.get("$where"));
+    const matched = filterRows(options.rows(), p.get("$where"));
     let body: unknown;
     if (select === "count(*) AS n") {
       body = [{ n: String(matched.length) }];

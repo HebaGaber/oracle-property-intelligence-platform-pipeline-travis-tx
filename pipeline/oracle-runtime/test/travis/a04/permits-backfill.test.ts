@@ -29,6 +29,7 @@ import {
   fakeSocrata,
   fakeTime,
   seededRandom,
+  synthId,
   synthRow,
   type Row,
 } from "../../fixtures/a04/permits/fake-socrata.js";
@@ -93,7 +94,7 @@ describe("A-04-TC-041 keyset pages: ≤ 50,000 rows, no app token, by :id, ≤ 1
   it("A-04-TC-041 every page asks $select=*,:id,:updated_at,:created_at, $order=:id, $limit=50000 and the next page $where=:id > last", async () => {
     // lean synthetic rows so two full-size pages stay cheap
     const rows: Row[] = Array.from({ length: MAX_PAGE_SIZE + 3 }, (_, i) => ({
-      ":id": `row-${String(i).padStart(6, "0")}`,
+      ":id": synthId(i),
       ":updated_at": "2026-10-01T00:00:00.000Z",
       permit_number: `P-${i}`,
     }));
@@ -113,7 +114,7 @@ describe("A-04-TC-041 keyset pages: ≤ 50,000 rows, no app token, by :id, ≤ 1
       expect(c.url.searchParams.get("$limit")).toBe("50000");
     }
     expect(pages[0]?.url.searchParams.get("$where")).toBeNull();
-    expect(pages[1]?.url.searchParams.get("$where")).toBe(":id > 'row-049999'");
+    expect(pages[1]?.url.searchParams.get("$where")).toBe(`:id > '${synthId(49999)}'`);
     for (const c of h.server.calls) {
       expect(c.headers["x-app-token"]).toBeUndefined();
       expect(c.url.searchParams.has("$$app_token")).toBe(false);
@@ -139,7 +140,7 @@ describe("A-04-TC-041 keyset pages: ≤ 50,000 rows, no app token, by :id, ≤ 1
 
 describe("A-04-TC-053 429 / 5xx back off on the same cursor; a 403 stops at once", () => {
   const rows = Array.from({ length: 25 }, (_, i) => synthRow(i + 1));
-  const page3 = (url: URL): boolean => url.searchParams.get("$where") === ":id > 'row-000020'";
+  const page3 = (url: URL): boolean => url.searchParams.get("$where") === `:id > '${synthId(20)}'`;
 
   it("A-04-TC-053 page 3 answers 429, 503, 503 and is committed on attempt 4; waits are full jitter; starts ≥ 1 s apart; no gap", async () => {
     let page3Calls = 0;
@@ -176,7 +177,11 @@ describe("A-04-TC-053 429 / 5xx back off on the same cursor; a 403 stops at once
       expect((t[i] ?? 0) - (t[i - 1] ?? 0)).toBeGreaterThanOrEqual(1_000);
     // pages contiguous by :id, nothing skipped or doubled
     const wheres = pageCalls(h.server.calls).map((c) => c.url.searchParams.get("$where"));
-    expect([...new Set(wheres)]).toEqual([null, ":id > 'row-000010'", ":id > 'row-000020'"]);
+    expect([...new Set(wheres)]).toEqual([
+      null,
+      `:id > '${synthId(10)}'`,
+      `:id > '${synthId(20)}'`,
+    ]);
     expect(h.loader.current.size).toBe(25);
     const receipts = readFileSync(
       join(h.root, "travis-a04-permits-backfill-202610220301", "receipts.jsonl"),
@@ -189,7 +194,8 @@ describe("A-04-TC-053 429 / 5xx back off on the same cursor; a 403 stops at once
   });
 
   it("A-04-TC-053 a page failing all 5 attempts stops the run failed without advancing the watermark", async () => {
-    const page2 = (url: URL): boolean => url.searchParams.get("$where") === ":id > 'row-000010'";
+    const page2 = (url: URL): boolean =>
+      url.searchParams.get("$where") === `:id > '${synthId(10)}'`;
     const h = harness(() => rows, { pageSize: 10, fault: (url) => (page2(url) ? 503 : null) });
     const io = fakeIO(h.loader);
     const result = await runAustinPermits(
@@ -205,7 +211,8 @@ describe("A-04-TC-053 429 / 5xx back off on the same cursor; a 403 stops at once
   });
 
   it("A-04-TC-053 a 403 makes exactly one request, a blocked receipt (http_status 403), exit 2, and no further request", async () => {
-    const page2 = (url: URL): boolean => url.searchParams.get("$where") === ":id > 'row-000010'";
+    const page2 = (url: URL): boolean =>
+      url.searchParams.get("$where") === `:id > '${synthId(10)}'`;
     const h = harness(() => rows, { pageSize: 10, fault: (url) => (page2(url) ? 403 : null) });
     const io = fakeIO(h.loader);
     const jobId = "travis-a04-permits-backfill-202610220303";
@@ -288,7 +295,7 @@ describe("A-04-TC-054 stop → resume from the last committed page (journal repl
     const result = await runAustinPermits(io2, input, h.deps);
     expect(result.status).toBe("complete");
     const after = h.server.calls.slice(before);
-    expect(after[0]?.url.searchParams.get("$where")).toBe(":id > 'row-000050'");
+    expect(after[0]?.url.searchParams.get("$where")).toBe(`:id > '${synthId(50)}'`);
     const byWhere = new Map<string | null, number>();
     for (const c of pageCalls(h.server.calls)) {
       const w = c.url.searchParams.get("$where");
@@ -296,14 +303,14 @@ describe("A-04-TC-054 stop → resume from the last committed page (journal repl
     }
     for (const w of [
       null,
-      ":id > 'row-000010'",
-      ":id > 'row-000020'",
-      ":id > 'row-000030'",
-      ":id > 'row-000040'",
+      `:id > '${synthId(10)}'`,
+      `:id > '${synthId(20)}'`,
+      `:id > '${synthId(30)}'`,
+      `:id > '${synthId(40)}'`,
     ]) {
       expect(byWhere.get(w)).toBe(1);
     }
-    expect(byWhere.get(":id > 'row-000050'")).toBe(2); // in flight when killed, then once more
+    expect(byWhere.get(`:id > '${synthId(50)}'`)).toBe(2); // in flight when killed, then once more
     expect(h.loader.pageWrites.filter((p) => p.pageIndex === 6)).toHaveLength(1);
     for (const s of [...io1.steps, ...io2.steps].filter((x) => x.name.startsWith("page-"))) {
       expect(Object.keys(s.value as object).sort()).toEqual([
@@ -340,7 +347,7 @@ describe("AC-12 count at the watermark (A-04-TC-040 logic)", () => {
     expect(result.watermarkCheck).toBe("pass");
     expect(result.keysetDiffRequested).toBe(false);
     expect(h.loader.watermark).toMatchObject({
-      lastId: "row-000025",
+      lastId: synthId(25),
       maxUpdatedAt: "2026-10-09T00:00:00.000Z",
       sourceCountAtW: 25,
     });
@@ -356,7 +363,7 @@ describe("AC-12 count at the watermark (A-04-TC-040 logic)", () => {
     const h = harness(() => rows, {
       pageSize: 10,
       onCall: (url) => {
-        if (!changed && url.searchParams.get("$where") === ":id > 'row-000010'") {
+        if (!changed && url.searchParams.get("$where") === `:id > '${synthId(10)}'`) {
           changed = true;
           rows[2] = { ...(rows[2] as Row), ":updated_at": "2026-10-30T00:00:00.000Z" };
           rows.push(synthRow(99));

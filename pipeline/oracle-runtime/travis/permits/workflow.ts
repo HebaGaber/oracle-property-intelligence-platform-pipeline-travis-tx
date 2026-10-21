@@ -377,7 +377,7 @@ export async function runAustinPermits(
       mode === "pilot"
         ? null
         : {
-            lastId: full ? lastId : maxIso(prior?.lastId ?? null, lastId),
+            lastId: lastId ?? prior?.lastId ?? null, // a cursor in server order, never max()-ed
             maxUpdatedAt: w,
             sourceCountAtW: result.sourceCountAtW,
             capturedAtW: result.capturedAtW ?? 0,

@@ -222,16 +222,21 @@ export async function fetchPage(input: FetchPageInput): Promise<PageFetch> {
     return stop;
   }
   const rows = result.data;
+  // Socrata's `:id` order is the server's own (not lexicographic), so the server's order and
+  // cursor are authoritative; only structural guards are kept here.
   let lastId: string | null = null;
   let maxUpdatedAt: string | null = null;
+  const seenIds = new Set<string>();
   for (const r of rows) {
     const id = r[KEY_FIELD];
-    if (input.lastId !== null && id <= input.lastId) {
-      throw new Error(`page ${pageIndex}: ${KEY_FIELD} ${id} is not after the cursor`);
+    if (typeof id !== "string" || id === "") {
+      throw new Error(`page ${pageIndex}: a row has no non-empty string ${KEY_FIELD}`);
     }
-    if (lastId !== null && id <= lastId) {
-      throw new Error(`page ${pageIndex}: rows are not ordered by ${KEY_FIELD}`);
+    if (input.lastId !== null && id === input.lastId) {
+      throw new Error(`page ${pageIndex}: ${KEY_FIELD} ${id} is the cursor itself`);
     }
+    if (seenIds.has(id)) throw new Error(`page ${pageIndex}: duplicate ${KEY_FIELD} ${id}`);
+    seenIds.add(id);
     lastId = id;
     const u = r[UPDATED_FIELD];
     if (typeof u === "string" && (maxUpdatedAt === null || u > maxUpdatedAt)) maxUpdatedAt = u;

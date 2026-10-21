@@ -21,6 +21,7 @@ import {
   fakeSocrata,
   fakeTime,
   seededRandom,
+  synthId,
   synthRow,
   type Row,
 } from "../../fixtures/a04/permits/fake-socrata.js";
@@ -232,7 +233,7 @@ describe("A-04-TC-055 upstream delete → source_removed tombstone; a re-key is 
     const gone = rows[4] as Row;
     const moved = rows[6] as Row;
     rows = rows.filter((r) => r !== gone && r !== moved);
-    rows.push({ ...moved, ":id": "row-000100" });
+    rows.push({ ...moved, ":id": synthId(100) });
     const jobId = "travis-a04-permits-backfill-202610210000";
     const result = await runAustinPermits(fakeIO(h.loader), { jobId, mode: "backfill" }, h.deps);
     expect(result.tombstones).toBe(1);
