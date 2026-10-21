@@ -128,7 +128,8 @@ export function exploreSearchSql(input: ExploreSearchInput): ExploreSql {
       ORDER BY (status_class IN ('open', 'stalled')) DESC NULLS LAST, open_days DESC NULLS LAST,
         issue_date DESC NULLS LAST, permit_cid
     ) AS permit_rank
-  FROM v_roofing_permit${permitWhere.length > 0 ? `\n  WHERE ${permitWhere.join("\n    AND ")}` : ""}
+  FROM v_roofing_permit
+  WHERE property_cid IN (SELECT property_cid FROM box)${permitWhere.map((w) => `\n    AND ${w}`).join("")}
 )`;
 
   const propertyWhere: string[] = [];
@@ -140,13 +141,14 @@ export function exploreSearchSql(input: ExploreSearchInput): ExploreSql {
   const ctes = (boxM: number): string => {
     const box = geoSql({ lat, lon, radiusM: boxM }, "p").bbox;
     const { distance } = geoSql({ lat, lon, radiusM: boxM }, "b");
-    return `WITH ${perm},
-box AS (
+    // box first: the permit ranking window sees only permits of properties inside the bbox.
+    return `WITH box AS (
   SELECT p.*
   FROM v_property p
   WHERE p.latitude IS NOT NULL AND p.longitude IS NOT NULL
     AND ${box}
 ),
+${perm},
 base AS (
   SELECT b.*, ${distance} AS distance_m,
     k.permit_cid, k.permit_number, k.permit_status, k.permit_status_class, k.permit_open_days,

@@ -16,7 +16,18 @@ const encode = (t: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(
 const footer = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock("../src/data/parquet-meta", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/data/parquet-meta")>();
-  return { ...actual, readParquetFooter: footer.read };
+  // readTableMeta mirrors the real one (columns from part 1, rows summed over the parts, one
+  // after another) on top of the mocked footer reader; its Range guard and caps are covered by
+  // data-caps.test.ts.
+  const readTableMeta: typeof actual.readTableMeta = async (parts, urlOf, options) => {
+    const [first, ...rest] = parts;
+    if (first === undefined) throw new Error("the table has no part in the manifest");
+    const head = await footer.read(urlOf(first), first.size, options);
+    let rows: number = head.rows;
+    for (const part of rest) rows += (await footer.read(urlOf(part), part.size, options)).rows;
+    return { columns: head.columns, rows };
+  };
+  return { ...actual, readParquetFooter: footer.read, readTableMeta };
 });
 
 interface Fixture {

@@ -232,3 +232,29 @@ describe("errors", () => {
     expect(EXPLORE_ENGINE_ERROR).not.toMatch(/\bat\b.*\(|SELECT|Binder/);
   });
 });
+
+describe("explore.search BAD_REQUEST messages (review round)", () => {
+  it("names the first bad field and its bound in a short sentence, not a JSON dump", async () => {
+    const caller = appRouter.createCaller({} as never);
+    const err = await caller.explore
+      .search({
+        manifestCid: "bafkreiaaaa",
+        area: { place: "Austin" },
+        radius_mi: 99,
+      } as never)
+      .catch((e: unknown) => e);
+    const message = (err as Error).message;
+    expect((err as { code: string }).code).toBe("BAD_REQUEST");
+    expect(message).not.toMatch(/[[{"]/);
+    expect(message.length).toBeLessThan(160);
+    expect(message).toMatch(/manifestCid|radius_mi/);
+  });
+  it("names radius_mi and its upper bound", async () => {
+    const caller = appRouter.createCaller({} as never);
+    const good = "bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
+    const err = await caller.explore
+      .search({ manifestCid: good, area: { place: "Austin" }, radius_mi: 99 } as never)
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toBe("radius_mi must be at most 25");
+  });
+});

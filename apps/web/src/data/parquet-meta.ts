@@ -12,6 +12,7 @@ import {
   type SchemaElement,
 } from "hyparquet";
 import { browserFetch } from "./http";
+import { readCapped } from "./read-capped";
 
 export interface ParquetColumn {
   readonly name: string;
@@ -37,18 +38,39 @@ function typeOf(element: SchemaElement, hasChildren: boolean): string {
   return hasChildren ? "GROUP" : "UNKNOWN";
 }
 
-/** An AsyncBuffer over `url` that reads each slice with one `Range: bytes=a-b` GET. */
+/** Largest footer slice one Range GET may ask for (a footer is KBs; this is a hard ceiling). */
+export const FOOTER_MAX_BYTES = 4 * 1024 * 1024;
+/** Shown when a host answers a Range request with the whole file (or more than the slice). */
+export const FOOTER_RANGE_IGNORED = "footer unavailable · host ignored Range";
+/** Tables read at once by the Catalog (each table's parts are read one after another). */
+export const CATALOG_TABLE_CONCURRENCY = 2;
+
+/** An AsyncBuffer over `url` that reads each slice with one `Range: bytes=a-b` GET, never more. */
 function rangeBuffer(url: string, size: number, options: ReadFooterOptions): AsyncBuffer {
   const fetchImpl = options.fetch ?? browserFetch;
   return {
     byteLength: size,
     async slice(start: number, end: number = size): Promise<ArrayBuffer> {
+      const wanted = end - start;
+      if (wanted > FOOTER_MAX_BYTES) throw new Error("footer unavailable · footer too large");
       const init: RequestInit = { headers: { Range: `bytes=${start}-${end - 1}` } };
       if (options.signal !== undefined) init.signal = options.signal;
       const response = await fetchImpl(url, init);
-      if (response.status === 206) return response.arrayBuffer();
-      if (response.status === 200) return (await response.arrayBuffer()).slice(start, end);
-      throw new Error(`${new URL(url).host} answered ${response.status}`);
+      if (response.status !== 206) {
+        if (response.status === 200) {
+          await response.body?.cancel().catch(() => undefined);
+          throw new Error(FOOTER_RANGE_IGNORED);
+        }
+        await response.body?.cancel().catch(() => undefined);
+        throw new Error(`${new URL(url).host} answered ${response.status}`);
+      }
+      const read = await readCapped(response, wanted);
+      if (read.kind === "too_large") throw new Error(FOOTER_RANGE_IGNORED);
+      const { bytes } = read;
+      return bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+      ) as ArrayBuffer;
     },
   };
 }
@@ -68,6 +90,29 @@ export async function readParquetFooter(
     })),
     rows: Number(metadata.num_rows),
   };
+}
+
+export interface TablePartRef {
+  readonly name: string;
+  readonly cid: string;
+  readonly size: number;
+}
+
+/**
+ * One table: columns and types from the FIRST part's footer (it has the schema), rows summed over
+ * every part's footer, read one part after another (each with the same Range guard).
+ */
+export async function readTableMeta(
+  parts: readonly TablePartRef[],
+  urlOf: (part: TablePartRef) => string,
+  options: ReadFooterOptions = {},
+): Promise<ParquetFooter> {
+  const [first, ...rest] = parts;
+  if (first === undefined) throw new Error("the table has no part in the manifest");
+  const head = await readParquetFooter(urlOf(first), first.size, options);
+  let rows = head.rows;
+  for (const part of rest) rows += (await readParquetFooter(urlOf(part), part.size, options)).rows;
+  return { columns: head.columns, rows };
 }
 
 export interface CatalogPart {

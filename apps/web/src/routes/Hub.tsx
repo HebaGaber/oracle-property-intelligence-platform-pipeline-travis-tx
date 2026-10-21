@@ -6,7 +6,7 @@
 // reads two small JSON files and loads no heavy engine module. A
 // react-router lazy route module exporting `Component`.
 import { ROUTES } from "@countylens/shared/routes";
-import { PAGE_TEXTS } from "@countylens/shared/texts";
+import { PAGE_TEXTS, RUNS_TEXTS } from "@countylens/shared/texts";
 import { useEffect, useState, type ReactElement } from "react";
 import { Link } from "react-router";
 import { StatusPill } from "../components/StatusPill";
@@ -52,16 +52,19 @@ export function Component(): ReactElement {
         source and the published run it came from.
       </p>
 
-      <div className={styles.chipRow}>
+      <div className={styles.chipRow} role="status">
         {chip.kind === "loading" ? (
-          <span className={styles.chipSkeleton} data-chip-skeleton="" aria-hidden="true" />
+          <>
+            <span className={styles.chipSkeleton} data-chip-skeleton="" aria-hidden="true" />
+            <span className={styles.visuallyHidden}>Loading latest run</span>
+          </>
         ) : null}
         {chip.kind === "ready" ? (
           <StatusPill status="info" icon="history" text={chip.text} />
         ) : null}
         {chip.kind === "error" ? (
-          <span role="alert" className={styles.cardBody}>
-            Run index unavailable · {chip.reason}{" "}
+          <span role="alert" className={styles.errorChip}>
+            <StatusPill status="error" text={RUNS_TEXTS.indexUnavailable(chip.reason)} />{" "}
             <a className={styles.link} href="/runs/index.json">
               /runs/index.json
             </a>

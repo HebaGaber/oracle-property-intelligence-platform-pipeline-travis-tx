@@ -5,7 +5,8 @@
 // (ZCTA 78753, tenure > 10, out-of-area). Tenure and out-of-area each carry a one-line definition.
 // Below 840 px the controls collapse into a sheet behind a "Filters" button (aria-expanded); from
 // 840 px they sit beside the results. Atlas outlined text fields, 48 px targets. Render-only.
-import type { ResolvedPlace } from "@countylens/query-core";
+import { EXPLORE_BOUNDS } from "@countylens/query-core/explore";
+import type { ResolvedPlace } from "@countylens/query-core/places";
 import { useId, useState, type KeyboardEvent, type ReactElement } from "react";
 import styles from "./FilterSheet.module.css";
 
@@ -27,6 +28,30 @@ export const OOA_PRESET = Object.freeze({ id: "ooa78753", place: "78753", tenure
 
 export type FilterKey = "place" | "r" | "roof" | "permit" | "openYrs" | "tenure" | "ooa" | "sort";
 export type FilterPatch = Partial<Record<FilterKey | "at" | "sel", string | boolean | null>>;
+
+/** One numeric control: its explore.search bounds, whether it takes whole numbers only, and whether an empty box means "no filter". */
+interface NumberSpec {
+  readonly bounds: readonly [number, number];
+  readonly integer: boolean;
+  readonly optional: boolean;
+}
+const NUMBER_SPECS: Readonly<Record<"r" | "roof" | "openYrs" | "tenure", NumberSpec>> = {
+  r: { bounds: EXPLORE_BOUNDS.radiusMi, integer: false, optional: false },
+  roof: { bounds: EXPLORE_BOUNDS.roof, integer: true, optional: true },
+  openYrs: { bounds: EXPLORE_BOUNDS.openYrs, integer: false, optional: true },
+  tenure: { bounds: EXPLORE_BOUNDS.tenure, integer: true, optional: true },
+};
+
+/** The URL value of typed text: clamped into the bounds (whole numbers rounded); null = not a number. */
+export function committedNumber(text: string, spec: NumberSpec): string | null {
+  const n = Number(text);
+  if (text.trim() === "" || !Number.isFinite(n)) return null;
+  const value = Math.min(
+    spec.bounds[1],
+    Math.max(spec.bounds[0], spec.integer ? Math.round(n) : n),
+  );
+  return String(value);
+}
 
 export interface FilterSheetProps {
   /** The current URL value of a control, or its default. */
@@ -51,41 +76,81 @@ export function FilterSheet({
   const id = useId();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [active, setActive] = useState(-1);
+  // What the person is typing in a number box, until they leave it (the URL only takes valid numbers).
+  const [drafts, setDrafts] = useState<Partial<Record<FilterKey, string>>>({});
   const typed = text.trim();
   const options = typed === "" ? [] : suggest(typed);
   const listId = `${id}-places`;
 
   const choose = (placeId: string): void => {
     setText("");
+    setActive(-1);
     onPatch({ place: placeId, at: null, sel: null });
   };
+  const optionId = (index: number): string => `${id}-option-${index}`;
   const onPlaceKey = (event: KeyboardEvent<HTMLInputElement>): void => {
-    const first = options[0];
-    if (event.key === "Enter" && first !== undefined) {
+    const count = options.length;
+    if (event.key === "Escape") {
+      setText("");
+      setActive(-1);
+    } else if (event.key === "ArrowDown" && count > 0) {
       event.preventDefault();
-      choose(first.id);
+      setActive((active + 1) % count);
+    } else if (event.key === "ArrowUp" && count > 0) {
+      event.preventDefault();
+      setActive(active <= 0 ? count - 1 : active - 1);
+    } else if (event.key === "Enter") {
+      const chosen = options[active] ?? options[0];
+      if (chosen !== undefined) {
+        event.preventDefault();
+        choose(chosen.id);
+      }
     }
   };
-  const numberField = (key: FilterKey, label: string, unit: string, step: string): ReactElement => (
-    <div className={styles.field}>
-      <label className={styles.label} htmlFor={`${id}-${key}`}>
-        {label}
-      </label>
-      <span className={styles.inputRow}>
-        <input
-          id={`${id}-${key}`}
-          className={styles.input}
-          type="number"
-          inputMode="decimal"
-          step={step}
-          min="0"
-          value={value(key)}
-          onChange={(e) => onPatch({ [key]: e.target.value } as FilterPatch)}
-        />
-        <span className={styles.unit}>{unit}</span>
-      </span>
-    </div>
-  );
+  const numberField = (
+    key: "r" | "roof" | "openYrs" | "tenure",
+    label: string,
+    unit: string,
+    step: string,
+  ): ReactElement => {
+    const spec = NUMBER_SPECS[key];
+    return (
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor={`${id}-${key}`}>
+          {label}
+        </label>
+        <span className={styles.inputRow}>
+          <input
+            id={`${id}-${key}`}
+            className={styles.input}
+            type="number"
+            inputMode="decimal"
+            step={step}
+            min={spec.bounds[0]}
+            max={spec.bounds[1]}
+            value={drafts[key] ?? value(key)}
+            onChange={(e) => {
+              const typed = e.target.value;
+              setDrafts((d) => ({ ...d, [key]: typed }));
+              if (typed.trim() === "" && spec.optional) onPatch({ [key]: null });
+              else {
+                const committed = committedNumber(typed, spec);
+                if (committed !== null) onPatch({ [key]: committed });
+              }
+            }}
+            onBlur={() =>
+              setDrafts((d) => {
+                const { [key]: _gone, ...rest } = d;
+                return rest;
+              })
+            }
+          />
+          <span className={styles.unit}>{unit}</span>
+        </span>
+      </div>
+    );
+  };
 
   return (
     <div className={styles.sheet}>
@@ -111,18 +176,25 @@ export function FilterSheet({
             aria-autocomplete="list"
             aria-expanded={options.length > 0}
             aria-controls={listId}
+            {...(active >= 0 && active < options.length
+              ? { "aria-activedescendant": optionId(active) }
+              : {})}
             autoComplete="off"
             placeholder="Travis County place or ZIP"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              setActive(-1);
+            }}
             onKeyDown={onPlaceKey}
           />
           <ul id={listId} role="listbox" aria-label="Places" className={styles.options}>
-            {options.map((o) => (
+            {options.map((o, index) => (
               <li
                 key={o.id}
+                id={optionId(index)}
                 role="option"
-                aria-selected="false"
+                aria-selected={index === active}
                 tabIndex={-1}
                 className={styles.option}
                 onClick={() => choose(o.id)}

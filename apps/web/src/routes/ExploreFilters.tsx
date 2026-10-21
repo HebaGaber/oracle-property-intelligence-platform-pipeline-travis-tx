@@ -7,15 +7,10 @@
 // tenure filter, the result cards (ResultRow) or, with zero results, the empty line and Close
 // matches with "+{miles_outside} mi", the engine line, and the Property drawer for `sel`. Not a
 // route module: Explore.tsx mounts it.
-import {
-  resolvePlace,
-  searchPlaces,
-  type ExploreResult,
-  type ExploreRow,
-  type ResolvedPlace,
-} from "@countylens/query-core";
+import type { ExploreResult, ExploreRow } from "@countylens/query-core/explore";
+import { resolvePlace, searchPlaces, type ResolvedPlace } from "@countylens/query-core/places";
 import { EXPLORE_TEXTS } from "@countylens/shared";
-import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@countylens/api-client/react";
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useSearchParams } from "react-router";
@@ -32,7 +27,6 @@ import {
   isOpenOrStalled,
   parseExploreQuery,
   patchParams,
-  permitFilter,
   searchRequest,
   type ExploreQuery,
   type ExploreSearchRequest,
@@ -102,10 +96,33 @@ function suggestPlaces(text: string): readonly ResolvedPlace[] {
 }
 
 function headerText(n: number, request: ExploreSearchRequest, name: string): string {
-  if (request.roof !== undefined)
-    return EXPLORE_TEXTS.header(n, request.radius_mi, name, request.roof);
-  // Without a roof filter the template's roof clause would claim a threshold that was not asked.
-  return EXPLORE_TEXTS.header(n, request.radius_mi, name, 0).split(" · roof")[0] ?? "";
+  return request.roof === undefined
+    ? EXPLORE_TEXTS.headerNoRoof(n, request.radius_mi, name)
+    : EXPLORE_TEXTS.header(n, request.radius_mi, name, request.roof);
+}
+
+/** A search request with the place name it was built for, so a header never borrows a newer URL's name. */
+interface AskedSearch {
+  readonly request: ExploreSearchRequest;
+  readonly name: string;
+}
+
+/** What "Load more" has fetched for one request: the extra pages' rows and the last page fetched. */
+interface MoreRows {
+  readonly key: string;
+  readonly rows: readonly ExploreRow[];
+  readonly page: number;
+  readonly busy: boolean;
+  readonly failed: boolean;
+}
+const NO_MORE: MoreRows = { key: "", rows: [], page: 0, busy: false, failed: false };
+
+function isBadRequest(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { data?: { code?: unknown } }).data?.code === "BAD_REQUEST"
+  );
 }
 
 export function ExploreFilters({
@@ -118,25 +135,56 @@ export function ExploreFilters({
   const bound = useBoundRun();
   const place = query.place === null ? null : resolvePlace(query.place);
   const placeOk = place === null || place.status === "found";
-  const request =
-    bound.kind === "ready" && placeOk ? searchRequest(query, bound.manifestCid) : null;
-  const debounced = useDebounced(request, SEARCH_DEBOUNCE_MS);
+  const asked: AskedSearch | null =
+    bound.kind === "ready" && placeOk
+      ? { request: searchRequest(query, bound.manifestCid), name: areaName(query) }
+      : null;
+  const debounced = useDebounced(asked, SEARCH_DEBOUNCE_MS);
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const search = useQuery({
-    ...trpc.explore.search.queryOptions(debounced ?? skipToken),
+    ...trpc.explore.search.queryOptions(debounced?.request ?? skipToken),
     placeholderData: keepPreviousData,
   });
 
-  // The header describes the search that answered, not the one in flight.
-  const answered = useRef<{ request: ExploreSearchRequest; name: string } | null>(null);
+  // The header describes the search that answered, with the place name built into that request.
+  const answered = useRef<AskedSearch | null>(null);
   if (search.isSuccess && !search.isPlaceholderData && debounced !== null) {
-    answered.current = { request: debounced, name: areaName(parseExploreQuery(params)) };
+    answered.current = debounced;
   }
+  const answeredKey = answered.current === null ? "" : JSON.stringify(answered.current.request);
+  const [moreState, setMore] = useState<MoreRows>(NO_MORE);
+  const more = moreState.key === answeredKey ? moreState : NO_MORE;
+  const loadMore = async (): Promise<void> => {
+    const current = answered.current;
+    if (current === null || more.busy) return;
+    const key = answeredKey;
+    const page = more.page + 1;
+    setMore({ ...more, key, busy: true, failed: false });
+    try {
+      const next = await queryClient.fetchQuery(
+        trpc.explore.search.queryOptions({ ...current.request, page }),
+      );
+      setMore((prev) => {
+        if (prev.key !== key) return prev;
+        const seen = new Set(prev.rows.map((r) => r.property_cid));
+        return {
+          key,
+          page,
+          busy: false,
+          failed: false,
+          rows: [...prev.rows, ...next.rows.filter((r) => !seen.has(r.property_cid))],
+        };
+      });
+    } catch {
+      setMore((prev) => (prev.key === key ? { ...prev, busy: false, failed: true } : prev));
+    }
+  };
 
   const pageState: ExplorePageState =
     bound.kind === "error" || search.isError
       ? "error"
-      : bound.kind === "loading" || (request !== null && search.data === undefined)
+      : bound.kind === "loading" || (asked !== null && search.data === undefined)
         ? "loading"
         : "ready";
   useEffect(() => onState(pageState), [pageState, onState]);
@@ -152,10 +200,20 @@ export function ExploreFilters({
   };
 
   const data: ExploreResult | undefined = search.data;
+  const extraRows = more.rows.filter(
+    (r) => !(data?.rows ?? []).some((d) => d.property_cid === r.property_cid),
+  );
   const all: readonly ExploreRow[] = data
-    ? [...data.rows, ...data.close_matches.map((c) => c.row)]
+    ? [...data.rows, ...extraRows, ...data.close_matches.map((c) => c.row)]
     : [];
   const selected = query.sel === null ? undefined : all.find((r) => r.property_cid === query.sel);
+  // A `sel` that the answered results do not hold is said so, never silently ignored.
+  const selMissing =
+    query.sel !== null &&
+    selected === undefined &&
+    data !== undefined &&
+    answered.current !== null &&
+    !search.isPlaceholderData;
   const select = (cid: string): void => patch({ sel: cid }, false);
 
   return (
@@ -188,9 +246,21 @@ export function ExploreFilters({
         </p>
         {bound.kind === "error" ? <ErrorBanner message={runErrorNode(bound.error)} /> : null}
         {search.isFetching ? <LinearProgress label={SEARCHING} stageText={SEARCHING} /> : null}
-        {search.isError ? <ErrorBanner message={search.error.message} /> : null}
+        {search.isError ? (
+          <ErrorBanner
+            message={
+              isBadRequest(search.error) ? EXPLORE_TEXTS.filtersOutOfRange : search.error.message
+            }
+            onRetry={() => void search.refetch()}
+          />
+        ) : null}
         {data === undefined && pageState === "loading" ? (
           <Skeleton variant="cards" count={3} />
+        ) : null}
+        {selMissing ? (
+          <p className={styles.engine} role="status" data-sel-missing="">
+            {EXPLORE_TEXTS.propertyNotInResults}
+          </p>
         ) : null}
         {selected === undefined ? null : (
           <PropertyDrawer row={selected} onClose={() => patch({ sel: null }, false)} />
@@ -204,8 +274,9 @@ export function ExploreFilters({
               answered.current.name,
             )}
             request={answered.current.request}
-            showTenureUnknown={query.tenure !== undefined}
-            permitFiltered={permitFilter(query.permit) !== undefined}
+            more={more}
+            extraRows={extraRows}
+            onLoadMore={() => void loadMore()}
             onSelect={select}
             selected={query.sel}
           />
@@ -219,20 +290,30 @@ function Results({
   data,
   header,
   request,
-  showTenureUnknown,
-  permitFiltered,
+  more,
+  extraRows,
+  onLoadMore,
   onSelect,
   selected,
 }: {
   readonly data: ExploreResult;
   readonly header: string;
   readonly request: ExploreSearchRequest;
-  readonly showTenureUnknown: boolean;
-  readonly permitFiltered: boolean;
+  readonly more: MoreRows;
+  readonly extraRows: readonly ExploreRow[];
+  readonly onLoadMore: () => void;
   readonly onSelect: (cid: string) => void;
   readonly selected: string | null;
 }): ReactElement {
   const zero = data.total_within_r === 0;
+  const showTenureUnknown = request.tenure !== undefined;
+  // The permit sentence is true only when no other filter could also be the reason for zero rows.
+  const onlyPermitFilter =
+    request.permit !== undefined &&
+    request.roof === undefined &&
+    request.tenure === undefined &&
+    request.ooa !== true;
+  const shown = data.rows.length + extraRows.length;
   return (
     <>
       <p className={styles.header} data-explore-header="" aria-live="polite">
@@ -246,7 +327,7 @@ function Results({
       {zero ? (
         <>
           <p className={styles.empty}>
-            {permitFiltered
+            {onlyPermitFilter
               ? EXPLORE_TEXTS.noOpenPermits
               : EXPLORE_TEXTS.zeroResults(request.radius_mi, data.close_matches.length)}
           </p>
@@ -275,16 +356,31 @@ function Results({
       ) : (
         <>
           <ul className={styles.list} aria-label="Results">
-            {data.rows.map((row) => (
+            {[...data.rows, ...extraRows].map((row) => (
               <li key={row.property_cid} className={styles.item}>
                 <ResultRow row={row} onSelect={onSelect} selected={selected === row.property_cid} />
               </li>
             ))}
           </ul>
-          {data.total_within_r > data.rows.length ? (
-            <p className={styles.engine}>
-              Showing the first {data.rows.length} of {data.total_within_r}
-            </p>
+          <div className={styles.engine} data-showing="" aria-live="polite">
+            {data.total_within_r > shown
+              ? EXPLORE_TEXTS.showingFirst(shown, data.total_within_r)
+              : more.page > 0
+                ? EXPLORE_TEXTS.showingAll(data.total_within_r)
+                : null}
+          </div>
+          {more.failed ? <ErrorBanner message={EXPLORE_TEXTS.loadMoreFailed} /> : null}
+          {data.total_within_r > shown ? (
+            <div>
+              <button
+                type="button"
+                className={styles.run}
+                disabled={more.busy}
+                onClick={onLoadMore}
+              >
+                {EXPLORE_TEXTS.loadMore}
+              </button>
+            </div>
           ) : null}
         </>
       )}

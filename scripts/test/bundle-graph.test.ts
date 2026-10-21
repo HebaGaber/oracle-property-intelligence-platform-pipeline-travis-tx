@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { HUB_LIMIT_BYTES, checkHubGraph, formatHubReport } from "../bundle-size.ts";
+import { HUB_LIMIT_BYTES, checkHubGraph, checkPlacement, formatHubReport } from "../bundle-size.ts";
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..", "..");
 const tsxBin = resolve(repoRoot, "node_modules", ".bin", "tsx");
@@ -237,5 +237,74 @@ describe("scripts/bundle-size.ts: the Hub initial graph (A-13 T010)", () => {
     });
     expect(`${r.stdout}${r.stderr}`).toMatch(/hub-graph: OK/);
     expect(r.status).toBe(0);
+  });
+});
+
+describe("scripts/bundle-size.ts: heavy-library placement (A-13 review round)", () => {
+  const manifest = (hubImports: string[]) =>
+    viteManifest({
+      "index.html": { file: "assets/index-a1.js", isEntry: true },
+      "_http-x.js": { file: "assets/http-x.js" },
+      "_zod-z.js": { file: "assets/zod-z.js" },
+      "_hq-h.js": { file: "assets/hq-h.js" },
+      "src/routes/Hub.tsx": { file: "assets/Hub-h1.js", imports: ["index.html", ...hubImports] },
+      "src/routes/Runs.tsx": { file: "assets/Runs-r1.js", imports: ["index.html"] },
+      "src/routes/DataCatalog.tsx": {
+        file: "assets/DataCatalog-c1.js",
+        imports: ["index.html", "_hq-h.js"],
+      },
+    });
+  const files = {
+    "assets/index-a1.js": "export{};",
+    "assets/http-x.js": "export{};",
+    "assets/zod-z.js": 'throw new Error("ZodError")',
+    "assets/hq-h.js": 'throw new Error("parquet file invalid (footer != PAR1)")',
+    "assets/Hub-h1.js": "export{};",
+    "assets/Runs-r1.js": "export{};",
+    "assets/DataCatalog-c1.js": "export{};",
+  };
+
+  it("passes when / is clean and hyparquet is Catalog-only", () => {
+    const dist = makeDist({ ".vite/manifest.json": manifest(["_http-x.js"]), ...files });
+    const report = checkPlacement({ distDir: dist });
+    expect(report.violations).toEqual([]);
+    expect(report.ok).toBe(true);
+  });
+
+  it("fails when / reaches zod, and when hyparquet leaks into / or Runs", () => {
+    const dist = makeDist({
+      ".vite/manifest.json": manifest(["_zod-z.js", "_hq-h.js"]),
+      ...files,
+    });
+    const report = checkPlacement({ distDir: dist });
+    expect(report.ok).toBe(false);
+    expect(report.violations.join("\n")).toMatch(/\/ graph holds zod/);
+    expect(report.violations.join("\n")).toMatch(/\/ graph holds hyparquet/);
+  });
+
+  it("fails when hyparquet sits in a chunk the Catalog does not reach", () => {
+    const m = JSON.parse(manifest(["_http-x.js"])) as Record<string, { imports?: string[] }>;
+    m["src/routes/DataCatalog.tsx"] = {
+      ...m["src/routes/DataCatalog.tsx"],
+      imports: ["index.html"],
+    };
+    const dist = makeDist({ ".vite/manifest.json": JSON.stringify(m), ...files });
+    const report = checkPlacement({ distDir: dist });
+    expect(report.ok).toBe(false);
+    expect(report.violations.join("\n")).toMatch(/not Catalog-only/);
+  });
+
+  it("fails on a query-core barrel module key in the / graph", () => {
+    const m = JSON.parse(manifest(["_http-x.js"])) as Record<string, unknown>;
+    m["../../packages/query-core/src/index.ts"] = { file: "assets/qc.js" };
+    (m["src/routes/Hub.tsx"] as { imports: string[] }).imports.push(
+      "../../packages/query-core/src/index.ts",
+    );
+    const dist = makeDist({
+      ".vite/manifest.json": JSON.stringify(m),
+      "assets/qc.js": "export{};",
+      ...files,
+    });
+    expect(checkPlacement({ distDir: dist }).violations.join("\n")).toMatch(/query-core barrel/);
   });
 });

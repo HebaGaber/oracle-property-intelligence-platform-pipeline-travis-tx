@@ -137,6 +137,26 @@ describe("Compare with one published run (FR-001b, TC-014)", () => {
   });
 });
 
+describe("Compare falls back to the defaults for empty or 0 run numbers (review finding 12)", () => {
+  for (const search of ["?a=&b=", "?a=0&b=0", "?a=0", "?b=", ""]) {
+    it(`shows the previous and the latest run for ${JSON.stringify(search)}`, async () => {
+      installFetch([run1, run2], {});
+      await renderCompare(search);
+      const cards = await screen.findAllByRole("article");
+      expect(cards).toHaveLength(2);
+      expect(cards[0]?.querySelector(`[data-cid="${run1.cid}"]`)).not.toBeNull();
+      expect(cards[1]?.querySelector(`[data-cid="${run2.cid}"]`)).not.toBeNull();
+    });
+  }
+
+  it("states the numbering contract once", async () => {
+    installFetch([run1, run2], {});
+    await renderCompare("?a=1&b=2");
+    await screen.findAllByRole("article");
+    expect(screen.getByText(RUNS_TEXTS.numbering)).toBeDefined();
+  });
+});
+
 describe("Compare with two runs (FR-001a, TC-007, TC-015)", () => {
   it("shows both manifest CIDs, the previousManifestCid link and the newer run's per-source deltas", async () => {
     installFetch([run1, run2], {});

@@ -53,8 +53,9 @@ interface ComparedRun {
 }
 
 function runNumber(value: string | null, fallback: number): number {
-  const n = value === null ? NaN : Number(value);
-  return Number.isInteger(n) ? n : fallback;
+  // Run numbers start at 1 (RUNS_TEXTS.numbering); empty, 0 or junk means the default.
+  const n = value === null || value.trim() === "" ? NaN : Number(value);
+  return Number.isInteger(n) && n >= 1 ? n : fallback;
 }
 
 export function Component(): ReactElement {
@@ -76,6 +77,11 @@ export function Component(): ReactElement {
       ) : null}
       {state.kind === "error" ? (
         <ErrorBanner message={runErrorNode(state.error)} onRetry={retry} />
+      ) : null}
+      {state.kind === "ready" ? (
+        <p className={styles.itemBody} data-run-numbering="">
+          {RUNS_TEXTS.numbering}
+        </p>
       ) : null}
       {state.kind === "ready" ? (
         <ComparePair

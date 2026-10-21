@@ -44,7 +44,12 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     `https://${gw === "pinata" ? PINATA() : FILEBASE()}/ipfs/${cid}`;
 
   /** Both lanes end ✓ with size and SHA-256 equal to the expected values. */
-  async function expectVerified(page: Page, cid: string, size: number, sha256: string): Promise<void> {
+  async function expectVerified(
+    page: Page,
+    cid: string,
+    size: number,
+    sha256: string,
+  ): Promise<void> {
     for (const [gw, operator] of [
       ["pinata", "Pinata"],
       ["filebase", "Filebase"],
@@ -55,7 +60,10 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
       await expect(lane).toContainText(operator);
       await expect(lane.locator("[data-got-size]")).toHaveAttribute("data-value", String(size));
       await expect(lane.locator("[data-got-sha256]")).toHaveAttribute("data-value", sha256);
-      await expect(lane.locator("[data-expected-size]")).toHaveAttribute("data-value", String(size));
+      await expect(lane.locator("[data-expected-size]")).toHaveAttribute(
+        "data-value",
+        String(size),
+      );
       await expect(lane.locator("[data-expected-sha256]")).toHaveAttribute("data-value", sha256);
       await expect(lane.getByText("✓")).toBeVisible();
     }
@@ -80,7 +88,9 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     if (configured !== undefined) return url.host === configured;
     if ([PINATA(), FILEBASE(), siteHost].includes(url.host)) return false;
     if (url.href.includes(oracle.manifestCid)) return true;
-    return oracle.M.artifacts.some((a) => url.href.includes(a.cid) || (a.carCid !== undefined && url.href.includes(a.carCid)));
+    return oracle.M.artifacts.some(
+      (a) => url.href.includes(a.cid) || (a.carCid !== undefined && url.href.includes(a.carCid)),
+    );
   }
 
   test(scenario("006"), async ({ page, oracle }) => {
@@ -129,7 +139,9 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     await page.goto(ROUTES.dataManifest);
     const section = await ready(page, "data-manifest");
     if (big.length === 0) {
-      test.info().annotations.push({ type: "today", description: "no > 50 MB artifact in this run" });
+      test
+        .info()
+        .annotations.push({ type: "today", description: "no > 50 MB artifact in this run" });
     }
     // 2–3. Every > 50 MB file shows "Verify via CAR" and is not downloaded; every other file "Verify".
     for (const a of oracle.M.artifacts.filter((x) => x.kind !== "directory")) {
@@ -138,7 +150,9 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
       await expect(row.getByRole("link", { name, exact: true })).toBeVisible();
     }
     for (const a of big) {
-      expect(net.requests.filter((r) => r.url.href.includes(a.cid)).map((r) => r.url.href)).toEqual([]);
+      expect(net.requests.filter((r) => r.url.href.includes(a.cid)).map((r) => r.url.href)).toEqual(
+        [],
+      );
     }
     await checkpoint(page, "019", 3, { fullPage: true });
   });
@@ -153,7 +167,11 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     await page.route(`${pinataUrl}*`, async (route: Route) => {
       pinataTries += 1;
       if (pinataTries <= 2) {
-        await route.fulfill({ status: 429, headers: { "access-control-allow-origin": "*" }, body: "" });
+        await route.fulfill({
+          status: 429,
+          headers: { "access-control-allow-origin": "*" },
+          body: "",
+        });
       } else await route.fallback();
     });
     // 2. Verify the file artifact.
@@ -166,7 +184,10 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     await checkpoint(page, "020", 3);
     // 5. ✓ with the manifest digest.
     await expect(pinata).toHaveAttribute("data-state", "verified", { timeout: LANES_DONE_MS });
-    await expect(pinata.locator("[data-got-sha256]")).toHaveAttribute("data-value", artifact.sha256);
+    await expect(pinata.locator("[data-got-sha256]")).toHaveAttribute(
+      "data-value",
+      artifact.sha256,
+    );
     // 4. Waits about 2 s then 4 s (±0.5 s).
     const [g1, g2] = gaps(pinataTimes);
     expect(g1 ?? 0).toBeGreaterThanOrEqual(1_500);
@@ -197,7 +218,11 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     let alwaysTries = 0;
     await page3.route(`${pinataUrl}*`, async (route: Route) => {
       alwaysTries += 1;
-      await route.fulfill({ status: 429, headers: { "access-control-allow-origin": "*" }, body: "" });
+      await route.fulfill({
+        status: 429,
+        headers: { "access-control-allow-origin": "*" },
+        body: "",
+      });
     });
     await page3.goto(verifyPath(artifact.cid));
     const failed = page3.locator(SEL.lane("pinata"));
@@ -231,7 +256,10 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     await expect(lane).toHaveAttribute("data-state", "mismatch", { timeout: LANES_DONE_MS });
     await expect(lane.getByText("✓")).toHaveCount(0);
     await expect(lane.locator("[data-got-sha256]")).toHaveAttribute("data-value", flippedSha);
-    await expect(lane.locator("[data-expected-sha256]")).toHaveAttribute("data-value", artifact.sha256);
+    await expect(lane.locator("[data-expected-sha256]")).toHaveAttribute(
+      "data-value",
+      artifact.sha256,
+    );
     expect(flippedSha).not.toBe(artifact.sha256);
     await expect(lane).toContainText(
       VERIFY_TEXTS.mismatch(
@@ -256,9 +284,13 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     await page.goto(verifyPath(artifact.cid));
     await settled(page, "data-verify");
     for (const gw of ["pinata", "filebase"] as const) {
-      await expect(page.locator(SEL.lane(gw))).not.toHaveAttribute("data-state", /idle|fetching|retrying/, {
-        timeout: LANES_DONE_MS,
-      });
+      await expect(page.locator(SEL.lane(gw))).not.toHaveAttribute(
+        "data-state",
+        /idle|fetching|retrying/,
+        {
+          timeout: LANES_DONE_MS,
+        },
+      );
     }
     await checkpoint(page, "022", 2);
     // 3. Only Pinata and Filebase; plain GET, no Range, no custom header, no cookie, no preflight.
@@ -311,7 +343,8 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     await expectVerified(page, artifact.cid, artifact.size, artifact.sha256);
     await checkpoint(page, "023", 5);
     // No request reached the aborted host again after the first failure per file.
-    for (const [path, count] of aborted) expect(count, `copy requests for ${path}`).toBeLessThanOrEqual(1);
+    for (const [path, count] of aborted)
+      expect(count, `copy requests for ${path}`).toBeLessThanOrEqual(1);
   });
 
   test(scenario("024"), async ({ page, oracle }) => {

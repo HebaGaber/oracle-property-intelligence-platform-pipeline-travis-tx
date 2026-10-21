@@ -22,7 +22,7 @@ import { coverageRows, type CoverageRow } from "../data/coverage-rows";
 import { formatCount } from "../data/format";
 import {
   catalogTables,
-  readParquetFooter,
+  readTableMeta,
   type CatalogTable,
   type ParquetColumn,
 } from "../data/parquet-meta";
@@ -34,7 +34,7 @@ import runsStyles from "./Runs.module.css";
 import styles from "./DataCatalog.module.css";
 
 const TABLES_EXPORT = "tables-export.json";
-const CONCURRENCY = 4;
+const CONCURRENCY = 2;
 
 type TableResult =
   | { readonly kind: "ok"; readonly columns: readonly ParquetColumn[]; readonly rows: number }
@@ -51,17 +51,12 @@ async function readTable(
   signal: AbortSignal,
 ): Promise<TableResult> {
   try {
-    const footers = await Promise.all(
-      table.parts.map((part) =>
-        readParquetFooter(run.read.partUrl({ name: part.name, cid: part.cid }), part.size, {
-          signal,
-        }),
-      ),
+    const meta = await readTableMeta(
+      table.parts.map((part) => ({ name: part.name, cid: part.cid, size: part.size })),
+      (part) => run.read.partUrl({ name: part.name, cid: part.cid }),
+      { signal },
     );
-    const first = footers[0];
-    if (first === undefined)
-      return { kind: "fail", reason: "the table has no part in the manifest" };
-    return { kind: "ok", columns: first.columns, rows: footers.reduce((n, f) => n + f.rows, 0) };
+    return { kind: "ok", columns: meta.columns, rows: meta.rows };
   } catch (error) {
     return { kind: "fail", reason: reasonOf(error) };
   }

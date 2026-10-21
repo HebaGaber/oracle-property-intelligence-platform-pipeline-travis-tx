@@ -135,9 +135,10 @@ async function expectRowFields(
   const provenance = row.locator(SEL.provenance).first();
   await expect(provenance).toContainText(oracle.M.runId);
   const tableCid = await provenance.locator(SEL.cid).first().getAttribute("data-cid");
-  expect(tableCid !== null && artifactCids(oracle.M).has(tableCid), `table CID ${tableCid} in M`).toBe(
-    true,
-  );
+  expect(
+    tableCid !== null && artifactCids(oracle.M).has(tableCid),
+    `table CID ${tableCid} in M`,
+  ).toBe(true);
 }
 
 /** The table chip of the kind a coverage row belongs to names a table whose CID is in M. */
@@ -147,7 +148,10 @@ async function expectKindTable(row: Locator, M: A13Oracle["M"]): Promise<void> {
   const table = (await chip.getAttribute("data-table")) ?? "";
   const cid = await chip.locator(SEL.cid).first().getAttribute("data-cid");
   expect(cid !== null && artifactCids(M).has(cid), `table ${table} CID ${cid} in M`).toBe(true);
-  expect(M.artifacts.some((a) => a.name.startsWith(`tables/${table}`)), `table ${table} in M`).toBe(true);
+  expect(
+    M.artifacts.some((a) => a.name.startsWith(`tables/${table}`)),
+    `table ${table} in M`,
+  ).toBe(true);
 }
 
 const byCid = (result: ExploreSearchResult): Map<string, ExploreRowShape> =>
@@ -168,7 +172,13 @@ async function openExplore(page: Page, url: string): Promise<ExploreSearchResult
   return result;
 }
 
-async function expectHeader(page: Page, n: number, r: number, place: string, roof: number): Promise<void> {
+async function expectHeader(
+  page: Page,
+  n: number,
+  r: number,
+  place: string,
+  roof: number,
+): Promise<void> {
   await expect(page.locator(SEL.header)).toHaveText(EXPLORE_TEXTS.header(n, r, place, roof));
 }
 
@@ -232,18 +242,24 @@ test.describe("A-13 explorer · demo lines", () => {
     // 2. Rows for every record kind (contractor by its five states).
     for (const kind of KIND_IDS) await expect(section.locator(SEL.kind(kind))).toHaveCount(1);
     for (const state of CONTRACTOR_STATES) {
-      await expect(section.locator(SEL.kind("contractor"))).toContainText(new RegExp(`\\b${state}\\b`, "i"));
+      await expect(section.locator(SEL.kind("contractor"))).toContainText(
+        new RegExp(`\\b${state}\\b`, "i"),
+      );
     }
     // 3. Each row with a coverage key: count, derivation label, collection time, table + CID.
     const rows = section.locator(SEL.coverageKey);
-    const keys = await rows.evaluateAll((els) => els.map((el) => el.getAttribute("data-coverage-key") ?? ""));
+    const keys = await rows.evaluateAll((els) =>
+      els.map((el) => el.getAttribute("data-coverage-key") ?? ""),
+    );
     for (const key of keys) {
       const entry = M.coverage[key];
       expect(entry, `coverage key ${key} is in M.coverage`).toBeDefined();
       if (entry === undefined) continue;
       const row = section.locator(`[data-coverage-key="${key}"]`).first();
       expect(intOf(await row.locator(SEL.count).first().innerText())).toBe(entry.count);
-      await expect(row.getByText(DERIVATION_LABELS[entry.derivation], { exact: true })).toBeVisible();
+      await expect(
+        row.getByText(DERIVATION_LABELS[entry.derivation], { exact: true }),
+      ).toBeVisible();
       await expect(row.locator("time[datetime]").first()).toBeAttached();
       await expectKindTable(row, M);
     }
@@ -281,7 +297,12 @@ test.describe("A-13 explorer · demo lines", () => {
     // 6. Engine line.
     await expect(page.locator(SEL.engineLine)).toContainText(EXPLORE_TEXTS.engineBrowser);
     // 7. No /api/ or /trpc/ request between Run and the result.
-    expect(net.since(mark).filter((r) => isApiCall(r.url)).map((r) => r.url.href)).toEqual([]);
+    expect(
+      net
+        .since(mark)
+        .filter((r) => isApiCall(r.url))
+        .map((r) => r.url.href),
+    ).toEqual([]);
     test.info().annotations.push({ type: "elapsed-ms", description: String(Date.now() - t0) });
     await checkpoint(page, "004", 7);
   });
@@ -352,8 +373,13 @@ test.describe("A-13 explorer · demo lines", () => {
       await expect(cols.nth(1)).toHaveAttribute("data-cid", last.manifestCid);
       expect(prev.manifestCid).not.toBe(last.manifestCid);
       // 3. previousManifestCid as a link to run n-1.
-      await expect(section.locator(`a[data-previous-cid="${oracle.M.previousManifestCid ?? ""}"]`)).toBeVisible();
-      await expect(section.locator(`a[data-previous-cid]`).first()).toHaveAttribute("href", new RegExp(prev.manifestCid));
+      await expect(
+        section.locator(`a[data-previous-cid="${oracle.M.previousManifestCid ?? ""}"]`),
+      ).toBeVisible();
+      await expect(section.locator(`a[data-previous-cid]`).first()).toHaveAttribute(
+        "href",
+        new RegExp(prev.manifestCid),
+      );
       expect(oracle.M.previousManifestCid).toBe(prev.manifestCid);
       // 4. The resolve pill.
       await expect(page.getByText(RUNS_TEXTS.oldManifestResolves, { exact: true })).toBeVisible({
@@ -363,7 +389,10 @@ test.describe("A-13 explorer · demo lines", () => {
       await expect(cols.nth(0).locator(SEL.carLink)).toHaveCount(1);
       await expect(cols.nth(1).locator(SEL.carLink)).toHaveCount(1);
       const sum = oracle.M.artifacts.reduce((t, a) => t + a.size, 0);
-      await expect(cols.nth(1).locator(SEL.totalSize)).toHaveAttribute("data-total-size", String(sum));
+      await expect(cols.nth(1).locator(SEL.totalSize)).toHaveAttribute(
+        "data-total-size",
+        String(sum),
+      );
       await checkpoint(page, "007", 5, { fullPage: true });
       return;
     }
@@ -420,7 +449,11 @@ test.describe("A-13 explorer · demo lines", () => {
       await expectRowFields(row, data.get(cid), oracle);
     }
     if (n === 0) {
-      await expect(page.getByText(templatePattern((r, k) => EXPLORE_TEXTS.zeroResults(Number(r), Number(k)), 2))).toBeVisible();
+      await expect(
+        page.getByText(
+          templatePattern((r, k) => EXPLORE_TEXTS.zeroResults(Number(r), Number(k)), 2),
+        ),
+      ).toBeVisible();
     }
     await checkpoint(page, "008", 8, { fullPage: true });
   });
@@ -450,7 +483,10 @@ test.describe("A-13 explorer · demo lines", () => {
       if (x === null) continue;
       expect([EXPLORE_TEXTS.stalledNoCarrier(x), EXPLORE_TEXTS.openNoCarrier(x)]).toContain(text);
     }
-    for (const cell of await page.locator(SEL.resultRow).locator(SEL.field("contractor_name")).all()) {
+    for (const cell of await page
+      .locator(SEL.resultRow)
+      .locator(SEL.field("contractor_name"))
+      .all()) {
       await expect(cell).toHaveText(EXPLORE_TEXTS.noCarrier);
     }
     // 5. The open-permit section.
@@ -501,10 +537,14 @@ test.describe("A-13 explorer · runs and compare", () => {
     const list = page.getByRole("list", { name: "Limitations" });
     await expect(list).toBeVisible();
     const expected = [...M.limitations, ...M.sources.flatMap((s) => s.limitations)];
-    for (const text of expected) await expect(list.getByText(text, { exact: true }).first()).toBeVisible();
+    for (const text of expected)
+      await expect(list.getByText(text, { exact: true }).first()).toBeVisible();
     const shown = await list.getByRole("listitem").allInnerTexts();
     for (const item of shown) {
-      expect(expected.some((t) => item.includes(t)), `limitation "${item}" comes from M`).toBe(true);
+      expect(
+        expected.some((t) => item.includes(t)),
+        `limitation "${item}" comes from M`,
+      ).toBe(true);
     }
     await expect(page.getByText(RUNS_TEXTS.nextSync, { exact: true })).toBeVisible();
     await checkpoint(page, "011", 3);
@@ -516,7 +556,8 @@ test.describe("A-13 explorer · runs and compare", () => {
       ["abort", (route) => route.abort("failed")],
       [
         "invalid-json",
-        (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"runs":' }),
+        (route) =>
+          route.fulfill({ status: 200, contentType: "application/json", body: '{"runs":' }),
       ],
     ];
     for (const [name, fault] of faults) {
@@ -528,7 +569,8 @@ test.describe("A-13 explorer · runs and compare", () => {
         await page.goto(path);
         const alert = page.locator(SEL.alert).filter({ hasText: unavailable });
         await expect(alert).toBeVisible({ timeout: 30_000 });
-        const reason = unavailable.exec((await alert.innerText()).split("\n")[0]?.trim() ?? "")?.[1] ?? "";
+        const reason =
+          unavailable.exec((await alert.innerText()).split("\n")[0]?.trim() ?? "")?.[1] ?? "";
         expect(reason.trim(), "non-empty reason").not.toBe("");
         await expect(page.locator('a[href$="/runs/index.json"]').first()).toBeVisible();
         await expect(page.locator(SEL.cid)).toHaveCount(0);
@@ -615,7 +657,9 @@ test.describe("A-13 explorer · runs and compare", () => {
     await expect(page.getByText(RUNS_TEXTS.oldManifestResolves, { exact: true })).toBeVisible({
       timeout: 90_000,
     });
-    const hosts = new Set(net.requests.filter((r) => r.url.href.includes(old)).map((r) => r.url.host));
+    const hosts = new Set(
+      net.requests.filter((r) => r.url.href.includes(old)).map((r) => r.url.host),
+    );
     for (const host of hosts) expect([PINATA(), FILEBASE()]).toContain(host);
     await checkpoint(page, "015", 4);
   });
@@ -633,7 +677,10 @@ test.describe("A-13 explorer · coverage", () => {
     const section = await ready(page, "coverage");
     const orphanCounts = await section
       .locator(SEL.count)
-      .evaluateAll((els) => els.filter((el) => el.closest("[data-coverage-key],[data-denominator]") === null).length);
+      .evaluateAll(
+        (els) =>
+          els.filter((el) => el.closest("[data-coverage-key],[data-denominator]") === null).length,
+      );
     expect(orphanCounts, "counts without a coverage key").toBe(0);
     const shown = new Map<string, number>();
     for (const row of await section.locator(SEL.coverageKey).all()) {
@@ -643,7 +690,9 @@ test.describe("A-13 explorer · coverage", () => {
       if (entry === undefined) continue;
       const count = intOf(await row.locator(SEL.count).first().innerText());
       expect(count, key).toBe(entry.count);
-      await expect(row.getByText(DERIVATION_LABELS[entry.derivation], { exact: true })).toBeVisible();
+      await expect(
+        row.getByText(DERIVATION_LABELS[entry.derivation], { exact: true }),
+      ).toBeVisible();
       // 4. The table chip's CID is in M.artifacts.
       await expectKindTable(row, M);
       shown.set(key, count);
@@ -708,7 +757,8 @@ test.describe("A-13 explorer · filters and property", () => {
     const placeParam = url.searchParams.get("place");
     const at = url.searchParams.get("at");
     expect(
-      (placeParam !== null && [place.geoid, place.name.toLowerCase()].includes(placeParam.toLowerCase())) ||
+      (placeParam !== null &&
+        [place.geoid, place.name.toLowerCase()].includes(placeParam.toLowerCase())) ||
         at === `${place.lat},${place.lon}`,
       `URL names Pflugerville (${url.search})`,
     ).toBe(true);
@@ -744,12 +794,16 @@ test.describe("A-13 explorer · filters and property", () => {
     await checkpoint(page, "027", 2);
     // 3. Radius 5 → 3.
     const t0 = Date.now();
-    const result = await nextSearch(page, () => setControl(page.getByLabel("Radius", { exact: true }), "3"));
+    const result = await nextSearch(page, () =>
+      setControl(page.getByLabel("Radius", { exact: true }), "3"),
+    );
     // 4. Within 3 s, no reload.
     await expectHeader(page, result.total_within_r, 3, place.name, 15);
     expect(Date.now() - t0, "header updated within 3 s").toBeLessThan(3_000);
     expect(new URL(page.url()).searchParams.get("r")).toBe("3");
-    expect(await page.evaluate(() => (window as unknown as { __tcMarker?: number }).__tcMarker)).toBe(1);
+    expect(
+      await page.evaluate(() => (window as unknown as { __tcMarker?: number }).__tcMarker),
+    ).toBe(1);
     expect(await page.evaluate(() => performance.getEntriesByType("navigation").length)).toBe(1);
     const n3 = result.total_within_r;
     expect(n3).toBeLessThanOrEqual(n5);
@@ -762,7 +816,11 @@ test.describe("A-13 explorer · filters and property", () => {
     // Precondition: SQL count 0 for the filter; halve r until it is (contract minimum 0.25 mi).
     let r = 0.5;
     for (;;) {
-      const n = await sqlCountInNewTab(page, EXPLORE, areaCountSql({ ...point, radiusMi: r }, ["p.roof_age_years >= 15"]));
+      const n = await sqlCountInNewTab(
+        page,
+        EXPLORE,
+        areaCountSql({ ...point, radiusMi: r }, ["p.roof_age_years >= 15"]),
+      );
       if (n === 0) break;
       test.skip(r / 2 < 0.25, `no zero-result radius ≥ 0.25 mi at this point (n=${n} at r=${r})`);
       r /= 2;
@@ -815,7 +873,9 @@ test.describe("A-13 explorer · filters and property", () => {
       await expect(page.getByLabel("Tenure", { exact: true })).toHaveValue(String(state.tenure));
       await expect(page.getByLabel("Out-of-area owner", { exact: true })).toBeChecked();
       await expect(page.getByLabel("Sort", { exact: true })).toHaveValue(state.sort);
-      await expect(page.locator(SEL.page("explore"))).toContainText(gazetteerPlace("Pflugerville").name);
+      await expect(page.locator(SEL.page("explore"))).toContainText(
+        gazetteerPlace("Pflugerville").name,
+      );
     };
     // 1–2. Every control shows its URL value.
     await openExplore(page, exploreUrl(EXPLORE, state));
@@ -829,7 +889,9 @@ test.describe("A-13 explorer · filters and property", () => {
     await openExplore(page, exploreUrl(EXPLORE, { ...state, view: "map" }));
     await expect(page.locator(SEL.page("explore"))).toHaveAttribute("data-view", "list");
     await expect(page.locator("[data-map], .maplibregl-map, .leaflet-container")).toHaveCount(0);
-    const tiles = net.requests.filter((r) => /\/\d+\/\d+\/\d+\.(png|jpg|webp|pbf|mvt)(\?|$)|tile/i.test(r.url.pathname));
+    const tiles = net.requests.filter((r) =>
+      /\/\d+\/\d+\/\d+\.(png|jpg|webp|pbf|mvt)(\?|$)|tile/i.test(r.url.pathname),
+    );
     expect(tiles.map((t) => t.url.href)).toEqual([]);
     await checkpoint(page, "029", 4);
   });
@@ -851,7 +913,9 @@ test.describe("A-13 explorer · filters and property", () => {
     await checkpoint(page, "030", 3);
     // 4. Reload → the same property.
     await page.reload();
-    await expect(page.getByRole("dialog")).toHaveAttribute("data-property-cid", cid, { timeout: 60_000 });
+    await expect(page.getByRole("dialog")).toHaveAttribute("data-property-cid", cid, {
+      timeout: 60_000,
+    });
     await checkpoint(page, "030", 4);
   });
 
@@ -908,7 +972,9 @@ test.describe("A-13 explorer · filters and property", () => {
     if (expected === null) expect(isBlankCell(await bbb.innerText())).toBe(false);
     else await expect(bbb).toHaveText(expected);
     if (withPermit.bbb_status === "not_checked") {
-      expect((withPermit.bbb_status_reason ?? "").trim(), "non-empty bbb_status_reason").not.toBe("");
+      expect((withPermit.bbb_status_reason ?? "").trim(), "non-empty bbb_status_reason").not.toBe(
+        "",
+      );
     }
     await expect(drawer).not.toContainText(/licen[cs]e/i);
     await checkpoint(page, "032", 4);
@@ -920,7 +986,10 @@ test.describe("A-13 explorer · filters and property", () => {
     const columns = page.getByRole("button", { name: "Columns" });
     if ((await columns.count()) > 0) {
       await columns.click();
-      for (const box of await page.getByRole("menuitemcheckbox").or(page.getByRole("checkbox")).all()) {
+      for (const box of await page
+        .getByRole("menuitemcheckbox")
+        .or(page.getByRole("checkbox"))
+        .all()) {
         if (!(await box.isChecked())) await box.click();
       }
       await page.keyboard.press("Escape");
@@ -943,11 +1012,15 @@ test.describe("A-13 explorer · filters and property", () => {
         seen.add(`bbb_${data.bbb_status ?? ""}`);
       }
       if (data.tenure_years === null) {
-        await expect(row.locator(SEL.field("tenure_years"))).toHaveText(EXPLORE_TEXTS.tenureUnknown);
+        await expect(row.locator(SEL.field("tenure_years"))).toHaveText(
+          EXPLORE_TEXTS.tenureUnknown,
+        );
         seen.add("tenure_unknown");
       }
       if (data.owner_area_class === null || data.owner_area_class === "unknown") {
-        await expect(row.locator(SEL.field("owner_area_class"))).toHaveText(EXPLORE_TEXTS.ownerAreaUnknown);
+        await expect(row.locator(SEL.field("owner_area_class"))).toHaveText(
+          EXPLORE_TEXTS.ownerAreaUnknown,
+        );
         seen.add("owner_area_unknown");
       }
     }
@@ -966,7 +1039,10 @@ test.describe("A-13 explorer · filters and property", () => {
     }
     // 4. Scan every result cell.
     for (const cell of await page.locator(SEL.resultRow).locator("[data-field]").all()) {
-      expect(isBlankCell(await cell.innerText()), `cell ${await cell.getAttribute("data-field")}`).toBe(false);
+      expect(
+        isBlankCell(await cell.innerText()),
+        `cell ${await cell.getAttribute("data-field")}`,
+      ).toBe(false);
     }
     await checkpoint(page, "033", 4, { fullPage: true });
   });
@@ -995,7 +1071,9 @@ test.describe("A-13 explorer · filters and property", () => {
     for (const el of await drawer.locator('[data-reason="no_lexicon_carrier"]').all()) {
       await expect(el).toHaveText(EXPLORE_TEXTS.noCarrier);
     }
-    await expect(drawer.locator(SEL.field("status_raw"))).not.toContainText(/Expired|Final|Active|Suspended/);
+    await expect(drawer.locator(SEL.field("status_raw"))).not.toContainText(
+      /Expired|Final|Active|Suspended/,
+    );
     await checkpoint(page, "034", 3);
   });
 
@@ -1024,7 +1102,9 @@ test.describe("A-13 explorer · filters and property", () => {
   test(scenario("036"), async ({ page }) => {
     // 1–2. Explore, preset ooa78753 → tenure > 10 and out-of-area on.
     await openExplore(page, EXPLORE);
-    const result = await nextSearch(page, () => page.getByRole("button", { name: "ooa78753" }).click());
+    const result = await nextSearch(page, () =>
+      page.getByRole("button", { name: "ooa78753" }).click(),
+    );
     await expect(page.getByLabel("Tenure", { exact: true })).toHaveValue("10");
     await expect(page.getByLabel("Out-of-area owner", { exact: true })).toBeChecked();
     // 3. One definition line under each filter.
@@ -1042,7 +1122,9 @@ test.describe("A-13 explorer · filters and property", () => {
       }
       expect(data.tenure_years ?? 0).toBeGreaterThan(10);
       if (data.owner_area_class === null || data.owner_area_class === "unknown") {
-        await expect(row.locator(SEL.field("owner_area_class"))).toHaveText(EXPLORE_TEXTS.ownerAreaUnknown);
+        await expect(row.locator(SEL.field("owner_area_class"))).toHaveText(
+          EXPLORE_TEXTS.ownerAreaUnknown,
+        );
       }
     }
     await checkpoint(page, "036", 4, { fullPage: true });
@@ -1051,7 +1133,9 @@ test.describe("A-13 explorer · filters and property", () => {
   test(scenario("037"), async ({ page }) => {
     // 1. The TC-036 state.
     await openExplore(page, EXPLORE);
-    const result = await nextSearch(page, () => page.getByRole("button", { name: "ooa78753" }).click());
+    const result = await nextSearch(page, () =>
+      page.getByRole("button", { name: "ooa78753" }).click(),
+    );
     // 2. "tenure unknown: {n}".
     await expect(page.locator(SEL.tenureUnknown)).toHaveText(
       EXPLORE_TEXTS.tenureUnknownCount(result.tenure_unknown),
@@ -1059,10 +1143,13 @@ test.describe("A-13 explorer · filters and property", () => {
     await checkpoint(page, "037", 2);
     // 3. SQL count of the same area with tenure_years IS NULL (same other filters).
     const url = new URL(page.url());
-    const area = result.area as { point?: { lat: number; lon: number }; lat?: number; lon?: number } | undefined;
+    const area = result.area as
+      { point?: { lat: number; lon: number }; lat?: number; lon?: number } | undefined;
     const lat = area?.point?.lat ?? area?.lat;
     const lon = area?.point?.lon ?? area?.lon;
-    expect(lat !== undefined && lon !== undefined, "explore.search returns the resolved area").toBe(true);
+    expect(lat !== undefined && lon !== undefined, "explore.search returns the resolved area").toBe(
+      true,
+    );
     const where = ["p.tenure_years IS NULL"];
     if (url.searchParams.get("ooa") === "1") where.push("p.owner_is_out_of_area = true");
     const roof = url.searchParams.get("roof");
@@ -1070,7 +1157,10 @@ test.describe("A-13 explorer · filters and property", () => {
     const n = await sqlCountInNewTab(
       page,
       EXPLORE,
-      areaCountSql({ lat: lat ?? 0, lon: lon ?? 0, radiusMi: Number(url.searchParams.get("r") ?? "5") }, where),
+      areaCountSql(
+        { lat: lat ?? 0, lon: lon ?? 0, radiusMi: Number(url.searchParams.get("r") ?? "5") },
+        where,
+      ),
     );
     expect(result.tenure_unknown).toBe(n);
     expect(result.rows.filter((r) => r.tenure_years === null)).toEqual([]);
@@ -1120,12 +1210,17 @@ test.describe("A-13 explorer · SQL", () => {
   test(scenario("043"), async ({ page, oracle }) => {
     // 1. Filters search; record requests.
     const net = recordRequests(page);
-    const result = await openExplore(page, exploreUrl(EXPLORE, { place: "pflugerville", r: 5, roof: 15 }));
+    const result = await openExplore(
+      page,
+      exploreUrl(EXPLORE, { place: "pflugerville", r: 5, roof: 15 }),
+    );
     // 2. Engine line.
     await expect(page.locator(SEL.engineLine)).toContainText(EXPLORE_TEXTS.engineServer);
     // 3. One explore.search per search, engine server, as_of = M; no DuckDB-WASM.
     await page.waitForLoadState("networkidle");
-    expect(net.requests.filter((r) => EXPLORE_SEARCH.test(r.url.href) && r.method !== "OPTIONS")).toHaveLength(1);
+    expect(
+      net.requests.filter((r) => EXPLORE_SEARCH.test(r.url.href) && r.method !== "OPTIONS"),
+    ).toHaveLength(1);
     expect(result.engine).toBe("server");
     expect(result.as_of.manifestCid).toBe(oracle.manifestCid);
     expect(net.requests.filter((r) => isDuckdbWasm(r.url)).map((r) => r.url.href)).toEqual([]);
@@ -1135,8 +1230,12 @@ test.describe("A-13 explorer · SQL", () => {
     const tab = page.getByRole("tab", { name: "SQL" });
     if ((await tab.count()) > 0) await tab.click();
     else await page.goto(exploreUrl(EXPLORE, { mode: "sql" }));
-    await expect(page.locator(SEL.engineLine)).toContainText(EXPLORE_TEXTS.engineBrowser, { timeout: 60_000 });
-    await expect.poll(() => net.since(mark).some((r) => isDuckdbWasm(r.url)), { timeout: 60_000 }).toBe(true);
+    await expect(page.locator(SEL.engineLine)).toContainText(EXPLORE_TEXTS.engineBrowser, {
+      timeout: 60_000,
+    });
+    await expect
+      .poll(() => net.since(mark).some((r) => isDuckdbWasm(r.url)), { timeout: 60_000 })
+      .toBe(true);
     await checkpoint(page, "043", 4);
   });
 });

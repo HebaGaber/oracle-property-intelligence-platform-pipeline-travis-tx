@@ -57,7 +57,24 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
   }, []);
   const onKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      // Focus trap: Tab and Shift+Tab cycle inside the sheet.
+      const items = Array.from(sheet.current?.querySelectorAll<HTMLElement>("a[href]") ?? []);
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (first === undefined || last === undefined) return;
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === sheet.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     },
     [onClose],
   );
@@ -66,6 +83,7 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
       ref={sheet}
       id="more-sheet"
       role="dialog"
+      aria-modal="true"
       aria-label={MORE_LABEL}
       tabIndex={-1}
       className={styles.sheet}
@@ -115,21 +133,28 @@ export function AppShell(): ReactElement {
   const inCounty = useLocation().pathname.startsWith("/tx/");
   const [moreOpen, setMoreOpen] = useState(false);
   const moreButton = useRef<HTMLButtonElement>(null);
-  const closeMore = useCallback(() => {
-    setMoreOpen(false);
-    moreButton.current?.focus();
-  }, []);
+  const closeMore = useCallback(() => setMoreOpen(false), []);
+  // Return focus to More after the background is no longer inert (an inert element cannot take
+  // focus), so this runs after the render that closes the sheet.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !moreOpen) moreButton.current?.focus();
+    wasOpen.current = moreOpen;
+  }, [moreOpen]);
 
   return (
     <div className={styles.shell}>
-      <header className={scrolled ? `${styles.bar} ${styles.barScrolled}` : styles.bar}>
+      <header
+        inert={moreOpen}
+        className={scrolled ? `${styles.bar} ${styles.barScrolled}` : styles.bar}
+      >
         <h1 className={styles.title}>
           <Link to={ROUTES.hub} className={styles.titleLink}>
             {APP_TITLE}
           </Link>
         </h1>
       </header>
-      <nav className={styles.nav} aria-label="Primary">
+      <nav className={styles.nav} aria-label="Primary" inert={moreOpen}>
         {DESTINATIONS.map((destination) => (
           <NavLink
             key={destination.to}
@@ -158,8 +183,13 @@ export function AppShell(): ReactElement {
           <span className={styles.label}>{MORE_LABEL}</span>
         </button>
       </nav>
-      {moreOpen ? <MoreSheet onClose={closeMore} /> : null}
-      <main className={styles.main} onScroll={onScroll}>
+      {moreOpen ? (
+        <>
+          <div className={styles.scrim} data-more-scrim="" onClick={closeMore} aria-hidden="true" />
+          <MoreSheet onClose={closeMore} />
+        </>
+      ) : null}
+      <main className={styles.main} onScroll={onScroll} inert={moreOpen}>
         {inCounty ? <CountySelect /> : null}
         <Outlet />
       </main>

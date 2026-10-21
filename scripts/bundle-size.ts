@@ -230,6 +230,120 @@ export function checkHubGraph({
   };
 }
 
+// ---------------------------------------------------------------------------------------
+// Heavy-library placement (A-13 review round)
+// ---------------------------------------------------------------------------------------
+// The Vite manifest lists chunks, not modules, so a library is recognised by a distinctive string
+// that survives minification (an error message or a SQL view name) in the chunk file.
+export const MARKERS = {
+  zod: /ZodError|Invalid input/,
+  hyparquet: /footer != PAR1/,
+  "query-core": /v_roofing_permit|exploreSearchSql/,
+} as const;
+/** A manifest key for the query-core barrel module itself. */
+export const QUERY_CORE_BARREL_KEY = /query-core\/src\/index\.[jt]s$/;
+export const CATALOG_ROUTE_KEY = /(^|\/)src\/routes\/DataCatalog\.tsx?$/;
+const ROUTE_KEY = /(^|\/)src\/routes\/[^/]+\.tsx?$/;
+
+export interface PlacementReport {
+  distDir: string;
+  /** "none" = no manifest, so the check cannot run (skipped). */
+  source: "manifest" | "none";
+  violations: string[];
+  ok: boolean;
+}
+
+/** Library names (MARKERS keys) found in a chunk file. */
+function librariesIn(distDir: string, file: string): string[] {
+  const full = join(distDir, file);
+  if (!file.endsWith(".js") || !existsSync(full)) return [];
+  const code = readFileSync(full, "utf8");
+  return Object.entries(MARKERS)
+    .filter(([, marker]) => marker.test(code))
+    .map(([name]) => name);
+}
+
+/**
+ * (a) the `/` (Hub) initial graph holds no zod, hyparquet, DuckDB/.wasm or query-core barrel;
+ * (b) hyparquet appears only in chunks reachable from the Catalog route, never in the initial
+ * graph of any other route (`/`, `/runs`, Explore, …).
+ */
+export function checkPlacement({ distDir }: { distDir: string }): PlacementReport {
+  const manifestPath = join(distDir, ".vite", "manifest.json");
+  if (!existsSync(manifestPath)) {
+    return { distDir, source: "none", violations: [], ok: true };
+  }
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, ManifestChunk>;
+  const keys = Object.keys(manifest);
+  const reach = (roots: string[]): Set<string> => {
+    const seen = new Set<string>();
+    const visit = (key: string): void => {
+      if (seen.has(key) || !manifest[key]) return;
+      seen.add(key);
+      for (const next of manifest[key]?.imports ?? []) visit(next);
+    };
+    for (const root of roots) visit(root);
+    return seen;
+  };
+  const entryKeys = keys.filter((key) => manifest[key]?.isEntry);
+  const filesOf = (graph: Set<string>): string[] =>
+    [...graph].flatMap((key) => {
+      const chunk = manifest[key];
+      return chunk ? [chunk.file, ...(chunk.assets ?? [])] : [];
+    });
+  const violations: string[] = [];
+
+  const hubKey = keys.find((key) => HUB_MANIFEST_KEY.test(key));
+  if (hubKey === undefined) {
+    violations.push("no Hub route (src/routes/Hub.tsx) in the manifest: / graph cannot be checked");
+  } else {
+    const hub = reach([...entryKeys, hubKey]);
+    for (const key of hub) {
+      if (QUERY_CORE_BARREL_KEY.test(key))
+        violations.push(`/ graph holds the query-core barrel (${key})`);
+    }
+    for (const file of filesOf(hub)) {
+      if (FORBIDDEN_IN_HUB.test(file)) violations.push(`/ graph holds ${file} (DuckDB or .wasm)`);
+      for (const lib of librariesIn(distDir, file)) {
+        violations.push(`/ graph holds ${lib} (${file})`);
+      }
+    }
+  }
+
+  const catalogKey = keys.find((key) => CATALOG_ROUTE_KEY.test(key));
+  const catalog = catalogKey === undefined ? new Set<string>() : reach([catalogKey]);
+  const catalogFiles = new Set(filesOf(catalog));
+  const entryGraph = reach(entryKeys);
+  for (const key of keys) {
+    const chunk = manifest[key];
+    if (!chunk || !librariesIn(distDir, chunk.file).includes("hyparquet")) continue;
+    if (!catalogFiles.has(chunk.file) || entryGraph.has(key)) {
+      violations.push(`hyparquet is in ${chunk.file}, which is not Catalog-only`);
+    }
+  }
+  for (const key of keys.filter((k) => ROUTE_KEY.test(k) && !CATALOG_ROUTE_KEY.test(k))) {
+    for (const file of filesOf(reach([...entryKeys, key]))) {
+      if (librariesIn(distDir, file).includes("hyparquet")) {
+        violations.push(`hyparquet is in the initial graph of ${key} (${file})`);
+      }
+    }
+  }
+  return {
+    distDir,
+    source: "manifest",
+    violations: [...new Set(violations)],
+    ok: violations.length === 0,
+  };
+}
+
+export function formatPlacementReport(report: PlacementReport): string {
+  if (report.source === "none")
+    return `placement: SKIPPED: no .vite/manifest.json (${report.distDir})`;
+  return report.ok
+    ? "placement: OK: / holds no zod, hyparquet, DuckDB/.wasm or query-core barrel; hyparquet is Catalog-only"
+    : `placement: FAIL:\n${report.violations.map((v) => `  ${v}`).join("\n")}`;
+}
+
 const kb = (bytes: number): string => `${(bytes / 1024).toFixed(1)} KB`;
 
 export function formatReport(report: BundleReport): string {
@@ -318,7 +432,9 @@ export function main(argv: string[]): number {
       limitBytes: options.hubLimitBytes,
     });
     console.log(formatHubReport(hub));
-    return report.ok && hub.ok ? 0 : 1;
+    const placement = checkPlacement({ distDir: resolve(options.distDir) });
+    console.log(formatPlacementReport(placement));
+    return report.ok && hub.ok && placement.ok ? 0 : 1;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return 1;

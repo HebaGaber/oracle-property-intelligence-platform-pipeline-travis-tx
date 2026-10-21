@@ -7,6 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./builders": "./src/query-builders.ts",
+    "./places": "./src/places.ts",
+    "./explore": "./src/explore.ts",
     "./gazetteer": "./gazetteer/travis-places@1.0.0/index.ts"
   },
   "scripts": {

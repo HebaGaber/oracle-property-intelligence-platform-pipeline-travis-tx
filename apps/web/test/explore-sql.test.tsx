@@ -133,6 +133,29 @@ describe("SQL panel loading (FR-006, TC-040, TC-043)", () => {
   });
 });
 
+describe("SQL panel bounds the result (A-13 review finding 4)", () => {
+  it("shows the first 500 rows and says so when the engine returned more", async () => {
+    session.query.mockResolvedValue(Array.from({ length: 501 }, (_, i) => ({ n: i })));
+    await renderExplore("?mode=sql");
+    await openNow();
+    fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+    const grid = await screen.findByRole("table", { name: "Query result" });
+    expect(grid.querySelectorAll("tbody tr")).toHaveLength(500);
+    expect(document.body.textContent).toContain("showing the first 500 rows");
+    expect(document.body.textContent).not.toMatch(/501 rows/);
+  });
+
+  it("states the true count when the result was not cut", async () => {
+    session.query.mockResolvedValue([{ n: 1 }, { n: 2 }]);
+    await renderExplore("?mode=sql");
+    await openNow();
+    fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+    await screen.findByRole("table", { name: "Query result" });
+    expect(document.body.textContent).toMatch(/2 rows · \d+ ms in this browser/);
+    expect(document.body.textContent).not.toContain("showing the first");
+  });
+});
+
 describe("SQL panel read-only and errors (FR-006, FR-017, TC-038, TC-039)", () => {
   it.each([
     "DELETE FROM v_property",

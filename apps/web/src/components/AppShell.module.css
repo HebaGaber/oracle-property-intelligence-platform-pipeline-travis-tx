@@ -150,7 +150,7 @@
    to the rail from 600 px. surface-container-low, corner extra-large on the open edge, level 1. */
 .sheet {
   position: fixed;
-  z-index: 2;
+  z-index: 3;
   inset: auto 0 calc(var(--space-10) + var(--space-4)) 0;
   box-sizing: border-box;
   max-height: 70dvh;
@@ -160,6 +160,18 @@
   color: var(--md-sys-color-on-surface);
   border-radius: var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0 0;
   box-shadow: var(--md-sys-elevation-level1);
+}
+
+/* Modal scrim behind the More sheet (Atlas scrim token at the disabled-state opacity). */
+.scrim {
+  position: fixed;
+  z-index: 2;
+  inset: 0;
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-scrim) calc(var(--md-sys-state-disabled-opacity) * 100%),
+    transparent
+  );
 }
 
 .sheet:focus-visible {

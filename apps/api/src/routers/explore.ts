@@ -28,7 +28,7 @@ import {
   type ExploreResult,
 } from "@countylens/query-core";
 import { bindOnce, timedQuery } from "../engine/duckdb-node.js";
-import { publicProcedure, router } from "../trpc.js";
+import { middleware, publicProcedure, router } from "../trpc.js";
 
 export const EXPLORE_ENGINE_ERROR = "The search could not run on the server; try again";
 export const EXPLORE_PLACE_ERROR = "place is not in the Travis County gazetteer";
@@ -75,8 +75,43 @@ function resolveArea(area: ExploreSearchInput["area"]): ExploreResult["area"] {
   return { label: place.label, lat: place.point.lat, lon: place.point.lon };
 }
 
+/** One plain sentence for the first Zod issue: the field and its bound, never the issue list. */
+export function plainIssue(issue: z.core.$ZodIssue): string {
+  const path = issue.path.length > 0 ? issue.path.map(String).join(".") : "input";
+  switch (issue.code) {
+    case "too_big":
+      return `${path} must be at most ${String(issue.maximum)}`;
+    case "too_small":
+      return `${path} must be at least ${String(issue.minimum)}`;
+    case "invalid_value":
+      return `${path} must be one of ${issue.values.map(String).join(", ")}`;
+    case "invalid_type":
+      return `${path} is missing or has the wrong type`;
+    default:
+      return `${path} is not valid`;
+  }
+}
+
+/** Wraps input parsing: a Zod BAD_REQUEST becomes a short sentence (bounds unchanged). */
+const plainBadRequest = middleware(async ({ next }) => {
+  const result = await next();
+  if (
+    !result.ok &&
+    result.error.code === "BAD_REQUEST" &&
+    result.error.cause instanceof z.ZodError
+  ) {
+    const first = result.error.cause.issues[0];
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: first ? plainIssue(first) : "the search input is not valid",
+    });
+  }
+  return result;
+});
+
 export const exploreRouter = router({
   search: publicProcedure
+    .use(plainBadRequest)
     .input(ExploreSearchInput)
     .query(async ({ input }): Promise<ExploreResult> => {
       const area = resolveArea(input.area);

@@ -105,40 +105,37 @@ export function VerifyLane({
   );
 }
 
+/** One persistent polite region: its children change, so every state (final ones too) is spoken. */
 function LaneStatus({ state }: { readonly state: LaneState }): ReactElement {
+  return (
+    <p className={styles.status} role="status" aria-live="polite">
+      <LaneStatusBody state={state} />
+    </p>
+  );
+}
+
+function LaneStatusBody({ state }: { readonly state: LaneState }): ReactElement {
   switch (state.kind) {
     case "idle":
     case "fetching":
-      return (
-        <p className={styles.status} role="status">
-          Fetching{state.kind === "fetching" ? ` · try ${state.attempt}` : ""}
-        </p>
-      );
+      return <>Fetching{state.kind === "fetching" ? ` · try ${state.attempt}` : ""}</>;
     case "retrying":
       return (
-        <p className={styles.status} role="status">
+        <>
           <StatusPill status="warning" text={state.text} /> next try in{" "}
           {Math.round(state.delayMs / 1000)} s
-        </p>
+        </>
       );
     case "verified":
-      return (
-        <p className={styles.status}>
-          <StatusPill status="verified" text={VERIFY_TEXTS.verified} />
-        </p>
-      );
+      return <StatusPill status="verified" text={VERIFY_TEXTS.verified} />;
     case "mismatch":
     case "failed":
       return (
-        <p className={styles.status}>
+        <span role="alert">
           <StatusPill status="error" text={state.text} />
-        </p>
+        </span>
       );
     case "via_car":
-      return (
-        <p className={styles.status}>
-          <StatusPill status="info" text={state.text} />
-        </p>
-      );
+      return <StatusPill status="info" text={state.text} />;
   }
 }

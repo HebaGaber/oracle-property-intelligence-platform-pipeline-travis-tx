@@ -22,6 +22,8 @@ export const RUNS_TEXTS = Object.freeze({
   oldManifestResolves: "old manifest still resolves on Pinata and Filebase",
   /** Compare with one run, and the delta column of a first run. */
   firstRun: "first run · nothing to compare against",
+  /** The numbering contract of `a`/`b` on Compare and of the Hub chip: run n = the n-th entry of runs/index.json ordered by finishedAt (1-based). */
+  numbering: "Run n is the n-th entry of runs/index.json, ordered by finish time",
   /** Every entry of runs/index.json is a completed run (the index is written after finish). */
   completedRun: "Listed in the run index: a completed run",
   indexUnavailable: (reason: string): string => `Run index unavailable · ${reason}`,
@@ -52,6 +54,17 @@ export const VERIFY_TEXTS = Object.freeze({
 export const EXPLORE_TEXTS = Object.freeze({
   header: (n: number, r: number, place: string, years: number): string =>
     `${n} within ${r} mi of ${place} · roof ≥ ${years} yrs`,
+  /** The header of a search without a roof filter: same wording, no roof clause. */
+  headerNoRoof: (n: number, r: number, place: string): string => `${n} within ${r} mi of ${place}`,
+  /** A BAD_REQUEST from explore.search (never the validator's JSON dump). */
+  filtersOutOfRange: "Those filters are out of range · check radius, roof age and open years",
+  /** `sel` names a property that the current results do not contain. */
+  propertyNotInResults:
+    "That property is not in these results · change the filters or pick another",
+  loadMore: "Load more",
+  loadMoreFailed: "More rows could not be loaded · try again",
+  showingFirst: (shown: number, total: number): string => `Showing the first ${shown} of ${total}`,
+  showingAll: (total: number): string => `Showing all ${total}`,
   stalledExpired: (x: number): string => `Stalled ${x} yrs · source says Expired`,
   openSourceSays: (x: number, statusRaw: string): string =>
     `Open ${x} yrs · source says ${statusRaw}`,
@@ -66,6 +79,9 @@ export const EXPLORE_TEXTS = Object.freeze({
   engineBrowser: "DuckDB-WASM in your browser · read-only",
   engineServer: "DuckDB on the server · same views",
   sqlReadOnly: "Read-only: only SELECT, WITH, DESCRIBE and SHOW run here",
+  /** The SQL result caption: the true count only when the result was not cut. */
+  sqlRows: (shown: number, capped: boolean, ms: number): string =>
+    `${capped ? `showing the first ${shown} rows` : `${shown} rows`} · ${ms} ms in this browser`,
   sqlError: (firstLine: string, fix: string): string => `${firstLine} · Try: ${fix}`,
   zeroResults: (r: number, k: number): string =>
     `No properties within ${r} mi · ${k} close matches just outside`,

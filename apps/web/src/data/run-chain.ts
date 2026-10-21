@@ -8,6 +8,10 @@ import type { RunManifestV1 } from "@countylens/contract";
 import { rawCid } from "@countylens/query-core";
 import { RUNS_TEXTS, type GatewayName, type ReadPathUrls } from "@countylens/shared";
 import { browserFetch } from "./http";
+import { readCapped } from "./read-capped";
+
+/** A run manifest is a few KB; anything over 1 MB is not one. */
+export const RUN_MANIFEST_MAX_BYTES = 1024 * 1024;
 
 export interface RunChainLink {
   readonly runId: string;
@@ -73,8 +77,9 @@ async function checkGateway(
     if (options.signal !== undefined) init.signal = options.signal;
     const response = await fetchImpl(options.urls.gatewayUrl(cid, gateway), init);
     if (response.status !== 200) return "fails";
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    return (await rawCid(bytes)) === cid ? "resolves" : "fails";
+    const read = await readCapped(response, RUN_MANIFEST_MAX_BYTES);
+    if (read.kind === "too_large") return "fails";
+    return (await rawCid(read.bytes)) === cid ? "resolves" : "fails";
   } catch {
     return "fails";
   }

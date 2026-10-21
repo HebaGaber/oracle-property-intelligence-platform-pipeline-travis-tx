@@ -168,6 +168,32 @@ describe("Hub: loading and error states", () => {
   });
 });
 
+describe("Hub: the chip row is a live region", () => {
+  it("is role=status, announces Loading latest run, then the ready chip text", async () => {
+    install({ index: () => new Promise<Response>(() => undefined) });
+    const page = await renderHub();
+    const status = within(page).getByRole("status");
+    expect(status.textContent).toContain("Loading latest run");
+    expect(status.querySelector("[data-chip-skeleton]")).not.toBeNull();
+    cleanup();
+    vi.unstubAllGlobals();
+    install({});
+    const ready = await renderHub();
+    const live = within(ready).getByRole("status");
+    await within(live).findByText("Run 2 · 2026-10-21 10:40 UTC");
+    expect(live.textContent).not.toContain("Loading latest run");
+  });
+
+  it("the error state is a named pill with the reason and the link, role=alert", async () => {
+    install({ index: () => new Response("nope", { status: 404 }) });
+    const page = await renderHub();
+    const alert = await within(page).findByRole("alert");
+    expect(alert.textContent).toMatch(/^Run index unavailable · /);
+    expect(alert.querySelector("[data-status=error]")).not.toBeNull();
+    expect(within(page).getByRole("status").contains(alert)).toBe(true);
+  });
+});
+
 describe("Hub: never loads the query engine (TC-052)", () => {
   it("Hub.tsx imports no query-core, DuckDB or Parquet module", () => {
     expect(hubSource).not.toMatch(/query-core|duckdb|hyparquet|engine\//i);

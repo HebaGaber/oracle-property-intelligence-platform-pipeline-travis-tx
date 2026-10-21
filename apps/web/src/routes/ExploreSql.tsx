@@ -17,13 +17,13 @@ import type { ExplorePageState } from "./ExploreFilters";
 import {
   openSqlSession,
   readOnlyRefusal,
+  SQL_RESULT_ROWS,
   sqlErrorLine,
   type SqlSession,
 } from "./ExploreSql.engine";
 import styles from "./Explore.module.css";
 
 const LOADING_ENGINE = "Loading the query engine";
-const RESULT_ROWS = 500;
 const DEFAULT_SQL = "SELECT count(*) FROM v_property";
 
 type EngineState =
@@ -148,7 +148,11 @@ export function ExploreSql({
       {run.kind === "rows" ? (
         <>
           <p className={styles.engine}>
-            {run.rows.length} rows · {Math.round(run.ms)} ms in this browser
+            {EXPLORE_TEXTS.sqlRows(
+              Math.min(run.rows.length, SQL_RESULT_ROWS),
+              run.rows.length > SQL_RESULT_ROWS,
+              Math.round(run.ms),
+            )}
           </p>
           <div className={styles.scroll}>
             <table className={styles.grid} aria-label="Query result">
@@ -162,7 +166,7 @@ export function ExploreSql({
                 </tr>
               </thead>
               <tbody>
-                {run.rows.slice(0, RESULT_ROWS).map((row, i) => (
+                {run.rows.slice(0, SQL_RESULT_ROWS).map((row, i) => (
                   <tr key={i}>
                     {columns.map((c) => (
                       <td key={c}>{cellText(row[c])}</td>

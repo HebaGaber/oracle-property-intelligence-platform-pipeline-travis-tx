@@ -21,6 +21,7 @@ import {
 } from "@countylens/shared";
 import { CID_COPY_HOST_KEY, FILEBASE_GATEWAY_HOST_KEY, viteEnv, type WebEnv } from "./config";
 import { browserFetch } from "./http";
+import { readCapped } from "./read-capped";
 
 export const PINATA_GATEWAY_HOST_KEY = "VITE_PINATA_GATEWAY_HOST";
 export const VERIFY_BACKOFF_MS = [2000, 4000, 8000] as const;
@@ -102,6 +103,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 type Attempt =
   | { readonly kind: "bytes"; readonly bytes: Uint8Array }
   | { readonly kind: "retry"; readonly reason: RetryReason; readonly retryAfterMs?: number }
+  | { readonly kind: "oversize"; readonly seen: number }
   | { readonly kind: "status"; readonly status: number };
 
 async function attempt(
@@ -109,6 +111,7 @@ async function attempt(
   fetchImpl: typeof fetch,
   timeoutMs: number,
   outer: AbortSignal | undefined,
+  maxBytes: number,
 ): Promise<Attempt> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -127,7 +130,10 @@ async function attempt(
         : { kind: "retry", reason: "rate_limited" };
     }
     if (response.status !== 200) return { kind: "status", status: response.status };
-    return { kind: "bytes", bytes: new Uint8Array(await response.arrayBuffer()) };
+    const read = await readCapped(response, maxBytes);
+    return read.kind === "bytes"
+      ? { kind: "bytes", bytes: read.bytes }
+      : { kind: "oversize", seen: read.seen };
   } catch (error) {
     if (outer?.aborted === true) throw error;
     return { kind: "retry", reason: "no_readable_response" };
@@ -163,11 +169,20 @@ export async function runVerifyLane(options: RunVerifyLaneOptions): Promise<Lane
   const tries = VERIFY_BACKOFF_MS.length + 1;
   for (let n = 1; n <= tries; n++) {
     report({ kind: "fetching", attempt: n });
-    const result = await attempt(url, fetchImpl, timeoutMs, options.signal);
+    const result = await attempt(url, fetchImpl, timeoutMs, options.signal, target.size);
     if (result.kind === "status") {
       return report({
         kind: "failed",
         text: VERIFY_TEXTS.notVerified(`${new URL(url).host} answered HTTP ${result.status}`),
+      });
+    }
+    if (result.kind === "oversize") {
+      const got: SizeAndDigest = { size: result.seen, sha256: "not computed" };
+      return report({
+        kind: "mismatch",
+        got,
+        expected: { size: target.size, sha256: target.sha256 },
+        text: `Not verified: bytes exceed the manifest size (${target.size} bytes).`,
       });
     }
     if (result.kind === "retry") {

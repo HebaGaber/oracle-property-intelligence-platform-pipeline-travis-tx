@@ -24,6 +24,7 @@ import { ComingSoonEntries } from "../components/ComingSoonEntry";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
+import { SourceLink } from "../components/Provenance";
 import { LinearProgress } from "../components/LinearProgress";
 import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
@@ -173,9 +174,7 @@ function SourceItem({
       </span>
       <span className={styles.itemBody}>
         {formatCount(source.records)} records · collected {utcTimestamp(source.captured_at)} UTC ·{" "}
-        <a className={styles.link} href={source.url} target="_blank" rel="noreferrer">
-          {source.url}
-        </a>
+        <SourceLink url={source.url} className={styles.link} />
       </span>
       <span className={styles.itemBody}>
         <SourceDeltas

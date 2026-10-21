@@ -42,11 +42,18 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
         const w = window as unknown as { __a13ProgressSeen?: boolean };
         const look = (): void => {
           const bar = document.querySelector('[role="progressbar"]');
-          if (bar !== null && (bar.getAttribute("aria-label") ?? bar.getAttribute("aria-labelledby") ?? "") !== "") {
+          if (
+            bar !== null &&
+            (bar.getAttribute("aria-label") ?? bar.getAttribute("aria-labelledby") ?? "") !== ""
+          ) {
             w.__a13ProgressSeen = true;
           }
         };
-        new MutationObserver(look).observe(document, { childList: true, subtree: true, attributes: true });
+        new MutationObserver(look).observe(document, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+        });
       });
       await page.goto(exploreUrl(EXPLORE, { mode: "sql" }));
       // 2. Navigation start → engine ready (the SQL editor is editable and no progress bar remains).
@@ -55,7 +62,9 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
       const ms = await page.evaluate(() => performance.now());
       timings.push(Math.round(ms));
       expect(
-        await page.evaluate(() => (window as unknown as { __a13ProgressSeen?: boolean }).__a13ProgressSeen === true),
+        await page.evaluate(
+          () => (window as unknown as { __a13ProgressSeen?: boolean }).__a13ProgressSeen === true,
+        ),
         `load ${i}: a named progress bar was visible`,
       ).toBe(true);
       if (i === 1) await checkpoint(page, "040", "ready");
@@ -74,21 +83,31 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
   });
 
   /** One timed search: input change → header names the new radius; returns ms and queryDurationMs. */
-  async function timedRadius(page: Page, r: number): Promise<{ ms: number; queryDurationMs: number | null }> {
+  async function timedRadius(
+    page: Page,
+    r: number,
+  ): Promise<{ ms: number; queryDurationMs: number | null }> {
     const radius = page.getByLabel("Radius", { exact: true });
     const header = page.locator(SEL.header);
     const t0 = Date.now();
     const [response] = await Promise.all([
-      page.waitForResponse((res) => EXPLORE_SEARCH.test(res.url()) && res.request().method() !== "OPTIONS"),
+      page.waitForResponse(
+        (res) => EXPLORE_SEARCH.test(res.url()) && res.request().method() !== "OPTIONS",
+      ),
       setControl(radius, String(r)),
     ]);
-    await expect(header).toContainText(new RegExp(`^\\d[\\d,]* within ${r} mi of `), { timeout: 15_000 });
+    await expect(header).toContainText(new RegExp(`^\\d[\\d,]* within ${r} mi of `), {
+      timeout: 15_000,
+    });
     const ms = Date.now() - t0;
     const data = trpcData(await response.json()) as { queryDurationMs?: number };
     return { ms, queryDurationMs: data.queryDurationMs ?? null };
   }
 
-  async function series(page: Page, url: string): Promise<{ ms: number[]; query: (number | null)[] }> {
+  async function series(
+    page: Page,
+    url: string,
+  ): Promise<{ ms: number[]; query: (number | null)[] }> {
     // 1. Open; wait for the first header.
     await nextSearch(page, () => page.goto(url));
     await ready(page, "explore");
@@ -108,12 +127,21 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
   test(scenario("041"), async ({ page, oracle }) => {
     test.setTimeout(300_000);
     noteBranch(oracle, "provisional until A-11");
-    const radiusRoof = await series(page, exploreUrl(EXPLORE, { place: "pflugerville", r: 5, roof: 15 }));
+    const radiusRoof = await series(
+      page,
+      exploreUrl(EXPLORE, { place: "pflugerville", r: 5, roof: 15 }),
+    );
     await checkpoint(page, "041", "radius-roof");
     // 3. The open-permit search.
     const openPermit = await series(
       page,
-      exploreUrl(EXPLORE, { place: "pflugerville", r: 5, permit: "open_stalled", openYrs: 5, sort: "open_desc" }),
+      exploreUrl(EXPLORE, {
+        place: "pflugerville",
+        r: 5,
+        permit: "open_stalled",
+        openYrs: 5,
+        sort: "open_desc",
+      }),
     );
     await checkpoint(page, "041", "open-permit");
     // 4. p50 and p95 per search.
@@ -147,7 +175,9 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
           .map((e) => ({ name: e.name, type: e.initiatorType, bytes: e.encodedBodySize })),
       );
       const js = entries.filter(
-        (e) => (/\.m?js(\?|$)/.test(new URL(e.name).pathname) || e.type === "script") && !isDuckdbWasm(new URL(e.name)),
+        (e) =>
+          (/\.m?js(\?|$)/.test(new URL(e.name).pathname) || e.type === "script") &&
+          !isDuckdbWasm(new URL(e.name)),
       );
       totals[path] = js.reduce((t, e) => t + e.bytes, 0);
       await checkpoint(page, "082", path === ROUTES.hub ? "hub" : "explore");

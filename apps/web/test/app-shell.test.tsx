@@ -196,6 +196,30 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
     expect(screen.queryByRole("dialog", { name: "More" })).toBeNull();
   });
 
+  it("More is a modal: aria-modal, scrim, focus inside, Tab trapped, background inert, focus returns", async () => {
+    const { container } = await renderAt("/runs");
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    const more = within(nav).getByRole("button", { name: "More" });
+    fireEvent.click(more);
+    const sheet = screen.getByRole("dialog", { name: "More" });
+    expect(sheet.getAttribute("aria-modal")).toBe("true");
+    expect(document.activeElement).toBe(sheet);
+    expect(container.querySelector("[data-more-scrim]")).not.toBeNull();
+    expect(nav.hasAttribute("inert")).toBe(true);
+    expect(screen.getByRole("main", { hidden: true }).hasAttribute("inert")).toBe(true);
+    const focusable = sheet.querySelectorAll<HTMLElement>("a[href]");
+    const first = focusable[0] as HTMLElement;
+    const last = focusable[focusable.length - 1] as HTMLElement;
+    last.focus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(sheet, { key: "Escape" });
+    expect(nav.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(within(nav).getByRole("button", { name: "More" }));
+  });
+
   it("the Coming soon list is the D-7 list: id, title and one sentence, no numbers or CIDs", () => {
     expect(COMING_SOON_ITEMS.map((i) => i.title)).toEqual([
       "Builder mode",
@@ -224,9 +248,19 @@ function cssModule(path: string): string | undefined {
   return existsSync(file) ? readFileSync(file, "utf8") : undefined;
 }
 
-/** The declarations of the first `.{name} {…}` rule of a CSS Module (a plain class selector). */
+/**
+ * The declarations of every rule of a CSS Module whose selector list contains the plain class
+ * `.{name}` (alone or grouped: `.toggle,\n.chip { … }`), joined; compound or descendant selectors
+ * such as `.toggle:hover` or `.x .toggle` do not count. `undefined` when no rule names it.
+ */
 function ruleBody(css: string, name: string): string | undefined {
-  return new RegExp(`(?:^|\\n)\\.${name}\\s*\\{([^}]*)\\}`).exec(css)?.[1];
+  const bodies: string[] = [];
+  const plain = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const m of plain.matchAll(/(?:^|\n)([^{}@]+)\{([^}]*)\}/g)) {
+    const selectors = (m[1] ?? "").split(",").map((s) => s.trim());
+    if (selectors.includes(`.${name}`)) bodies.push(m[2] ?? "");
+  }
+  return bodies.length === 0 ? undefined : bodies.join("\n");
 }
 
 describe("ERR-12: every <button> sets its font from the tokens (a UA button font is Arial 13.33px)", () => {

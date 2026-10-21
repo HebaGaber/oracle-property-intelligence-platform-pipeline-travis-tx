@@ -78,23 +78,34 @@ async function asManifest(cid: string, bytes: Uint8Array, runId: string): Promis
 }
 
 /** The latest run first, then each older manifest of the chain. */
+const MAX_CHAIN_LINKS = 100;
+
 async function findCid(run: LoadedRun, cid: string, signal: AbortSignal): Promise<Found | null> {
   if (cid === run.manifestCid) return asManifest(cid, run.read.bytes, run.manifest.runId);
   const direct = inManifest(run.manifest, run.manifestCid, cid);
   if (direct !== null) return direct;
-  const loaded = new Map<string, { manifest: RunManifestV1; bytes: Uint8Array }>();
-  const chain = await loadRunChain(run.manifestCid, async (c) => {
-    if (c === run.manifestCid) return run.manifest;
-    const m = await loadManifestByCid(c, signal);
-    loaded.set(c, { manifest: m.manifest, bytes: m.read.bytes });
-    return m.manifest;
-  });
-  for (const link of chain.slice(1)) {
-    const older = loaded.get(link.manifestCid);
-    if (older === undefined) continue;
+  // One link at a time (loadRunChain with a single link): each older manifest is checked as it
+  // loads and the walk stops at the first hit, so an unreadable ancestor further back never
+  // fails a CID that a newer manifest already holds.
+  const seen = new Set<string>([run.manifestCid]);
+  let cursor = run.manifest.previousManifestCid;
+  while (cursor !== null && !seen.has(cursor) && seen.size <= MAX_CHAIN_LINKS) {
+    seen.add(cursor);
+    let older: { manifest: RunManifestV1; bytes: Uint8Array } | undefined;
+    const [link] = await loadRunChain(
+      cursor,
+      async (c) => {
+        const m = await loadManifestByCid(c, signal);
+        older = { manifest: m.manifest, bytes: m.read.bytes };
+        return m.manifest;
+      },
+      1,
+    );
+    if (link === undefined || older === undefined) break;
     if (link.manifestCid === cid) return asManifest(cid, older.bytes, link.runId);
     const found = inManifest(older.manifest, link.manifestCid, cid);
     if (found !== null) return found;
+    cursor = link.previousManifestCid;
   }
   return null;
 }

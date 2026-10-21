@@ -4,6 +4,7 @@
 // `source_total:{source}` (the A-11 input); a source without one shows "denominator not in this
 // run's manifest · A-01 source {name}" and no number. Collection time is the source's captured_at.
 import type { RunManifestV1 } from "@countylens/contract";
+import { safeHttpUrl } from "./safe-url";
 import {
   COVERAGE_LABELS,
   COVERAGE_TEXTS,
@@ -24,7 +25,8 @@ export interface CoverageRow {
 
 export interface DenominatorRow {
   readonly source: string;
-  readonly sourceUrl: string;
+  /** The source URL when it is http(s); undefined for anything else (never rendered as a link). */
+  readonly sourceUrl: string | undefined;
   readonly capturedAt: string;
   readonly count: number | null;
   readonly derivation: Derivation | null;
@@ -55,7 +57,7 @@ export function denominatorRows(manifest: RunManifestV1): DenominatorRow[] {
     const total = manifest.coverage[`${SOURCE_TOTAL_PREFIX}${s.name}`];
     return {
       source: s.name,
-      sourceUrl: s.url,
+      sourceUrl: safeHttpUrl(s.url),
       capturedAt: s.captured_at,
       count: total?.count ?? null,
       derivation: total?.derivation ?? null,
