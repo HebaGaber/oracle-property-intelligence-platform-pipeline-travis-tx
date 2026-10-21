@@ -19,7 +19,7 @@ Expected: green; `infra` assertions list no banned resource types.
 (cd pipeline/oracle-runtime && npx tsx travis/runs/run-month.ts --month 2026-09)
 pnpm --filter @countylens/publish exec tsx src/cli.ts build --run <runId>
 ```
-Expected: summary ≈ 42 captured / 38 accepted / 1 no-tcad; roots and parts printed; every part ≤ 50.3 MB.
+Expected: summary ≈ 42 captured / 38 accepted / 1 no-tcad, plus `owners_redacted`; roots and parts printed; every part ≤ 50.3 MB; a second `export-tables` on the same CAR reproduces the same tables root (T046 determinism check); the run directory's `elephant-cli.log` and `reports/*.json` pass the secret scan before anything is quoted.
 
 ## 3. 🛑 D-8, then publish
 ```bash

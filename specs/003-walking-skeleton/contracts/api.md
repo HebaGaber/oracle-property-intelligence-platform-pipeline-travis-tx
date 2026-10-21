@@ -8,7 +8,7 @@ All procedures are tRPC v11 queries on the `trpc.ts` Lambda behind the HTTP API,
 - **Behaviour:** GET `ipfs/<manifestCid>` from S3; reject unless `rawCid(bytes) === manifestCid`; parse `RunManifestV1`; bind the views (`bindManifest` with `partUrl` → presigned `ipfs/<cid>`); run `runSummarySql()`.
 - **Output:** `{ manifestCid, verified: true, tablesBound: number, roofingPermitRows: number, queryDurationMs: number }`.
 - **Errors:** `BAD_REQUEST` (not CIDv1), `NOT_FOUND` (not in the copy), `INTERNAL_SERVER_ERROR` (CID mismatch, logged). No route reads a non-`ipfs/` key: any other path under `/api/` → 404; a private key passed as `manifestCid` fails CIDv1 validation (400) and is never fetched.
-- **Observability:** exactly one `logger.info` line with correlation ID and `queryDurationMs`; subsegment `duckdb.query` (annotations `manifestCid`, `query`); metrics `QueryDurationMs` (ms), `ItemsProcessed`, `ItemsFailed` (dimension `procedure`).
+- **Observability:** exactly one `logger.info` line with correlation ID and `queryDurationMs`; subsegment `duckdb.query` (annotations `manifestCid`, `query` = the builder name, not the SQL text); metrics `QueryDurationMs` (ms), `ItemsProcessed` (rows returned), `ItemsFailed` (failed queries, emitted as 0 on success) with dimension `procedure`. Log fields, annotations and metadata are identifiers and counts only (correlation ID, trace ID, `manifestCid`, `procedure`, durations, row counts): never row values, presigned URLs (`X-Amz-Signature`), env values or credentials (FR-007; T071 asserts it with a sentinel fixture).
 - UI: Runs page "Server check" line; headline counts still come from the manifest (FR-009).
 
 ## `query.radius`
