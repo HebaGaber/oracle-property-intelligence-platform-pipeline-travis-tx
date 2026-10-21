@@ -125,3 +125,4 @@ One line per step: time (local) · stage · step · result. PO answers are quote
 | 20:38 | 6 | CI green + T078 | ci run 39641644469 on 5fbc811: workspace ✅ oracle-runtime ✅ gitleaks ✅ e2e-hosted ✅; parity recorded, pipeline-ci.yml deleted |
 | 20:40 | 6 | S6.11 G7 | re-run PASS 10/10 (run 1 FAIL 6/10 fixed); cleanups: scores 90/86, evidence Final, unit report ci_run → 39641644469, CI table updated |
 | 20:41 | 6 | 🛑 D-11 (R8) | PO: "Approve, merge, push (Recommended)" — merge after CI on the latest commit is green |
+| 20:54 | 6 | ERR-20 | PO screenshot review of Permits: missing-data pills don't name their field (≈ 7 identical per row); presentation only, data/retrieval correct. PO: "Merge now, fix in A-13" → ERR-20 Deferred to A-13 |
