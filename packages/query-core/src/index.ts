@@ -1,6 +1,11 @@
 // Public API of @countylens/query-core (A-02): bind the contract/v1 views to a run manifest over
-// any QueryEngine, plus the derivation functions the views use.
+// any QueryEngine, plus the derivation functions the views use. A-03 adds the query builders
+// (builders.ts), the read-path bench stand-ins (bench-sql.ts) and the generated constants that make
+// every module here browser-safe (no node: import; test/browser-safe.test.ts).
 export type { QueryEngine, Row } from "./engine.js";
+export * from "./builders.js";
+export * from "./bench-sql.js";
+export { GAZETTEER_SHA256 } from "./sql.generated.js";
 export {
   REQUIRED_TABLES,
   TRAVIS_GROUP_SOURCES,

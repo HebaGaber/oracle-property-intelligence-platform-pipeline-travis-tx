@@ -5,6 +5,8 @@
   "type": "module",
   "exports": "./src/index.ts",
   "scripts": {
+    "build": "pnpm run gen",
+    "gen": "tsx scripts/gen-sql.ts",
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "build-gazetteer": "tsx scripts/build-gazetteer.ts",

@@ -1,2 +1,4 @@
 pnpm-lock.yaml
 packages/query-core/test/fixtures/schemas/
+# Published run manifests are exact JCS bytes (A-03 research R-08): never reformat them.
+runs/

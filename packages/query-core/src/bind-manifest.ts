@@ -94,6 +94,12 @@ export const TRAVIS_GROUP_SOURCES: Readonly<Record<string, string>> = {
 
 export interface BindOptions {
   groupSources?: Readonly<Record<string, string>>;
+  /**
+   * Where the engine reads a part, from its manifest artifact `{name, cid}`: a local path or a
+   * URL (the CID copy serves `/ipfs/<cid>`, a presigned S3 GET in the Lambda). Default:
+   * `${tablesDir}/${group}/${table}/${part}`, the export-tables layout (A-03 T013, additive).
+   */
+  partUrl?: (artifact: { name: string; cid: string }) => string;
 }
 
 export interface BoundTable {
@@ -125,7 +131,8 @@ function partOf(name: string): { group: string; table: string; part: string } | 
  * Creates schema `meta` (run, sources, parts, lookups), one relation per export table under the
  * schema of its data group (`county.property`, `property_improvement.property_improvement`, …,
  * each with a `_part` column naming its part artifact), the derivation macros, the status map and
- * the four views. `tablesDir` holds `<group>/<table>/part-*.parquet` (export-tables output).
+ * the four views. `tablesDir` holds `<group>/<table>/part-*.parquet` (export-tables output) unless
+ * `options.partUrl` maps each part to its own path or URL.
  */
 export async function bindManifest(
   manifestBytes: Uint8Array,
@@ -222,6 +229,7 @@ export async function bindManifest(
 
   // One relation per emitted table, then empty typed relations for the required absent ones.
   const emitted = new Map<string, BoundTable>();
+  const cidOf = new Map(parts.map((a) => [a.name, a.cid]));
   for (const a of parts) {
     const p = partOf(a.name);
     if (!p) continue;
@@ -230,10 +238,15 @@ export async function bindManifest(
     t.parts.push(a.name);
     emitted.set(key, t);
   }
+  const partUrl =
+    options.partUrl ??
+    (({ name }: { name: string; cid: string }): string => {
+      const p = partOf(name);
+      return `${tablesDir}/${p?.group}/${p?.table}/${p?.part}`;
+    });
   for (const t of emitted.values()) {
     const selects = t.parts.map((name) => {
-      const p = partOf(name);
-      const file = `${tablesDir}/${p?.group}/${p?.table}/${p?.part}`;
+      const file = partUrl({ name, cid: cidOf.get(name) ?? "" });
       return `SELECT *, ${str(name)} AS _part FROM read_parquet(${str(file)})`;
     });
     await engine.run(

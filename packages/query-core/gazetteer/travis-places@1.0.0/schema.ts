@@ -81,6 +81,19 @@ export interface SourceStamp {
 
 const ZCTA_SPACE = 100_000;
 
+// base64 through the WHATWG atob/btoa globals (Node and browsers), not Buffer (Node only).
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+function fromBase64(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 /** Encodes a set of 5-digit codes as a base64 bitmap over 00000–99999. */
 export function encodeZctaBitmap(codes: Iterable<string>): string {
   const bytes = new Uint8Array(ZCTA_SPACE / 8);
@@ -89,12 +102,12 @@ export function encodeZctaBitmap(codes: Iterable<string>): string {
     const n = Number(code);
     bytes[n >> 3] = (bytes[n >> 3] ?? 0) | (0x80 >> (n & 7));
   }
-  return Buffer.from(bytes).toString("base64");
+  return toBase64(bytes);
 }
 
 /** Decodes the bitmap to the sorted list of 5-digit codes. */
 export function decodeZctaBitmap(base64: string): string[] {
-  const bytes = Buffer.from(base64, "base64");
+  const bytes = fromBase64(base64);
   if (bytes.length !== ZCTA_SPACE / 8) throw new Error("ZCTA bitmap has the wrong length");
   const out: string[] = [];
   for (let n = 0; n < ZCTA_SPACE; n += 1) {

@@ -7,8 +7,9 @@
 //   improvement_status null, PO D-4a); unknown words are `needs_review`; exclude and
 //   needs_review are never emitted;
 // - digest(): SHA-256 of the Zod-parsed, recursively key-sorted JSON plus "\n" (research R-07);
+//   PROFILE.sha256 is that digest as a generated constant (RULES_SHA256), so the module hashes
+//   nothing at load and bundles for the browser (A-03 T012; no `node:` import here);
 // - toSoqlInclude(), toSoqlSamplePopulation(), toSqlStatusMap(): generated query text.
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import rulesJson from "./rules.json" with { type: "json" };
 
@@ -165,18 +166,36 @@ const sortKeys = (v: unknown): unknown => {
 export const canonicalize = (raw: unknown): string =>
   JSON.stringify(sortKeys(RulesSchema.parse(raw))) + "\n";
 
+// The SHA-256 of the canonical rules.json, equal to DIGEST. packages/query-core/scripts/gen-sql.ts
+// rewrites the next line (it refuses to when the digest differs from DIGEST); test/digest.test.ts
+// and query-core test/browser-safe.test.ts recompute it. Do not edit the value by hand.
+export const RULES_SHA256 = "c8fd15cf8deb654c2959d7cca3b05560bc9830de2518c56a092bd87bdf53dfa6";
+
+/** Node's crypto, fetched without an import statement so bundlers never resolve it. The browser
+ *  never hashes (it reads RULES_SHA256); only tests and Node scripts recompute digests. */
+interface NodeCrypto {
+  createHash(algorithm: "sha256"): { update(data: string): { digest(encoding: "hex"): string } };
+}
+function nodeCrypto(): NodeCrypto {
+  const proc = (globalThis as { process?: { getBuiltinModule?: (id: string) => unknown } }).process;
+  const mod = proc?.getBuiltinModule?.("node:crypto") as NodeCrypto | undefined;
+  if (!mod)
+    throw new Error("profile digests are recomputed in Node only; the browser reads RULES_SHA256");
+  return mod;
+}
+
 export const digestOf = (raw: unknown): string =>
-  createHash("sha256").update(canonicalize(raw)).digest("hex");
+  nodeCrypto().createHash("sha256").update(canonicalize(raw)).digest("hex");
 
 export const RULES: Rules = RulesSchema.parse(rulesJson);
 
-/** SHA-256 hex of this profile's canonical rules. */
+/** SHA-256 hex of this profile's canonical rules, recomputed (Node only). */
 export const digest = (): string => digestOf(rulesJson);
 
 export const PROFILE = Object.freeze({
   name: RULES.name,
   version: RULES.version,
-  sha256: digest(),
+  sha256: RULES_SHA256,
 });
 export const PROFILE_ID = `${PROFILE.name}@${PROFILE.version}`;
 

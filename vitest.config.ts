@@ -7,6 +7,8 @@ export default defineConfig({
     projects: [
       "packages/contract",
       "packages/query-core",
+      "packages/shared",
+      { test: { name: "scripts", include: ["scripts/test/**/*.test.ts"] } },
       "profiles/travis-austin@1.0.0",
       "pipeline/publish",
     ],
