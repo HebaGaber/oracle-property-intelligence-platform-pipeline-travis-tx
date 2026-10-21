@@ -378,7 +378,7 @@ Every case's step 0 is: **in a terminal at the repo root, run `git rev-parse --a
 - **Maps to:** AC-3, FR-003, AD-26 · Query DB only (D-9: public views carry `not_in_export`) · tasks T023
 - **Steps:**
   0. `git rev-parse --abbrev-ref HEAD` → `004-property-backbone`.
-  1. **Run** `(cd pipeline/oracle-runtime && npx vitest run test/travis/a04/owner-area.test.ts -t "A-04-TC-010")` (mailing ZIPs 78701 → `in_county`, 78664 (regional list) → `regional`, 10001 → `out_of_area`).
+  1. **Run** `(cd pipeline/oracle-runtime && npx vitest run test/travis/a04/owner-area.test.ts -t "A-04-TC-010")` (mailing ZIPs 78701 → `in_county`, 78665 (regional list, Williamson; 78664 is a Travis ZCTA → `in_county`) → `regional`, 10001 → `out_of_area`).
   2. **Run** `qdb_ro "SELECT owner_area_class, owner_is_out_of_area, count(*), count(DISTINCT area_list_sha256) FROM parcels WHERE job_id = '{JOB_ID}' GROUP BY 1,2 ORDER BY 1,2"`.
   3. **Run** `qdb_ro "SELECT DISTINCT area_list_sha256 FROM parcels WHERE job_id = '{JOB_ID}'"` and `cat packages/query-core/gazetteer/travis-places@1.0.0/DIGEST`.
 - **Expected result:** step 1 `✓ A-04-TC-010` with those three classes and `owner_is_out_of_area` `false` / `true` / `true`. Step 2 rows only `in_county|f|…|1`, `out_of_area|t|…|1`, `regional|t|…|1`, `unknown||…|1`. Step 3 prints the same 64-hex value twice: `0f4c08a8bda573737adecc7d62e84d629aadc5005b987f2f787e4fd31ab5d17f`.

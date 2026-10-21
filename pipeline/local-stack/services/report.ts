@@ -1,6 +1,6 @@
 // A-04 T009: BackboneReport, the read-only run report (contracts/report.md). Counts, digests,
 // URLs and timestamps only: any key naming an owner, a mailing line or a payload is refused.
-// Each group adds its part as services/report-sections/<key>.ts exporting `section`; this file
+// Each group adds its part as services/report-sections/<key>.ts exporting `section`, `sections` or `*Section`; this file
 // adds job_id, as_of, code_sha and limitations[] (from source_limitations). Read-only: it never
 // opens a transaction (the Loader is the only writer).
 import { readdirSync } from "node:fs";
@@ -40,6 +40,8 @@ export const BackboneReportV1 = z
     permits: z.unknown().optional(),
     jurisdictions: z.unknown().optional(),
     limitations: z.array(z.string()),
+    /** The same limitations with the job that recorded each (own job first, then source_jobs). */
+    limitation_jobs: z.array(z.object({ job_id: z.string(), text: z.string() }).strict()),
   })
   .strict();
 export type BackboneReportV1 = z.infer<typeof BackboneReportV1>;
@@ -54,7 +56,7 @@ export interface RunningJob {
 /** The report's reads. The Postgres store is the real one; tests inject a fake. */
 export interface ReportStore {
   run(jobId: string): Promise<{ as_of: string | null; code_sha: string | null } | null>;
-  limitations(jobId: string): Promise<string[]>;
+  limitations(jobIds: string[]): Promise<Array<{ job_id: string; text: string }>>;
   running(): Promise<RunningJob | null>;
 }
 
@@ -90,7 +92,28 @@ function isSection(value: unknown): value is ReportSection {
   );
 }
 
-/** Imports every `<dir>/*.ts` that exports `section`; a missing directory gives none. */
+/** Every report section a module exports: `section`, `sections[]` and any `*Section`. */
+function sectionsOf(mod: Record<string, unknown>): ReportSection[] {
+  const found: ReportSection[] = [];
+  for (const [name, value] of Object.entries(mod)) {
+    if (name === "sections" && Array.isArray(value)) found.push(...value.filter(isSection));
+    else if ((name === "section" || name.endsWith("Section")) && isSection(value)) found.push(value);
+  }
+  return found;
+}
+
+/** Job ids a section lists under `source_jobs`. */
+function sourceJobsOf(value: unknown): string[] {
+  if (typeof value !== "object" || value === null) return [];
+  const jobs = (value as { source_jobs?: unknown }).source_jobs;
+  return Array.isArray(jobs) ? jobs.filter((j): j is string => typeof j === "string") : [];
+}
+
+/**
+ * Imports every `<dir>/*.ts` and keeps each distinct section export; the same object exported
+ * twice (or re-exported by another file) counts once, two different sections for one key fail.
+ * A missing directory gives none.
+ */
 export async function loadSections(dir: string = SECTIONS_DIR): Promise<Map<SectionKey, ReportSection>> {
   let names: string[];
   try {
@@ -100,10 +123,13 @@ export async function loadSections(dir: string = SECTIONS_DIR): Promise<Map<Sect
   }
   const sections = new Map<SectionKey, ReportSection>();
   for (const name of names) {
-    const mod = (await import(pathToFileURL(join(dir, name)).href)) as { section?: unknown };
-    if (!isSection(mod.section)) continue;
-    if (sections.has(mod.section.key)) throw new Error(`report: duplicate section ${mod.section.key}`);
-    sections.set(mod.section.key, mod.section);
+    const mod = (await import(pathToFileURL(join(dir, name)).href)) as Record<string, unknown>;
+    for (const found of sectionsOf(mod)) {
+      const have = sections.get(found.key);
+      if (have === found) continue;
+      if (have !== undefined) throw new Error(`report: duplicate section ${found.key}`);
+      sections.set(found.key, found);
+    }
   }
   return sections;
 }
@@ -118,11 +144,16 @@ export async function buildReport(
   const run = await store.run(id);
   if (run === null) throw new Error(`report: unknown job ${id}`);
   const body: Record<string, unknown> = { job_id: id, as_of: run.as_of, code_sha: run.code_sha };
+  const jobIds = [id];
   for (const key of SECTION_KEYS) {
     const section = sections.get(key);
-    if (section !== undefined) body[key] = await section.build(sql, id);
+    if (section === undefined) continue;
+    body[key] = await section.build(sql, id);
+    for (const job of sourceJobsOf(body[key])) if (!jobIds.includes(job)) jobIds.push(job);
   }
-  body.limitations = await store.limitations(id);
+  const limitations = await store.limitations(jobIds);
+  body.limitations = limitations.map((l) => l.text);
+  body.limitation_jobs = limitations;
   const leak = findForbiddenKey(body);
   if (leak !== null) throw new Error(`report: refused private key ${leak}`);
   return BackboneReportV1.parse(body);
@@ -139,10 +170,11 @@ export function postgresReportStore(sql: postgres.Sql): ReportStore {
         SELECT as_of::text AS as_of, code_sha FROM backbone_runs WHERE job_id = ${jobId}`;
       return rows[0] ?? null;
     },
-    async limitations(jobId) {
-      const rows = await sql<Array<{ text: string }>>`
-        SELECT text FROM source_limitations WHERE job_id = ${jobId} ORDER BY source_key, code`;
-      return rows.map((r) => r.text);
+    async limitations(jobIds) {
+      const rows = await sql<Array<{ job_id: string; text: string }>>`
+        SELECT job_id, text FROM source_limitations WHERE job_id IN ${sql(jobIds)}
+        ORDER BY array_position(${jobIds}::text[], job_id), source_key, code`;
+      return rows;
     },
     async running() {
       const rows = await sql<RunningJob[]>`

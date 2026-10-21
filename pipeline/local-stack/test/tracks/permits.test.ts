@@ -9,7 +9,8 @@ import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import type postgres from "postgres";
 import { runMerge } from "../../services/loader.js";
-import { track } from "../../services/tracks/permits.js";
+import { situsOf, track } from "../../services/tracks/permits.js";
+import { situsSignature } from "../../../oracle-runtime/travis/permits/link.js";
 import {
   assembleJurisdictionsSection,
   assemblePermitsSection,
@@ -350,5 +351,14 @@ describe("report sections permits + jurisdictions (T056, contracts/report.md)", 
     expect(byKey.pflugerville?.austin_issued_located_here).toBe(1709);
     expect(s.limitations).toHaveLength(22);
     for (const l of s.limitations) expect(l).toMatch(/^.+: no public permit history captured \(records request, not filed\); evidence https:\/\//);
+  });
+});
+
+describe("parcels.situs_address as G-TCAD stores it (snake_case SitusAddress)", () => {
+  it("reads the stored shape to the same address signature as the printed TCAD situs", () => {
+    const stored = { text: "100 ALPHA ST, AUSTIN, TX 78701", street_number: "100", street_prefix: null, street_name: "ALPHA", street_suffix: "ST", street_secondary: null, city: "AUSTIN", state: "TX", zip: "78701" };
+    const printed = { streetNum: "100", streetName: "ALPHA", streetSuffix: "ST", state: "TX", zip: "78701" };
+    expect(situsSignature(situsOf(stored))).not.toBeNull();
+    expect(situsSignature(situsOf(stored))).toBe(situsSignature(situsOf(printed)));
   });
 });

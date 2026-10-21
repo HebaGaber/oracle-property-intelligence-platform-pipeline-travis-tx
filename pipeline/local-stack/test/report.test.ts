@@ -9,11 +9,13 @@ import {
   buildReport,
   findForbiddenKey,
   loadSections,
+  SECTIONS_DIR,
   runningJob,
   type ReportStore,
 } from "../services/report.js";
 
 const SECTIONS = fileURLToPath(new URL("./fixtures/report-sections/", import.meta.url));
+const MULTI = fileURLToPath(new URL("./fixtures/report-sections-multi/", import.meta.url));
 const BAD = fileURLToPath(new URL("./fixtures/report-sections-bad/", import.meta.url));
 const JOB = "travis-a04-202610220100";
 const noSql = {} as postgres.Sql;
@@ -21,10 +23,11 @@ const noSql = {} as postgres.Sql;
 function store(over: Partial<ReportStore> = {}): ReportStore {
   return {
     run: async (jobId) => (jobId === JOB ? { as_of: "2026-10-22", code_sha: "abc1234" } : null),
-    limitations: async () => [
-      "Confidential owner records redacted (Texas Tax Code §25.025): 3",
-      "gis: blocked at 2026-10-22T03:00:00Z; coverage not complete",
-    ],
+    limitations: async (jobIds: string[]) =>
+      [
+        "Confidential owner records redacted (Texas Tax Code §25.025): 3",
+        "gis: blocked at 2026-10-22T03:00:00Z; coverage not complete",
+      ].map((text) => ({ job_id: jobIds[0] ?? JOB, text })),
     running: async () => null,
     ...over,
   };
@@ -45,6 +48,40 @@ describe("A-04 BackboneReport", () => {
       "Confidential owner records redacted (Texas Tax Code §25.025): 3",
       "gis: blocked at 2026-10-22T03:00:00Z; coverage not complete",
     ]);
+  });
+
+  it("loads every `section`, `sections` and `*Section` export once per key", async () => {
+    const loaded = await loadSections(MULTI);
+    expect([...loaded.keys()].sort()).toEqual(["coordinates", "gis", "jurisdictions"]);
+  });
+
+  it("the bundled report-sections load all six keys (TCAD, GIS, permits)", async () => {
+    const loaded = await loadSections(SECTIONS_DIR);
+    expect([...loaded.keys()].sort()).toEqual(
+      ["confidentiality", "coordinates", "gis", "jurisdictions", "permits", "roll"],
+    );
+  });
+
+  it("limitations include every job in source_jobs, keeping each job id", async () => {
+    const seen: string[][] = [];
+    const sections = new Map([
+      ["permits" as const, { key: "permits" as const, build: async () => ({ source_jobs: [JOB, "travis-a04-permits-incremental-1"] }) }],
+      ["coordinates" as const, { key: "coordinates" as const, build: async () => ({ source_jobs: ["travis-a04-coords-1", JOB] }) }],
+    ]);
+    const report = await buildReport(
+      store({
+        limitations: async (jobIds: string[]) => {
+          seen.push(jobIds);
+          return jobIds.map((job_id) => ({ job_id, text: `limit from ${job_id}` }));
+        },
+      }),
+      noSql,
+      sections,
+      JOB,
+    );
+    expect(seen[0]).toEqual([JOB, "travis-a04-coords-1", "travis-a04-permits-incremental-1"]);
+    expect(report.limitations).toEqual(seen[0]!.map((j) => `limit from ${j}`));
+    expect(report.limitation_jobs).toEqual(seen[0]!.map((job_id) => ({ job_id, text: `limit from ${job_id}` })));
   });
 
   it("refuses an unknown job", async () => {

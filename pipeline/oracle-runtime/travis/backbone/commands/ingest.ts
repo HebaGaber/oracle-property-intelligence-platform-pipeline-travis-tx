@@ -108,10 +108,12 @@ export const command: BackboneCommand<IngestArgs> = {
       ctx.print(
         `join_proof: no_tcad_geoid=${out.no_tcad_geoid} ambiguous_geoid=${out.ambiguous_geoid} reverse_checked=${out.reverse_checked} reverse_disagreements=${out.reverse_disagreements} seed=${seed}`,
       );
+      ctx.print(`job_id=${args.job}`);
+      // contracts/cli.md: the join_proof line is the LAST line for --join-proof.
       ctx.print(
         `join_proof=${out.pass ? "pass" : "fail"} matched=${out.matched} disagreements=${out.disagreements}`,
       );
-      return { jobId: args.job, exitCode: out.pass ? 0 : 1 };
+      return { jobId: args.job, exitCode: out.pass ? 0 : 1, jobIdPrinted: true };
     }
     const jobId = ctx.jobIdFor(null);
     await ctx.ingress.send("TcadBackbone", jobId, "run", { jobId, mode: "full", asOf: ctx.asOf() });

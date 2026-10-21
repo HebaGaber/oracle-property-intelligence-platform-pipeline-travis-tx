@@ -35,7 +35,8 @@ created: 2026-10-21
                   "source export carries no §25.025 marker; conservative suppression on sale-confidentiality codes",
                   "source bulk re-stamp; delta by content digest",
                   "Lakeway: no public permit history captured (records request, not filed); evidence https://…",
-                  "gis: blocked at 2026-10-22T03:00:00Z; coverage not complete"]
+                  "gis: blocked at 2026-10-22T03:00:00Z; coverage not complete"],
+  "limitation_jobs": [{"job_id": "<job that stored the limitation>", "text": "<same string as in limitations[]>"}]   // added in the 2026-10-22 fix pass: limitations[] stays plain strings, this keeps each ones job id
 }
 ```
 

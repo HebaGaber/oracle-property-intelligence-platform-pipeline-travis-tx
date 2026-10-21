@@ -20,7 +20,11 @@ export interface BackboneCommand<A> {
   args: ZodType<A>;
   /** Whether this invocation starts a run (default true); read-only verbs return false. */
   startsRun?: (args: A) => boolean;
-  run(ctx: RunContext, args: A): Promise<{ jobId: string; exitCode: ExitCode }>;
+  /** `jobIdPrinted`: the command already printed `job_id=` and owns the last line (join proof). */
+  run(
+    ctx: RunContext,
+    args: A,
+  ): Promise<{ jobId: string; exitCode: ExitCode; jobIdPrinted?: boolean }>;
 }
 
 export const COMMANDS_DIR = fileURLToPath(new URL("./commands/", import.meta.url));
@@ -143,7 +147,7 @@ export async function runCli(argv: readonly string[], deps: CliDeps): Promise<nu
       }
     }
     const result = await command.run(ctx, parsed.data);
-    out(`job_id=${result.jobId}`);
+    if (result.jobIdPrinted !== true) out(`job_id=${result.jobId}`);
     return result.exitCode;
   } catch (error) {
     if (error instanceof DiskGuardError) {

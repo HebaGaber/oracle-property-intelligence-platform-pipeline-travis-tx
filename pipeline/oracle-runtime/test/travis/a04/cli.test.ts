@@ -2,7 +2,7 @@
 // and the disk are fakes; commands are synthetic fixtures under test/fixtures/a04/commands.
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { EXIT, runCli, type CliDeps } from "../../../travis/backbone/cli.js";
+import { COMMANDS_DIR, EXIT, runCli, type CliDeps } from "../../../travis/backbone/cli.js";
 import {
   DiskGuardError,
   MIN_FREE_BYTES,
@@ -155,5 +155,34 @@ describe("A-04 backbone CLI", () => {
       "POST http://localhost:8080/TcadBackbone/k1/run/send",
       "POST http://restate.test:18080/BackboneReport/running",
     ]);
+  });
+});
+
+describe("A-04 backbone CLI ingest --join-proof output contract", () => {
+  it("prints the join_proof=pass|fail line last (contracts/cli.md), job_id before it", async () => {
+    const h = harness();
+    const proof = {
+      pass: false,
+      matched: 998,
+      disagreements: 2,
+      no_tcad_geoid: 0,
+      ambiguous_geoid: 0,
+      reverse_checked: 5,
+      reverse_disagreements: 0,
+    };
+    const ingress: RestateIngressClient = {
+      ...h.deps.ingress,
+      async call<T>(service: string, handler: string): Promise<T> {
+        return (service === "TcadBackbone" && handler === "joinProof" ? proof : null) as T;
+      },
+    };
+    const code = await runCli(
+      ["ingest", "--join-proof", "--job", "travis-a04-202610220304", "--seed", "7"],
+      { ...h.deps, commandsDir: COMMANDS_DIR, ingress },
+    );
+    expect(code).toBe(EXIT.error);
+    const lines = h.out.join("").trimEnd().split("\n");
+    expect(lines.at(-1)).toBe("join_proof=fail matched=998 disagreements=2");
+    expect(lines).toContain("job_id=travis-a04-202610220304");
   });
 });

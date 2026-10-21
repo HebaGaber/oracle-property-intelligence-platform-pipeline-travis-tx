@@ -248,18 +248,22 @@ async function mergeFinalize(
   };
 }
 
-const situsOf = (v: unknown): SitusLike | null => {
+/**
+ * `parcels.situs_address` as G-TCAD stores it is snake_case (street_number, street_name, ...);
+ * the printed TCAD situs is camelCase (streetNum, streetName, ...). Read either.
+ */
+export const situsOf = (v: unknown): SitusLike | null => {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
   const o = v as Record<string, unknown>;
-  const pick = (k: string): string | null => text(o[k]);
+  const pick = (camel: string, snake: string): string | null => text(o[camel]) ?? text(o[snake]);
   return {
-    streetNum: pick("streetNum"),
-    streetPrefix: pick("streetPrefix"),
-    streetName: pick("streetName"),
-    streetSuffix: pick("streetSuffix"),
-    streetSecondary: pick("streetSecondary"),
-    state: pick("state"),
-    zip: pick("zip"),
+    streetNum: pick("streetNum", "street_number"),
+    streetPrefix: pick("streetPrefix", "street_prefix"),
+    streetName: pick("streetName", "street_name"),
+    streetSuffix: pick("streetSuffix", "street_suffix"),
+    streetSecondary: pick("streetSecondary", "street_secondary"),
+    state: pick("state", "state"),
+    zip: pick("zip", "zip"),
   };
 };
 
