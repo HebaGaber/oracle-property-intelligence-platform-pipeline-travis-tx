@@ -64,8 +64,17 @@
   background: var(--md-sys-color-surface-container);
 }
 
-/* One destination: pill indicator above a label-medium label; 48 px touch target (§ 14.1). */
-.item {
+/* The title links to the Hub; it keeps the bar's colour and type. */
+.titleLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* One destination: pill indicator above a label-medium label; 48 px touch target (§ 14.1).
+   `.more` is the More button: the same look, plus the token font a button does not inherit
+   (ERR-12) and no UA border or background. */
+.item,
+.more {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -95,7 +104,17 @@
     var(--md-sys-motion-easing-standard);
 }
 
-.item:hover .pill {
+.more {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+}
+
+.item:hover .pill,
+.more:hover .pill {
   background: color-mix(
     in srgb,
     var(--md-sys-color-on-surface) calc(var(--md-sys-state-hover-opacity) * 100%),
@@ -103,7 +122,8 @@
   );
 }
 
-.item:active .pill {
+.item:active .pill,
+.more:active .pill {
   background: color-mix(
     in srgb,
     var(--md-sys-color-on-surface) calc(var(--md-sys-state-pressed-opacity) * 100%),
@@ -111,17 +131,87 @@
   );
 }
 
-.itemActive {
+.itemActive,
+.more[aria-expanded="true"] {
   color: var(--md-sys-color-on-surface);
 }
 
-.itemActive .pill {
+.itemActive .pill,
+.more[aria-expanded="true"] .pill {
   background: var(--md-sys-color-primary-container);
   color: var(--md-sys-color-on-primary-container);
 }
 
 .label {
   text-align: center;
+}
+
+/* More sheet (Atlas § 7 bottom sheet): above the bottom navigation on compact, a side sheet next
+   to the rail from 600 px. surface-container-low, corner extra-large on the open edge, level 1. */
+.sheet {
+  position: fixed;
+  z-index: 2;
+  inset: auto 0 calc(var(--space-10) + var(--space-4)) 0;
+  box-sizing: border-box;
+  max-height: 70dvh;
+  overflow-y: auto;
+  padding: var(--space-4);
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+  border-radius: var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0 0;
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+.sheet:focus-visible {
+  outline: none;
+}
+
+.sheetTitle {
+  margin: var(--space-2) 0;
+  font-family: var(--md-sys-typescale-title-medium-font);
+  font-size: var(--md-sys-typescale-title-medium-size);
+  font-weight: var(--md-sys-typescale-title-medium-weight);
+  line-height: var(--md-sys-typescale-title-medium-line-height);
+  letter-spacing: var(--md-sys-typescale-title-medium-tracking);
+}
+
+.sheetList {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+/* One row: 48 px target, body-medium, the "Coming soon" label at the end. */
+.sheetItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-on-surface);
+  text-decoration: none;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+a.sheetItem:hover {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) calc(var(--md-sys-state-hover-opacity) * 100%),
+    transparent
+  );
+}
+
+.soon {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-small-font);
+  font-size: var(--md-sys-typescale-label-small-size);
+  line-height: var(--md-sys-typescale-label-small-line-height);
+  letter-spacing: var(--md-sys-typescale-label-small-tracking);
 }
 
 /* Medium and up (Atlas § 4): navigation rail, 80 px wide, left of the main region; 24 px margins. */
@@ -145,5 +235,12 @@
 
   .main {
     padding: var(--space-6);
+  }
+
+  .sheet {
+    inset: var(--space-10) auto 0 calc(var(--space-10) + var(--space-4));
+    width: calc(var(--space-10) * 5);
+    max-height: none;
+    border-radius: 0 var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0;
   }
 }

@@ -35,6 +35,7 @@ export const QUERY_BUILDERS: Readonly<Record<string, string>> = {
   "runs.summary": "runSummarySql",
   "query.radius": "radiusSql",
   "query.roofAge": "roofAgeSql",
+  "explore.search": "exploreSearchSql",
   "bench.count": "benchCountSql",
   "bench.radius": "benchRadiusSql",
   "bench.roofAge": "benchRoofAgeSql",

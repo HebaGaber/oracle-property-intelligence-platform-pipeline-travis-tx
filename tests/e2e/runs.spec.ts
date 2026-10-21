@@ -28,8 +28,9 @@
 //   artifact with the group name and `[data-cid="{directory.cid}"]`.
 // - Error banner: `role="alert"` holding RUN_INDEX_TEXTS.unreadable / .empty; while it shows there
 //   is no run card (`article`), no `[data-cid]` and no `[aria-busy="true"]` region.
-// - Shell: `h1` "CountyLens"; navigation links with accessible names `Runs` and `Permits`;
-//   `section[data-route="permits"]` is the Permits page.
+// - Shell: `h1` "CountyLens"; a navigation link with accessible name `Runs` (since A-13 the
+//   destinations are Explore, Runs, Coverage, Data, More, with no "Permits" link); the
+//   `/permits` route stays and `section[data-route="permits"]` is the Permits page.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -52,13 +53,11 @@ import {
 import { expect, test } from "./lib/fixtures.js";
 import { checkpoint } from "./lib/evidence.js";
 import { artifactsOf, groupOf } from "./lib/manifest.js";
+import { evidenceTargetForBranch } from "./lib/evidence-target.js";
 import { fetchBuildInfo, repoRoot, requireCidCopyHost, runtimeUrl } from "./lib/runtime.js";
 
 /** P0-4: this phrase never appears on the page (checked case-insensitively, stricter than the grep gate). */
 const ATLAS_CLAIM = "published to atlas";
-
-/** The evidence file TC-061 reads; written at TZ06, so the case fails until it exists. */
-const EVIDENCE_PATH = "docs/evidence/A-03.md";
 
 const PERMIT_ROW = "table tbody tr";
 
@@ -369,13 +368,20 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
         await expect(page.locator('[aria-busy="true"]'), `${label}: no skeleton`).toHaveCount(0);
         await checkpoint(page, "014", `${label}-error-banner`);
 
-        // Step 4: the app bar and the navigation keep working.
+        // Step 4: the app bar and the navigation keep working. A-13 replaced the "Permits"
+        // destination (Explore, Runs, Coverage, Data, More), so the check uses the Runs link,
+        // which every shell version has, then opens the kept /permits route directly.
         await expect(page.getByRole("heading", { name: "CountyLens" })).toBeVisible();
-        await page.getByRole("link", { name: "Permits" }).click();
+        const nav = page.getByRole("navigation").first();
+        await expect(nav.getByRole("link", { name: "Runs", exact: true })).toBeVisible();
+        await nav.getByRole("link", { name: "Runs", exact: true }).click();
+        await expect(page).toHaveURL(/\/runs$/);
+        await expect(page.locator('[data-route="runs"]')).toBeVisible();
+        await page.unroute(isIndex);
+        await page.goto("/permits");
         await expect(page).toHaveURL(/\/permits$/);
         await expect(page.locator('[data-route="permits"]')).toBeVisible();
         await checkpoint(page, "014", `${label}-4-navigation-works`);
-        await page.unroute(isIndex);
       }
     });
   });
@@ -420,9 +426,14 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
   test.describe("A-03-TC-061 Evidence names the hosted URL used (edge)", () => {
     test("@scenario:A-03-TC-061", async () => {
       const testInfo = test.info();
-      // Step 1: the deployed build.
+      // Step 1: the deployed build, and the evidence file of the story it was built from
+      // (research R11): NNN-slug → docs/evidence/A-{NN}.md; any other branch is skipped.
       const build = await fetchBuildInfo();
       const url = runtimeUrl();
+      const target = evidenceTargetForBranch(build.branch);
+      test.skip(target.kind === "skip", target.kind === "skip" ? target.reason : "");
+      if (target.kind !== "story") return;
+      const EVIDENCE_PATH = target.path;
 
       // Step 2: the evidence names that URL and that SHA (full, or a prefix of at least 7).
       const path = resolve(repoRoot, EVIDENCE_PATH);

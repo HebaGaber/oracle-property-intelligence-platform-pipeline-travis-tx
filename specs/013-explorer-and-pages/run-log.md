@@ -31,3 +31,8 @@ One line per step: time (local) · stage · step · result. PO answers are quote
 | 23:11 | 3 | S3.7 G6 pre-check | PASS 9/9 (script + reading): 73 cases, 0 FR missing, 0 vague, 73/73 mapped |
 | 23:13 | 3 | S3.8 R3 PO | D-9 "Approve G5 (Recommended)" · D-10 "Approve G6 (Recommended)" · AC-6 "Yes, match the architecture (Recommended)" → story AC-6, spec AC-6/FR-006a amended; test cases Approved, qc_signoff true. Gate-log rows in docs/traceability.md added at the evidence step (§ P rule 5) |
 | 23:13 | 3 | S3.9 commit | A-13: agent design, plan, tasks and test cases (G5, G6) |
+| 23:14 | 5 | S5.1 wave 1 started | metagross G1 (T001, T002, T004–T008, T011–T015) ∥ metagross G4 (T003, T009, T010, T016, T017), exclusive file lists |
+| 23:26 | 5 | S5.1 wave 1 G4 done (metagross) | 714196 ms · 166724 tokens · 50 tool uses. T003, T009, T010, T016, T017 green (tests failed first): e2e vitest 49/49, infra 93 + 1 skipped, scripts 73/73, lint + prettier clean. vite.config.ts build.manifest handed to G1 |
+| 23:47 | 5 | S5.1 wave 1 G1 done (metagross) | 1865985 ms · 319856 tokens · 109 tool uses. 12 tasks, every test red first. Moved A-13 texts/routes to import-free shared modules (Hub graph 148.7 → 117.4 KB). explore.search also takes manifestCid, returns area + queryDurationMs (contract updated). zod 4.6.7 pinned in web |
+| 23:47 | 5 | coordinator fix | apps/api/src/observability.ts: QUERY_BUILDERS "explore.search": "exploreSearchSql" (unowned file, no builder running) |
+| 23:47 | 5 | wave 1 integration check | CI env: Test Files 74 passed / 1 skipped; Tests 1183 passed / 7 skipped; typecheck clean; eslint clean; web build OK; bundle 160.0 KB of 300; hub-graph 117.4 KB of 150 |

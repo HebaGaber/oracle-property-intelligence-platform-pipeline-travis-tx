@@ -26,6 +26,7 @@ import {
   AUTO_BRANCH_PATTERN,
   CID_COPY_HOST_NOT_WIRED_WARNING,
   DEFAULT_FILEBASE_GATEWAY_HOST,
+  DEFAULT_PINATA_GATEWAY_HOST,
   GITHUB_TOKEN_PARAMETER_ID,
   HTTP_API_URL_NOT_WIRED_WARNING,
   SPA_FALLBACK_SOURCE,
@@ -165,11 +166,17 @@ describe("CountyLensWeb: the Amplify app for apps/web (agent-design metagross §
     expect(json(webT.toJSON().Outputs ?? {})).not.toContain(GITHUB_TOKEN_PARAMETER_ID);
   });
 
-  it("environment: AMPLIFY_MONOREPO_APP_ROOT=apps/web, VITE_CID_COPY_HOST, VITE_FILEBASE_GATEWAY_HOST and nothing secret", () => {
+  it("environment: AMPLIFY_MONOREPO_APP_ROOT=apps/web, the gateway hosts, the A-13 site links and nothing secret", () => {
+    // A-13 T016 added VITE_PINATA_GATEWAY_HOST and the empty-by-default site links
+    // (infra/test/web-stack.test.ts covers them in detail).
     expect(envOf(app)).toEqual({
       AMPLIFY_MONOREPO_APP_ROOT: AMPLIFY_MONOREPO_APP_ROOT,
       VITE_CID_COPY_HOST: CID_COPY_HOST,
       VITE_FILEBASE_GATEWAY_HOST: DEFAULT_FILEBASE_GATEWAY_HOST,
+      VITE_PINATA_GATEWAY_HOST: DEFAULT_PINATA_GATEWAY_HOST,
+      CRM_URL: "",
+      DEMO_VIDEO_URL: "",
+      PR_URL: "",
     });
     expect(AMPLIFY_MONOREPO_APP_ROOT).toBe("apps/web");
     expect(DEFAULT_FILEBASE_GATEWAY_HOST).toBe("ipfs.filebase.io");
@@ -303,6 +310,10 @@ describe("CountyLensWeb: the Amplify app for apps/web (agent-design metagross §
     expect(envOf(unwired)).toEqual({
       AMPLIFY_MONOREPO_APP_ROOT: AMPLIFY_MONOREPO_APP_ROOT,
       VITE_FILEBASE_GATEWAY_HOST: DEFAULT_FILEBASE_GATEWAY_HOST,
+      VITE_PINATA_GATEWAY_HOST: DEFAULT_PINATA_GATEWAY_HOST,
+      CRM_URL: "",
+      DEMO_VIDEO_URL: "",
+      PR_URL: "",
     });
   });
 });

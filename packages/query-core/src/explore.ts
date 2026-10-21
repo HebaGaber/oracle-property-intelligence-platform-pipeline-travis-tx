@@ -1,0 +1,363 @@
+// T011 (A-13, AC-4/5/8, FR-004/005/008/015, contracts/explore-search.md): the one builder behind
+// every Explore · Filters search, shared by the API's `explore.search` and later the agent/MCP
+// (AD-19). It returns three read-only statements over the contract views:
+//   - `rows`: the page of matching properties inside the radius, sorted and limited;
+//   - `summary`: `total_within_r` (every match inside the radius) and `tenure_unknown` (rows
+//     inside the radius, other filters applied, whose tenure is unknown: excluded by the tenure
+//     filter and counted, FR-008);
+//   - `close`: up to CLOSE_MATCH_LIMIT nearest matches outside the radius and within 2 × r, run
+//     by the caller only when the search has zero results (FR-015).
+// Geometry is A-oracle § 9: a lat/lon bounding box prefilters (`box`), then the haversine decides
+// (`base`), both from builders.ts `geoSql`. Roofing permits come only from v_roofing_permit, which
+// the profile classified; there is no text match on a description (P0-9). Roof age, tenure and
+// open days are the views' own values relative to the run's as_of, so nothing here reads the
+// clock. `toExploreRow` maps an engine row to the ExploreRow of data-model.md: provenance on
+// every row and a `missing` reason for every gap, never a guessed value.
+import { METRES_PER_MILE, MAX_ROWS, geoSql } from "./builders.js";
+import type { Row } from "./engine.js";
+
+export const EXPLORE_DEFAULT_LIMIT = 200;
+export const CLOSE_MATCH_LIMIT = 10;
+export const EXPLORE_MAX_PAGE = 10_000;
+/** Days per year for `openYrs` and `open_years` (Julian year). */
+export const DAYS_PER_YEAR = 365.25;
+
+/** The box the `at` point must fall in (contracts/explore-search.md), around Travis County. */
+export const EXPLORE_BOUNDS = Object.freeze({
+  lat: [29.5, 31.0],
+  lon: [-98.5, -97.0],
+  radiusMi: [0.25, 25],
+  roof: [0, 120],
+  openYrs: [0, 60],
+  tenure: [0, 100],
+} as const);
+
+export const PERMIT_FILTERS = ["open_or_stalled", "open", "stalled"] as const;
+export type PermitFilter = (typeof PERMIT_FILTERS)[number];
+export const EXPLORE_SORTS = ["nearest", "open_desc", "roof_desc"] as const;
+export type ExploreSort = (typeof EXPLORE_SORTS)[number];
+
+export interface ExploreSearchInput {
+  /** The resolved centre: a gazetteer point or the `at` URL point. */
+  readonly centre: { readonly lat: number; readonly lon: number };
+  /** Statute miles, 0.25..25. */
+  readonly radius_mi: number;
+  /** Roof age ≥ years (integer 0..120); rows with an unknown roof age are not matches. */
+  readonly roof?: number | undefined;
+  readonly permit?: PermitFilter | undefined;
+  /** Open or stalled for at least this many years (0..60); applies with `permit`. */
+  readonly openYrs?: number | undefined;
+  /** Tenure > years (integer 0..100); unknown tenure is excluded and counted. */
+  readonly tenure?: number | undefined;
+  /** Out-of-area owner (owner_is_out_of_area = true). */
+  readonly ooa?: boolean | undefined;
+  readonly sort?: ExploreSort | undefined;
+  /** 1..1000, default 200. */
+  readonly limit?: number | undefined;
+  /** 0-based page of `limit` rows. */
+  readonly page?: number | undefined;
+}
+
+export interface ExploreSql {
+  readonly rows: string;
+  readonly summary: string;
+  readonly close: string;
+}
+
+const number = (name: string, value: number, [min, max]: readonly [number, number]): number => {
+  if (typeof value !== "number" || !(value >= min && value <= max))
+    throw new RangeError(`${name} must be a number in [${min}, ${max}], got ${String(value)}`);
+  return value;
+};
+const integer = (name: string, value: number, range: readonly [number, number]): number => {
+  if (!Number.isInteger(value)) throw new RangeError(`${name} must be an integer, got ${value}`);
+  return number(name, value, range);
+};
+
+const STATUS_CLASSES: Record<PermitFilter, readonly string[]> = {
+  open_or_stalled: ["open", "stalled"],
+  open: ["open"],
+  stalled: ["stalled"],
+};
+
+const ORDER: Record<ExploreSort, string> = {
+  nearest: "distance_m, property_cid",
+  open_desc: "permit_open_days DESC NULLS LAST, distance_m, property_cid",
+  roof_desc: "roof_age_years DESC NULLS LAST, distance_m, property_cid",
+};
+
+/** The three Explore statements for one validated input (throws RangeError on a bad bound). */
+export function exploreSearchSql(input: ExploreSearchInput): ExploreSql {
+  const lat = number("lat", input.centre.lat, EXPLORE_BOUNDS.lat);
+  const lon = number("lon", input.centre.lon, EXPLORE_BOUNDS.lon);
+  const miles = number("radius_mi", input.radius_mi, EXPLORE_BOUNDS.radiusMi);
+  const roof =
+    input.roof === undefined ? undefined : integer("roof", input.roof, EXPLORE_BOUNDS.roof);
+  const openYrs =
+    input.openYrs === undefined
+      ? undefined
+      : number("openYrs", input.openYrs, EXPLORE_BOUNDS.openYrs);
+  const tenure =
+    input.tenure === undefined ? undefined : integer("tenure", input.tenure, EXPLORE_BOUNDS.tenure);
+  const limit = integer("limit", input.limit ?? EXPLORE_DEFAULT_LIMIT, [1, MAX_ROWS]);
+  const page = integer("page", input.page ?? 0, [0, EXPLORE_MAX_PAGE]);
+  const sort = input.sort ?? "nearest";
+  if (!(sort in ORDER)) throw new RangeError(`sort must be one of ${EXPLORE_SORTS.join(", ")}`);
+  if (input.permit !== undefined && !(input.permit in STATUS_CLASSES))
+    throw new RangeError(`permit must be one of ${PERMIT_FILTERS.join(", ")}`);
+
+  const radiusM = Number((miles * METRES_PER_MILE).toFixed(3));
+  const outerM = Number((2 * miles * METRES_PER_MILE).toFixed(3));
+
+  // Permits: one per property, the longest-open open/stalled permit first, else the latest.
+  const permitWhere: string[] = [];
+  if (input.permit !== undefined) {
+    permitWhere.push(
+      `status_class IN (${STATUS_CLASSES[input.permit].map((c) => `'${c}'`).join(", ")})`,
+    );
+    if (openYrs !== undefined)
+      permitWhere.push(`open_days >= ${Number((openYrs * DAYS_PER_YEAR).toFixed(4))}`);
+  }
+  const perm = `perm AS (
+  SELECT property_cid AS permit_property_cid, permit_cid, permit_number,
+    improvement_status AS permit_status, status_class AS permit_status_class,
+    open_days AS permit_open_days, contractor_resolution, contractor_company_cid,
+    bbb_status, bbb_status_reason, table_cid AS permit_table_cid, missing AS permit_missing,
+    row_number() OVER (
+      PARTITION BY property_cid
+      ORDER BY (status_class IN ('open', 'stalled')) DESC NULLS LAST, open_days DESC NULLS LAST,
+        issue_date DESC NULLS LAST, permit_cid
+    ) AS permit_rank
+  FROM v_roofing_permit${permitWhere.length > 0 ? `\n  WHERE ${permitWhere.join("\n    AND ")}` : ""}
+)`;
+
+  const propertyWhere: string[] = [];
+  if (roof !== undefined) propertyWhere.push(`b.roof_age_years >= ${roof}`);
+  if (input.ooa === true) propertyWhere.push("b.owner_is_out_of_area = true");
+  const join = input.permit === undefined ? "LEFT JOIN perm" : "JOIN perm";
+
+  /** `box` (bbox prefilter) then `base` (haversine distance, joins and non-tenure filters). */
+  const ctes = (boxM: number): string => {
+    const box = geoSql({ lat, lon, radiusM: boxM }, "p").bbox;
+    const { distance } = geoSql({ lat, lon, radiusM: boxM }, "b");
+    return `WITH ${perm},
+box AS (
+  SELECT p.*
+  FROM v_property p
+  WHERE p.latitude IS NOT NULL AND p.longitude IS NOT NULL
+    AND ${box}
+),
+base AS (
+  SELECT b.*, ${distance} AS distance_m,
+    k.permit_cid, k.permit_number, k.permit_status, k.permit_status_class, k.permit_open_days,
+    k.contractor_resolution, k.contractor_company_cid, k.bbb_status, k.bbb_status_reason,
+    k.permit_table_cid, k.permit_missing
+  FROM box b
+  ${join} k ON k.permit_property_cid = b.property_cid AND k.permit_rank = 1${
+    propertyWhere.length > 0 ? `\n  WHERE ${propertyWhere.join("\n    AND ")}` : ""
+  }
+)`;
+  };
+
+  const tenureCond = tenure === undefined ? "" : ` AND tenure_years > ${tenure}`;
+  const rows = `${ctes(radiusM)}
+SELECT * FROM base
+WHERE distance_m < ${radiusM}${tenureCond}
+ORDER BY ${ORDER[sort]}
+LIMIT ${limit} OFFSET ${limit * page}`;
+  const summary = `${ctes(radiusM)}
+SELECT
+  count(*) FILTER (WHERE distance_m < ${radiusM}${tenureCond})::INTEGER AS total_within_r,
+  count(*) FILTER (WHERE distance_m < ${radiusM} AND tenure_years IS NULL)::INTEGER AS tenure_unknown
+FROM base`;
+  const close = `${ctes(outerM)}
+SELECT * FROM base
+WHERE distance_m >= ${radiusM} AND distance_m < ${outerM}${tenureCond}
+ORDER BY distance_m, property_cid
+LIMIT ${CLOSE_MATCH_LIMIT}`;
+  return { rows, summary, close };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rows (data-model.md ExploreResult)
+// ---------------------------------------------------------------------------------------------
+
+export interface MissingEntry {
+  readonly field: string;
+  readonly reason: string;
+}
+
+export interface ExploreProvenance {
+  readonly cid: string | null;
+  readonly source_url: string | null;
+  readonly captured_at: string | null;
+  readonly table: string | null;
+  readonly table_cid: string | null;
+  readonly run_id: string | null;
+  readonly manifest_cid: string | null;
+  readonly as_of: string | null;
+}
+
+export interface ExplorePermit {
+  readonly cid: string | null;
+  readonly number: string | null;
+  /** The source's own status text: no lexicon carrier (ADR-0002), so always null with a reason. */
+  readonly status_raw: null;
+  readonly status_class: string | null;
+  readonly open_years: number | null;
+  readonly table_cid: string | null;
+}
+
+export interface ExploreContractor {
+  /** The name as printed on the permit: no lexicon carrier (ADR-0002), so null with a reason. */
+  readonly name_as_printed: null;
+  readonly resolution: string | null;
+  readonly company_cid: string | null;
+}
+
+export interface ExploreRow {
+  readonly property_cid: string;
+  /** Not in the published export (ADR-0002): always null with `not_in_export`. */
+  readonly address: null;
+  readonly dist_mi: number;
+  /** 8-point compass bearing from the centre ("N", "NE", …). */
+  readonly bearing: string;
+  readonly lat: number;
+  readonly lon: number;
+  readonly roof_age_years: number | null;
+  readonly roof_age_basis: string | null;
+  readonly roof_age_confidence: string | null;
+  readonly permit: ExplorePermit | null;
+  readonly contractor: ExploreContractor | null;
+  readonly bbb_status: string | null;
+  readonly bbb_status_reason: string | null;
+  readonly tenure_years: number | null;
+  readonly tenure_basis: string | null;
+  readonly owner_area_class: string | null;
+  readonly provenance: ExploreProvenance;
+  readonly missing: readonly MissingEntry[];
+}
+
+export interface CloseMatch {
+  readonly row: ExploreRow;
+  readonly miles_outside: number;
+}
+
+export interface ExploreResult {
+  readonly total_within_r: number;
+  readonly tenure_unknown: number;
+  readonly rows: readonly ExploreRow[];
+  readonly close_matches: readonly CloseMatch[];
+  readonly as_of: {
+    readonly runId: string;
+    readonly manifestCid: string;
+    readonly finishedAt: string;
+  };
+  readonly area: { readonly label: string; readonly lat: number; readonly lon: number };
+  readonly engine: "server";
+  readonly queryDurationMs: number;
+}
+
+const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+function missingList(v: unknown, prefix = ""): MissingEntry[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((m: unknown) => {
+    if (typeof m !== "object" || m === null) return [];
+    const { field, reason } = m as { field?: unknown; reason?: unknown };
+    return typeof field === "string" && typeof reason === "string"
+      ? [{ field: `${prefix}${field}`, reason }]
+      : [];
+  });
+}
+
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
+
+/** Initial great-circle bearing from `from` to `to`, as an 8-point compass label. */
+export function compassBearing(
+  from: { lat: number; lon: number },
+  to: { lat: number; lon: number },
+): string {
+  const rad = Math.PI / 180;
+  const dLon = (to.lon - from.lon) * rad;
+  const y = Math.sin(dLon) * Math.cos(to.lat * rad);
+  const x =
+    Math.cos(from.lat * rad) * Math.sin(to.lat * rad) -
+    Math.sin(from.lat * rad) * Math.cos(to.lat * rad) * Math.cos(dLon);
+  const deg = (Math.atan2(y, x) / rad + 360) % 360;
+  return COMPASS[Math.round(deg / 45) % 8] ?? "N";
+}
+
+/** One engine row of `rows` / `close` → an ExploreRow, measured from `centre`. */
+export function toExploreRow(row: Row, centre: { lat: number; lon: number }): ExploreRow {
+  const lat = num(row.latitude) ?? 0;
+  const lon = num(row.longitude) ?? 0;
+  const hasPermit = str(row.permit_cid) !== null || str(row.permit_number) !== null;
+  const openDays = num(row.permit_open_days);
+
+  const missing: MissingEntry[] = [
+    ...missingList(row.missing),
+    { field: "address", reason: "not_in_export" },
+  ];
+  if (hasPermit) {
+    missing.push(
+      ...missingList(row.permit_missing, "permit."),
+      { field: "permit.status_raw", reason: "no_lexicon_carrier" },
+      { field: "contractor.name_as_printed", reason: "no_lexicon_carrier" },
+    );
+  }
+  const seen = new Set<string>();
+  const unique = missing.filter((m) => (seen.has(m.field) ? false : (seen.add(m.field), true)));
+
+  return {
+    property_cid: str(row.property_cid) ?? "",
+    address: null,
+    dist_mi: Math.round(((num(row.distance_m) ?? 0) / METRES_PER_MILE) * 1000) / 1000,
+    bearing: compassBearing(centre, { lat, lon }),
+    lat,
+    lon,
+    roof_age_years: num(row.roof_age_years),
+    roof_age_basis: str(row.roof_age_basis),
+    roof_age_confidence: str(row.roof_age_confidence),
+    permit: hasPermit
+      ? {
+          cid: str(row.permit_cid),
+          number: str(row.permit_number),
+          status_raw: null,
+          status_class: str(row.permit_status_class),
+          open_years: openDays === null ? null : Math.floor((openDays / DAYS_PER_YEAR) * 10) / 10,
+          table_cid: str(row.permit_table_cid),
+        }
+      : null,
+    contractor: hasPermit
+      ? {
+          name_as_printed: null,
+          resolution: str(row.contractor_resolution),
+          company_cid: str(row.contractor_company_cid),
+        }
+      : null,
+    bbb_status: str(row.bbb_status),
+    bbb_status_reason: str(row.bbb_status_reason),
+    tenure_years: num(row.tenure_years),
+    tenure_basis: str(row.tenure_basis),
+    owner_area_class: str(row.owner_area_class),
+    provenance: {
+      cid: str(row.cid),
+      source_url: str(row.source_url),
+      captured_at: str(row.captured_at),
+      table: str(row.table),
+      table_cid: str(row.table_cid),
+      run_id: str(row.run_id),
+      manifest_cid: str(row.manifest_cid),
+      as_of: str(row.as_of),
+    },
+    missing: unique,
+  };
+}
+
+/** Miles outside the radius for a close match (3 decimals; the page rounds for "+{x} mi"). */
+export function milesOutside(row: Row, radiusMi: number): number {
+  const miles = (num(row.distance_m) ?? 0) / METRES_PER_MILE;
+  return Math.round((miles - radiusMi) * 1000) / 1000;
+}

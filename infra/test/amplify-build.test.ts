@@ -90,3 +90,52 @@ describe("amplify.yml (T044): structure and the run-index step", () => {
     expect(readFileSync(join(web, "public/runs/index.json"), "utf8")).toBe(committed);
   });
 });
+
+// A-13 T016 (contracts/site-links.md): the build writes public/site-links.json next to
+// build.json from the Amplify variables CRM_URL, DEMO_VIDEO_URL and PR_URL (Web stack, empty by
+// default). The step runs here with bash, once with the variables unset and once set.
+const siteLinkSteps = preBuild.filter((c) => c.includes("site-links.json"));
+
+function runSiteLinkSteps(env: Record<string, string>): Record<string, unknown> {
+  tmp = mkdtempSync(join(tmpdir(), "amplify-yml-links-"));
+  const web = join(tmp, AMPLIFY_MONOREPO_APP_ROOT);
+  mkdirSync(join(web, "public"), { recursive: true });
+  const { CRM_URL: _c, DEMO_VIDEO_URL: _d, PR_URL: _p, ...base } = process.env;
+  execFileSync("bash", ["-euo", "pipefail", "-c", siteLinkSteps.join("\n")], {
+    cwd: web,
+    encoding: "utf8",
+    env: { ...base, ...env },
+  });
+  return JSON.parse(readFileSync(join(web, "public/site-links.json"), "utf8")) as Record<
+    string,
+    unknown
+  >;
+}
+
+describe("amplify.yml (A-13 T016): public/site-links.json", () => {
+  it("has a site-links step in preBuild, after build.json is written", () => {
+    expect(siteLinkSteps.length).toBeGreaterThanOrEqual(1);
+    const buildJsonAt = preBuild.findIndex((c) => c.includes("public/build.json"));
+    const linksAt = preBuild.findIndex((c) => c.includes("site-links.json"));
+    expect(buildJsonAt).toBeGreaterThanOrEqual(0);
+    expect(linksAt).toBeGreaterThan(buildJsonAt);
+  });
+
+  it("variables unset: every link is the empty string (hidden), exactly the three keys", () => {
+    expect(runSiteLinkSteps({})).toEqual({ crmUrl: "", demoVideoUrl: "", prUrl: "" });
+  });
+
+  it("variables set: the values are copied verbatim (the Hub validates https)", () => {
+    expect(
+      runSiteLinkSteps({
+        CRM_URL: "https://crm.example.invalid/",
+        DEMO_VIDEO_URL: "https://video.example.invalid/demo",
+        PR_URL: "https://github.com/example/repo/pull/1",
+      }),
+    ).toEqual({
+      crmUrl: "https://crm.example.invalid/",
+      demoVideoUrl: "https://video.example.invalid/demo",
+      prUrl: "https://github.com/example/repo/pull/1",
+    });
+  });
+});

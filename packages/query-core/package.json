@@ -3,7 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": "./src/index.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./builders": "./src/query-builders.ts",
+    "./gazetteer": "./gazetteer/travis-places@1.0.0/index.ts"
+  },
   "scripts": {
     "build": "pnpm run gen",
     "gen": "tsx scripts/gen-sql.ts",
