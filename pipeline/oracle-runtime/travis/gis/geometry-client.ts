@@ -183,7 +183,7 @@ export function requestKind(url: URL): RequestKind {
 export function pageRequest(
   url: URL,
   outFields: readonly string[],
-): { url: URL; formBody: string } {
+): { url: URL; receiptUrl: URL; formBody: string } {
   const form = new URLSearchParams();
   form.set("f", url.searchParams.get("f") ?? "json");
   form.set("outFields", outFields.join(","));
@@ -191,8 +191,13 @@ export function pageRequest(
   form.set("outSR", GEOMETRY_PARAMS.outSR);
   form.set("geometryPrecision", GEOMETRY_PARAMS.geometryPrecision);
   form.set("objectIds", url.searchParams.get("objectIds") ?? "");
+  const formBody = form.toString();
   const target = new URL(url.origin + url.pathname);
-  return { url: target, formBody: form.toString() };
+  form.delete("objectIds");
+  // the receipt names the POST parameters (never the ids; the page is identified by its key)
+  const receiptUrl = new URL(target.href);
+  receiptUrl.search = form.toString();
+  return { url: target, receiptUrl, formBody };
 }
 
 const retryable = (r: CaptureReceipt): boolean =>
@@ -240,6 +245,7 @@ export function createGeometryClient(options: GeometryClientOptions): GeometryCl
     const kind = requestKind(original);
     const page = kind === "page" ? pageRequest(original, options.outFields) : null;
     const url = (page?.url ?? original).href;
+    const receiptUrl = (page?.receiptUrl ?? original).href;
     const pageKey =
       kind === "page"
         ? options.pageKeyOf(
@@ -255,7 +261,7 @@ export function createGeometryClient(options: GeometryClientOptions): GeometryCl
     ): GisReceipt => {
       const body = res.body;
       return {
-        url,
+        url: receiptUrl,
         http_status: r.status,
         bytes: body.byteLength,
         sha256: sha256Hex(body),

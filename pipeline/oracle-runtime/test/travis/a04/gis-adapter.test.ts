@@ -344,7 +344,9 @@ describe("A-04 T041 GIS runner fetch (gis-adapter)", () => {
   });
 
   it("A-04 a 200 JSON {error} envelope is reported as an ArcGIS error with its code and message, not 'not JSON'", async () => {
-    const body = JSON.stringify({ error: { code: 400, message: "Unable to complete operation.", details: [] } });
+    const body = JSON.stringify({
+      error: { code: 400, message: "Unable to complete operation.", details: [] },
+    });
     const { result, out, receipts } = await run(
       { total: 6, pageRaw: () => ({ status: 200, contentType: "application/json", body }) },
       config({ mode: "pilot" }),
@@ -363,7 +365,10 @@ describe("A-04 T041 GIS runner fetch (gis-adapter)", () => {
   });
 
   it("A-04 pilot success writes the page summary: feature count, fields, geometry type, 3 sample bounds, OBJECTID only", async () => {
-    const { server, result, out } = await run({ total: 10 }, config({ mode: "pilot", bulkPageSize: 5 }));
+    const { server, result, out } = await run(
+      { total: 10 },
+      config({ mode: "pilot", bulkPageSize: 5, outFields: [], pidField: null, geoidField: null }),
+    );
     expect(result.status).toBe("pilot");
     expect(pageRequests(server.events)).toHaveLength(1);
     const pilot = JSON.parse(readFileSync(join(out, "pilot.json"), "utf8"));

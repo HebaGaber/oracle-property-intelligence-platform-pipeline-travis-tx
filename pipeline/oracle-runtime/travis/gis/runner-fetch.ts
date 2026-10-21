@@ -25,7 +25,9 @@ import {
   createGeometryClient,
   dirWriter,
   GisBlockedError,
+  GisRequestError,
   sha256Hex,
+  type GisDiagnostic,
   type ArtifactWriter,
   type GeometryClient,
 } from "./geometry-client.js";
@@ -59,6 +61,8 @@ export const RunnerConfig = z
     /** Clamped to MAX_PAGES_IN_FLIGHT (NFR-004), never raised. */
     bulkConcurrency: z.number().int().min(1),
     userAgent: z.literal(USER_AGENT),
+    /** Bumped to retrigger the workflow's path filter; never changes behaviour. */
+    attempt: z.number().int().min(1).default(1),
   })
   .strict()
   .superRefine((c, ctx) => {
@@ -163,6 +167,58 @@ async function loadKit(): Promise<{
 
 class PilotDone extends Error {
   override name = "PilotDone";
+  constructor(readonly pageKey: string) {
+    super("pilot: one page captured");
+  }
+}
+
+const SAMPLE_FEATURES = 3;
+
+/** [xmin, ymin, xmax, ymax] of an Esri geometry (rings, paths, points or a single x/y). */
+function boundsOf(geometry: unknown): [number, number, number, number] | null {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) {
+      if (v.length >= 2 && typeof v[0] === "number" && typeof v[1] === "number") {
+        xs.push(v[0]);
+        ys.push(v[1]);
+      } else for (const x of v) walk(x);
+    }
+  };
+  if (geometry === null || typeof geometry !== "object") return null;
+  const g = geometry as Record<string, unknown>;
+  if (typeof g.x === "number" && typeof g.y === "number") {
+    xs.push(g.x);
+    ys.push(g.y);
+  }
+  for (const key of ["rings", "paths", "points"]) walk(g[key]);
+  if (xs.length === 0) return null;
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+/** What the pilot's one page shows: counts, field names, geometry type, 3 sample bounds. */
+function pageSummary(body: Buffer | null, oid: string): Record<string, unknown> | null {
+  if (body === null) return null;
+  const page = JSON.parse(body.toString("utf8")) as {
+    geometryType?: string;
+    fields?: Array<{ name?: string }>;
+    features?: Array<{ attributes?: Record<string, unknown>; geometry?: unknown }>;
+  };
+  const features = page.features ?? [];
+  const fields =
+    page.fields?.flatMap((f) => (typeof f.name === "string" ? [f.name] : [])) ??
+    Object.keys(features[0]?.attributes ?? {});
+  return {
+    feature_count: features.length,
+    geometry_type: page.geometryType ?? null,
+    fields,
+    // OBJECTID and bounds only: no attribute value besides the object id
+    sample: features.slice(0, SAMPLE_FEATURES).map((f) => ({
+      [oid]: f.attributes?.[oid] ?? null,
+      bounds: boundsOf(f.geometry),
+    })),
+  };
 }
 
 const STALE = ["receipts.jsonl", "complete.json", "blocked.json", "failed.json", "pilot.json"];
@@ -191,10 +247,22 @@ export async function runGisCapture(deps: RunnerDeps): Promise<RunResult> {
   let features = 0;
   let pages = 0;
 
-  const fail = (code: string, message: string): RunResult => {
+  const fail = (code: string, message: string, diagnostic?: GisDiagnostic | null): RunResult => {
     out.write(
       "failed.json",
-      `${JSON.stringify({ outcome: "failed", code, message, failed_at: iso(now()), pages, features }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          outcome: "failed",
+          code,
+          message,
+          failed_at: iso(now()),
+          pages,
+          features,
+          ...(diagnostic ? { diagnostic } : {}),
+        },
+        null,
+        2,
+      )}\n`,
     );
     return { status: "failed", exitCode: 1, pages, features };
   };
@@ -337,7 +405,7 @@ export async function runGisCapture(deps: RunnerDeps): Promise<RunResult> {
         );
         pages += 1;
         features += p.receivedCount;
-        if (mode === "pilot") throw new PilotDone("pilot: one page captured");
+        if (mode === "pilot") throw new PilotDone(p.objectIdsSha256);
       },
     });
     const finishedAt = now();
@@ -393,6 +461,7 @@ export async function runGisCapture(deps: RunnerDeps): Promise<RunResult> {
             max_record_count: meta.maxRecordCount ?? null,
             supports_pagination: meta.supportsPagination ?? null,
             layer_last_edit_date: layerLastEditDate,
+            page: pageSummary(out.read(`pages/${error.pageKey}.json`), oid),
           },
           null,
           2,
@@ -404,9 +473,11 @@ export async function runGisCapture(deps: RunnerDeps): Promise<RunResult> {
     if (error instanceof GisBlockedError) return blocked(error);
     if (stop instanceof GisBlockedError) return blocked(stop);
     const code = (error as { code?: unknown }).code;
+    const diagnostic = stop instanceof GisRequestError ? stop.diagnostic : null;
     return fail(
       typeof code === "string" ? code : (stop?.name ?? "runner_error"),
       error instanceof Error ? error.message : String(error),
+      diagnostic,
     );
   }
 }

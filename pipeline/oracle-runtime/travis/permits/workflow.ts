@@ -17,6 +17,19 @@
 // `waiting_human` (exit 2) with nothing marked complete and no further request. A request
 // still failing after 5 attempts records `failed` (exit 1). Neither advances the watermark.
 //
+// Page-level retry (AC-17, NFR-002): a page request that times out or fails with no HTTP
+// response is asked again, at most 5 attempts in all, each attempt its own journaled step
+// (`page-NNNNNN`, then `page-NNNNNN-aK`) with its own receipt line, separated by a journaled
+// full-jitter wait (1 s base, 60 s cap). The `$where` cursor stays the last committed page's
+// last `:id`, so no page is skipped, and only the successful attempt carries rows. After the
+// 5th failure the run ends `failed` naming the page index and the time. A 403 or challenge is
+// never retried.
+//
+// Resume (backfill): backfill-cursor.json records the last committed page; a new backfill job
+// continues after it (page numbering, row counts and the key-set diff include the earlier
+// pages). A page captured but not merged is re-merged from its on-disk raw page when the
+// sha256 still matches, else fetched again. A completed backfill is never resumed.
+//
 // AC-12 count at the watermark: count(*) before paging; after paging W = max(:updated_at) of
 // the captured rows, count(*) where :updated_at <= W, and count(*) again. Pass = captured rows
 // (all ≤ W by construction) = the source count at W; rows above W = end total − count at W,
@@ -40,7 +53,16 @@ import {
   type PageReceipt,
   type PageStep,
 } from "../adapters/socrata/socrata-pages.js";
-import type { SourceClient } from "../lib/source-client.js";
+import { backoffDelayMs, MAX_ATTEMPTS, type SourceClient } from "../lib/source-client.js";
+import {
+  commitPage,
+  freshCursor,
+  loadCursor,
+  markComplete,
+  markPending,
+  saveCursor,
+  type BackfillCursor,
+} from "./backfill-cursor.js";
 import type { KeyRow } from "./keyset-diff.js";
 import {
   PermitsMode,
@@ -72,6 +94,8 @@ export interface PermitsIO {
   now(): Promise<Date>;
   /** Journaled step: runs `fn` once and replays its JSON result afterwards. */
   run<T>(name: string, fn: () => Promise<T>): Promise<T>;
+  /** Journaled durable sleep (ctx.sleep). */
+  sleep(ms: number): Promise<void>;
   /** Loader.merge({track: "permits", input}) (a journaled call). */
   merge(name: string, input: PermitsMergeInput): Promise<MergeReply>;
   /** A permanent failure (Restate TerminalError): not retried, journaled. */
@@ -89,6 +113,8 @@ export interface PermitsDeps {
   /** Tests page smaller; the Austin config is 50,000. */
   pageSize?: number;
   config?: PageConfig;
+  /** Jitter source for the page-retry waits (tests inject a seeded one). */
+  random?: () => number;
 }
 
 export const PermitsRunInput = z.object({
@@ -139,17 +165,17 @@ function parseStop(error: unknown): StopInfo | null {
 }
 
 function stopReason(r: PageReceipt): string {
-  return `${r.kind}${r.page_index === null ? "" : ` ${r.page_index}`} ${r.outcome} (HTTP ${r.http_status ?? "none"}, ${r.attempts} attempt(s)${r.error ? `, ${r.error}` : ""})`;
+  return `${r.kind}${r.page_index === null ? "" : ` ${r.page_index}`} ${r.outcome} (HTTP ${r.http_status ?? "none"}, ${r.attempts} attempt(s)${r.blocked_reason ? `, ${r.blocked_reason}` : ""}${r.error ? `, ${r.error}` : ""})`;
 }
 
 /** Writes `keys.ndjson` ({row_id, permit_number} per row) from the verified page artifacts. */
 export function writeKeys(
   jobDir: string,
-  pages: readonly { index: number; sha256: string }[],
+  pages: readonly { index: number; sha256: string; dir?: string }[],
 ): { path: string; sha256: string; count: number } {
   const lines: string[] = [];
   for (const p of pages) {
-    for (const r of readPage(join(jobDir, pageFileName(p.index)), p.sha256)) {
+    for (const r of readPage(join(p.dir ?? jobDir, pageFileName(p.index)), p.sha256)) {
       lines.push(JSON.stringify({ row_id: r[":id"], permit_number: r.permit_number }));
     }
   }
@@ -306,36 +332,145 @@ export async function runAustinPermits(
     }
 
     const maxPages = mode === "pilot" ? 1 : Number.POSITIVE_INFINITY;
-    const pages: { index: number; sha256: string }[] = [];
-    let lastId: string | null = null;
-    let maxUpdatedAt: string | null = null;
-    for (let index = 1; index <= maxPages; index += 1) {
+    const resumable = mode === "backfill";
+    const start: BackfillCursor | null = resumable
+      ? await io.run("resume-cursor", async () => {
+          const found = loadCursor(deps.artifactsRoot);
+          if (found !== null && !found.complete) return found;
+          const fresh = freshCursor(jobId);
+          saveCursor(deps.artifactsRoot, fresh);
+          return fresh;
+        })
+      : null;
+    const pageDir = (owner: string): string => join(deps.artifactsRoot, owner);
+    const pages: { index: number; sha256: string; dir: string }[] = (start?.pages ?? []).map(
+      (p) => ({ index: p.index, sha256: p.sha256, dir: pageDir(p.jobId) }),
+    );
+    const first = start?.nextIndex ?? 1;
+    let lastId: string | null = start?.lastId ?? null;
+    let maxUpdatedAt: string | null = start?.maxUpdatedAt ?? null;
+    result.rows = start?.rows ?? 0;
+    result.written = start?.written ?? 0;
+    result.pages = first - 1;
+    let reusable = start?.pending ?? null;
+    for (let n = 0; n < maxPages; n += 1) {
+      const index = first + n;
       const cursor = lastId;
-      const step: PageStep = await io.run(`page-${pad(index)}`, async () => {
-        const r = await fetchPage({
-          client: deps.client,
-          config,
-          jobDir,
-          pageIndex: index,
-          lastId: cursor,
-          extraWhere,
+      let owner = jobId;
+      let step: PageStep | null = null;
+      if (reusable !== null && reusable.index === index) {
+        // captured but not merged by an earlier job: use its raw page if it still verifies
+        const held = reusable;
+        step = await io.run(`page-${pad(index)}-reuse`, async () => {
+          try {
+            readPage(join(pageDir(held.jobId), pageFileName(index)), held.sha256);
+          } catch {
+            return null;
+          }
+          return {
+            lastId: held.lastId,
+            sha256: held.sha256,
+            rows: held.rows,
+            maxUpdatedAt: held.maxUpdatedAt,
+          };
         });
-        if (r.kind === "stop") throw stopOn(r);
-        return { lastId: r.lastId, sha256: r.sha256, rows: r.rows, maxUpdatedAt: r.maxUpdatedAt };
-      });
+        if (step !== null) owner = held.jobId;
+      }
+      reusable = null;
+      let lastFailure: { reason: string; at: string } | null = null;
+      for (let attempt = 1; step === null && attempt <= MAX_ATTEMPTS; attempt += 1) {
+        const outcome: PageStep | { retry: true; reason: string; at: string } = await io.run(
+          attempt === 1 ? `page-${pad(index)}` : `page-${pad(index)}-a${attempt}`,
+          async () => {
+            const r = await fetchPage({
+              client: deps.client,
+              config,
+              jobDir,
+              pageIndex: index,
+              lastId: cursor,
+              extraWhere,
+              pageAttempt: attempt,
+            });
+            if (r.kind === "stop") {
+              if (!r.retryable) throw stopOn(r);
+              return {
+                retry: true as const,
+                reason: stopReason(r.receipt),
+                at: r.receipt.captured_at,
+              };
+            }
+            if (resumable) {
+              markPending(deps.artifactsRoot, jobId, {
+                index,
+                sha256: r.sha256,
+                jobId,
+                lastId: r.lastId,
+                rows: r.rows,
+                maxUpdatedAt: r.maxUpdatedAt,
+              });
+            }
+            return {
+              lastId: r.lastId,
+              sha256: r.sha256,
+              rows: r.rows,
+              maxUpdatedAt: r.maxUpdatedAt,
+            };
+          },
+        );
+        if ("retry" in outcome) {
+          lastFailure = outcome;
+          if (attempt < MAX_ATTEMPTS) {
+            const wait = await io.run(`page-${pad(index)}-backoff-${attempt}`, async () =>
+              backoffDelayMs(attempt, deps.random ?? Math.random),
+            );
+            await io.sleep(wait);
+          }
+        } else {
+          step = outcome;
+        }
+      }
+      if (step === null) {
+        throw io.fail(
+          `${STOP_PREFIX}${JSON.stringify({
+            stop: "error",
+            reason: `page ${index} failed after ${MAX_ATTEMPTS} attempts, last: ${lastFailure?.reason ?? "unknown"}, at ${lastFailure?.at ?? "unknown time"}`,
+          })}`,
+        );
+      }
+      let pageWritten = 0;
       if (step.rows > 0) {
         const reply = await io.merge(`page-${pad(index)}`, {
           kind: "page",
           jobId,
           mode,
-          artifactPath: join(jobDir, pageFileName(index)),
+          artifactPath: join(pageDir(owner), pageFileName(index)),
           artifactSha256: step.sha256,
           pageIndex: index,
           rows: step.rows,
           receiptsPath,
         });
-        result.written += reply.rowsWritten;
-        pages.push({ index, sha256: step.sha256 });
+        pageWritten = reply.rowsWritten;
+        result.written += pageWritten;
+        pages.push({ index, sha256: step.sha256, dir: pageDir(owner) });
+      }
+      if (resumable) {
+        const committed = step;
+        await io.run(`commit-page-${pad(index)}`, async () => {
+          commitPage(
+            deps.artifactsRoot,
+            jobId,
+            {
+              index,
+              sha256: committed.sha256,
+              jobId: owner,
+              lastId: committed.lastId,
+              rows: committed.rows,
+              maxUpdatedAt: committed.maxUpdatedAt,
+            },
+            pageWritten,
+          );
+          return true;
+        });
       }
       result.pages = index;
       result.rows += step.rows;
@@ -406,6 +541,12 @@ export async function runAustinPermits(
       receiptsPath,
     });
     result.tombstones = reply.tombstones;
+    if (resumable) {
+      await io.run("cursor-complete", async () => {
+        markComplete(deps.artifactsRoot);
+        return true;
+      });
+    }
     await io.run("status", async () => {
       mkdirSync(join(jobDir, "status"), { recursive: true });
       writeFileSync(join(jobDir, "status", "run.json"), `${JSON.stringify(result, null, 2)}\n`);

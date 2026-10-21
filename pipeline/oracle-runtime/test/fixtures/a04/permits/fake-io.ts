@@ -25,6 +25,8 @@ export interface FakeIO extends PermitsIO {
   /** Every completed `run` step value in order (first execution only). */
   steps: { name: string; value: unknown }[];
   merges: { name: string; input: unknown }[];
+  /** Every durable sleep requested (never actually waited). */
+  sleeps: number[];
 }
 
 export function fakeIO(
@@ -35,6 +37,7 @@ export function fakeIO(
   let t = Date.parse(opts.start ?? "2026-10-22T03:00:00.000Z");
   const steps: FakeIO["steps"] = [];
   const merges: FakeIO["merges"] = [];
+  const sleeps: number[] = [];
   const replay = (name: string): unknown => {
     const e = journal.get(name);
     if (e === undefined) return undefined;
@@ -45,6 +48,10 @@ export function fakeIO(
     journal,
     steps,
     merges,
+    sleeps,
+    sleep: async (ms: number) => {
+      sleeps.push(ms);
+    },
     now: async () => {
       const key = `now#${[...journal.keys()].filter((k) => k.startsWith("now#")).length}`;
       if (journal.has(key)) return new Date(replay(key) as string);

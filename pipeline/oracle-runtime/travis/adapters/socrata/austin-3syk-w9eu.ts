@@ -31,6 +31,13 @@ if (datasetUrl(AUSTIN_3SYK_W9EU) !== RULES.dataset.url) {
 }
 
 /**
+ * Whole-request limit for one Austin bulk page: an ~88 MB answer takes 35-45 s and sometimes
+ * far longer, so the client's 60 s default would cut it. A timeout is still retried at page
+ * level (5 attempts, full jitter) by the workflow.
+ */
+export const PAGE_REQUEST_TIMEOUT_MS = 300_000;
+
+/**
  * A-04 T050: keyset pages over the whole dataset (socrata-pages.ts). System fields come after
  * `*` (`$select=:id,*` answers 400, spike receipts). `issued_in_last_30_days` and
  * `day_issued` are calendar-derived columns: they change with the date, not with the permit,
@@ -40,6 +47,7 @@ export const AUSTIN_PAGES: Readonly<PageConfig> = Object.freeze({
   source: AUSTIN_3SYK_W9EU,
   select: "*,:id,:updated_at,:created_at",
   pageSize: 50_000,
+  requestTimeoutMs: PAGE_REQUEST_TIMEOUT_MS,
   volatileFields: Object.freeze(["issued_in_last_30_days", "day_issued"]),
 });
 

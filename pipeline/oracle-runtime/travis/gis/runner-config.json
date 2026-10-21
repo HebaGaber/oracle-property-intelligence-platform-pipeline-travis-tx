@@ -1,5 +1,6 @@
 {
   "mode": "pilot",
+  "attempt": 2,
   "layerUrl": "https://gis.traviscountytx.gov/server1/rest/services/CIPStoryMap/Main_Location_Map2/MapServer/6",
   "outFields": [],
   "pidField": null,

@@ -129,7 +129,10 @@ export function fakeArcgis(options: FakeOptions) {
       const raw = options.pageRaw?.(pageNo);
       if (raw !== undefined) {
         return end(
-          new Response(raw.body, { status: raw.status, headers: { "content-type": raw.contentType } }),
+          new Response(raw.body, {
+            status: raw.status,
+            headers: { "content-type": raw.contentType },
+          }),
           pageNo,
         );
       }

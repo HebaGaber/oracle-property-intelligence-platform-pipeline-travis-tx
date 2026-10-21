@@ -67,6 +67,10 @@ export interface FakeSocrataOptions {
   fault?: (url: URL, call: number) => number | null;
   /** Throw (a killed process) instead of answering. */
   crash?: (url: URL, call: number) => boolean;
+  /** Never answer: the promise rejects only when the request's AbortSignal fires (a timeout). */
+  hang?: (url: URL, call: number) => boolean;
+  /** Fail with no HTTP response (a reset connection). */
+  drop?: (url: URL, call: number) => boolean;
   clock: () => number;
 }
 
@@ -105,6 +109,14 @@ export function fakeSocrata(options: FakeSocrataOptions): { fetch: FetchLike; ca
     calls.push({ url, t: options.clock(), headers });
     const n = calls.length;
     if (options.crash?.(url, n)) throw new Error("synthetic crash: process killed");
+    if (options.drop?.(url, n)) throw new Error("synthetic network error: ECONNRESET");
+    if (options.hang?.(url, n)) {
+      return new Promise<Response>((_resolve, reject) => {
+        const abort = (): void => reject(new DOMException("aborted", "AbortError"));
+        if (init.signal?.aborted) abort();
+        else init.signal?.addEventListener("abort", abort, { once: true });
+      });
+    }
     const status = options.fault?.(url, n) ?? null;
     if (status !== null) {
       return new Response(status === 403 ? "<html>Forbidden</html>" : "{}", {

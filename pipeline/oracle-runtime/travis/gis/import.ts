@@ -34,7 +34,10 @@ const Receipt = z
     ua: z.string().min(1),
     page_key: z.string().nullable(),
     kind: z.enum(["meta", "count", "ids", "page", "other"]),
+    method: z.enum(["GET", "POST"]).optional(),
     blocked_at: z.string().optional(),
+    content_type: z.string().nullable().optional(),
+    excerpt: z.string().max(300).optional(),
   })
   .strict()
   .refine((r) => r.outcome !== "blocked" || r.blocked_at !== undefined, {

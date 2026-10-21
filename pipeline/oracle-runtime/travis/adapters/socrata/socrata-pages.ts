@@ -40,6 +40,11 @@ export interface PageConfig {
   pageSize: number;
   /** Calendar-derived source columns left out of the content digest. */
   volatileFields: readonly string[];
+  /**
+   * Whole-request limit for one page (source-client's default is 60 s, too short for an
+   * ~88 MB answer). A timeout is retried at page level by the workflow.
+   */
+  requestTimeoutMs?: number;
 }
 
 export const KEY_FIELD = ":id";
@@ -120,6 +125,8 @@ export interface PageReceipt {
   blocked_reason: string | null;
   blocked_at: string | null;
   attempts: number;
+  /** Which page-level attempt this line records (1-based; a timeout or network error retries). */
+  page_attempt?: number;
   ua: string;
   app_token_used: false;
   rows: number | null;
@@ -138,7 +145,29 @@ export interface PageStep {
 
 export type PageFetch =
   | ({ kind: "ok"; file: string; receipt: PageReceipt } & PageStep)
-  | { kind: "stop"; stop: Exclude<StopClass, "ok">; receipt: PageReceipt };
+  | {
+      kind: "stop";
+      stop: Exclude<StopClass, "ok">;
+      receipt: PageReceipt;
+      /** A timeout or a network error with no HTTP response: the same page may be asked again. */
+      retryable: boolean;
+    };
+
+/**
+ * Retried at page level: no HTTP response at all (timeout or network error). Never a 403 or a
+ * challenge (StopOnBlocked), and never a status the client already retried (429/5xx) or a
+ * body it could not parse.
+ */
+export function isRetryablePageStop(
+  r: Pick<PageReceipt, "outcome" | "http_status" | "blocked_reason">,
+): boolean {
+  return (
+    r.outcome === "error" &&
+    r.http_status === null &&
+    r.blocked_reason !== "http-403" &&
+    r.blocked_reason !== "challenge"
+  );
+}
 
 const PageRow = z.looseObject({
   [KEY_FIELD]: z.string().min(1),
@@ -199,6 +228,8 @@ export interface FetchPageInput {
   pageIndex: number;
   lastId: string | null;
   extraWhere?: string | null;
+  /** 1-based page-level attempt number, recorded on the receipt line (default 1). */
+  pageAttempt?: number;
 }
 
 /** Fetches one keyset page, writes the body (gz) and its receipt, and returns the step. */
@@ -210,13 +241,22 @@ export async function fetchPage(input: FetchPageInput): Promise<PageFetch> {
     schema: PageRows,
     accept: "application/json",
     useAppToken: false,
+    ...(config.requestTimeoutMs !== undefined ? { timeoutMs: config.requestTimeoutMs } : {}),
   });
-  const receipt = receiptOf(config.source, "page", pageIndex, result.receipt);
+  const receipt: PageReceipt = {
+    ...receiptOf(config.source, "page", pageIndex, result.receipt),
+    page_attempt: input.pageAttempt ?? 1,
+  };
   if (receipt.outcome !== "ok" || result.data === null) {
+    const stopReceipt: PageReceipt = {
+      ...receipt,
+      outcome: receipt.outcome === "blocked" ? "blocked" : "error",
+    };
     const stop: PageFetch = {
       kind: "stop",
       stop: receipt.outcome === "blocked" ? "blocked" : "error",
-      receipt: { ...receipt, outcome: receipt.outcome === "blocked" ? "blocked" : "error" },
+      receipt: stopReceipt,
+      retryable: isRetryablePageStop(stopReceipt),
     };
     appendReceipt(jobDir, stop.receipt);
     return stop;
