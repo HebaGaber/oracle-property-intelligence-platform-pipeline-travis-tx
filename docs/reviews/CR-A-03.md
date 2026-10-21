@@ -367,3 +367,87 @@ Before D-8: re-run `run-month` (the kept run's `summary.json` has no `travis-pla
 **Suites:** root `pnpm vitest run` passed twice with the same counts, 60 files passed and 1 skipped (955 tests passed, 7 skipped); infra `COUNTYLENS_BUNDLE=1` 76/76; `pnpm turbo run typecheck lint` 9/9; `pnpm format:check` clean; `scripts/grep-gates.sh` OK.
 
 **Follow-ups outside my files:** `infra/src/api-stack.ts` still says "no List action is granted" in the role description and the IAM5 acknowledgement reason, and both should name the bench-prefix ListBucket. `turbo.json` `test.env` should drop `BUDGET_REGION` and add `COUNTYLENS_BUNDLE`. Add `yaml` as an infra devDependency: the two new tests currently resolve the workspace copy through `pipeline/oracle-runtime`. Update `docs/reports/A-03-unit-test-report.md` (the BUDGET_REGION skip note). Add the budget provider ($0 idle) to the idle-cost table in plan.md. `infra/cdk.json` got one context key (`countylens:allowedRegions`).
+
+## Re-score: oracle (whole branch, 327c11f)
+
+Reviewer: `soofi-xyz-team-kit:oracle`, read-only, 2026-10-21, commit `327c11f` (tree clean). Skills: `use-oracle`, `apply-engineering-guidelines`. Static review only: no tests, CLI, network or AWS calls. Same bar as the final review: ARD incl. § 16 AM-01…AM-06, the Task A addendum, spec/plan/tasks, `contracts/cli.md`, and the oracle guardrails.
+
+### Score: 88 / 100 (pass; the bar is 75)
+
+The final review's 72 was held down by F-1 alone. F-1 is now fixed: the producer writes the profile, a real-engine guard runs on the publish path, and named tests cover both. F-4, F-5 and F-6 are also fixed. Points still off: F-3 (root readback against the node's claim, not through a gateway) is deferred; OR-3, OR-5, OR-11, OR-12 and OR-13 stay open on their agreed targets; and a few Minor items are listed below. No Critical or Major finding is open.
+
+### Final-review findings: status
+
+| # | Status | Evidence at 327c11f |
+| --- | --- | --- |
+| F-1 | **Fixed (verified)** | `run-month.ts:91-92` (`GAZETTEER_PATH`, `GAZETTEER_PROFILE`), `:750-756` (third profile in `profiles[]`), `:794-803` (`gazetteerDigest` checks the generated constant against the on-disk `DIGEST`). Guard: `pipeline/publish/src/bind-guard.ts` `assertBindable` checks the run id, the manifest CID, roofing rows = `coverage.permits_emitted`, and that the list query and the summary agree. `upload.ts:540-551`: stage `bind` runs before `kuboAddBytes` of the manifest. `upload.ts:387-409`: `bindBuild` runs at the end of `build`. Binder: `pipeline/publish/scripts/local-bind.ts`, which is the real query-core `bindManifest` over node DuckDB and stays outside `src/` (AD-19). Tests: `run-month.test.ts:295` "records travis-austin, the roof profile and travis-places with their digests (CR-A-03 F-1)"; `bind-guard.test.ts:150` "refuses a manifest without the travis-places profile with BindGuardError"; `cli.test.ts:248` "fails the build when the draft manifest does not bind…". Operational: no run on disk carries `travis-places` yet. A fresh `run-month` → `build` (which must print `bind: N … bound`) → new D-8 approval is required. |
+| F-2 | **Kept** (accepted) | The strict `gitCommit === HEAD` preflight stays. The D-8 runbook order is the mitigation. This is correct fail-closed behaviour. |
+| F-3 | **Deferred → before A-11** | `readback.ts` still checks the archive and tables roots against the CLI upload summary. Parts and carCid files are read back through the gateway. |
+| F-4 | **Fixed (verified)** | `pipeline/publish/src/index.ts` no longer exports `runPublish`, `runUpload` or `executePlan`. Test: `index.test.ts:8` "does not export runPublish…". |
+| F-5 | **Fixed (verified)** | `readback.ts:145-167`: with `approved`, the expected size, SHA-256 and CID come from `public-files.json`, and a local drift is a problem. `:313-315`: a carCid that differs from the approved one is refused. Test: `upload.test.ts:1167` "fails a part changed on disk after the approval even when the gateway serves the changed bytes". |
+| F-6 | **Fixed (verified) at the adapter** | `socrata.ts:368-374`: `adapterOutcome` maps a timeout to `error` (exit 1); a 403 or a challenge stays `blocked` (exit 2). `run-month.ts:413-416` passes the label through and the string match is gone. Test: `socrata-adapter.test.ts:657`. Residual: see N-1. |
+| F-7 | Note (unchanged) | Browser part integrity rests on the CID copy and `verify-manifest`. Acceptable for A-03; it must be stated in the evidence. |
+
+Early-review items: OR-3 open (G7), OR-5 open (before A-11), OR-11 open (G7), OR-12 open (D-8 evidence), OR-13 open (release). All other OR items remain fixed.
+
+/code-review #5 and #6 (adapter): fixed. The changes are in `socrata.ts` (`pickPermitRow`, collision-free `safePermitName`, `permit_number` check on resume), with the named tests in `socrata-adapter.test.ts`. I verified them by reading the diff summary and the test names, not line by line.
+
+### New findings
+
+| # | Severity | File:line | Finding | Fix |
+| --- | --- | --- | --- | --- |
+| N-1 | Minor | `pipeline/oracle-runtime/travis/lib/source-client.ts:584-586` | The shared client still sets `outcome: "blocked"` for a timeout. Socrata re-maps it, but every future adapter (A-05/A-06) must remember to do the same, or it will exit 2 on a timeout. | Make the client emit `failed` with `blocked_reason: "timeout"` kept (or add a `timeout` outcome) and drop the per-adapter remap. Alternatively, move `adapterOutcome` into `lib/`. |
+| N-2 | Minor | `pipeline/publish/scripts/local-bind.ts:9-14`; `pipeline/publish/package.json` | The binder imports query-core and its DuckDB adapter by relative path, with no workspace dependency declared. DuckDB resolves only through query-core's install, so a filtered install or deploy of `@countylens/publish` alone breaks `build`, though it fails closed. | Declare `@countylens/query-core` (workspace) as a dev or optional dependency, or document that a full-workspace install is required. |
+| N-3 | Note | `bind-guard.ts` (rows = `permits_emitted`); `builders.ts:28` ("edges of one permit") | If a permit ever produces two `v_roofing_permit` rows (two edges), or a non-Roofing/Replacement action is emitted, the guard refuses a valid build. This fails closed, so it is safe, and the fixer documented it. | If it fires, count `DISTINCT permit_number` in the guard rather than loosening it. |
+| N-4 | Minor (metagross follow-up) | `turbo.json` `test.env` | It lacks `COUNTYLENS_BUNDLE` (and `BUDGET_REGION` is now unused), so a cached infra pass can be replayed across bundle modes. | Add `COUNTYLENS_BUNDLE` and drop `BUDGET_REGION`. |
+
+### Guardrails re-checked
+
+- Public bytes are only `elephant-cli` output plus the descriptive manifest and the index. The Query DB is not imported in `pipeline/publish/**`, `apps/**` or `packages/query-core/src`.
+- No contractor, person or license is written from permits (`CONTRACTOR_NOTE` limitation; AD-24 states remain `contractor_unresolved`).
+- No Atlas, IPNS or MCP publication claim is made in A-03 (P0-4).
+- The D-8 approval gate, refusal before any network write, and order-as-data are unchanged.
+
+### Confidence
+
+High on F-1, F-4, F-5 and F-6: I traced each in the code and matched it to a named test. I did not run the tests; the suite counts are the fixers' (`pnpm vitest run` 955/7 skipped; oracle-runtime 643). Medium on N-2's practical impact, which depends on how CI installs. Not re-reviewed: infra/API/UI internals beyond the publish and read seams (metagross scope). The kept run on disk predates F-1. The upload remains blocked operationally until a fresh capture, a build whose bind passes, and a new D-8 approval exist.
+
+## Re-score: metagross (whole branch, 327c11f)
+
+**Reviewer:** `soofi-xyz-team-kit:metagross` (read-only), 2026-10-21, branch `003-walking-skeleton` at `327c11f`. Skills loaded: build-frontend-backends, integrate-ci-cd, responsive-design-tests, apply-engineering-guidelines. No tests were run, no files were changed, and no AWS or network calls were made. Every status below comes from reading the code and the test names at this commit.
+
+**Score: 81 / 100** (passes the 75 bar; was 70 at `570285d`). There are no open Critical or Major findings. The two remaining Majors (5 and 6) are deferred with named targets (D-10 and W4) and still block G7 evidence, not this re-score.
+
+### Earlier findings: status
+
+| # | Finding | Status | Evidence at 327c11f |
+| --- | --- | --- | --- |
+| M1 (+ /code-review Major 1) | Bench cannot list its prefix | **Fixed, verified** | `infra/src/data-stack.ts:253-270`: GetObject is limited to `ipfs/*` and `private/bench/*`. A separate statement `ListBenchPrefixOnly` grants `s3:ListBucket` on the bucket ARN with `StringLike s3:prefix = private/bench/*`, and `ipfs/` cannot be listed. Test: `infra/test/api.test.ts:163` "reads only ipfs/* and private/bench/* … lists private/bench/* only" (`:201` asserts exactly `["s3:ListBucket"]`). The IAM5 reason in `infra/src/api-stack.ts:362` now names the bench ListBucket. |
+| /code-review Major 2 | A missing CID returns 500 instead of NOT_FOUND | **Fixed, verified (different fix from the one proposed; see N3)** | `apps/api/src/s3-read.ts:99-104`: `isAbsent` treats NoSuchKey, NotFound, 404, `AccessDenied` and 403 as absent, and `:121-127` maps them to `TRPCError NOT_FOUND`. An S3 5xx is still rethrown. Tests: `apps/api/test/runs.test.ts:105` (NOT_FOUND) and `:137` ("still rethrows a server-side S3 failure (500)"). |
+| /code-review Major 3 | `amplify.yml` needs `runs/index.json` | **Fixed, verified** | `amplify.yml:44-46`: the step copies the index only `if [ -f ../../runs/index.json ]`, otherwise it logs and writes nothing. Nothing placeholder is served. The SPA fallback regex excludes `.json` (`infra/src/web-stack.ts:41`), so `/runs/index.json` returns 404, and `apps/web/src/data/runs-index.ts:40-54` turns that into `unreadable`. Test: `infra/test/amplify-build.test.ts` runs the step with bash with and without the index. |
+| /code-review Major 4 | VIEW↔TABLE rebind | **Fixed, verified** | `packages/query-core/src/bind-manifest.ts:168-175`: `DROP SCHEMA IF EXISTS meta/county/property_improvement CASCADE` runs before the schemas are created, so stale views over expired presigned URLs are removed too. Test: `packages/query-core/test/rebind.test.ts` binds A, then B, then A on one real DuckDB. |
+| M2 | No budget deployed; TC-052 hides it | **Fixed, verified (two Minor hardening gaps: N1, N2)** | `infra/src/ops-stack.ts:205-300`: `Custom::CountyLensBudget` is an `AwsCustomResource` inside `CountyLensOps` (eu-north-1; no other stack or region is used). It is 10 USD MONTHLY COST with 80 % ACTUAL and 100 % FORECASTED alerts to EMAIL and no budget action. Create, Update and Delete are wired, and the physical id is `countylens-monthly`. **Least privilege:** the only statement is `budgets:ModifyBudget/ViewBudget/TagResource` on `arn:aws:budgets::<acct>:budget/countylens-monthly`. The ARN format is correct, and TagResource is required because CreateBudget sends `ResourceTags`. X-Ray is on `*` (it has no resource-level form), and the cdk-nag acknowledgements give reasons. **Self-cleaning:** `onDelete` calls `DeleteBudget`, and the provider log group has 14-day retention with `RemovalPolicy.DESTROY`. **$0 idle:** a budget with notifications only is free (the first two action-free budgets in an account cost nothing), and the singleton provider Lambda runs only on deploy. `installLatestAwsSdk: false` and `Logging.withDataHidden()` (the email is not logged) are both good. Tests: `infra/test/stacks.test.ts:539` and `:597`, now with no `skipIf`, and `BUDGET_REGION` is gone from the repo. |
+| M3 | No wrong-region guard | **Fixed, verified** | `infra/src/config.ts:23-30` defines `RegionNotAllowedError`. `:69-74` requires a non-empty `countylens:allowedRegions`, and `:118-119` throws when `CDK_DEFAULT_REGION` is not in that list. `infra/cdk.json:8` is `["eu-north-1"]`. Tests: `stacks.test.ts:192`, `:210`, `:221` ("synth for N. Virginia throws"). |
+| M4 | CI `e2e-hosted` env | **Fixed, verified** | `.github/workflows/ci.yml:252-259` reads `AMPLIFY_APP_ID`, `AWS_REGION`, `CDK_DEFAULT_REGION`, `OPERATOR_EMAIL`, `CID_COPY_HOST`, `FILEBASE_GATEWAY_HOST` and `PINATA_GATEWAY_HOST` from `vars.*` only. The job is credential-free on purpose (`:247`). Test: `infra/test/ci-workflow.test.ts`. |
+| M5 | Amplify token revocation vs later Web updates | **Deferred → D-10** | To be checked at D-10: run one no-op App update after the token is revoked and record the result in the run log. |
+| M6 | G6-matrix specs missing | **Deferred → W4 (T061/T068)** | `tests/e2e/` still has no `observability`, `perf`, `responsive` (smeargle 390/768/1440), `lambda-fallback.perf` or `read-path-record` specs. This blocks G7, not this score. |
+| m7 | Weak cross-stack refs can go stale | **Open (Minor)** | `infra/cdk.json:93` is still `"weak"`. Neither `docs/architecture-constitution.md` nor the spec mentions it. Add the ARD note and the `--force` caveat before D-10. |
+| m8 | `.wasm` Content-Encoding br | **Deferred → D-10 hosted check** | `infra/src/web-stack.ts:184` is unchanged. Check it with `curl -sI` after D-10. |
+| m9 | Cert waits on DNS | **Deferred → D-10** | Covered by T050 (`specs/003-walking-skeleton/tasks.md:134`). |
+| m10 | turbo test cache keys | **Partly fixed** | `BUDGET_REGION` is gone. `COUNTYLENS_BUNDLE` (`infra/test/api.test.ts:375`) is still missing from `turbo.json` `test.env` (`:33-40`). Add it. |
+| m11 | `deploy` job red until D-10 | **Open (accepted)** | `ci.yml:218` guard. State it in the PR body. |
+| /code-review m7 | API requires unused keys | **Fixed** (per the fix log; `apps/api/test/config.test.ts`) | n/a |
+| /code-review m8, m10 | web config duplication, double hash | **Open (Minor, `apps/web`)** | Not changed. |
+| /code-review m9 | slow first load | **Deferred → A-13** | The O(n²) bind fix removes about 1.9 s of CPU in the meantime. |
+| follow-up | `yaml` infra devDependency | **Fixed** | `infra/package.json:27`. |
+
+### New findings
+
+- **N1 (Minor): budget delete and create are not idempotent.** `infra/src/ops-stack.ts:260-266`: `onDelete` has no `ignoreErrorCodesMatching`. If the budget is already gone (deleted by hand, or a failed first create rolls back), `DeleteBudget` throws `NotFoundException`, and the stack ends in `DELETE_FAILED` or `ROLLBACK_FAILED`, which needs manual cleanup. In the same way, `CreateBudget` fails with `DuplicateRecordException` if a `countylens-monthly` budget already exists. *Fix:* add `ignoreErrorCodesMatching: "NotFoundException"` to `onDelete`. Add a CDK assertion that the Delete call carries it. Optionally, document that the budget name must be unused before the first deploy.
+- **N2 (Minor): `onUpdate` cannot change the email recipient.** `ops-stack.ts:253-258` calls `UpdateBudget` with the definition only (the comment at `:202-203` admits it). A change to `OPERATOR_EMAIL` updates the SNS subscription but leaves the budget alerts going to the old address, with no error. *Fix:* put the email (or a hash of it) into the physical id so a change forces replace (create the new budget, then delete the old). Or document the limitation in the D-10 runbook.
+- **N3 (Minor): 403 mapped to NOT_FOUND hides an IAM regression.** `apps/api/src/s3-read.ts:102,104`: if the GetObject grant were ever broken, every `runs.summary` would return NOT_FOUND, and the `countylens-api-5xx` alarm would never fire. This is a reasonable trade-off: a prefix-conditioned ListBucket does not reliably turn a missing-key 403 into a 404, and an unconditioned `ipfs/` list was declined. *Fix:* log a Powertools warning and emit a metric (`ManifestAbsent403`) on the 403 branch, so a wave of them is visible. The CDK assertion at `api.test.ts:163` already guards the grant.
+- **N4 (Info): Budgets endpoint from eu-north-1.** The provider's SDK v3 Budgets client in eu-north-1 should resolve to the global `budgets.amazonaws.com` endpoint (signing region us-east-1). This is not a regional resource, so it is compliant. Confirm on the first D-10 deploy (the Ops stack reaches CREATE_COMPLETE, and `aws budgets describe-budget` shows it).
+
+### Confidence
+
+High for M1–M4 and the four /code-review Majors: the code and the tests named above were read at `327c11f`. Medium-high for the budget's correctness. The ARN format, the actions and the delete wiring were read, but the Budgets endpoint resolution and the `ResourceTags` support in the provider's bundled SDK were not exercised (no AWS calls). The N1 failure path follows from AwsCustomResource's default error handling. M5, m8 and m9 can only be settled at D-10. Not reviewed: `pipeline/**` internals and the internals of `packages/**` beyond `bind-manifest.ts`.
