@@ -7,6 +7,12 @@
 // (aggregate_match), every `car` and `directory` artifact carries `carCid` (AM-05), every table
 // part is within the 48m export bound, and the working tree must be clean. The manifest CID is
 // the raw-leaves CIDv1 of its RFC 8785 JCS bytes.
+// Fixed limitation notes (FR-001, TC-003; plan § "Fixed texts and config keys", verbatim):
+// `sources[0].limitations` (Austin) carries `Comptroller baseline not loaded (A-07)` (addendum
+// A5: why every permit is `contractor_unresolved`); `sources[1].limitations` (TCAD) carries
+// `Confidential owner records redacted (Texas Tax Code §25.025): {n}` with `n` = the run
+// summary's `owners_redacted` (P0-15: the redaction precedes `validate`). Each note is added
+// once, after the source's own notes.
 import { execFileSync } from "node:child_process";
 import { createReadStream, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -29,6 +35,26 @@ import { PART_SIZE, PART_SIZE_BYTES, sha256File, type DataGroup } from "./sequen
 
 /** The display order of `sources[]` (data-model.md): Austin permits first, then TCAD. */
 export const SOURCE_ORDER = ["austin-3syk-w9eu", "tcad-2026-certified-json"] as const;
+
+/** The Austin source's fixed limitation note (addendum A5; plan § "Fixed texts"). */
+export const COMPTROLLER_LIMITATION = "Comptroller baseline not loaded (A-07)";
+
+/** The TCAD source's fixed limitation note (P0-15; plan § "Fixed texts"); `n` = owners_redacted. */
+export function confidentialLimitation(ownersRedacted: number): string {
+  return `Confidential owner records redacted (Texas Tax Code §25.025): ${ownersRedacted}`;
+}
+
+/** The fixed note of a source in SOURCE_ORDER. */
+function fixedLimitation(name: string, ownersRedacted: number): string {
+  switch (name) {
+    case SOURCE_ORDER[0]:
+      return COMPTROLLER_LIMITATION;
+    case SOURCE_ORDER[1]:
+      return confidentialLimitation(ownersRedacted);
+    default:
+      throw new Error(`no fixed limitation note for source ${name}`);
+  }
+}
 
 const RUN_ID = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -68,6 +94,11 @@ export interface BuildManifestInput {
   sources: ManifestSourceInput[];
   profiles: ManifestProfile[];
   coverage: Record<string, CoverageCount>;
+  /**
+   * The run summary's `owners_redacted`: TCAD confidentiality redactions applied before
+   * `validate` (P0-15). Written into the TCAD source's limitation note; never defaulted.
+   */
+  ownersRedacted: number;
   limitations: string[];
   /** Where `git status` runs (default: the current directory). */
   repoRoot?: string;
@@ -236,7 +267,8 @@ async function groupArtifacts(runDir: string, g: ManifestGroupInput): Promise<Gr
   return { artifacts: [car, directory, ...tables], rows };
 }
 
-function source(input: ManifestSourceInput): ManifestSource {
+/** The source entry, with its fixed limitation note added once after the source's own notes. */
+function source(input: ManifestSourceInput, fixedNote: string): ManifestSource {
   const text = readFileSync(input.receipts, "utf8");
   let records: number;
   let capturedAt: string;
@@ -270,7 +302,9 @@ function source(input: ManifestSourceInput): ManifestSource {
     added: records,
     changed: 0,
     removed: 0,
-    limitations: input.limitations,
+    limitations: input.limitations.includes(fixedNote)
+      ? [...input.limitations]
+      : [...input.limitations, fixedNote],
   };
 }
 
@@ -289,6 +323,12 @@ function checkInput(input: BuildManifestInput): void {
     throw new Error(`runId "${input.runId}" names the pilot; a published run is never the pilot`);
   if (input.limitations.includes(PILOT_LIMITATION))
     throw new Error("a published run carries no pilot limitation");
+  // P0-15: the redaction count is stated, never assumed; a missing or malformed count fails.
+  if (!Number.isInteger(input.ownersRedacted) || input.ownersRedacted < 0) {
+    throw new Error(
+      `ownersRedacted (the run summary's owners_redacted) must be a non-negative integer, got ${String(input.ownersRedacted)}`,
+    );
+  }
   const names = input.sources.map((s) => s.name);
   if (names.length !== SOURCE_ORDER.length || names.some((n, i) => n !== SOURCE_ORDER[i])) {
     throw new Error(
@@ -341,7 +381,7 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
     startedAt: input.startedAt,
     finishedAt: input.finishedAt,
     previousManifestCid: input.previousManifestCid,
-    sources: input.sources.map(source),
+    sources: input.sources.map((s) => source(s, fixedLimitation(s.name, input.ownersRedacted))),
     artifacts,
     profiles: input.profiles,
     coverage: input.coverage,

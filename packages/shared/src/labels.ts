@@ -1,11 +1,17 @@
 // Human labels for the contract's closed list of missing reasons (spec.md § Missing-reason
 // labels, FR-011; PO decision D-2, 2026-10-21). The contract defines no labels: these are the
 // UI wording, one row per reason, and the UI shows them wherever a value is missing (XI).
+// Also the fixed Runs/Permits texts of plan.md § "Fixed texts and config keys" (T081): this
+// file is the only source of those strings; apps/web imports them, never retypes them.
 //
 // Adding a reason to contract/v1 is additive and must add a row here. `satisfies
 // Record<MissingReason, string>` makes tsc fail on a missing or an unknown key, and
 // test/missing-labels.test.ts walks MISSING_REASONS at run time (A-03-TC-027).
-import { MISSING_REASONS, type MissingReason } from "@countylens/contract";
+import {
+  MISSING_REASONS,
+  type COVERAGE_DERIVATIONS,
+  type MissingReason,
+} from "@countylens/contract";
 
 export const MISSING_REASON_LABELS = Object.freeze({
   no_lexicon_carrier: "No place for this field in the published data model",
@@ -38,13 +44,56 @@ export const MISSING_REASON_LABELS = Object.freeze({
 export const CONTRACTOR_NOT_PRINTED_LABEL = "Contractor not printed on permit";
 
 /**
- * Runs-page labels for manifest `coverage` counts. These are counts, not row reasons:
- * a permit without a TCAD id is never published, so no row can carry it (spec "Story labels").
+ * Runs-page labels for manifest `coverage` counts (TC-012, TC-031). These are counts, not row
+ * reasons: a permit without a TCAD id is never published, so no row can carry it (spec "Story
+ * labels"). Texts verbatim from plan.md § "Fixed texts and config keys" (= test plan § 3).
  */
 export const COVERAGE_LABELS = Object.freeze({
+  permits_emitted: "Permits published",
   permits_no_tcad_geoid: "No TCAD id on source record",
 });
 export type CoverageLabelKey = keyof typeof COVERAGE_LABELS;
+
+/** How a manifest coverage count was derived: one of the contract's `COVERAGE_DERIVATIONS` (AD-28). */
+export type Derivation = (typeof COVERAGE_DERIVATIONS)[number];
+
+/**
+ * Runs-page helper text shown under each coverage count (FR-009, AD-28): what the count was
+ * derived from. `satisfies Record<Derivation, string>` makes tsc fail on a missing or an
+ * unknown key, and test/labels-extra.test.ts walks COVERAGE_DERIVATIONS at run time.
+ */
+export const DERIVATION_LABELS = Object.freeze({
+  published_rows: "Counted from published rows",
+  capture_receipt: "From the capture receipt",
+  aggregate_match: "From the run's internal match (not recomputable from public data)",
+} satisfies Record<Derivation, string>);
+
+/** Runs-page publication state (P0-4, TC-010): public by CID; Atlas registration is not claimed. */
+export const PUBLICATION_STATE_TEXT = "Public by CID · Atlas registration pending";
+
+/** Runs-page error banners for `runs/index.json` (TC-014). */
+export const RUN_INDEX_TEXTS = Object.freeze({
+  /** The index is missing, is not JSON, or does not match the contract schema. */
+  unreadable: "Run index could not be read from this site",
+  /** The index reads fine but `runs` is `[]`. */
+  empty: "No runs published yet",
+});
+
+/** Permits-page empty state and error banners (TC-029; engine failure). */
+export const PERMITS_TEXTS = Object.freeze({
+  /** Only when `coverage.permits_emitted.count` is 0 and the query returns 0 rows. */
+  empty: "No permits published in this run",
+  /** The listed row count differs from the manifest's `permits_emitted.count` (FR-009). */
+  countMismatch: (rows: number, count: number): string =>
+    `Row count does not match the manifest: ${rows} listed, ${count} published`,
+  engineFailure: "Query engine could not start",
+});
+
+/** Accessible names of the two progress bars (TC-024); `aria-valuetext` carries the stage text. */
+export const PROGRESS_LABELS = Object.freeze({
+  runs: "Loading run",
+  permits: "Loading permits",
+});
 
 /** A contractor field: any view column named `contractor_*` (contract/v1 columns). */
 export function isContractorField(field: string): boolean {

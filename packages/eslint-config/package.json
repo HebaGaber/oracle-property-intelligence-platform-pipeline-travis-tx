@@ -5,6 +5,9 @@
   "description": "Shared ESLint flat config with the ARD § 4 boundary rules; the root eslint.config.js re-exports it.",
   "type": "module",
   "exports": "./index.js",
+  "scripts": {
+    "test": "vitest run --passWithNoTests"
+  },
   "dependencies": {
     "@eslint/js": "^10.0.1",
     "globals": "^17.13.0",

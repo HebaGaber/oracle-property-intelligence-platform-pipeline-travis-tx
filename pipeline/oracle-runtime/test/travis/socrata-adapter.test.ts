@@ -46,7 +46,7 @@ import {
   safePermitName,
   type SocrataSource,
 } from "../../travis/adapters/socrata/socrata.js";
-import { fakeHttp, json, silent, text } from "../fixtures/fake-http.js";
+import { fakeHttp, json, silent, text, type RecordedCall } from "../fixtures/fake-http.js";
 
 // A stand-in for the profile's toSoqlInclude(): the test is outside the adapter term gate.
 const INCLUDE = "(upper(description) like '%STAND-IN TERM%')";
@@ -158,6 +158,15 @@ const readJson = (path: string): Record<string, unknown> =>
   JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
 const permitCalls = (http: ReturnType<typeof fakeHttp>) =>
   http.calls.filter((call) => new URL(call.url).searchParams.has(SOURCE.key));
+/** The permit key each permit GET asked for, in request order. */
+const permitKeys = (http: ReturnType<typeof fakeHttp>) =>
+  permitCalls(http).map((call) => new URL(call.url).searchParams.get(SOURCE.key));
+/** The User-Agent header a recorded request carried (undefined when none). */
+function userAgentOf(call: RecordedCall): string | undefined {
+  const headers = (call.init.headers ?? {}) as Record<string, string>;
+  const name = Object.keys(headers).find((h) => h.toLowerCase() === "user-agent");
+  return name === undefined ? undefined : headers[name];
+}
 
 describe("buildListQuery", () => {
   const q = buildListQuery({ source: SOURCE, window: WINDOW, include: INCLUDE });
@@ -409,7 +418,7 @@ describe("captureSocrata", () => {
     expect(at(result.receipts, 0)).toMatchObject({ outcome: "error", attempts: 1, status: 404 });
   });
 
-  it("stops on the first 403 with a blocked receipt and makes no further request (exit 2)", async () => {
+  it("A-03-TC-006: stops on the first 403 with a blocked receipt and makes no further request (exit 2)", async () => {
     const c = clock();
     const blocked = ROWS[1]?.permit_number as string;
     const http = routes(c, {
@@ -438,7 +447,7 @@ describe("captureSocrata", () => {
     expect(result.captured).toEqual([ROWS[0]?.permit_number]);
   });
 
-  it("treats a challenge as blocked, whatever the status", async () => {
+  it("A-03-TC-006: treats a challenge as blocked, whatever the status", async () => {
     const c = clock();
     const n = ROWS[0]?.permit_number as string;
     const http = routes(c, {
@@ -453,7 +462,70 @@ describe("captureSocrata", () => {
     expect(permitCalls(http)).toHaveLength(1);
   });
 
-  it("stops when the list query is blocked, before any permit GET", async () => {
+  // T084: the assertions TC-006 names that the two cases above do not make (FR-014, A6):
+  // the blocked request is attempted once, nothing is requested after it, and the same
+  // identified User-Agent is on every request (no rotation), for a 403 and for a 200 page.
+  it("A-03-TC-006: the first 403 is never retried; the User-Agent is identical on every request", async () => {
+    const c = clock();
+    const blocked = ROWS[1]?.permit_number as string;
+    const http = routes(c, {
+      script: { [blocked]: [() => text("<html>Access denied</html>", 403)] },
+    });
+    const jobDir = tmp();
+    const result = await run(c, http, jobDir);
+    expect(result.status).toBe("blocked");
+    expect(exitCodeFor(result.status)).toBe(2);
+    // the list, the first permit, the blocked permit once, and nothing after it
+    expect(http.calls).toHaveLength(3);
+    expect(permitKeys(http)).toEqual([ROWS[0]?.permit_number, blocked]);
+    expect(permitKeys(http).filter((k) => k === blocked)).toHaveLength(1);
+    const agents = new Set(http.calls.map(userAgentOf));
+    expect(agents.size).toBe(1);
+    const [ua] = agents;
+    expect(ua).toContain("oracle-property-intelligence-platform-pipeline-travis-tx");
+    for (const r of result.receipts) expect(r.ua).toBe(ua);
+    expect(at(result.receipts, result.receipts.length - 1)).toMatchObject({
+      permit_number: blocked,
+      outcome: "blocked",
+      attempts: 1,
+      status: 403,
+      blocked_reason: "http-403",
+    });
+    expect(existsSync(join(jobDir, "raw", `${safePermitName(blocked)}.json`))).toBe(false);
+  });
+
+  it("A-03-TC-006: a 200 bot-challenge page is blocked at first sight: one attempt, no further request, exit 2", async () => {
+    const c = clock();
+    const blocked = ROWS[1]?.permit_number as string;
+    const page =
+      '<html><head><title>Just a moment...</title></head><body><form id="challenge-form"></form></body></html>';
+    const http = routes(c, { script: { [blocked]: [() => text(page, 200)] } });
+    const jobDir = tmp();
+    const result = await run(c, http, jobDir);
+    expect(result.status).toBe("blocked");
+    expect(exitCodeFor(result.status)).toBe(2);
+    expect(http.calls).toHaveLength(3);
+    expect(permitKeys(http)).toEqual([ROWS[0]?.permit_number, blocked]);
+    const agents = new Set(http.calls.map(userAgentOf));
+    expect(agents.size).toBe(1);
+    for (const r of result.receipts) expect(r.ua).toBe([...agents][0]);
+    expect(at(result.receipts, 1)).toMatchObject({
+      permit_number: blocked,
+      outcome: "blocked",
+      attempts: 1,
+      status: 200,
+      blocked_reason: "challenge",
+    });
+    expect(readJson(join(jobDir, "status", `${safePermitName(blocked)}.json`))).toMatchObject({
+      state: "blocked",
+      captured: false,
+    });
+    expect(readJson(join(jobDir, "job.json"))).toMatchObject({ status: "blocked" });
+    expect(existsSync(join(jobDir, "raw", `${safePermitName(blocked)}.json`))).toBe(false);
+    expect(result.captured).toEqual([ROWS[0]?.permit_number]);
+  });
+
+  it("A-03-TC-006: stops when the list query is blocked, before any permit GET", async () => {
     const c = clock();
     const http = fakeHttp([
       {

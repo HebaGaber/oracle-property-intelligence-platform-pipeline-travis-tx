@@ -69,12 +69,20 @@ function rows(): Row[] {
   ];
 }
 
-function exportZip(dir: string): { zip: string; sha256: string } {
-  const text = tcadExportText([
+/** The three export records the default setup writes; a case may pass its own (T082). */
+function defaultRecords(): Record<string, unknown>[] {
+  return [
     tcadRecord({ pID: 100008, geoID: "0100030105" }),
     tcadRecord({ pID: 100012, geoID: "0100030106" }),
     tcadRecord({ pID: 100020, geoID: "0100030107" }),
-  ]);
+  ];
+}
+
+function exportZip(
+  dir: string,
+  records: Record<string, unknown>[] = defaultRecords(),
+): { zip: string; sha256: string } {
+  const text = tcadExportText(records);
   const bytes = buildZip([
     { name: "Layout.pdf", data: Buffer.from("pdf") },
     { name: ENTRY, data: Buffer.from(text) },
@@ -138,15 +146,15 @@ interface Setup {
   catalogPath: string;
 }
 
-function setup(): Setup {
+function setup(records?: Record<string, unknown>[]): Setup {
   const repoRoot = mkdtempSync(join(tmpdir(), "run-month-"));
-  const { zip, sha256 } = exportZip(repoRoot);
+  const { zip, sha256 } = exportZip(repoRoot, records);
   return { repoRoot, zip, sha256, catalogPath: catalog(repoRoot, sha256) };
 }
 
-async function runSeptember(s: Setup, over: { catalogPath?: string } = {}) {
+async function runSeptember(s: Setup, over: { catalogPath?: string; rows?: Row[] } = {}) {
   const c = clock();
-  const fake = http(rows());
+  const fake = http(over.rows ?? rows());
   const result = await runMonth({
     repoRoot: s.repoRoot,
     month: "2026-09",
@@ -301,5 +309,99 @@ describe("runMonth (September slice)", () => {
     expect(parseMonth("2026-09")).toEqual({ year: 2026, month: 9 });
     expect(() => parseMonth("2026-9")).toThrow(/YYYY-MM/);
     expect(exitCodeFor("blocked")).toBe(2);
+  });
+});
+
+// T082 (P0-15, Texas Tax Code §25.025): the County transform applies the TCAD confidentiality
+// redaction while the groups are built, so the redaction precedes anything written under
+// groups/ (the `validate` input of pipeline/publish). The summary counts the redactions as
+// `owners_redacted`; the manifest's TCAD limitation note repeats that number (T083).
+describe("runMonth owners_redacted (T082, P0-15)", () => {
+  const CONFIDENTIAL_OWNER = "REDACTED SAMPLE PERSON";
+  const SECOND = "2026-100005 BP"; // accepted, tcad_id 0100030106 → parcel 100012 (not confidential)
+  const OWNER_FILE = /^(person|company|mailing_address)_\d+\.json$/;
+
+  /** Every file under `dir`, recursively, as one text (what `validate` would read). */
+  function treeText(dir: string): string {
+    const out: string[] = [];
+    const walk = (d: string): void => {
+      for (const entry of readdirSync(d, { withFileTypes: true })) {
+        const path = join(d, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else out.push(readFileSync(path, "utf8"));
+      }
+    };
+    walk(dir);
+    return out.join("\n");
+  }
+
+  it("writes owners_redacted = 0 when no published parcel carries a confidentiality flag", async () => {
+    const s = setup();
+    const { result } = await runSeptember(s);
+    expect(result.summary?.owners_redacted).toBe(0);
+    const summary = readJson(join(result.runDir, "summary.json"));
+    expect(summary.owners_redacted).toBe(0);
+    const coverage = summary.coverage as Record<string, { count: number }>;
+    expect(coverage.confidential_suppressed?.count).toBe(0);
+    expect(coverage.owner_confidential?.count).toBe(0);
+    // the fixture owner is not confidential: it is published as a company (name ends in LLC)
+    expect(readdirSync(join(result.runDir, "groups/county/100008/data"))).toContain(
+      "company_1.json",
+    );
+    expect(treeText(join(result.runDir, "groups"))).toContain("SAMPLE OWNER LLC");
+  });
+
+  it("counts each confidential TCAD record in owners_redacted and keeps its owner out of groups/county (before validate)", async () => {
+    const s = setup([
+      tcadRecord({
+        pID: 100008,
+        geoID: "0100030105",
+        ownerName: CONFIDENTIAL_OWNER,
+        confidentialCode: "C",
+      }),
+      tcadRecord({ pID: 100012, geoID: "0100030106" }),
+      tcadRecord({ pID: 100020, geoID: "0100030107" }),
+    ]);
+    const { result } = await runSeptember(s, {
+      rows: [...rows(), row(SECOND, { tcad_id: "0100030106" })],
+    });
+    expect(result.status).toBe("ok");
+    expect(result.summary?.owners_redacted).toBe(1);
+    const summary = readJson(join(result.runDir, "summary.json"));
+    expect(summary.owners_redacted).toBe(1);
+    const coverage = summary.coverage as Record<string, { count: number }>;
+    expect(coverage.parcels_published?.count).toBe(2);
+    expect(coverage.permits_emitted?.count).toBe(2);
+    expect(coverage.confidential_suppressed?.count).toBe(1);
+    expect(coverage.owner_confidential?.count).toBe(1);
+
+    // the redacted parcel is still published (a redaction, not an exclusion), without any
+    // owner, company or mailing-address entity; the other parcel's owner is still written
+    const countyDir = join(result.runDir, "groups/county");
+    expect(listDirs(countyDir)).toEqual(["100008", "100012"]);
+    const redacted = readdirSync(join(countyDir, "100008/data"));
+    expect(redacted).toContain("property.json");
+    expect(redacted.filter((f) => OWNER_FILE.test(f))).toEqual([]);
+    expect(readdirSync(join(countyDir, "100012/data"))).toContain("company_1.json");
+
+    // neither the name nor the mailing address of the confidential owner reaches any
+    // validate input, in either group
+    const redactedText = treeText(join(countyDir, "100008"));
+    expect(redactedText).not.toContain(CONFIDENTIAL_OWNER);
+    expect(redactedText).not.toContain("41 SAMPLE DR");
+    expect(redactedText).not.toContain("WOODCREEK");
+    const groupsText = treeText(join(result.runDir, "groups"));
+    expect(groupsText).not.toContain(CONFIDENTIAL_OWNER);
+    expect(groupsText).not.toContain("Redacted Sample Person");
+    expect(groupsText).toContain("SAMPLE OWNER LLC");
+
+    // the internal transform report records the redaction and its basis
+    const report = readJson(join(result.runDir, "reports/transform-counts.json"));
+    const county = report.county as Array<{ pID: string; owner: string; confidential: boolean }>;
+    expect(county.find((c) => c.pID === "100008")).toMatchObject({
+      owner: "suppressed",
+      confidential: true,
+    });
+    expect(county.find((c) => c.pID === "100012")).toMatchObject({ confidential: false });
   });
 });

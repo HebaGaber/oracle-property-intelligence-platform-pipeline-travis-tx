@@ -22,11 +22,13 @@ import { PILOT_LIMITATION, RunManifestV1, RunsIndexV1, isCidV1 } from "@countyle
 import { SOURCE_ORDER, buildManifest, type BuildManifestInput } from "../src/manifest.js";
 import {
   addRun,
+  appendRun,
   emptyRunsIndex,
   parseRunsIndex,
   runsIndexBytes,
   verifyCommittedRuns,
 } from "../src/runs-index.js";
+import * as runsIndexModule from "../src/runs-index.js";
 import { cidOfBytes, cidOfFile } from "../src/cid.js";
 import { jcsBytes } from "../src/jcs.js";
 import { PART_SIZE_BYTES } from "../src/sequence.js";
@@ -204,6 +206,8 @@ async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
       permits_emitted: { count: 2, derivation: "published_rows" },
       permits_no_tcad_geoid: { count: 1, derivation: "aggregate_match" },
     },
+    // The run summary's `owners_redacted` (T082): no confidential owner in this fixture.
+    ownersRedacted: 0,
     limitations: [],
     workTreeStatus: () => "",
   };
@@ -518,5 +522,142 @@ describe("pipeline/publish stays free of the Query DB (A2, P0-2)", () => {
       expect(src, f).not.toMatch(/\bDATABASE_URL\b/);
       expect(src, f).not.toMatch(/\bpostgres\b/i);
     }
+  });
+});
+
+// T083 (FR-001, TC-003): the two fixed limitation notes of plan § "Fixed texts and config
+// keys", copied verbatim. The Austin source explains why every permit is
+// `contractor_unresolved` (addendum A5); the TCAD source states how many owner records were
+// redacted before `validate` (P0-15), the number being the run summary's `owners_redacted`.
+describe("manifest limitation notes (T083, FR-001, P0-15)", () => {
+  const COMPTROLLER = "Comptroller baseline not loaded (A-07)";
+  const CONFIDENTIAL = /^Confidential owner records redacted \(Texas Tax Code §25\.025\): \d+$/;
+
+  it("sources[0].limitations contains exactly `Comptroller baseline not loaded (A-07)`, after the input's own notes", async () => {
+    const { input } = await fixture();
+    at(input.sources, 0).limitations = ["one month of issue dates (2026-09); one GET per permit"];
+    const { manifest } = await buildManifest(input);
+    const notes = at(manifest.sources, 0).limitations;
+    expect(notes).toContain(COMPTROLLER);
+    expect(notes.filter((n) => n === COMPTROLLER)).toHaveLength(1);
+    expect(notes).toEqual(["one month of issue dates (2026-09); one GET per permit", COMPTROLLER]);
+    // the note belongs to the Austin source only
+    expect(at(manifest.sources, 1).limitations).not.toContain(COMPTROLLER);
+  });
+
+  it("does not duplicate the Comptroller note when the input already carries it", async () => {
+    const { input } = await fixture();
+    at(input.sources, 0).limitations = [COMPTROLLER];
+    const { manifest } = await buildManifest(input);
+    expect(at(manifest.sources, 0).limitations).toEqual([COMPTROLLER]);
+  });
+
+  it("sources[1].limitations carries the §25.025 note with n = the summary's owners_redacted", async () => {
+    for (const n of [0, 3]) {
+      const { input } = await fixture();
+      at(input.sources, 1).limitations = ["subset: only the parcels the emitted permits point to"];
+      const { manifest } = await buildManifest({ ...input, ownersRedacted: n });
+      const notes = at(manifest.sources, 1).limitations;
+      expect(notes.filter((x) => CONFIDENTIAL.test(x))).toEqual([
+        `Confidential owner records redacted (Texas Tax Code §25.025): ${n}`,
+      ]);
+      expect(notes[0]).toBe("subset: only the parcels the emitted permits point to");
+      // the note belongs to the TCAD source only
+      expect(at(manifest.sources, 0).limitations.some((x) => CONFIDENTIAL.test(x))).toBe(false);
+      // and it survives the JCS bytes TC-003 and verify-manifest read
+      const text = Buffer.from(jcsBytes(manifest)).toString("utf8");
+      expect(text).toContain(`Confidential owner records redacted (Texas Tax Code §25.025): ${n}`);
+    }
+  });
+
+  it("fails closed on a missing, negative or fractional owners_redacted (P0-15)", async () => {
+    const { input } = await fixture();
+    await expect(buildManifest({ ...input, ownersRedacted: -1 })).rejects.toThrow(
+      /owners_redacted|ownersRedacted/,
+    );
+    await expect(buildManifest({ ...input, ownersRedacted: 1.5 })).rejects.toThrow(
+      /owners_redacted|ownersRedacted/,
+    );
+    const without: Partial<BuildManifestInput> = { ...input };
+    delete without.ownersRedacted;
+    await expect(buildManifest(without as BuildManifestInput)).rejects.toThrow(
+      /owners_redacted|ownersRedacted/,
+    );
+  });
+});
+
+// T083 (FR-001; ARD § 11; research R-08): the run index is append-only in the pipeline. A run
+// is withdrawn only by a git revert of the index commit decided by the PO, never by a write.
+describe("appendRun: the run index is append-only (T083, FR-001, ARD § 11)", () => {
+  const first = {
+    runId: RUN_ID,
+    manifestCid: "bafkrei" + "a".repeat(52),
+    finishedAt: "2026-10-21T15:00:00.000Z",
+  };
+  const second = {
+    runId: "travis-202610-reroof-20261121t1000z",
+    manifestCid: "bafkrei" + "b".repeat(52),
+    finishedAt: "2026-11-21T10:00:00.000Z",
+  };
+  const third = {
+    runId: "travis-202611-reroof-20261221t1000z",
+    manifestCid: "bafkrei" + "c".repeat(52),
+    finishedAt: "2026-12-21T10:00:00.000Z",
+  };
+  const INDEX_TAIL = `],"schema":"oracle-travis-runs-index.v1"}`;
+
+  it("adds exactly one entry; every existing entry stays byte-identical and in finishedAt order", () => {
+    const index = appendRun(appendRun(emptyRunsIndex(), first), second);
+    const before = index.runs.map((r) => Buffer.from(jcsBytes(r)));
+    const next = appendRun(index, third);
+    expect(RunsIndexV1.parse(next)).toEqual(next);
+    expect(next.runs).toHaveLength(index.runs.length + 1);
+    expect(next.runs.slice(0, index.runs.length).map((r) => Buffer.from(jcsBytes(r)))).toEqual(
+      before,
+    );
+    expect(next.runs.map((r) => r.runId)).toEqual([first.runId, second.runId, third.runId]);
+    // the committed bytes grow only at the end: the old index minus its tail is a prefix
+    const oldText = Buffer.from(runsIndexBytes(index)).toString("utf8");
+    const newText = Buffer.from(runsIndexBytes(next)).toString("utf8");
+    expect(oldText.endsWith(INDEX_TAIL)).toBe(true);
+    expect(newText.startsWith(`${oldText.slice(0, -INDEX_TAIL.length)},`)).toBe(true);
+    // the input index is not mutated
+    expect(index.runs).toHaveLength(2);
+    expect(index.runs.map((r) => Buffer.from(jcsBytes(r)))).toEqual(before);
+  });
+
+  it("keeps the finishedAt order when the appended run finished earlier, altering no entry", () => {
+    const index = appendRun(emptyRunsIndex(), second);
+    const next = appendRun(index, first);
+    expect(next.runs.map((r) => r.runId)).toEqual([first.runId, second.runId]);
+    expect(Buffer.from(jcsBytes(at(next.runs, 1)))).toEqual(Buffer.from(jcsBytes(second)));
+    expect(Buffer.from(jcsBytes(at(next.runs, 0)))).toEqual(Buffer.from(jcsBytes(first)));
+  });
+
+  it("rejects a duplicate runId, even with the same manifestCid", () => {
+    const index = appendRun(emptyRunsIndex(), first);
+    expect(() => appendRun(index, { ...first })).toThrow(/runId/);
+    expect(() => appendRun(index, { ...first, finishedAt: second.finishedAt })).toThrow(/runId/);
+    expect(index.runs).toEqual([first]);
+  });
+
+  it("rejects an entry whose manifestCid differs from the committed one, and a reused manifestCid", () => {
+    const index = appendRun(emptyRunsIndex(), first);
+    // the same runId with another manifestCid: the committed CID is never altered
+    expect(() => appendRun(index, { ...first, manifestCid: second.manifestCid })).toThrow(
+      /manifestCid/,
+    );
+    // another runId claiming a manifestCid that is already committed
+    expect(() => appendRun(index, { ...second, manifestCid: first.manifestCid })).toThrow(
+      /manifestCid/,
+    );
+    expect(() => appendRun(index, { ...second, runId: "travis-pilot-20261020" })).toThrow(/pilot/);
+    expect(index.runs).toEqual([first]);
+  });
+
+  it("exposes no remove, withdraw or delete operation (a withdrawal is a git revert, ARD § 11)", () => {
+    const names = Object.keys(runsIndexModule);
+    expect(names).toContain("appendRun");
+    expect(names.filter((k) => /remove|withdraw|delete|drop|prune/i.test(k))).toEqual([]);
   });
 });

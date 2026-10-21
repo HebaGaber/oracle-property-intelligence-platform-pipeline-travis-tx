@@ -1,0 +1,365 @@
+// The publication entry point (contracts/cli.md), run from the repository root as
+//   pnpm --filter @countylens/publish exec tsx src/cli.ts <command> …
+//   build    --run <runId>      phase 1 for both groups (validate → hash → validate CAR →
+//                               export-tables); prints roots, part counts, sizes, SHA-256s and
+//                               the files that would go public (the D-8 input). Never uploads.
+//   upload   --run <runId>      D-8 gated: loads ~/.config/assessment/filebase.env into the child
+//                               env (never process.env, never argv, never printed), then runs
+//                               publishRun (uploads, readback, carCid adds, manifest, runs/).
+//   cid-copy --manifest <path>  hands runs/<runId>/manifest.json to the CID-copy uploader
+//                               (src/cid-copy.ts, T041), loaded only by this command.
+// Every printed line passes through redact(): a credential value never reaches a terminal or a
+// log. There is no flag that skips, reorders or dry-runs a step (P0-2) and no credential flag.
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { FetchLike } from "./kubo-add.js";
+import { kuboToken } from "./kubo-add.js";
+import { redact, runBuild, secretValues, sha256File, type CliRunner } from "./sequence.js";
+import {
+  loadRunSummary,
+  publicFiles,
+  publishRun,
+  runGroups,
+  type PublishOptions,
+  type PublishResult,
+} from "./upload.js";
+
+/** Where PUBLISHING.md keeps the Filebase keys: outside every repository. */
+export const FILEBASE_ENV_FILE = join(homedir(), ".config", "assessment", "filebase.env");
+/** The variable names the upload needs (values are never printed). */
+export const FILEBASE_VARS = [
+  "FILEBASE_ACCESS_KEY",
+  "FILEBASE_SECRET_KEY",
+  "FILEBASE_BUCKET",
+] as const;
+
+const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
+const RUN_ID = /^[a-z0-9][a-z0-9-]*$/;
+const USAGE = [
+  "usage:",
+  "  cli.ts build --run <runId>      phase 1 (validate → hash → validate CAR → export-tables); nothing uploaded",
+  "  cli.ts upload --run <runId>     D-8 gated: uploads, readback, carCid adds, manifest, runs/",
+  `                                  (credentials from ${FILEBASE_ENV_FILE} or the environment)`,
+  "  cli.ts cid-copy --manifest runs/<runId>/manifest.json",
+  "",
+].join("\n");
+
+export interface CidCopyInput {
+  manifestPath: string;
+  /** pipeline/data/runs/<runId>: the manifest's artifact names are relative to it. */
+  runDir: string;
+  repoRoot: string;
+  env: NodeJS.ProcessEnv;
+  /** One line per object, printed redacted. */
+  log: (line: string) => void;
+}
+
+export interface CidCopyOutcome {
+  ok: boolean;
+  summary?: string;
+}
+
+export type CidCopyFn = (input: CidCopyInput) => Promise<CidCopyOutcome>;
+
+export interface CliDeps {
+  repoRoot?: string;
+  /** The Filebase env file (default FILEBASE_ENV_FILE); read by `upload` only. */
+  envFile?: string;
+  /** The base environment (default process.env, copied; never written back). */
+  env?: NodeJS.ProcessEnv;
+  run?: CliRunner;
+  fetch?: FetchLike;
+  publish?: (options: PublishOptions) => Promise<PublishResult>;
+  cidCopy?: CidCopyFn;
+  workTreeStatus?: (repoRoot: string) => string;
+  stdout?: (text: string) => void;
+  stderr?: (text: string) => void;
+}
+
+interface Parsed {
+  command: "build" | "upload" | "cid-copy";
+  value: string;
+}
+
+const COMMANDS: Record<Parsed["command"], string> = {
+  build: "--run",
+  upload: "--run",
+  "cid-copy": "--manifest",
+};
+
+/** `<command> <flag> <value>` and nothing else: no skip, dry-run, credential or Atlas flag. */
+function parseArgv(argv: readonly string[]): Parsed | string {
+  const [command, ...rest] = argv;
+  if (command === undefined) return "a command is required";
+  if (!(command in COMMANDS)) return `unknown command ${command}`;
+  const flag = COMMANDS[command as Parsed["command"]];
+  const [name, value, ...extra] = rest;
+  if (name !== flag || value === undefined || value.startsWith("--"))
+    return `${command} needs ${flag} <value>`;
+  if (extra.length > 0) return `unknown option ${extra.join(" ")}`;
+  return { command: command as Parsed["command"], value };
+}
+
+/** `KEY=value` lines (optional `export`, quotes stripped, `#` comments); never logged. */
+export function parseEnvFile(text: string): Record<string, string> {
+  const vars: Record<string, string> = {};
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (line === "" || line.startsWith("#")) continue;
+    const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (!m) continue;
+    let value = (m[2] as string).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"') && value.length >= 2) ||
+      (value.startsWith("'") && value.endsWith("'") && value.length >= 2)
+    )
+      value = value.slice(1, -1);
+    vars[m[1] as string] = value;
+  }
+  return vars;
+}
+
+interface ChildEnv {
+  env: NodeJS.ProcessEnv;
+  /** Where the credentials came from, for the operator (names only). */
+  note: string;
+}
+
+/** The child env for `upload`: the base env with the env file's variables over it. */
+function uploadEnv(base: NodeJS.ProcessEnv, envFile: string): ChildEnv | string {
+  const fromFile = existsSync(envFile) ? parseEnvFile(readFileSync(envFile, "utf8")) : undefined;
+  const env: NodeJS.ProcessEnv = { ...base, ...(fromFile ?? {}) };
+  if (kuboToken(env) === undefined) {
+    const missing = FILEBASE_VARS.filter((v) => !env[v]);
+    return (
+      `missing ${missing.join(", ")}: ` +
+      (fromFile === undefined
+        ? `${envFile} is absent and the environment does not carry them; `
+        : `${envFile} does not set them; `) +
+      "load the Filebase keys per PUBLISHING.md (set -a; . ~/.config/assessment/filebase.env; set +a)"
+    );
+  }
+  const names = FILEBASE_VARS.join(", ");
+  const note =
+    fromFile === undefined
+      ? `credentials: ${names} present in the environment (values not shown)`
+      : `credentials: ${names} loaded from ${envFile} into the child environment only (values not shown)`;
+  return { env, note };
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? (error.stack ?? error.message) : String(error);
+}
+
+/** Writes through `redact`, with a secret list that grows once the child env is known. */
+class Printer {
+  private secrets: string[] = [];
+  constructor(
+    private readonly out: (text: string) => void,
+    private readonly err: (text: string) => void,
+  ) {}
+  protect(env: NodeJS.ProcessEnv): void {
+    const token = kuboToken(env);
+    this.secrets = [...secretValues(env), ...(token === undefined ? [] : [token])];
+  }
+  stdout(text: string): void {
+    this.out(redact(text, this.secrets));
+  }
+  stderr(text: string): void {
+    this.err(redact(text, this.secrets));
+  }
+}
+
+function runDirFor(repoRoot: string, runId: string): string {
+  if (!RUN_ID.test(runId)) throw new Error(`run id must match ${RUN_ID.source}, got ${runId}`);
+  return join(repoRoot, "pipeline", "data", "runs", runId);
+}
+
+async function build(runId: string, deps: CliDeps, repoRoot: string, p: Printer): Promise<number> {
+  const runDir = runDirFor(repoRoot, runId);
+  const summary = loadRunSummary(runDir);
+  const groups = runGroups(summary);
+  const env = { ...(deps.env ?? process.env) };
+  p.protect(env);
+  p.stdout(
+    `build ${runId}: phase 1 (validate → hash → validate CAR → export-tables) for ${groups.join(", ")}; nothing uploaded\n`,
+  );
+  const report = await runBuild({
+    county: summary.county.slug,
+    runDir,
+    groups,
+    repoRoot,
+    env,
+    ...(deps.run === undefined ? {} : { run: deps.run }),
+  });
+  if (!report.ok) {
+    const f = report.failed;
+    p.stderr(
+      f === undefined
+        ? "build failed\n"
+        : `build failed at ${f.group} ${f.step}: ${f.reason}${f.stderr === "" ? "" : `\n${f.stderr}`}\n`,
+    );
+    return 1;
+  }
+  let total = 0;
+  for (const g of report.groups) {
+    const files = publicFiles(g);
+    total += files.length;
+    p.stdout(`${g.group}\n`);
+    p.stdout(`  archive root ${g.carRoot}  (${g.blocks} blocks)\n`);
+    p.stdout(`  tables root ${g.tablesRoot}  (${files.length - 2} parts)\n`);
+    for (const file of files) {
+      p.stdout(
+        `  ${relative(runDir, file)}  ${statSync(file).size} B  sha256 ${await sha256File(file)}\n`,
+      );
+    }
+  }
+  p.stdout(
+    `files that would go public: ${total} (listed above; plus runs/${runId}/manifest.json and runs/index.json after upload)\n`,
+  );
+  p.stdout(`report: ${relative(repoRoot, join(runDir, "reports", "sequence.json"))}\n`);
+  return 0;
+}
+
+async function upload(runId: string, deps: CliDeps, repoRoot: string, p: Printer): Promise<number> {
+  const runDir = runDirFor(repoRoot, runId);
+  const child = uploadEnv({ ...(deps.env ?? process.env) }, deps.envFile ?? FILEBASE_ENV_FILE);
+  if (typeof child === "string") {
+    p.stderr(`error: ${child}\n`);
+    return 1;
+  }
+  p.protect(child.env);
+  loadRunSummary(runDir);
+  p.stdout(`${child.note}\n`);
+  p.stdout(`upload ${runId}: the 12-step sequence, readback, carCid adds, manifest, runs/\n`);
+  const publish = deps.publish ?? publishRun;
+  const result = await publish({
+    runDir,
+    runsDir: join(repoRoot, "runs"),
+    repoRoot,
+    env: child.env,
+    ...(deps.run === undefined ? {} : { run: deps.run }),
+    ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
+    ...(deps.workTreeStatus === undefined ? {} : { workTreeStatus: deps.workTreeStatus }),
+  });
+  for (const r of result.readback) {
+    p.stdout(
+      `  readback ${r.group}: ${r.ok ? "ok" : "FAILED"} · archive root ${r.archiveRoot.ok ? "ok" : "MISMATCH"} · tables root ${r.tablesRoot.ok ? "ok" : "MISMATCH"} · ${r.partCount} parts\n`,
+    );
+  }
+  for (const a of result.carAdds) p.stdout(`  carCid ${a.name}  ${a.cid}\n`);
+  if (!result.ok) {
+    const f = result.failed;
+    p.stderr(
+      f === undefined
+        ? "upload failed; no manifest written\n"
+        : `upload failed at ${f.stage}: ${f.reason}\nno manifest written\n`,
+    );
+    return 1;
+  }
+  p.stdout(`manifest ${result.manifestCid ?? ""}\n`);
+  if (result.manifestPath !== undefined) p.stdout(`  ${relative(repoRoot, result.manifestPath)}\n`);
+  if (result.indexPath !== undefined) p.stdout(`  ${relative(repoRoot, result.indexPath)}\n`);
+  p.stdout("commit runs/ (the manifest and the index), then record the CIDs in the evidence\n");
+  return 0;
+}
+
+/**
+ * The CID-copy uploader (cid-copy.ts, T041): profile `assess-cid-writer`, bucket from
+ * `CID_COPY_BUCKET` or SSM `/countylens/cid-copy/bucket`, conditional PUT + readback per object.
+ * Imported here, not at the top, so `build` and `upload` never load the AWS SDK. An object that
+ * exists with other bytes makes copyManifestObjects throw: main() prints it and exits 1.
+ */
+async function defaultCidCopy(input: CidCopyInput): Promise<CidCopyOutcome> {
+  const { copyManifestObjects, createCidCopyClients, resolveCidCopyBucket } =
+    await import("./cid-copy.js");
+  const { s3, ssm } = createCidCopyClients();
+  const bucket = await resolveCidCopyBucket({ env: input.env, ssm });
+  const report = await copyManifestObjects({
+    manifestPath: input.manifestPath,
+    runDir: input.runDir,
+    repoRoot: input.repoRoot,
+    bucket,
+    s3,
+    log: input.log,
+  });
+  return {
+    ok: true,
+    summary: `${report.written} objects written, ${report.skipped} skipped (already identical) in ${report.bucket}; manifest ${report.manifestCid}`,
+  };
+}
+
+async function cidCopy(
+  manifestArg: string,
+  deps: CliDeps,
+  repoRoot: string,
+  p: Printer,
+): Promise<number> {
+  const manifestPath = resolve(repoRoot, manifestArg);
+  const runsDir = join(repoRoot, "runs");
+  const inside = relative(runsDir, manifestPath);
+  if (inside.startsWith("..") || basename(manifestPath) !== "manifest.json")
+    throw new Error(`--manifest must be runs/<runId>/manifest.json, got ${manifestArg}`);
+  if (!existsSync(manifestPath)) throw new Error(`${manifestPath} does not exist`);
+  const runId = basename(dirname(manifestPath));
+  const runDir = runDirFor(repoRoot, runId);
+  const env = { ...(deps.env ?? process.env) };
+  p.protect(env);
+  const outcome = await (deps.cidCopy ?? defaultCidCopy)({
+    manifestPath,
+    runDir,
+    repoRoot,
+    env,
+    log: (line) => p.stdout(`${line}\n`),
+  });
+  if (outcome.summary !== undefined) {
+    if (outcome.ok) p.stdout(`${outcome.summary}\n`);
+    else p.stderr(`${outcome.summary}\n`);
+  }
+  if (!outcome.ok) p.stderr("cid-copy failed\n");
+  return outcome.ok ? 0 : 1;
+}
+
+/** Runs one command; returns the exit code. Prints only redacted text. */
+export async function main(argv: readonly string[], deps: CliDeps = {}): Promise<number> {
+  const p = new Printer(
+    deps.stdout ?? ((t) => void process.stdout.write(t)),
+    deps.stderr ?? ((t) => void process.stderr.write(t)),
+  );
+  p.protect(deps.env ?? process.env);
+  const parsed = parseArgv(argv);
+  if (typeof parsed === "string") {
+    p.stderr(`error: ${parsed}\n${USAGE}`);
+    return 1;
+  }
+  const repoRoot = deps.repoRoot ?? REPO_ROOT;
+  try {
+    switch (parsed.command) {
+      case "build":
+        return await build(parsed.value, deps, repoRoot, p);
+      case "upload":
+        return await upload(parsed.value, deps, repoRoot, p);
+      case "cid-copy":
+        return await cidCopy(parsed.value, deps, repoRoot, p);
+    }
+  } catch (error) {
+    p.stderr(`error: ${message(error)}\n`);
+    return 1;
+  }
+}
+
+const isMain =
+  process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  main(process.argv.slice(2)).then(
+    (code) => {
+      process.exitCode = code;
+    },
+    (error: unknown) => {
+      process.stderr.write(`${redact(message(error), secretValues(process.env))}\n`);
+      process.exitCode = 1;
+    },
+  );
+}

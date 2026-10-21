@@ -14,7 +14,9 @@
 //     accepted permit with no tcad_id is counted (`permits_no_tcad_geoid`), never published
 //   5 seed (county-seed-data contract) · 6 classification ledger + status artifacts
 //   7 roof-age ledger (vendored kit estimator) · 8 transforms (the County transform applies
-//     the confidentiality flags, so they precede any `validate`) · 9 summary.json
+//     the confidentiality flags, so they precede any `validate`) · 9 summary.json, whose
+//     `owners_redacted` is the number of TCAD confidentiality redactions applied in stage 8
+//     (P0-15); pipeline/publish repeats it in the TCAD source's limitation note (T083)
 // finishedAt is the end of the capture phase: the data's as-of instant and the roof-age as_of.
 // Contractors: no official licensing baseline is loaded yet (Comptroller ingest is A-07), so
 // every emitted permit's contractor state is `contractor_unresolved`; nothing is copied from
@@ -217,6 +219,12 @@ export interface RunSummary {
   finishedAt: string;
   status: "ok";
   counts: RunCounts;
+  /**
+   * TCAD confidentiality redactions applied (Texas Tax Code §25.025, P0-15): published parcels
+   * whose owner name and mailing address were withheld by the County transform, before any
+   * `validate` input was written. Repeated in the manifest's TCAD limitation note.
+   */
+  owners_redacted: number;
   excluded_by_reason: Record<string, number>;
   needs_review_by_reason: Record<string, number>;
   coverage: Coverage;
@@ -611,6 +619,7 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
   };
   const commit = gitCommit(repoRoot);
   const roofProfileSha = roofAge[0]?.profile.sha256 ?? null;
+  const ownersRedacted = countyCounts.filter((c) => c.confidential).length;
   const summary: RunSummary = {
     runId,
     month: options.month,
@@ -620,6 +629,7 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
     finishedAt,
     status: "ok",
     counts,
+    owners_redacted: ownersRedacted,
     excluded_by_reason: tally(excludedRows.map(exclusionReason)),
     needs_review_by_reason: tally(reviewRows.map(exclusionReason)),
     coverage: {
@@ -665,7 +675,7 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
         note: "Expired: improvement_status null (D-4a)",
       },
       confidential_suppressed: {
-        count: countyCounts.filter((c) => c.confidential).length,
+        count: ownersRedacted,
         derivation: "capture_receipt",
         note: "owner name and mailing withheld before validate (P0-15)",
       },
@@ -748,7 +758,7 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
   );
   writeFileSync(join(runDir, "summary.json"), json(summary));
   saveState({ status: "ok", stage: "done" });
-  log("run-month.done", { runId, ...counts });
+  log("run-month.done", { runId, ...counts, owners_redacted: ownersRedacted });
   return { ok: true, status: "ok", stage: "done", runId, runDir, summary };
 }
 
@@ -770,7 +780,7 @@ if (isMain) {
     runMonth({ repoRoot, month, ...(jobId !== undefined ? { jobId } : {}) }).then(
       (r) => {
         process.stdout.write(
-          `${JSON.stringify({ ok: r.ok, status: r.status, stage: r.stage, reason: r.reason ?? null, runId: r.runId, runDir: r.runDir, counts: r.summary?.counts ?? null })}\n`,
+          `${JSON.stringify({ ok: r.ok, status: r.status, stage: r.stage, reason: r.reason ?? null, runId: r.runId, runDir: r.runDir, counts: r.summary?.counts ?? null, owners_redacted: r.summary?.owners_redacted ?? null })}\n`,
         );
         process.exitCode = exitCodeFor(r.status);
       },

@@ -3,6 +3,10 @@
 // runs/<runId>/manifest.json is the exact JCS bytes of its manifest, and its raw-leaves CIDv1
 // is the manifestCid in the index. The index is written only after the manifest's upload read
 // back. The index CID goes in the evidence, never inside the index.
+// Append-only (FR-001; ARD § 11; T083): `appendRun` only adds. Every existing entry is kept
+// as is, a listed runId is never re-added and a committed manifestCid is never altered. There
+// is no remove: a withdrawn run is a git revert of the index commit decided by the PO and
+// listed in the PR, never a pipeline write, so the repository history keeps every CID.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RUNS_INDEX_SCHEMA, RunManifestV1, RunsIndexV1 } from "@countylens/contract";
@@ -15,17 +19,36 @@ export function emptyRunsIndex(): RunsIndexV1 {
   return RunsIndexV1.parse({ schema: RUNS_INDEX_SCHEMA, runs: [] });
 }
 
-/** A new index with `entry` added, ordered by finishedAt. Duplicate runId or manifestCid fail. */
-export function addRun(index: RunsIndexV1, entry: RunEntry): RunsIndexV1 {
-  if (index.runs.some((r) => r.runId === entry.runId))
-    throw new Error(`runId ${entry.runId} is already in the index`);
-  if (index.runs.some((r) => r.manifestCid === entry.manifestCid))
-    throw new Error(`manifestCid ${entry.manifestCid} is already in the index`);
-  const runs = [...index.runs, { ...entry }].sort(
+/**
+ * A new index with `entry` appended, ordered by finishedAt (a stable sort, so existing entries
+ * keep their relative order). Append-only: `index` is not touched and every existing entry is
+ * copied unchanged (byte-identical under JCS); a runId already listed is refused, whether with
+ * the committed manifestCid (a duplicate) or another one (a committed manifestCid is never
+ * altered); a manifestCid already listed under another runId is refused.
+ */
+export function appendRun(index: RunsIndexV1, entry: RunEntry): RunsIndexV1 {
+  const sameRun = index.runs.find((r) => r.runId === entry.runId);
+  if (sameRun !== undefined) {
+    throw new Error(
+      sameRun.manifestCid === entry.manifestCid
+        ? `runId ${entry.runId} is already in the index`
+        : `runId ${entry.runId} is already in the index with manifestCid ${sameRun.manifestCid}; a committed manifestCid is never altered (refusing ${entry.manifestCid})`,
+    );
+  }
+  const sameCid = index.runs.find((r) => r.manifestCid === entry.manifestCid);
+  if (sameCid !== undefined) {
+    throw new Error(
+      `manifestCid ${entry.manifestCid} is already in the index as run ${sameCid.runId}`,
+    );
+  }
+  const runs = [...index.runs.map((r) => ({ ...r })), { ...entry }].sort(
     (a, b) => Date.parse(a.finishedAt) - Date.parse(b.finishedAt),
   );
   return RunsIndexV1.parse({ schema: RUNS_INDEX_SCHEMA, runs });
 }
+
+/** @deprecated A-02 name of `appendRun`, kept for its callers; same behaviour. */
+export const addRun = appendRun;
 
 /** The exact bytes of runs/index.json: JCS, no trailing newline. */
 export function runsIndexBytes(index: RunsIndexV1): Uint8Array {

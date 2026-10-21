@@ -1,7 +1,9 @@
-// Shared ESLint flat config for the CountyLens workspace (A-03 T004).
+// Shared ESLint flat config for the CountyLens workspace (A-03 T004, T080).
 // Boundary rules from docs/architecture-constitution.md § 4 and the plan:
+// - no `any` anywhere (`@typescript-eslint/no-explicit-any: error`, constitution V);
 // - no direct LLM provider SDKs anywhere (Vercel AI SDK only, constitution VI);
-// - no database engine and no Query DB client in packages/*, apps/* and pipeline/publish;
+// - no database engine and no Query DB client in packages/*, apps/*, pipeline/publish and
+//   infra (AD-26: no Query DB connection string in apps/ or infra/);
 // - DuckDB only in the engine adapters, apps/*/src/engine/** (AD-19);
 // - no AWS SDK in the browser app (apps/web reads public data over HTTPS only);
 // - no inline style literals in apps/web (CSS Modules with Atlas tokens only).
@@ -77,8 +79,10 @@ export default defineConfig(
     },
   },
   {
-    // Workspace code (including tests and scripts): no database engine, no Query DB client.
-    files: ["packages/**", "apps/**", "pipeline/publish/**"],
+    // Workspace code (including tests and scripts) and the CDK tree: no database engine, no
+    // Query DB client. infra/** added by T080 (AD-26). The test file for these rules is
+    // test/rules.test.ts.
+    files: ["packages/**", "apps/**", "pipeline/publish/**", "infra/**"],
     rules: {
       "no-restricted-imports": restrictedImports([...providerSdkBan, ...engineBan]),
     },

@@ -9,6 +9,8 @@
     "test:coverage": "vitest run --coverage --passWithNoTests"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1154.0",
+    "@aws-sdk/client-ssm": "^3.1154.0",
     "@countylens/contract": "workspace:*",
     "@ipld/car": "^5.4.7",
     "@ipld/dag-json": "^11.0.1",

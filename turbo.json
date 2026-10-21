@@ -30,7 +30,14 @@
     "test": {
       "dependsOn": ["^build", "//#test:root"],
       "outputs": ["coverage/**"],
-      "env": ["CI", "RUNTIME_URL"]
+      "env": [
+        "CI",
+        "RUNTIME_URL",
+        "CDK_DEFAULT_REGION",
+        "CDK_DEFAULT_ACCOUNT",
+        "OPERATOR_EMAIL",
+        "AWS_REGION"
+      ]
     },
     "synth": {
       "dependsOn": ["^build"],
