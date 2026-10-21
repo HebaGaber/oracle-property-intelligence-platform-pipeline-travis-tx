@@ -31,7 +31,7 @@ The user is a technical product manager. Explain steps in plain language, say wh
 
 ## The story loop (summary of the playbook's Part 2)
 
-1 Ready: G4 pre-check → 2 Spec: `/speckit-specify`, `/speckit-clarify` → 3 Agents design: design agents → `agent-design.md` → `/speckit-plan` → `/speckit-tasks` → `/speckit-analyze` → G5 → 4 Tests first: test cases → G6 → `/speckit-checklist` → 5 Build + review: `/speckit-implement` via the builder agent → unit tests → `/code-review` + reviewer agents → 6 Prove live: deploy → Playwright on the hosted URL (+ `smeargle` for UI) → evidence → `/speckit-converge` → G7 → merge --no-ff.
+1 Ready: G4 pre-check → 2 Spec: `/speckit-specify`, `/speckit-clarify` → 3 Agents design: design agents → `agent-design.md` → `/speckit-plan` → `/speckit-tasks` → `/speckit-analyze` → test cases → G5 + G6 pre-checks in parallel → 5 Build + review: `/speckit-implement` via at most 4 builder groups → unit tests → one review round: `/code-review medium` + reviewer agents in parallel → 6 Prove live: deploy → Playwright on the hosted URL (+ `smeargle` on changed pages for UI) → evidence → `/speckit-converge` once → G7 → merge --no-ff. Light lane since 2026-10-21 (no `/speckit-checklist`; rules L1–L8 in `../assessment-guide/PLAYBOOK-A-oracle.md`).
 
 ## AWS (demo project)
 
