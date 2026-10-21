@@ -27,3 +27,9 @@ One line per step: time (local) · stage · step · result. PO answers are quote
 | 02:56 | 2S | S2S.3 | spike started (background) |
 | 02:57 | 2 | S2.1–S2.3 | `/speckit-specify` + `/speckit-clarify`: branch 003-walking-skeleton, 13 FRs + NFR-001…004, 6 clarify answers from docs; 3 open → D-2 held for R3 |
 | 02:57 | 4 | S4.1 (early) | test-case draft: 29 TCs, DRAFT |
+| 03:01 | 3 | S3.1 | metagross + oracle design (read-only, parallel, before the spike ended) → agent-design.md, 9 disagreement rows |
+| 03:09 | 3 | 🛑 D-5 + D-2 (R4, asked early) | PO: kit runtime "Adapter module now (Recommended)"; CAR check "Approve additive carCid (Recommended)"; infra "Approve both (Recommended)" (deploy order Data → Api → Web → Ops → Cert; query log = API JSON access log 30 days); spec D-2 "Approve all three (Recommended)" (fallback on error / non-200 / > 4 s; 'Contractor not printed on permit' only for contractor `source_missing`; 21 labels as in spec.md) |
+| 05:18 | 2S | S2S.3–S2S.4 | spike done (3 h 22 min): browser first load p95 3.3 s, COUNT p95 25 ms; radius p95 ≈ 40 s, roof-age 16–31 s → Lambda fallback; part size 48m; Filebase Free; ipfs.io + dweb.link retired 2026-09-21 (429 + Sunset, re-confirmed 10:29 by Claude); Austin 2,380,939 rows, 49 requests all 200; stack destroyed, key deleted; 2 inert CDK asset files (14.8 KB) left in the bootstrap bucket (PO decides later) |
+| 10:29 | 2S | paused | 05:18 → 10:28 PO away (logged as paused) |
+| 10:31 | 2S | 🛑 D-4 (R3) | PO: "Accept (Recommended)"; verify gateways "Pinata + Filebase (Recommended)"; Lambda proof "Private prefix + direct invoke (Recommended)" |
+| 10:36 | 2S | S2S.6 | PO amendments applied (story AC-4/AC-6, spec, ARD § 16 AM-01…05, 0001 Accepted, contract README carCid note); query-core tests 198/198 (one earlier run had 1 failure at 71 s duration, likely a timeout under load: watch as flaky) |

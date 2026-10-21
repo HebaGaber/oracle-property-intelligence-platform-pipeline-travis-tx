@@ -7,10 +7,10 @@ classification: project
 owner: HebaGaber           # Architect
 status: Approved           # Draft → In Review → Approved → Superseded
 gate: G3
-version: 0.2.2
+version: 0.2.3
 created: 2026-10-19
 ratified: 2026-10-19
-last_amended: 2026-10-20
+last_amended: 2026-10-21
 approved_by: [HebaGaber]
 sources:
   - docs/decisions/0000-agent-architecture.md   # ADR-0000: AD-01..AD-16 (PO-confirmed 2026-10-19) + kit consult re-run 2026-10-19
@@ -197,7 +197,7 @@ Status key: **Accepted** = PO-confirmed. AD-01 to AD-16 were confirmed in ADR-00
 | ADR | Decision | Options considered | Rationale | Status |
 | --- | --- | --- | --- | --- |
 | AD-01 | Publish only the tables `elephant-cli export-tables` makes. Views in `packages/query-core` shape them at query time. Tune `--part-size` and use a bounding-box prefilter for speed. | (a) CLI tables + views · (b) an extra slim geo-sorted "serving" Parquet (metagross, handoff) | Rule A2: public data comes only from `elephant-cli` (oracle P0-2, mew P0-1). (b) would be a second public dataset outside the CLI. | Accepted |
-| AD-02 | App and API read a byte-for-byte copy of the published CLI files on S3 + CloudFront, keyed by CID, checked on upload and never edited. Fallback: a public IPFS gateway. Verify always uses ipfs.io and dweb.link, never the copy. | (a) Filebase gateway range reads (task guide, plan § 4) · (b) public gateways · (c) S3 + CloudFront CID copy | Metagross owns hosting. Public gateways are too slow and rate-limited for live range reads. The copy holds nothing that is not on IPFS, so it is a cache, not a second source (oracle's concern). An A-02 spike must prove p95. | Accepted |
+| AD-02 | App and API read a byte-for-byte copy of the published CLI files on S3 + CloudFront, keyed by CID, checked on upload and never edited. Fallback: a public IPFS gateway. Verify always uses ipfs.io and dweb.link, never the copy. | (a) Filebase gateway range reads (task guide, plan § 4) · (b) public gateways · (c) S3 + CloudFront CID copy | Metagross owns hosting. Public gateways are too slow and rate-limited for live range reads. The copy holds nothing that is not on IPFS, so it is a cache, not a second source (oracle's concern). An A-02 spike must prove p95. | Accepted · *amended 2026-10-21 (§ 16 AM-01, AM-04)* |
 | AD-03 | No CountyLens IPNS name. Each manifest links to the one before (`previousManifestCid`). `runs/index.json` is committed and published with each release; the app picks the latest run from it. | (a) own IPNS name (README "if used") · (b) manifest chain + run index | The kit forbids a per-county public pointer (oracle P0-5). IPNS is optional in the README. Dropping it removes a Lambda, a key and a cost line. | Accepted |
 | AD-04 | No separate `coverage.json` / `merge_stats.json`. Counts go in the manifest `coverage` section, computed only from published-table row counts, capture-time source totals, and aggregate match counts (numbers only, no rows). Coverage screen, Ownership row and MCP `get_coverage` read that one section. | (a) separate coverage files from the Query DB · (b) counts inside the CID-addressed manifest | Oracle P0-6 forbids coverage objects built from the Query DB. The README still gets coverage, in a published manifest, and there is one source of counts. | Accepted |
 | AD-05 | Contractor identity has five states, owned by oracle: `resolved` (official Comptroller registry identifier match), `candidate`, `ambiguous`, `conflicting`, `unresolved`. The printed name is shown "as printed on permit" and never becomes a company record. An exact, unique, active legal-name match stays `candidate`. | (a) 2–3 states · (b) five states · (c) name match = `resolved` | Rule A5: identity comes from official records only. Fewer states hide "nearly sure" vs "no idea". PO decision 2026-10-19: name match = `candidate`. | Accepted |
@@ -211,7 +211,7 @@ Status key: **Accepted** = PO-confirmed. AD-01 to AD-16 were confirmed in ADR-00
 | AD-13 | DNS stays at Namecheap. No Route 53 hosted zone. | (a) Route 53 zone · (b) Namecheap CNAMEs | Removes the only fixed cost ($0.50/month), rule A7. | Accepted |
 | AD-14 | Secrets live in SSM Parameter Store SecureString, not Secrets Manager. | (a) Secrets Manager · (b) SSM SecureString | Secrets Manager bills $0.40 per secret per month while idle (A7). Constitution XII allows SSM; **article VI and NFR-04 still name Secrets Manager and need a PATCH** (§ 13 D-01). | Accepted |
 | AD-15 | Scheduled refresh: EventBridge Scheduler, created **disabled**, targeting a Fargate task running the kit batch image against an operator-chosen private Postgres. Machamp designs it in its own story. See AD-26 for the one-stack rule. | (a) no scheduler · (b) enabled schedule · (c) disabled schedule → Fargate | A7 (off by default). Machamp owns refresh. Oracle gave the safe default. | Accepted |
-| AD-16 | Reconciled numbers: browser search p95 < 3 s once loaded, first load ≤ 8 s with progress; ≥ 97% of Austin roofing permits matched (every unmatched one kept and counted); AI cap $3/day, alarm at 80%; logs 14 days, query log 30 days. | Different numbers per agent | NFR-01 + oracle; mew + oracle; metagross; metagross. | Accepted |
+| AD-16 | Reconciled numbers: browser search p95 < 3 s once loaded, first load ≤ 8 s with progress; ≥ 97% of Austin roofing permits matched (every unmatched one kept and counted); AI cap $3/day, alarm at 80%; logs 14 days, query log 30 days. | Different numbers per agent | NFR-01 + oracle; mew + oracle; metagross; metagross. | Accepted · *amended 2026-10-21 (§ 16 AM-03)* |
 
 ### 3.2 From the task guide (§ 3 "Key decisions") not already covered above
 
@@ -280,7 +280,7 @@ Enforced by: dependency-cruiser / ESLint `no-restricted-imports` rules (the Post
 - **The Query DB is internal.** It is never published, never reachable from AWS, the API, the agent, MCP or the browser, and no connection string exists in `apps/` or `infra/`. Its credentials never appear in output or logs.
 - **Only `elephant-cli` output is public**, in the order validate → hash → validate CAR → export-tables → upload with readback. No step is skipped on any run size. No serving tables, no side files, no Query DB exports.
 - The manifest builder reads only CLI outputs and capture receipts.
-- The hosted app, agent and MCP read only the CID copy (AD-02), the fallback gateway, and committed `runs/index.json`. Verify reads only ipfs.io and dweb.link.
+- The hosted app, agent and MCP read only the CID copy (AD-02), the fallback gateway, and committed `runs/index.json`. Verify reads only ipfs.io and dweb.link. *(Amended 2026-10-21, § 16 AM-01: Pinata + Filebase.)*
 - The CID copy is written only by the uploader, after a size + SHA-256 match against the manifest. It refuses to overwrite and sets `Cache-Control: public, max-age=31536000, immutable`.
 - TCAD confidentiality flags (Texas Tax Code §25.025) are applied **before** `validate`. The redacted count goes into manifest limitations.
 - The property key is the TCAD identifier exactly as printed (`prop_id` vs `geo_id` chosen and recorded in A-01).
@@ -300,7 +300,7 @@ General rules: external calls go through queued boundaries with bounded concurre
 | Overture places | Enrichment, own data group, licence recorded | Licence gate fails → not ingested, reason recorded |
 | Filebase (Kubo RPC) | Pin CARs and tables, readback | Upload failure stops the run before manifest commit; plan size measured in A-03 |
 | Second pin / GitHub Release | Durability copies | Release asset ≤ 2 GB; a failed upload blocks the release step, not the run |
-| ipfs.io + dweb.link | Independent verification (UI Verify + `verify-manifest`) | Warm CIDs before demo; UI retry state; CLI evidence for artifacts > 50 MB; dweb.link subdomain redirect handled |
+| ipfs.io + dweb.link *(retired 2026-09-21; replaced by Pinata + Filebase, § 16 AM-01)* | Independent verification (UI Verify + `verify-manifest`) | Warm CIDs before demo; UI retry state; CLI evidence for artifacts > 50 MB; dweb.link subdomain redirect handled |
 | S3 + CloudFront CID copy | Read path for web, agent, MCP | Web falls back to the Filebase gateway with a "fallback" label; CORS exposes `Content-Range`, `Accept-Ranges`, `Content-Length`, `ETag` |
 | Bedrock (`eu.` profiles) / Vercel AI Gateway | Agent model calls via AI SDK | Budget guard before each call (`paused` at $3/day); throttle → `outcome: throttled`; 23 s abort → `timed_out`; switch `AI_PROVIDER` if one provider is blocked |
 | Cognito (admin) | Email-code sign-in, JWT verified in `adminProcedure` | Admin is not on the demo path; default sender quota accepted (built last) |
@@ -340,7 +340,7 @@ Every method runs on the hosted runtime (`https://countylens.aldarraj.com` or it
 | NFR-03 Observability | Powertools Logger, Tracer, Metrics on every Lambda; X-Ray active; JSON logs; one DLQ alarm per queue; logs 14 days, query log 30 days | Trace ID in each evidence file; CDK assertions for alarms and retention |
 | NFR-04 Security | Zero secrets in git, logs, PRs or `VITE_*`; MCP token and keys in **SSM SecureString**; least-privilege IAM | gitleaks in CI (blocks merge); cdk-nag; bundle scan of the hosted JS for token strings |
 | NFR-05 Data honesty | 100% of displayed records, view rows and answers carry source URL, capture time, CID and run; missing data shows a reason | Playwright asserts `<Provenance/>` on every result card; contract test for non-null provenance columns; golden queries check citations |
-| NFR-06 Durability | 100% CIDv1; CAR per directory; 6/6 CAR checks; every artifact fetched from ipfs.io **and** dweb.link with matching size + SHA-256; Run 1 resolves after Run 3 | Hosted Verify (artifacts ≤ 50 MB) + `verify-manifest` evidence for larger CARs |
+| NFR-06 Durability | 100% CIDv1; CAR per directory; 6/6 CAR checks; every artifact fetched from ipfs.io **and** dweb.link with matching size + SHA-256; Run 1 resolves after Run 3 *(gateways amended 2026-10-21: Pinata + Filebase, § 16 AM-01)* | Hosted Verify (artifacts ≤ 50 MB) + `verify-manifest` evidence for larger CARs |
 | NFR-07 Source etiquette | Bounded concurrency + backoff on every source; 0 CAPTCHA bypasses; stop on first BBB 403 | Capture receipts in the manifest limitations; adapter unit tests for StopOnBlocked |
 | Completeness | Published properties = TCAD roll − proven dead/invalid − confidential, 0 unexplained; coordinates ≥ 99%; Austin permits captured = source total at watermark; ≥ 97% roofing permits matched | Hosted Coverage page against manifest `coverage`; donphan/porygon review |
 | Continuity | ≥ 3 runs on ≥ 3 days; runs 2+ windowed; permits ≤ 7 days behind source at demo; re-load writes 0 rows; same input → same CID | Hosted Runs page and run chain; manifest deltas; idempotency test |
@@ -352,7 +352,7 @@ Every method runs on the hosted runtime (`https://countylens.aldarraj.com` or it
 
 - **Strategy:**
   - **Web:** Amplify Hosting atomic deploys, Git-connected to the fork, branch `feature/oracle-pipeline` as production plus auto-branch previews for `NNN-*` story branches. The GitHub token is passed as a `noEcho` CfnParameter at deploy time; fallback is manual zip deploys from CI (which loses automatic previews).
-  - **Infrastructure:** `cdk deploy` from CI through a GitHub OIDC role, in order `CountyLensCert` (first, so DNS validation never stalls the main stack) → `CountyLensData` → `CountyLensApi` → `CountyLensWeb` → `CountyLensOps`. The region comes from `CDK_DEFAULT_REGION`.
+  - **Infrastructure:** `cdk deploy` from CI through a GitHub OIDC role, in order `CountyLensCert` (first, so DNS validation never stalls the main stack) → `CountyLensData` → `CountyLensApi` → `CountyLensWeb` → `CountyLensOps`. The region comes from `CDK_DEFAULT_REGION`. *(Order amended 2026-10-21: Data → Api → Web → Ops → Cert, § 16 AM-02.)*
   - **Blue/Green equivalent:** Amplify swaps builds atomically; redeploying the previous build is the switch-back. API procedures are additive only, so old and new web builds both work against the current API.
   - **Data:** each pipeline run publishes new CIDs and appends to `runs/index.json`; nothing published is ever edited.
 - **Rollback:**
@@ -378,7 +378,7 @@ Breaking any of these fails a review or a gate (ADR-0000 § 6, plus the oracle, 
 11. Every value shows where it came from; missing data says why, never blank or guessed.
 12. No synthetic, sample, prototype or fixture data on the hosted site.
 13. Free-form SQL only in the browser; agent and MCP use fixed Zod tools, ≤ 1,000 rows.
-14. Verify uses ipfs.io and dweb.link only, never our copy or Filebase.
+14. Verify uses ipfs.io and dweb.link only, never our copy or Filebase. *(Amended 2026-10-21, § 16 AM-01: Verify uses the Pinata and Filebase public gateways only, never our copy or `w3s.link`.)*
 15. Honour TCAD confidentiality flags (Texas Tax Code §25.025).
 16. No public endpoint processes unvalidated input (Zod on every procedure and tool).
 17. No secrets, captures, CARs, Parquet or database URLs in git, logs, PRs or `VITE_*`; the MCP token never reaches the browser.
@@ -420,6 +420,18 @@ Breaking any of these fails a review or a gate (ADR-0000 § 6, plus the oracle, 
 | A-12 | "IPNS re-pointed" | No IPNS. The new manifest links `previousManifestCid`, and `runs/index.json` gets the new run. | AD-03 |
 | A-14 | Bedrock tools `geocodePlace`, `searchProperties`, … | Tools come from `query-core` (AD-19), plus `geocodePlace`, whose data source A-14 decides and which must itself be published or public, with provenance. One response, layered timeouts (AD-09, AD-27). Describe it as RAG over the published records. | AD-19, AD-20 |
 | A-15 | `listScopes`, `getSchema`, `query` (read-only SELECT) | The six fixed tools in AD-21. No SQL on the server. | P0-13, AD-21 |
+
+## 16. Amendments
+
+Changes to Accepted decisions after G3 (§ 14). Each row is additive: the original text above is kept, marked with a pointer here, and this table is what applies from the date shown. Each needs PO approval and a version bump.
+
+| # | Date | Changes | New rule | Reason and evidence | Approval |
+| --- | --- | --- | --- | --- | --- |
+| AM-01 | 2026-10-21 | AD-02 (Verify gateways), NFR-06, P0-14, § 7 and § 8 gateway lines, the C4 diagrams' gateway nodes | Verify (`verify-manifest` and the hosted Verify) fetches every artifact from **Pinata's public gateway** (the independent one) **and the Filebase gateway**, with plain GETs (no Range, no preflight), checking size + SHA-256. It never uses our CloudFront copy or `w3s.link`. | ipfs.io and dweb.link retired on 2026-09-21: every request returns 429 with `Sunset: Mon, 21 Sep 2026 00:00:00 GMT` and `Link: <https://gatewaychanges.ipfs.io/>; rel="sunset"` (re-confirmed 2026-10-21 07:29Z). Evidence: [0001](decisions/0001-read-path.md) Finding 3. | PO decision D-4, 2026-10-21: "Pinata + Filebase (Recommended)" |
+| AM-02 | 2026-10-21 | § 11 infrastructure deploy order | `CountyLensData` → `CountyLensApi` → `CountyLensWeb` → `CountyLensOps` → `CountyLensCert`. `CountyLensCert` holds only the Amplify custom-domain association, which needs the Web app to exist first. | The domain association depends on the Amplify app in `CountyLensWeb`, so Cert cannot deploy first. | PO decision D-5, 2026-10-21: "Approve both (Recommended)" |
+| AM-03 | 2026-10-21 | AD-16 and NFR-03 "query log 30 days" | The query log is the **HTTP API JSON access log**, kept 30 days; other log groups stay at 14 days. | AD-16 named a query log but no component; the API access log already records every query request. | PO decision D-5, 2026-10-21: "Approve both (Recommended)" |
+| AM-04 | 2026-10-21 | AD-02 read path, NFR-01 | Read path confirmed: the CloudFront CID copy first, the Filebase gateway as the labelled fallback (D-2: on error, non-200 or > 4 s). `export-tables --part-size 48m`. **Radius and roof-age queries run on the Lambda DuckDB fallback** over the same Parquet; the browser keeps first load, COUNT, small reads and free-form SQL (P0-13 unchanged). DuckDB-WASM opens with range reads enabled and the WASM is served Brotli-compressed. Filebase Free for A-03, Pro decided at A-11. | Spike browser p95 for radius and roof-age was 15–42 s against a 3 s target. Evidence: [0001](decisions/0001-read-path.md). | PO decision D-4, 2026-10-21: "Accept (Recommended)" |
+| AM-05 | 2026-10-21 | AD-01 / P0-2 manifest artifacts, `contract/v1` | Additive `carCid` on `car` artifacts: each `.car` file is also added to IPFS as a plain file (raw-leaves CIDv1), so Verify can hash the file's bytes. No schema change; still only `elephant-cli` output is published. | A CAR's root CID addresses the DAG, not the file, so size + SHA-256 of the file could not be checked against it. See `contract/v1/README.md`. | PO decision D-5, 2026-10-21: "Approve additive carCid (Recommended)" |
 
 ---
 
