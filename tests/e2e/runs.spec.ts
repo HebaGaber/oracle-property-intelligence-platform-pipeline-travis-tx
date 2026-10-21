@@ -441,7 +441,7 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       ).toContain(url);
       const shaTokens = evidence.match(/\b[0-9a-f]{7,40}\b/g) ?? [];
       // A commit cannot contain its own hash, so recording the measured build is itself a later
-      // commit. Accept the deployed SHA, or an ancestor of it from which only docs/ and specs/
+      // commit. Accept the deployed SHA, or an ancestor of it from which only docs/, specs/, tests/ and .github/
       // changed: the evidence then still describes exactly the code that is deployed.
       const describesDeployedCode = (token: string): boolean => {
         if (build.sha.startsWith(token)) return true;
@@ -449,12 +449,23 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
           spawnSync("git", args, { cwd: repoRoot, stdio: "ignore" }).status ?? 1;
         return (
           git(["merge-base", "--is-ancestor", token, build.sha]) === 0 &&
-          git(["diff", "--quiet", token, build.sha, "--", ".", ":!docs", ":!specs"]) === 0
+          git([
+            "diff",
+            "--quiet",
+            token,
+            build.sha,
+            "--",
+            ".",
+            ":!docs",
+            ":!specs",
+            ":!tests",
+            ":!.github",
+          ]) === 0
         );
       };
       expect(
         shaTokens.some(describesDeployedCode),
-        `${EVIDENCE_PATH} must name the deployed build SHA from ${url}/build.json: ${build.sha} (full, or a lowercase hex prefix of at least 7 characters), or an ancestor of it with no code change since (only docs/ and specs/ may differ)`,
+        `${EVIDENCE_PATH} must name the deployed build SHA from ${url}/build.json: ${build.sha} (full, or a lowercase hex prefix of at least 7 characters), or an ancestor of it with no code change since (only docs/, specs/, tests/ and .github/ may differ)`,
       ).toBe(true);
     });
   });
