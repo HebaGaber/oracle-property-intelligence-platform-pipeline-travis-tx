@@ -19,6 +19,17 @@ export interface CountyLensStacks {
   readonly cert: CertStack;
 }
 
+/** The Ops stack needs the alarm and budget recipient; it is never in git (CI variable, PO shell). */
+function requireOperatorEmail(config: InfraConfig): string {
+  if (config.operatorEmail === undefined) {
+    throw new Error(
+      "infra config: OPERATOR_EMAIL is not set; export the alarm and budget recipient " +
+        "(repository variable OPERATOR_EMAIL in CI, your own shell for a local synth). Never commit it.",
+    );
+  }
+  return config.operatorEmail;
+}
+
 export function createCountyLensStacks(app: App, config: InfraConfig): CountyLensStacks {
   // `account` is only set when the CLI resolved it; synth stays env-agnostic without it.
   const env =
@@ -36,21 +47,30 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
   });
   const api = new ApiStack(app, "CountyLensApi", {
     ...base,
+    data,
     description:
-      "CountyLens API: tRPC Lambda behind an HTTP API with access log and X-Ray (filled in W3).",
+      "CountyLens API: tRPC Lambda (arm64, 1,769 MB, 15 s) behind an HTTP API with a 30-day JSON access log and X-Ray (AD-09, AM-03, AM-06).",
   });
   const web = new WebStack(app, "CountyLensWeb", {
     ...base,
-    description: "CountyLens web: Amplify Hosting app and branches for apps/web (filled in W3).",
+    github: config.github,
+    httpApiUrl: api.httpApiUrl,
+    cidCopyHost: data.distribution.distributionDomainName,
+    description:
+      "CountyLens web: Amplify Hosting app and branches for apps/web; /api/<*> rewritten to the HTTP API.",
   });
   const ops = new OpsStack(app, "CountyLensOps", {
     ...base,
+    api,
+    operatorEmail: requireOperatorEmail(config),
+    github: config.github,
     description:
-      "CountyLens operations: SNS email, alarms, $10 budget and the GitHub OIDC deploy role (filled in W3).",
+      "CountyLens operations: SNS email, alarms (Errors, Throttles, 5xx), $10 budget and the GitHub OIDC deploy role.",
   });
   const cert = new CertStack(app, "CountyLensCert", {
     ...base,
-    description: "CountyLens domain: the Amplify custom-domain association only (filled in W3).",
+    web: { appId: web.appId, branchName: web.productionBranchName },
+    description: "CountyLens domain: the Amplify custom-domain association only (AD-13, AM-02).",
   });
 
   // Deploy order (ARD § 16 AM-02): Cert last because the domain association needs the Web app.
@@ -58,17 +78,6 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
   web.addStackDependency(api, "AM-02: Web rewrites /api to the HTTP API");
   ops.addStackDependency(web, "AM-02: Ops alarms reference Api and Web");
   cert.addStackDependency(ops, "AM-02: the domain association needs the Web app and branch");
-
-  // W2 stubs: CDK's template validator flags an empty Resources section. Each W3 group removes
-  // the acknowledgement for its stack with its first resource; the first deploy is gated on D-10.
-  for (const stub of [api, web, ops, cert]) {
-    Validations.of(stub).acknowledge({
-      id: "CloudFormation-Validate::F0001",
-      reason:
-        `${stub.stackName} is an empty stub in A-03 wave W2 (tasks.md T018); its resources arrive in W3 ` +
-        "and the first deploy (D-10) comes after that. Remove this acknowledgement with the first resource.",
-    });
-  }
 
   Tags.of(app).add(PROJECT_TAG_KEY, config.projectName);
   Validations.of(app).addPlugins(

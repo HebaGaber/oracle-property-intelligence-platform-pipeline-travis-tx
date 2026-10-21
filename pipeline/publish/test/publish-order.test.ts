@@ -19,15 +19,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CLI_COMMIT,
   PART_SIZE,
+  PlanOrderError,
+  assertOrdered,
   assertPinnedCli,
   cliCommitFromPath,
   dataGroupCids,
+  executePlan,
+  filebaseToken,
   parseCsv,
   planBuild,
   planPublish,
+  planUpload,
+  redact,
   resolveCli,
   runBuild,
   runPublish,
+  secretValues,
   spawnRunner,
   type CliRunner,
   type DataGroup,
@@ -140,8 +147,8 @@ function at<T>(xs: readonly T[], i: number): T {
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("runPublish: the fixed 12-step order (TC-001)", () => {
-  it("records 2×4 build steps for both groups, then 2×2 uploads, with the exact argv", async () => {
+describe("runPublish: the fixed 12-step order", () => {
+  it("A-03-TC-001 records 2×4 build steps for both groups, then 2×2 uploads, with the exact argv in order", async () => {
     const p = setup();
     const cli = fakeCli();
     const report = await runPublish({ county: "travis", runDir: p, groups: GROUPS, run: cli.run });
@@ -218,7 +225,7 @@ describe("runPublish: the fixed 12-step order (TC-001)", () => {
     ]);
   });
 
-  it("runBuild runs exactly the 8 phase-1 steps and never uploads (the D-8 boundary)", async () => {
+  it("A-03-TC-001 runBuild runs exactly the 8 phase-1 steps in order and never uploads (the D-8 boundary)", async () => {
     const p = setup();
     const cli = fakeCli();
     const report = await runBuild({ county: "travis", runDir: p, groups: GROUPS, run: cli.run });
@@ -239,7 +246,7 @@ describe("runPublish: the fixed 12-step order (TC-001)", () => {
     expect(report.groups.every((g) => g.uploads === undefined)).toBe(true);
   });
 
-  it("uploads nothing before every group's build steps have passed (two phases)", async () => {
+  it("A-03-TC-001 uploads nothing before every group's build steps have passed (two phases, in order)", async () => {
     const p = setup();
     const cli = fakeCli();
     await runPublish({ county: "travis", runDir: p, groups: GROUPS, run: cli.run });
@@ -249,7 +256,7 @@ describe("runPublish: the fixed 12-step order (TC-001)", () => {
   });
 
   it.each(ORDER.map((s, i) => [i, s[0], s[1]] as const))(
-    "stops after step %i (%s %s) fails and makes no later call (TC-002)",
+    "A-03-TC-002 stops after step %i (%s %s) fails and makes no later call",
     async (i, group, step) => {
       const p = setup();
       const cli = fakeCli({ failAt: i });
@@ -267,7 +274,7 @@ describe("runPublish: the fixed 12-step order (TC-001)", () => {
     },
   );
 
-  it("has no flag or environment switch that skips a step (P0-2)", async () => {
+  it("A-03-TC-002 has no flag or environment switch that skips a step (P0-2)", async () => {
     vi.stubEnv("SKIP_VALIDATE", "1");
     vi.stubEnv("ELEPHANT_SKIP_VALIDATION", "1");
     vi.stubEnv("PUBLISH_SKIP_STEPS", "validate,hash,validate-car,export-tables,upload-car");
@@ -333,12 +340,12 @@ describe("runPublish: the fixed 12-step order (TC-001)", () => {
         `argv carries ${bad}`,
       ).toBe(false);
     }
-    const file = readFileSync(join(p, "reports/sequence.json"), "utf8");
+    const file = readFileSync(join(p, "reports/sequence-publish.json"), "utf8");
     for (const secret of [env.FILEBASE_ACCESS_KEY, env.FILEBASE_SECRET_KEY, env.IPFS_API_TOKEN])
       expect(file).not.toContain(secret);
   });
 
-  it("writes reports/sequence.json on failure too, with stderr redacted", async () => {
+  it("writes reports/sequence-publish.json on failure too, with stderr redacted", async () => {
     const p = setup();
     const secret = "fake-secret-key-value-xyz";
     const cli = fakeCli({ failAt: 8, stderr: `401 Unauthorized for token ${secret}\n` });
@@ -352,7 +359,7 @@ describe("runPublish: the fixed 12-step order (TC-001)", () => {
     expect(report.ok).toBe(false);
     expect(report.failed?.stderr).toContain("[redacted]");
     expect(report.failed?.stderr).not.toContain(secret);
-    const file = readFileSync(join(p, "reports/sequence.json"), "utf8");
+    const file = readFileSync(join(p, "reports/sequence-publish.json"), "utf8");
     expect(file).not.toContain(secret);
     const parsed = JSON.parse(file) as { phase: string; ok: boolean; steps: unknown[] };
     expect(parsed).toMatchObject({ phase: "publish", ok: false });
@@ -399,7 +406,7 @@ describe("the CLI pin", () => {
     await expect(
       runBuild({ county: "travis", runDir: p, groups: ["county"], repoRoot: root }),
     ).rejects.toThrow(/44bb182/);
-    expect(existsSync(join(p, "reports/sequence.json"))).toBe(false);
+    expect(existsSync(join(p, "reports/sequence-build.json"))).toBe(false);
     expect(existsSync(join(p, "reports/county-errors.csv"))).toBe(false);
   });
 });
@@ -441,7 +448,11 @@ describe("runBuild records what each step did", () => {
     const [validate, hash, validateCar, exportTables] = report.steps;
     expect(validate).toMatchObject({ step: "validate", phase: 1, exitCode: 0 });
     expect(validate?.outputs).toEqual([
-      { path: `${p}/reports/county-errors.csv`, sha256: sha("property_cid,file,error\n") },
+      {
+        path: `${p}/reports/county-errors.csv`,
+        size: "property_cid,file,error\n".length,
+        sha256: sha("property_cid,file,error\n"),
+      },
     ]);
     expect(hash).toMatchObject({ step: "hash", exitCode: 0, carRoot: CAR_ROOT, blocks: 12 });
     expect(hash?.argv[0]).toBe("hash");
@@ -452,6 +463,11 @@ describe("runBuild records what each step did", () => {
     ]);
     // A directory output is digested as sorted "<relative path>\t<sha256>\n" lines.
     expect(hash?.outputs[0]?.sha256).toBe(sha(`100008.zip\t${sha("zip")}\n`));
+    // ... and every file under it is listed with its own path, size and SHA-256.
+    expect(hash?.outputs[0]?.size).toBe(3);
+    expect(hash?.outputs[0]?.files).toEqual([
+      { path: `${p}/hashed/county/100008.zip`, size: 3, sha256: sha("zip") },
+    ]);
     expect(validateCar).toMatchObject({ step: "validate-car", exitCode: 0 });
     expect(exportTables).toMatchObject({
       step: "export-tables",
@@ -460,6 +476,7 @@ describe("runBuild records what each step did", () => {
     });
     expect(exportTables?.outputs.map((o) => o.path)).toEqual([
       `${p}/reports/county-tables-export.json`,
+      `${p}/tables/county`,
       `${p}/tables/county/tables.car`,
     ]);
     expect(report.groups).toEqual([
@@ -476,7 +493,8 @@ describe("runBuild records what each step did", () => {
         tablesExportJson: `${p}/reports/county-tables-export.json`,
       },
     ]);
-    expect(existsSync(join(p, "reports/sequence.json"))).toBe(true);
+    expect(existsSync(join(p, "reports/sequence-build.json"))).toBe(true);
+    expect(existsSync(join(p, "reports/sequence.json"))).toBe(false);
   });
 
   it("fails a step whose expected output is missing even with exit 0", async () => {
@@ -569,5 +587,107 @@ describe("hash.csv parsing (oracle F9: a real CSV parser)", () => {
     const file = join(dir, "hash.csv");
     writeFileSync(file, "propertyCid,dataCid\np1,c1\n");
     expect(() => dataGroupCids(file)).toThrow(/dataGroupCid/);
+  });
+});
+
+describe("assertOrdered: a plan out of the fixed order is refused by name (OR-2)", () => {
+  /** planPublish with county upload-car moved in front of county export-tables. */
+  function reordered(p: string): ReturnType<typeof planPublish> {
+    const plan = planPublish("travis", p, GROUPS);
+    const upload = plan.findIndex((s) => s.group === "county" && s.step === "upload-car");
+    const exportTables = plan.findIndex((s) => s.group === "county" && s.step === "export-tables");
+    const [moved] = plan.splice(upload, 1);
+    plan.splice(exportTables, 0, moved as (typeof plan)[number]);
+    return plan;
+  }
+
+  it("A-03-TC-002 refuses upload-car before export-tables, naming both steps", () => {
+    const p = setup();
+    const plan = reordered(p);
+    expect(() => assertOrdered(plan)).toThrow(PlanOrderError);
+    expect(() => assertOrdered(plan)).toThrow(
+      "upload-car of county before export-tables of county",
+    );
+  });
+
+  it("A-03-TC-002 runs no step of a reordered plan: the named error comes before the first CLI call", async () => {
+    const p = setup();
+    const cli = fakeCli();
+    await expect(
+      executePlan("publish", reordered(p), {
+        county: "travis",
+        runDir: p,
+        groups: GROUPS,
+        run: cli.run,
+      }),
+    ).rejects.toThrow("upload-car of county before export-tables of county");
+    expect(cli.calls).toHaveLength(0);
+    expect(existsSync(join(p, "reports/sequence-publish.json"))).toBe(false);
+  });
+
+  it("A-03-TC-002 refuses an upload of one group before another group's build step", () => {
+    const p = setup();
+    const plan = planPublish("travis", p, GROUPS);
+    const upload = plan.findIndex((s) => s.group === "county" && s.step === "upload-car");
+    const [moved] = plan.splice(upload, 1);
+    plan.splice(4, 0, moved as (typeof plan)[number]);
+    expect(() => assertOrdered(plan)).toThrow(
+      "upload-car of county before validate of property_improvement",
+    );
+  });
+
+  it("A-03-TC-002 refuses a plan that skips a step, naming it", () => {
+    const p = setup();
+    const plan = planBuild("travis", p, GROUPS).filter(
+      (s) => !(s.group === "county" && s.step === "validate-car"),
+    );
+    expect(() => assertOrdered(plan)).toThrow(PlanOrderError);
+    expect(() => assertOrdered(plan)).toThrow("validate-car of county missing");
+  });
+
+  it("A-03-TC-001 accepts the fixed build, upload and publish plans", () => {
+    const p = setup();
+    expect(() => assertOrdered(planBuild("travis", p, GROUPS))).not.toThrow();
+    expect(() => assertOrdered(planUpload("travis", p, GROUPS))).not.toThrow();
+    expect(() => assertOrdered(planPublish("travis", p, GROUPS))).not.toThrow();
+    expect(planUpload("travis", p, GROUPS)).toEqual(planPublish("travis", p, GROUPS).slice(8));
+  });
+});
+
+describe("redaction of the composed Filebase bearer (OR-7)", () => {
+  const env = {
+    FILEBASE_ACCESS_KEY: "FAKEACCESSKEY000",
+    FILEBASE_SECRET_KEY: "fake-secret-key-value-xyz",
+    FILEBASE_BUCKET: "countylens-fake",
+  };
+  const token = Buffer.from(
+    `${env.FILEBASE_ACCESS_KEY}:${env.FILEBASE_SECRET_KEY}:${env.FILEBASE_BUCKET}`,
+  ).toString("base64");
+
+  it("counts the composed token and its Authorization value among the secrets", () => {
+    expect(filebaseToken(env)).toBe(token);
+    const secrets = secretValues(env);
+    expect(secrets).toContain(token);
+    expect(secrets).toContain(`Bearer ${token}`);
+    expect(redact(`Authorization: Bearer ${token}`, secrets)).toBe("Authorization: [redacted]");
+  });
+
+  it("keeps the composed token out of a failed step's stderr and the sequence report", async () => {
+    const p = setup();
+    const cli = fakeCli({
+      failOn: (argv) => argv[0] === "upload",
+      stderr: `401 for Authorization: Bearer ${token}\n`,
+    });
+    const report = await runPublish({
+      county: "travis",
+      runDir: p,
+      groups: ["county"],
+      run: cli.run,
+      env,
+    });
+    expect(report.ok).toBe(false);
+    expect(report.failed?.stderr).not.toContain(token);
+    expect(report.failed?.stderr).toContain("[redacted]");
+    expect(readFileSync(join(p, "reports/sequence-publish.json"), "utf8")).not.toContain(token);
   });
 });

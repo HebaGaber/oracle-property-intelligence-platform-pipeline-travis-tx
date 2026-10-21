@@ -6,13 +6,22 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type App, Stack } from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
+import { App, Stack, Tags } from "aws-cdk-lib";
+import { Match, Template } from "aws-cdk-lib/assertions";
 import { AwsSolutionsChecks } from "cdk-nag";
 import { describe, expect, it } from "vitest";
 import type { CountyLensStacks } from "../src/app.js";
 import { loadConfig, type InfraConfig } from "../src/config.js";
-import { appUnderTest } from "./helpers.js";
+import { BudgetStack } from "../src/ops-stack.js";
+import { appUnderTest, cdkJsonContext } from "./helpers.js";
+
+// The alarm and budget recipient is never in git: the Ops stack reads OPERATOR_EMAIL from the
+// environment (CI variable, PO shell); the tests use this placeholder when it is unset.
+const TEST_OPERATOR_EMAIL = "countylens-tests@example.invalid";
+process.env.OPERATOR_EMAIL ??= TEST_OPERATOR_EMAIL;
+
+/** Skip NodejsFunction bundling in unit tests (no esbuild, no npm, no network). */
+const SKIP_BUNDLING = { "aws:cdk:bundling-stacks": [] as string[] };
 
 type StackName =
   "CountyLensData" | "CountyLensApi" | "CountyLensWeb" | "CountyLensOps" | "CountyLensCert";
@@ -62,6 +71,9 @@ const TAGGABLE_TYPES = new Set([
   "AWS::CloudWatch::Alarm",
   "AWS::Amplify::App",
   "AWS::Amplify::Branch",
+  "AWS::XRay::SamplingRule",
+  "AWS::IAM::OIDCProvider",
+  "AWS::Budgets::Budget",
 ]);
 
 const PROJECT_TAG = { key: "project_name", value: "oracle-travis" };
@@ -87,8 +99,8 @@ function synthAll(): {
   stacks: CountyLensStacks;
   templates: Record<StackName, Template>;
 } {
-  // Same cdk.json context (feature flags, countylens:* keys) as `cdk synth`.
-  const { app, config, stacks } = appUnderTest();
+  // Same cdk.json context (feature flags, countylens:* keys) as `cdk synth`, bundling skipped.
+  const { app, config, stacks } = appUnderTest(SKIP_BUNDLING);
   const templates = {
     CountyLensData: Template.fromStack(stacks.data),
     CountyLensApi: Template.fromStack(stacks.api),
@@ -110,9 +122,12 @@ function flatten(templates: Record<StackName, Template>): FlatResource[] {
   return out;
 }
 
-/** Tags as CloudFormation renders them: a Key/Value list or a map (SSM, API Gateway v2). */
+/**
+ * Tags as CloudFormation renders them: a Key/Value list or a map (SSM, API Gateway v2);
+ * AWS::Budgets::Budget calls the list ResourceTags.
+ */
 function tagsOf(props: Record<string, unknown> | undefined): Record<string, string> {
-  const raw = props?.Tags;
+  const raw = props?.Tags ?? props?.ResourceTags;
   if (Array.isArray(raw)) {
     const out: Record<string, string> = {};
     for (const entry of raw as { Key?: unknown; Value?: unknown }[]) {
@@ -192,13 +207,26 @@ describe("CountyLens app: five stacks in the AM-02 order", () => {
     expect(stacks.cert.stackName).toBe("CountyLensCert");
   });
 
-  it("deploys Data → Api → Web → Ops → Cert (ARD § 16 AM-02) through addDependency", () => {
-    const dependsOn = (s: Stack) => s.dependencies.map((d) => d.stackName);
+  it("deploys Data → Api → Web → Ops → Cert (ARD § 16 AM-02): explicit chain, and no stack depends on a later one", () => {
+    // Cross-stack references (Data.bucket → Api, Api.fn → Ops, …) add implicit dependencies
+    // next to the explicit addStackDependency chain; every one must point backwards in AM-02.
+    const dependsOn = (s: Stack) => s.dependencies.map((d) => d.stackName as StackName);
     expect(dependsOn(stacks.data)).toEqual([]);
-    expect(dependsOn(stacks.api)).toEqual(["CountyLensData"]);
-    expect(dependsOn(stacks.web)).toEqual(["CountyLensApi"]);
-    expect(dependsOn(stacks.ops)).toEqual(["CountyLensWeb"]);
-    expect(dependsOn(stacks.cert)).toEqual(["CountyLensOps"]);
+    expect(dependsOn(stacks.api)).toContain("CountyLensData");
+    expect(dependsOn(stacks.web)).toContain("CountyLensApi");
+    expect(dependsOn(stacks.ops)).toContain("CountyLensWeb");
+    expect(dependsOn(stacks.cert)).toContain("CountyLensOps");
+    for (const name of STACK_ORDER) {
+      const stack = [stacks.data, stacks.api, stacks.web, stacks.ops, stacks.cert].find(
+        (s) => s.stackName === name,
+      ) as Stack;
+      for (const dep of dependsOn(stack)) {
+        expect(
+          STACK_ORDER.indexOf(dep),
+          `${name} depends on ${dep}, which must deploy earlier`,
+        ).toBeLessThan(STACK_ORDER.indexOf(name));
+      }
+    }
   });
 
   it("every stack takes its region from config, never from a literal", () => {
@@ -300,11 +328,279 @@ describe("CountyLens app: five stacks in the AM-02 order", () => {
       "acknowledgements are written to the template metadata",
     ).toBeGreaterThan(0);
     for (const s of acknowledged) {
-      expect(s.id, `${s.at} acknowledgement id`).toMatch(/^AwsSolutions-[A-Z0-9]+(\[.+\])?$/);
+      // cdk-nag AwsSolutions findings, or CDK's own template validator (F0001: an empty stack
+      // that is deliberately unwired until its cross-stack props arrive).
+      expect(s.id, `${s.at} acknowledgement id`).toMatch(
+        /^(AwsSolutions-[A-Z0-9]+(\[.+\])?|CloudFormation-Validate::F\d{4})$/,
+      );
       expect(
         typeof s.reason === "string" && s.reason.length >= 40,
         `${s.at} ${String(s.id)} reason`,
       ).toBe(true);
     }
+  });
+});
+
+interface Statement {
+  Effect: string;
+  Action: string | string[];
+  Resource?: unknown;
+  Principal?: unknown;
+  Condition?: Record<string, unknown>;
+}
+const asList = (a: string | string[]): string[] => (Array.isArray(a) ? a : [a]);
+const json = (v: unknown): string => JSON.stringify(v);
+
+describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy role (research R-09, D-04)", () => {
+  const { config, stacks, templates } = synthAll();
+  const all = flatten(templates);
+  const ops = templates.CountyLensOps;
+  const opsResources = ops.toJSON().Resources as Record<string, CfnResource>;
+  const operatorEmail = process.env.OPERATOR_EMAIL as string;
+
+  it("A-03-TC-052: every Lambda traces Active; function log groups keep 14 days, the API access log 30", () => {
+    const functions = all.filter((r) => r.resource.Type === "AWS::Lambda::Function");
+    expect(functions.length).toBeGreaterThan(0);
+    const groups = new Map(
+      all
+        .filter((r) => r.resource.Type === "AWS::Logs::LogGroup")
+        .map((r) => [`${r.stack}/${r.logicalId}`, r.resource] as const),
+    );
+    for (const fn of functions) {
+      expect(fn.resource.Properties?.TracingConfig, `${fn.stack}/${fn.logicalId}`).toEqual({
+        Mode: "Active",
+      });
+      const ref = (fn.resource.Properties as { LoggingConfig?: { LogGroup?: { Ref?: string } } })
+        .LoggingConfig?.LogGroup?.Ref;
+      expect(ref, `${fn.stack}/${fn.logicalId} has an explicit log group`).toBeDefined();
+      expect(groups.get(`${fn.stack}/${ref}`)?.Properties?.RetentionInDays).toBe(14);
+    }
+    const stages = all.filter((r) => r.resource.Type === "AWS::ApiGatewayV2::Stage");
+    expect(stages).toHaveLength(1);
+    const arn = json(
+      (stages[0]?.resource.Properties as { AccessLogSettings?: { DestinationArn?: unknown } })
+        .AccessLogSettings?.DestinationArn,
+    );
+    const accessGroup = [...groups.entries()].find(([key]) =>
+      arn.includes(`"${key.split("/")[1]}"`),
+    );
+    expect(accessGroup, "the stage's access log group is in the app").toBeDefined();
+    expect(accessGroup?.[1].Properties?.RetentionInDays).toBe(30);
+    for (const [, group] of groups) {
+      expect([14, 30]).toContain(group.Properties?.RetentionInDays);
+    }
+  });
+
+  it("A-03-TC-052: one SNS topic with exactly one email subscription from OPERATOR_EMAIL, SSL enforced", () => {
+    ops.resourceCountIs("AWS::SNS::Topic", 1);
+    ops.resourceCountIs("AWS::SNS::Subscription", 1);
+    ops.hasResourceProperties("AWS::SNS::Subscription", {
+      Protocol: "email",
+      Endpoint: operatorEmail,
+      TopicArn: { Ref: Match.anyValue() },
+    });
+    const [, policy] = Object.entries(ops.findResources("AWS::SNS::TopicPolicy"))[0] ?? [];
+    expect(policy, "topic policy (enforceSSL)").toBeDefined();
+    expect(json(policy?.Properties)).toContain('"aws:SecureTransport":"false"');
+    ops.resourceCountIs("AWS::KMS::Key", 0);
+  });
+
+  it("the operator email is never in git: no email literal in infra/src or infra/bin", () => {
+    const infraRoot = fileURLToPath(new URL("..", import.meta.url));
+    const files = [
+      ...listTsFiles(join(infraRoot, "src"), new Set()),
+      ...listTsFiles(join(infraRoot, "bin"), new Set()),
+    ];
+    expect(files.length).toBeGreaterThan(0);
+    const emailLiteral = /[\w.+-]+@[\w-]+(\.[\w-]+)*\.[a-z]{2,}\b/i;
+    const offenders = files
+      .filter((f) => {
+        const text = readFileSync(f, "utf8");
+        return emailLiteral.test(text) || text.includes(operatorEmail);
+      })
+      .map((f) => relative(infraRoot, f));
+    expect(offenders).toEqual([]);
+    expect(readFileSync(join(infraRoot, "cdk.json"), "utf8")).not.toMatch(emailLiteral);
+  });
+
+  it("A-03-TC-052: three alarms (Lambda Errors ≥ 1 / 5 min, Throttles ≥ 1, HTTP API 5xx ≥ 1), each ALARM + OK → the topic, notBreaching", () => {
+    const alarms = Object.values(ops.findResources("AWS::CloudWatch::Alarm"));
+    expect(alarms).toHaveLength(3);
+    const [topicId] = Object.keys(ops.findResources("AWS::SNS::Topic"));
+    const metrics = alarms
+      .map((a) => {
+        const p = a.Properties as {
+          Namespace: string;
+          MetricName: string;
+          Dimensions?: { Name: string }[];
+        };
+        return `${p.Namespace}/${p.MetricName}[${(p.Dimensions ?? []).map((d) => d.Name).join(",")}]`;
+      })
+      .sort();
+    expect(metrics).toEqual([
+      "AWS/ApiGateway/5xx[ApiId]",
+      "AWS/Lambda/Errors[FunctionName]",
+      "AWS/Lambda/Throttles[FunctionName]",
+    ]);
+    for (const a of alarms) {
+      expect(a.Properties).toMatchObject({
+        Statistic: "Sum",
+        Period: 300,
+        EvaluationPeriods: 1,
+        Threshold: 1,
+        ComparisonOperator: "GreaterThanOrEqualToThreshold",
+        TreatMissingData: "notBreaching",
+        AlarmActions: [{ Ref: topicId }],
+        OKActions: [{ Ref: topicId }],
+      });
+      // The function name and API id come from CountyLensApi (cross-stack exports).
+      expect(json(a.Properties?.Dimensions)).toMatch(/Fn::GetStackOutput|Fn::ImportValue/);
+      expect(json(a.Properties?.Dimensions)).toContain("CountyLensApi");
+    }
+  });
+
+  // AWS::Budgets::Budget exists only in US East (N. Virginia) as a CloudFormation type, so the budget is its
+  // own stack (BudgetStack) whose region comes from the environment: BUDGET_REGION=<region>
+  // runs this case; without it the case is skipped, never faked.
+  it.skipIf(!process.env.BUDGET_REGION)(
+    "A-03-TC-052: AWS::Budgets::Budget 10 USD monthly, notifications at 80 % actual and 100 % forecast to the operator email, no budget action",
+    () => {
+      ops.resourceCountIs("AWS::Budgets::Budget", 0);
+      const budgetApp = new App({ context: { ...cdkJsonContext(), ...SKIP_BUNDLING } });
+      const stack = new BudgetStack(budgetApp, "CountyLensBudget", {
+        env: { region: process.env.BUDGET_REGION },
+        tags: { [PROJECT_TAG.key]: PROJECT_TAG.value },
+        operatorEmail,
+      });
+      Tags.of(budgetApp).add(PROJECT_TAG.key, PROJECT_TAG.value);
+      const budgetTemplate = Template.fromStack(stack);
+      budgetTemplate.resourceCountIs("AWS::Budgets::Budget", 1);
+      budgetTemplate.resourceCountIs("AWS::Budgets::BudgetsAction", 0);
+      budgetTemplate.hasResourceProperties("AWS::Budgets::Budget", {
+        ResourceTags: [{ Key: PROJECT_TAG.key, Value: PROJECT_TAG.value }],
+      });
+      budgetAssertions(budgetTemplate, operatorEmail);
+    },
+  );
+
+  function budgetAssertions(ops: Template, operatorEmail: string): void {
+    ops.hasResourceProperties("AWS::Budgets::Budget", {
+      Budget: Match.objectLike({
+        BudgetType: "COST",
+        TimeUnit: "MONTHLY",
+        BudgetLimit: { Amount: 10, Unit: "USD" },
+      }),
+    });
+    const [, budget] = Object.entries(ops.findResources("AWS::Budgets::Budget"))[0] as [
+      string,
+      CfnResource,
+    ];
+    const notifications = (
+      budget.Properties as {
+        NotificationsWithSubscribers: {
+          Notification: Record<string, unknown>;
+          Subscribers: { SubscriptionType: string; Address: string }[];
+        }[];
+      }
+    ).NotificationsWithSubscribers;
+    expect(notifications.map((n) => n.Notification)).toEqual([
+      {
+        NotificationType: "ACTUAL",
+        ComparisonOperator: "GREATER_THAN",
+        Threshold: 80,
+        ThresholdType: "PERCENTAGE",
+      },
+      {
+        NotificationType: "FORECASTED",
+        ComparisonOperator: "GREATER_THAN",
+        Threshold: 100,
+        ThresholdType: "PERCENTAGE",
+      },
+    ]);
+    for (const n of notifications) {
+      expect(n.Subscribers).toEqual([{ SubscriptionType: "EMAIL", Address: operatorEmail }]);
+    }
+  }
+
+  it("GitHub OIDC: one native provider; the deploy role trusts only the fork's 0* and feature/oracle-pipeline refs and may assume only cdk-hnb659fds-* roles", () => {
+    ops.resourceCountIs("AWS::IAM::OIDCProvider", 1);
+    ops.hasResourceProperties("AWS::IAM::OIDCProvider", {
+      Url: "https://token.actions.githubusercontent.com",
+      ClientIdList: ["sts.amazonaws.com"],
+    });
+    // The L2 OpenIdConnectProvider would add a custom-resource Lambda; the native L1 does not.
+    ops.resourceCountIs("AWS::Lambda::Function", 0);
+    ops.resourceCountIs("Custom::AWSCDKOpenIdConnectProvider", 0);
+
+    const roles = Object.values(ops.findResources("AWS::IAM::Role"));
+    expect(roles).toHaveLength(1);
+    const role = roles[0]?.Properties as {
+      RoleName?: string;
+      AssumeRolePolicyDocument: { Statement: Statement[] };
+      Policies?: { PolicyDocument: { Statement: Statement[] } }[];
+      ManagedPolicyArns?: unknown[];
+    };
+    expect(role.RoleName).toBe("CountyLensGitHubDeploy");
+    expect(role.ManagedPolicyArns ?? []).toEqual([]);
+
+    const trust = role.AssumeRolePolicyDocument.Statement;
+    expect(trust).toHaveLength(1);
+    const [statement] = trust as [Statement];
+    expect(asList(statement.Action)).toEqual(["sts:AssumeRoleWithWebIdentity"]);
+    const [providerId] = Object.keys(ops.findResources("AWS::IAM::OIDCProvider"));
+    expect(json(statement.Principal)).toContain(`"${providerId}"`);
+    expect(json(statement.Principal)).not.toMatch(/Service|AWS"/);
+    const repository = config.github.repository;
+    expect(statement.Condition).toEqual({
+      StringEquals: { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
+      StringLike: {
+        "token.actions.githubusercontent.com:sub": [
+          `repo:${repository}:ref:refs/heads/0*`,
+          `repo:${repository}:ref:refs/heads/${config.github.ref}`,
+        ],
+      },
+    });
+
+    const inline = (role.Policies ?? []).flatMap((p) => p.PolicyDocument.Statement);
+    const attached = Object.values(ops.findResources("AWS::IAM::Policy")).flatMap(
+      (p) =>
+        (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument.Statement ??
+        [],
+    );
+    const statements = [...inline, ...attached];
+    expect(statements.length).toBeGreaterThan(0);
+    for (const s of statements) {
+      expect(s.Effect).toBe("Allow");
+      expect(asList(s.Action)).toEqual(["sts:AssumeRole"]);
+      const resources = Array.isArray(s.Resource) ? s.Resource : [s.Resource];
+      for (const r of resources) {
+        const rendered = json(r);
+        expect(rendered).toContain(":role/cdk-hnb659fds-*");
+        // The account from CDK_DEFAULT_ACCOUNT, or the AWS::AccountId pseudo parameter when unset.
+        expect(rendered).toMatch(/AWS::AccountId|:iam::\d{12}:role\//);
+        expect(rendered).not.toBe('"*"');
+      }
+    }
+    ops.hasOutput("DeployRoleArn", { Value: { "Fn::GetAtt": [Match.anyValue(), "Arn"] } });
+    ops.hasOutput("AlertsTopicArn", { Value: { Ref: Match.anyValue() } });
+  });
+
+  it("Ops has no Lambda, queue, key, secret or Function URL of its own; every alarm/topic is tagged", () => {
+    for (const type of ["AWS::SQS::Queue", "AWS::KMS::Key", "AWS::SecretsManager::Secret"]) {
+      ops.resourceCountIs(type, 0);
+    }
+    const tagged = Object.values(opsResources).filter((r) =>
+      [
+        "AWS::SNS::Topic",
+        "AWS::CloudWatch::Alarm",
+        "AWS::IAM::Role",
+        "AWS::IAM::OIDCProvider",
+      ].includes(r.Type),
+    );
+    expect(tagged.length).toBeGreaterThanOrEqual(6);
+    for (const r of tagged) {
+      expect(json(r.Properties?.Tags), r.Type).toContain(PROJECT_TAG.value);
+    }
+    expect(stacks.ops.stackName).toBe("CountyLensOps");
   });
 });

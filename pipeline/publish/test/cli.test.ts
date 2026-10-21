@@ -7,14 +7,16 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { CarWriter } from "@ipld/car/writer";
+import * as dagJson from "@ipld/dag-json";
+import { CID } from "multiformats/cid";
+import { sha256 } from "multiformats/hashes/sha2";
 import { describe, expect, it, vi } from "vitest";
 import { main, type CidCopyInput, type CliDeps } from "../src/cli.js";
 import type { CliRunner } from "../src/sequence.js";
 import type { PublishOptions, PublishResult } from "../src/upload.js";
 
 const RUN_ID = "travis-202609-permits-20261021t160000z";
-const CAR_ROOT = "baguqeerasords4njcts6vs7qvdjfcvgnume4hqohf65zsfguprqphs3icwea";
-const TABLES_ROOT = "baguqeeraa5xaitdmh4ngbzsxbkfnjk5k6t2xd5v4wpxbs6vfzy2t3wnzqqia";
 const MANIFEST_CID = "bafkreibhurphpjdq33ysit57jtzmdldgngepsdbsw4vm7esawth2ezgaxu";
 const SEED = "bafkreibhurphpjdq33ysit57jtzmdldgngepsdbsw4vm7esawth2ezgaxu";
 const COUNTY_DG = "bafkreia6tjziby3upxmidymud5iusd32urrztslgrudkwysc7ydmxoekuq";
@@ -26,11 +28,32 @@ const FAKE = {
 };
 
 const sha = (s: string): string => createHash("sha256").update(s).digest("hex");
+/** A well-formed approval digest (publishRun is faked in these cases). */
+const APPROVED = "ab".repeat(32);
 
-function write(path: string, body: string): void {
+function write(path: string, body: string | Uint8Array): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, body);
 }
+
+/** A one-block dag-json CAR whose header root is `root` of `value`; returns its bytes. */
+async function carBytes(value: unknown): Promise<{ root: string; bytes: Buffer }> {
+  const block = dagJson.encode(value);
+  const root = CID.create(1, dagJson.code, await sha256.digest(block));
+  const { writer, out } = CarWriter.create([root]);
+  const chunks: Uint8Array[] = [];
+  const done = (async () => {
+    for await (const c of out) chunks.push(c);
+  })();
+  await writer.put({ cid: root, bytes: block });
+  await writer.close();
+  await done;
+  return { root: root.toString(), bytes: Buffer.concat(chunks) };
+}
+
+const ARCHIVE = await carBytes({ label: "CountyIndex" });
+const TABLES = await carBytes({ label: "CountyTables" });
+const fileSha = (b: Uint8Array): string => createHash("sha256").update(b).digest("hex");
 
 function arg(argv: string[], flag: string): string {
   const i = argv.indexOf(flag);
@@ -94,30 +117,30 @@ function fakeCli(opts: { failAt?: number } = {}): { run: CliRunner; calls: strin
       write(join(arg(argv, "--output-zip"), "100008.zip"), "zip");
       write(
         arg(argv, "--output-csv"),
-        `propertyCid,dataGroupCid,dataCid,filePath,uploadedAt\n${SEED},${COUNTY_DG},${CAR_ROOT},x/${COUNTY_DG}.json,\n`,
+        `propertyCid,dataGroupCid,dataCid,filePath,uploadedAt\n${SEED},${COUNTY_DG},${ARCHIVE.root},x/${COUNTY_DG}.json,\n`,
       );
-      write(arg(argv, "--output-car"), "car");
+      write(arg(argv, "--output-car"), ARCHIVE.bytes);
       return {
         code: 0,
-        stdout: `CAR written: ${arg(argv, "--output-car")} (12 blocks, root ${CAR_ROOT})\n`,
+        stdout: `CAR written: ${arg(argv, "--output-car")} (12 blocks, root ${ARCHIVE.root})\n`,
         stderr: "",
       };
     }
     if (cmd === "export-tables") {
       const out = arg(argv, "--output");
-      write(join(out, "tables.car"), "tables");
+      write(join(out, "tables.car"), TABLES.bytes);
       write(join(out, "property", "part-00000.parquet"), "PAR1 property");
       write(join(out, "structure", "part-00000.parquet"), "PAR1 structure");
       write(
         arg(argv, "--output-json"),
         JSON.stringify({
-          root: TABLES_ROOT,
+          root: TABLES.root,
           tables: { property: { rows: 1, parts: 1 }, structure: { rows: 1, parts: 1 } },
         }),
       );
       return {
         code: 0,
-        stdout: `Tables written: ${out} (2 tables, 2 parts, root ${TABLES_ROOT})\n`,
+        stdout: `Tables written: ${out} (2 tables, 2 parts, root ${TABLES.root})\n`,
         stderr: "",
       };
     }
@@ -141,6 +164,9 @@ function capture(): Output {
     deps: { stdout: (t) => void out.push(t), stderr: (t) => void err.push(t) },
   };
 }
+
+/** A preflight that passes: these cases fake publishRun and test the CLI's own wiring. */
+const passPreflight = vi.fn(async () => undefined);
 
 const okResult = (repo: Repo): PublishResult => ({
   ok: true,
@@ -177,19 +203,29 @@ describe("cli build", () => {
     ]);
     expect(cli.calls.flat()).not.toContain("upload");
     const out = o.out();
-    expect(out).toContain(`archive root ${CAR_ROOT}`);
+    expect(out).toContain(`archive root ${ARCHIVE.root}`);
     expect(out).toContain("12 blocks");
-    expect(out).toContain(`tables root ${TABLES_ROOT}`);
+    expect(out).toContain(`tables root ${TABLES.root}`);
     expect(out).toContain("2 parts");
-    expect(out).toContain(`car/travis-county.car  3 B  sha256 ${sha("car")}`);
-    expect(out).toContain(`tables/county/tables.car  6 B  sha256 ${sha("tables")}`);
+    expect(out).toContain(
+      `car/travis-county.car  ${ARCHIVE.bytes.length} B  sha256 ${fileSha(ARCHIVE.bytes)}`,
+    );
+    expect(out).toContain(
+      `tables/county/tables.car  ${TABLES.bytes.length} B  sha256 ${fileSha(TABLES.bytes)}`,
+    );
     expect(out).toContain(
       `tables/county/property/part-00000.parquet  13 B  sha256 ${sha("PAR1 property")}`,
     );
     expect(out).toContain(`tables/property_improvement/structure/part-00000.parquet  14 B`);
     expect(out).toContain("files that would go public: 8");
     expect(out).toMatch(/nothing uploaded/i);
-    expect(existsSync(join(repo.runDir, "reports/sequence.json"))).toBe(true);
+    expect(existsSync(join(repo.runDir, "reports/sequence-build.json"))).toBe(true);
+    // The D-8 evidence is a file: its SHA-256 is what `upload --approved` takes.
+    const listing = readFileSync(join(repo.runDir, "reports/public-files.json"));
+    const digest = createHash("sha256").update(listing).digest("hex");
+    expect(out).toContain(`public-files.json sha256 ${digest}`);
+    expect(out).toContain(`upload --run ${RUN_ID} --approved ${digest}`);
+    expect(JSON.parse(listing.toString("utf8"))).toMatchObject({ runId: RUN_ID, totalFiles: 8 });
   });
 
   it("exits non-zero and names the failed step; no public-files line", async () => {
@@ -230,13 +266,14 @@ describe("cli upload", () => {
     const publish = vi.fn(async (_options: PublishOptions) => okResult(repo));
     const o = capture();
     expect(process.env.FILEBASE_SECRET_KEY).toBeUndefined();
-    const code = await main(["upload", "--run", RUN_ID], {
+    const code = await main(["upload", "--run", RUN_ID, "--approved", APPROVED], {
       repoRoot: repo.repoRoot,
       envFile: repo.envFile,
       env: { PATH: "/usr/bin" },
       run: cli.run,
       fetch,
       publish,
+      preflight: passPreflight,
       ...o.deps,
     });
     expect(o.err()).toBe("");
@@ -247,6 +284,7 @@ describe("cli upload", () => {
       runDir: repo.runDir,
       runsDir: repo.runsDir,
       repoRoot: repo.repoRoot,
+      approved: APPROVED,
       run: cli.run,
       fetch,
     });
@@ -265,12 +303,13 @@ describe("cli upload", () => {
     const repo = setup();
     const publish = vi.fn(async (_options: PublishOptions) => okResult(repo));
     const o = capture();
-    const code = await main(["upload", "--run", RUN_ID], {
+    const code = await main(["upload", "--run", RUN_ID, "--approved", APPROVED], {
       repoRoot: repo.repoRoot,
       envFile: join(repo.repoRoot, "absent.env"),
       env: { ...FAKE },
       run: fakeCli().run,
       publish,
+      preflight: passPreflight,
       ...o.deps,
     });
     expect(code).toBe(0);
@@ -283,12 +322,13 @@ describe("cli upload", () => {
     const cli = fakeCli();
     const publish = vi.fn(async () => okResult(repo));
     const o = capture();
-    const code = await main(["upload", "--run", RUN_ID], {
+    const code = await main(["upload", "--run", RUN_ID, "--approved", APPROVED], {
       repoRoot: repo.repoRoot,
       envFile: join(repo.repoRoot, "absent.env"),
       env: { PATH: "/usr/bin", FILEBASE_ACCESS_KEY: FAKE.FILEBASE_ACCESS_KEY },
       run: cli.run,
       publish,
+      preflight: passPreflight,
       ...o.deps,
     });
     expect(code).toBe(1);
@@ -315,12 +355,13 @@ describe("cli upload", () => {
       },
     }));
     const o = capture();
-    const code = await main(["upload", "--run", RUN_ID], {
+    const code = await main(["upload", "--run", RUN_ID, "--approved", APPROVED], {
       repoRoot: repo.repoRoot,
       envFile: repo.envFile,
       env: {},
       run: fakeCli().run,
       publish,
+      preflight: passPreflight,
       ...o.deps,
     });
     expect(code).toBe(1);
@@ -329,6 +370,71 @@ describe("cli upload", () => {
     expect(o.err()).toContain("[redacted]");
     expect(o.err()).not.toContain(FAKE.FILEBASE_SECRET_KEY);
     expect(o.out()).not.toContain("manifest ");
+  });
+});
+
+describe("cli upload preflight before any upload (OR-14)", () => {
+  it("refuses a dirty working tree before publishRun: zero CLI calls, a named error, exit 1", async () => {
+    const repo = setup();
+    const cli = fakeCli();
+    const publish = vi.fn(async () => okResult(repo));
+    const o = capture();
+    const code = await main(["upload", "--run", RUN_ID, "--approved", APPROVED], {
+      repoRoot: repo.repoRoot,
+      envFile: repo.envFile,
+      env: {},
+      run: cli.run,
+      publish,
+      workTreeStatus: () => " M pipeline/publish/src/upload.ts\n",
+      headCommit: () => "17c6cd8",
+      ...o.deps,
+    });
+    expect(code).toBe(1);
+    expect(publish).not.toHaveBeenCalled();
+    expect(cli.calls).toHaveLength(0);
+    expect(o.err()).toMatch(/PreflightError/);
+    expect(o.err()).toMatch(/working tree is dirty/);
+    for (const value of Object.values(FAKE)) expect(o.err()).not.toContain(value);
+  });
+});
+
+describe("cli upload credentials fail closed (OR-8)", () => {
+  it("does not let a stray IPFS_API_TOKEN stand in for missing FILEBASE_* names", async () => {
+    const repo = setup();
+    const publish = vi.fn(async () => okResult(repo));
+    const o = capture();
+    const code = await main(["upload", "--run", RUN_ID, "--approved", APPROVED], {
+      repoRoot: repo.repoRoot,
+      envFile: join(repo.repoRoot, "absent.env"),
+      env: { IPFS_API_TOKEN: "fake-stray-bearer" },
+      run: fakeCli().run,
+      publish,
+      preflight: passPreflight,
+      ...o.deps,
+    });
+    expect(code).toBe(1);
+    expect(publish).not.toHaveBeenCalled();
+    expect(o.err()).toContain("FILEBASE_ACCESS_KEY, FILEBASE_SECRET_KEY, FILEBASE_BUCKET");
+    expect(o.err()).not.toContain("fake-stray-bearer");
+  });
+
+  it("refuses IPFS_API_TOKEN next to the Filebase keys: the upload is pinned to Filebase", async () => {
+    const repo = setup();
+    const publish = vi.fn(async () => okResult(repo));
+    const o = capture();
+    const code = await main(["upload", "--run", RUN_ID, "--approved", APPROVED], {
+      repoRoot: repo.repoRoot,
+      envFile: repo.envFile,
+      env: { IPFS_API_TOKEN: "fake-stray-bearer" },
+      run: fakeCli().run,
+      publish,
+      preflight: passPreflight,
+      ...o.deps,
+    });
+    expect(code).toBe(1);
+    expect(publish).not.toHaveBeenCalled();
+    expect(o.err()).toMatch(/IPFS_API_TOKEN/);
+    expect(o.err()).not.toContain("fake-stray-bearer");
   });
 });
 
@@ -410,6 +516,9 @@ describe("cli usage", () => {
       ["build"],
       ["build", "--run"],
       ["upload", "--run", RUN_ID, "--token", "x"],
+      ["upload", "--run", RUN_ID],
+      ["upload", "--run", RUN_ID, "--approved"],
+      ["upload", "--run", RUN_ID, "--approved", APPROVED, "--skip", "validate"],
       ["build", "--run", RUN_ID, "--atlas-page", "x"],
       ["build", "--run", RUN_ID, "--skip", "validate"],
     ]) {

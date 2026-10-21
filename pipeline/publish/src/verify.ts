@@ -8,7 +8,9 @@
 // from both gateways, compared byte-for-byte with the local file; a gateway that returns
 // different bytes for that CID stops the run (nothing else is fetched). Then every artifact:
 // tables by `cid`, car and directory artifacts by `carCid` (the raw file bytes; a dag-json root
-// is never fetched as a file). Plain GETs, no Range, no preflight; a streamed SHA-256 capped at
+// is never fetched as a file). Plain GETs with `redirect: "manual"`: a 3xx is a failed check
+// naming the Location host, never followed, so no byte from outside the allowlist can pass
+// (OR-6). No Range, no preflight; a streamed SHA-256 capped at
 // size + 1 bytes; TIMEOUT_MS per request; 429/5xx retried up to MAX_ATTEMPTS with Retry-After
 // or capped full jitter; at most CONCURRENCY_PER_GATEWAY requests in flight per gateway. One line
 // per artifact per gateway; `ALL ARTIFACTS VERIFIED` only when the manifest and every artifact
@@ -193,7 +195,20 @@ interface Transport {
   log: (line: string) => void;
 }
 
-/** One plain GET with retries on 429/5xx and on transport errors; never a Range header. */
+/** The host a Location header points at (relative to `url`), or "an unknown host". */
+function redirectHost(url: string, location: string | null): string {
+  if (location === null) return "an unknown host";
+  try {
+    return new URL(location, url).host;
+  } catch {
+    return "an unknown host";
+  }
+}
+
+/**
+ * One plain GET with retries on 429/5xx and on transport errors; never a Range header, never a
+ * followed redirect.
+ */
 async function fetchBytes(
   t: Transport,
   url: string,
@@ -206,7 +221,11 @@ async function fetchBytes(
     if (t.verbose) t.log(`GET ${url}${attempt > 1 ? ` (attempt ${attempt})` : ""}`);
     let res: Response;
     try {
-      res = await t.fetch(url, { method: "GET", signal: AbortSignal.timeout(t.timeoutMs) });
+      res = await t.fetch(url, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(t.timeoutMs),
+      });
     } catch (err) {
       last = { status: null, size: null, sha256: null, bytes: null, reason: errorText(err) };
       if (attempt < MAX_ATTEMPTS) await t.sleep(retryDelayMs(attempt, null, t.random));
@@ -218,6 +237,27 @@ async function fetchBytes(
       if (attempt < MAX_ATTEMPTS)
         await t.sleep(retryDelayMs(attempt, res.headers.get("retry-after"), t.random));
       continue;
+    }
+    if ((res.status >= 300 && res.status < 400) || res.type === "opaqueredirect") {
+      await res.body?.cancel();
+      return {
+        status: res.status,
+        size: null,
+        sha256: null,
+        bytes: null,
+        reason: `HTTP ${res.status}: redirect to ${redirectHost(url, res.headers.get("location"))} refused; verify-manifest only reads ${new URL(url).host}`,
+      };
+    }
+    if (res.redirected || (res.url !== "" && new URL(res.url).host !== new URL(url).host)) {
+      // A fetch that followed a redirect anyway: the bytes came from elsewhere.
+      await res.body?.cancel();
+      return {
+        status: res.status,
+        size: null,
+        sha256: null,
+        bytes: null,
+        reason: `redirect to ${res.url === "" ? "an unknown host" : new URL(res.url).host} refused`,
+      };
     }
     if (res.status !== 200) {
       await res.body?.cancel();

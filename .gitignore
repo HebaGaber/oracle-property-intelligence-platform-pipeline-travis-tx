@@ -27,3 +27,5 @@ pipeline/data/raw/census/
 # and the run index are committed. cdk.out/, dist/, test-results/ and playwright-report/ are
 # listed above.
 pipeline/data/runs/
+apps/web/public/build.json
+apps/web/public/runs/

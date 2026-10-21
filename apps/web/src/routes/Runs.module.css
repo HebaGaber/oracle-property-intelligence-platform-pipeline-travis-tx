@@ -1,0 +1,184 @@
+/* Runs page (A-03 T042/T060; plan § "Atlas element map" → Runs page). Atlas § 7 Card
+   (corner-medium, surface-container-lowest on surface-container-low, padding 16, outlined),
+   § 7 List item (two lines), § 8 Provenance line (body-small, on-surface-variant, leading
+   icon), CIDs through the shared CidDisplay. Every colour, font, spacing and
+   radius is a tokens.css custom property (Atlas § 13 rule 4; stylelint declaration-strict-value). */
+
+.page {
+  display: grid;
+  gap: var(--space-4);
+  max-width: calc(var(--space-10) * 15);
+}
+
+.card {
+  box-sizing: border-box;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface);
+}
+
+/* Card header: the run ID (title-medium, mono) and the fallback chip when the gateway served it. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--md-ref-typeface-mono);
+  font-size: var(--md-sys-typescale-title-medium-size);
+  font-weight: var(--md-sys-typescale-title-medium-weight);
+  line-height: var(--md-sys-typescale-title-medium-line-height);
+  letter-spacing: var(--md-sys-typescale-title-medium-tracking);
+  overflow-wrap: anywhere;
+}
+
+/* § 8 provenance line and the Server check line: body-small, on-surface-variant, leading icon. */
+.provenance,
+.serverCheck {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  font-weight: var(--md-sys-typescale-body-small-weight);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking);
+  overflow-wrap: anywhere;
+}
+
+/* A 16 px glyph inside body-small lines (the global class sets the 24 px control size). */
+.icon {
+  flex: none;
+  font-size: var(--md-sys-typescale-body-large-size);
+  line-height: inherit;
+}
+
+/* Started · Finished: body-medium with tabular numerals. */
+.times {
+  margin: 0;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  font-weight: var(--md-sys-typescale-body-medium-weight);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sectionTitle {
+  margin: var(--space-2) 0 0;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking);
+}
+
+.list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* § 7 List item, two lines, outline-variant dividers. */
+.item {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.itemTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking);
+  overflow-wrap: anywhere;
+}
+
+.itemBody,
+.helper {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  font-weight: var(--md-sys-typescale-body-small-weight);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking);
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--md-ref-typeface-mono);
+  font-size: inherit;
+}
+
+.link {
+  color: var(--md-sys-color-primary);
+  overflow-wrap: anywhere;
+}
+
+/* Coverage row: label title-small · count body-medium tabular-nums · helper body-small below. */
+.coverageRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.coverageLabel {
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking);
+}
+
+.count {
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  font-weight: var(--md-sys-typescale-body-medium-weight);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.helper {
+  grid-column: 1 / -1;
+}
+
+/* Medium and up (Atlas § 4): the coverage row reads as one line, helper beside the label. */
+@media (min-width: 600px) {
+  .coverageRow {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .helper {
+    grid-column: auto;
+  }
+}

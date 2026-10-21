@@ -405,3 +405,97 @@ describe("runMonth owners_redacted (T082, P0-15)", () => {
     expect(county.find((c) => c.pID === "100012")).toMatchObject({ confidential: false });
   });
 });
+
+describe("runMonth stop labels and per-run receipts (CR-A-03 OR-9, OR-10)", () => {
+  it("labels a timed-out permit GET an error (exit 1), not blocked (exit 2), and writes no group", async () => {
+    const s = setup();
+    const c = clock();
+    const base = http(rows());
+    const fetch: typeof base.fetch = async (url, init) => {
+      if (new URL(url).searchParams.get("permit_number") === NO_TCAD) {
+        const error = new Error("the request timed out");
+        error.name = "TimeoutError";
+        throw error;
+      }
+      return base.fetch(url, init);
+    };
+    const result = await runMonth({
+      repoRoot: s.repoRoot,
+      month: "2026-09",
+      jobId: "test-2026-09",
+      tcadZip: s.zip,
+      catalogPath: s.catalogPath,
+      fetch,
+      sleep: c.sleep,
+      now: c.now,
+      random: () => 0,
+      log: silent,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.stage).toBe("austin");
+    expect(result.status).toBe("error");
+    expect(result.reason).toMatch(/timeout/);
+    expect(exitCodeFor(result.status)).toBe(1);
+    expect(existsSync(join(result.runDir, "groups"))).toBe(false);
+  });
+
+  it("keeps exit 2 for a 403 (blocked)", async () => {
+    const s = setup();
+    const c = clock();
+    const base = http(rows());
+    const fetch: typeof base.fetch = async (url, init) =>
+      new URL(url).searchParams.get("permit_number") === NO_TCAD
+        ? json({ message: "forbidden" }, 403)
+        : base.fetch(url, init);
+    const result = await runMonth({
+      repoRoot: s.repoRoot,
+      month: "2026-09",
+      jobId: "test-2026-09",
+      tcadZip: s.zip,
+      catalogPath: s.catalogPath,
+      fetch,
+      sleep: c.sleep,
+      now: c.now,
+      random: () => 0,
+      log: silent,
+    });
+    expect(result.status).toBe("blocked");
+    expect(exitCodeFor(result.status)).toBe(2);
+  });
+
+  it("counts sources[0].records from this run's receipts only, not the job's shared receipts.jsonl", async () => {
+    const s = setup();
+    const first = await runSeptember(s);
+    expect(first.result.ok).toBe(true);
+    // A second run of the same job lists one permit fewer; its earlier captures are reused.
+    const c = clock();
+    const second = await runMonth({
+      repoRoot: s.repoRoot,
+      month: "2026-09",
+      jobId: "test-2026-09",
+      runId: "travis-202609-permits-20261021t120000z",
+      tcadZip: s.zip,
+      catalogPath: s.catalogPath,
+      fetch: http(rows().filter((r) => r.permit_number !== VOIDED)).fetch,
+      sleep: c.sleep,
+      now: c.now,
+      random: () => 0,
+      log: silent,
+    });
+    expect(second.ok).toBe(true);
+    const jobDir = join(s.repoRoot, "pipeline/data/artifacts/permits/travis/test-2026-09");
+    const shared = readFileSync(join(jobDir, "receipts.jsonl"), "utf8").trim().split("\n");
+    expect(shared).toHaveLength(4);
+    const summary = readJson(join(second.runDir, "summary.json"));
+    const counts = summary.counts as { captured: number };
+    const sources = summary.sources as Array<{ records: number; receipts: string }>;
+    const austin = sources[0] as { records: number; receipts: string };
+    expect(austin.receipts.startsWith(second.runDir)).toBe(true);
+    const lines = readFileSync(austin.receipts, "utf8").trim().split("\n");
+    const receipts = lines.map((l) => JSON.parse(l) as { permit_number: string; outcome: string });
+    expect(receipts.map((r) => r.permit_number)).toEqual([EMITTED, NO_TCAD, TRADE]);
+    expect(receipts.every((r) => r.outcome === "ok")).toBe(true);
+    expect(austin.records).toBe(3);
+    expect(counts.captured).toBe(3);
+  });
+});

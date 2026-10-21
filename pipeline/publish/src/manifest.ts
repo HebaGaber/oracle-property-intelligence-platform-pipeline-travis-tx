@@ -147,7 +147,8 @@ const ReceiptFile = z
   .object({ captured_at: z.string(), records: z.union([z.number().int(), z.array(z.unknown())]) })
   .loose();
 
-async function carRoots(path: string): Promise<CID[]> {
+/** The roots in a CAR header (read lazily: the blocks are not walked). */
+export async function carRoots(path: string): Promise<CID[]> {
   const stream = createReadStream(path);
   try {
     const it = await CarBlockIterator.fromIterable(stream);

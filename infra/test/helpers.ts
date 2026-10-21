@@ -27,7 +27,11 @@ export interface AppUnderTest {
 
 /** The five stacks under the cdk.json context, with the region from CDK_DEFAULT_REGION. */
 export function appUnderTest(contextOverrides: Record<string, unknown> = {}): AppUnderTest {
-  const context = { ...cdkJsonContext(), ...contextOverrides };
+  // Bundling the Lambda (esbuild + a linux-arm64 npm install) in every test file at once is slow
+  // and flaky under the parallel run, so tests never bundle unless a test opts in with the
+  // override { "aws:cdk:bundling-stacks": ["**"] } (the COUNTYLENS_BUNDLE=1 asset check does).
+  const skipBundling = { "aws:cdk:bundling-stacks": [] as string[] };
+  const context = { ...cdkJsonContext(), ...skipBundling, ...contextOverrides };
   const app = new App({ context });
   const config = loadConfig(process.env, (key) => app.node.tryGetContext(key));
   const stacks = createCountyLensStacks(app, config);

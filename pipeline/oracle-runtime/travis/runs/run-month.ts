@@ -5,7 +5,10 @@
 // slices, no CLI sequence and no manifest: those are `pipeline/publish` cli.ts build/upload):
 //   1 lexicon manifest (data-group schema CIDs, live)
 //   2 Austin capture: travis/adapters/socrata (list → one GET per permit → raw + receipt +
-//     status/<key>.json; ≤ 1 request/s; a 403 or challenge stops the run with exit 2)
+//     status/<key>.json; ≤ 1 request/s; a 403 or challenge stops the run with exit 2; a timeout
+//     also stops it, labelled `error` with exit 1, per contracts/cli.md). This run's own
+//     receipts (one per captured permit it uses) go to capture/austin-receipts.jsonl, the
+//     manifest's record count: the job's receipts.jsonl is shared across runs of the job.
 //   3 classification by profiles/travis-austin@1.0.0 only (no classification term here):
 //     accepted = the profile would emit it; everything else is excluded or needs review
 //   4 TCAD subset from the local certified zip, after its sha256 is checked against
@@ -401,9 +404,19 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
     }),
   );
   if (capture.status !== "ok") {
-    return fail("austin", capture.reason ?? capture.status, capture.status);
+    // contracts/cli.md: exit 2 only for a 403 or a bot challenge; a timeout is another failure.
+    const timedOut =
+      capture.status === "blocked" &&
+      (capture.receipts.at(-1)?.blocked_reason === "timeout" ||
+        (capture.reason ?? "").startsWith("list query blocked (timeout"));
+    return timedOut
+      ? fail("austin", `timeout: ${capture.reason ?? "no response"}`, "error")
+      : fail("austin", capture.reason ?? capture.status, capture.status);
   }
   const loaded = loadCaptures(jobDir, AUSTIN_3SYK_W9EU, capture.listed);
+  // This run's receipts only (OR-10): the job dir's receipts.jsonl keeps every earlier run's lines.
+  const runReceipts = join(runDir, "capture/austin-receipts.jsonl");
+  writeFileSync(runReceipts, loaded.map((c) => `${JSON.stringify(c.receipt)}\n`).join(""));
   const captures: AustinPermitCapture[] = loaded.map((c) => ({
     row: c.row as AustinRow,
     receipt: {
@@ -699,7 +712,7 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
         watermark: capture.watermark,
         captured_at: austinCapturedAt,
         records: captures.length,
-        receipts: join(jobDir, "receipts.jsonl"),
+        receipts: runReceipts,
         limitations: [`one month of issue dates (${options.month}); one GET per permit`],
       },
       {

@@ -1,9 +1,11 @@
-// A-03 T007 stub (interface fixed for T042/T055, G-C3/G-C4): Atlas § 7 Badge / status pill,
-// 24 px, corner-full, label-medium, icon plus text, colours from § 2.4. Used for the
-// publication state (Info / pending, `schedule`), the fallback chip (Warning / partial,
-// `warning`), and the contractor cell (Verified `check_circle` / Not available
-// `do_not_disturb_on`). Render-only: it decides nothing (agent-design metagross § 8).
+// Atlas § 7 Badge / status pill (A-03 T055; interface fixed by T007): 24 px, corner-full,
+// label-medium, icon plus text, colours from § 2.4. Used for the publication state (Info /
+// pending, `schedule`), the fallback chip (Warning / partial, `warning`), the contractor cell
+// (Verified `check_circle` / Not available `do_not_disturb_on`) and, through MissingReason, the
+// Not-available pill. Render-only: it decides nothing (agent-design metagross § 8).
 import type { ReactElement } from "react";
+import { Icon } from "./Icon";
+import styles from "./StatusPill.module.css";
 
 /** Atlas § 2.4 semantic statuses. */
 export type StatusKind = "verified" | "warning" | "error" | "info" | "unavailable";
@@ -23,8 +25,18 @@ export interface StatusPillProps {
   readonly text: string;
   /** Material Symbols Rounded glyph name; defaults to STATUS_ICONS[status]. */
   readonly icon?: string;
+  /** Extra `data-*` attributes on the pill (MissingReason adds `field` and `reason`). */
+  readonly data?: Readonly<Record<string, string>>;
 }
 
-export function StatusPill(_props: StatusPillProps): ReactElement {
-  throw new Error("not implemented");
+export function StatusPill({ status, text, icon, data = {} }: StatusPillProps): ReactElement {
+  const dataAttributes = Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [`data-${key}`, value]),
+  );
+  return (
+    <span className={`${styles.pill} ${styles[status]}`} data-status={status} {...dataAttributes}>
+      <Icon name={icon ?? STATUS_ICONS[status]} size="small" />
+      <span className={styles.text}>{text}</span>
+    </span>
+  );
 }

@@ -1,0 +1,141 @@
+/* Permits list (A-03 T056): Atlas § 7 Data table from 600 px (header 56 px surface-container-high
+   title-small; rows 52 px with outline-variant dividers; tabular-nums) and § 7 Cards below it
+   (corner-medium, surface-container-lowest, padding 16). Every colour, font, spacing and radius
+   is a tokens.css custom property (Atlas § 13 rule 4). */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.value {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+}
+
+.mono {
+  font-family: var(--md-ref-typeface-mono);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cards (< 600 px) */
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  padding: var(--space-4);
+  border-radius: var(--md-sys-shape-corner-medium);
+  color: var(--md-sys-color-on-surface);
+  background-color: var(--md-sys-color-surface-container-lowest);
+}
+
+.cardTitle {
+  margin: 0;
+  font-family: var(--md-ref-typeface-mono);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking);
+}
+
+.cardRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.cardRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.cardLabel {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: var(--md-sys-typescale-label-medium-weight);
+  line-height: var(--md-sys-typescale-label-medium-line-height);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking);
+}
+
+.cardValue {
+  margin: 0;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  font-weight: var(--md-sys-typescale-body-medium-weight);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+  overflow-wrap: anywhere;
+}
+
+/* Data table (≥ 600 px) */
+
+.tableWrap {
+  overflow-x: auto;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background-color: var(--md-sys-color-surface-container-lowest);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  font-weight: var(--md-sys-typescale-body-medium-weight);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+}
+
+.table th {
+  box-sizing: border-box;
+  height: calc(var(--space-9) + var(--space-2));
+  padding: 0 var(--space-4);
+  background-color: var(--md-sys-color-surface-container-high);
+  text-align: left;
+  white-space: nowrap;
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking);
+}
+
+.table td {
+  box-sizing: border-box;
+  height: calc(var(--space-9) + var(--space-1));
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  vertical-align: top;
+}
+
+.provenanceCell {
+  min-width: calc(var(--space-10) * 4);
+}
+
+@media (min-width: 600px) {
+  .page {
+    gap: var(--space-6);
+  }
+}

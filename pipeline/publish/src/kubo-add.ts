@@ -3,13 +3,22 @@
 // manifest's `carCid` of every .car (archive and tables.car; AM-05, D-5) and the manifest's own
 // CID get onto IPFS as plain files a gateway can serve byte for byte. A Hash that differs from
 // the local CID fails the add. The bearer token comes only from the env the caller passes
-// (IPFS_API_TOKEN, or Filebase's base64(access key:secret key:bucket) composed from
-// FILEBASE_ACCESS_KEY, FILEBASE_SECRET_KEY and FILEBASE_BUCKET exactly as elephant-cli does);
-// it is never put in a URL, a form field, argv, a report or an error message.
+// (Filebase's base64(access key:secret key:bucket) composed from FILEBASE_ACCESS_KEY,
+// FILEBASE_SECRET_KEY and FILEBASE_BUCKET exactly as elephant-cli does; IPFS_API_TOKEN only for
+// another API, and refused next to the Filebase RPC, OR-8); it is never put in a URL, a form
+// field, argv, a report or an error message.
 import { openAsBlob } from "node:fs";
 import { basename } from "node:path";
 import { CID } from "multiformats/cid";
-import { FILEBASE_RPC_API, redact, secretValues } from "./sequence.js";
+import {
+  FILEBASE_RPC_API,
+  filebaseEnvProblem,
+  filebaseToken,
+  redact,
+  secretValues,
+} from "./sequence.js";
+
+export { filebaseToken } from "./sequence.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -33,14 +42,6 @@ export interface KuboAdded {
   cid: string;
   name: string;
   size: number;
-}
-
-/** Filebase's Kubo RPC token: base64(access key:secret key:bucket), as elephant-cli composes it. */
-export function filebaseToken(env: NodeJS.ProcessEnv): string | undefined {
-  const parts = [env.FILEBASE_ACCESS_KEY, env.FILEBASE_SECRET_KEY, env.FILEBASE_BUCKET];
-  return parts.every((p) => typeof p === "string" && p !== "")
-    ? Buffer.from(parts.join(":")).toString("base64")
-    : undefined;
 }
 
 /** IPFS_API_TOKEN when set, else the Filebase token; undefined for a local daemon. */
@@ -86,9 +87,12 @@ export async function kuboAdd(
 ): Promise<KuboAdded> {
   const fetchImpl = options.fetch ?? fetch;
   const api = (options.api ?? FILEBASE_RPC_API).replace(/\/+$/, "");
+  if (api === FILEBASE_RPC_API) {
+    const problem = filebaseEnvProblem(options.env);
+    if (problem !== undefined) throw new Error(`add of ${name} refused: ${problem}`);
+  }
   const token = kuboToken(options.env);
-  const secrets = [...secretValues(options.env), ...(token === undefined ? [] : [token])];
-  const safe = (text: string): string => redact(text, secrets);
+  const safe = (text: string): string => redact(text, secretValues(options.env));
   const expected = parseCid(expectedCid, `the expected CID of ${name}`);
   const form = new FormData();
   form.append("file", content, name);

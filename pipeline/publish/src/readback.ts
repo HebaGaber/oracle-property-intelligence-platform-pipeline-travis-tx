@@ -251,6 +251,41 @@ async function checkPart(
   return { ...base, ok: true };
 }
 
+export interface FileReadback {
+  /** Size and SHA-256 of the local file: what the gateway must serve for its CID. */
+  size: number;
+  sha256: string;
+  ok: boolean;
+  reason?: string;
+}
+
+/**
+ * Reads one plain file back by its CID from FILEBASE_GATEWAY_HOST (a plain GET, the same retry
+ * policy as the parts) and compares size and SHA-256 with the local file. upload.ts runs it on
+ * every carCid add before the manifest is built (OR-4).
+ */
+export async function readbackFile(
+  cid: string,
+  path: string,
+  options: ReadbackOptions,
+): Promise<FileReadback> {
+  const size = statSync(path).size;
+  const sha256 = await sha256File(path);
+  const url = `https://${filebaseGatewayHost(options.env)}/ipfs/${cid}`;
+  const fetched = await getDigest(url, size + 1, options);
+  if (!fetched.ok) return { size, sha256, ok: false, reason: `GET ${url}: ${fetched.reason}` };
+  if (fetched.size !== size)
+    return { size, sha256, ok: false, reason: `size ${fetched.size} served, ${size} local` };
+  if (fetched.sha256 !== sha256)
+    return {
+      size,
+      sha256,
+      ok: false,
+      reason: `sha256 differs: ${fetched.sha256} served, ${sha256} local`,
+    };
+  return { size, sha256, ok: true };
+}
+
 /**
  * Reads one group's uploads back: roots by digest, part counts, then every part from the
  * gateway. Parts are fetched only when the roots and counts agree (a wrong root means the wrong

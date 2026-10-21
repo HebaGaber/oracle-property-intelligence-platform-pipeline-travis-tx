@@ -1,49 +1,57 @@
 // publishRun: the `upload` command (contracts/cli.md; research R-06; FR-001), after PO decision
-// D-8 only. In order:
-//   1 runPublish: the 12-step sequence (phase 1 for both groups, then the four uploads);
+// D-8 only, for the exact build the PO approved. In order:
+//   0 verifyApprovedBuild (approval.ts): reports/public-files.json must hash to `approved`, and
+//     every build output and public file on disk must still be what reports/sequence-build.json
+//     and the listing record (size, SHA-256, CID, CAR roots), else ApprovalError/BuildDriftError
+//     before any upload. Phase 1 is never re-run here and the build report never rewritten;
+//   1 runUpload: the four uploads only (reports/sequence-upload.json);
 //   2 readback of every group (readback.ts): roots by digest, part count, every part by size and
 //     SHA-256 from the Filebase gateway;
 //   3 Kubo add of each .car (the archive and the tables.car of every group) as a plain pinned
 //     file; the Hash must be the local raw-leaves CIDv1, which the manifest records as carCid
-//     (AM-05, D-5);
+//     (AM-05, D-5); then that carCid is read back from the Filebase gateway by size and SHA-256
+//     (OR-4);
 //   4 buildManifest from the CLI outputs, the capture receipts and summary.json (never a
 //     database); every carCid it records must be one of the adds of step 3;
 //   5 Kubo add of the manifest's JCS bytes; the Hash must equal cidOfBytes;
 //   6 runs/<runId>/manifest.json (the exact bytes) and runs/index.json (appendRun, exact JCS
 //     bytes), written only now and read back from disk before the result says ok.
-// A failure before step 6 leaves no manifest and no index. Pre-flight problems (no summary, no
-// owners_redacted, a profile without a commit, a runId already in the index) throw before the
-// first CLI call. Credentials live in `env` (the child env) only; reports/*.json carry CIDs,
+// A failure before step 6 leaves no manifest and no index. Pre-flight problems (preflight(),
+// OR-14: no summary, no owners_redacted, a profile without a commit, a runId already in the
+// index, Filebase credentials incomplete or shadowed by IPFS_API_TOKEN, a dirty working tree, a
+// recorded profiles[].gitCommit that is not HEAD, no approval or a drifted build) throw before
+// the first CLI call or network write. Credentials live in `env` (the child env) only; reports/*.json carry CIDs,
 // paths, sizes and digests, with every secret value redacted.
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { z } from "zod";
-import { CoverageCount, type ManifestProfile } from "@countylens/contract";
+import { CoverageCount, type ManifestProfile, type RunsIndexV1 } from "@countylens/contract";
 import { cidOfBytes, cidOfFile } from "./cid.js";
-import {
-  kuboAddBytes,
-  kuboAddFile,
-  kuboToken,
-  type FetchLike,
-  type KuboAddOptions,
-} from "./kubo-add.js";
+import { approvedGroups, verifyApprovedBuild } from "./approval.js";
+import { kuboAddBytes, kuboAddFile, type FetchLike, type KuboAddOptions } from "./kubo-add.js";
 import { buildManifest, type BuildManifestInput, type BuiltManifest } from "./manifest.js";
 import {
-  listTableParts,
+  readbackFile,
   readbackGroup,
+  type FileReadback,
   type ReadbackOptions,
   type ReadbackResult,
 } from "./readback.js";
 import { appendRun, emptyRunsIndex, parseRunsIndex, runsIndexBytes } from "./runs-index.js";
 import {
+  FILEBASE_RPC_API,
+  filebaseEnvProblem,
   redact,
-  runPublish,
+  runUpload,
   secretValues,
   type CliRunner,
   type DataGroup,
   type GroupResult,
   type SequenceReport,
 } from "./sequence.js";
+
+export { publicFiles } from "./approval.js";
 
 /** The data groups A-03 publishes, in CAR order (agent-design oracle § 2). */
 export const DATA_GROUPS: readonly DataGroup[] = ["county", "property_improvement"];
@@ -119,15 +127,6 @@ export function runGroups(summary: RunSummaryFile): DataGroup[] {
   return groups;
 }
 
-/** The files of a group that go public: its archive CAR, its tables.car and every part. */
-export function publicFiles(group: GroupResult): string[] {
-  return [
-    group.carPath,
-    join(group.tablesDir, "tables.car"),
-    ...listTableParts(group.tablesDir).map((p) => p.path),
-  ];
-}
-
 export interface PublishOptions {
   /** pipeline/data/runs/<runId> (gitignored). */
   runDir: string;
@@ -136,17 +135,21 @@ export interface PublishOptions {
   repoRoot: string;
   /** The child env: credentials live here and nowhere else. */
   env: NodeJS.ProcessEnv;
+  /** The SHA-256 of reports/public-files.json the PO approved at D-8 (`--approved`). */
+  approved: string;
   run?: CliRunner;
   fetch?: FetchLike;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
   workTreeStatus?: (repoRoot: string) => string;
+  /** HEAD of `repoRoot` (default `git rev-parse HEAD`); must equal profiles[].gitCommit. */
+  headCommit?: (repoRoot: string) => string;
   /** Kubo RPC API origin for the adds (default: Filebase). */
   api?: string;
 }
 
 export type PublishStage =
-  "sequence" | "readback" | "car-add" | "manifest" | "manifest-add" | "index";
+  "sequence" | "readback" | "car-add" | "car-readback" | "manifest" | "manifest-add" | "index";
 
 export interface PublishFailure {
   stage: PublishStage;
@@ -160,6 +163,15 @@ export interface CarAdd {
   name: string;
   cid: string;
   size: number;
+  /** The gateway's bytes for `cid`, compared with the local file (OR-4). */
+  readback?: Pick<FileReadback, "size" | "sha256" | "ok">;
+}
+
+/** What the upload checked against the D-8 approval before its first step. */
+export interface ApprovalCheck {
+  publicFilesSha256: string;
+  files: number;
+  bytes: number;
 }
 
 export interface PublishResult {
@@ -168,6 +180,7 @@ export interface PublishResult {
   sequence: SequenceReport;
   readback: ReadbackResult[];
   carAdds: CarAdd[];
+  approval?: ApprovalCheck;
   manifestCid?: string;
   manifestPath?: string;
   indexPath?: string;
@@ -192,8 +205,56 @@ function profilesOf(summary: RunSummaryFile): ManifestProfile[] {
   });
 }
 
-export async function publishRun(options: PublishOptions): Promise<PublishResult> {
-  // Pre-flight: everything that can be checked before the first CLI call.
+/** Which precondition refused the run (OR-14). */
+export type PreflightCheck = "filebase-env" | "work-tree" | "commit";
+
+/** A precondition that refuses the run before the first network write (OR-14). */
+export class PreflightError extends Error {
+  constructor(
+    readonly check: PreflightCheck,
+    detail: string,
+  ) {
+    super(`PreflightError (${check}): ${detail}`);
+    this.name = "PreflightError";
+  }
+}
+
+function gitStatus(repoRoot: string): string {
+  return execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+}
+
+function gitHead(repoRoot: string): string {
+  return execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" });
+}
+
+export type PreflightOptions = Pick<
+  PublishOptions,
+  "runDir" | "runsDir" | "repoRoot" | "env" | "approved" | "workTreeStatus" | "headCommit" | "api"
+>;
+
+/** Everything publishRun needs that preflight read and checked. */
+export interface Preflight {
+  summary: RunSummaryFile;
+  groups: DataGroup[];
+  profiles: ManifestProfile[];
+  index: RunsIndexV1;
+  indexPath: string;
+  previousManifestCid: string | null;
+  buildGroups: GroupResult[];
+  approval: ApprovalCheck;
+}
+
+/**
+ * Every precondition that can refuse the run, checked before the first network write (OR-14):
+ * the run summary and its profiles, a run not yet in the index, complete Filebase credentials
+ * (names only; no value reaches a message), a clean working tree, the recorded
+ * profiles[].gitCommit equal to HEAD, and the D-8 approval with no build drift.
+ * Throws PreflightError, ApprovalError or BuildDriftError; makes no network call.
+ */
+export async function preflight(options: PreflightOptions): Promise<Preflight> {
   const summary = loadRunSummary(options.runDir);
   const groups = runGroups(summary);
   const profiles = profilesOf(summary);
@@ -201,10 +262,66 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
   const index = existsSync(indexPath) ? parseRunsIndex(readFileSync(indexPath)) : emptyRunsIndex();
   if (index.runs.some((r) => r.runId === summary.runId))
     throw new Error(`run ${summary.runId} is already in ${indexPath}; a run is published once`);
-  const previousManifestCid = index.runs.at(-1)?.manifestCid ?? null;
+  if ((options.api ?? FILEBASE_RPC_API) === FILEBASE_RPC_API) {
+    const problem = filebaseEnvProblem(options.env);
+    if (problem !== undefined)
+      throw new PreflightError("filebase-env", `Filebase credentials: ${problem}`);
+  }
+  const status = (options.workTreeStatus ?? gitStatus)(options.repoRoot).trim();
+  if (status !== "")
+    throw new PreflightError(
+      "work-tree",
+      `working tree is dirty; commit before publishing:\n${status}`,
+    );
+  const recorded = [...new Set(profiles.map((p) => p.gitCommit))];
+  if (recorded.length !== 1)
+    throw new PreflightError(
+      "commit",
+      `summary.json profiles must record exactly one gitCommit, got ${recorded.join(", ") || "none"}`,
+    );
+  const commit = recorded[0] as string;
+  const head = (options.headCommit ?? gitHead)(options.repoRoot).trim();
+  if (commit !== head)
+    throw new PreflightError(
+      "commit",
+      `the build was made at ${commit} (summary.json profiles[].gitCommit) but HEAD is ${head}; rebuild at HEAD or check out ${commit}`,
+    );
+  // The approved build, checked on disk (throws ApprovalError/BuildDriftError).
+  const build = await verifyApprovedBuild(options.runDir, options.approved);
+  if (build.listing.runId !== summary.runId || build.listing.county !== summary.county.slug)
+    throw new Error(
+      `the approved build is ${build.listing.county}/${build.listing.runId}, not ${summary.county.slug}/${summary.runId}`,
+    );
+  return {
+    summary,
+    groups,
+    profiles,
+    index,
+    indexPath,
+    previousManifestCid: index.runs.at(-1)?.manifestCid ?? null,
+    buildGroups: approvedGroups(build, groups),
+    approval: {
+      publicFilesSha256: build.publicFilesSha256,
+      files: build.files,
+      bytes: build.bytes,
+    },
+  };
+}
 
-  const token = kuboToken(options.env);
-  const secrets = [...secretValues(options.env), ...(token === undefined ? [] : [token])];
+export async function publishRun(options: PublishOptions): Promise<PublishResult> {
+  // Pre-flight (OR-14): every refusal happens here, before the first CLI call or network write.
+  const {
+    summary,
+    groups,
+    profiles,
+    index,
+    indexPath,
+    previousManifestCid,
+    buildGroups,
+    approval,
+  } = await preflight(options);
+
+  const secrets = secretValues(options.env);
   const safe = (text: string): string => redact(text, secrets);
   const reportsDir = join(options.runDir, "reports");
   mkdirSync(reportsDir, { recursive: true });
@@ -221,14 +338,16 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
       sequence,
       readback,
       carAdds,
+      approval,
       failed: { stage, reason: safe(reason) },
     });
 
-  // 1 The sequence: phase 1 for every group, then the uploads.
-  const sequence = await runPublish({
+  // 1 The uploads of the approved build only: phase 1 is not re-run.
+  const sequence = await runUpload({
     county: summary.county.slug,
     runDir: options.runDir,
     groups,
+    built: buildGroups,
     repoRoot: options.repoRoot,
     env: options.env,
     ...(options.run === undefined ? {} : { run: options.run }),
@@ -261,7 +380,7 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
       bad.map((r) => `${r.group}: ${r.problems.join("; ")}`).join("\n"),
     );
 
-  // 3 Each .car as a plain pinned file: the manifest's carCid.
+  // 3 Each .car as a plain pinned file (the manifest's carCid), read back from the gateway.
   const addOptions: KuboAddOptions = {
     env: options.env,
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
@@ -270,12 +389,21 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
   for (const g of sequence.groups) {
     for (const path of [g.carPath, join(g.tablesDir, "tables.car")]) {
       const name = relative(options.runDir, path);
+      let added;
       try {
-        const added = await kuboAddFile(path, await cidOfFile(path), addOptions);
-        carAdds.push({ group: g.group, name, cid: added.cid, size: added.size });
+        added = await kuboAddFile(path, await cidOfFile(path), addOptions);
       } catch (error) {
         return fail(sequence, "car-add", `${name}: ${message(error)}`);
       }
+      const back = await readbackFile(added.cid, path, readbackOptions);
+      carAdds.push({
+        group: g.group,
+        name,
+        cid: added.cid,
+        size: added.size,
+        readback: { size: back.size, sha256: back.sha256, ok: back.ok },
+      });
+      if (!back.ok) return fail(sequence, "car-readback", `${name}: ${back.reason ?? "mismatch"}`);
     }
   }
 
@@ -364,6 +492,7 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
     sequence,
     readback,
     carAdds,
+    approval,
     manifestCid: built.cid,
     manifestPath,
     indexPath,

@@ -1,46 +1,55 @@
 // The publication entry point (contracts/cli.md), run from the repository root as
 //   pnpm --filter @countylens/publish exec tsx src/cli.ts <command> …
 //   build    --run <runId>      phase 1 for both groups (validate → hash → validate CAR →
-//                               export-tables); prints roots, part counts, sizes, SHA-256s and
-//                               the files that would go public (the D-8 input). Never uploads.
-//   upload   --run <runId>      D-8 gated: loads ~/.config/assessment/filebase.env into the child
-//                               env (never process.env, never argv, never printed), then runs
-//                               publishRun (uploads, readback, carCid adds, manifest, runs/).
+//                               export-tables); writes reports/sequence-build.json and
+//                               reports/public-files.json (the D-8 evidence: exactly the files that
+//                               would go public, with size, SHA-256 and CID) and prints them with
+//                               the listing's SHA-256. Never uploads.
+//   upload   --run <runId> --approved <sha256 of public-files.json>
+//                               D-8 gated: loads ~/.config/assessment/filebase.env into the child
+//                               env (never process.env, never argv, never printed), requires the
+//                               three FILEBASE_* names and no IPFS_API_TOKEN, then runs publishRun
+//                               on the approved build only (verify on disk, uploads, readback,
+//                               carCid adds + readback, manifest, runs/). Never re-runs phase 1.
 //   cid-copy --manifest <path>  hands runs/<runId>/manifest.json to the CID-copy uploader
 //                               (src/cid-copy.ts, T041), loaded only by this command.
 // Every printed line passes through redact(): a credential value never reaches a terminal or a
 // log. There is no flag that skips, reorders or dry-runs a step (P0-2) and no credential flag.
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BUILD_REPORT, writePublicFiles } from "./approval.js";
 import type { FetchLike } from "./kubo-add.js";
-import { kuboToken } from "./kubo-add.js";
-import { redact, runBuild, secretValues, sha256File, type CliRunner } from "./sequence.js";
+import {
+  FILEBASE_VARS,
+  filebaseEnvProblem,
+  redact,
+  runBuild,
+  secretValues,
+  type CliRunner,
+} from "./sequence.js";
 import {
   loadRunSummary,
-  publicFiles,
   publishRun,
+  preflight,
   runGroups,
+  type PreflightOptions,
   type PublishOptions,
   type PublishResult,
 } from "./upload.js";
 
+export { FILEBASE_VARS } from "./sequence.js";
+
 /** Where PUBLISHING.md keeps the Filebase keys: outside every repository. */
 export const FILEBASE_ENV_FILE = join(homedir(), ".config", "assessment", "filebase.env");
-/** The variable names the upload needs (values are never printed). */
-export const FILEBASE_VARS = [
-  "FILEBASE_ACCESS_KEY",
-  "FILEBASE_SECRET_KEY",
-  "FILEBASE_BUCKET",
-] as const;
-
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const RUN_ID = /^[a-z0-9][a-z0-9-]*$/;
 const USAGE = [
   "usage:",
   "  cli.ts build --run <runId>      phase 1 (validate → hash → validate CAR → export-tables); nothing uploaded",
-  "  cli.ts upload --run <runId>     D-8 gated: uploads, readback, carCid adds, manifest, runs/",
+  "  cli.ts upload --run <runId> --approved <sha256 of reports/public-files.json>",
+  "                                  D-8 gated: the approved build only; uploads, readback, carCid adds, manifest, runs/",
   `                                  (credentials from ${FILEBASE_ENV_FILE} or the environment)`,
   "  cli.ts cid-copy --manifest runs/<runId>/manifest.json",
   "",
@@ -74,32 +83,48 @@ export interface CliDeps {
   publish?: (options: PublishOptions) => Promise<PublishResult>;
   cidCopy?: CidCopyFn;
   workTreeStatus?: (repoRoot: string) => string;
+  /** HEAD of the repo (default `git rev-parse HEAD`). */
+  headCommit?: (repoRoot: string) => string;
+  /** The OR-14 preflight (default upload.ts preflight), run before publishRun. */
+  preflight?: (options: PreflightOptions) => Promise<unknown>;
   stdout?: (text: string) => void;
   stderr?: (text: string) => void;
 }
 
+type Command = "build" | "upload" | "cid-copy";
+
 interface Parsed {
-  command: "build" | "upload" | "cid-copy";
-  value: string;
+  command: Command;
+  /** Flag → value, exactly the command's required flags. */
+  flags: Record<string, string>;
 }
 
-const COMMANDS: Record<Parsed["command"], string> = {
-  build: "--run",
-  upload: "--run",
-  "cid-copy": "--manifest",
+const COMMANDS: Record<Command, readonly string[]> = {
+  build: ["--run"],
+  upload: ["--run", "--approved"],
+  "cid-copy": ["--manifest"],
 };
 
-/** `<command> <flag> <value>` and nothing else: no skip, dry-run, credential or Atlas flag. */
+/**
+ * `<command>` and exactly its `<flag> <value>` pairs, nothing else: no skip, dry-run,
+ * credential or Atlas flag.
+ */
 function parseArgv(argv: readonly string[]): Parsed | string {
   const [command, ...rest] = argv;
   if (command === undefined) return "a command is required";
   if (!(command in COMMANDS)) return `unknown command ${command}`;
-  const flag = COMMANDS[command as Parsed["command"]];
-  const [name, value, ...extra] = rest;
-  if (name !== flag || value === undefined || value.startsWith("--"))
-    return `${command} needs ${flag} <value>`;
-  if (extra.length > 0) return `unknown option ${extra.join(" ")}`;
-  return { command: command as Parsed["command"], value };
+  const required = COMMANDS[command as Command];
+  const needs = `${command} needs ${required.map((f) => `${f} <value>`).join(" ")}`;
+  const flags: Record<string, string> = {};
+  for (let i = 0; i < rest.length; i += 2) {
+    const name = rest[i] as string;
+    const value = rest[i + 1];
+    if (!required.includes(name)) return `unknown option ${rest.slice(i).join(" ")}`;
+    if (value === undefined || value.startsWith("--") || name in flags) return needs;
+    flags[name] = value;
+  }
+  if (required.some((f) => flags[f] === undefined)) return needs;
+  return { command: command as Command, flags };
 }
 
 /** `KEY=value` lines (optional `export`, quotes stripped, `#` comments); never logged. */
@@ -131,13 +156,17 @@ interface ChildEnv {
 function uploadEnv(base: NodeJS.ProcessEnv, envFile: string): ChildEnv | string {
   const fromFile = existsSync(envFile) ? parseEnvFile(readFileSync(envFile, "utf8")) : undefined;
   const env: NodeJS.ProcessEnv = { ...base, ...(fromFile ?? {}) };
-  if (kuboToken(env) === undefined) {
-    const missing = FILEBASE_VARS.filter((v) => !env[v]);
+  // Fail closed (OR-8): the three FILEBASE_* names, each of them, and no IPFS_API_TOKEN beside
+  // them; a stray token never stands in for a missing key.
+  const problem = filebaseEnvProblem(env);
+  if (problem !== undefined) {
+    if (!problem.startsWith("missing ")) return problem;
     return (
-      `missing ${missing.join(", ")}: ` +
+      `${problem}: ` +
       (fromFile === undefined
         ? `${envFile} is absent and the environment does not carry them; `
         : `${envFile} does not set them; `) +
+      `the upload needs ${FILEBASE_VARS.join(", ")}; ` +
       "load the Filebase keys per PUBLISHING.md (set -a; . ~/.config/assessment/filebase.env; set +a)"
     );
   }
@@ -161,8 +190,8 @@ class Printer {
     private readonly err: (text: string) => void,
   ) {}
   protect(env: NodeJS.ProcessEnv): void {
-    const token = kuboToken(env);
-    this.secrets = [...secretValues(env), ...(token === undefined ? [] : [token])];
+    // Raw keys plus the composed Filebase token and its Authorization value (OR-7).
+    this.secrets = secretValues(env);
   }
   stdout(text: string): void {
     this.out(redact(text, this.secrets));
@@ -203,27 +232,31 @@ async function build(runId: string, deps: CliDeps, repoRoot: string, p: Printer)
     );
     return 1;
   }
-  let total = 0;
-  for (const g of report.groups) {
-    const files = publicFiles(g);
-    total += files.length;
+  const written = await writePublicFiles({ runDir, runId, report });
+  for (const g of written.listing.groups) {
     p.stdout(`${g.group}\n`);
     p.stdout(`  archive root ${g.carRoot}  (${g.blocks} blocks)\n`);
-    p.stdout(`  tables root ${g.tablesRoot}  (${files.length - 2} parts)\n`);
-    for (const file of files) {
-      p.stdout(
-        `  ${relative(runDir, file)}  ${statSync(file).size} B  sha256 ${await sha256File(file)}\n`,
-      );
-    }
+    p.stdout(`  tables root ${g.tablesRoot}  (${g.files.length - 2} parts)\n`);
+    for (const f of g.files)
+      p.stdout(`  ${f.path}  ${f.size} B  sha256 ${f.sha256}  cid ${f.cid}\n`);
   }
   p.stdout(
-    `files that would go public: ${total} (listed above; plus runs/${runId}/manifest.json and runs/index.json after upload)\n`,
+    `files that would go public: ${written.listing.totalFiles}, ${written.listing.totalBytes} B (listed above; plus runs/${runId}/manifest.json and runs/index.json after upload)\n`,
   );
-  p.stdout(`report: ${relative(repoRoot, join(runDir, "reports", "sequence.json"))}\n`);
+  p.stdout(`report: ${relative(repoRoot, join(runDir, BUILD_REPORT))}\n`);
+  p.stdout(`listing: ${relative(repoRoot, written.path)}\n`);
+  p.stdout(`public-files.json sha256 ${written.sha256}\n`);
+  p.stdout(`after D-8 approval: cli.ts upload --run ${runId} --approved ${written.sha256}\n`);
   return 0;
 }
 
-async function upload(runId: string, deps: CliDeps, repoRoot: string, p: Printer): Promise<number> {
+async function upload(
+  runId: string,
+  approved: string,
+  deps: CliDeps,
+  repoRoot: string,
+  p: Printer,
+): Promise<number> {
   const runDir = runDirFor(repoRoot, runId);
   const child = uploadEnv({ ...(deps.env ?? process.env) }, deps.envFile ?? FILEBASE_ENV_FILE);
   if (typeof child === "string") {
@@ -233,17 +266,30 @@ async function upload(runId: string, deps: CliDeps, repoRoot: string, p: Printer
   p.protect(child.env);
   loadRunSummary(runDir);
   p.stdout(`${child.note}\n`);
-  p.stdout(`upload ${runId}: the 12-step sequence, readback, carCid adds, manifest, runs/\n`);
-  const publish = deps.publish ?? publishRun;
-  const result = await publish({
+  p.stdout(
+    `upload ${runId}: the approved build (public-files.json sha256 ${approved}) only: uploads, readback, carCid adds, manifest, runs/\n`,
+  );
+  const checks: PreflightOptions = {
     runDir,
     runsDir: join(repoRoot, "runs"),
     repoRoot,
     env: child.env,
+    approved,
+    ...(deps.workTreeStatus === undefined ? {} : { workTreeStatus: deps.workTreeStatus }),
+    ...(deps.headCommit === undefined ? {} : { headCommit: deps.headCommit }),
+  };
+  // OR-14: every refusal before the first upload; a throw exits 1 through main().
+  await (deps.preflight ?? preflight)(checks);
+  const publish = deps.publish ?? publishRun;
+  const result = await publish({
+    ...checks,
     ...(deps.run === undefined ? {} : { run: deps.run }),
     ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
-    ...(deps.workTreeStatus === undefined ? {} : { workTreeStatus: deps.workTreeStatus }),
   });
+  if (result.approval !== undefined)
+    p.stdout(
+      `  approval ${result.approval.publicFilesSha256}: ${result.approval.files} files, ${result.approval.bytes} B unchanged on disk\n`,
+    );
   for (const r of result.readback) {
     p.stdout(
       `  readback ${r.group}: ${r.ok ? "ok" : "FAILED"} · archive root ${r.archiveRoot.ok ? "ok" : "MISMATCH"} · tables root ${r.tablesRoot.ok ? "ok" : "MISMATCH"} · ${r.partCount} parts\n`,
@@ -338,11 +384,17 @@ export async function main(argv: readonly string[], deps: CliDeps = {}): Promise
   try {
     switch (parsed.command) {
       case "build":
-        return await build(parsed.value, deps, repoRoot, p);
+        return await build(parsed.flags["--run"] as string, deps, repoRoot, p);
       case "upload":
-        return await upload(parsed.value, deps, repoRoot, p);
+        return await upload(
+          parsed.flags["--run"] as string,
+          parsed.flags["--approved"] as string,
+          deps,
+          repoRoot,
+          p,
+        );
       case "cid-copy":
-        return await cidCopy(parsed.value, deps, repoRoot, p);
+        return await cidCopy(parsed.flags["--manifest"] as string, deps, repoRoot, p);
     }
   } catch (error) {
     p.stderr(`error: ${message(error)}\n`);

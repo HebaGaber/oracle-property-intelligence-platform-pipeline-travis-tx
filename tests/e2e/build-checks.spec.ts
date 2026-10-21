@@ -31,6 +31,11 @@ async function expectSuitePassed(label: string, options: SuiteOptions): Promise<
   return outcome;
 }
 
+/** Passed tests whose full name carries the exact case ID (e.g. `A-03-TC-001`). */
+function passedFor(outcome: VitestRun, id: string): number {
+  return outcome.passedNames.filter((name) => name.includes(id)).length;
+}
+
 test.describe("A-03 build-time cases at the deployed SHA", () => {
   test.describe.configure({ mode: "serial", timeout: 15 * 60_000 });
 
@@ -59,9 +64,10 @@ test.describe("A-03 build-time cases at the deployed SHA", () => {
         runner: "pnpm",
         cwd: resolve(repoRoot, "pipeline/publish"),
         files: ["test/publish-order.test.ts"],
-        nameFilter: "TC-001",
+        nameFilter: "A-03-TC-001",
       });
-      expect(outcome.passedNames.some((name) => /order/i.test(name))).toBe(true);
+      // Matched by the case ID in the test name, never by a word in it.
+      expect(passedFor(outcome, "A-03-TC-001")).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -71,12 +77,11 @@ test.describe("A-03 build-time cases at the deployed SHA", () => {
         runner: "pnpm",
         cwd: resolve(repoRoot, "pipeline/publish"),
         files: ["test/publish-order.test.ts"],
+        nameFilter: "A-03-TC-002",
       });
-      // The negative path must have been exercised: a failing step stops the run, and no
-      // flag or environment switch skips a step (P0-2).
-      expect(outcome.passedNames.filter((name) => /skip|fail/i.test(name)).length).toBeGreaterThan(
-        0,
-      );
+      // The reordered plan (upload before export-tables) and the skipped step are refused by
+      // name (PlanOrderError), a failing step stops the run, and no switch skips a step (P0-2).
+      expect(passedFor(outcome, "A-03-TC-002")).toBeGreaterThanOrEqual(1);
     });
   });
 

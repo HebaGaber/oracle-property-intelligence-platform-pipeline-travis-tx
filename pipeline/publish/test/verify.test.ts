@@ -635,3 +635,51 @@ describe("ALL ARTIFACTS VERIFIED (TC-040)", () => {
     expect(lines.some((l) => l.includes(FILEBASE) && /not checked/.test(l))).toBe(true);
   });
 });
+
+describe("redirects (OR-6)", () => {
+  /**
+   * The Pinata host answers every CID with a 302 to a host outside the allowlist. A fetch left at
+   * the default `redirect: "follow"` would be answered by that host (simulated here: the fake
+   * follows unless the request says `redirect: "manual"`), which must never count as a check.
+   */
+  function redirecting(published: Map<string, Uint8Array>) {
+    const hosts: string[] = [];
+    const modes: Array<RequestInit["redirect"]> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = new URL(typeof input === "string" ? input : (input as Request).url);
+      const cid = /^\/ipfs\/([a-z0-9]+)$/.exec(url.pathname)?.[1] ?? "";
+      hosts.push(url.host);
+      modes.push(init?.redirect);
+      const bytes = published.get(cid);
+      if (url.host !== PINATA)
+        return bytes ? new Response(bytes) : new Response("", { status: 404 });
+      const location = `https://evil.example/ipfs/${cid}`;
+      if (init?.redirect === "manual")
+        return new Response(null, { status: 302, headers: { location } });
+      hosts.push("evil.example");
+      return bytes ? new Response(bytes) : new Response("", { status: 404 });
+    };
+    return { fetch: fetchImpl, hosts, modes };
+  }
+
+  it("does not follow a redirect off the allowlisted host: the check fails and names the host", async () => {
+    const f = await fixture();
+    const gw = redirecting(f.published);
+    const lines: string[] = [];
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: gw.fetch,
+      sleep: async () => {},
+      random: () => 0.5,
+      log: (line) => lines.push(line),
+    });
+    expect(gw.modes.every((m) => m === "manual")).toBe(true);
+    expect(gw.hosts).not.toContain("evil.example");
+    expect(report.ok).toBe(false);
+    const pinata = report.manifest.find((c) => c.gateway === PINATA);
+    expect(pinata?.ok).toBe(false);
+    expect(pinata?.status).toBe(302);
+    expect(pinata?.reason).toContain("redirect to evil.example refused");
+    expect(lines).not.toContain(ALL_VERIFIED_TEXT);
+  });
+});

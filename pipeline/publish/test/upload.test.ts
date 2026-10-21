@@ -24,8 +24,22 @@ import { RunManifestV1, RunsIndexV1 } from "@countylens/contract";
 import { cidOfBytes, cidOfFile } from "../src/cid.js";
 import { COMPTROLLER_LIMITATION } from "../src/manifest.js";
 import { emptyRunsIndex, appendRun, parseRunsIndex, runsIndexBytes } from "../src/runs-index.js";
-import { PART_SIZE_BYTES, planPublish, type CliRunner, type DataGroup } from "../src/sequence.js";
-import { RunSummaryFile, loadRunSummary, publicFiles, publishRun } from "../src/upload.js";
+import {
+  PART_SIZE_BYTES,
+  planPublish,
+  planUpload,
+  runBuild,
+  type CliRunner,
+  type DataGroup,
+} from "../src/sequence.js";
+import {
+  PreflightError,
+  RunSummaryFile,
+  loadRunSummary,
+  publicFiles,
+  publishRun,
+} from "../src/upload.js";
+import { PublicFilesListing, writePublicFiles } from "../src/approval.js";
 import type { FetchLike } from "../src/kubo-add.js";
 
 const RUN_ID = "travis-202609-permits-20261021t160000z";
@@ -42,6 +56,9 @@ const TOKEN = Buffer.from(
   `${ENV.FILEBASE_ACCESS_KEY}:${ENV.FILEBASE_SECRET_KEY}:${ENV.FILEBASE_BUCKET}`,
 ).toString("base64");
 const SECRETS = [TOKEN, ENV.FILEBASE_SECRET_KEY, ENV.FILEBASE_ACCESS_KEY];
+
+/** The commit summary.json records for the profile (profiles[].gitCommit) and the fake HEAD. */
+const HEAD = "17c6cd8";
 
 const sha = (b: Uint8Array): string => createHash("sha256").update(b).digest("hex");
 const text = (s: string): Uint8Array => new TextEncoder().encode(s);
@@ -101,6 +118,8 @@ interface Net {
 interface NetOptions {
   /** Rewrites the Hash `add` returns for one file (default: the local CID of its bytes). */
   addHash?: (name: string, cid: string) => string;
+  /** Serve other bytes from the gateway for this add (a carCid readback mismatch). */
+  serveOther?: (name: string) => boolean;
 }
 
 /** A fake Filebase: Kubo RPC `add` plus the gateway serving whatever was added. */
@@ -119,7 +138,7 @@ function fakeNetwork(opts: NetOptions = {}): Net {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const cid = await cidOfBytes(bytes);
       const returned = opts.addHash?.(file.name, cid) ?? cid;
-      store.set(cid, bytes);
+      store.set(cid, opts.serveOther?.(file.name) ? text("not the added bytes") : bytes);
       adds.push({
         name: file.name,
         cid,
@@ -357,10 +376,26 @@ function setup(opts: SetupOptions = {}): Setup {
   return { repoRoot, runDir, runsDir: join(repoRoot, "runs") };
 }
 
-function publish(
+/** The `build` command's library half: phase 1, then reports/public-files.json; its SHA-256. */
+async function build(s: Setup, cli: { run: CliRunner }): Promise<string> {
+  const report = await runBuild({
+    county: "travis",
+    runDir: s.runDir,
+    groups: GROUPS,
+    run: cli.run,
+  });
+  expect(report.ok).toBe(true);
+  const written = await writePublicFiles({ runDir: s.runDir, runId: RUN_ID, report });
+  expect(written.sha256).toBe(sha(readFileSync(join(s.runDir, "reports/public-files.json"))));
+  return written.sha256;
+}
+
+/** publishRun of an approved build: the `upload` command's library half. */
+function publishOnly(
   s: Setup,
   net: Net,
   cli: { run: CliRunner },
+  approved: string,
   extra: Partial<Parameters<typeof publishRun>[0]> = {},
 ): ReturnType<typeof publishRun> {
   return publishRun({
@@ -368,12 +403,24 @@ function publish(
     runsDir: s.runsDir,
     repoRoot: s.repoRoot,
     env: { PATH: "/usr/bin", ...ENV },
+    approved,
     run: cli.run,
     fetch: net.fetch,
     sleep: async () => {},
     workTreeStatus: () => "",
+    headCommit: () => HEAD,
     ...extra,
   });
+}
+
+/** build, then publishRun with the SHA-256 of the public-files.json the build wrote. */
+async function publish(
+  s: Setup,
+  net: Net,
+  cli: { run: CliRunner },
+  extra: Partial<Parameters<typeof publishRun>[0]> = {},
+): ReturnType<typeof publishRun> {
+  return publishOnly(s, net, cli, await build(s, cli), extra);
 }
 
 function expectNoSecret(path: string): void {
@@ -392,9 +439,10 @@ describe("publishRun: sequence → readback → carCid adds → manifest → man
     expect(result.ok).toBe(true);
     expect(result.runId).toBe(RUN_ID);
 
-    // 1. The 12-step sequence, county from summary.json.
+    // 1. The 12-step order: the build's 8 steps, then (after the approval check) the 4 uploads.
     expect(cli.calls).toEqual(planPublish("travis", s.runDir, GROUPS).map((p) => p.argv));
     expect(result.sequence.ok).toBe(true);
+    expect(result.sequence.phase).toBe("upload");
 
     // 2. Readback of every part from the Filebase gateway, before any add.
     expect(result.readback.map((r) => [r.group, r.ok, r.partCount])).toEqual([
@@ -406,7 +454,7 @@ describe("publishRun: sequence → readback → carCid adds → manifest → man
     expect(partPaths).toHaveLength(4);
     const partCids = await Promise.all(partPaths.map((p) => cidOfFile(p)));
     // Two parts are in flight at a time, so the GET order within a group is not fixed.
-    expect([...net.gets].sort()).toEqual(
+    expect(net.gets.slice(0, 4).sort()).toEqual(
       partCids.map((c) => `https://ipfs.filebase.io/ipfs/${c}`).sort(),
     );
     const firstAdd = net.events.findIndex((e) => e.startsWith("ADD"));
@@ -467,7 +515,13 @@ describe("publishRun: sequence → readback → carCid adds → manifest → man
     ]);
 
     // 6. Reports without secrets.
-    for (const name of ["sequence.json", "readback.json", "publish.json"])
+    for (const name of [
+      "sequence-build.json",
+      "sequence-upload.json",
+      "public-files.json",
+      "readback.json",
+      "publish.json",
+    ])
       expectNoSecret(join(s.runDir, "reports", name));
     expectNoSecret(manifestPath);
     expectNoSecret(indexPath);
@@ -548,11 +602,9 @@ describe("publishRun: sequence → readback → carCid adds → manifest → man
     expect(net.adds).toHaveLength(0);
     expect(result.readback).toEqual([]);
     expect(existsSync(join(s.runsDir, RUN_ID, "manifest.json"))).toBe(false);
-    expect(JSON.parse(readFileSync(join(s.runDir, "reports/sequence.json"), "utf8"))).toMatchObject(
-      {
-        ok: false,
-      },
-    );
+    expect(
+      JSON.parse(readFileSync(join(s.runDir, "reports/sequence-upload.json"), "utf8")),
+    ).toMatchObject({ ok: false, phase: "upload" });
   });
 
   it("appends to an existing index, keeps the earlier entry byte-identical and links the previous manifest", async () => {
@@ -586,12 +638,13 @@ describe("publishRun: sequence → readback → carCid adds → manifest → man
     const s = setup();
     const net = fakeNetwork();
     const cli = fakeCli(net);
-    const first = await publish(s, net, cli);
+    const approved = await build(s, cli);
+    const first = await publishOnly(s, net, cli, approved);
     expect(first.ok).toBe(true);
     const manifestBefore = readFileSync(first.manifestPath as string);
     const indexBefore = readFileSync(first.indexPath as string);
     const again = fakeCli(net);
-    await expect(publish(s, net, again)).rejects.toThrow(RUN_ID);
+    await expect(publishOnly(s, net, again, approved)).rejects.toThrow(RUN_ID);
     expect(again.calls).toHaveLength(0);
     expect(readFileSync(first.manifestPath as string).equals(manifestBefore)).toBe(true);
     expect(readFileSync(first.indexPath as string).equals(indexBefore)).toBe(true);
@@ -608,7 +661,12 @@ describe("publishRun: sequence → readback → carCid adds → manifest → man
     expect(process.env.FILEBASE_ACCESS_KEY).toBeUndefined();
     const flat = cli.calls.flat();
     for (const secret of SECRETS) expect(flat.some((a) => a.includes(secret))).toBe(false);
-    for (const name of ["sequence.json", "readback.json", "publish.json"])
+    for (const name of [
+      "sequence-build.json",
+      "sequence-upload.json",
+      "readback.json",
+      "publish.json",
+    ])
       expectNoSecret(join(s.runDir, "reports", name));
     expect(JSON.stringify(result)).not.toContain(ENV.FILEBASE_SECRET_KEY);
     expect(JSON.stringify(result)).not.toContain(TOKEN);
@@ -617,8 +675,9 @@ describe("publishRun: sequence → readback → carCid adds → manifest → man
   it("fails before the first CLI call when summary.json lacks owners_redacted (P0-15)", async () => {
     const s = setup({ ownersRedacted: null });
     const net = fakeNetwork();
+    const approved = await build(s, fakeCli(net));
     const cli = fakeCli(net);
-    await expect(publish(s, net, cli)).rejects.toThrow(/owners_redacted/);
+    await expect(publishOnly(s, net, cli, approved)).rejects.toThrow(/owners_redacted/);
     expect(cli.calls).toHaveLength(0);
     expect(net.adds).toHaveLength(0);
   });
@@ -642,5 +701,334 @@ describe("the run summary", () => {
   it("digests are what the gateway must serve", async () => {
     const bytes = text("PAR1 county property 0");
     expect(sha(bytes)).toMatch(/^[a-f0-9]{64}$/);
+  });
+});
+
+/** The CLI calls after the build's eight. */
+const uploadCalls = (calls: string[][]): string[][] => calls.slice(8);
+
+describe("the D-8 approval: build once, upload exactly the approved files (OR-1)", () => {
+  it("writes sequence-build.json with every phase-1 step, exit code, roots and output size + SHA-256", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    await build(s, fakeCli(net));
+    const report = JSON.parse(readFileSync(join(s.runDir, "reports/sequence-build.json"), "utf8"));
+    expect(report).toMatchObject({ ok: true, phase: "build" });
+    expect(report.steps).toHaveLength(8);
+    for (const step of report.steps) {
+      expect(step.exitCode).toBe(0);
+      expect(step.outputs.length).toBeGreaterThan(0);
+      for (const o of step.outputs) {
+        expect(typeof o.size).toBe("number");
+        expect(o.sha256).toMatch(/^[a-f0-9]{64}$/);
+      }
+    }
+    expect(report.steps.filter((x: { carRoot?: string }) => x.carRoot)).toHaveLength(2);
+    expect(report.steps.filter((x: { tablesRoot?: string }) => x.tablesRoot)).toHaveLength(2);
+    expect(existsSync(join(s.runDir, "reports/sequence.json"))).toBe(false);
+  });
+
+  it("writes public-files.json listing exactly the CARs, tables.car and every part, with size, SHA-256 and CID", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    await build(s, fakeCli(net));
+    const bytes = readFileSync(join(s.runDir, "reports/public-files.json"));
+    const listing = PublicFilesListing.parse(JSON.parse(bytes.toString("utf8")));
+    const files = listing.groups.flatMap((g) => g.files);
+    expect(files.map((f) => f.path)).toEqual([
+      "car/travis-county.car",
+      "tables/county/tables.car",
+      "tables/county/property/part-00000.parquet",
+      "tables/county/structure/part-00000.parquet",
+      "car/travis-property_improvement.car",
+      "tables/property_improvement/tables.car",
+      "tables/property_improvement/property/part-00000.parquet",
+      "tables/property_improvement/property_improvement/part-00000.parquet",
+    ]);
+    for (const f of files) {
+      const body = readFileSync(join(s.runDir, f.path));
+      expect(f.size).toBe(body.length);
+      expect(f.sha256).toBe(sha(body));
+      expect(f.cid).toBe(await cidOfBytes(body));
+    }
+    expect(listing.totalFiles).toBe(8);
+    expect(listing.totalBytes).toBe(files.reduce((n, f) => n + f.size, 0));
+    const buildReport = readFileSync(join(s.runDir, "reports/sequence-build.json"));
+    expect(listing.buildReport).toEqual({
+      path: "reports/sequence-build.json",
+      sha256: sha(buildReport),
+    });
+    const parsed = JSON.parse(buildReport.toString("utf8"));
+    expect(listing.groups.map((g) => [g.group, g.carRoot, g.tablesRoot])).toEqual(
+      parsed.groups.map((g: { group: string; carRoot: string; tablesRoot: string }) => [
+        g.group,
+        g.carRoot,
+        g.tablesRoot,
+      ]),
+    );
+  });
+
+  it("uploads the approved build without re-running phase 1 and never rewrites sequence-build.json", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    const buildBefore = readFileSync(join(s.runDir, "reports/sequence-build.json"));
+    const result = await publishOnly(s, net, cli, approved);
+    expect(result.ok).toBe(true);
+    expect(uploadCalls(cli.calls)).toEqual(
+      planUpload("travis", s.runDir, GROUPS).map((p) => p.argv),
+    );
+    expect(uploadCalls(cli.calls).every((c) => c[0] === "upload")).toBe(true);
+    expect(readFileSync(join(s.runDir, "reports/sequence-build.json")).equals(buildBefore)).toBe(
+      true,
+    );
+    const upload = JSON.parse(readFileSync(join(s.runDir, "reports/sequence-upload.json"), "utf8"));
+    expect(upload).toMatchObject({ ok: true, phase: "upload" });
+    expect(upload.steps.map((x: { step: string }) => x.step)).toEqual([
+      "upload-car",
+      "upload-tables",
+      "upload-car",
+      "upload-tables",
+    ]);
+    const listing = PublicFilesListing.parse(
+      JSON.parse(readFileSync(join(s.runDir, "reports/public-files.json"), "utf8")),
+    );
+    expect(result.approval).toEqual({
+      publicFilesSha256: approved,
+      files: 8,
+      bytes: listing.totalBytes,
+    });
+  });
+
+  it("refuses an approval that is not the SHA-256 of public-files.json, before the first upload step", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    const wrong = "0".repeat(64);
+    const attempt = publishOnly(s, net, cli, wrong);
+    await expect(attempt).rejects.toMatchObject({ name: "ApprovalError" });
+    await expect(publishOnly(s, net, cli, wrong)).rejects.toThrow(
+      `reports/public-files.json has sha256 ${approved}, not the approved ${wrong}`,
+    );
+    await expect(publishOnly(s, net, cli, "")).rejects.toMatchObject({ name: "ApprovalError" });
+    expect(uploadCalls(cli.calls)).toHaveLength(0);
+    expect(net.adds).toHaveLength(0);
+    expect(net.gets).toHaveLength(0);
+  });
+
+  it("refuses when no build exists for the run: run build first", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    await expect(publishOnly(s, net, cli, "a".repeat(64))).rejects.toThrow(/run build first/);
+    expect(cli.calls).toHaveLength(0);
+  });
+
+  it("refuses with BuildDriftError naming a part whose bytes changed after the approval", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    write(join(s.runDir, "tables/county/property/part-00000.parquet"), "PAR1 changed after D-8");
+    const attempt = publishOnly(s, net, cli, approved);
+    await expect(attempt).rejects.toMatchObject({ name: "BuildDriftError" });
+    await expect(publishOnly(s, net, cli, approved)).rejects.toThrow(
+      "tables/county/property/part-00000.parquet",
+    );
+    expect(uploadCalls(cli.calls)).toHaveLength(0);
+    expect(net.adds).toHaveLength(0);
+  });
+
+  it("refuses with BuildDriftError a public file the approval does not list", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    write(join(s.runDir, "tables/county/extra/part-00000.parquet"), "PAR1 extra");
+    await expect(publishOnly(s, net, cli, approved)).rejects.toThrow(
+      /tables\/county\/extra\/part-00000\.parquet (appeared|is not in the approved)/,
+    );
+    await expect(publishOnly(s, net, cli, approved)).rejects.toMatchObject({
+      name: "BuildDriftError",
+    });
+    expect(uploadCalls(cli.calls)).toHaveLength(0);
+  });
+
+  it("refuses with BuildDriftError when sequence-build.json (its roots) changed after the approval", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    const path = join(s.runDir, "reports/sequence-build.json");
+    const report = JSON.parse(readFileSync(path, "utf8"));
+    report.groups[0].carRoot = report.groups[1].carRoot;
+    writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
+    await expect(publishOnly(s, net, cli, approved)).rejects.toMatchObject({
+      name: "BuildDriftError",
+    });
+    await expect(publishOnly(s, net, cli, approved)).rejects.toThrow("reports/sequence-build.json");
+    expect(uploadCalls(cli.calls)).toHaveLength(0);
+  });
+
+  it("refuses with BuildDriftError a CAR swapped after the approval, even with the listing re-stamped to it", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    await build(s, cli);
+    // Another CAR in place of the county archive, with the listing re-stamped to its bytes:
+    // size and SHA-256 agree with the listing, but its root is not the build's printed root.
+    const car = join(s.runDir, "car/travis-county.car");
+    await writeCar(car, { label: "CountyIndex", group: "something else" });
+    const listingPath = join(s.runDir, "reports/public-files.json");
+    const listing = PublicFilesListing.parse(JSON.parse(readFileSync(listingPath, "utf8")));
+    const body = readFileSync(car);
+    const entry = listing.groups[0]?.files[0];
+    if (entry === undefined) throw new Error("no county car entry");
+    entry.size = body.length;
+    entry.sha256 = sha(body);
+    entry.cid = await cidOfBytes(body);
+    listing.totalBytes = listing.groups.flatMap((g) => g.files).reduce((n, f) => n + f.size, 0);
+    writeFileSync(listingPath, `${JSON.stringify(listing, null, 2)}\n`);
+    const approved = sha(readFileSync(listingPath));
+    await expect(publishOnly(s, net, cli, approved)).rejects.toMatchObject({
+      name: "BuildDriftError",
+    });
+    expect(uploadCalls(cli.calls)).toHaveLength(0);
+  });
+});
+
+describe("carCid readback (OR-4)", () => {
+  it("reads every .car add back from the Filebase gateway by size and SHA-256, after its add", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const result = await publish(s, net, cli);
+    expect(result.ok).toBe(true);
+    for (const a of result.carAdds) {
+      const add = net.events.indexOf(`ADD ${basename(a.name)}`);
+      expect(add).toBeGreaterThanOrEqual(0);
+      expect(net.gets).toContain(`https://ipfs.filebase.io/ipfs/${a.cid}`);
+      expect(a.readback).toEqual({
+        size: readFileSync(join(s.runDir, a.name)).length,
+        sha256: sha(readFileSync(join(s.runDir, a.name))),
+        ok: true,
+      });
+    }
+    const manifestAdd = net.events.indexOf("ADD manifest.json");
+    const lastCarGet = Math.max(
+      ...result.carAdds.map((a) => net.events.lastIndexOf(`GET ${a.cid}`)),
+    );
+    expect(lastCarGet).toBeLessThan(manifestAdd);
+  });
+
+  it("writes no manifest when the gateway serves other bytes for a carCid", async () => {
+    const s = setup();
+    const net = fakeNetwork({ serveOther: (name) => name === "tables.car" });
+    const cli = fakeCli(net);
+    const result = await publish(s, net, cli);
+    expect(result.ok).toBe(false);
+    expect(result.failed?.stage).toBe("car-readback");
+    expect(result.failed?.reason).toContain("tables/county/tables.car");
+    expect(net.adds.map((a) => a.name)).not.toContain("manifest.json");
+    expect(existsSync(join(s.runsDir, RUN_ID, "manifest.json"))).toBe(false);
+    expect(existsSync(join(s.runsDir, "index.json"))).toBe(false);
+  });
+});
+
+describe("Filebase credentials fail closed (OR-8)", () => {
+  it("refuses a stray IPFS_API_TOKEN before any upload, even with the three FILEBASE_* names", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    await expect(
+      publishOnly(s, net, cli, approved, {
+        env: { ...ENV, IPFS_API_TOKEN: "fake-stray-bearer" },
+      }),
+    ).rejects.toThrow(/IPFS_API_TOKEN/);
+    expect(uploadCalls(cli.calls)).toHaveLength(0);
+    expect(net.adds).toHaveLength(0);
+  });
+
+  it("does not let IPFS_API_TOKEN mask a missing FILEBASE_* name", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    await expect(
+      publishOnly(s, net, cli, approved, {
+        env: { FILEBASE_ACCESS_KEY: ENV.FILEBASE_ACCESS_KEY, IPFS_API_TOKEN: "fake-stray-bearer" },
+      }),
+    ).rejects.toThrow(/FILEBASE_SECRET_KEY, FILEBASE_BUCKET/);
+    expect(uploadCalls(cli.calls)).toHaveLength(0);
+  });
+});
+
+describe("preflight before the first network write (OR-14)", () => {
+  it("refuses a dirty working tree before any upload: zero upload calls, no add, no manifest", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    const error = await publishOnly(s, net, cli, approved, {
+      workTreeStatus: () => " M pipeline/publish/src/upload.ts\n",
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PreflightError);
+    expect(error).toMatchObject({ check: "work-tree" });
+    expect((error as Error).message).toMatch(/working tree is dirty/);
+    expect((error as Error).message).toContain("pipeline/publish/src/upload.ts");
+    expect(uploadCalls(cli.calls)).toHaveLength(0);
+    expect(net.adds).toHaveLength(0);
+    expect(net.gets).toHaveLength(0);
+    expect(existsSync(join(s.runDir, "reports/sequence-upload.json"))).toBe(false);
+    expect(existsSync(join(s.runsDir, RUN_ID, "manifest.json"))).toBe(false);
+    expect(existsSync(join(s.runsDir, "index.json"))).toBe(false);
+  });
+
+  it("refuses a build whose recorded gitCommit is not HEAD, naming both commits, before any upload", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    const head = "9f0e1d2c3b4a59687766554433221100ffeeddcc";
+    const error = await publishOnly(s, net, cli, approved, { headCommit: () => head }).catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(PreflightError);
+    expect(error).toMatchObject({ check: "commit" });
+    expect((error as Error).message).toContain(HEAD);
+    expect((error as Error).message).toContain(head);
+    expect(uploadCalls(cli.calls)).toHaveLength(0);
+    expect(net.adds).toHaveLength(0);
+    expect(net.gets).toHaveLength(0);
+    expect(existsSync(join(s.runsDir, RUN_ID, "manifest.json"))).toBe(false);
+  });
+
+  it("refuses incomplete Filebase credentials before any upload, naming the variables only", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    const error = await publishOnly(s, net, cli, approved, {
+      env: { FILEBASE_ACCESS_KEY: ENV.FILEBASE_ACCESS_KEY },
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PreflightError);
+    expect(error).toMatchObject({ check: "filebase-env" });
+    expect((error as Error).message).toMatch(/FILEBASE_SECRET_KEY, FILEBASE_BUCKET/);
+    expect((error as Error).message).not.toContain(ENV.FILEBASE_ACCESS_KEY);
+    expect(uploadCalls(cli.calls)).toHaveLength(0);
+    expect(net.adds).toHaveLength(0);
+  });
+
+  it("proceeds as before on a clean tree whose HEAD is the recorded commit", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const result = await publish(s, net, cli, { workTreeStatus: () => "", headCommit: () => HEAD });
+    expect(result.ok).toBe(true);
+    expect(uploadCalls(cli.calls).length).toBeGreaterThan(0);
+    expect(existsSync(join(s.runsDir, RUN_ID, "manifest.json"))).toBe(true);
   });
 });

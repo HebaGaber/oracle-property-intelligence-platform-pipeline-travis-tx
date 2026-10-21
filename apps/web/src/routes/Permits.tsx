@@ -1,9 +1,13 @@
-// A-03 T007 stub of the Permits list (`/permits`). T056 (G-C4) fills it per plan § "Atlas
-// element map" → Permits list: the state machine loading → ready | empty | error, the engine
-// line, cards below 600 px and the data table from 600 px. A react-router lazy route module:
-// it exports `Component` and nothing else. No data, fixture or placeholder value lives here.
+// The Permits list route (`/permits`, A-03 T056): a react-router lazy route module exporting
+// `Component` only. The page and its state machine live in Permits.page.tsx; the loader
+// (index → manifest → DuckDB-WASM → rows) in src/engine/load-permits.ts, which imports the
+// engine chunk dynamically. No data, fixture or placeholder value lives here.
 import type { ReactElement } from "react";
+import { createPermitsLoader } from "../engine/load-permits";
+import { PermitsPage } from "./Permits.page";
+
+const loadPermits = createPermitsLoader();
 
 export function Component(): ReactElement {
-  return <section aria-label="Permits" data-route="permits" />;
+  return <PermitsPage load={loadPermits} />;
 }
