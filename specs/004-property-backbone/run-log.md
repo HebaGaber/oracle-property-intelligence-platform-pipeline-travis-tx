@@ -15,3 +15,35 @@ Story A-04 (merged A-04 TCAD · A-05 coordinates · A-06 permits). Folder REPO-p
 | 21:59 | A2 G4 pre-check | FAIL: C-06 (AC-8 denominator; AC-2 vs AC-5 confidential), C-08 (NFR-002 no number), C-11 (size_days 2.5 > 1.5, from the PO merge). C-04 exception recorded. 7 wording fixes applied + lat→latitude in the coverage SQL (frozen name). Meaning-changing items → Round 1. Subagent: duration_ms 158283, subagent_tokens 94960, tool_uses 21. |
 | 22:00 | A3 branch | `create-new-feature-branch.sh` with GIT_BRANCH_NAME → 004-property-backbone at 22668fa. |
 | 22:06 | A3 spec + clarify | spec.md: 26 FR + 6 NFR, FR-001..017 ↔ AC-1..17; 3 markers (FR-002 confidential, FR-008 denominator, NFR-002 numbers); 5 clarify Q/A from sources; D-4 candidates: GIS venue (=D-2), shared geoID linking, main-improvement rule. Checklist 15/16. |
+| 22:09 | A1 export read | Full streaming pass 18:58:40Z–19:08:51Z, 29,855,337,435 bytes. 493,246 records; R 441,961 · P 39,536 · MH 11,744 · MN 5; distinct pID 493,246; inactive 0 everywhere; R sharing geoID 11,589 on 1,164 geoIDs; P accounts have empty geoID. Fields: owners[].name… (PII), owners[].addrZip/addrCountry/addrInternational, situses[] (primarySitus), propertyProfile[0].imprvActualYearBuilt + valuations[].details["cost-local"].improvements[], sales[].saleDt, deeds[].deedDt, propertyProfile[0].stateCd, geometry "[lat, lon]" WGS84. No sale date 317,818 (R 266,553); R no year built 52,521; no mailing ZIP 397; non-US mailing 410. Subagent: duration_ms 853147, subagent_tokens 118476, tool_uses 16. |
+| 22:09 | A1 R7 | Anchor 0223120506 = propertyIdentification[].geoID → pID 221829 (R, A1, year built 1941, sale date, TX ZIP, situs, geometry). Austin tcad_id = TCAD geoID (R7 settled: geoID, mapped to pID). **Anchor 0208011301 not found in any field** → Round 1. |
+| 22:09 | A1 §25.025 | **No owner-level §25.025 flag in the JSON** (keys matching confid/secur/suppr/privac/redact searched over all records; 0 names "CONFIDENTIAL"). Only sales[].confidentialCode (Q ×15,874, O ×6 on 15,410 R), which the A-02 transform (tcad-county.ts) treats as confidential. Legacy-layout fallback (travis-county-findings.md:83) needs legacy DATA we don't have (only the layout PDF/XLSX) → new TCAD download. → Round 1 (D-7). |
+| 22:09 | A1 geometry | Every record has a non-empty geometry string (R 441,961), vs travis-sources.yaml:68 with_geometry_point 380,461 / without 61,500. Definition differs (A-01 may have excluded placeholder/duplicate points); G-TCAD builder resolves and records the rule. Not a user decision. |
+| 22:20 | A4 oracle design | Saved verbatim to agent-design.md (15 disagreements; G-FIX owns shared seams; kit ArcGIS adapter not vendored; frozen v_property can't show permit_point; ZIP lists already exist; spike Austin pages not reusable as record). Subagent: duration_ms 878447, subagent_tokens 247189, tool_uses 62. |
+| 22:32 | A4 test cases | testplans/A-04-test-cases.md draft v0.1, 50 cases (47 functional + 3 NF); AC-1/AC-7 anchor issue flagged. Subagent: duration_ms 1298632, subagent_tokens 200022, tool_uses 51. |
+| 22:22–22:33 | R1 Round 1 | Answers word for word below. Phase A + Round 1 ran ≈ 13 min over (export scan 14 min, oracle 15 min). |
+| 22:25 | R1 D-1 | "99% of R (Recommended)" |
+| 22:25 | R1 D-5 | "Load all, measure R (Recommended)" |
+| 22:25 | R1 D-7 | "Conservative rule + limitation (Recommended)" |
+| 22:25 | R1 D-4 (anchor) | "Keep as negative + add a real one (Recommended)" |
+| 22:28 | R1 D-2 | "US GitHub runner, 2 pushes (Recommended)" |
+| 22:28 | R1 D-8 | "No token now (Recommended)" |
+| 22:28 | R1 D-9 | "Contract wins names, oracle mechanics (Recommended)" (all 15 oracle rows accepted; D-6 = reuse travis-places@1.0.0 gazetteer) |
+| 22:28 | R1 NFR-002 | "Walkthrough numbers (Recommended)" |
+| 22:30 | R1 D-3 G4 | "Ready (Recommended)" |
+| 22:30 | R1 D-10 G5 | "Approve if PASS (Recommended)" |
+| 22:30 | R1 D-11 G6 | "Approve if PASS (Recommended)" |
+| 22:30 | R1 build order | "G-FIX first, then 3 parallel (Recommended)" |
+| 22:33 | R1 D-13 push | "Approve if 7 conditions hold (Recommended)" |
+| 22:33 | R1 D-14 Austin | "Approve if 7 conditions hold (Recommended)" |
+| 22:33 | R1 D-15 TCAD | "Approve if conditions hold (Recommended)" |
+| 22:33 | R1 disk | "Delete after re-capture (Recommended)" |
+| 22:33 | B2a test cases v0.2 | Round 1 decisions applied; 51 cases (TC-033 new); S-1..S-3 passed to B1. Subagent: duration_ms 331257, subagent_tokens 130831, tool_uses 16. |
+| 22:35 | User | "can i start a013 in parallel" → yes, in REPO-u (§ P); A-13 must not touch the local stack; disk caution. |
+| 22:39 | B1 plan/tasks/analyze | Story Round 1 changes applied (status Ready), spec markers resolved (checklist 16/16); plan, research R-01..R-15, data-model, contracts/{cli,gis-runner,seams,report}, quickstart, tasks.md: 67 tasks (G-FIX 11 · G-TCAD 9 · G-GIS 6 · G-PERMITS 7 · pilots 7 · push 4 · runs 9 · close-out 6 · Z 6). Analyze: 0 CRITICAL, 4 HIGH fixed (incl. T026 would have downloaded TCAD without a stop), 10 MEDIUM/LOW left. Subagent: duration_ms 1233842, subagent_tokens 354075, tool_uses 55. |
+| 22:40 | B2 | G5 pre-check + test-plan v0.3 alignment & G6 pre-check launched in parallel. |
+| 22:39 | B1 analyze HIGH fixes | H1 T026 would download TCAD without a stop → now WAITING_HUMAN first, one identified request after resolve. H2 story Context still named 0208011301 as positive anchor → fixed (D-4). H3 `report --job` ambiguous across TCAD/coords/permits jobs → TCAD job, each section prints source_jobs. H4 G-TCAD tasks marked [P] editing the same test file → sequenced. |
+| 22:47 | B2 G5 pre-check run 1 | FAIL C-03 only: T006 [P] shares rt/package.json with T010; 13 lead tasks without an owns/records-in path. Format-only; fixing tasks.md and re-running (D-10 needs PASS). |
+| 22:45 | B2 G5 | Run 2 PASS, 0 FAIL (tasks.md format fixes: T006 [P] removed, 13 records-in paths, T088 after TZ06). D-10 conditions: verdict=PASS ✔, exceptions=Phase Z TZ02–TZ04 only ✔ → recorded "Approved under Round 1 conditional approval". Subagent: duration_ms 158037+296882, subagent_tokens 129447+143212, tool_uses 12+37. |
+| 22:50 | B2 G6 | Test plan v0.3 (52 cases; TC-018 added for FR-025). G6 pre-check PASS, 0 FAIL. D-11 conditions: verdict=PASS ✔, exceptions=C-05/C-09 only ✔ → recorded "Approved under Round 1 conditional approval". Builder notes: TC test names, ANCHOR2 log format, check elephant-cli hash on a directory (T079). |
+| 22:50 | B commit | "A-04: agent design, plan, tasks and test cases (G5, G6)". Phase B done ≈ minute 60 (≈ 30 min over: Phase A overrun + G5 run 2). |
