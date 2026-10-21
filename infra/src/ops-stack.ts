@@ -6,12 +6,14 @@
 // itself), the $10 monthly budget with 80 % actual and 100 % forecast notifications (NFR-02,
 // TC-052) as an AwsCustomResource over the Budgets API (CloudFormation has no
 // AWS::Budgets::Budget type in the project region, F3006, and no stack may live in another
-// region; a budget is an account-level object, so the call needs no regional resource), and the
-// GitHub OIDC deploy role for ci.yml's `deploy` job (research R-09): the trust
-// is limited to the fork's 0* story branches and feature/oracle-pipeline, and the role may only
-// assume the CDK bootstrap roles (cdk-hnb659fds-*). The native OIDC provider is an L1 resource,
-// so the only Lambda here is the budget's singleton provider, which runs on deploy only ($0 idle). Alarms reference the Api stack's function and HTTP
-// API through cross-stack exports (ARD § 16 AM-02 order: Api before Ops).
+// region; a budget is an account-level object, so the call needs no regional resource). The only
+// Lambda here is the budget's singleton provider, which runs on deploy only ($0 idle). Alarms
+// reference the Api stack's function and HTTP API through cross-stack exports (ARD § 16 AM-02
+// order: Api before Ops).
+//
+// No GitHub OIDC provider and no CI deploy role (ARD § 16 AM-08, 2026-10-21): the AWS
+// Organizations SCP denies iam:CreateOpenIDConnectProvider in this account, so CI never deploys;
+// every infra deploy runs from the PO's laptop (profile assess) after a PO approval per deploy.
 import { createHash } from "node:crypto";
 import {
   Aws,
@@ -32,17 +34,9 @@ import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
 import { acknowledgeWildcardResources, type ApiStack } from "./api-stack.js";
-import { PROJECT_NAME, PROJECT_TAG_KEY, type InfraConfig } from "./config.js";
+import { PROJECT_NAME, PROJECT_TAG_KEY } from "./config.js";
 
 export const ALERTS_TOPIC_NAME = "countylens-alerts";
-/** Fixed so the repository variable AWS_DEPLOY_ROLE_ARN (ci.yml) is stable across deploys. */
-export const DEPLOY_ROLE_NAME = "CountyLensGitHubDeploy";
-export const GITHUB_OIDC_URL = "https://token.actions.githubusercontent.com";
-export const GITHUB_OIDC_AUDIENCE = "sts.amazonaws.com";
-/** Story branches `NNN-slug` (constitution XX) deploy their previews; same pattern as Amplify's. */
-export const STORY_BRANCH_PATTERN = "0*";
-/** The default CDK bootstrap qualifier of this account (`cdk-hnb659fds-*` roles, ADR-0001 teardown proof). */
-export const CDK_BOOTSTRAP_QUALIFIER = "hnb659fds";
 export const MONTHLY_BUDGET_USD = 10;
 /** Budget name prefix; the full name carries a revision hash (budgetNameFor, metagross N2). */
 export const BUDGET_NAME = "countylens-monthly";
@@ -77,30 +71,16 @@ export const BUDGET_RESOURCE_TYPE = "Custom::CountyLensBudget";
 /** Alarm evaluation window (FR-007: "Errors ≥ 1 per 5 min"); one period, threshold 1. */
 export const ALARM_PERIOD = Duration.minutes(5);
 
-const GITHUB_CLAIM = "token.actions.githubusercontent.com";
-
-/** The OIDC `sub` claims GitHub Actions presents on a push to a branch of the fork. */
-export function deploySubjects(github: InfraConfig["github"]): string[] {
-  return [
-    `repo:${github.repository}:ref:refs/heads/${STORY_BRANCH_PATTERN}`,
-    `repo:${github.repository}:ref:refs/heads/${github.ref}`,
-  ];
-}
-
 export interface OpsStackProps extends StackProps {
   /** CountyLensApi: the function and HTTP API the alarms watch. */
   readonly api: ApiStack;
   /** Alarm and budget recipient (OPERATOR_EMAIL, from the environment; never in git). */
   readonly operatorEmail: string;
-  /** The fork (`owner/repo`) and its production branch: the deploy role's trust boundary. */
-  readonly github: InfraConfig["github"];
 }
 
 export class OpsStack extends Stack {
   readonly topic: sns.Topic;
   readonly alarms: readonly cw.Alarm[];
-  readonly oidcProvider: iam.OidcProviderNative;
-  readonly deployRole: iam.Role;
   readonly budget: cr.AwsCustomResource;
 
   constructor(scope: Construct, id: string, props: OpsStackProps) {
@@ -162,66 +142,9 @@ export class OpsStack extends Stack {
 
     this.budget = this.monthlyBudget(props.operatorEmail);
 
-    // GitHub OIDC (native L1: no custom-resource Lambda). IAM fetches the thumbprint itself.
-    this.oidcProvider = new iam.OidcProviderNative(this, "GitHub", {
-      url: GITHUB_OIDC_URL,
-      clientIds: [GITHUB_OIDC_AUDIENCE],
-    });
-    this.deployRole = new iam.Role(this, "GitHubDeploy", {
-      roleName: DEPLOY_ROLE_NAME,
-      description:
-        `cdk deploy from ci.yml on the fork's ${STORY_BRANCH_PATTERN} and ${props.github.ref} branches only; ` +
-        `may assume only the cdk-${CDK_BOOTSTRAP_QUALIFIER}-* bootstrap roles`,
-      maxSessionDuration: Duration.hours(1),
-      assumedBy: new iam.OpenIdConnectPrincipal(this.oidcProvider, {
-        StringEquals: { [`${GITHUB_CLAIM}:aud`]: GITHUB_OIDC_AUDIENCE },
-        StringLike: { [`${GITHUB_CLAIM}:sub`]: deploySubjects(props.github) },
-      }),
-      inlinePolicies: {
-        AssumeCdkBootstrapRoles: new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              sid: "AssumeCdkBootstrapRolesOnly",
-              actions: ["sts:AssumeRole"],
-              resources: [
-                this.formatArn({
-                  service: "iam",
-                  region: "",
-                  resource: "role",
-                  resourceName: `cdk-${CDK_BOOTSTRAP_QUALIFIER}-*`,
-                }),
-              ],
-            }),
-          ],
-        }),
-      },
-    });
-    acknowledgeWildcardResources(
-      this.deployRole,
-      () =>
-        (
-          (this.deployRole.node.defaultChild as iam.CfnRole).policies as {
-            policyDocument: unknown;
-          }[]
-        ).map((p) => p.policyDocument),
-      (resource) => resource.endsWith(`:role/cdk-${CDK_BOOTSTRAP_QUALIFIER}-*`),
-      "The only statement is sts:AssumeRole on arn:<partition>:iam::<account>:role/cdk-hnb659fds-*: the " +
-        "CDK bootstrap roles (deploy, file-publishing, image-publishing, lookup) of this account's one " +
-        "qualifier. Every deploy permission lives in those roles; this role holds none of its own.",
-    );
-
     new CfnOutput(this, "AlertsTopicArn", {
       value: this.topic.topicArn,
       description: "SNS topic of the alarms (email subscription confirmed by the PO, ✋ A-3)",
-    });
-    new CfnOutput(this, "DeployRoleArn", {
-      value: this.deployRole.roleArn,
-      description:
-        "GitHub OIDC deploy role: set the repository variable AWS_DEPLOY_ROLE_ARN to this value",
-    });
-    new CfnOutput(this, "GitHubOidcProviderArn", {
-      value: this.oidcProvider.oidcProviderArn,
-      description: "IAM OIDC provider for token.actions.githubusercontent.com",
     });
   }
   /**

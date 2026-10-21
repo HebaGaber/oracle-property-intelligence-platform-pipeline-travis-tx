@@ -1,6 +1,7 @@
 // CountyLensCert (A-03 T043): only the Amplify custom-domain association for
 // countylens.aldarraj.com (agent-design metagross § 2–3, research R-09). Amplify issues and
-// renews the certificate itself (AMPLIFY_MANAGED), so there is no ACM certificate and no
+// renews the certificate itself (Amplify-managed, the default when certificateSettings is
+// omitted), so there is no ACM certificate and no
 // Route 53 zone (AD-13: DNS stays at Namecheap; the PO adds the two CNAMEs from the outputs,
 // ✋ A-4). Deployed last (ARD § 16 AM-02) because it needs the Web app id and branch, and kept
 // apart from CountyLensWeb so a DNS wait can only ever stall this stack (plan risk R4).
@@ -52,7 +53,9 @@ export class CertStack extends Stack {
       domainName: COUNTYLENS_DOMAIN_NAME,
       // prefix '' = the domain itself → the production branch. Nothing else is mapped.
       subDomainSettings: [{ prefix: "", branchName: props.web.branchName }],
-      certificateSettings: { certificateType: "AMPLIFY_MANAGED" },
+      // No certificateSettings: omitted means an Amplify-managed certificate (the default).
+      // Setting it, even to { certificateType: "AMPLIFY_MANAGED" }, failed the 2026-10-21 deploy
+      // with "A certificate ARN must be provided for a custom certificate".
       // Previews stay on *.amplifyapp.com: no automatic sub-domains, so no DNS role (AD-13).
       enableAutoSubDomain: false,
     });

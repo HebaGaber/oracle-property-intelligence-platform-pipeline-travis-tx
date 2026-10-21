@@ -426,8 +426,8 @@ function sdkCall(value: unknown): SdkCall {
   return JSON.parse(render(value)) as SdkCall;
 }
 
-describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy role (research R-09, D-04)", () => {
-  const { config, stacks, templates } = synthAll();
+describe("CountyLensOps: alarms → SNS email, $10 budget, no GitHub OIDC (research R-09, D-04, AM-08)", () => {
+  const { stacks, templates } = synthAll();
   const all = flatten(templates);
   const ops = templates.CountyLensOps;
   const opsResources = ops.toJSON().Resources as Record<string, CfnResource>;
@@ -646,75 +646,24 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy ro
     // Retention 14 days is asserted for every function's log group by the TC-052 case above.
   });
 
-  it("GitHub OIDC: one native provider; the deploy role trusts only the fork's 0* and feature/oracle-pipeline refs and may assume only cdk-hnb659fds-* roles", () => {
-    ops.resourceCountIs("AWS::IAM::OIDCProvider", 1);
-    ops.hasResourceProperties("AWS::IAM::OIDCProvider", {
-      Url: "https://token.actions.githubusercontent.com",
-      ClientIdList: ["sts.amazonaws.com"],
-    });
-    // The L2 OpenIdConnectProvider would add a custom-resource Lambda; the native L1 does not.
-    // (The one Lambda in Ops is the budget's AwsCustomResource provider, asserted above.)
-    ops.resourceCountIs("Custom::AWSCDKOpenIdConnectProvider", 0);
-
-    const deployRoles = Object.entries(ops.findResources("AWS::IAM::Role")).filter(
-      ([, r]) => (r.Properties as { RoleName?: string }).RoleName === "CountyLensGitHubDeploy",
-    );
-    expect(deployRoles).toHaveLength(1);
-    const [deployRoleId] = deployRoles[0] as [string, unknown];
-    const roles = deployRoles.map(([, r]) => r);
-    const role = roles[0]?.Properties as {
-      RoleName?: string;
-      AssumeRolePolicyDocument: { Statement: Statement[] };
-      Policies?: { PolicyDocument: { Statement: Statement[] } }[];
-      ManagedPolicyArns?: unknown[];
-    };
-    expect(role.RoleName).toBe("CountyLensGitHubDeploy");
-    expect(role.ManagedPolicyArns ?? []).toEqual([]);
-
-    const trust = role.AssumeRolePolicyDocument.Statement;
-    expect(trust).toHaveLength(1);
-    const [statement] = trust as [Statement];
-    expect(asList(statement.Action)).toEqual(["sts:AssumeRoleWithWebIdentity"]);
-    const [providerId] = Object.keys(ops.findResources("AWS::IAM::OIDCProvider"));
-    expect(json(statement.Principal)).toContain(`"${providerId}"`);
-    expect(json(statement.Principal)).not.toMatch(/Service|AWS"/);
-    const repository = config.github.repository;
-    expect(statement.Condition).toEqual({
-      StringEquals: { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-      StringLike: {
-        "token.actions.githubusercontent.com:sub": [
-          `repo:${repository}:ref:refs/heads/0*`,
-          `repo:${repository}:ref:refs/heads/${config.github.ref}`,
-        ],
-      },
-    });
-
-    const inline = (role.Policies ?? []).flatMap((p) => p.PolicyDocument.Statement);
-    // Policies attached to the deploy role (the budget provider's role has its own, asserted above).
-    const attached = Object.values(ops.findResources("AWS::IAM::Policy"))
-      .filter((p) =>
-        json((p.Properties as { Roles?: unknown }).Roles).includes(`"${deployRoleId}"`),
-      )
-      .flatMap(
-        (p) =>
-          (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument
-            .Statement ?? [],
-      );
-    const statements = [...inline, ...attached];
-    expect(statements.length).toBeGreaterThan(0);
-    for (const s of statements) {
-      expect(s.Effect).toBe("Allow");
-      expect(asList(s.Action)).toEqual(["sts:AssumeRole"]);
-      const resources = Array.isArray(s.Resource) ? s.Resource : [s.Resource];
-      for (const r of resources) {
-        const rendered = json(r);
-        expect(rendered).toContain(":role/cdk-hnb659fds-*");
-        // The account from CDK_DEFAULT_ACCOUNT, or the AWS::AccountId pseudo parameter when unset.
-        expect(rendered).toMatch(/AWS::AccountId|:iam::\d{12}:role\//);
-        expect(rendered).not.toBe('"*"');
+  it("AM-08: no GitHub OIDC provider and no role trusting token.actions.githubusercontent.com (the SCP denies the provider; CI never deploys)", () => {
+    for (const [stack, template] of Object.entries(templates)) {
+      template.resourceCountIs("AWS::IAM::OIDCProvider", 0);
+      template.resourceCountIs("Custom::AWSCDKOpenIdConnectProvider", 0);
+      for (const [id, role] of Object.entries(template.findResources("AWS::IAM::Role"))) {
+        const trust = json(
+          (role.Properties as { AssumeRolePolicyDocument?: unknown }).AssumeRolePolicyDocument,
+        );
+        expect(trust, `${stack}/${id}`).not.toContain("token.actions.githubusercontent.com");
+        expect(trust, `${stack}/${id}`).not.toContain("AssumeRoleWithWebIdentity");
       }
     }
-    ops.hasOutput("DeployRoleArn", { Value: { "Fn::GetAtt": [Match.anyValue(), "Arn"] } });
+    // The one role in Ops is the budget's AwsCustomResource provider role.
+    ops.resourceCountIs("AWS::IAM::Role", 1);
+    expect(Object.keys(ops.toJSON().Outputs ?? {}).sort()).toEqual([
+      "AlertsTopicArn",
+      "BudgetName",
+    ]);
     ops.hasOutput("AlertsTopicArn", { Value: { Ref: Match.anyValue() } });
   });
 
@@ -723,14 +672,9 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy ro
       ops.resourceCountIs(type, 0);
     }
     const tagged = Object.values(opsResources).filter((r) =>
-      [
-        "AWS::SNS::Topic",
-        "AWS::CloudWatch::Alarm",
-        "AWS::IAM::Role",
-        "AWS::IAM::OIDCProvider",
-      ].includes(r.Type),
+      ["AWS::SNS::Topic", "AWS::CloudWatch::Alarm", "AWS::IAM::Role"].includes(r.Type),
     );
-    expect(tagged.length).toBeGreaterThanOrEqual(6);
+    expect(tagged.length).toBeGreaterThanOrEqual(5);
     for (const r of tagged) {
       expect(json(r.Properties?.Tags), r.Type).toContain(PROJECT_TAG.value);
     }

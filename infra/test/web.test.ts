@@ -321,17 +321,22 @@ describe("CountyLensCert: the custom-domain association only (AD-13, AM-02)", ()
     certT.resourceCountIs("AWS::CertificateManager::Certificate", 0);
   });
 
-  it("maps the bare sub-domain (prefix '') to feature/oracle-pipeline with an AMPLIFY_MANAGED certificate", () => {
+  it("maps the bare sub-domain (prefix '') to feature/oracle-pipeline with the default Amplify-managed certificate", () => {
     certT.hasResourceProperties("AWS::Amplify::Domain", {
       AppId: EXAMPLE_APP_ID,
       DomainName: COUNTYLENS_DOMAIN_NAME,
       SubDomainSettings: [{ Prefix: "", BranchName: PRODUCTION_BRANCH }],
-      CertificateSettings: { CertificateType: "AMPLIFY_MANAGED" },
     });
     const [, domain] = only(certT.findResources("AWS::Amplify::Domain"), "domain");
     const props = domain.Properties as Record<string, unknown>;
     expect((props.SubDomainSettings as unknown[]).length).toBe(1);
-    expect(json(props.CertificateSettings)).not.toContain("CustomCertificateArn");
+    // Omitted CertificateSettings = Amplify-managed (the default). Setting it, even to
+    // AMPLIFY_MANAGED, made CloudFormation demand a custom certificate ARN (2026-10-21 deploy).
+    expect(
+      props.CertificateSettings,
+      "managed by default: CertificateSettings absent",
+    ).toBeUndefined();
+    certT.resourceCountIs("AWS::CertificateManager::Certificate", 0);
     expect(props.EnableAutoSubDomain ?? false).toBe(false);
     expect(props.AutoSubDomainIamRole, "no IAM role: DNS is at Namecheap (AD-13)").toBeUndefined();
     expect(props.AutoSubDomainCreationPatterns).toBeUndefined();

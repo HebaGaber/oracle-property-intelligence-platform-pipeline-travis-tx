@@ -63,9 +63,8 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
     ...base,
     api,
     operatorEmail: requireOperatorEmail(config),
-    github: config.github,
     description:
-      "CountyLens operations: SNS email, alarms (Errors, Throttles, 5xx), $10 budget and the GitHub OIDC deploy role.",
+      "CountyLens operations: SNS email, alarms (Errors, Throttles, 5xx) and the $10 budget (no CI deploy role, AM-08).",
   });
   const cert = new CertStack(app, "CountyLensCert", {
     ...base,

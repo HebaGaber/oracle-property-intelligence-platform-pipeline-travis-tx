@@ -1,9 +1,14 @@
-// .github/workflows/ci.yml after the metagross review (M4): the workflow parses as YAML, and the
-// credential-free `e2e-hosted` job carries the environment its specs need. build-checks.spec.ts
-// (TC-052/053) spawns the infra suites, which need CDK_DEFAULT_REGION (infra/src/config.ts) and
-// OPERATOR_EMAIL; fallback.spec.ts (TC-032–034) and cid-copy.spec.ts need CID_COPY_HOST and the
-// gateway hosts. Every value comes from a repository variable (never a literal: P0-18), and the
-// job gets no AWS credentials, so @needs-aws cases stay excluded and announced.
+// .github/workflows/ci.yml after the metagross review (M4) and AM-08 (2026-10-21): the workflow
+// parses as YAML, and the credential-free `e2e-hosted` job carries the environment its specs
+// need. build-checks.spec.ts (TC-052/053) spawns the infra suites, which need CDK_DEFAULT_REGION
+// (infra/src/config.ts) and OPERATOR_EMAIL; fallback.spec.ts (TC-032–034) and cid-copy.spec.ts
+// need CID_COPY_HOST and the gateway hosts. Every value comes from a repository variable (never a
+// literal: P0-18).
+//
+// AM-08: the AWS Organizations SCP denies the GitHub OIDC provider, so CI never deploys and never
+// holds AWS credentials: no `deploy` job, no `id-token: write`, no configure-aws-credentials, no
+// `cdk deploy` anywhere in the workflow. Infra deploys run from the PO's laptop (profile assess);
+// Amplify builds every push from its Git connection, and `e2e-hosted` waits for that build.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -22,17 +27,28 @@ interface Job {
   permissions?: Record<string, string>;
   steps: { uses?: string; run?: string; with?: Record<string, unknown> }[];
 }
-const workflow = parse(readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8")) as {
+const text = readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8");
+const workflow = parse(text) as {
+  permissions?: Record<string, string>;
   jobs: Record<string, Job>;
 };
 
 describe("ci.yml (metagross M4): e2e-hosted environment", () => {
   const job = workflow.jobs["e2e-hosted"] as Job;
 
-  it("parses as YAML and has the e2e-hosted job after deploy", () => {
+  it("parses as YAML and has the e2e-hosted job after the merge-blocking checks", () => {
     expect(job).toBeDefined();
-    expect(job.needs).toBe("deploy");
+    expect([job.needs].flat().sort()).toEqual(["gitleaks", "oracle-runtime", "workspace"]);
     expect(job.steps.length).toBeGreaterThan(0);
+  });
+
+  it("waits for the Amplify preview /build.json sha of this commit before Playwright", () => {
+    const wait = job.steps.find((s) => s.run?.includes("/build.json"));
+    expect(wait?.run).toContain("$GITHUB_SHA");
+    expect(wait?.run).toContain("amplifyapp.com");
+    const waitIndex = job.steps.indexOf(wait as Job["steps"][number]);
+    const playwrightIndex = job.steps.findIndex((s) => s.run?.includes("playwright test"));
+    expect(playwrightIndex).toBeGreaterThan(waitIndex);
   });
 
   it("sets the region, CID copy host, gateway hosts and operator email from repository variables", () => {
@@ -49,12 +65,53 @@ describe("ci.yml (metagross M4): e2e-hosted environment", () => {
       expect(value, "every value is a repository variable").toMatch(/^\$\{\{ vars\.[A-Z_]+ \}\}$/);
     }
   });
+});
 
-  it("stays credential-free: no AWS credentials step, no id-token permission, no secrets", () => {
-    expect(job.steps.some((s) => s.uses?.startsWith("aws-actions/configure-aws-credentials"))).toBe(
-      false,
-    );
-    expect(job.permissions?.["id-token"]).not.toBe("write");
-    expect(JSON.stringify(job)).not.toContain("secrets.");
+describe("ci.yml (AM-08): CI never deploys and never needs AWS credentials", () => {
+  it("keeps workspace, oracle-runtime, gitleaks and e2e-hosted; has no deploy job", () => {
+    expect(Object.keys(workflow.jobs).sort()).toEqual([
+      "e2e-hosted",
+      "gitleaks",
+      "oracle-runtime",
+      "workspace",
+    ]);
+  });
+
+  it("grants no id-token: write at workflow or job level", () => {
+    expect(workflow.permissions?.["id-token"]).toBeUndefined();
+    for (const [name, job] of Object.entries(workflow.jobs)) {
+      expect(job.permissions?.["id-token"], name).toBeUndefined();
+    }
+    expect(text).not.toMatch(/id-token:\s*write/);
+  });
+
+  it("uses no aws-actions/configure-aws-credentials and runs no cdk deploy", () => {
+    for (const [name, job] of Object.entries(workflow.jobs)) {
+      for (const step of job.steps) {
+        expect(step.uses ?? "", name).not.toContain("aws-actions/configure-aws-credentials");
+        expect(step.run ?? "", name).not.toMatch(/cdk\s+deploy/);
+      }
+    }
+    expect(text).not.toContain("configure-aws-credentials");
+    expect(text).not.toMatch(/cdk\s+deploy/);
+  });
+
+  it("reads no AWS_DEPLOY_ROLE_ARN variable and no stored secret other than GITHUB_TOKEN", () => {
+    expect(text).not.toContain("AWS_DEPLOY_ROLE_ARN");
+    const secrets = [...text.matchAll(/secrets\.([A-Z_]+)/g)].map((m) => m[1]);
+    expect(new Set(secrets)).toEqual(new Set(["GITHUB_TOKEN"]));
+  });
+
+  it("reads exactly the expected repository variables", () => {
+    const vars = new Set([...text.matchAll(/vars\.([A-Z_]+)/g)].map((m) => m[1]));
+    expect([...vars].sort()).toEqual([
+      "AMPLIFY_APP_ID",
+      "AWS_ACCOUNT_ID",
+      "AWS_REGION",
+      "CID_COPY_HOST",
+      "FILEBASE_GATEWAY_HOST",
+      "OPERATOR_EMAIL",
+      "PINATA_GATEWAY_HOST",
+    ]);
   });
 });

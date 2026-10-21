@@ -1,17 +1,21 @@
 # A-03 T022 (plan research R-10; agent-design metagross § 1 and § 7; Complexity Tracking D-05):
 # the one CI workflow. The company shared workflows are not reachable from the fork (D-05), so
 # the same stages run here: install, typecheck, lint, test (with the coverage gate), synth,
-# prettier, stylelint, grep gates, bundle gate, gitleaks, deploy, hosted e2e.
+# prettier, stylelint, grep gates, bundle gate, gitleaks, hosted e2e.
+#
+# CI never deploys and never holds AWS credentials (ARD § 16 AM-08, 2026-10-21): the AWS
+# Organizations SCP denies the GitHub OIDC provider, so infrastructure deploys run from the PO's
+# laptop (profile assess) after a PO approval per deploy. Amplify still builds every push from its
+# Git connection; `e2e-hosted` waits for that build and tests it. @needs-aws specs stay skipped.
 #
 # Budgets (NFR-09): the merge-blocking jobs `workspace`, `oracle-runtime` and `gitleaks` each
-# have `timeout-minutes: 15`. `deploy` and `e2e-hosted` run only on a push to `0*` or
-# `feature/oracle-pipeline`; `e2e-hosted` has its own 30-minute budget because it first waits
-# for the Amplify build of this commit (plan Complexity Tracking).
+# have `timeout-minutes: 15`. `e2e-hosted` runs only on a push to `0*` or
+# `feature/oracle-pipeline` and has its own 30-minute budget because it first waits for the
+# Amplify build of this commit (plan Complexity Tracking).
 #
-# No secret is written here. The deploy role is assumed through GitHub OIDC from the repository
-# variable AWS_DEPLOY_ROLE_ARN (a CountyLensOps output). The region, the account id, the Amplify
-# app id, the CID-copy host and the operator email are repository variables too, never literals
-# (P0-18). `secrets.GITHUB_TOKEN` is the workflow's own ephemeral token, not a stored secret.
+# No secret is written here. The region, the account id, the Amplify app id, the CID-copy and
+# gateway hosts and the operator email are repository variables, never literals (P0-18).
+# `secrets.GITHUB_TOKEN` is the workflow's own ephemeral token, not a stored secret.
 #
 # `gitleaks` is meant to be a required status check on `feature/oracle-pipeline` and `0*`
 # (branch protection, a repository setting the PO makes; NFR-04).
@@ -179,63 +183,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  deploy:
-    if: github.event_name == 'push' && (github.ref_name == 'feature/oracle-pipeline' || startsWith(github.ref_name, '0'))
-    needs: [workspace, oracle-runtime, gitleaks]
-    runs-on: ubuntu-latest
-    # Not a quality check, so outside the 15-minute budget: a CloudFormation deploy must never be
-    # cut off half-way, and a CloudFront change can take longer than 15 minutes.
-    timeout-minutes: 30
-    permissions:
-      id-token: write
-      contents: read
-    # One deploy at a time, never cancelled: a second push waits for the first to finish.
-    concurrency:
-      group: deploy-countylens
-      cancel-in-progress: false
-    env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
-      OPERATOR_EMAIL: ${{ vars.OPERATOR_EMAIL }}
-      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: pnpm
-
-      - name: pnpm install
-        run: pnpm install --frozen-lockfile
-
-      # The role is a CountyLensOps output, so it does not exist before the first deploy; that
-      # one is made from the PO's laptop (🛑 D-10) and then the variable is set.
-      - name: Require the OIDC deploy role variable
-        run: |
-          if [ -z "$AWS_DEPLOY_ROLE_ARN" ]; then
-            echo "::error::Repository variable AWS_DEPLOY_ROLE_ARN is not set (CountyLensOps output; first deploy from the PO laptop)"
-            exit 1
-          fi
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          role-session-name: countylens-ci-deploy
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Build workspace packages
-        run: pnpm turbo run build
-
-      - name: cdk deploy --all (Data → Api → Web → Ops → Cert, AM-02)
-        working-directory: infra
-        run: pnpm exec cdk deploy --all --require-approval never
-
   e2e-hosted:
     if: github.event_name == 'push' && (github.ref_name == 'feature/oracle-pipeline' || startsWith(github.ref_name, '0'))
-    needs: deploy
+    needs: [workspace, oracle-runtime, gitleaks]
     runs-on: ubuntu-latest
     # The one job outside the 15-minute budget: ≤ 12 min waiting for the Amplify build of this
     # commit, then Playwright on the hosted URL (plan Complexity Tracking).
@@ -244,7 +194,7 @@ jobs:
     concurrency:
       group: e2e-hosted-${{ github.ref }}
       cancel-in-progress: true
-    # Credential-free on purpose (no AWS step, no id-token): @needs-aws cases stay excluded and
+    # Credential-free on purpose (no AWS step, no OIDC token; AM-08): @needs-aws cases stay excluded and
     # announced. build-checks.spec.ts (TC-052/053) runs the infra suites, which need the region
     # (checked against countylens:allowedRegions) and OPERATOR_EMAIL; fallback.spec.ts (TC-032–034)
     # and cid-copy.spec.ts need CID_COPY_HOST. An unset gateway variable falls back to the
