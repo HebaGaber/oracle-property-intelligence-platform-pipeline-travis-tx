@@ -1,7 +1,9 @@
 // Infra configuration (A-03 T018). The region is read from CDK_DEFAULT_REGION, which the CDK
 // CLI sets from the AWS profile; it is never a literal in infra/** (constitution III, ARD
-// P0-18) and `cdk synth` throws when it is missing. OPERATOR_EMAIL feeds the Ops stack (SNS
-// subscription, budget); the GitHub repository and ref feed the Web and Cert stacks (Amplify)
+// P0-18) and `cdk synth` throws when it is missing, or when it is not in the
+// `countylens:allowedRegions` context list (infra/cdk.json; the project is region-locked, so a
+// stray CDK_DEFAULT_REGION/AWS_REGION can never put a stack elsewhere: metagross review M3).
+// OPERATOR_EMAIL feeds the Ops stack (SNS subscription, budget); the GitHub repository and ref feed the Web and Cert stacks (Amplify)
 // and come from CDK context (infra/cdk.json or `-c key=value`).
 import { z } from "zod";
 
@@ -11,7 +13,26 @@ export const PROJECT_TAG_KEY = "project_name" as const;
 export const CONTEXT_KEYS = {
   githubRepository: "countylens:githubRepository",
   githubRef: "countylens:githubRef",
+  allowedRegions: "countylens:allowedRegions",
 } as const;
+
+/** The context key listing the only regions a synth may target (infra/cdk.json). */
+export const ALLOWED_REGIONS_CONTEXT_KEY = CONTEXT_KEYS.allowedRegions;
+
+/** CDK_DEFAULT_REGION is not in `countylens:allowedRegions`: nothing is synthesised. */
+export class RegionNotAllowedError extends Error {
+  override readonly name = "RegionNotAllowedError";
+
+  constructor(
+    readonly region: string,
+    readonly allowed: readonly string[],
+  ) {
+    super(
+      `infra config: CDK_DEFAULT_REGION ${region} is not in ${ALLOWED_REGIONS_CONTEXT_KEY} ` +
+        `[${allowed.join(", ")}] (infra/cdk.json). Check AWS_REGION / CDK_DEFAULT_REGION and the profile.`,
+    );
+  }
+}
 
 const REGION_HINT =
   "CDK_DEFAULT_REGION is not set; export it from the AWS profile, for example " +
@@ -45,12 +66,18 @@ const ContextSchema = z.object({
   [CONTEXT_KEYS.githubRef]: z
     .string(`${CONTEXT_KEYS.githubRef} is missing: set it in infra/cdk.json context or with -c`)
     .min(1, `${CONTEXT_KEYS.githubRef} must name the production branch`),
+  [CONTEXT_KEYS.allowedRegions]: z
+    .array(
+      z.string().regex(/^[a-z]{2}(-gov)?-[a-z]+-\d$/, "must be AWS region ids"),
+      `${CONTEXT_KEYS.allowedRegions} is missing: list the project's region(s) in infra/cdk.json context`,
+    )
+    .min(1, `${CONTEXT_KEYS.allowedRegions} must list at least one region`),
 });
 
 export interface InfraConfig {
   /** Tag value on every stack and resource (`project_name`). */
   readonly projectName: typeof PROJECT_NAME;
-  /** From CDK_DEFAULT_REGION only. */
+  /** From CDK_DEFAULT_REGION only, and one of `countylens:allowedRegions`. */
   readonly region: string;
   /** From CDK_DEFAULT_ACCOUNT when the CLI resolved credentials; optional for env-agnostic synth. */
   readonly account?: string;
@@ -78,6 +105,7 @@ export function loadConfig(
   const parsedContext = ContextSchema.safeParse({
     [CONTEXT_KEYS.githubRepository]: context(CONTEXT_KEYS.githubRepository),
     [CONTEXT_KEYS.githubRef]: context(CONTEXT_KEYS.githubRef),
+    [CONTEXT_KEYS.allowedRegions]: context(CONTEXT_KEYS.allowedRegions),
   });
   if (!parsedEnv.success || !parsedContext.success) {
     const issues = [
@@ -87,6 +115,10 @@ export function loadConfig(
     throw new Error(`infra config: ${formatIssues(issues)}`);
   }
   const { CDK_DEFAULT_REGION, CDK_DEFAULT_ACCOUNT, OPERATOR_EMAIL } = parsedEnv.data;
+  const allowed = parsedContext.data[CONTEXT_KEYS.allowedRegions];
+  if (!allowed.includes(CDK_DEFAULT_REGION)) {
+    throw new RegionNotAllowedError(CDK_DEFAULT_REGION, allowed);
+  }
   return {
     projectName: PROJECT_NAME,
     region: CDK_DEFAULT_REGION,

@@ -1,5 +1,9 @@
 // @countylens/publish: the local elephant-cli sequence, readback, the Kubo adds, the run
-// manifest and the run index (FR-001, FR-011), plus the CLI entry point.
+// manifest and the run index (FR-001, FR-011), plus the CLI entry point. runPublish (both
+// phases with no D-8 approval) is deliberately not exported (CR-A-03 F-4): it stays in
+// sequence.ts for the order tests, and neither are executePlan nor runUpload (which would
+// upload a build verifyApprovedBuild never checked); the public paths are runBuild and the
+// approval-gated publishRun.
 export { jcs, jcsBytes } from "./jcs.js";
 export { cidOfBytes, cidOfFile, codecName, sameDigest } from "./cid.js";
 export {
@@ -17,7 +21,6 @@ export {
   cliCommitFromPath,
   dataGroupCids,
   digestOutput,
-  executePlan,
   filebaseEnvProblem,
   parseCsv,
   planBuild,
@@ -26,9 +29,7 @@ export {
   redact,
   resolveCli,
   runBuild,
-  runPublish,
   runSequence,
-  runUpload,
   sequenceReportName,
   secretValues,
   sha256File,
@@ -140,13 +141,22 @@ export {
   type TablePart,
 } from "./readback.js";
 export {
+  BindGuardError,
+  assertBindable,
+  loadLocalBinder,
+  type BoundRows,
+  type LocalBinder,
+} from "./bind-guard.js";
+export {
   DATA_GROUPS,
   RunSummaryFile,
+  bindBuild,
   loadRunSummary,
   publicFiles,
   publishRun,
   runGroups,
   type ApprovalCheck,
+  type BindBuildOptions,
   type CarAdd,
   type PublishFailure,
   type PublishOptions,

@@ -23,7 +23,7 @@
 // The include predicate is a stand-in here (tests are outside the adapter term gate); the
 // adapter files themselves must not contain any classification term.
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -42,10 +42,12 @@ import {
   captureSocrata,
   datasetUrl,
   exitCodeFor,
+  loadCaptures,
   permitUrl,
   safePermitName,
   type SocrataSource,
 } from "../../travis/adapters/socrata/socrata.js";
+import type { FetchLike } from "../../travis/lib/source-client.js";
 import { fakeHttp, json, silent, text, type RecordedCall } from "../fixtures/fake-http.js";
 
 // A stand-in for the profile's toSoqlInclude(): the test is outside the adapter term gate.
@@ -212,9 +214,15 @@ describe("permit keys and URLs", () => {
   });
 
   it("safePermitName is deterministic and file-name safe", () => {
-    expect(safePermitName("2026-034767 BP")).toBe("2026-034767_BP");
+    expect(safePermitName("2026-034767 BP")).toMatch(/^2026-034767_BP-[0-9a-f]{8}$/);
     expect(safePermitName("2026-034767 BP")).toBe(safePermitName("2026-034767 BP"));
     expect(safePermitName("a/b\\c:d*e?f")).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("safePermitName is collision-free for numbers that sanitise alike (CR-A-03 code-review #6)", () => {
+    expect(safePermitName("2026-1 BP")).not.toBe(safePermitName("2026-1/BP"));
+    expect(safePermitName("2026-1 BP").startsWith("2026-1_BP-")).toBe(true);
+    expect(safePermitName("2026-1/BP").startsWith("2026-1_BP-")).toBe(true);
   });
 });
 
@@ -621,3 +629,152 @@ function at<T>(xs: readonly T[], i: number): T {
   if (v === undefined) throw new Error(`no element at ${i}`);
   return v;
 }
+
+describe("timeouts, duplicate rows and key collisions (CR-A-03 F-6, code-review #5/#6)", () => {
+  const timeoutFetch =
+    (http: ReturnType<typeof fakeHttp>, hit: (u: URL) => boolean) =>
+    async (url: string, init: RequestInit): Promise<Response> => {
+      if (hit(new URL(url))) {
+        const error = new Error("the request timed out");
+        error.name = "TimeoutError";
+        throw error;
+      }
+      return http.fetch(url, init);
+    };
+  const runWith = (c: ReturnType<typeof clock>, fetch: FetchLike, jobDir: string) =>
+    captureSocrata({
+      source: SOURCE,
+      window: WINDOW,
+      include: INCLUDE,
+      jobDir,
+      fetch,
+      sleep: c.sleep,
+      now: c.now,
+      random: () => 0,
+      log: silent,
+    });
+
+  it("F-6: labels a permit GET timeout `error` (exit 1), not `blocked`, keeping blocked_reason timeout", async () => {
+    const c = clock();
+    const n = ROWS[1]?.permit_number as string;
+    const http = routes(c);
+    const jobDir = tmp();
+    const result = await runWith(
+      c,
+      timeoutFetch(http, (u) => u.searchParams.get(SOURCE.key) === n),
+      jobDir,
+    );
+    expect(result.status).toBe("error");
+    expect(exitCodeFor(result.status)).toBe(1);
+    expect(result.reason).toMatch(/timeout/);
+    expect(at(result.receipts, result.receipts.length - 1)).toMatchObject({
+      permit_number: n,
+      outcome: "error",
+      blocked_reason: "timeout",
+    });
+    expect(readJson(join(jobDir, "status", `${safePermitName(n)}.json`))).toMatchObject({
+      state: "error",
+      captured: false,
+    });
+    expect(readJson(join(jobDir, "job.json"))).toMatchObject({ status: "error" });
+  });
+
+  it("F-6: labels a list-query timeout `error` (exit 1), before any permit GET", async () => {
+    const c = clock();
+    const http = routes(c);
+    const result = await runWith(
+      c,
+      timeoutFetch(http, (u) => !u.searchParams.has(SOURCE.key)),
+      tmp(),
+    );
+    expect(result.status).toBe("error");
+    expect(exitCodeFor(result.status)).toBe(1);
+    expect(result.reason).toMatch(/^list query timeout/);
+    expect(result.list?.outcome).toBe("error");
+  });
+
+  it("#5: de-duplicates identical rows of one permit number, counts it with a reason, and does not abort", async () => {
+    const c = clock();
+    const n = ROWS[0]?.permit_number as string;
+    const http = routes(c, { script: { [n]: [() => json([ROWS[0], ROWS[0]])] } });
+    const jobDir = tmp();
+    const result = await run(c, http, jobDir);
+    expect(result.status).toBe("ok");
+    expect(result.captured).toEqual(ROWS.map((r) => r.permit_number));
+    expect(result.duplicates).toEqual([{ permit_number: n, rows: 2, reason: "identical_rows" }]);
+    expect(at(result.receipts, 0)).toMatchObject({
+      duplicate_rows: 1,
+      duplicate_reason: "identical_rows",
+    });
+    expect(readJson(join(jobDir, "job.json"))).toMatchObject({
+      duplicates: { permits: 1, by_reason: { identical_rows: 1 } },
+    });
+    expect(readJson(join(jobDir, "extracted", `${safePermitName(n)}.json`))).toEqual(ROWS[0]);
+    const [loaded] = loadCaptures(jobDir, SOURCE, [n]);
+    expect(loaded?.row).toEqual(ROWS[0]);
+  });
+
+  it("#5: keeps the latest of differing rows of one permit number, deterministically, with a counted reason", async () => {
+    const c = clock();
+    const n = ROWS[0]?.permit_number as string;
+    const older = row(n, { status_current: "Active", ":updated_at": "2026-10-01T00:00:00.000Z" });
+    const newer = row(n, { status_current: "Final", ":updated_at": "2026-10-20T00:00:00.000Z" });
+    const http = routes(c, { script: { [n]: [() => json([newer, older])] } });
+    const jobDir = tmp();
+    const result = await run(c, http, jobDir);
+    expect(result.status).toBe("ok");
+    expect(result.duplicates).toEqual([
+      { permit_number: n, rows: 2, reason: "differing_rows_kept_latest" },
+    ]);
+    expect(readJson(join(jobDir, "extracted", `${safePermitName(n)}.json`))).toEqual(newer);
+    const [loaded] = loadCaptures(jobDir, SOURCE, [n]);
+    expect(loaded?.row).toEqual(newer);
+    // the raw body is kept byte for byte, both rows included
+    const raw = JSON.parse(readFileSync(join(jobDir, "raw", `${safePermitName(n)}.json`), "utf8"));
+    expect(raw).toHaveLength(2);
+  });
+
+  it("#5: counts a permit number repeated in the list query (one GET for it)", async () => {
+    const c = clock();
+    const rows = [ROWS[0] as Row, ROWS[0] as Row, ROWS[1] as Row];
+    const http = routes(c, { rows });
+    const jobDir = tmp();
+    const result = await run(c, http, jobDir);
+    expect(result.status).toBe("ok");
+    expect(result.listed).toEqual([ROWS[0]?.permit_number, ROWS[1]?.permit_number]);
+    expect(permitCalls(http)).toHaveLength(2);
+    expect(readJson(join(jobDir, "job.json"))).toMatchObject({ list_rows_repeated: 1 });
+  });
+
+  it("#6: two numbers that sanitise alike get two status files, and a resume never skips the wrong one", async () => {
+    const c = clock();
+    const a = row("2026-1 BP");
+    const b = row("2026-1/BP");
+    const jobDir = tmp();
+    const first = await run(c, routes(c, { rows: [a] }), jobDir);
+    expect(first.status).toBe("ok");
+    const http = routes(c, { rows: [a, b] });
+    const second = await run(c, http, jobDir);
+    expect(second.status).toBe("ok");
+    expect(second.skipped).toEqual(["2026-1 BP"]);
+    expect(second.captured).toEqual(["2026-1/BP"]);
+    expect(permitKeys(http)).toEqual(["2026-1/BP"]);
+    const loaded = loadCaptures(jobDir, SOURCE, ["2026-1 BP", "2026-1/BP"]);
+    expect(loaded.map((l) => l.row.permit_number)).toEqual(["2026-1 BP", "2026-1/BP"]);
+    expect(new Set(loaded.map((l) => l.key)).size).toBe(2);
+  });
+
+  it("#6: a status file whose permit_number differs is not taken as done", async () => {
+    const c = clock();
+    const n = ROWS[0]?.permit_number as string;
+    const jobDir = tmp();
+    await run(c, routes(c, { rows: [ROWS[0] as Row] }), jobDir);
+    const path = join(jobDir, "status", `${safePermitName(n)}.json`);
+    const status = readJson(path);
+    writeFileSync(path, JSON.stringify({ ...status, permit_number: "someone else" }));
+    const http = routes(c, { rows: [ROWS[0] as Row] });
+    const again = await run(c, http, jobDir);
+    expect(again.skipped).toEqual([]);
+    expect(again.captured).toEqual([n]);
+  });
+});

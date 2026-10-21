@@ -244,9 +244,14 @@ export class DataStack extends Stack {
     mirror("writer-role-arn", this.writerRole.roleArn, "CountyLensCidCopyWriter role ARN");
   }
 
-  /** Read grant for the API Lambda (contract "Reader"): GetObject on ipfs/* and private/bench/*. */
+  /**
+   * Read grant for the API Lambda (contract "Reader"): GetObject on ipfs/* and private/bench/*,
+   * plus ListBucket on the bucket for keys under private/bench/ only (presignPrefix lists the bench
+   * prefix). No listing of ipfs/: a GetObject on a missing ipfs/<cid> then answers 403, which
+   * s3-read.ts maps to NOT_FOUND.
+   */
   grantApiRead(grantee: iam.IGrantable): iam.Grant {
-    return iam.Grant.addToPrincipal({
+    const get = iam.Grant.addToPrincipal({
       grantee,
       actions: ["s3:GetObject"],
       resourceArns: [
@@ -254,5 +259,14 @@ export class DataStack extends Stack {
         this.bucket.arnForObjects(`${CID_COPY_PRIVATE_BENCH_PREFIX}*`),
       ],
     });
+    grantee.grantPrincipal.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: "ListBenchPrefixOnly",
+        actions: ["s3:ListBucket"],
+        resources: [this.bucket.bucketArn],
+        conditions: { StringLike: { "s3:prefix": [`${CID_COPY_PRIVATE_BENCH_PREFIX}*`] } },
+      }),
+    );
+    return get;
   }
 }

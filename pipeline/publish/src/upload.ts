@@ -5,14 +5,19 @@
 //     and the listing record (size, SHA-256, CID, CAR roots), else ApprovalError/BuildDriftError
 //     before any upload. Phase 1 is never re-run here and the build report never rewritten;
 //   1 runUpload: the four uploads only (reports/sequence-upload.json);
-//   2 readback of every group (readback.ts): roots by digest, part count, every part by size and
-//     SHA-256 from the Filebase gateway;
+//   2 readback of every group (readback.ts): roots by digest, part count, every part by its
+//     APPROVED CID, size and SHA-256 from the Filebase gateway (F-5; a part changed on disk
+//     after step 0 fails even if the gateway serves the changed bytes);
 //   3 Kubo add of each .car (the archive and the tables.car of every group) as a plain pinned
 //     file; the Hash must be the local raw-leaves CIDv1, which the manifest records as carCid
 //     (AM-05, D-5); then that carCid is read back from the Filebase gateway by size and SHA-256
 //     (OR-4);
 //   4 buildManifest from the CLI outputs, the capture receipts and summary.json (never a
 //     database); every carCid it records must be one of the adds of step 3;
+//   4b the bind guard (bind-guard.ts, CR-A-03 F-1): the built bytes are bound against the
+//     LOCAL tables with the real query-core bindManifest; listRoofingPermitsSql() and
+//     runSummarySql() must return coverage.permits_emitted rows, else BindGuardError (stage
+//     `bind`) and no manifest add;
 //   5 Kubo add of the manifest's JCS bytes; the Hash must equal cidOfBytes;
 //   6 runs/<runId>/manifest.json (the exact bytes) and runs/index.json (appendRun, exact JCS
 //     bytes), written only now and read back from disk before the result says ok.
@@ -28,7 +33,8 @@ import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { z } from "zod";
 import { CoverageCount, type ManifestProfile, type RunsIndexV1 } from "@countylens/contract";
 import { cidOfBytes, cidOfFile } from "./cid.js";
-import { approvedGroups, verifyApprovedBuild } from "./approval.js";
+import { approvedGroups, builtGroups, verifyApprovedBuild, type PublicFile } from "./approval.js";
+import { assertBindable, type BoundRows, type LocalBinder } from "./bind-guard.js";
 import { kuboAddBytes, kuboAddFile, type FetchLike, type KuboAddOptions } from "./kubo-add.js";
 import { buildManifest, type BuildManifestInput, type BuiltManifest } from "./manifest.js";
 import {
@@ -146,10 +152,19 @@ export interface PublishOptions {
   headCommit?: (repoRoot: string) => string;
   /** Kubo RPC API origin for the adds (default: Filebase). */
   api?: string;
+  /** The bind guard's local binder (default: scripts/local-bind.ts, query-core over DuckDB). */
+  bind?: LocalBinder;
 }
 
 export type PublishStage =
-  "sequence" | "readback" | "car-add" | "car-readback" | "manifest" | "manifest-add" | "index";
+  | "sequence"
+  | "readback"
+  | "car-add"
+  | "car-readback"
+  | "manifest"
+  | "bind"
+  | "manifest-add"
+  | "index";
 
 export interface PublishFailure {
   stage: PublishStage;
@@ -181,6 +196,8 @@ export interface PublishResult {
   readback: ReadbackResult[];
   carAdds: CarAdd[];
   approval?: ApprovalCheck;
+  /** The bind guard's result for the built manifest (F-1). */
+  bind?: BoundRows;
   manifestCid?: string;
   manifestPath?: string;
   indexPath?: string;
@@ -245,6 +262,8 @@ export interface Preflight {
   previousManifestCid: string | null;
   buildGroups: GroupResult[];
   approval: ApprovalCheck;
+  /** Every approved public file (paths relative to the run directory): readback compares with these. */
+  approvedFiles: PublicFile[];
 }
 
 /**
@@ -305,7 +324,89 @@ export async function preflight(options: PreflightOptions): Promise<Preflight> {
       files: build.files,
       bytes: build.bytes,
     },
+    approvedFiles: build.listing.groups.flatMap((g) => g.files),
   };
+}
+
+/** The buildManifest input for a run: summary.json plus the build's group outputs. */
+function manifestInput(
+  summary: RunSummaryFile,
+  runDir: string,
+  groups: readonly GroupResult[],
+  profiles: ManifestProfile[],
+  previousManifestCid: string | null,
+  repoRoot: string,
+  workTreeStatus?: (repoRoot: string) => string,
+): BuildManifestInput {
+  return {
+    runId: summary.runId,
+    county: summary.county.slug,
+    state: summary.county.state,
+    fips: summary.county.fips,
+    startedAt: summary.startedAt,
+    finishedAt: summary.finishedAt,
+    previousManifestCid,
+    runDir,
+    groups: groups.map((g) => ({
+      group: g.group,
+      carPath: g.carPath,
+      carRoot: g.carRoot,
+      tablesDir: g.tablesDir,
+      tablesRoot: g.tablesRoot,
+      tablesExportJson: g.tablesExportJson,
+    })),
+    sources: summary.sources.map((s) => ({
+      name: s.name,
+      url: s.url,
+      watermark: s.watermark,
+      receipts: isAbsolute(s.receipts) ? s.receipts : join(runDir, s.receipts),
+      limitations: [...s.limitations],
+    })),
+    profiles,
+    coverage: summary.coverage,
+    ownersRedacted: summary.owners_redacted,
+    limitations: [...summary.limitations],
+    repoRoot,
+    ...(workTreeStatus === undefined ? {} : { workTreeStatus }),
+  };
+}
+
+export interface BindBuildOptions {
+  runDir: string;
+  runsDir: string;
+  repoRoot: string;
+  bind?: LocalBinder;
+}
+
+/**
+ * The last step of `build` (CR-A-03 F-1): the draft manifest of the finished build (the bytes
+ * `upload` would build, linked to the index's last run) bound against the local tables by the
+ * bind guard. A run the web engine or the Lambda could not bind fails here, before D-8 is asked.
+ * The clean-tree check is left to `upload`: this draft is never written or added.
+ */
+export async function bindBuild(options: BindBuildOptions): Promise<BoundRows> {
+  const summary = loadRunSummary(options.runDir);
+  const groups = runGroups(summary);
+  const built = builtGroups(options.runDir);
+  const ordered = groups.map((name) => {
+    const g = built.find((x) => x.group === name);
+    if (g === undefined) throw new Error(`the build has no ${name} group`);
+    return g;
+  });
+  const indexPath = join(options.runsDir, "index.json");
+  const index = existsSync(indexPath) ? parseRunsIndex(readFileSync(indexPath)) : emptyRunsIndex();
+  const draft = await buildManifest(
+    manifestInput(
+      summary,
+      options.runDir,
+      ordered,
+      profilesOf(summary),
+      index.runs.at(-1)?.manifestCid ?? null,
+      options.repoRoot,
+      () => "",
+    ),
+  );
+  return assertBindable(draft, options.runDir, options.bind);
 }
 
 export async function publishRun(options: PublishOptions): Promise<PublishResult> {
@@ -319,6 +420,7 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
     previousManifestCid,
     buildGroups,
     approval,
+    approvedFiles,
   } = await preflight(options);
 
   const secrets = secretValues(options.env);
@@ -369,6 +471,7 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
     ...(options.random === undefined ? {} : { random: options.random }),
+    approved: { runDir: options.runDir, files: approvedFiles },
   };
   for (const g of sequence.groups) readback.push(await readbackGroup(g, readbackOptions));
   writeFileSync(join(reportsDir, "readback.json"), `${safe(JSON.stringify(readback, null, 2))}\n`);
@@ -408,37 +511,15 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
   }
 
   // 4 The manifest, from CLI outputs, receipts and the summary.
-  const input: BuildManifestInput = {
-    runId: summary.runId,
-    county: summary.county.slug,
-    state: summary.county.state,
-    fips: summary.county.fips,
-    startedAt: summary.startedAt,
-    finishedAt: summary.finishedAt,
-    previousManifestCid,
-    runDir: options.runDir,
-    groups: sequence.groups.map((g) => ({
-      group: g.group,
-      carPath: g.carPath,
-      carRoot: g.carRoot,
-      tablesDir: g.tablesDir,
-      tablesRoot: g.tablesRoot,
-      tablesExportJson: g.tablesExportJson,
-    })),
-    sources: summary.sources.map((s) => ({
-      name: s.name,
-      url: s.url,
-      watermark: s.watermark,
-      receipts: isAbsolute(s.receipts) ? s.receipts : join(options.runDir, s.receipts),
-      limitations: [...s.limitations],
-    })),
+  const input = manifestInput(
+    summary,
+    options.runDir,
+    sequence.groups,
     profiles,
-    coverage: summary.coverage,
-    ownersRedacted: summary.owners_redacted,
-    limitations: [...summary.limitations],
-    repoRoot: options.repoRoot,
-    ...(options.workTreeStatus === undefined ? {} : { workTreeStatus: options.workTreeStatus }),
-  };
+    previousManifestCid,
+    options.repoRoot,
+    options.workTreeStatus,
+  );
   let built: BuiltManifest;
   try {
     built = await buildManifest(input);
@@ -455,6 +536,15 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
       "manifest",
       `carCid not added for ${unpinned.map((a) => a.name).join(", ")}`,
     );
+
+  // 4b The bind guard (F-1): the exact bytes must bind against the local tables and return
+  // coverage.permits_emitted roofing-permit rows, before anything about the manifest goes public.
+  let bound: BoundRows;
+  try {
+    bound = await assertBindable(built, options.runDir, options.bind);
+  } catch (error) {
+    return fail(sequence, "bind", message(error));
+  }
 
   // 5 The manifest itself, by its exact bytes; the Hash must be cidOfBytes.
   try {
@@ -493,6 +583,7 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
     readback,
     carAdds,
     approval,
+    bind: bound,
     manifestCid: built.cid,
     manifestPath,
     indexPath,

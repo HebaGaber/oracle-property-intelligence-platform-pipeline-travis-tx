@@ -359,7 +359,7 @@ export class ApiStack extends Stack {
         (resource) => /\/(ipfs|private\/bench)\/\*$/.test(resource),
         "GetObject on <bucket>/ipfs/* and <bucket>/private/bench/* is the exact reader boundary of " +
           "contracts/storage.md: objects are keyed by CID under ipfs/, the bench prefix is private and " +
-          "deleted after TC-NF-05; no List, Put or Delete action is granted (Data.grantApiRead).",
+          "deleted after TC-NF-05; s3:ListBucket only with s3:prefix private/bench/*, no Put or Delete (Data.grantApiRead).",
       );
     }
 

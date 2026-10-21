@@ -37,6 +37,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
+import { GAZETTEER_SHA256 } from "../../../../packages/query-core/src/sql.generated.js";
 import * as travisAustin from "../../../../profiles/travis-austin@1.0.0/index.js";
 import { AUSTIN_3SYK_W9EU, captureAustinMonth } from "../adapters/socrata/austin-3syk-w9eu.js";
 import {
@@ -85,6 +86,10 @@ export const COUNTY = { slug: "travis", state: "TX", fips: "48453" } as const;
 export const PROFILE_PATH = "profiles/travis-austin@1.0.0";
 export const ROOF_PROFILE_PATH =
   "pipeline/oracle-runtime/travis/roof-age/travis-roof-age-profile.ts";
+/** The travis-places gazetteer every manifest must name (bindManifest refuses a run without it;
+ *  CR-A-03 F-1). Its digest is the query-core generated constant, which equals the DIGEST file. */
+export const GAZETTEER_PATH = "packages/query-core/gazetteer/travis-places@1.0.0";
+export const GAZETTEER_PROFILE = { name: "travis-places", version: "1.0.0" } as const;
 export const DEFAULT_CATALOG = "pipeline/docs/travis-sources.yaml";
 export const DEFAULT_TCAD_ZIP =
   "pipeline/data/raw/tcad/2026_20Certified_20JSON_20SUPP_200_2007182026.zip";
@@ -230,6 +235,8 @@ export interface RunSummary {
   owners_redacted: number;
   excluded_by_reason: Record<string, number>;
   needs_review_by_reason: Record<string, number>;
+  /** Permits whose GET returned several rows of one number, by the adapter's reason (#5). */
+  duplicates_by_reason: Record<string, number>;
   coverage: Coverage;
   sources: Array<{
     name: string;
@@ -403,16 +410,10 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
       list: capture.list,
     }),
   );
-  if (capture.status !== "ok") {
-    // contracts/cli.md: exit 2 only for a 403 or a bot challenge; a timeout is another failure.
-    const timedOut =
-      capture.status === "blocked" &&
-      (capture.receipts.at(-1)?.blocked_reason === "timeout" ||
-        (capture.reason ?? "").startsWith("list query blocked (timeout"));
-    return timedOut
-      ? fail("austin", `timeout: ${capture.reason ?? "no response"}`, "error")
-      : fail("austin", capture.reason ?? capture.status, capture.status);
-  }
+  // contracts/cli.md: the adapter labels a 403 or a bot challenge `blocked` (exit 2) and a
+  // timeout or any other failure `error` (exit 1); its label is passed through (CR-A-03 F-6).
+  if (capture.status !== "ok")
+    return fail("austin", capture.reason ?? capture.status, capture.status);
   const loaded = loadCaptures(jobDir, AUSTIN_3SYK_W9EU, capture.listed);
   // This run's receipts only (OR-10): the job dir's receipts.jsonl keeps every earlier run's lines.
   const runReceipts = join(runDir, "capture/austin-receipts.jsonl");
@@ -632,6 +633,7 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
   };
   const commit = gitCommit(repoRoot);
   const roofProfileSha = roofAge[0]?.profile.sha256 ?? null;
+  const gazetteerSha = gazetteerDigest(repoRoot);
   const ownersRedacted = countyCounts.filter((c) => c.confidential).length;
   const summary: RunSummary = {
     runId,
@@ -645,6 +647,7 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
     owners_redacted: ownersRedacted,
     excluded_by_reason: tally(excludedRows.map(exclusionReason)),
     needs_review_by_reason: tally(reviewRows.map(exclusionReason)),
+    duplicates_by_reason: tally(capture.duplicates.map((d) => d.reason)),
     coverage: {
       permits_captured: { count: captures.length, derivation: "capture_receipt" },
       permits_accepted: {
@@ -744,6 +747,13 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
               gitCommit: commit,
             },
           ]),
+      {
+        name: GAZETTEER_PROFILE.name,
+        version: GAZETTEER_PROFILE.version,
+        sha256: gazetteerSha,
+        path: GAZETTEER_PATH,
+        gitCommit: commit,
+      },
     ],
     groups: { county: "groups/county", property_improvement: "groups/property_improvement" },
     artifacts: {
@@ -754,6 +764,11 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
       tcad: tcadDir,
     },
     limitations: [
+      ...(capture.duplicates.length > 0
+        ? [
+            `duplicates: ${capture.duplicates.length} permit number${capture.duplicates.length === 1 ? "" : "s"} returned several rows in the per-permit GET; one row kept per number (${capture.duplicates.map((d) => `${d.permit_number}: ${d.rows} rows, ${d.reason}`).join("; ")})`,
+          ]
+        : []),
       "finishedAt is the end of the capture phase (the data's as-of instant)",
       `roof age: the estimator saw one month of each parcel's Austin permits, not its full history (${roofCaveats.join(", ") || "no caveat"})`,
       `contractors: ${CONTRACTOR_NOTE}; no contractor, person or license is written`,
@@ -773,6 +788,19 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
   saveState({ status: "ok", stage: "done" });
   log("run-month.done", { runId, ...counts, owners_redacted: ownersRedacted });
   return { ok: true, status: "ok", stage: "done", runId, runDir, summary };
+}
+
+/** The generated gazetteer digest; when the repo's DIGEST file is present it must agree. */
+function gazetteerDigest(repoRoot: string): string {
+  const file = join(repoRoot, GAZETTEER_PATH, "DIGEST");
+  if (existsSync(file)) {
+    const onDisk = readFileSync(file, "utf8").trim();
+    if (onDisk !== GAZETTEER_SHA256)
+      throw new Error(
+        `${GAZETTEER_PATH}/DIGEST ${onDisk} is not the generated ${GAZETTEER_SHA256}`,
+      );
+  }
+  return GAZETTEER_SHA256;
 }
 
 function argValue(name: string): string | undefined {

@@ -35,10 +35,14 @@ import {
 import {
   PreflightError,
   RunSummaryFile,
+  bindBuild,
   loadRunSummary,
   publicFiles,
   publishRun,
 } from "../src/upload.js";
+import { BindGuardError, type LocalBinder } from "../src/bind-guard.js";
+import { localBind } from "../scripts/local-bind.js";
+import { PROFILE } from "../../../profiles/travis-austin@1.0.0/index.js";
 import { PublicFilesListing, writePublicFiles } from "../src/approval.js";
 import type { FetchLike } from "../src/kubo-add.js";
 
@@ -165,6 +169,11 @@ interface FakeCliOptions {
   failAt?: number;
   /** Serve other bytes for the county `property` part (a readback mismatch). */
   tamperPart?: boolean;
+  /**
+   * Replace the county `property` part on disk during the tables upload, after the approval
+   * check, and serve the new bytes under their own CID (CR-A-03 F-5: local = served ≠ approved).
+   */
+  swapPartAfterApproval?: boolean;
 }
 
 /** A fake elephant-cli writing real CARs and tables so the manifest can be built from them. */
@@ -264,6 +273,12 @@ function fakeCli(net: Net, opts: FakeCliOptions = {}): { run: CliRunner; calls: 
         .sort();
       for (const part of parts) {
         const path = join(input, part);
+        if (
+          opts.swapPartAfterApproval &&
+          basename(input) === "county" &&
+          part === "property/part-00000.parquet"
+        )
+          writeFileSync(path, text("PAR1 county property swapped"));
         const bytes = readFileSync(path);
         const tampered = opts.tamperPart && part === "property/part-00000.parquet";
         net.store.set(await cidOfFile(path), tampered ? text("PAR1 county property X") : bytes);
@@ -298,6 +313,8 @@ interface Setup {
 interface SetupOptions {
   /** `null` leaves `owners_redacted` out of the summary. */
   ownersRedacted?: number | null;
+  /** summary.json profiles[] (default: one travis-austin profile with a stand-in digest). */
+  profiles?: Record<string, unknown>[];
 }
 
 /** A run directory as run-month.ts leaves it: groups/, capture receipts and summary.json. */
@@ -359,7 +376,7 @@ function setup(opts: SetupOptions = {}): Setup {
         limitations: ["subset: only the parcels the emitted permits point to (geoID = tcad_id)"],
       },
     ],
-    profiles: [
+    profiles: opts.profiles ?? [
       {
         name: "travis-austin",
         version: "1.0.0",
@@ -390,6 +407,40 @@ async function build(s: Setup, cli: { run: CliRunner }): Promise<string> {
   return written.sha256;
 }
 
+/**
+ * A fake local bind (the fake CLI's parts are not Parquet): it records BIND in the network's
+ * event list and answers with the manifest's own run id, CID and permits_emitted.
+ */
+function fakeBind(net?: Net, seen?: Uint8Array[]): LocalBinder {
+  return async ({ manifestBytes }) => {
+    net?.events.push("BIND");
+    seen?.push(manifestBytes);
+    const m = JSON.parse(new TextDecoder().decode(manifestBytes)) as {
+      runId: string;
+      coverage: { permits_emitted: { count: number } };
+    };
+    const rows = m.coverage.permits_emitted.count;
+    return {
+      runId: m.runId,
+      manifestCid: await cidOfBytes(manifestBytes),
+      permitRows: rows,
+      roofingPermitRows: rows,
+      tables: 0,
+    };
+  };
+}
+
+/** The real travis-austin profile and no travis-places: what run-month wrote before F-1. */
+const WITHOUT_PLACES = [
+  {
+    name: "travis-austin",
+    version: PROFILE.version,
+    sha256: PROFILE.sha256,
+    path: "profiles/travis-austin@1.0.0",
+    gitCommit: HEAD,
+  },
+];
+
 /** publishRun of an approved build: the `upload` command's library half. */
 function publishOnly(
   s: Setup,
@@ -409,6 +460,7 @@ function publishOnly(
     sleep: async () => {},
     workTreeStatus: () => "",
     headCommit: () => HEAD,
+    bind: fakeBind(net),
     ...extra,
   });
 }
@@ -1030,5 +1082,116 @@ describe("preflight before the first network write (OR-14)", () => {
     expect(result.ok).toBe(true);
     expect(uploadCalls(cli.calls).length).toBeGreaterThan(0);
     expect(existsSync(join(s.runsDir, RUN_ID, "manifest.json"))).toBe(true);
+  });
+});
+
+describe("the bind guard before the manifest add (CR-A-03 F-1)", () => {
+  it("binds the built manifest after the carCid adds and before the manifest add, with its exact bytes", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const seen: Uint8Array[] = [];
+    const result = await publish(s, net, cli, { bind: fakeBind(net, seen) });
+    expect(result.ok).toBe(true);
+    const bind = net.events.indexOf("BIND");
+    expect(bind).toBeGreaterThan(net.events.lastIndexOf("ADD tables.car"));
+    expect(bind).toBeLessThan(net.events.indexOf("ADD manifest.json"));
+    expect(seen).toHaveLength(1);
+    expect(await cidOfBytes(at(seen, 0))).toBe(result.manifestCid);
+    expect(result.bind).toMatchObject({ permitRows: 2, manifestCid: result.manifestCid });
+  });
+
+  it("refuses a manifest without travis-places (real local bind): stage bind, 0 manifest adds, no runs/ files", async () => {
+    const s = setup({ profiles: WITHOUT_PLACES });
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const result = await publish(s, net, cli, { bind: localBind });
+    expect(result.ok).toBe(false);
+    expect(result.failed?.stage).toBe("bind");
+    expect(result.failed?.reason).toMatch(/BindGuardError.*no travis-places profile/s);
+    expect(net.adds.filter((a) => a.name === "manifest.json")).toHaveLength(0);
+    expect(existsSync(join(s.runsDir, RUN_ID, "manifest.json"))).toBe(false);
+    expect(existsSync(join(s.runsDir, "index.json"))).toBe(false);
+  });
+
+  it("refuses a bound row count that is not permits_emitted: no manifest add", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const short: LocalBinder = async (input) => ({
+      ...(await fakeBind()(input)),
+      permitRows: 1,
+      roofingPermitRows: 1,
+    });
+    const result = await publish(s, net, cli, { bind: short });
+    expect(result.failed?.stage).toBe("bind");
+    expect(result.failed?.reason).toMatch(/1 roofing permit rows.*permits_emitted 2/);
+    expect(net.adds.filter((a) => a.name === "manifest.json")).toHaveLength(0);
+    expect(existsSync(join(s.runsDir, "index.json"))).toBe(false);
+  });
+});
+
+describe("bindBuild: the bind step at the end of `build` (CR-A-03 F-1)", () => {
+  it("binds the draft manifest of a finished build and reports the rows", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    await build(s, cli);
+    const bound = await bindBuild({
+      runDir: s.runDir,
+      runsDir: s.runsDir,
+      repoRoot: s.repoRoot,
+      bind: fakeBind(),
+    });
+    expect(bound).toMatchObject({ runId: RUN_ID, permitRows: 2, roofingPermitRows: 2 });
+  });
+
+  it("fails a build whose manifest would lack travis-places (real local bind), before any approval", async () => {
+    const s = setup({ profiles: WITHOUT_PLACES });
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    await build(s, cli);
+    const error = await bindBuild({
+      runDir: s.runDir,
+      runsDir: s.runsDir,
+      repoRoot: s.repoRoot,
+      bind: localBind,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(BindGuardError);
+    expect((error as Error).message).toMatch(/no travis-places profile/);
+    expect(net.adds).toHaveLength(0);
+  });
+});
+
+describe("readback against the approved digests (CR-A-03 F-5)", () => {
+  it("fails a part changed on disk after the approval even when the gateway serves the changed bytes", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net, { swapPartAfterApproval: true });
+    const result = await publish(s, net, cli);
+    expect(result.ok).toBe(false);
+    expect(result.failed?.stage).toBe("readback");
+    expect(result.failed?.reason).toMatch(/property\/part-00000\.parquet.*approved/);
+    expect(net.adds).toHaveLength(0);
+    expect(existsSync(join(s.runsDir, "index.json"))).toBe(false);
+  });
+
+  it("reads each part back by its approved CID and records the approved SHA-256", async () => {
+    const s = setup();
+    const net = fakeNetwork();
+    const cli = fakeCli(net);
+    const approved = await build(s, cli);
+    const listing = PublicFilesListing.parse(
+      JSON.parse(readFileSync(join(s.runDir, "reports/public-files.json"), "utf8")),
+    );
+    const result = await publishOnly(s, net, cli, approved);
+    expect(result.ok).toBe(true);
+    const approvedParts = listing.groups
+      .flatMap((g) => g.files)
+      .filter((f) => f.path.endsWith(".parquet"));
+    const readParts = result.readback.flatMap((r) => r.parts);
+    expect(readParts.map((p) => [p.cid, p.sha256]).sort()).toEqual(
+      approvedParts.map((f) => [f.cid, f.sha256]).sort(),
+    );
   });
 });

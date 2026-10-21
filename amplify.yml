@@ -11,9 +11,13 @@
 #      still installs the root project's devDependencies on a filtered install, so the
 #      elephant-cli tarball is fetched and prepared exactly as in CI's workspace job; adding
 #      --ignore-scripts would skip that build (an orchestrator decision, not taken here).
-#   3. Copy the committed run index into public/ (served same-origin as /runs/index.json; the
-#      Runs page reads it, AD-02) and write public/build.json {sha, branch} from Amplify's own
-#      AWS_COMMIT_ID / AWS_BRANCH, which CI and the hosted tests poll (TC-052 step 0).
+#   3. Copy the committed run index into public/ when it exists (served same-origin as
+#      /runs/index.json; the Runs page reads it, AD-02). Before the first publish there is none:
+#      the build still succeeds and writes nothing, /runs/index.json answers 404 (the SPA
+#      fallback excludes .json) and the Runs page shows RUN_INDEX_TEXTS.unreadable, never
+#      placeholder data (infra/test/amplify-build.test.ts). Then write public/build.json
+#      {sha, branch} from Amplify's own AWS_COMMIT_ID / AWS_BRANCH, which CI and the hosted
+#      tests poll (TC-052 step 0).
 #   4. vite build (VITE_CID_COPY_HOST and VITE_FILEBASE_GATEWAY_HOST come from the app's
 #      environment, never from this file), then Brotli-compress duckdb-eh.wasm in dist/ in place
 #      (apps/web/scripts/compress-wasm.ts, T057); the Web stack serves *.wasm with
@@ -38,7 +42,8 @@ applications:
             - COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --version
             - pnpm install --frozen-lockfile --filter @countylens/web...
             - mkdir -p public/runs
-            - cp ../../runs/index.json public/runs/index.json
+            - |
+              if [ -f ../../runs/index.json ]; then cp ../../runs/index.json public/runs/index.json; else echo "runs/index.json not published yet: no index served; the Runs page shows its unreadable state"; fi
             - |
               node -e 'require("node:fs").writeFileSync("public/build.json", JSON.stringify({ sha: process.env.AWS_COMMIT_ID, branch: process.env.AWS_BRANCH }) + "\n")'
             - cat public/build.json

@@ -244,8 +244,19 @@ jobs:
     concurrency:
       group: e2e-hosted-${{ github.ref }}
       cancel-in-progress: true
+    # Credential-free on purpose (no AWS step, no id-token): @needs-aws cases stay excluded and
+    # announced. build-checks.spec.ts (TC-052/053) runs the infra suites, which need the region
+    # (checked against countylens:allowedRegions) and OPERATOR_EMAIL; fallback.spec.ts (TC-032–034)
+    # and cid-copy.spec.ts need CID_COPY_HOST. An unset gateway variable falls back to the
+    # harness default (tests/e2e/lib/runtime.ts). Every value is a repository variable (P0-18).
     env:
       AMPLIFY_APP_ID: ${{ vars.AMPLIFY_APP_ID }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+      OPERATOR_EMAIL: ${{ vars.OPERATOR_EMAIL }}
+      CID_COPY_HOST: ${{ vars.CID_COPY_HOST }}
+      FILEBASE_GATEWAY_HOST: ${{ vars.FILEBASE_GATEWAY_HOST }}
+      PINATA_GATEWAY_HOST: ${{ vars.PINATA_GATEWAY_HOST }}
     steps:
       - uses: actions/checkout@v4
 

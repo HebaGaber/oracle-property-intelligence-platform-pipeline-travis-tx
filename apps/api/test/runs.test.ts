@@ -114,6 +114,39 @@ describe("runs.summary (T070)", () => {
     expect(engine.statements).toHaveLength(0);
   });
 
+  it.each([
+    ["AccessDenied (403: the reader has no ListBucket on ipfs/)", 403, "AccessDenied"],
+    ["NoSuchKey by status only (404)", 404, "UnknownError"],
+  ])(
+    "returns NOT_FOUND, never a 500, when GetObject on a missing ipfs/<cid> answers %s",
+    async (_, httpStatusCode, name) => {
+      const absent = await fixtureManifest({ runId: `travis-absent-${httpStatusCode}` });
+      const error = Object.assign(new Error("Access Denied"), {
+        name,
+        $fault: "client",
+        $metadata: { httpStatusCode },
+      });
+      s3.on(GetObjectCommand, { Bucket: "copy-bucket", Key: `ipfs/${absent.cid}` }).rejects(error);
+      await expect(caller.runs.summary({ manifestCid: absent.cid })).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
+      expect(engine.statements).toHaveLength(0);
+    },
+  );
+
+  it("still rethrows a server-side S3 failure (500) as an error, not NOT_FOUND", async () => {
+    const absent = await fixtureManifest({ runId: "travis-s3-500" });
+    const error = Object.assign(new Error("We encountered an internal error."), {
+      name: "InternalError",
+      $fault: "server",
+      $metadata: { httpStatusCode: 500 },
+    });
+    s3.on(GetObjectCommand, { Key: `ipfs/${absent.cid}` }).rejects(error);
+    await expect(caller.runs.summary({ manifestCid: absent.cid })).rejects.not.toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+
   it("returns INTERNAL_SERVER_ERROR when the bytes do not hash to the requested CID, and caches nothing", async () => {
     const other = await fixtureManifest({ runId: "travis-other" });
     // The copy answers with a different manifest's bytes under this CID's key.

@@ -138,3 +138,232 @@ Fixer: `soofi-xyz-team-kit:oracle`, 2026-10-21, on top of `071eb1b` (uncommitted
 | OR-13 | Deferred (release) | "One pin (Filebase)" wording in the evidence. | — |
 
 Re-build of `travis-202609-permits-20261021t093125z` (phase 1 only, pinned CLI 44bb182b, nothing uploaded): exit 0; roots equal the earlier build (county archive `baguqeeraqc3y3bh65rbd42zgdrkctaulckvvidmgb52pghyansb43vumoh6q`, tables `baguqeeramjzy4a3oqe5sldka4hdbbm65xkbjh2yaxkb2j4dtqqkctodfxayq`; property_improvement archive `baguqeeraraakl5mdoba2lz4zgn4wtiuqiw6qfpez3dhimgfc6b7tkacv2gfq`, tables `baguqeerauingvk5n6ow4zjjn3zgj57by6ef6jpfzetcz4j7qphu4gbsl5hhq`). `reports/public-files.json` lists 27 files (county 18, property_improvement 9), 212,217 bytes, SHA-256 `ae2f47bbe86b3f84c0f4e4273be42eaf047767eec8f08fe1f49ff9256f318697`; `verifyApprovedBuild` with that digest passes on disk. That digest is the D-8 input.
+
+---
+
+## Final review: oracle (whole branch)
+
+Reviewer: `soofi-xyz-team-kit:oracle`, read-only, 2026-10-21, commit `570285d`. Skills loaded: `use-oracle`, `county-permit-adapter`, `apply-engineering-guidelines`. Scope: `git diff feature/oracle-pipeline...HEAD`, limited to `pipeline/oracle-runtime/travis/**` (adapter, `run-month.ts`), `pipeline/publish/**`, `scripts/verify-manifest.ts`, `scripts/grep-gates.sh`, the `packages/query-core` and `packages/shared` changes, and how `apps/web` and `apps/api` read the published data. Judged against ARD A1/A2/A6, AD-01–04, AD-22, AD-24–26, P0-1–4/14/15, § 16 AM-01/04/05; the Task A addendum; spec, plan and tasks; `contracts/cli.md`; `agent-design.md` (oracle and Spike delta); and `testplans/A-03-test-cases.md`. No test, CLI or network call was run.
+
+### Score: 72 / 100. Fails the bar (75) because of one open Critical, F-1.
+
+On its own, the publish track now scores **91 / 100**, up from 84: OR-1, OR-2, OR-4, OR-6, OR-7, OR-8, OR-9, OR-10 and OR-14 are fixed, and the D-8 approval is now a file with a hash. The whole-branch score is held down by F-1, which is in the producer (`run-month.ts`). Once F-1 is fixed and has a test, I expect about 88.
+
+### Are the services what I would choose?
+
+Yes. The services are unchanged from the early review and are still right:
+- a pure plan/executor around the pinned CLI;
+- single-purpose readback, Kubo add, manifest, index, verify and CID-copy modules;
+- a generic Socrata adapter plus a coordinates-only Austin module;
+- the web and API read the manifest **by CID** and check that the bytes hash to it (`apps/web/src/data/manifest.ts:22`, `apps/api/src/s3-read.ts`), then read the parts by their manifest CIDs (`fetch-by-cid.ts` `partUrl`, `presignPart`).
+
+Nothing public comes from outside `elephant-cli` output, the descriptive manifest and the index. No Query DB is imported anywhere in scope.
+
+### Strengths
+
+1. **The D-8 gate is now structural.** `build` writes `reports/public-files.json`. `upload --approved <sha256>` checks the listing hash, the build-report hash, every phase-1 output, every public file (size, SHA-256 and CID) and both CAR header roots, and it never re-runs phase 1 (`approval.ts:237-309`, `upload.ts:257-309`).
+2. **Every refusal comes before the first network write** (OR-14): Filebase env names, clean tree, recorded commit equals HEAD, and approval/drift (`upload.ts:257-309`, `cli.ts:282`).
+3. **Order is enforced as data.** `assertOrdered` names both steps and runs before any directory or CLI call (`sequence.ts:468-488`, `:558`). TC-001 and TC-002 are asserted by ID (`publish-order.test.ts:151-648`).
+4. **Contractor guardrail.** `run-month.ts:24-26` and `:759`, together with the transform, write no contractor, person or license from the permit. All five AD-24 states are recorded, every one `contractor_unresolved` until A-07.
+5. **Consumers fail closed.** A CID mismatch is never shown (`fetch-by-cid.ts:183-185`). One load never mixes hosts. The fallback is labelled. `bindManifest` refuses a run classified under another profile digest.
+
+### Deviations (with paths)
+
+- `pipeline/oracle-runtime/travis/runs/run-month.ts:728-746`: its `profiles[]` drops `travis-places`, which `run-pilot.ts:545` writes and the A-02 contract requires. See F-1.
+- `pipeline/publish/src/readback.ts:302-315`: the archive and tables roots are checked against the CLI's upload summary (the node's claim), not fetched by root CID through a gateway. Parts and `carCid` files are read back through the gateway. The kit asks for archive-root and tables-root readback before the Atlas PR. See F-3.
+- `pipeline/publish/src/sequence.ts:698` and `index.ts:29`: `runPublish` (all 12 steps, no approval) is still exported. No CLI path reaches it. See F-4.
+
+### Findings
+
+| # | Severity | File:line | Finding | Fix |
+| --- | --- | --- | --- | --- |
+| F-1 | **Critical (blocks the upload)** | `pipeline/oracle-runtime/travis/runs/run-month.ts:728-746`; `packages/query-core/src/bind-manifest.ts:155-156` | `run-month` records only the `travis-austin` and `travis-austin-roof-profile` profiles. `bindManifest` throws `manifest has no travis-places profile`, so a manifest built from any run-month run cannot be bound by the web engine (`apps/web/src/engine/duckdb-wasm.ts:202`) or the Lambda (`apps/api/src/engine/duckdb-node.ts:84`), and the Permits page and API fail. I confirmed it on disk: `pipeline/data/runs/travis-202609-permits-20261021t093125z/summary.json` has no `travis-places`. The A-02 pilot wrote it (`run-pilot.ts:545-548`); the tests pass only because their fakes add it (`apps/api/test/helpers/fakes.ts:103`). Published CIDs never change and `runs/index.json` is append-only, so an unbindable run would stay in the public history for good. | Add `{name:"travis-places", version, sha256: GAZETTEER.sha256 (or the committed DIGEST), path:"packages/query-core/gazetteer/travis-places@1.0.0", gitCommit}` to `run-month.ts` `profiles`. In `publishRun`, before `kuboAddBytes` of the manifest, run `bindManifest(built.bytes, tablesDir, nodeEngine)` against the local tables, or at least assert that the profile names and digests equal the `query-core` constants. Add a `run-month.test.ts` case that builds the manifest from a run-month summary and binds it. Then re-run the capture and the build, and get a new D-8 approval. |
+| F-2 | Major (operational, before the upload) | `pipeline/publish/src/upload.ts:276-288` | Preflight requires `profiles[].gitCommit === HEAD`. Any commit made after the capture forces a new capture, and a new approval with it. That includes committing this review or the build evidence. The kept run (`…093125z`) was captured at `071eb1b`, but HEAD is `570285d`, so it is already refused. Fail-closed is correct; the trap is in the order of work. | Treat this as the D-8 runbook rule: commit every doc, run `run-month`, run `build`, approve, upload, and only then commit `runs/`, with no commits in between. Optionally relax the check so it passes when `git diff --quiet <recorded> HEAD -- profiles packages/query-core packages/contract pipeline` is clean, and print that comparison. |
+| F-3 | Minor (before A-11) | `pipeline/publish/src/readback.ts:302-315` | The archive and tables roots are compared with `upload --output-json`, not read back through a gateway by root CID. | GET `https://{FILEBASE_GATEWAY_HOST}/ipfs/{root}?format=raw`, compute the block's CID, and compare it with `sameDigest`. Record the result in `readback.json`. |
+| F-4 | Minor | `pipeline/publish/src/sequence.ts:698`, `pipeline/publish/src/index.ts:29` | `runPublish` runs phase 1 and phase 2 with no D-8 approval and is part of the package API. | Remove it from `index.ts`, so only tests import it from `sequence.ts`, or make it require an `ApprovedBuild`. |
+| F-5 | Minor | `pipeline/publish/src/approval.ts:292-304`; `readback.ts:228-246` | There is a gap between `verifyApprovedBuild` and `upload-car`. Tables parts are read back against the current local file, not the approved SHA-256. A CAR swap is caught by the root check, but a changed part is not. | Pass the approved `PublicFile` digests into `readbackGroup` and compare served bytes with the approved SHA-256. |
+| F-6 | Minor | `pipeline/oracle-runtime/travis/runs/run-month.ts:407-413` | The timeout-vs-block decision matches the receipt's `blocked_reason` or the reason prefix `"list query blocked (timeout"`. The adapter (`lib/source-client.ts:48`) still labels a timeout `blocked`, so A-05/A-06 will see the same mislabel. | Make the adapter return `status: "error"` for `timeout` and drop the string match. |
+| F-7 | Note | `apps/web/src/data/fetch-by-cid.ts:183-185` | The browser verifies only the manifest by CID. Table parts are range-read without per-part CID checks, so part integrity rests on the CID copy's `IfNoneMatch` and `ChecksumSHA256` PUT and on `verify-manifest`. | Acceptable for A-03. State it in the evidence. |
+
+### Early-review findings: status
+
+| Finding | Status | Evidence I re-checked |
+| --- | --- | --- |
+| OR-1 | **Fixed (verified)** | `approval.ts:106-147` (listing), `:237-309` (verify); `upload.ts:290`; `runUpload` is phase 2 only (`sequence.ts:680-691`); the build report is never rewritten (phase-specific name, `sequence.ts:144`). |
+| OR-2 | **Fixed (verified)** | `sequence.ts:468-488`, called at `:558` before `mkdirSync`; tests `publish-order.test.ts:604-648`. |
+| OR-3 | Open (deferred to G7) | `StepRecord` still has no stdout (`sequence.ts:90-100`). The six CAR check counts are still copied by hand. |
+| OR-4 | **Fixed (verified)** | `upload.ts:389-407` (`readbackFile` per `.car`, stage `car-readback`). |
+| OR-5 | Open (before A-11) | `dataGroupCids` is recorded but not asserted (`sequence.ts:644`). |
+| OR-6 | **Fixed (verified)** for verify | `verify.ts` `redirect: "manual"`, 3xx and redirected responses refused. `readback.ts` `getDigest` still follows redirects (see OR-11). |
+| OR-7 | **Fixed (verified)** | `sequence.ts:237-247` adds the composed token and `Bearer` forms; `finish` redacts the whole report (`:583-586`). |
+| OR-8 | **Fixed (verified)** | `filebaseEnvProblem` (`sequence.ts:224-230`) is enforced in `cli.ts:161`, `upload.ts:265-269` and `kubo-add.ts:91-94`. |
+| OR-9 | **Fixed (verified) at the run level** | `run-month.ts:407-413` gives exit 1 for a timeout; the residual is F-6. |
+| OR-10 | **Fixed (verified)** | `run-month.ts:417-419` writes this run's receipts to `capture/austin-receipts.jsonl`; `records: captures.length` (`:714`). |
+| OR-11 | Open (G7) | There are still two GET policies: readback retries 404 and follows redirects, while verify does neither. |
+| OR-12 | Open (D-8 evidence) | No second `export-tables` determinism run is recorded. |
+| OR-13 | Open (release) | Evidence wording "one pin (Filebase)". |
+| OR-14 | **Fixed (verified)** | `upload.ts:257-309`; `cli.ts:282`; tests `upload.test.ts:969`, `cli.test.ts:376`. |
+
+### Before the first upload (D-8 re-confirm)
+
+1. Fix F-1, add its test, and bind the built manifest locally. **This blocks the upload.**
+2. Follow the F-2 order: commit everything, capture, build, approve the new `public-files.json` SHA-256, then upload. The `ae2f47bb…` approval recorded above is for a run at `071eb1b`; preflight now refuses it, and F-1 changes the manifest anyway.
+3. Check `~/.config/assessment/filebase.env`: the three `FILEBASE_*` names are present and `IPFS_API_TOKEN` is absent.
+4. Record the lexicon manifest URL, the CLI commit `44bb182` and the OR-12 determinism pair in the D-8 evidence.
+
+### Before G7
+
+F-3 to F-6, OR-3 and OR-11. Also: A-03 makes no Atlas, IPNS or MCP claim (P0-4 wording); keep it that way until A-11.
+
+### Confidence
+
+High on F-1: I traced it statically through `run-month.ts`, `bind-manifest.ts` and the on-disk `summary.json`. High on the re-verification of the fixes, which I read in the code and matched to named tests. I did not run the tests. Medium on F-3's weight, which depends on how strictly A-11 reads "root readback". Line numbers are at `570285d`. I did not review UI rendering, tRPC procedures, CDK stacks or query-core SQL semantics beyond the bind seam; those belong to other reviewers.
+
+## Final review: /code-review (whole branch, high)
+
+Scope: `git diff feature/oracle-pipeline...HEAD` at `570285d`, effort high. This review was read-only: no tests, network or AWS calls were run. The Major findings were checked against the code. Counts: 0 Critical, 4 Major, 6 Minor.
+
+### Major
+
+1. **Major: `infra/src/data-stack.ts:248` (with `apps/api/src/s3-read.ts:156`).** `grantApiRead` grants only `s3:GetObject`, but `presignPrefix` calls `ListObjectsV2`, which needs `s3:ListBucket` on the bucket ARN.
+   *Failure:* invoking the bench (`{kind:'bench', prefix:'private/bench/<name>/'}`) on the deployed Lambda gets AccessDenied, so TC-NF-05 and the ADR-0001 Lambda measurement can never pass. Unit tests mock S3 with `aws-sdk-client-mock`, so they miss it.
+   *Fix:* add an `s3:ListBucket` statement on `bucket.bucketArn`, conditioned on `s3:prefix` in [`ipfs/*`, `private/bench/*`]. Add a CDK assertion test that the API role has this statement.
+
+2. **Major: `apps/api/src/s3-read.ts:89`.** `isAbsent` accepts only `NoSuchKey`, `NotFound` or 404. Without `s3:ListBucket`, S3 answers a GetObject on a missing key with 403 AccessDenied.
+   *Failure:* `runs.summary({manifestCid})` with a well-formed CIDv1 that isn't in the copy rethrows the raw error. tRPC returns 500 instead of NOT_FOUND, and a bad client input fires the `countylens-api-5xx` alarm. The writer role already documents this need (`data-stack.ts:190`); the reader grant does not include it.
+   *Fix:* the same ListBucket grant as finding 1, scoped to `ipfs/*`, so S3 returns 404. Add a CDK assertion, and a hosted test (TC level) that an unknown CID returns NOT_FOUND.
+
+3. **Major: `amplify.yml:41`.** `cp ../../runs/index.json public/runs/index.json` fails hard because `runs/index.json` has never been committed. It is in no commit on any branch.
+   *Failure:* every Amplify build (production and each `0*` preview) fails in preBuild until the first publish commits the index. No hosted URL means no evidence, and the Runs page's empty or unreadable-index states (FR-002, TC-014) can never be shown live.
+   *Fix:* `if [ -f ../../runs/index.json ]; then cp ...; else echo '{"version":1,"runs":[]}' > public/runs/index.json; fi`, using the real empty `RunsIndexV1` shape. Alternatively, commit the first index before any branch build.
+
+4. **Major: `apps/api/src/engine/duckdb-node.ts:84` (with `packages/query-core/src/bind-manifest.ts:253,274`).** `bindOnce` rebinds a different manifest on the same long-lived DuckDB instance. `bindManifest` creates emitted tables as `CREATE OR REPLACE VIEW group.table` and absent required tables as `CREATE OR REPLACE TABLE group.table`. DuckDB refuses to replace an object of the other type.
+   *Failure:* a warm sandbox binds manifest A, where a required table was emitted (VIEW). A request for manifest B, which lacks that table, raises "Existing object ... is of type View". Every bind of the other shape then fails until the sandbox is recycled. Extra views from A, built over presigned URLs that expire, also stay behind.
+   *Fix:* at the start of `bindManifest`, `DROP SCHEMA IF EXISTS <group> CASCADE` for every group, or open a fresh connection or in-memory database per bind. Add a query-core unit test that binds manifest A, then B (with a required table missing), then A again on one engine.
+
+### Minor
+
+5. **Minor: `pipeline/oracle-runtime/travis/adapters/socrata/socrata.ts:458`.** The list loop deduplicates repeated `permit_number`s (`seen`, l.428), but the per-permit GET requires `xs.length === 1`.
+   *Failure:* a reissued or amended permit that appears twice in the source makes the GET return 2 rows. The outcome is `error` and the whole month run exits 1.
+   *Fix:* accept `xs.length >= 1` where every row has `s.key === n`, and record the duplicate count in the receipt. Alternatively, mark that permit as `error` and continue instead of aborting the run.
+
+6. **Minor: `pipeline/oracle-runtime/travis/adapters/socrata/socrata.ts:450` (`safePermitName`, l.134).** The resume skip never checks `done.permit_number === n`, and `safePermitName` is lossy: `2026-1 BP` and `2026-1/BP` both become `2026-1_BP`.
+   *Failure:* the second permit is skipped as already captured. Later, `loadCaptures` throws, or the wrong body is attributed to that permit.
+   *Fix:* compare `done.permit_number === n` before skipping, and make the key collision-free (for example `safe + "-" + sha256(n).slice(0,8)`).
+
+7. **Minor: `apps/api/src/config.ts:25`.** The Lambda requires `CID_COPY_HOST` and `FILEBASE_GATEWAY_HOST`, which no Lambda code reads, and it re-declares the `BARE_HOST` regex owned by `packages/shared/src/urls.ts`.
+   *Failure:* a deploy that leaves out an unused key fails every request at `getConfig()`.
+   *Fix:* drop the unused keys, or validate them through `@countylens/shared`.
+
+8. **Minor: `apps/web/src/engine/load-permits.ts:68`.** `readPathUrlsFromEnv` and `envHost` duplicate `apps/web/src/data/config.ts`.
+   *Failure:* a validation change made in one copy drifts from the other.
+   *Fix:* import from `../data/config`.
+
+9. **Minor: `apps/web/src/engine/load-permits.ts:96`.** DuckDB-WASM startup is awaited before the run-index and manifest fetches start, although they are independent.
+   *Failure:* first-visit time-to-rows is slower than it needs to be.
+   *Fix:* `Promise.all([openEngine(), loadRunsIndex().then(loadManifest)])`, then bind.
+
+10. **Minor: `apps/web/src/data/manifest.ts:22`.** The manifest bytes are CID-checked in `fetchByCid` (`fetch-by-cid.ts:183`) and hashed again in `parseManifest`.
+    *Failure:* the SHA-256 work is done twice on every load. This is a cost, not a correctness problem.
+    *Fix:* verify in one place.
+
+**Tests' ability to detect regressions:** findings 1–3 all pass CI today. S3 is mocked, and no CDK assertion or hosted test covers the IAM grant or a build without an index. Finding 4 needs a multi-manifest bind test. Adding the CDK assertion and the two unit tests named above would close these gaps.
+
+## Final review: metagross (whole branch)
+
+**Reviewer:** `soofi-xyz-team-kit:metagross` (read-only), 2026-10-21, branch `003-walking-skeleton` at `570285d`, scope `git diff feature/oracle-pipeline...HEAD` restricted to monorepo/turbo, CI, `infra/**`, `apps/web`, `apps/api`, `tests/e2e`, `amplify.yml`. Skills: build-frontend-backends, integrate-ci-cd, responsive-design-tests, apply-engineering-guidelines.
+
+**Score: 70 / 100** (below the 75 bar until findings 1–4 are fixed; 5–6 are G7 work already planned).
+
+### Are these the services I would choose?
+
+Yes. Turborepo + pnpm workspace with shared `packages/{shared,query-core,contract,tsconfig}`; tRPC on one arm64 Lambda behind an HTTP API (stage throttle, JSON access log, X-Ray active, Powertools) with no reserved or provisioned concurrency; Amplify Hosting (L1 `CfnApp`, GitHub App token flow) with a same-origin `/api/<*>` rewrite so previews need no CORS; S3 + CloudFront (OAC) CID copy; SNS email + three self-clearing alarms; native GitHub OIDC provider with a deploy role that can only assume the `cdk-hnb659fds-*` roles; Amplify-managed certificate with DNS at Namecheap (no Route 53, no ACM in us-east-1, no Secrets Manager, no KMS CMK, no WAF). Idle cost is $0 for everything instantiated. This matches agent-design § 1–7 and ARD § 16 AM-02/AM-03/AM-06.
+
+### Strengths
+
+- Region comes only from `CDK_DEFAULT_REGION` (`infra/src/config.ts:24-37`), enforced by `scripts/grep-gates.sh` region-literal gate; `synth` throws without it.
+- Five stacks with explicit AM-02 dependencies and reasons (`infra/src/app.ts:76-80`); cdk-nag AwsSolutions on the whole app with suppressions written to the template; assertions files per stack.
+- Deploy role trust limited to `0*` and the production branch, `maxSessionDuration` 1 h, no own permissions (`infra/src/ops-stack.ts:183-224`).
+- Amplify rule order is correct (API rewrite before the SPA regex), `/build.json` no-cache header, and CI waits for `/build.json.sha == GITHUB_SHA` before Playwright (`.github/workflows/ci.yml:264-286`).
+- Hosted-only harness: `tests/e2e/lib/runtime-url.ts` refuses unset/loopback/non-URL values; build-time cases first prove local HEAD == deployed sha (`tests/e2e/build-checks.spec.ts`).
+- `@needs-aws` exclusion is honest: excluded cases are filtered by `grepInvert` and announced, never reported as passed (`tests/e2e/lib/needs-aws.ts`, `playwright.config.ts:20-30`).
+- Atlas tokens only: stylelint strict-value rule plus a clean scan (only `1px` hairlines on token colors and the 600 px breakpoint); `Provenance`/`MissingReason` used on both routes; no CIDs or sample rows in app source (only a doc-comment example in `CidDisplay.tsx`).
+- Lambda asset built from the same lockfile for linux-arm64 (`pnpm-workspace.yaml` `supportedArchitectures`).
+
+### Deviations
+
+- Budget (NFR-02, FR-007, TC-052) is not deployed: `BudgetStack` exists but is not instantiated (`infra/src/ops-stack.ts:61-110`, `:175-176`); the TC-052 budget assertion is `skipIf(!BUDGET_REGION)` (`infra/test/stacks.test.ts:465`), so TC-052 passes without a budget.
+- `@aws-cdk/core:defaultCrossStackReferences: "weak"` (`infra/cdk.json:92`) renders every cross-stack value as `Fn::GetStackOutput` (10 uses: Api←Data, Web←Api/Data, Ops←Api, Cert←Web). Not named in the ARD or agent-design; needs an ARD note.
+- Observability, perf, responsive and Lambda-fallback specs named by the G6 matrix are absent (T061, T068 open).
+
+### Budget-placement verdict
+
+The G-A4 claim "AWS::Budgets::Budget exists only in us-east-1" is **not correct**. I ran CDK's own bundled validator (`@aws/cloudformation-validate`, the source of F3006, with `pseudoParameterOverrides.region` exactly as `aws-cdk-lib` calls it) on a one-resource template: F3006 fires for **eu-north-1** and eu-south-1 only; us-east-1, us-east-2, us-west-2, eu-west-1, eu-west-2, eu-west-3, eu-central-1 and ap-southeast-1 all accept the type. So the type is missing from the project region's CloudFormation registry, not "us-east-1 only". A N. Virginia (or any other region) stack is not compliant anyway: CLAUDE.md allows us-east-1 only for CloudFront, WAF and CloudWatch Logs.
+
+Compliant option: keep the budget in `CountyLensOps` (eu-north-1) as an `AwsCustomResource` that calls the Budgets API (`CreateBudget` on create, `UpdateBudget` on update, `DeleteBudget` on delete, `physicalResourceId` = budget name). A budget is an account-level object with no region; the Budgets API's global endpoint is not a regional resource, so no stack or resource lives outside eu-north-1. Idle cost stays $0 (the provider Lambda runs only on deploy; give its log group a retention). Scope the IAM to `budgets:ModifyBudget`/`budgets:ViewBudget` on `arn:aws:budgets::<account>:budget/countylens-monthly` and suppress cdk-nag IAM4/L1 with reasons. First, a read-only PO check settles whether the native type is usable after all: `aws cloudformation describe-type --type RESOURCE --type-name AWS::Budgets::Budget --region eu-north-1 --profile assess`; if it returns the type, acknowledge F3006 with that evidence and put `CfnBudget` back into `OpsStack`.
+
+### Findings
+
+1. **Major: the bench branch cannot list its prefix.** `apps/api/src/s3-read.ts:157` calls `ListObjectsV2`, but `grantApiRead` gives only `s3:GetObject` on `ipfs/*` and `private/bench/*` (`infra/src/data-stack.ts:248-256`). TC-NF-05 will get AccessDenied on the first direct invoke; unit tests use fakes and cannot catch it. *Fix:* add `s3:ListBucket` on the bucket ARN with `Condition: StringLike s3:prefix = private/bench/*`, plus a CDK assertion for it (or pass explicit keys in the bench event and drop the listing).
+2. **Major: no budget is deployed and TC-052 hides it.** See the verdict above (`infra/src/ops-stack.ts:61-110,175-176`; `infra/test/stacks.test.ts:465-468`). *Fix:* the `AwsCustomResource` budget in `OpsStack`; make the TC-052 assertion unconditional (no `skipIf`).
+3. **Major: no guard against synthesising or deploying to the wrong region.** The most recent local synth (`infra/cdk.out/manifest.json`, 13:06) targets `aws://515618610572/us-east-1`, and every `Fn::GetStackOutput` in it carries `"Region": "us-east-1"`, although the `assess` profile says eu-north-1. Any shell with a stray `CDK_DEFAULT_REGION`/`AWS_REGION` would put all five stacks in us-east-1 at D-10. *Fix:* add an allow-list key outside `infra/src` (for example `countylens:allowedRegions` in `infra/cdk.json` context or a `COUNTYLENS_REGION` repository variable) and make `loadConfig` throw when `CDK_DEFAULT_REGION` differs; assert it in `stacks.test.ts`; re-synth before D-10 and check the manifest environment.
+4. **Major: the `e2e-hosted` job lacks the environment its specs need.** `.github/workflows/ci.yml:247-248` sets only `AMPLIFY_APP_ID`. `build-checks.spec.ts` TC-052/TC-053 spawn the infra Vitest suites, which throw without `CDK_DEFAULT_REGION`; `fallback.spec.ts` TC-032/033/034 and `cid-copy.spec.ts` call `requireCidCopyHost()` and throw without `CID_COPY_HOST`. *Fix:* add `CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}`, `CID_COPY_HOST: ${{ vars.CID_COPY_HOST }}`, `FILEBASE_GATEWAY_HOST`, `PINATA_GATEWAY_HOST` to that job; keep it credential-free so `@needs-aws` stays excluded.
+5. **Major (likely, verify at D-10): the Amplify token flow breaks later Web updates.** `infra/src/web-stack.ts:120-129` asks the PO to revoke the PAT after the first build, while CI keeps re-using the NoEcho previous value. The CloudFormation Amplify App handler sends `AccessToken` on every App update, so any change to custom rules, env vars or headers (for example a new HTTP API URL or CID host) will fail in the CI `deploy` job once the token is revoked. *Fix:* keep a short-expiry fine-grained token valid until the PR is final and document "pass `--parameters CountyLensWeb:GitHubAccessToken=…` again on any Web change", or test one no-op App update after revocation and record the result in the run log.
+6. **Major (G7): G6-matrix specs are missing.** `tests/e2e/observability.spec.ts` (TC-050, TC-051, TC-NF-04), `perf.spec.ts` (TC-NF-01, TC-NF-02), `responsive.spec.ts` (TC-NF-03, smeargle at 390/768/1440), `lambda-fallback.perf.spec.ts` (TC-NF-05), `read-path-record.spec.ts` (TC-NF-06). Only `cid-copy.spec.ts` TC-044 carries `@needs-aws`; TC-050 and TC-NF-05 must carry it when written. *Fix:* complete T061/T068 after D-10; run the `@needs-aws` cases from an `assess` session and attach their reports as evidence.
+7. **Minor: weak references can go stale silently.** With `Fn::GetStackOutput`, a consumer template's text does not change when a producer output value changes (for example HttpApi or distribution replacement), so `cdk deploy` reports "no changes" for Web/Ops/Api and keeps old values. *Fix:* record the choice in the ARD with this caveat; after a producer replacement run `cdk deploy --force` on the consumers; add a hosted check that `/api/trpc/runs.summary` answers through the rewrite. Also confirm with one eu-north-1 changeset that the intrinsic is accepted before D-10.
+8. **Minor: pre-compressed wasm relies on Amplify honouring a `Content-Encoding: br` custom header** (`infra/src/web-stack.ts:178-186`, `amplify.yml` compress step). If Amplify's CDN re-negotiates or strips it, DuckDB init fails with a compile error. *Fix:* first hosted check after D-10: `curl -sI …/duckdb-eh.wasm` shows `content-encoding: br` and `content-type: application/wasm`, and the Permits page reaches `ready`; keep a fallback (uncompressed wasm) ready.
+9. **Minor: CountyLensCert may wait on DNS.** `AWS::Amplify::Domain` can sit in `PENDING_VERIFICATION` while the stack is in progress, and stack outputs are only readable after completion. *Fix:* in the D-10 runbook, read both CNAMEs from `aws amplify get-domain-association` while the stack is creating, and deploy Cert separately from `--all` until the domain is AVAILABLE so a DNS wait never blocks CI.
+10. **Minor: turbo cache keys miss two switches.** `turbo.json` `test.env` lacks `BUDGET_REGION` and `COUNTYLENS_BUNDLE`, which change what the infra suites assert; a cached pass can be replayed. *Fix:* add both (or drop `BUDGET_REGION` once finding 2 is fixed).
+11. **Minor: the `deploy` job is red on every push until D-10** (`ci.yml:216-221`). This is intended, but the PR will show failing checks. *Fix:* note it in the PR body until the first laptop deploy sets `AWS_DEPLOY_ROLE_ARN`.
+
+### Confidence
+
+High for findings 1, 3 (manifest and template inspected), 4 and 6 (files read), and for the budget verdict (reproduced with the exact validator CDK uses; the live CloudFormation registry was not queried because this review made no AWS calls). Medium for 5 and 9 (CloudFormation handler behaviour for Amplify, to be confirmed at D-10). Not reviewed: `pipeline/**` and `packages/**` internals beyond their use by the apps.
+
+### Fixes (final review)
+
+Fixer: oracle, 2026-10-21, on top of `570285d` (uncommitted). Tests first: each new test was run red, then the fix, then green. No network, upload, AWS or `pipeline/data` access; the only real engine is a local DuckDB bind over a tiny Parquet export written inside the test.
+
+| # | Status | Change | Tests |
+| --- | --- | --- | --- |
+| F-1 | **Fixed** | `run-month.ts` now writes a third profile `{name: "travis-places", version: "1.0.0", sha256: GAZETTEER_SHA256, path: packages/query-core/gazetteer/travis-places@1.0.0, gitCommit}`. The digest is query-core's generated constant, and it is checked against the repo's `DIGEST` file when that file is present. Defence: `pipeline/publish/src/bind-guard.ts` `assertBindable` binds the built manifest bytes against the LOCAL tables with the real query-core `bindManifest`. The binder is `pipeline/publish/scripts/local-bind.ts`: a node DuckDB with `partUrl` mapped to the run directory, kept outside `src/` because of the AD-19 DuckDB ban and loaded lazily. It runs `listRoofingPermitsSql()` and `runSummarySql()` and requires rows = `coverage.permits_emitted`, plus a matching run id and manifest CID. In `publishRun` this is the new stage `bind`, which runs after the carCid adds and before the manifest add, so a failure means no add and no `runs/`. `cli.ts build` ends with `bindBuild` (the draft manifest), prints `bind: N roofing permit rows bound`, and exits 1 with "do not approve" on failure. | `run-month.test.ts` "records travis-austin, the roof profile and travis-places with their digests (CR-A-03 F-1)"; `bind-guard.test.ts` (real DuckDB): "binds a manifest with travis-austin, the roof profile and travis-places: 2 rows = permits_emitted", "refuses a manifest without the travis-places profile with BindGuardError", "refuses a bound row count that is not coverage.permits_emitted"; `upload.test.ts`: "binds the built manifest after the carCid adds and before the manifest add, with its exact bytes", "refuses a manifest without travis-places (real local bind): stage bind, 0 manifest adds, no runs/ files", "refuses a bound row count that is not permits_emitted: no manifest add", "binds the draft manifest of a finished build and reports the rows", "fails a build whose manifest would lack travis-places (real local bind), before any approval"; `cli.test.ts`: "fails the build when the draft manifest does not bind: exit 1, no approval line (CR-A-03 F-1)" and the build happy path (prints the bind line before the approval line). |
+| F-2 | **Kept** | The strict `profiles[].gitCommit === HEAD` preflight stays. The D-8 runbook order applies: commit everything, run `run-month`, `build`, approve, `upload`, and only then commit `runs/`. | (existing) `upload.test.ts` "refuses a build whose recorded gitCommit is not HEAD…" |
+| F-3 | **Deferred** (before A-11) | Archive and tables roots are still checked against the CLI upload summary. A gateway root-CID GET is not added. | n/a |
+| F-4 | **Fixed** | `index.ts` no longer exports `runPublish`. It also no longer exports `runUpload` or `executePlan`, which would upload a build that `verifyApprovedBuild` never checked. The order tests import these from `sequence.ts`. | `index.test.ts` "does not export runPublish, the 12-step path without the D-8 approval", "does not export runUpload or executePlan, which upload a build no approval verified", "exports the approval-gated publishRun, the build-only runBuild and the bind guard" |
+| F-5 | **Fixed** | `preflight` returns the approved `public-files.json` entries. `readbackGroup` and `readbackFile` take `approved`: each part is fetched by its APPROVED CID and compared with the approved size and SHA-256. A local file that differs from its approval, or is missing from it, fails, and so does a carCid that differs from the approved one. | `upload.test.ts` "fails a part changed on disk after the approval even when the gateway serves the changed bytes" (red on the old readback, checked), "reads each part back by its approved CID and records the approved SHA-256" |
+| F-6 | **Fixed** | The adapter labels a timeout `error` (exit 1) and keeps `blocked_reason: "timeout"` on the receipt. A 403 or a challenge stays `blocked` (exit 2). `run-month.ts` passes the adapter's label through, and the string match is gone. | `socrata-adapter.test.ts` "F-6: labels a permit GET timeout `error` (exit 1), not `blocked`, keeping blocked_reason timeout", "F-6: labels a list-query timeout `error` (exit 1), before any permit GET"; existing TC-006 403/challenge cases still exit 2; `run-month.test.ts` "labels a timed-out permit GET an error (exit 1)…" still green |
+
+/code-review Minor #5 and #6 (adapter, same files):
+- **#5 Fixed.** A per-permit GET that returns several rows of the same number no longer aborts the run. The raw body is kept byte for byte. `pickPermitRow` keeps one row: identical rows give `identical_rows`; differing rows keep the latest watermark field, then the greatest canonical JSON, giving `differing_rows_kept_latest`. The receipt records `duplicate_rows` and `duplicate_reason`, and `job.json` records `duplicates` and `list_rows_repeated`. `run-month` writes `duplicates_by_reason` and a limitation line. Tests: "#5: de-duplicates identical rows…", "#5: keeps the latest of differing rows…", "#5: counts a permit number repeated in the list query…", and in run-month "does not abort when a permit GET returns the same permit twice; counts it in the summary (code-review #5)".
+- **#6 Fixed.** `safePermitName` is the sanitised number plus `-` and the first 8 hex characters of its SHA-256. A resume skips a permit only when `status.permit_number === n`, and `loadCaptures` checks the same. Tests: "safePermitName is collision-free for numbers that sanitise alike (CR-A-03 code-review #6)", "#6: two numbers that sanitise alike get two status files, and a resume never skips the wrong one", "#6: a status file whose permit_number differs is not taken as done". Note: job directories written before this change use the old key names, so a resume re-captures them once.
+
+`apps/api/test/helpers/fakes.ts` was not changed. Its `travis-places` profile is part of a correctly formed manifest fixture, not a mask, and the producer is now pinned by the F-1 tests above.
+
+Suites: `pnpm vitest run` 955 passed / 7 skipped (60 files + 1 skipped); `pipeline/oracle-runtime` `npm test` 643 passed (45 files), `typecheck`, `lint` and `format:check` clean; `pnpm turbo run typecheck lint` 9/9; `pnpm format:check` clean.
+
+Before D-8: re-run `run-month` (the kept run's `summary.json` has no `travis-places`), then `build`. Its new last step must print `bind: N roofing permit rows bound`. Then approve the new `public-files.json`. The guard requires the `v_roofing_permit` rows (Roofing/Replacement) to equal `permits_emitted`. If the profile ever emits a roofing permit with another action, the build will refuse it by name.
+
+## Fixes (/code-review): infra, API, query-core, amplify.yml, CI
+
+**Fixer:** `soofi-xyz-team-kit:metagross`, 2026-10-21, branch `003-walking-skeleton` on `570285d` (uncommitted). Tests were written first and run red, then the fix turned them green. No deploy, no AWS calls, no network.
+
+| Finding | Status | Test (red → green) | Fix |
+| --- | --- | --- | --- |
+| /code-review Major 1 + metagross 1: bench can't list | Fixed | `infra/test/api.test.ts` › "reads only ipfs/* and private/bench/* … lists private/bench/* only". Red: `lists` had length 0. | `DataStack.grantApiRead` adds `s3:ListBucket` on the bucket ARN with `StringLike s3:prefix = private/bench/*`. GetObject stays on `ipfs/*` and `private/bench/*`. No listing of `ipfs/`. |
+| Major 2: missing CID → 500 | Fixed | `apps/api/test/runs.test.ts` › "returns NOT_FOUND, never a 500 … AccessDenied (403…)" and "…(404)", plus "still rethrows a server-side S3 failure (500)". Red: the 403 case rethrew. | `s3-read.ts` `isAbsent` treats NoSuchKey, NotFound, 404, AccessDenied and 403 as absent, so the client gets NOT_FOUND. A 5xx from S3 is still rethrown. |
+| Major 3: Amplify build fails without index | Fixed | New `infra/test/amplify-build.test.ts`: YAML structure, one guarded step, and the step run with bash in a temporary tree with and without `runs/index.json`. Red: the bare `cp` exited non-zero. | The `amplify.yml` step copies the index only `if [ -f ../../runs/index.json ]`. If there is no index, nothing is written: `/runs/index.json` returns 404 (the SPA fallback excludes `.json`), and the Runs page shows `RUN_INDEX_TEXTS.unreadable`. No placeholder data. |
+| Major 4: VIEW↔TABLE rebind | Fixed | New `packages/query-core/test/rebind.test.ts`: real DuckDB with tiny Parquet, binding A, then B, then A on one engine. Red: `Catalog Error: Existing object person is of type Table, trying to replace with type View`. | `bindManifest` starts with `DROP SCHEMA IF EXISTS meta/county/property_improvement CASCADE`, so A's extra views are gone too. `fixture-export.ts` `bindFixture` takes an optional engine. |
+| BIND_TTL flake (coordinator) | Fixed (root cause) | `runs.test.ts` › "re-binds after BIND_TTL_MS": 3,895 ms → 24 ms. The test already used a faked `Date` and the fake engine. | Root cause in `bind-manifest.ts`: the ZCTA grouping re-spread an array for every row, which is O(n²) over about 33k ZCTAs and took about 1.9 s of CPU per bind (Lambda and browser alike). It now pushes. The bind takes about 20 ms. |
+| Minor 7: unused required keys, duplicate BARE_HOST | Fixed | `apps/api/test/config.test.ts` (5 red → green) | The API requires only `CID_COPY_BUCKET` and `READPATH_PRIVATE_PREFIX`. The duplicated regex is removed; host validation stays in `@countylens/shared`. |
+| Minor 10 / API double hash | Not changed | n/a | The finding is in `apps/web` (not in my scope). On the API side the second `rawCid` is a sub-millisecond SHA-256 of about 1.4 KB. |
+| Minor 8 (`apps/web` config duplication) | Not in my scope | n/a | Belongs to the `apps/web` owner. |
+| Minor 9 (slow first load) | **Deferred → A-13** | n/a | The O(n²) bind fix above also removes about 1.9 s of CPU from the browser bind. |
+| metagross 2: budget | Fixed | `infra/test/stacks.test.ts` › TC-052 budget cases, now unconditional (no `BUDGET_REGION` skip). Red: no `Custom::CountyLensBudget`. | `OpsStack` uses an `AwsCustomResource` (`Custom::CountyLensBudget`): Budgets `CreateBudget` / `UpdateBudget` / `DeleteBudget`, physical id `countylens-monthly`, 10 USD MONTHLY COST, 80 % ACTUAL and 100 % FORECASTED to EMAIL, project tag. The IAM grant is `budgets:ModifyBudget/ViewBudget/TagResource` on `budget/countylens-monthly` only. The provider has 14-day logs, X-Ray Active and `Logging.withDataHidden()` (the email is in the parameters). `BudgetStack` is removed. The singleton provider Lambda runs on deploy only, so it costs **$0 idle**. |
+| metagross 3: wrong-region synth | Fixed | `stacks.test.ts` › three "metagross M3" cases. Red: `RegionNotAllowedError` was undefined and synth did not throw. | `loadConfig` throws `RegionNotAllowedError` when `CDK_DEFAULT_REGION` is not in the required context key `countylens:allowedRegions`. `infra/cdk.json` = `["eu-north-1"]` (outside `infra/src` because of the region-literal gate). us-east-1 and us-east-2 are refused. |
+| metagross 4: e2e-hosted env | Fixed | New `infra/test/ci-workflow.test.ts` (YAML parse, env from `vars.*` only, credential-free). Red: env had only `AMPLIFY_APP_ID`. | `ci.yml` `e2e-hosted` gets `AWS_REGION`, `CDK_DEFAULT_REGION`, `OPERATOR_EMAIL`, `CID_COPY_HOST`, `FILEBASE_GATEWAY_HOST` and `PINATA_GATEWAY_HOST` from repository variables. It has no AWS step and no id-token, so `@needs-aws` stays excluded. |
+| metagross 5: token revocation vs later Web updates | **Deferred → D-10 check** | n/a | Test one no-op App update after revocation and record it in the run log. |
+| metagross 6: G6-matrix specs | **Deferred → wave W4** (T061/T068) | n/a | n/a |
+
+**Suites:** root `pnpm vitest run` passed twice with the same counts, 60 files passed and 1 skipped (955 tests passed, 7 skipped); infra `COUNTYLENS_BUNDLE=1` 76/76; `pnpm turbo run typecheck lint` 9/9; `pnpm format:check` clean; `scripts/grep-gates.sh` OK.
+
+**Follow-ups outside my files:** `infra/src/api-stack.ts` still says "no List action is granted" in the role description and the IAM5 acknowledgement reason, and both should name the bench-prefix ListBucket. `turbo.json` `test.env` should drop `BUDGET_REGION` and add `COUNTYLENS_BUNDLE`. Add `yaml` as an infra devDependency: the two new tests currently resolve the workspace copy through `pipeline/oracle-runtime`. Update `docs/reports/A-03-unit-test-report.md` (the BUDGET_REGION skip note). Add the budget provider ($0 idle) to the idle-cost table in plan.md. `infra/cdk.json` got one context key (`countylens:allowedRegions`).

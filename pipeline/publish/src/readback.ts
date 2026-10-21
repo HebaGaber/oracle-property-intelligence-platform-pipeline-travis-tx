@@ -3,14 +3,18 @@
 // (compared by digest with sameDigest, since a summary may print another codec), the part count
 // must agree between the local part files, the export summary and the upload summary, and every
 // part is fetched from FILEBASE_GATEWAY_HOST with a plain GET (no Range) and compared on size and
-// SHA-256 with the local file. Any mismatch fails the group, and upload.ts then writes no
+// SHA-256 with the local file. With `approved` (upload.ts always passes the D-8 listing), each
+// part and each carCid file is compared with its APPROVED size, SHA-256 and CID instead
+// (CR-A-03 F-5): a file changed on disk after verifyApprovedBuild fails even when the gateway
+// serves the changed bytes. Any mismatch fails the group, and upload.ts then writes no
 // manifest. At most two parts are in flight; 404/429/5xx and network errors are retried with
 // full-jitter backoff that honours Retry-After, a few attempts, then the part fails.
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { z } from "zod";
 import { cidOfFile, sameDigest } from "./cid.js";
+import type { PublicFile } from "./approval.js";
 import type { FetchLike } from "./kubo-add.js";
 import { sha256File, type DataGroup, type GroupResult } from "./sequence.js";
 import { FILEBASE_GATEWAY_HOST } from "./verify.js";
@@ -137,6 +141,30 @@ export interface ReadbackOptions {
   attempts?: number;
   concurrency?: number;
   timeoutMs?: number;
+  /**
+   * The D-8 approved public files (reports/public-files.json, paths relative to `runDir`). When
+   * set, served bytes are compared with the approved size and SHA-256 (fetched by the approved
+   * CID), and a local file that differs from its approval, or is not in it, fails (F-5).
+   */
+  approved?: { runDir: string; files: readonly PublicFile[] };
+}
+
+/** What a file must be: its approved digests when an approval is given, else the local file. */
+async function expectedFor(
+  path: string,
+  options: ReadbackOptions,
+): Promise<{ size: number; sha256: string; cid: string } | { problem: string }> {
+  const size = statSync(path).size;
+  const sha256 = await sha256File(path);
+  if (options.approved === undefined) return { size, sha256, cid: await cidOfFile(path) };
+  const rel = relative(options.approved.runDir, path);
+  const approved = options.approved.files.find((f) => f.path === rel);
+  if (approved === undefined) return { problem: `${rel} is not in the approved public files` };
+  if (approved.size !== size || approved.sha256 !== sha256)
+    return {
+      problem: `local ${rel} (${size} B, sha256 ${sha256}) differs from the approved ${approved.size} B, sha256 ${approved.sha256}`,
+    };
+  return { size: approved.size, sha256: approved.sha256, cid: approved.cid };
 }
 
 type Fetched = { ok: true; size: number; sha256: string } | { ok: false; reason: string };
@@ -233,20 +261,27 @@ async function checkPart(
   host: string,
   options: ReadbackOptions,
 ): Promise<PartReadback> {
-  const size = statSync(part.path).size;
-  const sha256 = await sha256File(part.path);
-  const cid = await cidOfFile(part.path);
+  const expected = await expectedFor(part.path, options);
+  const label = options.approved === undefined ? "local" : "approved";
+  if ("problem" in expected) {
+    const size = statSync(part.path).size;
+    const sha256 = await sha256File(part.path);
+    const cid = await cidOfFile(part.path);
+    const base = { table: part.table, position: part.position, name: part.name, cid, size, sha256 };
+    return { ...base, ok: false, reason: expected.problem };
+  }
+  const { size, sha256, cid } = expected;
   const base = { table: part.table, position: part.position, name: part.name, cid, size, sha256 };
   const url = `https://${host}/ipfs/${cid}`;
   const fetched = await getDigest(url, size + 1, options);
   if (!fetched.ok) return { ...base, ok: false, reason: `GET ${url}: ${fetched.reason}` };
   if (fetched.size !== size)
-    return { ...base, ok: false, reason: `size ${fetched.size} served, ${size} local` };
+    return { ...base, ok: false, reason: `size ${fetched.size} served, ${size} ${label}` };
   if (fetched.sha256 !== sha256)
     return {
       ...base,
       ok: false,
-      reason: `sha256 differs: ${fetched.sha256} served, ${sha256} local`,
+      reason: `sha256 differs: ${fetched.sha256} served, ${sha256} ${label}`,
     };
   return { ...base, ok: true };
 }
@@ -269,19 +304,26 @@ export async function readbackFile(
   path: string,
   options: ReadbackOptions,
 ): Promise<FileReadback> {
-  const size = statSync(path).size;
-  const sha256 = await sha256File(path);
+  const expected = await expectedFor(path, options);
+  if ("problem" in expected) {
+    const size = statSync(path).size;
+    return { size, sha256: await sha256File(path), ok: false, reason: expected.problem };
+  }
+  const { size, sha256 } = expected;
+  const label = options.approved === undefined ? "local" : "approved";
+  if (options.approved !== undefined && expected.cid !== cid)
+    return { size, sha256, ok: false, reason: `added as ${cid}, approved as ${expected.cid}` };
   const url = `https://${filebaseGatewayHost(options.env)}/ipfs/${cid}`;
   const fetched = await getDigest(url, size + 1, options);
   if (!fetched.ok) return { size, sha256, ok: false, reason: `GET ${url}: ${fetched.reason}` };
   if (fetched.size !== size)
-    return { size, sha256, ok: false, reason: `size ${fetched.size} served, ${size} local` };
+    return { size, sha256, ok: false, reason: `size ${fetched.size} served, ${size} ${label}` };
   if (fetched.sha256 !== sha256)
     return {
       size,
       sha256,
       ok: false,
-      reason: `sha256 differs: ${fetched.sha256} served, ${sha256} local`,
+      reason: `sha256 differs: ${fetched.sha256} served, ${sha256} ${label}`,
     };
   return { size, sha256, ok: true };
 }

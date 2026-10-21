@@ -12,6 +12,7 @@ import * as dagJson from "@ipld/dag-json";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import { describe, expect, it, vi } from "vitest";
+import { BindGuardError } from "../src/bind-guard.js";
 import { main, type CidCopyInput, type CliDeps } from "../src/cli.js";
 import type { CliRunner } from "../src/sequence.js";
 import type { PublishOptions, PublishResult } from "../src/upload.js";
@@ -179,6 +180,15 @@ const okResult = (repo: Repo): PublishResult => ({
   indexPath: join(repo.runsDir, "index.json"),
 });
 
+/** A bind step that passes (these cases fake the CLI; bindBuild has its own tests). */
+const okBind = vi.fn(async () => ({
+  runId: RUN_ID,
+  manifestCid: MANIFEST_CID,
+  permitRows: 2,
+  roofingPermitRows: 2,
+  tables: 17,
+}));
+
 describe("cli build", () => {
   it("runs phase 1 only and prints roots, part counts, sizes, SHA-256s and the public files", async () => {
     const repo = setup();
@@ -187,6 +197,7 @@ describe("cli build", () => {
     const code = await main(["build", "--run", RUN_ID], {
       repoRoot: repo.repoRoot,
       run: cli.run,
+      bindBuild: okBind,
       ...o.deps,
     });
     expect(o.err()).toBe("");
@@ -226,6 +237,33 @@ describe("cli build", () => {
     expect(out).toContain(`public-files.json sha256 ${digest}`);
     expect(out).toContain(`upload --run ${RUN_ID} --approved ${digest}`);
     expect(JSON.parse(listing.toString("utf8"))).toMatchObject({ runId: RUN_ID, totalFiles: 8 });
+    // CR-A-03 F-1: the last step binds the draft manifest against the local tables.
+    expect(okBind).toHaveBeenCalledWith(
+      expect.objectContaining({ runDir: repo.runDir, repoRoot: repo.repoRoot }),
+    );
+    expect(out).toContain("bind: 2 roofing permit rows bound (= coverage.permits_emitted)");
+    expect(out.indexOf("bind: ")).toBeLessThan(out.indexOf("after D-8 approval"));
+  });
+
+  it("fails the build when the draft manifest does not bind: exit 1, no approval line (CR-A-03 F-1)", async () => {
+    const repo = setup();
+    const cli = fakeCli();
+    const o = capture();
+    const failing = async () => {
+      throw new BindGuardError(
+        "BindGuardError: bindManifest: manifest has no travis-places profile",
+      );
+    };
+    const code = await main(["build", "--run", RUN_ID], {
+      repoRoot: repo.repoRoot,
+      run: cli.run,
+      bindBuild: failing,
+      ...o.deps,
+    });
+    expect(code).toBe(1);
+    expect(o.err()).toMatch(/build failed at bind: .*no travis-places profile/);
+    expect(o.err()).toMatch(/do not approve/);
+    expect(o.out()).not.toContain("after D-8 approval");
   });
 
   it("exits non-zero and names the failed step; no public-files line", async () => {

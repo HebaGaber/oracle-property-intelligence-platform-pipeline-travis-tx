@@ -160,29 +160,45 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     template.resourceCountIs("AWS::Logs::LogGroup", 2);
   });
 
-  it("reads only ipfs/* and private/bench/* of the CID copy (contracts/storage.md Reader); no other S3 action", () => {
+  it("reads only ipfs/* and private/bench/* of the CID copy (contracts/storage.md Reader); lists private/bench/* only", () => {
     const statements = Object.values(template.findResources("AWS::IAM::Policy")).flatMap(
       (p) =>
         (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument.Statement ??
         [],
     );
     const s3 = statements.filter((s) => asList(s.Action).some((a) => a.startsWith("s3:")));
-    expect(s3.length).toBeGreaterThan(0);
-    for (const s of s3) {
-      expect(s.Effect).toBe("Allow");
-      expect(asList(s.Action)).toEqual(["s3:GetObject"]);
-      const resources = Array.isArray(s.Resource) ? s.Resource : [s.Resource];
-      expect(resources).toHaveLength(2);
-      const rendered = resources.map(json);
-      expect(rendered.some((r) => r.includes("/ipfs/*"))).toBe(true);
-      expect(rendered.some((r) => r.includes("/private/bench/*"))).toBe(true);
-      for (const r of rendered) {
-        expect(r).toMatch(/\/(ipfs|private\/bench)\/\*/);
-        expect(r).not.toMatch(/"\/\*"|"\*"/);
-      }
+    const gets = s3.filter((s) => asList(s.Action).includes("s3:GetObject"));
+    const lists = s3.filter((s) => asList(s.Action).includes("s3:ListBucket"));
+    expect(gets).toHaveLength(1);
+    expect(lists, "presignPrefix (ListObjectsV2) needs s3:ListBucket on the bucket").toHaveLength(
+      1,
+    );
+    expect(s3).toHaveLength(2);
+    for (const s of s3) expect(s.Effect).toBe("Allow");
+
+    const [get] = gets as [Statement];
+    expect(asList(get.Action)).toEqual(["s3:GetObject"]);
+    const resources = Array.isArray(get.Resource) ? get.Resource : [get.Resource];
+    expect(resources).toHaveLength(2);
+    const rendered = resources.map(json);
+    expect(rendered.some((r) => r.includes("/ipfs/*"))).toBe(true);
+    expect(rendered.some((r) => r.includes("/private/bench/*"))).toBe(true);
+    for (const r of rendered) {
+      expect(r).toMatch(/\/(ipfs|private\/bench)\/\*/);
+      expect(r).not.toMatch(/"\/\*"|"\*"/);
     }
+
+    // ListBucket on the bucket ARN itself (no object path), only for keys under private/bench/.
+    const [list] = lists as [Statement];
+    expect(asList(list.Action)).toEqual(["s3:ListBucket"]);
+    const listResources = Array.isArray(list.Resource) ? list.Resource : [list.Resource];
+    expect(listResources).toHaveLength(1);
+    expect(json(listResources[0])).not.toMatch(/\/\*|ipfs|private/);
+    expect(list.Condition).toEqual({ StringLike: { "s3:prefix": ["private/bench/*"] } });
+
     const allActions = statements.flatMap((s) => asList(s.Action));
-    expect(allActions.filter((a) => /^s3:(Put|Delete|List|\*)/.test(a))).toEqual([]);
+    expect(allActions.filter((a) => /^s3:(Put|Delete|\*)/.test(a))).toEqual([]);
+    expect(allActions.filter((a) => /^s3:List/.test(a))).toEqual(["s3:ListBucket"]);
     // No managed policy on the execution role: logs and X-Ray are explicit statements.
     for (const role of Object.values(template.findResources("AWS::IAM::Role"))) {
       expect(

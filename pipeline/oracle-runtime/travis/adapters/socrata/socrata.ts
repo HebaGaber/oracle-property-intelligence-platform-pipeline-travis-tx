@@ -12,10 +12,17 @@
 // Politeness (constitution A6): every request goes through travis/lib/source-client.ts
 // (identified User-Agent, backoff only on 429/5xx with full jitter, 1 s base, 60 s cap, 5
 // attempts, StopOnBlocked) with no Socrata app token, and a pacer keeps at most one request
-// per second to the host, retries included. A 403, a challenge or a timeout writes a `blocked`
-// receipt and the run stops; no other identity is ever tried. Any other failure (a 404, a 5xx
-// still failing after 5 attempts, a network error, an unexpected body) is an `error` receipt
-// and the run stops too.
+// per second to the host, retries included. A 403 or a challenge writes a `blocked` receipt
+// (exit 2) and the run stops; no other identity is ever tried. Any other failure (a timeout, a
+// 404, a 5xx still failing after 5 attempts, a network error, an unexpected body) is an `error`
+// receipt (exit 1) and the run stops too; a timeout keeps `blocked_reason: "timeout"` on the
+// receipt (contracts/cli.md, CR-A-03 F-6).
+//
+// Duplicates are counted, never dropped silently and never fatal (CR-A-03 code-review #5): a
+// number repeated in the list query is fetched once (`list_rows_repeated` in job.json); a
+// per-permit GET that returns several rows of the same number keeps its body byte for byte and
+// extracts one row by pickPermitRow() (identical rows, or the latest by the watermark field
+// then canonical JSON), with `duplicate_rows` and `duplicate_reason` on the receipt.
 //
 // Artifact layout (county-permit-adapter): under <jobDir>
 //   permit-lists/<name>.json (+ .receipt.json)  the list query's exact body and receipt
@@ -130,9 +137,49 @@ export function permitUrl(s: SocrataSource, value: string): string {
   return `${datasetUrl(s)}?${s.key}=${encodeURIComponent(value)}`;
 }
 
-/** File-name-safe, deterministic key of a permit number (`2026-034767 BP` → `2026-034767_BP`). */
+/**
+ * File-name-safe, deterministic and collision-free key of a permit number: the sanitised number
+ * plus the first 8 hex of its SHA-256 (`2026-034767 BP` → `2026-034767_BP-<hash8>`), so two
+ * numbers that sanitise alike (`2026-1 BP`, `2026-1/BP`) never share a status file.
+ */
 export function safePermitName(value: string): string {
-  return value.replace(/[^A-Za-z0-9_-]/g, "_");
+  const hash = createHash("sha256").update(value, "utf8").digest("hex").slice(0, 8);
+  return `${value.replace(/[^A-Za-z0-9_-]/g, "_")}-${hash}`;
+}
+
+export type DuplicateReason = "identical_rows" | "differing_rows_kept_latest";
+
+const canonicalRow = (r: Record<string, unknown>): string =>
+  JSON.stringify(Object.fromEntries(Object.entries(r).sort(([a], [b]) => (a < b ? -1 : 1))));
+
+/**
+ * The one row a per-permit GET stands for. Several rows of the same number are a duplicate:
+ * identical rows keep the first; differing rows keep the greatest watermark field, ties broken
+ * by the greatest canonical JSON, so the choice never depends on the source's row order.
+ */
+export function pickPermitRow(
+  rows: readonly Record<string, unknown>[],
+  watermarkField: string,
+): { row: Record<string, unknown>; reason: DuplicateReason | null } {
+  const first = rows[0];
+  if (first === undefined) throw new Error("pickPermitRow: no rows");
+  if (rows.length === 1) return { row: first, reason: null };
+  const keyed = rows.map((row) => ({ row, c: canonicalRow(row) }));
+  if (keyed.every((k) => k.c === keyed[0]?.c)) return { row: first, reason: "identical_rows" };
+  const mark = (r: Record<string, unknown>): string => {
+    const v = r[watermarkField];
+    return typeof v === "string" ? v : "";
+  };
+  const [best] = [...keyed].sort((a, b) => {
+    const wa = mark(a.row);
+    const wb = mark(b.row);
+    if (wa !== wb) return wa < wb ? 1 : -1;
+    return a.c < b.c ? 1 : a.c > b.c ? -1 : 0;
+  });
+  return {
+    row: (best as { row: Record<string, unknown> }).row,
+    reason: "differing_rows_kept_latest",
+  };
 }
 
 export type AdapterOutcome = "ok" | "blocked" | "error";
@@ -161,6 +208,9 @@ export interface PermitReceipt {
   error?: string;
   /** The raw body file, relative to the job dir (ok receipts only). */
   file?: string;
+  /** Extra rows of the same number in the per-permit GET (absent when there was one row). */
+  duplicate_rows?: number;
+  duplicate_reason?: DuplicateReason;
 }
 
 /** `status/<key>.json`. Later stages (classification, emission) append their fields. */
@@ -197,6 +247,8 @@ const ReceiptFile = z.object({
   blocked_reason: z.enum(["http-403", "challenge", "timeout"]).nullable(),
   error: z.string().optional(),
   file: z.string().optional(),
+  duplicate_rows: z.number().int().positive().optional(),
+  duplicate_reason: z.enum(["identical_rows", "differing_rows_kept_latest"]).optional(),
 });
 
 const StatusFile = z
@@ -217,11 +269,13 @@ export function readStatus(jobDir: string, key: string): PermitStatus | null {
   const path = join(jobDir, "status", `${key}.json`);
   if (!existsSync(path)) return null;
   const parsed = StatusFile.parse(JSON.parse(readFileSync(path, "utf8")));
-  const { error, file, ...rest } = parsed.receipt;
+  const { error, file, duplicate_rows, duplicate_reason, ...rest } = parsed.receipt;
   const receipt: PermitReceipt = {
     ...rest,
     ...(error !== undefined ? { error } : {}),
     ...(file !== undefined ? { file } : {}),
+    ...(duplicate_rows !== undefined ? { duplicate_rows } : {}),
+    ...(duplicate_reason !== undefined ? { duplicate_reason } : {}),
   };
   return { ...parsed, receipt };
 }
@@ -280,6 +334,14 @@ export interface SocrataCaptureResult {
   /** Max watermark field of the listed rows (the source watermark), or null. */
   watermark: string | null;
   list: ListRecord | null;
+  /** Permits whose GET returned several rows of the same number (counted, never fatal). */
+  duplicates: PermitDuplicate[];
+}
+
+export interface PermitDuplicate {
+  permit_number: string;
+  rows: number;
+  reason: DuplicateReason;
 }
 
 const realSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -303,17 +365,20 @@ function pacedFetch(
   };
 }
 
+/** ok 0 · blocked 2 only for a 403 or a challenge · a timeout or any other failure is error 1. */
 const adapterOutcome = (r: CaptureReceipt): AdapterOutcome =>
   r.outcome === "ok" || r.outcome === "throttled-then-ok"
     ? "ok"
-    : r.outcome === "blocked"
+    : r.outcome === "blocked" && r.blocked_reason !== "timeout"
       ? "blocked"
       : "error";
 
 const describeStop = (r: CaptureReceipt): string =>
-  r.outcome === "blocked"
-    ? `blocked (${r.blocked_reason ?? "unknown"}, status ${r.status ?? "none"})`
-    : `failed (status ${r.status ?? "none"}${r.error ? `, ${r.error}` : ""})`;
+  r.outcome === "blocked" && r.blocked_reason === "timeout"
+    ? `timeout (no response within ${r.timeout_ms ?? "the"} ms, status ${r.status ?? "none"})`
+    : r.outcome === "blocked"
+      ? `blocked (${r.blocked_reason ?? "unknown"}, status ${r.status ?? "none"})`
+      : `failed (status ${r.status ?? "none"}${r.error ? `, ${r.error}` : ""})`;
 
 export async function captureSocrata(
   options: SocrataCaptureOptions,
@@ -344,6 +409,8 @@ export async function captureSocrata(
   const captured: string[] = [];
   const skipped: string[] = [];
   const receipts: PermitReceipt[] = [];
+  const duplicates: PermitDuplicate[] = [];
+  let listRowsRepeated = 0;
   let watermark: string | null = null;
   let list: ListRecord | null = null;
 
@@ -361,6 +428,16 @@ export async function captureSocrata(
         listed: listed.length,
         captured: captured.length,
         skipped: skipped.length,
+        list_rows_repeated: listRowsRepeated,
+        duplicates: {
+          permits: duplicates.length,
+          by_reason: Object.fromEntries(
+            [...new Set(duplicates.map((d) => d.reason))]
+              .sort()
+              .map((r) => [r, duplicates.filter((d) => d.reason === r).length]),
+          ),
+          items: duplicates,
+        },
         watermark,
         list,
         finished_at: now().toISOString(),
@@ -373,6 +450,8 @@ export async function captureSocrata(
       listed: listed.length,
       captured: captured.length,
       skipped: skipped.length,
+      list_rows_repeated: listRowsRepeated,
+      duplicate_permits: duplicates.length,
     });
     return {
       status,
@@ -383,6 +462,7 @@ export async function captureSocrata(
       receipts,
       watermark,
       list,
+      duplicates,
     };
   };
 
@@ -412,10 +492,7 @@ export async function captureSocrata(
     pretty({ ...lr, query: query.params }),
   );
   if (list.outcome !== "ok" || listResult.data === null) {
-    return finish(
-      list.outcome === "blocked" ? "blocked" : "error",
-      `list query ${describeStop(lr)}`,
-    );
+    return finish(list.outcome, `list query ${describeStop(lr)}`);
   }
   const rows = listResult.data;
   if (rows.length >= pageSize) {
@@ -428,7 +505,8 @@ export async function captureSocrata(
   const seen = new Set<string>();
   for (const r of rows) {
     const n = r[s.key] as string;
-    if (!seen.has(n)) {
+    if (seen.has(n)) listRowsRepeated += 1;
+    else {
       seen.add(n);
       listed.push(n);
     }
@@ -447,7 +525,13 @@ export async function captureSocrata(
     const key = safePermitName(n);
     const file = `raw/${key}.json`;
     const done = readStatus(jobDir, key);
-    if (done !== null && done.captured && done.sha256 !== null && existsSync(join(jobDir, file))) {
+    if (
+      done !== null &&
+      done.permit_number === n &&
+      done.captured &&
+      done.sha256 !== null &&
+      existsSync(join(jobDir, file))
+    ) {
       if (sha256(readFileSync(join(jobDir, file))) === done.sha256) {
         skipped.push(n);
         continue;
@@ -455,8 +539,8 @@ export async function captureSocrata(
     }
     const url = permitUrl(s, n);
     const One = Rows.refine(
-      (xs) => xs.length === 1 && xs[0]?.[s.key] === n,
-      "expected exactly the requested permit",
+      (xs) => xs.length >= 1 && xs.every((x) => x[s.key] === n),
+      "expected only rows of the requested permit",
     );
     const { receipt, body, data } = await client.capture({
       url,
@@ -483,9 +567,22 @@ export async function captureSocrata(
     };
     if (receipt.error !== undefined) r.error = receipt.error;
     if (outcome === "ok") {
+      const got = data as Record<string, unknown>[];
+      const picked = pickPermitRow(got, s.watermarkField);
+      if (picked.reason !== null) {
+        r.duplicate_rows = got.length - 1;
+        r.duplicate_reason = picked.reason;
+        duplicates.push({ permit_number: n, rows: got.length, reason: picked.reason });
+        log("socrata.capture.duplicate", {
+          source: s.name,
+          permit_number: n,
+          rows: got.length,
+          reason: picked.reason,
+        });
+      }
       r.file = file;
       writeFileSync(join(jobDir, file), body);
-      writeFileSync(join(jobDir, "extracted", `${key}.json`), pretty((data as unknown[])[0]));
+      writeFileSync(join(jobDir, "extracted", `${key}.json`), pretty(picked.row));
       captured.push(n);
     }
     receipts.push(r);
@@ -531,11 +628,19 @@ export function loadCaptures(
     }
     const body = readFileSync(join(jobDir, status.file));
     if (sha256(body) !== status.receipt.sha256) throw new Error(`permit ${n} body changed`);
+    if (status.permit_number !== n) throw new Error(`permit ${n} status names another permit`);
     const rows = JSON.parse(body.toString("utf8")) as unknown;
-    const row =
-      Array.isArray(rows) && rows.length === 1 ? (rows[0] as Record<string, unknown>) : null;
-    if (row === null || row[source.key] !== n)
-      throw new Error(`permit ${n} body is not the one permit`);
+    const all =
+      Array.isArray(rows) &&
+      rows.length >= 1 &&
+      rows.every(
+        (x) =>
+          typeof x === "object" && x !== null && (x as Record<string, unknown>)[source.key] === n,
+      )
+        ? (rows as Record<string, unknown>[])
+        : null;
+    if (all === null) throw new Error(`permit ${n} body is not the one permit`);
+    const { row } = pickPermitRow(all, source.watermarkField);
     return { key, permit_number: n, row, receipt: status.receipt };
   });
 }

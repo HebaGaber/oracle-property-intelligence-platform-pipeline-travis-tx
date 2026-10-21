@@ -161,7 +161,14 @@ export async function bindManifest(
   const areaList = places.sha256;
   const groupSources = options.groupSources ?? TRAVIS_GROUP_SOURCES;
 
+  // A warm engine may hold another run: emitted tables are VIEWs and absent required ones are
+  // empty TABLEs, and DuckDB cannot CREATE OR REPLACE across the two kinds; the previous run's
+  // extra views (over presigned URLs that expire) must not survive either. The three run schemas
+  // are dropped whole; the main-schema views and macros are replaced below (code-review Major 4).
   const sql: string[] = [
+    "DROP SCHEMA IF EXISTS meta CASCADE",
+    "DROP SCHEMA IF EXISTS county CASCADE",
+    "DROP SCHEMA IF EXISTS property_improvement CASCADE",
     "CREATE SCHEMA IF NOT EXISTS meta",
     "CREATE SCHEMA IF NOT EXISTS county",
     "CREATE SCHEMA IF NOT EXISTS property_improvement",
@@ -215,8 +222,12 @@ export async function bindManifest(
   if (hosts.length > 0) sql.push(`INSERT INTO meta.jurisdiction_host VALUES ${hosts.join(", ")}`);
 
   const byClass = new Map<string, string[]>();
-  for (const r of zctaAreaRows())
-    byClass.set(r.area_class, [...(byClass.get(r.area_class) ?? []), r.zcta]);
+  // Push, never re-spread: ~33k ZCTAs made the copy-per-row form O(n²) (≈1.9 s CPU per bind).
+  for (const r of zctaAreaRows()) {
+    const codes = byClass.get(r.area_class);
+    if (codes === undefined) byClass.set(r.area_class, [r.zcta]);
+    else codes.push(r.zcta);
+  }
   sql.push(
     `CREATE OR REPLACE TABLE meta.zcta_area AS ${[...byClass.entries()]
       .map(

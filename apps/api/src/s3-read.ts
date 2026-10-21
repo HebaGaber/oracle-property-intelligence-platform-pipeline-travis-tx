@@ -86,12 +86,22 @@ async function writeCached(cid: string, bytes: Uint8Array): Promise<void> {
   }
 }
 
+const statusOf = (error: unknown): number | undefined =>
+  typeof error === "object" && error !== null
+    ? (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode
+    : undefined;
+
+/**
+ * A missing `ipfs/<cid>`. The reader role may list `private/bench/` only (Data.grantApiRead), so S3
+ * answers a GetObject on a missing public key with 403 AccessDenied rather than 404: both mean
+ * "not in the copy" here, and the client gets NOT_FOUND, never a 500 that fires the 5xx alarm.
+ */
 const isAbsent = (error: unknown): boolean =>
   error instanceof NoSuchKey ||
   error instanceof NotFound ||
-  (typeof error === "object" &&
-    error !== null &&
-    (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404);
+  (error instanceof Error && error.name === "AccessDenied") ||
+  statusOf(error) === 404 ||
+  statusOf(error) === 403;
 
 /** The manifest bytes of `ipfs/<cid>`, verified by rawCid; throws when absent or mismatched. */
 export async function getManifest(cid: string): Promise<Uint8Array> {

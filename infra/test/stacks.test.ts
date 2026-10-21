@@ -6,13 +6,17 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { App, Stack, Tags } from "aws-cdk-lib";
+import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { AwsSolutionsChecks } from "cdk-nag";
 import { describe, expect, it } from "vitest";
 import type { CountyLensStacks } from "../src/app.js";
-import { loadConfig, type InfraConfig } from "../src/config.js";
-import { BudgetStack } from "../src/ops-stack.js";
+import {
+  ALLOWED_REGIONS_CONTEXT_KEY,
+  RegionNotAllowedError,
+  loadConfig,
+  type InfraConfig,
+} from "../src/config.js";
 import { appUnderTest, cdkJsonContext } from "./helpers.js";
 
 // The alarm and budget recipient is never in git: the Ops stack reads OPERATOR_EMAIL from the
@@ -84,9 +88,15 @@ const REGION_LITERAL = new RegExp(
     `(north|south|east|west|central|northeast|southeast|northwest|southwest)-\\d\\b`,
 );
 
+// Region ids assembled from parts, for the same reason as REGION_LITERAL above.
+const PROJECT_REGION = ["eu", "north", "1"].join("-");
+const N_VIRGINIA = ["us", "east", "1"].join("-");
+const COMPANY_DEFAULT_REGION = ["us", "east", "2"].join("-");
+
 const TEST_CONTEXT: Record<string, unknown> = {
   "countylens:githubRepository": "owner/repo",
   "countylens:githubRef": "feature/oracle-pipeline",
+  "countylens:allowedRegions": [PROJECT_REGION],
 };
 const contextOf =
   (ctx: Record<string, unknown>) =>
@@ -177,6 +187,46 @@ describe("infra config (constitution III: region from config)", () => {
     expect(config.region).toBe(process.env.CDK_DEFAULT_REGION);
     expect(config.github).toEqual({ repository: "owner/repo", ref: "feature/oracle-pipeline" });
     expect(config.projectName).toBe(PROJECT_TAG.value);
+  });
+
+  it("metagross M3: refuses a region outside countylens:allowedRegions, naming it (RegionNotAllowedError)", () => {
+    for (const region of [N_VIRGINIA, COMPANY_DEFAULT_REGION]) {
+      let error: unknown;
+      try {
+        loadConfig({ CDK_DEFAULT_REGION: region }, contextOf(TEST_CONTEXT));
+      } catch (e) {
+        error = e;
+      }
+      expect(error).toBeInstanceOf(RegionNotAllowedError);
+      expect((error as Error).name).toBe("RegionNotAllowedError");
+      expect((error as Error).message).toContain(region);
+      expect((error as Error).message).toContain(ALLOWED_REGIONS_CONTEXT_KEY);
+    }
+    expect(loadConfig({ CDK_DEFAULT_REGION: PROJECT_REGION }, contextOf(TEST_CONTEXT)).region).toBe(
+      PROJECT_REGION,
+    );
+  });
+
+  it("metagross M3: the allow-list is required context (a non-empty list of region ids)", () => {
+    const env = { CDK_DEFAULT_REGION: PROJECT_REGION };
+    const without = Object.fromEntries(
+      Object.entries(TEST_CONTEXT).filter(([k]) => k !== ALLOWED_REGIONS_CONTEXT_KEY),
+    );
+    expect(() => loadConfig(env, contextOf(without))).toThrow(ALLOWED_REGIONS_CONTEXT_KEY);
+    expect(() =>
+      loadConfig(env, contextOf({ ...TEST_CONTEXT, [ALLOWED_REGIONS_CONTEXT_KEY]: [] })),
+    ).toThrow(ALLOWED_REGIONS_CONTEXT_KEY);
+  });
+
+  it("metagross M3: cdk.json allows exactly the project region, and synth for N. Virginia throws", () => {
+    expect(cdkJsonContext()[ALLOWED_REGIONS_CONTEXT_KEY]).toEqual([PROJECT_REGION]);
+    const previous = process.env.CDK_DEFAULT_REGION;
+    process.env.CDK_DEFAULT_REGION = N_VIRGINIA;
+    try {
+      expect(() => appUnderTest(SKIP_BUNDLING)).toThrow(RegionNotAllowedError);
+    } finally {
+      process.env.CDK_DEFAULT_REGION = previous;
+    }
   });
 
   it("rejects a malformed OPERATOR_EMAIL, account or GitHub repository", () => {
@@ -351,6 +401,29 @@ interface Statement {
 const asList = (a: string | string[]): string[] => (Array.isArray(a) ? a : [a]);
 const json = (v: unknown): string => JSON.stringify(v);
 
+/** The placeholder sdkCall() puts where the template has a token (here only AWS::AccountId). */
+const ACCOUNT_TOKEN = "<AWS::AccountId>";
+
+interface SdkCall {
+  service: string;
+  action: string;
+  region?: string;
+  physicalResourceId?: unknown;
+  parameters: Record<string, unknown>;
+}
+
+/** An AwsCustomResource Create/Update/Delete property (a JSON string, or Fn::Join around tokens). */
+function sdkCall(value: unknown): SdkCall {
+  const render = (v: unknown): string => {
+    if (typeof v === "string") return v;
+    const join = (v as { "Fn::Join"?: [string, unknown[]] })["Fn::Join"];
+    if (join !== undefined) return join[1].map(render).join(join[0]);
+    if (json(v) === json({ Ref: "AWS::AccountId" })) return ACCOUNT_TOKEN;
+    throw new Error(`sdkCall: unexpected token ${json(v)}`);
+  };
+  return JSON.parse(render(value)) as SdkCall;
+}
+
 describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy role (research R-09, D-04)", () => {
   const { config, stacks, templates } = synthAll();
   const all = flatten(templates);
@@ -459,50 +532,49 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy ro
     }
   });
 
-  // AWS::Budgets::Budget exists only in US East (N. Virginia) as a CloudFormation type, so the budget is its
-  // own stack (BudgetStack) whose region comes from the environment: BUDGET_REGION=<region>
-  // runs this case; without it the case is skipped, never faked.
-  it.skipIf(!process.env.BUDGET_REGION)(
-    "A-03-TC-052: AWS::Budgets::Budget 10 USD monthly, notifications at 80 % actual and 100 % forecast to the operator email, no budget action",
-    () => {
-      ops.resourceCountIs("AWS::Budgets::Budget", 0);
-      const budgetApp = new App({ context: { ...cdkJsonContext(), ...SKIP_BUNDLING } });
-      const stack = new BudgetStack(budgetApp, "CountyLensBudget", {
-        env: { region: process.env.BUDGET_REGION },
-        tags: { [PROJECT_TAG.key]: PROJECT_TAG.value },
-        operatorEmail,
-      });
-      Tags.of(budgetApp).add(PROJECT_TAG.key, PROJECT_TAG.value);
-      const budgetTemplate = Template.fromStack(stack);
-      budgetTemplate.resourceCountIs("AWS::Budgets::Budget", 1);
-      budgetTemplate.resourceCountIs("AWS::Budgets::BudgetsAction", 0);
-      budgetTemplate.hasResourceProperties("AWS::Budgets::Budget", {
-        ResourceTags: [{ Key: PROJECT_TAG.key, Value: PROJECT_TAG.value }],
-      });
-      budgetAssertions(budgetTemplate, operatorEmail);
-    },
-  );
-
-  function budgetAssertions(ops: Template, operatorEmail: string): void {
-    ops.hasResourceProperties("AWS::Budgets::Budget", {
-      Budget: Match.objectLike({
-        BudgetType: "COST",
-        TimeUnit: "MONTHLY",
-        BudgetLimit: { Amount: 10, Unit: "USD" },
-      }),
-    });
-    const [, budget] = Object.entries(ops.findResources("AWS::Budgets::Budget"))[0] as [
-      string,
-      CfnResource,
-    ];
-    const notifications = (
-      budget.Properties as {
-        NotificationsWithSubscribers: {
-          Notification: Record<string, unknown>;
-          Subscribers: { SubscriptionType: string; Address: string }[];
-        }[];
-      }
-    ).NotificationsWithSubscribers;
+  // metagross M2: CloudFormation has no AWS::Budgets::Budget type in the project region (F3006)
+  // and no stack may live elsewhere, so the budget is an AwsCustomResource in CountyLensOps that
+  // calls the (global) Budgets API: CreateBudget / UpdateBudget / DeleteBudget, physical id = the
+  // budget name. Asserted unconditionally (no BUDGET_REGION skip).
+  it("A-03-TC-052: the $10 MONTHLY COST budget is a custom resource in CountyLensOps (Create/Update/Delete), 80 % actual + 100 % forecast to the operator email, no budget action", () => {
+    for (const t of Object.values(templates)) {
+      t.resourceCountIs("AWS::Budgets::Budget", 0);
+      t.resourceCountIs("AWS::Budgets::BudgetsAction", 0);
+    }
+    const budgets = Object.values(ops.findResources("Custom::CountyLensBudget"));
+    expect(budgets).toHaveLength(1);
+    const props = budgets[0]?.Properties as Record<string, unknown>;
+    const call = (phase: "Create" | "Update" | "Delete") => sdkCall(props[phase]);
+    const create = call("Create");
+    const update = call("Update");
+    const del = call("Delete");
+    expect([create.service, create.action]).toEqual(["Budgets", "CreateBudget"]);
+    expect([update.service, update.action]).toEqual(["Budgets", "UpdateBudget"]);
+    expect([del.service, del.action]).toEqual(["Budgets", "DeleteBudget"]);
+    for (const c of [create, update, del]) {
+      expect(c.physicalResourceId).toEqual({ id: "countylens-monthly" });
+      expect(c.parameters.AccountId).toBe(ACCOUNT_TOKEN);
+      expect(
+        c.region,
+        "no region literal: the SDK call runs in the stack's region",
+      ).toBeUndefined();
+    }
+    const budget = {
+      BudgetName: "countylens-monthly",
+      BudgetType: "COST",
+      TimeUnit: "MONTHLY",
+      BudgetLimit: { Amount: "10", Unit: "USD" },
+    };
+    expect(create.parameters.Budget).toEqual(budget);
+    expect(update.parameters.NewBudget).toEqual(budget);
+    expect(del.parameters).toEqual({ AccountId: ACCOUNT_TOKEN, BudgetName: "countylens-monthly" });
+    expect(create.parameters.ResourceTags).toEqual([
+      { Key: PROJECT_TAG.key, Value: PROJECT_TAG.value },
+    ]);
+    const notifications = create.parameters.NotificationsWithSubscribers as {
+      Notification: Record<string, unknown>;
+      Subscribers: unknown[];
+    }[];
     expect(notifications.map((n) => n.Notification)).toEqual([
       {
         NotificationType: "ACTUAL",
@@ -520,7 +592,32 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy ro
     for (const n of notifications) {
       expect(n.Subscribers).toEqual([{ SubscriptionType: "EMAIL", Address: operatorEmail }]);
     }
-  }
+  });
+
+  it("A-03-TC-052: the budget provider may only modify/view/tag budget/countylens-monthly; its Lambda traces Active and logs 14 days", () => {
+    const policies = Object.values(ops.findResources("AWS::IAM::Policy")).flatMap(
+      (p) =>
+        (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument.Statement,
+    );
+    const budgetStatements = policies.filter((s) =>
+      asList(s.Action).some((a) => a.startsWith("budgets:")),
+    );
+    expect(budgetStatements).toHaveLength(1);
+    const [st] = budgetStatements as [Statement];
+    expect(asList(st.Action).sort()).toEqual([
+      "budgets:ModifyBudget",
+      "budgets:TagResource",
+      "budgets:ViewBudget",
+    ]);
+    const resource = json(st.Resource);
+    expect(resource).toContain(":budgets::");
+    expect(resource).toContain(":budget/countylens-monthly");
+    expect(resource).not.toMatch(/budget\/\*|"\*"/);
+    const fns = Object.values(ops.findResources("AWS::Lambda::Function"));
+    expect(fns, "only the AwsCustomResource singleton provider").toHaveLength(1);
+    expect(fns[0]?.Properties?.TracingConfig).toEqual({ Mode: "Active" });
+    // Retention 14 days is asserted for every function's log group by the TC-052 case above.
+  });
 
   it("GitHub OIDC: one native provider; the deploy role trusts only the fork's 0* and feature/oracle-pipeline refs and may assume only cdk-hnb659fds-* roles", () => {
     ops.resourceCountIs("AWS::IAM::OIDCProvider", 1);
@@ -529,11 +626,15 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy ro
       ClientIdList: ["sts.amazonaws.com"],
     });
     // The L2 OpenIdConnectProvider would add a custom-resource Lambda; the native L1 does not.
-    ops.resourceCountIs("AWS::Lambda::Function", 0);
+    // (The one Lambda in Ops is the budget's AwsCustomResource provider, asserted above.)
     ops.resourceCountIs("Custom::AWSCDKOpenIdConnectProvider", 0);
 
-    const roles = Object.values(ops.findResources("AWS::IAM::Role"));
-    expect(roles).toHaveLength(1);
+    const deployRoles = Object.entries(ops.findResources("AWS::IAM::Role")).filter(
+      ([, r]) => (r.Properties as { RoleName?: string }).RoleName === "CountyLensGitHubDeploy",
+    );
+    expect(deployRoles).toHaveLength(1);
+    const [deployRoleId] = deployRoles[0] as [string, unknown];
+    const roles = deployRoles.map(([, r]) => r);
     const role = roles[0]?.Properties as {
       RoleName?: string;
       AssumeRolePolicyDocument: { Statement: Statement[] };
@@ -562,11 +663,16 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy ro
     });
 
     const inline = (role.Policies ?? []).flatMap((p) => p.PolicyDocument.Statement);
-    const attached = Object.values(ops.findResources("AWS::IAM::Policy")).flatMap(
-      (p) =>
-        (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument.Statement ??
-        [],
-    );
+    // Policies attached to the deploy role (the budget provider's role has its own, asserted above).
+    const attached = Object.values(ops.findResources("AWS::IAM::Policy"))
+      .filter((p) =>
+        json((p.Properties as { Roles?: unknown }).Roles).includes(`"${deployRoleId}"`),
+      )
+      .flatMap(
+        (p) =>
+          (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument
+            .Statement ?? [],
+      );
     const statements = [...inline, ...attached];
     expect(statements.length).toBeGreaterThan(0);
     for (const s of statements) {

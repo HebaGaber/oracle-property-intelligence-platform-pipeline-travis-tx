@@ -4,7 +4,10 @@
 //                               export-tables); writes reports/sequence-build.json and
 //                               reports/public-files.json (the D-8 evidence: exactly the files that
 //                               would go public, with size, SHA-256 and CID) and prints them with
-//                               the listing's SHA-256. Never uploads.
+//                               the listing's SHA-256. Its last step binds the draft manifest
+//                               against the local tables (bindBuild, CR-A-03 F-1): a run the web
+//                               or the API could not bind fails here, exit 1, before D-8 is asked.
+//                               Never uploads.
 //   upload   --run <runId> --approved <sha256 of public-files.json>
 //                               D-8 gated: loads ~/.config/assessment/filebase.env into the child
 //                               env (never process.env, never argv, never printed), requires the
@@ -20,6 +23,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BUILD_REPORT, writePublicFiles } from "./approval.js";
+import type { BoundRows, LocalBinder } from "./bind-guard.js";
 import type { FetchLike } from "./kubo-add.js";
 import {
   FILEBASE_VARS,
@@ -30,10 +34,12 @@ import {
   type CliRunner,
 } from "./sequence.js";
 import {
+  bindBuild,
   loadRunSummary,
   publishRun,
   preflight,
   runGroups,
+  type BindBuildOptions,
   type PreflightOptions,
   type PublishOptions,
   type PublishResult,
@@ -85,6 +91,10 @@ export interface CliDeps {
   workTreeStatus?: (repoRoot: string) => string;
   /** HEAD of the repo (default `git rev-parse HEAD`). */
   headCommit?: (repoRoot: string) => string;
+  /** The last `build` step (default upload.ts bindBuild: query-core over a local DuckDB). */
+  bindBuild?: (options: BindBuildOptions) => Promise<BoundRows>;
+  /** The local binder `upload` hands to publishRun's bind guard (default scripts/local-bind.ts). */
+  bind?: LocalBinder;
   /** The OR-14 preflight (default upload.ts preflight), run before publishRun. */
   preflight?: (options: PreflightOptions) => Promise<unknown>;
   stdout?: (text: string) => void;
@@ -243,6 +253,24 @@ async function build(runId: string, deps: CliDeps, repoRoot: string, p: Printer)
   p.stdout(
     `files that would go public: ${written.listing.totalFiles}, ${written.listing.totalBytes} B (listed above; plus runs/${runId}/manifest.json and runs/index.json after upload)\n`,
   );
+  // CR-A-03 F-1: the draft manifest must bind against these tables, or nobody should approve it.
+  let bound: BoundRows;
+  try {
+    bound = await (deps.bindBuild ?? bindBuild)({
+      runDir,
+      runsDir: join(repoRoot, "runs"),
+      repoRoot,
+      ...(deps.bind === undefined ? {} : { bind: deps.bind }),
+    });
+  } catch (error) {
+    p.stderr(
+      `build failed at bind: ${error instanceof Error ? error.message : String(error)}\nthe web and the API could not bind this run; do not approve it\n`,
+    );
+    return 1;
+  }
+  p.stdout(
+    `bind: ${bound.permitRows} roofing permit rows bound (= coverage.permits_emitted), ${bound.tables} tables, draft manifest ${bound.manifestCid}\n`,
+  );
   p.stdout(`report: ${relative(repoRoot, join(runDir, BUILD_REPORT))}\n`);
   p.stdout(`listing: ${relative(repoRoot, written.path)}\n`);
   p.stdout(`public-files.json sha256 ${written.sha256}\n`);
@@ -285,6 +313,7 @@ async function upload(
     ...checks,
     ...(deps.run === undefined ? {} : { run: deps.run }),
     ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
+    ...(deps.bind === undefined ? {} : { bind: deps.bind }),
   });
   if (result.approval !== undefined)
     p.stdout(
@@ -296,6 +325,8 @@ async function upload(
     );
   }
   for (const a of result.carAdds) p.stdout(`  carCid ${a.name}  ${a.cid}\n`);
+  if (result.bind !== undefined)
+    p.stdout(`  bind: ${result.bind.permitRows} roofing permit rows bound locally\n`);
   if (!result.ok) {
     const f = result.failed;
     p.stderr(

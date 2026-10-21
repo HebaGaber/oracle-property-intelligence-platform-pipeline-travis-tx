@@ -5,6 +5,7 @@
   "context": {
     "countylens:githubRepository": "HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx",
     "countylens:githubRef": "feature/oracle-pipeline",
+    "countylens:allowedRegions": ["eu-north-1"],
     "@aws-cdk/aws-signer:signingProfileNamePassedToCfn": true,
     "@aws-cdk/aws-ecs-patterns:secGroupsDisablesImplicitOpenListener": true,
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,

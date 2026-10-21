@@ -1,40 +1,26 @@
 // Zod-validated environment of the API Lambda (A-03 T008; plan § "Fixed texts and config keys";
-// constitution III, V). The four keys are set by the CDK Api stack (T074) and read by nothing
-// else: CID_COPY_BUCKET (the S3 bucket of the CID copy), CID_COPY_HOST (its CloudFront domain),
-// FILEBASE_GATEWAY_HOST (the labelled fallback gateway) and READPATH_PRIVATE_PREFIX (the
-// private bench prefix, outside the CloudFront origin path). A missing or invalid key fails at
-// load time, naming the key. The region is never configured here: the AWS SDK reads AWS_REGION
+// constitution III, V). Only the keys the Lambda reads are required: CID_COPY_BUCKET (the S3
+// bucket of the CID copy) and READPATH_PRIVATE_PREFIX (the private bench prefix, outside the
+// CloudFront origin path). CID_COPY_HOST and FILEBASE_GATEWAY_HOST are read by no Lambda code, so
+// they are not required (/code-review Minor 7); host validation stays in @countylens/shared
+// (readPathUrls). A missing or invalid key fails at load time, naming the key. The region is never configured here: the AWS SDK reads AWS_REGION
 // from the Lambda runtime (P0-18).
 import { z } from "zod";
 
-export const REQUIRED_ENV_KEYS = [
-  "CID_COPY_BUCKET",
-  "CID_COPY_HOST",
-  "FILEBASE_GATEWAY_HOST",
-  "READPATH_PRIVATE_PREFIX",
-] as const;
+export const REQUIRED_ENV_KEYS = ["CID_COPY_BUCKET", "READPATH_PRIVATE_PREFIX"] as const;
 
 export type RequiredEnvKey = (typeof REQUIRED_ENV_KEYS)[number];
-
-/** A bare hostname: labels of letters, digits and hyphens, at least one dot; no scheme, port or path. */
-const BARE_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 
 /** `private/<name>/`: the only prefix the bench may read (research R-02, contracts/storage.md). */
 const PRIVATE_PREFIX = /^private\/[a-z0-9-]+\/$/;
 
 export const ApiEnv = z.object({
   CID_COPY_BUCKET: z.string().min(1),
-  CID_COPY_HOST: z.string().regex(BARE_HOST, "must be a bare hostname (no scheme, port or path)"),
-  FILEBASE_GATEWAY_HOST: z
-    .string()
-    .regex(BARE_HOST, "must be a bare hostname (no scheme, port or path)"),
   READPATH_PRIVATE_PREFIX: z.string().regex(PRIVATE_PREFIX, "must match private/<name>/"),
 });
 
 export interface ApiConfig {
   readonly cidCopyBucket: string;
-  readonly cidCopyHost: string;
-  readonly filebaseGatewayHost: string;
   readonly readPathPrivatePrefix: string;
 }
 
@@ -60,8 +46,6 @@ export function loadConfig(env: EnvSource = process.env): ApiConfig {
   }
   return {
     cidCopyBucket: parsed.data.CID_COPY_BUCKET,
-    cidCopyHost: parsed.data.CID_COPY_HOST,
-    filebaseGatewayHost: parsed.data.FILEBASE_GATEWAY_HOST,
     readPathPrivatePrefix: parsed.data.READPATH_PRIVATE_PREFIX,
   };
 }

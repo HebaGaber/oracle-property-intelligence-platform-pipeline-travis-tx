@@ -20,7 +20,9 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } fro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { RULES } from "../../../../profiles/travis-austin@1.0.0/index.js";
+import { GAZETTEER_SHA256 } from "../../../../packages/query-core/src/sql.generated.js";
+import { PROFILE, RULES } from "../../../../profiles/travis-austin@1.0.0/index.js";
+import { compiledTravisRoofAgeProfile } from "../../travis/roof-age/travis-roof-age-profile.js";
 import { safePermitName } from "../../travis/adapters/socrata/socrata.js";
 import { LEXICON_MANIFEST_URL } from "../../travis/transforms/lexicon-manifest.js";
 import { exitCodeFor, parseMonth, runIdFor, runMonth } from "../../travis/runs/run-month.js";
@@ -290,6 +292,25 @@ describe("runMonth (September slice)", () => {
     );
   });
 
+  it("records travis-austin, the roof profile and travis-places with their digests (CR-A-03 F-1)", async () => {
+    const s = setup();
+    const { result } = await runSeptember(s);
+    const summary = readJson(join(result.runDir, "summary.json"));
+    const profiles = summary.profiles as Array<{ name: string; version: string; sha256: string }>;
+    expect(profiles.map((p) => p.name)).toEqual([
+      "travis-austin",
+      "travis-austin-roof-profile",
+      "travis-places",
+    ]);
+    expect(profiles[0]).toMatchObject({ version: PROFILE.version, sha256: PROFILE.sha256 });
+    expect(profiles[1]).toMatchObject({ sha256: compiledTravisRoofAgeProfile().sha256 });
+    expect(profiles[2]).toMatchObject({
+      version: "1.0.0",
+      sha256: GAZETTEER_SHA256,
+      path: "packages/query-core/gazetteer/travis-places@1.0.0",
+    });
+  });
+
   it("stops before any group when the certified zip's sha256 differs from the catalog", async () => {
     const s = setup();
     const wrong = catalog(mkdtempSync(join(tmpdir(), "cat-")), "0".repeat(64));
@@ -437,6 +458,32 @@ describe("runMonth stop labels and per-run receipts (CR-A-03 OR-9, OR-10)", () =
     expect(result.reason).toMatch(/timeout/);
     expect(exitCodeFor(result.status)).toBe(1);
     expect(existsSync(join(result.runDir, "groups"))).toBe(false);
+  });
+
+  it("does not abort when a permit GET returns the same permit twice; counts it in the summary (code-review #5)", async () => {
+    const s = setup();
+    const c = clock();
+    const base = http(rows());
+    const fetch: typeof base.fetch = async (url, init) =>
+      new URL(url).searchParams.get("permit_number") === EMITTED
+        ? json([row(EMITTED), row(EMITTED)])
+        : base.fetch(url, init);
+    const result = await runMonth({
+      repoRoot: s.repoRoot,
+      month: "2026-09",
+      jobId: "test-2026-09",
+      tcadZip: s.zip,
+      catalogPath: s.catalogPath,
+      fetch,
+      sleep: c.sleep,
+      now: c.now,
+      random: () => 0,
+      log: silent,
+    });
+    expect(result.status).toBe("ok");
+    expect(result.summary?.counts.emitted).toBe(1);
+    expect(result.summary?.duplicates_by_reason).toEqual({ identical_rows: 1 });
+    expect(result.summary?.limitations.join("\n")).toMatch(/1 permit number returned several rows/);
   });
 
   it("keeps exit 2 for a 403 (blocked)", async () => {

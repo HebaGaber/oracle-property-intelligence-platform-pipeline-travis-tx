@@ -323,6 +323,17 @@ async function assertCarRoot(runDir: string, path: string, root: string): Promis
     );
 }
 
+/**
+ * The groups of the successful build recorded in reports/sequence-build.json (no approval
+ * check): what `build` hands to its last step, the draft-manifest bind (CR-A-03 F-1).
+ */
+export function builtGroups(runDir: string): GroupResult[] {
+  const buildPath = join(runDir, BUILD_REPORT);
+  if (!existsSync(buildPath)) throw new Error(`${BUILD_REPORT} is missing; run build first`);
+  const build = BuildReportFile.parse(JSON.parse(readFileSync(buildPath, "utf8")));
+  return build.groups as GroupResult[];
+}
+
 /** Helper for callers that need the group list in plan order. */
 export function approvedGroups(build: ApprovedBuild, groups: readonly DataGroup[]): GroupResult[] {
   return groups.map((name) => {

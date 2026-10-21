@@ -112,9 +112,15 @@ export function baseManifest(): ManifestJson {
 export async function bindFixture(
   tables: FixtureTables,
   mutate: (m: ManifestJson) => void = () => undefined,
+  /** Bind on this engine instead of a fresh one (a warm engine rebinding to another manifest);
+   *  close() then removes the fixture's files but leaves the engine open. */
+  engine?: DuckDbEngine,
 ): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), "views-fixture-"));
-  const db = await openDuckDb();
+  const db = engine ?? (await openDuckDb());
+  const closeDb = (): void => {
+    if (engine === undefined) db.close();
+  };
   const manifest = baseManifest();
   const parts: Record<string, unknown>[] = [];
   for (const [group, byTable] of Object.entries(tables)) {
@@ -157,12 +163,12 @@ export async function bindFixture(
       bound,
       rows: (sql) => db.all(sql),
       close: () => {
-        db.close();
+        closeDb();
         rmSync(dir, { recursive: true, force: true });
       },
     };
   } catch (error) {
-    db.close();
+    closeDb();
     rmSync(dir, { recursive: true, force: true });
     throw error;
   }

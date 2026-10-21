@@ -4,21 +4,34 @@
 // and is never in git), three self-resolving alarms (Lambda Errors ≥ 1 per 5 min, Throttles ≥ 1,
 // HTTP API 5xx ≥ 1; ALARM and OK both notify, missing data is not breaching so each clears
 // itself), the $10 monthly budget with 80 % actual and 100 % forecast notifications (NFR-02,
-// TC-052), and the GitHub OIDC deploy role for ci.yml's `deploy` job (research R-09): the trust
+// TC-052) as an AwsCustomResource over the Budgets API (CloudFormation has no
+// AWS::Budgets::Budget type in the project region, F3006, and no stack may live in another
+// region; a budget is an account-level object, so the call needs no regional resource), and the
+// GitHub OIDC deploy role for ci.yml's `deploy` job (research R-09): the trust
 // is limited to the fork's 0* story branches and feature/oracle-pipeline, and the role may only
 // assume the CDK bootstrap roles (cdk-hnb659fds-*). The native OIDC provider is an L1 resource,
-// so no custom-resource Lambda is created. Alarms reference the Api stack's function and HTTP
+// so the only Lambda here is the budget's singleton provider, which runs on deploy only ($0 idle). Alarms reference the Api stack's function and HTTP
 // API through cross-stack exports (ARD § 16 AM-02 order: Api before Ops).
-import { CfnOutput, Duration, Stack, type StackProps } from "aws-cdk-lib";
-import * as budgets from "aws-cdk-lib/aws-budgets";
+import {
+  Aws,
+  CfnOutput,
+  Duration,
+  RemovalPolicy,
+  Stack,
+  Validations,
+  type StackProps,
+} from "aws-cdk-lib";
 import * as cw from "aws-cdk-lib/aws-cloudwatch";
 import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as logs from "aws-cdk-lib/aws-logs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
+import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
 import { acknowledgeWildcardResources, type ApiStack } from "./api-stack.js";
-import type { InfraConfig } from "./config.js";
+import { PROJECT_NAME, PROJECT_TAG_KEY, type InfraConfig } from "./config.js";
 
 export const ALERTS_TOPIC_NAME = "countylens-alerts";
 /** Fixed so the repository variable AWS_DEPLOY_ROLE_ARN (ci.yml) is stable across deploys. */
@@ -31,6 +44,8 @@ export const STORY_BRANCH_PATTERN = "0*";
 export const CDK_BOOTSTRAP_QUALIFIER = "hnb659fds";
 export const MONTHLY_BUDGET_USD = 10;
 export const BUDGET_NAME = "countylens-monthly";
+/** CloudFormation type of the budget custom resource (AwsCustomResource `resourceType`). */
+export const BUDGET_RESOURCE_TYPE = "Custom::CountyLensBudget";
 /** Alarm evaluation window (FR-007: "Errors ≥ 1 per 5 min"); one period, threshold 1. */
 export const ALARM_PERIOD = Duration.minutes(5);
 
@@ -53,67 +68,12 @@ export interface OpsStackProps extends StackProps {
   readonly github: InfraConfig["github"];
 }
 
-export interface BudgetStackProps extends StackProps {
-  /** Budget notification recipient (OPERATOR_EMAIL; never in git). */
-  readonly operatorEmail: string;
-}
-
-/**
- * The $10 monthly cost budget (NFR-02, TC-052): notifications only (a budget action bills per
- * day), 80 % actual and 100 % forecast to the operator email. It is its own stack because the
- * AWS::Budgets::Budget CloudFormation type exists only in the US East (N. Virginia) region (CDK's
- * template validator rejects it in the project region, F3006). Not yet instantiated by src/app.ts:
- * deploying it needs a PO decision on a N. Virginia stack (CLAUDE.md allows it only for CloudFront, WAF and
- * CloudWatch Logs) and a config key for its region (never a literal, P0-18).
- */
-export class BudgetStack extends Stack {
-  readonly budget: budgets.CfnBudget;
-
-  constructor(scope: Construct, id: string, props: BudgetStackProps) {
-    super(scope, id, props);
-    const subscribers = [{ subscriptionType: "EMAIL", address: props.operatorEmail }];
-    this.budget = new budgets.CfnBudget(this, "Monthly", {
-      budget: {
-        budgetName: BUDGET_NAME,
-        budgetType: "COST",
-        timeUnit: "MONTHLY",
-        budgetLimit: { amount: MONTHLY_BUDGET_USD, unit: "USD" },
-      },
-      notificationsWithSubscribers: [
-        {
-          notification: {
-            notificationType: "ACTUAL",
-            comparisonOperator: "GREATER_THAN",
-            threshold: 80,
-            thresholdType: "PERCENTAGE",
-          },
-          subscribers,
-        },
-        {
-          notification: {
-            notificationType: "FORECASTED",
-            comparisonOperator: "GREATER_THAN",
-            threshold: 100,
-            thresholdType: "PERCENTAGE",
-          },
-          subscribers,
-        },
-      ],
-      // AWS::Budgets::Budget is not taggable through Tags.of(); the stack tags are copied by hand.
-      resourceTags: Object.entries(this.tags.tagValues()).map(([key, value]) => ({ key, value })),
-    });
-    new CfnOutput(this, "BudgetName", {
-      value: BUDGET_NAME,
-      description: `AWS Budget of ${MONTHLY_BUDGET_USD} USD per month (80 % actual, 100 % forecast → email)`,
-    });
-  }
-}
-
 export class OpsStack extends Stack {
   readonly topic: sns.Topic;
   readonly alarms: readonly cw.Alarm[];
   readonly oidcProvider: iam.OidcProviderNative;
   readonly deployRole: iam.Role;
+  readonly budget: cr.AwsCustomResource;
 
   constructor(scope: Construct, id: string, props: OpsStackProps) {
     super(scope, id, props);
@@ -172,8 +132,7 @@ export class OpsStack extends Stack {
       ),
     ];
 
-    // The $10 budget is BudgetStack (below): the AWS::Budgets::Budget CloudFormation type exists
-    // only in US East (N. Virginia), so it cannot live in this region-locked stack (🛑 needs a PO decision).
+    this.budget = this.monthlyBudget(props.operatorEmail);
 
     // GitHub OIDC (native L1: no custom-resource Lambda). IAM fetches the thumbprint itself.
     this.oidcProvider = new iam.OidcProviderNative(this, "GitHub", {
@@ -236,5 +195,117 @@ export class OpsStack extends Stack {
       value: this.oidcProvider.oidcProviderArn,
       description: "IAM OIDC provider for token.actions.githubusercontent.com",
     });
+  }
+  /**
+   * The $10 MONTHLY COST budget (NFR-02, TC-052): notifications only (a budget action bills per
+   * day), 80 % actual and 100 % forecast to the operator email. Create/Update/Delete call the
+   * Budgets API; the physical id is the budget name. Update replaces the budget definition only
+   * (UpdateBudget); the two notifications are fixed at create.
+   */
+  private monthlyBudget(operatorEmail: string): cr.AwsCustomResource {
+    const definition = {
+      BudgetName: BUDGET_NAME,
+      BudgetType: "COST",
+      TimeUnit: "MONTHLY",
+      BudgetLimit: { Amount: String(MONTHLY_BUDGET_USD), Unit: "USD" },
+    };
+    const subscribers = [{ SubscriptionType: "EMAIL", Address: operatorEmail }];
+    const notification = (NotificationType: string, Threshold: number) => ({
+      Notification: {
+        NotificationType,
+        ComparisonOperator: "GREATER_THAN",
+        Threshold,
+        ThresholdType: "PERCENTAGE",
+      },
+      Subscribers: subscribers,
+    });
+    const physicalResourceId = cr.PhysicalResourceId.of(BUDGET_NAME);
+    const budgetArn = this.formatArn({
+      service: "budgets",
+      region: "",
+      resource: "budget",
+      resourceName: BUDGET_NAME,
+    });
+    const logGroup = new logs.LogGroup(this, "BudgetProviderLogs", {
+      retention: logs.RetentionDays.TWO_WEEKS,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const budget = new cr.AwsCustomResource(this, "MonthlyBudget", {
+      resourceType: BUDGET_RESOURCE_TYPE,
+      installLatestAwsSdk: false,
+      logGroup,
+      timeout: Duration.minutes(2),
+      onCreate: {
+        service: "Budgets",
+        action: "CreateBudget",
+        parameters: {
+          AccountId: Aws.ACCOUNT_ID,
+          Budget: definition,
+          NotificationsWithSubscribers: [
+            notification("ACTUAL", 80),
+            notification("FORECASTED", 100),
+          ],
+          ResourceTags: [{ Key: PROJECT_TAG_KEY, Value: PROJECT_NAME }],
+        },
+        physicalResourceId,
+        logging: cr.Logging.withDataHidden(), // the operator email is in the parameters
+      },
+      onUpdate: {
+        service: "Budgets",
+        action: "UpdateBudget",
+        parameters: { AccountId: Aws.ACCOUNT_ID, NewBudget: definition },
+        physicalResourceId,
+        logging: cr.Logging.withDataHidden(), // the operator email is in the parameters
+      },
+      onDelete: {
+        service: "Budgets",
+        action: "DeleteBudget",
+        parameters: { AccountId: Aws.ACCOUNT_ID, BudgetName: BUDGET_NAME },
+        physicalResourceId,
+        logging: cr.Logging.withDataHidden(), // the operator email is in the parameters
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          sid: "MonthlyBudgetOnly",
+          actions: ["budgets:ModifyBudget", "budgets:ViewBudget", "budgets:TagResource"],
+          resources: [budgetArn],
+        }),
+      ]),
+    });
+
+    // The singleton provider Lambda: X-Ray active like every function here (NFR-03, TC-052).
+    // The singleton lives at stack scope as "AWS" + the provider UUID without dashes.
+    const provider = this.node.findChild(
+      `AWS${cr.AwsCustomResource.PROVIDER_FUNCTION_UUID.replace(/-/g, "")}`,
+    ) as lambda.Function;
+    (provider.node.defaultChild as lambda.CfnFunction).tracingConfig = { mode: "Active" };
+    provider.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["xray:PutTraceSegments", "xray:PutTelemetryRecords"],
+        resources: ["*"],
+      }),
+    );
+    Validations.of(provider).acknowledge({
+      id: "AwsSolutions-IAM4[Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]",
+      reason:
+        "AwsCustomResource's singleton provider uses AWSLambdaBasicExecutionRole for its own log " +
+        "writes; it runs on deploy only and holds no permission beyond the budget statement and X-Ray.",
+    });
+    Validations.of(provider).acknowledge({
+      id: "AwsSolutions-L1",
+      reason:
+        "The provider runtime is chosen by aws-cdk-lib for AwsCustomResource and moves with CDK upgrades.",
+    });
+    Validations.of(provider).acknowledge({
+      id: "AwsSolutions-IAM5[Resource::*]",
+      reason:
+        "xray:PutTraceSegments and xray:PutTelemetryRecords support no resource-level permission " +
+        "(the service accepts only *); active tracing on the provider (NFR-03).",
+    });
+    new CfnOutput(this, "BudgetName", {
+      value: BUDGET_NAME,
+      description: `AWS Budget of ${MONTHLY_BUDGET_USD} USD per month (80 % actual, 100 % forecast → email)`,
+    });
+    return budget;
   }
 }
