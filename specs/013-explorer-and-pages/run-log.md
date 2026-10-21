@@ -1,0 +1,21 @@
+# Run log: A-13 Explorer UI and pages (013-explorer-and-pages)
+
+One line per step: time (local) · stage · step · result. PO answers are quoted word for word. Subagents: duration_ms · subagent_tokens · tool_uses.
+
+| Time | Stage | Step | Result |
+| --- | --- | --- | --- |
+| 22:26 | 0 | S0.1 dependency check | REPO-u detached at 22668fa = feature/oracle-pipeline = origin. A-01 6c1383a, A-02 e98c12e, A-03 8ae1870 merged, status Done. A-11 NOT merged (Draft, depends_on [A-07]; A-07 depends on A-04, in the other session) |
+| 22:26 | 0 | S0.3 environment | ✅ countylens.aldarraj.com HTTP 200, /build.json sha 22668fa; ✅ Amplify d2lx0utip89u18 auto-branch 0*, auto-delete off; ✅ AWS 515618610572, FREE ACTIVE $139.97; ✅ pnpm workspace; ✅ Playwright guard in tests/e2e/playwright.config.ts; ✅ ci.yml no deploy job; ✅ FEAT-A13, FEAT-A18 in feature-list; next defect ERR-21. ❌ docs/hosting.md missing (hosting facts in docs/evidence/A-03.md); ❌ CI run 39651956390 red: A-03 TC-061 needs feature-branch URL in docs/evidence/A-03.md; ❌ runs/index.json holds 1 run |
+| 22:26 | 0 | S0.4 AWS | credentials valid |
+| 22:30 | 0 | PO (stop: missing dependency) | "Go on; those parts wait (Recommended)" · CI: "Fix it on the A-13 branch (Recommended)" |
+| 22:31 | 0 | S0.2 facts subagent (general-purpose) | 302545 ms · 160615 tokens · 34 tool uses. Key facts: 1 run (bafkreiasycmsr2qd…, 35 permits, 14 parcels, 27 artifacts, previousManifestCid null); tables-export.json only in local reports/, no columns; manifests carry no run events; coverage lacks BBB/business/places/coordinates keys and denominators; ipfs.io + dweb.link retired → Verify on Pinata + Filebase (AM-01); 8 of 9 carrier fields "no carrier"; bbb_status always not_checked; address fields not_in_export; gazetteer travis-places@1.0.0 (Pflugerville places.json:200-210); routes only /runs, /permits; procedures runs.summary, query.radius, query.roofAge (meta.latest, manifest.get, schema.get, search.suggest do not exist); components Provenance, MissingReason, Skeleton exist; bundle check scripts/bundle-size.ts; Legal terms links missing for 6 of 7 sources; ERR-20 deferred to A-13 |
+| 22:38 | 1 | S1.1 G4 run 1 | FAIL: 9 PASS; C-10 (A-11 implicit) and C-11 (2.5 days) open |
+| 22:38 | 1 | S1.2–S1.4 fixes | AC-1 per-source deltas; AC-4 roof_age_confidence; AC-5 expectation follows the recorded demo area, Pflugerville numbers as dated reference; AC-7 When; AC-8 definitions and backlog refs; "Coming soon" label; Context Pflugerville blocked (1,117 in city, 592 ETJ); G4-8 propose depends_on [A-02, A-03, A-11] |
+| 22:41 | 1 | R1 PO | D-1 "Add A-11 (Recommended)" · D-2 "i don't understand does this mean we wait a4 and a11 to run this story ?" · D-3 "not sure " |
+| 22:45 | 1 | R1 PO (after explanation) | D-2 "Ready, build now (Recommended)" · Gateways "Yes, Pinata + Filebase (Recommended)" · D-3 "Yes, after Part 1 (Recommended)" |
+| 22:47 | 1 | S1.5–S1.6 | depends_on [A-02, A-03, A-11]; size exception recorded; AC-1, AC-3, FR-003, scope note → Pinata + Filebase; G4 boxes ticked; status Ready; qc_testability_signoff true; G4 run 2 PASS 11/11 |
+| 22:48 | 2 | S2.1 specify | branch 013-explorer-and-pages from 22668fa; spec.md 14 ACs → FR-001…FR-014, edges → FR-015…FR-020, cross-cutting FR-021…FR-025; checklist 16/16 pass |
+| 22:50 | 2 | S2.2 check | branch and spec.md present; run-log created, Stages 0–1 back-filled |
+| 22:51 | 2 | CI fix re-scoped | adding the URL to A-03 evidence cannot pass: TC-061 reads the deployed branch's RUNTIME_URL and requires a docs-only ancestor SHA, so it fails on every later code branch. Proposed fix (R2): run TC-061 only on A-03's own build |
+| 22:52 | 2 | S2.3 clarify | 4 answered from sources (deltas from sources[].added/changed/removed; run events = manifest timestamps + any events list; Catalog columns from table schemas; Hub {n} = 1-based index); 1 held for PO D-4 (Coverage denominators; provisional: manifest only, else "denominator not in this run's manifest"); checklist 16/16 |
+| 22:52 | 2 | S2.4 commits | A-13: story ready (G4); A-13: spec and clarifications |
