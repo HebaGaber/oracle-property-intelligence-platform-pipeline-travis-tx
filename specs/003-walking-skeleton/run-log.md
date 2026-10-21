@@ -94,3 +94,4 @@ One line per step: time (local) · stage · step · result. PO answers are quote
 | 16:20 | 6 | ✋ A-1 | PO: "logged in" — sts 515618610572; plan ACTIVE, $140 credits; AWS::Budgets::Budget TypeNotFound in eu-north-1 (custom resource confirmed) |
 | 16:22 | 6 | T076 cdk diff | 5 stacks, all aws://515618610572/eu-north-1; 44 resources; no Route 53 / Secrets Manager / KMS / WAF / ACM / provisioned or reserved concurrency |
 | 16:24 | 6 | 🛑 D-10 + ✋ A-2 (R6) | PO: deploy + push "Approve (Recommended)"; alert email "eng.heba.gaber@gmail.com (Recommended)"; A-2 token "Done" (SSM SecureString, 16:19); spike files "Leave them (Recommended)" |
+| 16:31 | 6 | hosted-test fixes | TC-NF-02 via User Timing measures (no debug hook), TC-NF-06 aligned to 0001 + AM-06 note, TC-051 evidence format documented; root 973 passed |

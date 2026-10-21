@@ -1,11 +1,12 @@
 // The Permits load (A-03 T054/T056): run index → latest run → manifest by CID (the read decides
 // the host: CID copy or the labelled Filebase fallback, D-2) → engine → bind the parts with the
-// same read's `partUrl` (no mixed hosts in one load) → the single page of rows. The engine
+// same read's `partUrl` (no mixed hosts in one load) → the page's COUNT (checked against the
+// manifest) → the single page of rows; the engine emits User Timing measures (./timing). The engine
 // module is imported dynamically, so DuckDB-WASM, apache-arrow and query-core stay in their own
 // chunk until this runs. Every count comes from the manifest (FR-009). Dependencies are
 // injectable for the unit tests; the defaults are the real modules.
 import type { RunManifestV1, RunsIndexV1 } from "@countylens/contract";
-import { readPathUrls, type ReadPathUrls } from "@countylens/shared";
+import { PERMITS_TEXTS, readPathUrls, type ReadPathUrls } from "@countylens/shared";
 import {
   fallbackLabel as defaultFallbackLabel,
   type FetchByCidOptions,
@@ -17,7 +18,7 @@ import {
   loadRunsIndex as defaultLoadRunsIndex,
   type RunsIndexEntry,
 } from "../data/runs-index";
-import type { bindRun, listPermits, openEngine } from "./duckdb-wasm";
+import type { bindRun, countPermits, listPermits, openEngine } from "./duckdb-wasm";
 import type { PermitListRow } from "./permit-list";
 import { STAGE_TEXTS } from "./stages";
 
@@ -41,6 +42,7 @@ export type PermitsLoader = (
 export interface EngineModule {
   readonly openEngine: typeof openEngine;
   readonly bindRun: typeof bindRun;
+  readonly countPermits: typeof countPermits;
   readonly listPermits: typeof listPermits;
 }
 
@@ -106,11 +108,16 @@ export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}):
       await engineModule.bindRun(engine, loaded.read.bytes, loaded.read.partUrl);
       signal.throwIfAborted();
       report(STAGE_TEXTS.query);
+      const emitted = permitsEmitted(loaded.manifest);
+      // The page's own COUNT (TC-NF-02 times it): it must equal the manifest's count (FR-009).
+      const counted = await engineModule.countPermits(engine);
+      if (counted !== emitted) throw new Error(PERMITS_TEXTS.countMismatch(counted, emitted));
+      signal.throwIfAborted();
       const rows = await engineModule.listPermits(engine);
       return {
         runId: loaded.manifest.runId,
         manifestCid: loaded.manifestCid,
-        permitsEmitted: permitsEmitted(loaded.manifest),
+        permitsEmitted: emitted,
         rows,
         fallbackLabel: deps.fallbackLabel(loaded.read.source),
       };

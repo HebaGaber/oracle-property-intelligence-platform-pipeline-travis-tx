@@ -1,14 +1,20 @@
-// A-03-TC-NF-06: the read-path decision record holds the spike's full-size measurements
-// (T061; AC-4, FR-004, NFR-001). A CLI case: step 0 reads the deployed `sha` from
-// {RUNTIME_URL}/build.json and requires the local HEAD to equal it (the record checked is the
-// deployed one), then parses docs/decisions/0001-read-path.md and requires, for the full Austin
-// table and 20 timed runs: p50 / p95 of COUNT, radius and roof-age through the CID copy and
-// through Filebase; the first-load time; the gateway legs; the Filebase plan limits; the
-// projected full-county size; the chosen part size `48m`. Every browser query whose p95 is
-// ≥ 3,000 ms at the chosen part size must be recorded as switched to the Lambda DuckDB fallback,
-// and the browser must keep first load, COUNT, small reads and free-form SQL. A missing field
-// fails the test naming it. The row count is read from the record and compared with the
-// capture receipt when that (gitignored) receipt is present; it is never a literal here.
+// A-03-TC-NF-06: the read-path decision record holds the spike's full-size measurements and
+// states the accepted decision (T061; AC-4, FR-004, NFR-001; ARD § 16 AM-04, AM-06). A CLI
+// case: step 0 reads the deployed `sha` from {RUNTIME_URL}/build.json and requires the local
+// HEAD to equal it (the record checked is the deployed one), then parses
+// docs/decisions/0001-read-path.md and requires, for the full Austin table and 20 timed runs:
+// p50 / p95 of COUNT, radius and roof-age through the CID copy at the chosen part size `48m`;
+// the first-load time; the gateway legs; the Filebase plan limits; the projected full-county
+// size; the chosen part size. It then requires the record to STATE the decision, not numbers
+// that cannot exist yet:
+// - every browser query whose p95 is ≥ 3,000 ms at 48m is recorded as switched to the Lambda
+//   DuckDB fallback; for COUNT that is the full-scale switch of AM-06, which the record quotes
+//   under "PO decision (D-4)";
+// - the browser keeps first load and small reads;
+// - Filebase at full scale is a known gap until A-11, because only `elephant-cli` output may be
+//   public (no full-size table is published to measure it).
+// A missing field fails the test naming it. The row count is read from the record and compared
+// with the capture receipt when that (gitignored) receipt is present; it is never a literal here.
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
@@ -167,17 +173,6 @@ test.describe("A-03-TC-NF-06 decision record holds the spike's full-size measure
     }
     found.browserP95 = browserP95;
 
-    // Browser through Filebase over the full table: a table row labelled Filebase with the three queries.
-    const filebaseRow = tables(markdown)
-      .filter((t) => QUERIES.every((q) => column(t, q.header) >= 0))
-      .flatMap((t) => t.rows.map((r) => ({ t, r })))
-      .find(({ r }) => /filebase/i.test(r[0] ?? ""));
-    for (const q of QUERIES) {
-      const p = filebaseRow ? pair(filebaseRow.r[column(filebaseRow.t, q.header)]) : undefined;
-      if (!p)
-        missing.push(`Filebase leg: ${q.name} p50 / p95 over the full table (${TIMED_RUNS} runs)`);
-    }
-
     // First load (dedicated table), gateway legs, Filebase plan limits, projected size, part size.
     const firstLoadTable = tables(markdown).find((t) => /First load/i.test(t.header[0] ?? ""));
     if (!firstLoadTable?.rows.some((r) => r.some((c) => /[\d,]+\s*ms/.test(c))))
@@ -211,22 +206,49 @@ test.describe("A-03-TC-NF-06 decision record holds the spike's full-size measure
       missing.push(`decision: chosen part size ${CHOSEN_PART_SIZE}`);
     }
 
-    // Every browser p95 ≥ 3 s has a recorded switch to the Lambda DuckDB fallback.
-    const sentences = (decision?.body ?? "").split(/(?<=[.:])\s+/);
-    const switched = (q: (typeof QUERIES)[number]): boolean =>
-      sentences.some((s) => /switch/i.test(s) && q.switchName.test(s) && /Lambda/i.test(s));
+    // The accepted decision (D-4; ARD § 16 AM-04, AM-06), stated in the record itself.
+    const d4 = section(all, /^PO decision \(D-4/i);
+    if (!d4) missing.push('the "PO decision (D-4, …)" section');
+    if (!d4 || !/AM-06/.test(d4.body) || !/COUNT also runs on the Lambda/i.test(d4.body)) {
+      missing.push(
+        "PO decision (D-4): a dated note quoting AM-06 (full-scale COUNT on the Lambda)",
+      );
+    }
+    const stated = `${d4?.body ?? ""}\n${decision?.body ?? ""}`;
+    const sentences = stated.split(/(?<=[.:])\s+/);
+    const fullScale = /full[ -](?:scale|county)/i;
+    const switched = (q: (typeof QUERIES)[number], atFullScale: boolean): boolean =>
+      sentences.some(
+        (s) =>
+          /switch/i.test(s) &&
+          q.switchName.test(s) &&
+          /Lambda/i.test(s) &&
+          (!atFullScale || fullScale.test(s)),
+      );
+    // Every browser p95 ≥ 3 s at 48m has a recorded switch; radius and roof-age at any scale
+    // (AM-04), COUNT at full scale (AM-06: A-03's slice stays in the browser).
     for (const q of QUERIES) {
       const p95 = browserP95[q.name];
-      if (p95 !== undefined && p95 >= LIMITS.queryP95Ms && !switched(q)) {
+      if (p95 !== undefined && p95 >= LIMITS.queryP95Ms && !switched(q, q.name === "COUNT")) {
         missing.push(
-          `switch: browser ${q.name} p95 ${p95} ms ≥ ${LIMITS.queryP95Ms} ms at ${CHOSEN_PART_SIZE} with no recorded switch to the Lambda DuckDB fallback`,
+          `switch: browser ${q.name} p95 ${p95} ms ≥ ${LIMITS.queryP95Ms} ms at ${CHOSEN_PART_SIZE} with no recorded ${q.name === "COUNT" ? "full-scale " : ""}switch to the Lambda DuckDB fallback`,
         );
       }
     }
-    const keeps = sentences.find((s) => /browser keeps/i.test(s)) ?? "";
-    for (const kept of [/first load/i, /COUNT/, /small reads/i, /free-form SQL/i]) {
+    const keeps = sentences.filter((s) => /browser keeps/i.test(s)).join(" ");
+    for (const kept of [/first load/i, /small reads/i]) {
       if (!kept.test(keeps))
         missing.push(`decision: the browser keeps ${kept.source.replace(/\\/g, "")}`);
+    }
+    // Filebase at full scale: a documented known gap until A-11, with its reason.
+    const filebaseGap =
+      /Filebase at (?:full )?scale[^.]*?(?:known gap|unmeasured)[^.]*?A-11|Filebase at (?:full )?scale[^.]*?A-11[^.]*?(?:known gap|unmeasured)/i;
+    const known = section(all, /^Known gaps$/i);
+    if (!filebaseGap.test(d4?.body ?? "") && !filebaseGap.test(known?.body ?? "")) {
+      missing.push("known gap: Filebase at full scale is unmeasured until A-11");
+    }
+    if (!/only `?elephant-cli`? output may be public/i.test(markdown)) {
+      missing.push("known gap reason: only `elephant-cli` output may be public");
     }
 
     await testInfo.attach("tc-nf-06-parsed.json", {

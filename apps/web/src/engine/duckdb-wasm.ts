@@ -16,6 +16,7 @@ import {
 } from "@countylens/query-core";
 import { EngineStartError } from "./errors";
 import { parsePermitRows, type PermitListRow } from "./permit-list";
+import { PERF_MARKS, PERF_MEASURES, timed } from "./timing";
 
 export interface DuckDbFilesystemFlags {
   readonly allowFullHTTPReads: boolean;
@@ -174,7 +175,10 @@ async function start(
 export async function openEngine(load: LoadDuckDb = loadSelfHostedDuckDb): Promise<BrowserEngine> {
   let started: { db: AsyncDuckDbLike; conn: DuckDbConnectionLike };
   try {
-    started = await start(load);
+    started = await timed(PERF_MEASURES.init, () => start(load), {
+      start: PERF_MARKS.initStart,
+      end: PERF_MARKS.initEnd,
+    });
   } catch (cause) {
     throw new EngineStartError(cause);
   }
@@ -202,7 +206,21 @@ export function bindRun(
   return bindManifest(manifestBytes, "", engine, { partUrl });
 }
 
-/** The single page of permits, ordered by permit_number (listRoofingPermitsSql), validated. */
+/** The single page of permits, ordered by permit_number (listRoofingPermitsSql), validated; measured as `countylens:query:list`. */
 export async function listPermits(engine: QueryEngine): Promise<PermitListRow[]> {
-  return parsePermitRows(await engine.all(listRoofingPermitsSql()));
+  const rows = await timed(PERF_MEASURES.list, () => engine.all(listRoofingPermitsSql()));
+  return parsePermitRows(rows);
+}
+
+/** The page's own COUNT: one row per v_roofing_permit row, as the listing selects them. */
+export const COUNT_PERMITS_SQL = "SELECT count(*)::INTEGER AS n FROM v_roofing_permit";
+
+/** COUNT over v_roofing_permit, measured as `countylens:query:count`. */
+export async function countPermits(engine: QueryEngine): Promise<number> {
+  const rows = await timed(PERF_MEASURES.count, () => engine.all(COUNT_PERMITS_SQL));
+  const n = rows.length === 1 ? rows[0]?.["n"] : undefined;
+  if (typeof n !== "number" || !Number.isInteger(n)) {
+    throw new Error(`Permits COUNT did not return one integer row (${rows.length} rows)`);
+  }
+  return n;
 }

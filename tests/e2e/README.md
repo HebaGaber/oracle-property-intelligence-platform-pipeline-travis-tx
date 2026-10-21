@@ -34,3 +34,49 @@ pnpm --filter @countylens/e2e test                                              
   report in `playwright-report/`, JSON in `test-results/results.json`).
 - Specs never pass trivially: no `test.skip`, no empty bodies; a suite that selects zero tests is
   a failure.
+
+## Evidence formats
+
+### Browser timings (TC-NF-01, TC-NF-02)
+
+The Permits page has no debug hook. Its engine emits User Timing entries with names and times
+only (`apps/web/src/engine/timing.ts`): the measure `countylens:duckdb:init` between the marks
+`countylens:duckdb:init:start` and `countylens:duckdb:init:end`, the listing
+`countylens:query:list` and the page's own COUNT `countylens:query:count`. `perf.spec.ts` reads
+them with `performance.getEntriesByType('measure')`: TC-NF-01 over 20 cold loads (a new context
+each), TC-NF-02 over 20 reloads after one untimed warm-up. Copy p50 / p95 from the attachments
+`tc-nf-01-first-loads.json` and `tc-nf-02-timings.json` into `docs/evidence/A-03.md`.
+
+### Observability evidence (TC-050 → TC-051)
+
+Run TC-050, open its attachment `tc-050-evidence.json`, and copy into `docs/evidence/A-03.md`:
+
+1. one line `x-correlation-id: ` followed by the ID **in backticks**;
+2. one line `x-trace-id: ` followed by the X-Ray root trace ID (`1-xxxxxxxx-…`) **in backticks**;
+3. a fenced ` ```json ` block holding the Powertools log line (`logLine`) of that
+   correlation ID, as one JSON object (one line or pretty-printed).
+
+````markdown
+- x-correlation-id: `3f1c…-…`
+- x-trace-id: `1-6716a0b2-0123456789abcdef01234567`
+
+```json
+{
+  "level": "INFO",
+  "message": "…",
+  "service": "countylens-api",
+  "timestamp": "…",
+  "correlation_id": "3f1c…",
+  "xray_trace_id": "1-6716a0b2-0123456789abcdef01234567",
+  "procedure": "runs.summary",
+  "queryDurationMs": 12
+}
+```
+````
+
+TC-051 reads `x-correlation-id` and `x-trace-id` from the response headers of a fresh hosted
+`runs.summary` call (the recorded correlation ID must have the same shape), finds that log line by
+its `correlation_id` (with the Powertools keys, `procedure` = `runs.summary`, an `xray_trace_id`
+holding the recorded trace ID, and no URL or credential), and resolves the recorded trace with
+`aws xray batch-get-traces` (`@needs-aws`). Identifiers and counts only: never paste a presigned
+URL, a credential or a row value.

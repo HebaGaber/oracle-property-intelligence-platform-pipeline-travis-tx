@@ -34,6 +34,8 @@ Recorded after the spike, on the three items in "Needs a PO decision" (round R3)
 2. Verify gateways (Needs a PO decision 1): **"Pinata + Filebase (Recommended)"**. ipfs.io and dweb.link retired on 2026-09-21 (every request 429, `Sunset: Mon, 21 Sep 2026 00:00:00 GMT`, `Link: <https://gatewaychanges.ipfs.io/>; rel="sunset"`; Finding 3, re-confirmed 2026-10-21 07:29Z). `verify-manifest` uses Pinata's public gateway (`gateway.pinata.cloud`, the independent one) and the Filebase gateway (`ipfs.filebase.io`), with plain GETs (no Range, no preflight), checking size and SHA-256. It still rejects the CloudFront copy and `w3s.link`.
 3. Lambda proof: **"Private prefix + direct invoke (Recommended)"**. The full-size Austin Parquet goes under a private prefix of the `CountyLensData` bucket that CloudFront does not serve. 20 timed direct `aws lambda invoke` runs (never through the public API) measure the in-region p95. The file is deleted afterwards and the deletion is recorded in the evidence.
 
+**Note (2026-10-21, full-scale COUNT, ARD § 16 AM-06):** AM-06, accepted under the same D-4 decision, records: "Full-county browser COUNT at part size 48m measured p95 11.7 s, so at full scale COUNT also runs on the Lambda (noted for A-11 / A-13; A-03's slice is ≈ 37 rows)." At full scale COUNT, radius and roof-age switch to the Lambda DuckDB fallback. The browser keeps first load and small reads (COUNT and the listing over A-03's slice) and free-form SQL. Filebase at full scale is a known gap until A-11: only `elephant-cli` output may be public, so no full-size table is published on Filebase to measure it.
+
 ## Method
 
 | Step | What was done | Source (`spikes/read-path/`) |

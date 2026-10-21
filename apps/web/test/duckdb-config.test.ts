@@ -236,6 +236,7 @@ describe("createPermitsLoader: index → manifest → engine → bind → list (
         asOf: "2026-10-01T00:00:00Z",
         tables: [],
       })),
+      countPermits: vi.fn(async () => coverageCount ?? 0),
       listPermits: vi.fn(async () => rows as never),
     };
     const loadManifest = vi.fn(async (_cid: string, _options: FetchByCidOptions) => ({

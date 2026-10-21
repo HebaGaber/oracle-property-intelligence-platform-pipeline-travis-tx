@@ -6,13 +6,17 @@
 //   trace with the `duckdb.query` subsegment; datapoints for QueryDurationMs, ItemsProcessed and
 //   ItemsFailed (procedure = runs.summary); identifiers and counts only in the log line and the
 //   trace (no presigned URL, URL, credential or row value).
-// - TC-051: docs/evidence/A-03.md records a TC-050 correlation ID, trace ID and log line, and
-//   the recorded trace ID resolves with `aws xray batch-get-traces`.
+// - TC-051: reads `x-correlation-id` and `x-trace-id` from the response headers of a hosted
+//   `runs.summary` call, then requires docs/evidence/A-03.md, in the format of tests/e2e/README.md
+//   "Observability evidence", to record both in backticks (a TC-050 correlation ID of the same
+//   shape as the live one, an X-Ray root trace ID) plus a ```json excerpt of the Powertools log
+//   line with that `correlation_id`; the recorded trace ID resolves with
+//   `aws xray batch-get-traces`.
 // - TC-NF-04: a cold start forced by an environment change, then one Runs page load: X-Ray
 //   `Initialization` + `Invocation` (node init and the DuckDB init of the first query) < 3 s;
 //   then one untimed warm-up and 30 warm calls from the hosted page: p95 of the response time
 //   and of the response's `queryDurationMs` < 1 s. The original environment is restored.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Browser, Response } from "@playwright/test";
 import { expect, test } from "./lib/fixtures.js";
@@ -155,6 +159,48 @@ async function traceWith(traceId: string, name: string): Promise<XraySegment[]> 
 const forbiddenIn = (text: string): string[] =>
   FORBIDDEN.filter((f) => f.pattern.test(text)).map((f) => f.name);
 
+/** Digits → `9`, letters → `x`: two IDs from one generator share a shape. */
+const idShape = (id: string): string => id.replace(/[0-9]/g, "9").replace(/[a-z]/gi, "x");
+
+interface RecordedObservability {
+  correlationId: string | undefined;
+  traceId: string | undefined;
+  logLine: Record<string, unknown> | undefined;
+}
+
+/**
+ * The TC-050 evidence block of docs/evidence/A-03.md (tests/e2e/README.md, "Observability
+ * evidence"): a line `x-correlation-id: \`<id>\``, a line `x-trace-id: \`1-…\`` and a ```json
+ * fenced excerpt with the one Powertools log line whose `correlation_id` is that ID.
+ */
+function parseObservabilityEvidence(markdown: string): RecordedObservability {
+  const correlationId = /x-correlation-id[^\n`]*`([^`\s]+)`/i.exec(markdown)?.[1];
+  const traceId = /x-trace-id[^\n`]*`([^`\s]+)`/i.exec(markdown)?.[1];
+  let logLine: Record<string, unknown> | undefined;
+  for (const block of markdown.matchAll(/```json\s*\n([\s\S]*?)```/g)) {
+    const body = block[1] ?? "";
+    for (const candidate of [body, ...body.split(/\r?\n/)]) {
+      try {
+        const parsed: unknown = JSON.parse(candidate);
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          !Array.isArray(parsed) &&
+          correlationId !== undefined &&
+          (parsed as Record<string, unknown>).correlation_id === correlationId
+        ) {
+          logLine = parsed as Record<string, unknown>;
+          break;
+        }
+      } catch {
+        // Not a whole JSON value; try the next candidate.
+      }
+    }
+    if (logLine) break;
+  }
+  return { correlationId, traceId, logLine };
+}
+
 /** The first numeric `queryDurationMs` anywhere in a tRPC response body. */
 function queryDurationOf(body: unknown): number | undefined {
   if (Array.isArray(body)) {
@@ -271,41 +317,58 @@ test.describe("A-03 API observability", () => {
   });
 
   test(`@scenario:A-03-TC-051 ${NEEDS_AWS_TAG}`, async ({ browser }, testInfo) => {
-    // Step 0: the hosted Runs page still emits both headers.
+    // Step 0: the hosted call's own response headers give the live identifiers and their shape.
     const call = await loadRunsPage(browser);
-    expect(call.correlationId, "x-correlation-id header").not.toBe("");
-    expect(call.traceId, "x-trace-id header").toMatch(TRACE_ID);
+    expect(call.status, "runs.summary answered 200").toBe(200);
+    expect(call.correlationId, "x-correlation-id response header").not.toBe("");
+    expect(call.traceId, "x-trace-id response header is an X-Ray root trace ID").toMatch(TRACE_ID);
 
+    // Steps 1–2: docs/evidence/A-03.md in the documented format (tests/e2e/README.md,
+    // "Observability evidence").
     const evidencePath = resolve(repoRoot, "docs", "evidence", "A-03.md");
-    const evidence = readFileSync(evidencePath, "utf8");
-    const correlationId = /x-correlation-id[^\n`]*`([^`\s]+)`/i.exec(evidence)?.[1];
-    const traceId = /x-trace-id[^\n`]*`(1-[0-9a-f]{8}-[0-9a-f]{24})`/i.exec(evidence)?.[1];
+    expect(existsSync(evidencePath), "docs/evidence/A-03.md exists").toBe(true);
+    const recorded = parseObservabilityEvidence(readFileSync(evidencePath, "utf8"));
     expect(
-      correlationId,
-      "docs/evidence/A-03.md records an x-correlation-id (in backticks)",
+      recorded.correlationId,
+      "docs/evidence/A-03.md records `x-correlation-id: `<id>`` (in backticks)",
     ).toBeDefined();
-    expect(traceId, "docs/evidence/A-03.md records an x-trace-id (in backticks)").toBeDefined();
-    const logLine = evidence
-      .split(/\r?\n/)
-      .find(
-        (l) =>
-          l.includes('"correlation_id"') &&
-          correlationId !== undefined &&
-          l.includes(correlationId),
-      );
     expect(
-      logLine,
-      "docs/evidence/A-03.md records the TC-050 log line with that correlation_id",
+      recorded.traceId,
+      "docs/evidence/A-03.md records `x-trace-id: `1-…`` (in backticks)",
+    ).toMatch(TRACE_ID);
+    expect(
+      idShape(recorded.correlationId ?? ""),
+      `the recorded correlation ID has the shape of the live header (${call.correlationId})`,
+    ).toBe(idShape(call.correlationId));
+    expect(
+      recorded.logLine,
+      "docs/evidence/A-03.md has a ```json excerpt holding the Powertools log line of that correlation_id",
     ).toBeDefined();
+    const line = recorded.logLine ?? {};
+    for (const key of POWERTOOLS_KEYS)
+      expect.soft(Object.keys(line), `recorded log line has ${key}`).toContain(key);
+    expect.soft(line.procedure, "recorded log line names the procedure").toBe(PROCEDURE);
+    expect
+      .soft(
+        String(line.xray_trace_id ?? ""),
+        "recorded log line's xray_trace_id is the recorded x-trace-id",
+      )
+      .toContain(recorded.traceId ?? "");
+    expect
+      .soft(
+        forbiddenIn(JSON.stringify(line)),
+        "recorded log line has no URL, presigned URL or credential",
+      )
+      .toEqual([]);
 
-    const segments = await traceWith(traceId ?? "", QUERY_SUBSEGMENT);
+    // Expected result: the recorded trace resolves with `aws xray batch-get-traces`.
+    const segments = await traceWith(recorded.traceId ?? "", QUERY_SUBSEGMENT);
     await testInfo.attach("tc-051-evidence.json", {
       body: JSON.stringify(
         {
           evidence: "docs/evidence/A-03.md",
-          correlationId,
-          traceId,
-          logLine,
+          live: { "x-correlation-id": call.correlationId, "x-trace-id": call.traceId },
+          recorded,
           resolvedSegments: segments.length,
         },
         null,
@@ -315,7 +378,7 @@ test.describe("A-03 API observability", () => {
     });
     expect(
       segments.length,
-      `recorded trace ${traceId ?? ""} resolves with batch-get-traces`,
+      `recorded trace ${recorded.traceId ?? ""} resolves with batch-get-traces`,
     ).toBeGreaterThan(0);
   });
 
