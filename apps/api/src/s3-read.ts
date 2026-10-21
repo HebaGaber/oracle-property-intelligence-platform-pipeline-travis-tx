@@ -7,6 +7,9 @@
 // only, for the direct-invoke bench) and presigns each. No function reads any other key
 // (contracts/api.md). The region is the runtime's AWS_REGION, never a literal (P0-18). Presigned
 // URLs are returned to the engine and never logged (FR-007).
+// metagross N3: a GetObject 403 is reported to the client as NOT_FOUND (see isAbsent), so a broken
+// read grant would otherwise be silent; that branch logs one warning (identifiers only) and emits
+// the ManifestAccessDenied Count metric so a wave of them is visible in CloudWatch.
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -19,10 +22,13 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { Logger } from "@aws-lambda-powertools/logger";
+import { Metrics, MetricUnit } from "@aws-lambda-powertools/metrics";
 import { TRPCError } from "@trpc/server";
 import { isCidV1 } from "@countylens/contract";
 import { rawCid } from "@countylens/query-core";
 import { getConfig } from "./config.js";
+import { METRICS_NAMESPACE, SERVICE_NAME } from "./observability.js";
 
 export interface PresignedObject {
   readonly key: string;
@@ -33,6 +39,30 @@ export interface PresignedObject {
 export const PRESIGN_EXPIRES_S = 3600;
 /** The /tmp cache of verified manifests: one file per CID under the sandbox's temp directory. */
 export const MANIFEST_CACHE_DIR = "countylens-manifests";
+
+/** Count metric: one per GetObject 403 that getManifest reported as NOT_FOUND (metagross N3). */
+export const METRIC_MANIFEST_ACCESS_DENIED = "ManifestAccessDenied";
+
+/** The two Powertools calls the 403 branch makes; injectable for tests. */
+export interface S3ReadObservability {
+  readonly logger: Pick<Logger, "warn">;
+  readonly metrics: Pick<Metrics, "addMetric" | "publishStoredMetrics">;
+}
+
+let observability: S3ReadObservability | undefined;
+
+/** Replaces the 403 reporter (tests); `undefined` restores the lazily built Powertools pair. */
+export function setS3ReadObservability(next: S3ReadObservability | undefined): void {
+  observability = next;
+}
+
+function s3ReadObservability(): S3ReadObservability {
+  observability ??= {
+    logger: new Logger({ serviceName: SERVICE_NAME }),
+    metrics: new Metrics({ serviceName: SERVICE_NAME, namespace: METRICS_NAMESPACE }),
+  };
+  return observability;
+}
 
 let client: S3Client | undefined;
 
@@ -96,12 +126,27 @@ const statusOf = (error: unknown): number | undefined =>
  * answers a GetObject on a missing public key with 403 AccessDenied rather than 404: both mean
  * "not in the copy" here, and the client gets NOT_FOUND, never a 500 that fires the 5xx alarm.
  */
+const isAccessDenied = (error: unknown): boolean =>
+  (error instanceof Error && error.name === "AccessDenied") || statusOf(error) === 403;
+
 const isAbsent = (error: unknown): boolean =>
   error instanceof NoSuchKey ||
   error instanceof NotFound ||
-  (error instanceof Error && error.name === "AccessDenied") ||
   statusOf(error) === 404 ||
-  statusOf(error) === 403;
+  isAccessDenied(error);
+
+/** One warning (IDs only: no message, URL or stack) and one Count metric per mapped 403. */
+function reportAccessDenied(cid: string, key: string, error: unknown): void {
+  const { logger, metrics } = s3ReadObservability();
+  logger.warn("manifest GetObject answered 403; reported as NOT_FOUND", {
+    manifestCid: cid,
+    key,
+    httpStatusCode: statusOf(error) ?? 403,
+    errorName: error instanceof Error ? error.name : "unknown",
+  });
+  metrics.addMetric(METRIC_MANIFEST_ACCESS_DENIED, MetricUnit.Count, 1);
+  metrics.publishStoredMetrics();
+}
 
 /** The manifest bytes of `ipfs/<cid>`, verified by rawCid; throws when absent or mismatched. */
 export async function getManifest(cid: string): Promise<Uint8Array> {
@@ -119,6 +164,7 @@ export async function getManifest(cid: string): Promise<Uint8Array> {
     bytes = await object.Body.transformToByteArray();
   } catch (error) {
     if (isAbsent(error)) {
+      if (isAccessDenied(error)) reportAccessDenied(cid, key, error);
       throw new TRPCError({
         code: "NOT_FOUND",
         message: `manifest ${cid} is not in the CID copy`,

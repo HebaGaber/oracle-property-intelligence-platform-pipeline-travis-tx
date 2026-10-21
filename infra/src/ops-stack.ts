@@ -12,6 +12,7 @@
 // assume the CDK bootstrap roles (cdk-hnb659fds-*). The native OIDC provider is an L1 resource,
 // so the only Lambda here is the budget's singleton provider, which runs on deploy only ($0 idle). Alarms reference the Api stack's function and HTTP
 // API through cross-stack exports (ARD § 16 AM-02 order: Api before Ops).
+import { createHash } from "node:crypto";
 import {
   Aws,
   CfnOutput,
@@ -43,7 +44,34 @@ export const STORY_BRANCH_PATTERN = "0*";
 /** The default CDK bootstrap qualifier of this account (`cdk-hnb659fds-*` roles, ADR-0001 teardown proof). */
 export const CDK_BOOTSTRAP_QUALIFIER = "hnb659fds";
 export const MONTHLY_BUDGET_USD = 10;
+/** Budget name prefix; the full name carries a revision hash (budgetNameFor, metagross N2). */
 export const BUDGET_NAME = "countylens-monthly";
+/** The two notifications: 80 % of actual spend, 100 % of forecast spend (NFR-02). */
+const BUDGET_THRESHOLDS = [
+  { type: "ACTUAL", percent: 80 },
+  { type: "FORECASTED", percent: 100 },
+] as const;
+
+/**
+ * The budget name (and physical id): BUDGET_NAME plus 10 hex of a SHA-256 over the whole
+ * definition, the operator email included. UpdateBudget cannot change notification subscribers,
+ * so a changed email must become a new budget: a new name makes CloudFormation replace the
+ * custom resource (create the new budget, then delete the old one in cleanup). The address
+ * itself never appears in the name.
+ */
+export function budgetNameFor(operatorEmail: string): string {
+  const revision = createHash("sha256")
+    .update(
+      JSON.stringify({
+        limitUsd: MONTHLY_BUDGET_USD,
+        thresholds: BUDGET_THRESHOLDS,
+        operatorEmail: operatorEmail.trim().toLowerCase(),
+      }),
+    )
+    .digest("hex")
+    .slice(0, 10);
+  return `${BUDGET_NAME}-${revision}`;
+}
 /** CloudFormation type of the budget custom resource (AwsCustomResource `resourceType`). */
 export const BUDGET_RESOURCE_TYPE = "Custom::CountyLensBudget";
 /** Alarm evaluation window (FR-007: "Errors ≥ 1 per 5 min"); one period, threshold 1. */
@@ -198,33 +226,52 @@ export class OpsStack extends Stack {
   }
   /**
    * The $10 MONTHLY COST budget (NFR-02, TC-052): notifications only (a budget action bills per
-   * day), 80 % actual and 100 % forecast to the operator email. Create/Update/Delete call the
-   * Budgets API; the physical id is the budget name. Update replaces the budget definition only
-   * (UpdateBudget); the two notifications are fixed at create.
+   * day), 80 % actual and 100 % forecast to the operator email. The physical id is the budget
+   * name from budgetNameFor (a revision hash of the definition and email, metagross N2):
+   * - Create: CreateBudget.
+   * - Update: the same CreateBudget. An unchanged definition keeps the name, the budget already
+   *   exists and DuplicateRecordException is ignored (no replacement). A changed email or limit
+   *   is a new name: the new budget is created and CloudFormation's cleanup Delete removes the
+   *   old one by its physical id.
+   * - Delete: DeleteBudget of the physical id; NotFoundException is ignored so a budget already
+   *   removed by hand or by a failed create does not leave the stack DELETE_FAILED (metagross N1).
+   * First deploy: a budget with the same hashed name must not already exist (CreateBudget fails
+   * with DuplicateRecordException on Create, which is not ignored).
    */
   private monthlyBudget(operatorEmail: string): cr.AwsCustomResource {
+    const budgetName = budgetNameFor(operatorEmail);
     const definition = {
-      BudgetName: BUDGET_NAME,
+      BudgetName: budgetName,
       BudgetType: "COST",
       TimeUnit: "MONTHLY",
       BudgetLimit: { Amount: String(MONTHLY_BUDGET_USD), Unit: "USD" },
     };
     const subscribers = [{ SubscriptionType: "EMAIL", Address: operatorEmail }];
-    const notification = (NotificationType: string, Threshold: number) => ({
-      Notification: {
-        NotificationType,
-        ComparisonOperator: "GREATER_THAN",
-        Threshold,
-        ThresholdType: "PERCENTAGE",
+    const createBudget: cr.AwsSdkCall = {
+      service: "Budgets",
+      action: "CreateBudget",
+      parameters: {
+        AccountId: Aws.ACCOUNT_ID,
+        Budget: definition,
+        NotificationsWithSubscribers: BUDGET_THRESHOLDS.map(({ type, percent }) => ({
+          Notification: {
+            NotificationType: type,
+            ComparisonOperator: "GREATER_THAN",
+            Threshold: percent,
+            ThresholdType: "PERCENTAGE",
+          },
+          Subscribers: subscribers,
+        })),
+        ResourceTags: [{ Key: PROJECT_TAG_KEY, Value: PROJECT_NAME }],
       },
-      Subscribers: subscribers,
-    });
-    const physicalResourceId = cr.PhysicalResourceId.of(BUDGET_NAME);
+      physicalResourceId: cr.PhysicalResourceId.of(budgetName),
+      logging: cr.Logging.withDataHidden(), // the operator email is in the parameters
+    };
     const budgetArn = this.formatArn({
       service: "budgets",
       region: "",
       resource: "budget",
-      resourceName: BUDGET_NAME,
+      resourceName: `${BUDGET_NAME}-*`,
     });
     const logGroup = new logs.LogGroup(this, "BudgetProviderLogs", {
       retention: logs.RetentionDays.TWO_WEEKS,
@@ -235,34 +282,18 @@ export class OpsStack extends Stack {
       installLatestAwsSdk: false,
       logGroup,
       timeout: Duration.minutes(2),
-      onCreate: {
-        service: "Budgets",
-        action: "CreateBudget",
-        parameters: {
-          AccountId: Aws.ACCOUNT_ID,
-          Budget: definition,
-          NotificationsWithSubscribers: [
-            notification("ACTUAL", 80),
-            notification("FORECASTED", 100),
-          ],
-          ResourceTags: [{ Key: PROJECT_TAG_KEY, Value: PROJECT_NAME }],
-        },
-        physicalResourceId,
-        logging: cr.Logging.withDataHidden(), // the operator email is in the parameters
-      },
-      onUpdate: {
-        service: "Budgets",
-        action: "UpdateBudget",
-        parameters: { AccountId: Aws.ACCOUNT_ID, NewBudget: definition },
-        physicalResourceId,
-        logging: cr.Logging.withDataHidden(), // the operator email is in the parameters
-      },
+      onCreate: createBudget,
+      onUpdate: { ...createBudget, ignoreErrorCodesMatching: "DuplicateRecordException" },
       onDelete: {
         service: "Budgets",
         action: "DeleteBudget",
-        parameters: { AccountId: Aws.ACCOUNT_ID, BudgetName: BUDGET_NAME },
-        physicalResourceId,
-        logging: cr.Logging.withDataHidden(), // the operator email is in the parameters
+        parameters: {
+          AccountId: Aws.ACCOUNT_ID,
+          BudgetName: new cr.PhysicalResourceIdReference(),
+        },
+        physicalResourceId: cr.PhysicalResourceId.of(budgetName),
+        ignoreErrorCodesMatching: "NotFoundException",
+        logging: cr.Logging.withDataHidden(),
       },
       policy: cr.AwsCustomResourcePolicy.fromStatements([
         new iam.PolicyStatement({
@@ -272,6 +303,15 @@ export class OpsStack extends Stack {
         }),
       ]),
     });
+    const budgetPolicy = budget.node.findChild("CustomResourcePolicy") as iam.Policy;
+    acknowledgeWildcardResources(
+      budgetPolicy,
+      () => [budgetPolicy.document],
+      (resource) => resource.endsWith(`:budget/${BUDGET_NAME}-*`),
+      `The only budgets statement is scoped to budget/${BUDGET_NAME}-*: this stack's own budget, ` +
+        "whose name carries a revision hash (budgetNameFor) so an operator-email change replaces it; " +
+        "the replacement window needs both the old and the new name. No other budget matches.",
+    );
 
     // The singleton provider Lambda: X-Ray active like every function here (NFR-03, TC-052).
     // The singleton lives at stack scope as "AWS" + the provider UUID without dashes.
@@ -303,7 +343,7 @@ export class OpsStack extends Stack {
         "(the service accepts only *); active tracing on the provider (NFR-03).",
     });
     new CfnOutput(this, "BudgetName", {
-      value: BUDGET_NAME,
+      value: budgetName,
       description: `AWS Budget of ${MONTHLY_BUDGET_USD} USD per month (80 % actual, 100 % forecast → email)`,
     });
     return budget;

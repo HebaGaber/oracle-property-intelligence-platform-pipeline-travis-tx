@@ -36,7 +36,8 @@
         "CDK_DEFAULT_REGION",
         "CDK_DEFAULT_ACCOUNT",
         "OPERATOR_EMAIL",
-        "AWS_REGION"
+        "AWS_REGION",
+        "COUNTYLENS_BUNDLE"
       ]
     },
     "synth": {

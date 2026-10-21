@@ -123,7 +123,26 @@ Probe: 5 rounds × 2 CIDs × 4 requests per gateway, 2026-10-21 00:13:11Z → 00
 | Default flags (full GET) | 3,200 / 4,044 ms | 8.0 / 8.6 ms | 200 × 160 | 00:28:13–00:29:20Z |
 | Range flags (Finding 1) | 2,829 / 3,088 ms | 7.9 / 8.6 ms | 200 × 140, 206 × 60 | 01:51:35–01:52:35Z |
 
-**Pending D-8:** the same legs on A-03's own published CIDs (plain GETs, Range, CORS, TTFB, SHA-256, DuckDB-WASM range reads through Filebase on a real table part). Size-dependent throughput through Filebase cannot be measured before our own data is public.
+**Measured after D-8 (T067, 2026-10-21):** the same legs on A-03's own published CIDs, run `travis-202609-permits-20261021t103516z` (manifest CID `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i`). Same laptop and home network as the spike. Only `ipfs.filebase.io` and `gateway.pinata.cloud` were used (ipfs.io and dweb.link are retired, Finding 3).
+
+Before the probe, `scripts/verify-manifest.ts` passed on both gateways, 2026-10-21 13:05:27Z: manifest bytes and SHA-256 match, plus 27 artifacts per gateway (the 4 CARs fetched by `carCid`), 28/28 lines `ok` on each, 0 × 429, `ALL ARTIFACTS VERIFIED`, exit 0.
+
+CIDs probed, in rotation (sample *i* uses CID *i* mod 3): the manifest (`bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i`, 11,641 B), `car/travis-county.car` (`carCid bafkreie3bw7zbk6u5gxhvxu5k2y3i56s6zsyytc5gdyvyjpw4z5ky2cglu`, 78,543 B) and the largest table part `tables/county/structure/part-00000.parquet` (`bafkreiecvp3swldglp2sz2zkkz4xlcu6whllr4njm2d75mda6rsqnkmwla`, 10,298 B). Per gateway, 10 samples of each leg: plain GET, GET `Range: bytes=0-1023`, CORS GET with `Origin: https://probe.countylens-foreign.example` + `Range`, and `OPTIONS` preflight asking for `range`. TTFB is the time to response headers of the plain GET. These CIDs had just been fetched by verify-manifest, so the gateway caches were warm. 2026-10-21 13:08:35Z → 13:11:17Z.
+
+| Gateway | Plain GET | TTFB p50 / max (ms) | Range `bytes=0-1023` | SHA-256 = CID digest | 429s | CORS GET (foreign Origin) | Preflight (`range`) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ipfs.filebase.io` | 200 (10/10) | 70 / 316 (min 64) | **206** (10/10), `bytes 0-1023/<size>`, 1,024 B | **10/10** | 0 | 206, `ACAO *`, exposes `Content-Length, Content-Range` | 204, `ACAO *`, allows `Content-Type, Range, User-Agent, X-Requested-With` |
+| `gateway.pinata.cloud` | 200 (10/10) | **4,450 / 6,729** (min 3,680) | **206** (10/10), `bytes 0-1023/<size>`, 1,024 B | **10/10** | 0 | 206, `ACAO *`, exposes `Content-Length, Content-Range` | 204, `ACAO *`, **no `Access-Control-Allow-Headers`** |
+
+Pinata again answers 3.7–6.7 s per request even for 10 KB, as in the spike, and its preflight does not allow `Range`, so a browser cannot range-read through it cross-origin. Filebase stays the only gateway fit for the browser fallback; Pinata is a verification gateway only.
+
+**DuckDB range reads through Filebase on a real table part**, measured with **node DuckDB as the stand-in for DuckDB-WASM** (`@duckdb/node-api` 1.5.6-r.2 with the locally installed `httpfs`, autoinstall off; same DuckDB reader, not the browser build). `SELECT count(*) FROM read_parquet('https://ipfs.filebase.io/ipfs/bafkreiecvp3swldglp2sz2zkkz4xlcu6whllr4njm2d75mda6rsqnkmwla')`, a fresh instance per run (cold, HTTP metadata cache off), 10 runs, 2026-10-21 13:11:34Z → 13:11:37Z:
+
+| Part | Runs | Rows | First query p50 / max (ms) | Requests per run (DuckDB HTTP log) |
+| --- | --- | --- | --- | --- |
+| `tables/county/structure/part-00000.parquet` (10,298 B) | 10 | 14 | **290 / 618** (min 286) | `HEAD` 200, then one `GET Range: bytes=0-10297` → **206** |
+
+The part is smaller than DuckDB's read-ahead, so the whole file comes back in one ranged GET; the multi-range footer and column-chunk pattern of Finding 1 needs a part larger than this run has. **Size-dependent throughput through Filebase is still unmeasured:** this pilot run's largest public file is 78.5 KB, so these rows prove behaviour and per-request latency on our own CIDs, not MB/s.
 
 ## Filebase plan limits (AD-22)
 
@@ -175,7 +194,7 @@ Verdict: DuckDB compute for these queries is ≤ 175 ms at p95 on one thread and
 ## Known gaps
 
 - **The Lambda fallback's p95 is not measured in-region.** The PO approved only the spike stack in the plan, so no Lambda was deployed. A-03 must measure it on the hosted Lambda (20 runs, Playwright on the hosted URL). *Method set by D-4 (2026-10-21, "Private prefix + direct invoke"): 20 timed direct `aws lambda invoke` runs over a private-prefix copy of the full table in `CountyLensData`, deleted afterwards.*
-- **Filebase at scale cannot be measured before our data is public** (A-11). Gateway rows on A-03's own CIDs are **pending D-8**.
+- **Filebase at scale is still unmeasured** (A-11). The gateway rows on A-03's own CIDs were measured after D-8 (T067, 2026-10-21 13:05–13:11Z), but this run's largest public file is 78.5 KB, so they show behaviour and per-request latency, not throughput.
 - **The Parquet is a proxy:** DuckDB with the CLI's codec, level, row-group budget and part rule, not `hyparquet-writer` itself. Statistics and page layout may differ.
 - Network: one laptop on one home network and one edge (MRS). The browser numbers are dominated by round-trip time, so they will differ by location.
 - Roof-age cold on 128m was not run (time box). 1g and 48m bracket it.

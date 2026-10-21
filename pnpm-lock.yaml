@@ -304,6 +304,12 @@ importers:
       '@countylens/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@countylens/query-core':
+        specifier: workspace:*
+        version: link:../../packages/query-core
+      '@duckdb/node-api':
+        specifier: 1.5.6-r.2
+        version: 1.5.6-r.2
       '@ipld/car':
         specifier: ^5.4.7
         version: 5.4.7

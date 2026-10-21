@@ -17,6 +17,7 @@ import {
   loadConfig,
   type InfraConfig,
 } from "../src/config.js";
+import { budgetNameFor } from "../src/ops-stack.js";
 import { appUnderTest, cdkJsonContext } from "./helpers.js";
 
 // The alarm and budget recipient is never in git: the Ops stack reads OPERATOR_EMAIL from the
@@ -409,6 +410,7 @@ interface SdkCall {
   action: string;
   region?: string;
   physicalResourceId?: unknown;
+  ignoreErrorCodesMatching?: string;
   parameters: Record<string, unknown>;
 }
 
@@ -534,8 +536,12 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy ro
 
   // metagross M2: CloudFormation has no AWS::Budgets::Budget type in the project region (F3006)
   // and no stack may live elsewhere, so the budget is an AwsCustomResource in CountyLensOps that
-  // calls the (global) Budgets API: CreateBudget / UpdateBudget / DeleteBudget, physical id = the
-  // budget name. Asserted unconditionally (no BUDGET_REGION skip).
+  // calls the (global) Budgets API. Asserted unconditionally (no BUDGET_REGION skip).
+  // metagross N2: UpdateBudget cannot change subscribers, so the budget name (= physical id)
+  // carries a revision hash of its whole definition including the operator email. Update calls
+  // CreateBudget: an unchanged definition is the same name (DuplicateRecordException ignored, no
+  // replacement); a changed email is a new name, so CloudFormation's cleanup deletes the old one.
+  // metagross N1: Delete targets the physical id and ignores NotFoundException.
   it("A-03-TC-052: the $10 MONTHLY COST budget is a custom resource in CountyLensOps (Create/Update/Delete), 80 % actual + 100 % forecast to the operator email, no budget action", () => {
     for (const t of Object.values(templates)) {
       t.resourceCountIs("AWS::Budgets::Budget", 0);
@@ -548,26 +554,37 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy ro
     const create = call("Create");
     const update = call("Update");
     const del = call("Delete");
+    const name = budgetNameFor(operatorEmail);
+    expect(name).toMatch(/^countylens-monthly-[0-9a-f]{10}$/);
     expect([create.service, create.action]).toEqual(["Budgets", "CreateBudget"]);
-    expect([update.service, update.action]).toEqual(["Budgets", "UpdateBudget"]);
+    expect([update.service, update.action]).toEqual(["Budgets", "CreateBudget"]);
     expect([del.service, del.action]).toEqual(["Budgets", "DeleteBudget"]);
     for (const c of [create, update, del]) {
-      expect(c.physicalResourceId).toEqual({ id: "countylens-monthly" });
+      expect(c.physicalResourceId).toEqual({ id: name });
       expect(c.parameters.AccountId).toBe(ACCOUNT_TOKEN);
       expect(
         c.region,
         "no region literal: the SDK call runs in the stack's region",
       ).toBeUndefined();
     }
+    expect(create.ignoreErrorCodesMatching).toBeUndefined();
+    expect(update.ignoreErrorCodesMatching).toBe("DuplicateRecordException");
+    expect(update.parameters).toEqual(create.parameters);
     const budget = {
-      BudgetName: "countylens-monthly",
+      BudgetName: name,
       BudgetType: "COST",
       TimeUnit: "MONTHLY",
       BudgetLimit: { Amount: "10", Unit: "USD" },
     };
     expect(create.parameters.Budget).toEqual(budget);
-    expect(update.parameters.NewBudget).toEqual(budget);
-    expect(del.parameters).toEqual({ AccountId: ACCOUNT_TOKEN, BudgetName: "countylens-monthly" });
+    expect(del.parameters).toEqual({
+      AccountId: ACCOUNT_TOKEN,
+      BudgetName: "PHYSICAL:RESOURCEID:",
+    });
+    expect(
+      del.ignoreErrorCodesMatching,
+      "N1: an already-deleted budget must not fail the stack",
+    ).toBe("NotFoundException");
     expect(create.parameters.ResourceTags).toEqual([
       { Key: PROJECT_TAG.key, Value: PROJECT_TAG.value },
     ]);
@@ -594,7 +611,17 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy ro
     }
   });
 
-  it("A-03-TC-052: the budget provider may only modify/view/tag budget/countylens-monthly; its Lambda traces Active and logs 14 days", () => {
+  it("A-03-TC-052 (N2): the budget name changes when the operator email changes and is stable otherwise", () => {
+    expect(budgetNameFor(operatorEmail)).toBe(budgetNameFor(operatorEmail));
+    expect(budgetNameFor("someone-else@example.invalid")).not.toBe(budgetNameFor(operatorEmail));
+    expect(budgetNameFor(operatorEmail), "the address itself is never in the name").not.toContain(
+      operatorEmail,
+    );
+    const outputs = ops.toJSON().Outputs as Record<string, { Value: unknown }>;
+    expect(outputs.BudgetName?.Value).toBe(budgetNameFor(operatorEmail));
+  });
+
+  it("A-03-TC-052: the budget provider may only modify/view/tag budget/countylens-monthly-*; its Lambda traces Active and logs 14 days", () => {
     const policies = Object.values(ops.findResources("AWS::IAM::Policy")).flatMap(
       (p) =>
         (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument.Statement,
@@ -611,7 +638,7 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, GitHub OIDC deploy ro
     ]);
     const resource = json(st.Resource);
     expect(resource).toContain(":budgets::");
-    expect(resource).toContain(":budget/countylens-monthly");
+    expect(resource).toContain(":budget/countylens-monthly-*");
     expect(resource).not.toMatch(/budget\/\*|"\*"/);
     const fns = Object.values(ops.findResources("AWS::Lambda::Function"));
     expect(fns, "only the AwsCustomResource singleton provider").toHaveLength(1);

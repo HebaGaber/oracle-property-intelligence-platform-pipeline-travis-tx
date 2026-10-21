@@ -2,17 +2,58 @@
 // bindManifest over an in-memory node DuckDB, reading each table part from the run directory
 // (manifest artifact names are relative to it), then listRoofingPermitsSql() and
 // runSummarySql(). It lives outside src/ because DuckDB is banned from pipeline/publish/src
-// (ARD § 4, AD-19); src/bind-guard.ts imports it lazily. query-core and its DuckDB adapter are
-// imported by path (packages/query-core/scripts/duckdb-engine.ts, the A-02 node adapter), so
-// this package needs no new dependency entry.
+// (ARD § 4, AD-19); src/bind-guard.ts imports it lazily. query-core is imported by package name
+// (`@countylens/query-core`, a declared workspace dependency, CR-A-03 N-2). Its node DuckDB
+// adapter (packages/query-core/scripts/duckdb-engine.ts) is not a package export, so the same
+// small adapter is kept here over this package's own `@duckdb/node-api` dependency.
 import { join } from "node:path";
+import { DuckDBInstance } from "@duckdb/node-api";
 import {
   bindManifest,
   listRoofingPermitsSql,
   runSummarySql,
-} from "../../../packages/query-core/src/index.js";
-import { openDuckDb } from "../../../packages/query-core/scripts/duckdb-engine.js";
+  type QueryEngine,
+  type Row,
+} from "@countylens/query-core";
 import type { LocalBinder } from "../src/bind-guard.js";
+
+/** JSON-shaped values, as query-core expects: DATE → YYYY-MM-DD, timestamps ISO, BIGINT → number. */
+function plain(value: unknown, type: string): unknown {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return type === "DATE" ? value.toISOString().slice(0, 10) : value.toISOString();
+  }
+  if (typeof value === "bigint") return Number(value);
+  if (Array.isArray(value)) return value.map((v) => plain(v, ""));
+  if (typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, plain(v, "")]));
+  }
+  return value;
+}
+
+/** An in-memory DuckDB with TimeZone UTC and one thread (same settings as query-core's adapter). */
+async function openDuckDb(): Promise<QueryEngine & { close(): void }> {
+  const instance = await DuckDBInstance.create(":memory:", { threads: "1" });
+  const connection = await instance.connect();
+  await connection.run("SET TimeZone = 'UTC'");
+  return {
+    async run(sql: string): Promise<void> {
+      await connection.run(sql);
+    },
+    async all(sql: string): Promise<Row[]> {
+      const reader = await connection.runAndReadAll(sql);
+      const types = reader.columnTypes().map((t) => t.toString());
+      const names = reader.columnNames();
+      return reader
+        .getRowObjectsJS()
+        .map((row) => Object.fromEntries(names.map((n, i) => [n, plain(row[n], types[i] ?? "")])));
+    },
+    close(): void {
+      connection.closeSync();
+      instance.closeSync();
+    },
+  };
+}
 
 export const localBind: LocalBinder = async ({ manifestBytes, runDir }) => {
   const db = await openDuckDb();
