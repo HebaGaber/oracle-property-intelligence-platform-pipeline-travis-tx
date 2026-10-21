@@ -49,3 +49,5 @@ The run-log at 20:11 records the fixes. This run checks each one against the fil
 4. Update the traceability branch SHA to the final HEAD, and make kit-usage say 43/43.
 
 When the PO approves: tick the G7 checklist in the story, set `status: Done` and `gate: G7`, record the decision and the date, and add the G7 row to the gate log in `docs/traceability.md`. Then merge with `--no-ff` and run `bash scripts/progress.sh`.
+
+**Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-21 (🛑 D-11: "Approve, merge, push (Recommended)")

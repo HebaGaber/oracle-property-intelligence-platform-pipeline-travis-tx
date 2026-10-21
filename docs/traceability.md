@@ -113,5 +113,6 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G4 | stories/A-03-walking-skeleton.md | rev 2 | FAIL (3) → PASS 11/11, `docs/gates/G4-A-03-precheck.md`; run 1 C-04, C-06, C-08 fixed after PO D-1 (run-log 02:48–02:52) | Ready (HebaGaber, 🛑 D-1, run-log 02:54) | 2026-10-21 |
 | G5 | specs/003-walking-skeleton (spec, plan, tasks) | 2026-10-21 | FAIL (2) → PASS 10/10, `docs/gates/G5-A-03-precheck.md`; run 1 C-04, C-07 fixed (run-log 10:58) | Approved (HebaGaber, 🛑 D-6, run-log 11:00) | 2026-10-21 |
 | G6 | testplans/A-03-test-cases.md | v1.0 | FAIL (2) → PASS, `docs/gates/G6-A-03-precheck.md`; run 1 C-05, C-09 fixed in v1.0 (run-log 10:42) | Approved (HebaGaber, QC Lead, 🛑 D-7, run-log 11:00) | 2026-10-21 |
+| G7 | A-03 (branch `003-walking-skeleton`) | `c518d87` | FAIL (6) → PASS 10/10, `docs/gates/G7-A-03-precheck.md`; run 1 C-01–C-05, C-08 fixed (run-log); hosted 43/43, CI run 39641644469 green, oracle 90, metagross 86 | Approved (HebaGaber, 🛑 D-11, "Approve, merge, push (Recommended)") | 2026-10-21 |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |

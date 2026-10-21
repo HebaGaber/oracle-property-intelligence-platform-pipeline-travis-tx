@@ -19,8 +19,8 @@ agents:
   verify: "Playwright demo line 1 + `verify-manifest`"
 skills: [build-frontend-backends, integrate-ci-cd, use-oracle, county-permit-adapter, responsive-design-tests, apply-engineering-guidelines]
 ui: true
-status: Ready
-gate: G6
+status: Done
+gate: G7
 qc_testability_signoff: true
 created: 2026-10-19
 ---
