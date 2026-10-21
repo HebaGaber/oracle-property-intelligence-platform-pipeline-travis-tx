@@ -6,6 +6,7 @@
 // `data-state` loading | ready | error for the hosted tests. A react-router lazy route module.
 import { lazy, Suspense, useCallback, useState, type ReactElement } from "react";
 import { useSearchParams } from "react-router";
+import { ComingSoonEntries } from "../components/ComingSoonEntry";
 import { LinearProgress } from "../components/LinearProgress";
 import { ExploreFilters, type ExplorePageState } from "./ExploreFilters";
 import styles from "./Explore.module.css";
@@ -53,6 +54,7 @@ export function Component(): ReactElement {
           </button>
         ))}
       </div>
+      <ComingSoonEntries ids={["builder-mode", "saved-searches", "area-matrix"]} />
       {mode === "sql" ? (
         <Suspense fallback={<LinearProgress label={LOADING_PANEL} stageText={LOADING_PANEL} />}>
           <ExploreSql onState={onState} />

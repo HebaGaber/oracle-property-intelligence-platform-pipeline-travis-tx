@@ -10,6 +10,7 @@ import { PROGRESS_LABELS, type ReadPathUrls } from "@countylens/shared";
 import { useEffect, useState, type ReactElement } from "react";
 import { useParams } from "react-router";
 import { CidDisplay } from "../components/CidDisplay";
+import { ComingSoonEntries } from "../components/ComingSoonEntry";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { FallbackChip } from "../components/FallbackChip";
 import { LinearProgress } from "../components/LinearProgress";
@@ -109,6 +110,7 @@ export function Component(): ReactElement {
       className={styles.page}
     >
       <h2 className={runStyles.title}>Data · Verify</h2>
+      <ComingSoonEntries ids={["gateway-race"]} />
       {state.kind === "loading" ? (
         <>
           <LinearProgress label={PROGRESS_LABELS.runs} stageText={RUN_STAGE_TEXTS[state.stage]} />

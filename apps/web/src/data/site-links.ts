@@ -3,7 +3,6 @@
 // DEMO_VIDEO_URL, PR_URL; empty by default). Each value is shown only when it is an https URL;
 // an empty, invalid or unreadable value is hidden (the CRM card stays "Coming soon · Not deployed
 // yet"). Switching a link is a Web-stack deploy plus an Amplify rebuild, never a code change.
-import { z } from "zod";
 import { browserFetch, requestInit } from "./http";
 
 export const SITE_LINKS_PATH = "/site-links.json";
@@ -16,14 +15,15 @@ export interface SiteLinks {
 
 const KEYS = ["crmUrl", "demoVideoUrl", "prUrl"] as const;
 
-/** An absolute https URL (zod checks the string; the protocol is checked on the parsed URL). */
-const HttpsUrl = z.string().refine((value) => {
+/** An absolute https URL. Plain URL parsing (no schema library): the Hub's graph stays small. */
+function httpsUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
   try {
-    return new URL(value).protocol === "https:";
+    return new URL(value).protocol === "https:" ? value : undefined;
   } catch {
-    return false;
+    return undefined;
   }
-});
+}
 
 /** Keeps each known key whose value is an https URL; everything else is dropped. */
 export function parseSiteLinks(data: unknown): SiteLinks {
@@ -31,8 +31,8 @@ export function parseSiteLinks(data: unknown): SiteLinks {
   const record = data as Record<string, unknown>;
   const links: { -readonly [K in keyof SiteLinks]: string } = {};
   for (const key of KEYS) {
-    const parsed = HttpsUrl.safeParse(record[key]);
-    if (parsed.success) links[key] = parsed.data;
+    const url = httpsUrl(record[key]);
+    if (url !== undefined) links[key] = url;
   }
   return links;
 }

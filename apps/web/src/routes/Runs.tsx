@@ -20,6 +20,7 @@ import {
 } from "@countylens/shared";
 import type { ReactElement } from "react";
 import { Link } from "react-router";
+import { ComingSoonEntries } from "../components/ComingSoonEntry";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
@@ -44,6 +45,7 @@ export function Component(): ReactElement {
 
   return (
     <section aria-label="Runs" data-route="runs" data-state={state.kind} className={styles.page}>
+      <ComingSoonEntries ids={["pipeline-diagram", "timeline-scrubber"]} />
       {state.kind === "loading" ? (
         <>
           <LinearProgress label={PROGRESS_LABELS.runs} stageText={RUN_STAGE_TEXTS[state.stage]} />

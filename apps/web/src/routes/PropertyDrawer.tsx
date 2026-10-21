@@ -6,6 +6,7 @@
 // only the explore.search row; it fetches nothing and holds no licence line (AD-06).
 import type { ExploreRow } from "@countylens/query-core";
 import { useEffect, useId, useRef, type ReactElement } from "react";
+import { ComingSoonEntries } from "../components/ComingSoonEntry";
 import { CidDisplay } from "../components/CidDisplay";
 import { MissingSummary, PropertyFields, RowProvenance } from "../components/ResultRow";
 import styles from "./Explore.module.css";
@@ -45,6 +46,7 @@ export function PropertyDrawer({ row, onClose }: PropertyDrawerProps): ReactElem
       <PropertyFields row={row} />
       <MissingSummary row={row} />
       <RowProvenance row={row} />
+      <ComingSoonEntries ids={["street-view", "similar-properties"]} />
     </aside>
   );
 }

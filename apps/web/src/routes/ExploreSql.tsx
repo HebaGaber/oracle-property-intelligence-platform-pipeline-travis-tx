@@ -8,6 +8,7 @@
 import type { Row } from "@countylens/query-core";
 import { EXPLORE_TEXTS } from "@countylens/shared";
 import { useEffect, useId, useState, type ReactElement } from "react";
+import { ComingSoonEntries } from "../components/ComingSoonEntry";
 import { Icon } from "../components/Icon";
 import { LinearProgress } from "../components/LinearProgress";
 import { StatusPill } from "../components/StatusPill";
@@ -99,6 +100,7 @@ export function ExploreSql({
   const columns = run.kind === "rows" ? Object.keys(run.rows[0] ?? {}) : [];
   return (
     <div className={styles.sql}>
+      <ComingSoonEntries ids={["sql-checks"]} />
       <p className={styles.engine} data-engine-line="">
         <Icon name="memory" size="small" />
         <span>{EXPLORE_TEXTS.engineBrowser}</span>

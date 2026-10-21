@@ -104,28 +104,28 @@ No file is owned by two groups at the same time. Page stubs created by G1 in wav
 
 ## Phase 9: US7 Hub (P3, track F, wave 3) · AC-9 · D-1
 
-- [ ] T034 [P] [US7] (G3 · metagross · 5m) Tests: CountyLens card (Open → Explore, What can I ask?); CRM card "Coming soon · Not deployed yet" with disabled button, live link when `crmUrl` set; chip "Run {n} · {YYYY-MM-DD HH:mm UTC}" from `runs/index.json`; Watch demo and PR links hidden until set; no query-core barrel or DuckDB import — `apps/web/test/hub.test.tsx`
-- [ ] T035 [US7] (G3 · metagross · 15m) Hub page with fixed-size chip skeleton and card min-heights (CLS, research R9) — `apps/web/src/routes/Hub.*`
+- [x] T034 [P] [US7] (G3 · metagross · 5m) Tests: CountyLens card (Open → Explore, What can I ask?); CRM card "Coming soon · Not deployed yet" with disabled button, live link when `crmUrl` set; chip "Run {n} · {YYYY-MM-DD HH:mm UTC}" from `runs/index.json`; Watch demo and PR links hidden until set; no query-core barrel or DuckDB import — `apps/web/test/hub.test.tsx`
+- [x] T035 [US7] (G3 · metagross · 15m) Hub page with fixed-size chip skeleton and card min-heights (CLS, research R9) — `apps/web/src/routes/Hub.*`
 
 ## Phase 10: US8 Catalog and Legal (P3, tracks G + H, wave 3) · AC-10, AC-11
 
-- [ ] T036 [P] [US8] (G3 · metagross · 10m) Tests: Catalog row per table from manifest artifacts, columns from Parquet footers (lazy hyparquet chunk), "rows in the published file", `published_rows` where mapped, CID → `/data/verify/{cid}`; "table export not in this run's manifest"; unreachable → "Catalog unavailable · {reason}" + manifest link; Legal lists the seven sources with terms or licence links and the four access rules — `apps/web/test/catalog.test.tsx`, `apps/web/test/legal.test.tsx`
-- [ ] T037 [US8] (G3 · metagross · 15m) DataCatalog page — `apps/web/src/routes/DataCatalog.*`
-- [ ] T038 [US8] (G3 · metagross · 15m) Legal pages and content from `docs/sources.md` (facts with links, no legal advice, D-8); record each of the seven sources' official terms or licence page (public page, checked HTTP 200, with access date; TCAD, Travis County GIS, City of Austin open-data terms for `3syk-w9eu`, TX Comptroller open-data terms for `9cir-efmm`, BBB terms of use, Overture attribution/licence, US Census Gazetteer) in `content/legal.ts`; never invent a link; the PO reads the final text at A-2 — `apps/web/src/routes/Legal{Data,Privacy,Terms}.*`, `apps/web/src/content/legal.ts`
+- [x] T036 [P] [US8] (G3 · metagross · 10m) Tests: Catalog row per table from manifest artifacts, columns from Parquet footers (lazy hyparquet chunk), "rows in the published file", `published_rows` where mapped, CID → `/data/verify/{cid}`; "table export not in this run's manifest"; unreachable → "Catalog unavailable · {reason}" + manifest link; Legal lists the seven sources with terms or licence links and the four access rules — `apps/web/test/catalog.test.tsx`, `apps/web/test/legal.test.tsx`
+- [x] T037 [US8] (G3 · metagross · 15m) DataCatalog page — `apps/web/src/routes/DataCatalog.*`
+- [x] T038 [US8] (G3 · metagross · 15m) Legal pages and content from `docs/sources.md` (facts with links, no legal advice, D-8); record each of the seven sources' official terms or licence page (public page, checked HTTP 200, with access date; TCAD, Travis County GIS, City of Austin open-data terms for `3syk-w9eu`, TX Comptroller open-data terms for `9cir-efmm`, BBB terms of use, Overture attribution/licence, US Census Gazetteer) in `content/legal.ts`; never invent a link; the PO reads the final text at A-2 — `apps/web/src/routes/Legal{Data,Privacy,Terms}.*`, `apps/web/src/content/legal.ts`
 
 ## Phase 11: US9 Runs · Log (P3, track H, wave 3) · AC-12
 
-- [ ] T039 [P] [US9] (G3 · metagross · 5m) Tests: every event of every manifest (from `run-events`) in time order with run ID — `apps/web/test/runs-log.test.tsx`
-- [ ] T040 [US9] (G3 · metagross · 10m) RunsLog page — `apps/web/src/routes/RunsLog.*`
+- [x] T039 [P] [US9] (G3 · metagross · 5m) Tests: every event of every manifest (from `run-events`) in time order with run ID — `apps/web/test/runs-log.test.tsx`
+- [x] T040 [US9] (G3 · metagross · 10m) RunsLog page — `apps/web/src/routes/RunsLog.*`
 
 ## Phase 12: US10 Coming soon and no sample data (P3, track I, wave 3) · AC-13, AC-14
 
-- [ ] T041 [P] [US10] (G3 · metagross · 5m) Tests: `ComingSoonSkeleton` has no text nodes, `aria-hidden`, no animation/transition; each item shows "Coming soon" + one sentence; county selector → "CountyLens has data for Travis County, TX only"; `/tx/{other}/…` renders the same message with a link to `/tx/travis/explore` — `apps/web/test/coming-soon.test.tsx`, `apps/web/test/county-select.test.tsx`
-- [ ] T042 [US10] (G3 · metagross · 15m) ComingSoonSkeleton, ComingSoon route, CountySelect (in the shell's location chip slot via route-list) — `apps/web/src/components/{ComingSoonSkeleton,CountySelect}.*`, `apps/web/src/routes/ComingSoon.*`
+- [x] T041 [P] [US10] (G3 · metagross · 5m) Tests: `ComingSoonSkeleton` has no text nodes, `aria-hidden`, no animation/transition; each item shows "Coming soon" + one sentence; county selector → "CountyLens has data for Travis County, TX only"; `/tx/{other}/…` renders the same message with a link to `/tx/travis/explore` — `apps/web/test/coming-soon.test.tsx`, `apps/web/test/county-select.test.tsx`
+- [x] T042 [US10] (G3 · metagross · 15m) ComingSoonSkeleton, ComingSoon route, CountySelect (in the shell's location chip slot via route-list) — `apps/web/src/components/{ComingSoonSkeleton,CountySelect}.*`, `apps/web/src/routes/ComingSoon.*`
 
 ### Part 2 hosted specs (G4, wave 3)
 
-- [ ] T043 [P] [US7–US10] ⏳ (G4 · metagross · 20m) Playwright specs for TC-050…TC-086 (Hub, Catalog, Legal, Runs log, each Coming soon item, More sheet at 390, other county, no-sample-data scan over every route in `route-list.ts`, web vitals under the Lighthouse mobile profile median of 5, JS size, WCAG, every route renders) — `tests/e2e/A-13-pages.spec.ts`, `tests/e2e/A-13-scan.spec.ts`, `tests/e2e/A-13-vitals.spec.ts`
+- [x] T043 [P] [US7–US10] ⏳ (G4 · metagross · 20m) Playwright specs for TC-050…TC-086 (Hub, Catalog, Legal, Runs log, each Coming soon item, More sheet at 390, other county, no-sample-data scan over every route in `route-list.ts`, web vitals under the Lighthouse mobile profile median of 5, JS size, WCAG, every route renders) — `tests/e2e/A-13-pages.spec.ts`, `tests/e2e/A-13-scan.spec.ts`, `tests/e2e/A-13-vitals.spec.ts`
 
 **Checkpoint (end of wave 3):** integration check green; commit `A-13: wave 3 content pages`.
 

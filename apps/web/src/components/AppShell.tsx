@@ -19,9 +19,10 @@ import {
   type ReactElement,
   type UIEvent,
 } from "react";
-import { Link, NavLink, Outlet } from "react-router";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { COMING_SOON_ITEMS } from "../content/coming-soon";
 import { MORE_PAGES } from "../routes/route-list";
+import { CountySelect } from "./CountySelect";
 import styles from "./AppShell.module.css";
 
 export const APP_TITLE = "CountyLens";
@@ -109,6 +110,9 @@ export function AppShell(): ReactElement {
   const onScroll = useCallback((event: UIEvent<HTMLElement>) => {
     setScrolled(event.currentTarget.scrollTop > 0);
   }, []);
+  // The location slot (county selector) sits at the top of the page region under `/tx/…`; the
+  // app bar keeps the title as its only control.
+  const inCounty = useLocation().pathname.startsWith("/tx/");
   const [moreOpen, setMoreOpen] = useState(false);
   const moreButton = useRef<HTMLButtonElement>(null);
   const closeMore = useCallback(() => {
@@ -156,6 +160,7 @@ export function AppShell(): ReactElement {
       </nav>
       {moreOpen ? <MoreSheet onClose={closeMore} /> : null}
       <main className={styles.main} onScroll={onScroll}>
+        {inCounty ? <CountySelect /> : null}
         <Outlet />
       </main>
     </div>

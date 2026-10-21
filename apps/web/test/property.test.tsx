@@ -8,6 +8,7 @@ import { rawCid, type ExploreRow } from "@countylens/query-core";
 import { EXPLORE_TEXTS } from "@countylens/shared";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router";
 import { PropertyDrawer } from "../src/routes/PropertyDrawer";
 
 const encode = (t: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(t);
@@ -64,7 +65,11 @@ afterEach(() => cleanup());
 
 describe("Property drawer (FR-004b, FR-005, TC-030, TC-032, TC-034)", () => {
   it("is a dialog for the property with every field, the badge, the BBB line and provenance", () => {
-    render(<PropertyDrawer row={row} onClose={() => undefined} />);
+    render(
+      <MemoryRouter>
+        <PropertyDrawer row={row} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
     const drawer = screen.getByRole("dialog");
     expect(drawer.getAttribute("data-property-cid")).toBe(row.property_cid);
     const field = (f: string): string | null | undefined =>
@@ -97,7 +102,11 @@ describe("Property drawer (FR-004b, FR-005, TC-030, TC-032, TC-034)", () => {
 
   it("closes through its Close button", () => {
     const onClose = vi.fn();
-    render(<PropertyDrawer row={row} onClose={onClose} />);
+    render(
+      <MemoryRouter>
+        <PropertyDrawer row={row} onClose={onClose} />
+      </MemoryRouter>,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
