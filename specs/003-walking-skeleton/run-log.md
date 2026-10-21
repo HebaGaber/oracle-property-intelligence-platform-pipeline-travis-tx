@@ -126,3 +126,5 @@ One line per step: time (local) · stage · step · result. PO answers are quote
 | 20:40 | 6 | S6.11 G7 | re-run PASS 10/10 (run 1 FAIL 6/10 fixed); cleanups: scores 90/86, evidence Final, unit report ci_run → 39641644469, CI table updated |
 | 20:41 | 6 | 🛑 D-11 (R8) | PO: "Approve, merge, push (Recommended)" — merge after CI on the latest commit is green |
 | 20:54 | 6 | ERR-20 | PO screenshot review of Permits: missing-data pills don't name their field (≈ 7 identical per row); presentation only, data/retrieval correct. PO: "Merge now, fix in A-13" → ERR-20 Deferred to A-13 |
+| 21:17 | 6 | S6.14–S6.17 | production countylens.aldarraj.com = 08b33a4, smoke 4/4; draft PR #4 opened (PO request: "create the pr but not mark it ready"); playbook A-03 ✅; eval impact: gated 0 (no demo video yet), ungated ≈ 29 (+25 from A-03); PO: slowking calibration "Yes, run it (Recommended)" |
+| 21:21 | 6 | S6.17 slowking calibration | gates: PR ✅ (draft #4), runtime ✅, credentials ✅, demo ❌ → 0/100; ungated ≈41 (projection ≈29); A-03 complete |
