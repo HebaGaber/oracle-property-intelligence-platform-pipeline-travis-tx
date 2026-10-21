@@ -25,5 +25,5 @@ export const runDirFor = (jobId: string, repoRoot: string = DEFAULT_REPO_ROOT): 
   join(repoRoot, "pipeline/data/runs", jobId);
 
 export const PILOT_SEED_PATH = "pipeline/data/seeds/travis-a04-pilot.csv";
-/** Austin reroof tcad_ids from the permits pilot page, permit_number order (T062 writes it). */
+/** Austin roofing-permit tcad_ids from the permits pilot page, permit_number order (T062 writes it). */
 export const ANCHOR_CANDIDATES_PATH = "pipeline/data/seeds/travis-a04-anchor-candidates.txt";

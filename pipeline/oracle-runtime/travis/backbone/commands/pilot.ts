@@ -1,7 +1,7 @@
 // A-04 T027: `backbone pilot` (contracts/cli.md).
 //   --select [--anchors <file>]  writes pipeline/data/seeds/travis-a04-pilot.csv with
 //                                pilot-select.ts (one local pass over the export on disk; the
-//                                anchor file lists Austin reroof tcad_ids in permit order, T062)
+//                                anchor file lists Austin roofing-permit tcad_ids in permit order, T062)
 //   [--seed <csv>]               runs TcadBackbone for the seed's pIDs through the Restate
 //                                ingress, which also writes their County group (R only), then
 //                                prints the elephant-cli validate command to run

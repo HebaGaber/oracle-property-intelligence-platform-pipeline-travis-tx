@@ -1,7 +1,7 @@
 // A-04 T027 (FR-001, D-4): the 25-parcel pilot seed, chosen in one local pass over the export
 // already on disk (no network). Rows, each with its reason:
 //   primary_anchor     geoID 0223120506 (→ pID 221829)
-//   second_anchor      the first Austin reroof tcad_id from the given list (permit_number order,
+//   second_anchor      the first Austin roofing-permit tcad_id from the given list (permit_number order,
 //                      T062) that resolves to exactly one R geoID; none → the selection stops
 //   one account per case: prop_type P / MH / MN, a coded-confidential account, the second R
 //                      account on a shared geoID, several improvements, no dated sale, no year
@@ -68,7 +68,7 @@ export interface PilotSelection {
 }
 
 export interface SelectOptions {
-  /** Austin reroof tcad_ids (TCAD geoIDs), in permit_number order. */
+  /** Austin roofing-permit tcad_ids (TCAD geoIDs), in permit_number order. */
   anchorCandidates: readonly string[];
   asOf: string;
   size?: number;

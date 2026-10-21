@@ -2,7 +2,7 @@
 // profile travis-austin@1.0.0 (P0-9). This file holds no term list: the profile's
 // classifyPermit / classifyStatus / hasIncludeTerm decide, and their verdict is passed on as
 // is, with the profile id and SHA-256 stamped on every result.
-// - include + exclude ("… AND SOLAR"): the profile's exclude rules win (precedence in rules.json);
+// - include + exclude (a second-trade term in the same description): the profile's exclude rules win (precedence in rules.json);
 // - an undecidable row → `needs_review` (the profile's own value), never guessed;
 // - the source status word is kept verbatim in `statusRaw` (Expired stays Expired, class
 //   `stalled`); the expiry date stays in the Query DB (no lexicon carrier).
