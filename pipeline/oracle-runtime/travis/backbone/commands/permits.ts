@@ -10,10 +10,15 @@ const Args = z
   .object({
     mode: z.enum(["backfill", "incremental", "pilot"]).optional(),
     link: z.literal(true).optional(),
+    /** Start the backfill from page 1, archiving a stale cursor (F2 OR-m5). */
+    fresh: z.literal(true).optional(),
   })
   .strict()
   .refine((a) => (a.mode === undefined) !== (a.link === undefined), {
     message: "give exactly one of --mode backfill|incremental|pilot or --link",
+  })
+  .refine((a) => a.fresh === undefined || a.mode === "backfill", {
+    message: "--fresh only goes with --mode backfill",
   });
 type Args = z.infer<typeof Args>;
 
@@ -36,7 +41,11 @@ export const command: BackboneCommand<Args> = {
     const mode = args.link === true ? "link" : (args.mode ?? "backfill");
     const jobId = ctx.jobIdFor(`permits-${mode}`);
     const key = `austin-3syk-w9eu-${jobId.replace(/^travis-a04-permits-/, "")}`;
-    await ctx.ingress.send("AustinPermits", key, "run", { jobId, mode });
+    await ctx.ingress.send("AustinPermits", key, "run", {
+      jobId,
+      mode,
+      ...(args.fresh ? { fresh: true } : {}),
+    });
     const out = Output.parse(await ctx.ingress.get("AustinPermits", key));
     const counts = [
       `status=${out.status}`,

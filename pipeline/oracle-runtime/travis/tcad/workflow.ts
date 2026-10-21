@@ -14,17 +14,21 @@
 //   5 reconcile (seed = loaded + dead + invalid + transform_failure), dead.json, the D-7
 //     limitations, finalize (duplicate export points, key inventory digest), status complete
 import { createHash } from "node:crypto";
-import { basename, join } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { RunDataError } from "../backbone/errors.js";
+import { MIN_FREE_BYTES, freeBytesAt } from "../backbone/disk-guard.js";
 import type { DownloadRequest, DownloadResult } from "../lib/source-client.js";
 import { GAZETTEER_SHA256 } from "../../../../packages/query-core/src/sql.generated.js";
 import type { DataGroupCids } from "../transforms/lexicon-manifest.js";
+import { PROPERTY_TYPE_RULES_VERSION } from "../transforms/shared-seed.js";
 import { writeChunkInput, type ChunkMergeOp, type ChunkOutcome, type ChunkSpec } from "./chunk.js";
 import type { ExportRecordText } from "./export-stream.js";
 import { ExportVerifyError } from "./export-verify.js";
 import { DUPLICATE_MIN_GEOIDS } from "./export-point.js";
 import { limitationsFor } from "./redact.js";
 import { reconcile, writeDeadRecords, type Reconciliation } from "./reconcile.js";
-import type { ChunkSummary } from "./process.js";
+import { emptyTypeStats, type ChunkSummary, type TypeStats } from "./process.js";
 import type { CoverageRow } from "./write-group.js";
 
 export type { ChunkOutcome, ChunkSpec } from "./chunk.js";
@@ -77,10 +81,17 @@ export type TrackOp =
       }>;
     };
 
-/** The Loader input for one op: file ops carry their artifact; others hash the op itself. */
+/**
+ * The Loader input for one op: file ops carry their artifact; others hash the op itself plus
+ * `seq` (a counter journaled in the workflow) and `nonce` (per invocation), so a repeated
+ * status op (waiting_human → running → waiting_human) or a same-job re-run is a new merge and is
+ * applied, not skipped as already merged (CR-1). Retries of one call reuse seq and nonce, so
+ * they stay idempotent.
+ */
 export function loaderInput(
   jobId: string,
   op: TrackOp,
+  unique: { seq: number; nonce: string } = { seq: 0, nonce: "" },
 ): { jobId: string; artifactPath: string; artifactSha256: string; op: Record<string, unknown> } {
   if (op.kind === "chunk") {
     return {
@@ -91,7 +102,7 @@ export function loaderInput(
     };
   }
   const sha = createHash("sha256")
-    .update(`${jobId}\n${JSON.stringify(op)}`)
+    .update(`${jobId}\n${unique.nonce}\n${unique.seq}\n${JSON.stringify(op)}`)
     .digest("hex");
   return { jobId, artifactPath: `op:${op.kind}`, artifactSha256: sha, op };
 }
@@ -125,8 +136,10 @@ export class Suspended extends Error {
 export interface BackboneDeps {
   /** A journaled side effect (ctx.run): replays return the recorded value. */
   step<T>(name: string, fn: () => Promise<T>): Promise<T>;
-  /** Loader.merge on track tcad (a journaled child call). */
-  merge(op: TrackOp): Promise<{ rowsWritten: number }>;
+  /** Loader.merge on track tcad (a journaled child call); `seq` counts the run's non-chunk ops. */
+  merge(op: TrackOp, seq: number): Promise<{ rowsWritten: number }>;
+  /** Free bytes on the run's volume (injectable for tests); default statfs of the run dir. */
+  freeBytes?: () => number;
   verify(path: string, sha256: string): Promise<{ sha256: string }>;
   /** Waits on the durable promise `name` until a human resolves it. */
   waitForHuman(name: string, why: string): Promise<Resolution>;
@@ -150,6 +163,12 @@ export interface BackboneResult {
   key_inventory_sha256: string;
   coverage: CoverageRow[] | null;
   zips: number;
+  /**
+   * False when the roll is not clean (difference over the 2 % gate, unexplained rows or
+   * transform failures): the status is still `complete` (the closed status list has no other
+   * value), the limitation `roll_difference_unexplained` is written and the CLI exits 1.
+   */
+  clean: boolean;
 }
 
 const PID_LINE = /^\s*"pID": "?([0-9]+)"?,?$/m;
@@ -178,7 +197,13 @@ function inventorySha(parts: readonly ChunkOutcome[]): string {
     .digest("hex");
 }
 
-async function verifyOrWait(input: BackboneInput, deps: BackboneDeps): Promise<boolean> {
+type Merge = (op: TrackOp) => Promise<{ rowsWritten: number }>;
+
+async function verifyOrWait(
+  input: BackboneInput,
+  deps: BackboneDeps,
+  merge: Merge,
+): Promise<boolean> {
   const runOp = (status: RunStatus): TrackOp => ({
     kind: "run",
     track: "appraisal",
@@ -196,14 +221,18 @@ async function verifyOrWait(input: BackboneInput, deps: BackboneDeps): Promise<b
         throw e;
       }
     });
-    if (check.ok) return true;
-    await deps.merge(runOp("waiting_human"));
+    if (check.ok) {
+      // back from a human wait (and a download): the status was waiting_human
+      if (attempt > 0) await merge(runOp("running"));
+      return true;
+    }
+    await merge(runOp("waiting_human"));
     const resolution = await deps.waitForHuman(
       `resolve:${TCAD_SOURCE_KEY}:${attempt}`,
       check.code ?? "export_missing",
     );
     if (resolution.action === "abort") {
-      await deps.merge(runOp("failed"));
+      await merge(runOp("failed"));
       return false;
     }
     // The one identified request a human allowed (no retry after a 403).
@@ -233,7 +262,7 @@ async function verifyOrWait(input: BackboneInput, deps: BackboneDeps): Promise<b
         blocked_at: blocked ? r.captured_at : null,
       };
     });
-    await deps.merge({ kind: "receipt", receipt });
+    await merge({ kind: "receipt", receipt });
   }
 }
 
@@ -254,7 +283,20 @@ export async function runTcadBackbone(
     ...(input.codeSha ? { code_sha: input.codeSha } : {}),
     ...extra,
   });
-  await deps.merge(runOp("running"));
+  let seq = 0;
+  const merge: Merge = (op) => deps.merge(op, seq++);
+  const free =
+    deps.freeBytes ??
+    ((): number => {
+      let dir = input.runDir;
+      while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
+      return freeBytesAt(dir);
+    });
+  /** OR-M5: stop cleanly (the run fails, the row closes) below 5 GiB free. */
+  const guardDisk = (): void => {
+    if (free() < MIN_FREE_BYTES) throw new RunDataError("disk below 5 GiB");
+  };
+  await merge(runOp("running"));
   const empty: ChunkSummary = {
     records: 0,
     loaded: 0,
@@ -264,7 +306,7 @@ export async function runTcadBackbone(
     redacted: 0,
     by_prop_type: {},
   };
-  if (!(await verifyOrWait(input, deps))) {
+  if (!(await verifyOrWait(input, deps, merge))) {
     return {
       jobId: input.jobId,
       status: "failed",
@@ -275,6 +317,7 @@ export async function runTcadBackbone(
       key_inventory_sha256: "",
       coverage: null,
       zips: 0,
+      clean: false,
     };
   }
 
@@ -289,10 +332,19 @@ export async function runTcadBackbone(
   };
   const outcomes: ChunkOutcome[] = [];
   const inflight: Array<Promise<ChunkOutcome>> = [];
+  // CR-4: a rejection handler is attached when a chunk starts, so a chunk that fails while the
+  // stream loop is still awaiting is never an unhandled rejection; the first failure is kept
+  // and thrown at the next record/flush (the awaited promise still rejects as well).
+  let failure: { error: unknown } | null = null;
+  const failFast = (): void => {
+    if (failure !== null) throw failure.error;
+  };
   let batch: ExportRecordText[] = [];
   let n = 0;
   let seen = 0;
   const flush = async (): Promise<void> => {
+    failFast();
+    guardDisk();
     const records = batch;
     const index = n;
     batch = [];
@@ -313,9 +365,14 @@ export async function runTcadBackbone(
       };
     });
     if (inflight.length >= window) outcomes.push(await (inflight.shift() as Promise<ChunkOutcome>));
-    inflight.push(deps.runChunk(spec));
+    const child = deps.runChunk(spec);
+    child.catch((error: unknown) => {
+      failure ??= { error };
+    });
+    inflight.push(child);
   };
   for await (const rec of deps.records(input.exportPath)) {
+    failFast();
     if (wanted !== null) {
       const pid = pidOfText(rec.text);
       if (pid === null || !wanted.has(pid)) continue;
@@ -327,7 +384,7 @@ export async function runTcadBackbone(
   if (batch.length > 0) await flush();
   while (inflight.length > 0) outcomes.push(await (inflight.shift() as Promise<ChunkOutcome>));
   if (wanted !== null && seen !== wanted.size) {
-    throw new Error(`pilot: ${wanted.size - seen} seed pIDs are not in the export`);
+    throw new RunDataError(`pilot: ${wanted.size - seen} seed pIDs are not in the export`);
   }
 
   const refused = await deps.step("inputs", async () =>
@@ -346,32 +403,48 @@ export async function runTcadBackbone(
     return true;
   });
   const [countText, ruleText] = limitationsFor(reconciliation.redacted);
-  await deps.merge({
+  const stats = sumTypeStats(outcomes);
+  const clean =
+    reconciliation.within_gate &&
+    reconciliation.unexplained === 0 &&
+    reconciliation.transform_failure === 0;
+  const item = (code: string, text: string, count: number | null) => ({
+    source_key: TCAD_SOURCE_KEY,
+    code,
+    text,
+    count,
+    evidence_url: null,
+  });
+  guardDisk();
+  await merge({
     kind: "limitations",
     items: [
-      {
-        source_key: TCAD_SOURCE_KEY,
-        code: "owner_confidential_count",
-        text: countText,
-        count: reconciliation.redacted,
-        evidence_url: null,
-      },
-      {
-        source_key: TCAD_SOURCE_KEY,
-        code: "owner_confidential_rule",
-        text: ruleText,
-        count: null,
-        evidence_url: null,
-      },
+      item("owner_confidential_count", countText, reconciliation.redacted),
+      item("owner_confidential_rule", ruleText, null),
+      ...typeLimitations(stats),
+      item(
+        "tenure_latest_sale_assumption",
+        "tenure_years and is_long_tenure come from the latest dated sale, which may not be the current owner's: the export has no link between an owner and a sale",
+        null,
+      ),
+      ...(clean
+        ? []
+        : [
+            item(
+              "roll_difference_unexplained",
+              `the roll is not clean: ${reconciliation.difference} of ${reconciliation.n} records are not loaded (dead ${reconciliation.dead}, invalid ${reconciliation.invalid}, transform_failure ${reconciliation.transform_failure}, unexplained ${reconciliation.unexplained}${reconciliation.within_gate ? "" : ", over the 2 % gate"}); the run is marked complete only because the status list has no other value`,
+              reconciliation.difference,
+            ),
+          ]),
     ],
   });
   const keyInventorySha256 = inventorySha(outcomes);
-  await deps.merge({
+  await merge({
     kind: "finalize",
     duplicateMinGeoids: DUPLICATE_MIN_GEOIDS,
     keyInventorySha256,
   });
-  await deps.merge(runOp("complete", { as_of: input.asOf }));
+  await merge(runOp("complete", { as_of: input.asOf }));
   const coverage = outcomes.flatMap((o) => o.coverage ?? []);
   return {
     jobId: input.jobId,
@@ -391,7 +464,54 @@ export async function runTcadBackbone(
     key_inventory_sha256: keyInventorySha256,
     coverage: coverage.length === 0 ? null : mergeCoverage(coverage),
     zips: outcomes.reduce((s, o) => s + o.zips, 0),
+    clean,
   };
+}
+
+function sumTypeStats(parts: readonly ChunkOutcome[]): TypeStats {
+  const out = emptyTypeStats();
+  for (const p of parts) {
+    const t = p.typeStats;
+    if (t === undefined) continue;
+    out.fallback += t.fallback;
+    out.a4 += t.a4;
+    out.f4 += t.f4;
+    for (const [code, c] of Object.entries(t.fallbackByState)) {
+      out.fallbackByState[code] = (out.fallbackByState[code] ?? 0) + c;
+    }
+  }
+  return out;
+}
+
+/** The property_type source limitations (OR-M4, DP-1, DP-2, DP-8); counts from the chunks. */
+function typeLimitations(stats: TypeStats): Array<{
+  source_key: string;
+  code: string;
+  text: string;
+  count: number | null;
+  evidence_url: string | null;
+}> {
+  const top = Object.entries(stats.fallbackByState)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 10)
+    .map(([code, c]) => `${code} (${c})`)
+    .join(", ");
+  return [
+    {
+      source_key: TCAD_SOURCE_KEY,
+      code: "property_type_improvement_fallback",
+      text: `property_type of ${stats.fallback} published (R) accounts is a generic fallback, not a table mapping (${PROPERTY_TYPE_RULES_VERSION}): Building where the record prints an improvement, LandParcel where it prints none; no residential or condominium claim. Top TCAD state codes without a table entry: ${top === "" ? "none" : top}`,
+      count: stats.fallback,
+      evidence_url: null,
+    },
+    {
+      source_key: TCAD_SOURCE_KEY,
+      code: "property_type_unverified_state_codes",
+      text: `A4 (${stats.a4} accounts) is typed Townhouse, a deprecated lexicon value, and its condominium reading is unverified (DEC-A-01); F4 (${stats.f4} accounts) has no table entry and gets the generic fallback. No official TCAD state-code table is on disk`,
+      count: stats.a4 + stats.f4,
+      evidence_url: null,
+    },
+  ];
 }
 
 /** One coverage row per field across chunks (extracted when any chunk extracted it). */

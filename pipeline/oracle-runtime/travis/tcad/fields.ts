@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { GAZETTEER_SHA256 } from "../../../../packages/query-core/src/sql.generated.js";
 import {
+  PROPERTY_TYPE_RULES_VERSION,
   TCAD_EXPORT_REQUEST,
   propertyTypeFor,
   type PropertyTypeRule,
@@ -66,6 +67,8 @@ export interface ParcelRow extends OwnerAreaFields, TenureFields, YearBuiltField
   property_type_missing_reason: "enum_lacks_value" | null;
   property_type_rule: PropertyTypeRule | null;
   property_type_note: string | null;
+  /** Version of the property_type rule set that chose property_type (shared-seed.ts). */
+  property_type_rules_version: string;
   situs_address: SitusAddress | null;
   owner_name: string | null;
   owner_kind: OwnerKind | null;
@@ -316,6 +319,7 @@ export function mapParcel(redaction: Redaction, ctx: MapContext): MappedRecord {
     property_type_missing_reason: type.missing_reason,
     property_type_rule: type.rule,
     property_type_note: type.note,
+    property_type_rules_version: PROPERTY_TYPE_RULES_VERSION,
     situs_address: situsOf(r.situses ?? []),
     ...ownerColumns(owners, redaction.redacted),
     owner_redacted: redaction.redacted,

@@ -183,6 +183,20 @@ export async function mergeGis(store: GisStore, input: GisTrackInput): Promise<M
         concurrency: s.complete?.concurrency ?? null,
         layer_last_edit_date: s.layerLastEditDate,
         blocked_at: s.blockedAt,
+        // DP-5: where each page came from. The query URL never holds the (up to 2,000) ids; a
+        // page is identified by the sha256 of its ids (the runner's page_key).
+        provenance: {
+          query_url: `${new URL(s.layerUrl).origin}${new URL(s.layerUrl).pathname}/query`,
+          pages: s.pages.map((p) => ({
+            object_ids_sha256: p.pageKey,
+            url: p.url,
+            sha256: p.sha256,
+            captured_at: p.capturedAt,
+            receipt_path: "receipts.jsonl",
+            artifact_file: p.file,
+            feature_count: counts.get(p.pageKey) ?? 0,
+          })),
+        },
       },
     },
   };

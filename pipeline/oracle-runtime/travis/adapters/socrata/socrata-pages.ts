@@ -47,6 +47,15 @@ export interface PageConfig {
   requestTimeoutMs?: number;
 }
 
+/**
+ * A structurally impossible page (empty or repeated `:id`, the cursor row served again). The
+ * answer is deterministic, so asking again cannot help: the workflow turns this into a terminal
+ * stop instead of letting the step retry re-request an ~88 MB page.
+ */
+export class PageGuardError extends Error {
+  override name = "PageGuardError";
+}
+
 export const KEY_FIELD = ":id";
 export const UPDATED_FIELD = ":updated_at";
 
@@ -270,12 +279,13 @@ export async function fetchPage(input: FetchPageInput): Promise<PageFetch> {
   for (const r of rows) {
     const id = r[KEY_FIELD];
     if (typeof id !== "string" || id === "") {
-      throw new Error(`page ${pageIndex}: a row has no non-empty string ${KEY_FIELD}`);
+      throw new PageGuardError(`page ${pageIndex}: a row has no non-empty string ${KEY_FIELD}`);
     }
     if (input.lastId !== null && id === input.lastId) {
-      throw new Error(`page ${pageIndex}: ${KEY_FIELD} ${id} is the cursor itself`);
+      throw new PageGuardError(`page ${pageIndex}: ${KEY_FIELD} ${id} is the cursor itself`);
     }
-    if (seenIds.has(id)) throw new Error(`page ${pageIndex}: duplicate ${KEY_FIELD} ${id}`);
+    if (seenIds.has(id))
+      throw new PageGuardError(`page ${pageIndex}: duplicate ${KEY_FIELD} ${id}`);
     seenIds.add(id);
     lastId = id;
     const u = r[UPDATED_FIELD];

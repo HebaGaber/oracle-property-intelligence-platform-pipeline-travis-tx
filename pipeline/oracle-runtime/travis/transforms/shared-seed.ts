@@ -177,9 +177,21 @@ export function propertyTypeOf(code: string): {
 
 export type PropertyTypeRule = "state_code_table" | "improvement_fallback";
 
-/** The two lexicon values the fallback may use: the ones STATE_CODES already uses for F1 and C1. */
+/**
+ * Version of the property_type rule set (STATE_CODES + the fallback below). Stored on every
+ * parcels row (property_type_rules_version) so a published type can be tied to the rules that
+ * chose it; bump it with any change to STATE_CODES or the fallback.
+ */
+export const PROPERTY_TYPE_RULES_VERSION = "property_type_rules@2026-10-22";
+
+/**
+ * The two lexicon property_type values the fallback may use. `Building` when the record prints
+ * an improvement. `LandParcel` (neutral, in the live property_type enum, not deprecated) when
+ * it prints none: it claims no vacancy (roofing permits sit on parcels the roll shows without
+ * an improvement) and no residential or condominium use.
+ */
 export const FALLBACK_WITH_IMPROVEMENT = "Building";
-export const FALLBACK_WITHOUT_IMPROVEMENT = "VacantLand";
+export const FALLBACK_WITHOUT_IMPROVEMENT = "LandParcel";
 
 export interface PropertyTypeChoice {
   property_type: string | null;
@@ -193,7 +205,7 @@ export interface PropertyTypeChoice {
  * The property_type of one account (A-04 pilot fix). The lexicon requires a string for every
  * emitted property (county_emit = R). Order: (a) STATE_CODES (rule state_code_table); (b) for
  * an emitted account whose code has no table entry, a generic fallback from the record's own
- * facts only: `Building` when it prints at least one improvement, else `VacantLand`
+ * facts only: `Building` when it prints at least one improvement, else `LandParcel`
  * (rule improvement_fallback, note says which code and which fact). The fallback never asserts
  * a residential or condominium type and sets no property_usage_type. A non-emitted account
  * (P, MH, MN) with an unmapped code stays null + enum_lacks_value. No official code table is

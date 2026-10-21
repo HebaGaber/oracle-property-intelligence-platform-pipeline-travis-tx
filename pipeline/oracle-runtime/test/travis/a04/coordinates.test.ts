@@ -518,7 +518,10 @@ describe("DP-5 join key: exact-string PROP_ID = pID first, geo_id only for featu
         features: [feature(3, { pid_value: "999", geoid_value: "G2" })],
       }),
     );
-    expect(rowOf(out, "2")).toMatchObject({ coordinate_source: "none", coordinate_reason: "no_gis_feature" });
+    expect(rowOf(out, "2")).toMatchObject({
+      coordinate_source: "none",
+      coordinate_reason: "no_gis_feature",
+    });
   });
 
   it("every imported feature keeps its page provenance: layer query URL, captured_at, page sha256", () => {

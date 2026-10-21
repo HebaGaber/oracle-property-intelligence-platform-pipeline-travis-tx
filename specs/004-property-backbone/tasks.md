@@ -26,7 +26,7 @@ created: 2026-10-21
 
 ## Phase 0: Preconditions (lead)
 
-- [ ] T001 [lead] Check: branch `004-property-backbone`; tree has only the planned changes; Docker Postgres + Restate up (Restate admin 200); `npm --prefix pipeline/local-stack start` serves :9080; export SHA-256 = `6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346`; ≥ 20 GiB free; G5 and G6 recorded approved. Log in run-log.md — owns: specs/004-property-backbone/run-log.md · ⏱ 3m
+- [X] T001 [lead] Check: branch `004-property-backbone`; tree has only the planned changes; Docker Postgres + Restate up (Restate admin 200); `npm --prefix pipeline/local-stack start` serves :9080; export SHA-256 = `6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346`; ≥ 20 GiB free; G5 and G6 recorded approved. Log in run-log.md — owns: specs/004-property-backbone/run-log.md · ⏱ 3m
 
 ---
 
@@ -107,22 +107,22 @@ created: 2026-10-21
 
 ## Phase 6: Pilots (lead, one at a time on the local stack)
 
-- [ ] T061 [lead] Austin pilot page: `npm --prefix pipeline/oracle-runtime run backbone -- permits --mode pilot` → one 50,000-row page captured, digested, loaded; captured rows = rows on the page; every row has `content_sha256` and `source_url` (calls Austin, ≤ 1 req/s, no token) — records in: `pipeline/data/artifacts/permits/travis/<jobId>/raw/pages/` (pages + receipts), specs/004-property-backbone/run-log.md · ⏱ 3m
-- [ ] T062 [lead] Pick the second real anchor (D-4): from the pilot page's reroof candidates, a `tcad_id` that resolves to exactly one R geoID in the export (`capture-tcad-subset` scan), preferably with a permit lat/lon; log permit, geoID and pID in run-log.md as `{ANCHOR2_PERMIT}`, `{ANCHOR2}`, `{ANCHOR2_PID}` for the test plan · ⏱ 4m
-- [ ] T063 [lead] TCAD pilot: `backbone -- pilot --select` (seed with T062's anchor) then `backbone -- pilot --seed pipeline/data/seeds/travis-a04-pilot.csv`; `elephant-cli validate` on `pipeline/data/runs/<jobId>/groups/county` → exit 0 (fix the transform until clean, never skip); transform coverage report saved · ⏱ 12m
-- [ ] T064 [lead] `backbone -- permits --link` over the pilot data; `backbone -- report --job <jobId> --json` saved (redacted pilot table: confidential names never shown) — records in: `pipeline/data/runs/<jobId>/report.json`, specs/004-property-backbone/run-log.md · ⏱ 3m
-- [ ] T065 [lead] Record T024's export-point definition (counts by kind vs 380,461) in run-log.md and later in `docs/evidence/A-04.md` · ⏱ 2m
-- [ ] T066 [lead] Confidential grep: for each coded-confidential pilot account, `grep -r` its owner name over `pipeline/data/runs/<jobId>`, logs and the report → 0 hits (TC-015) · ⏱ 2m
-- [ ] T067 [lead] **Pilot conditions (D-13…D-15 apply only if all hold; log each with its value):** (1) both anchors (`0223120506`, `{ANCHOR2}`) present with owner (or `owner_confidential`), mailing ZIP or a reason, situs, year built or a reason, sale date or `tenure_basis = unknown`, source URL, capture time, digest; `0208011301` absent from `parcels` and its permit `no_tcad_geoid`; (2) `validate` exit 0; (3) T066 = 0; (4) every missing reason on the closed lists; (5) Austin page: captured = page rows, every row digested, every status word in the profile or `needs_review`, every unmatched permit has a reason; (6) no 403, challenge or `WAITING_HUMAN`; (7) unit suites green. Any fails → 🛑 urgent stop with the failing values — records in: specs/004-property-backbone/run-log.md · ⏱ 4m
+- [X] T061 [lead] Austin pilot page: `npm --prefix pipeline/oracle-runtime run backbone -- permits --mode pilot` → one 50,000-row page captured, digested, loaded; captured rows = rows on the page; every row has `content_sha256` and `source_url` (calls Austin, ≤ 1 req/s, no token) — records in: `pipeline/data/artifacts/permits/travis/<jobId>/raw/pages/` (pages + receipts), specs/004-property-backbone/run-log.md · ⏱ 3m
+- [X] T062 [lead] Pick the second real anchor (D-4): from the pilot page's reroof candidates, a `tcad_id` that resolves to exactly one R geoID in the export (`capture-tcad-subset` scan), preferably with a permit lat/lon; log permit, geoID and pID in run-log.md as `{ANCHOR2_PERMIT}`, `{ANCHOR2}`, `{ANCHOR2_PID}` for the test plan · ⏱ 4m
+- [X] T063 [lead] TCAD pilot: `backbone -- pilot --select` (seed with T062's anchor) then `backbone -- pilot --seed pipeline/data/seeds/travis-a04-pilot.csv`; `elephant-cli validate` on `pipeline/data/runs/<jobId>/groups/county` → exit 0 (fix the transform until clean, never skip); transform coverage report saved · ⏱ 12m
+- [X] T064 [lead] `backbone -- permits --link` over the pilot data; `backbone -- report --job <jobId> --json` saved (redacted pilot table: confidential names never shown) — records in: `pipeline/data/runs/<jobId>/report.json`, specs/004-property-backbone/run-log.md · ⏱ 3m
+- [X] T065 [lead] Record T024's export-point definition (counts by kind vs 380,461) in run-log.md and later in `docs/evidence/A-04.md` · ⏱ 2m
+- [X] T066 [lead] Confidential grep: for each coded-confidential pilot account, `grep -r` its owner name over `pipeline/data/runs/<jobId>`, logs and the report → 0 hits (TC-015) · ⏱ 2m
+- [X] T067 [lead] **Pilot conditions (D-13…D-15 apply only if all hold; log each with its value):** (1) both anchors (`0223120506`, `{ANCHOR2}`) present with owner (or `owner_confidential`), mailing ZIP or a reason, situs, year built or a reason, sale date or `tenure_basis = unknown`, source URL, capture time, digest; `0208011301` absent from `parcels` and its permit `no_tcad_geoid`; (2) `validate` exit 0; (3) T066 = 0; (4) every missing reason on the closed lists; (5) Austin page: captured = page rows, every row digested, every status word in the profile or `needs_review`, every unmatched permit has a reason; (6) no 403, challenge or `WAITING_HUMAN`; (7) unit suites green. Any fails → 🛑 urgent stop with the failing values — records in: specs/004-property-backbone/run-log.md · ⏱ 4m
 
 ---
 
 ## Phase 7: Push and GIS runner (lead)
 
 - [ ] T070 [lead] Write `docs/decisions/DEC-A-04-gis-runner.md` (D-2 conditions word for word: fetch-only, push-triggered with paths filter, `contents: read`, no secrets, egress logged, minimal `outFields`, artifact only, never the Query DB, pilot then full, `if: false` after; public-fork artifact visibility and 7-day retention) — owns: docs/decisions/DEC-A-04-gis-runner.md · ⏱ 4m
-- [ ] T071 [lead] Push 1: `runner-config.json` `"mode": "pilot"`; commit `A-04: GIS runner pilot`; push `004-property-backbone` to the fork (CI + `a04-gis-capture.yml` start); `gh run download <id> -D pipeline/data/raw/gis/us-runner-<id>`; check `egress.txt` = `loc=US`, layer fields, `maxRecordCount`, ObjectId field, `supportsPagination`, `lastEditDate`, count vs 373,683, one page parsed; set `outFields` to the discovered OBJECTID / pID / geoID fields and `bulkPageSize` ≤ `maxRecordCount` (lead edits only `mode`, `outFields`, `bulkPageSize` values) · ⏱ 8m
+- [X] T071 [lead] Push 1: `runner-config.json` `"mode": "pilot"`; commit `A-04: GIS runner pilot`; push `004-property-backbone` to the fork (CI + `a04-gis-capture.yml` start); `gh run download <id> -D pipeline/data/raw/gis/us-runner-<id>`; check `egress.txt` = `loc=US`, layer fields, `maxRecordCount`, ObjectId field, `supportsPagination`, `lastEditDate`, count vs 373,683, one page parsed; set `outFields` to the discovered OBJECTID / pID / geoID fields and `bulkPageSize` ≤ `maxRecordCount` (lead edits only `mode`, `outFields`, `bulkPageSize` values) · ⏱ 8m
 - [ ] T072 [lead] Push 2: `"mode": "full"`; commit `A-04: GIS runner full`; push; time the first 5 pages and project; when done, download; `complete.json` present; artifact SHA-256 recorded; a give-up → `blocked` with timestamp, resume by re-pushing the config (cache restores checkpoints) · ⏱ 5m attended (20–40m on the runner, overlaps Phase 8)
-- [ ] T073 [lead] Disable the job (`if: false` on the job in `a04-gis-capture.yml`), commit `A-04: disable GIS runner`, push · ⏱ 2m
+- [ ] T073 [lead] Disable the job (set `"enabled": false` in `runner-config.json`; the workflow's `gate` job then skips `capture`, OR-m12), commit `A-04: disable GIS runner`, push · ⏱ 2m
 
 ---
 
@@ -155,7 +155,7 @@ created: 2026-10-21
 
 **Purpose**: Constitution I, XVI, XXII, within the pipeline-only exception (plan CT-1).
 
-- [ ] TZ01 Run the reviewer agents from the story front matter (`oracle`, `donphan`) read-only; record scores in `docs/reviews/CR-A-04.md` (each ≥ 75 or fixed / justified; 🛑 D-19 only if still under 75 after one fix round) (⏱ 15m, during T075)
+- [X] TZ01 Run the reviewer agents from the story front matter (`oracle`, `donphan`) read-only; record scores in `docs/reviews/CR-A-04.md` (each ≥ 75 or fixed / justified; 🛑 D-19 only if still under 75 after one fix round) (⏱ 15m, during T075)
 - [ ] TZ02 N/A: pipeline-only story, deploys nothing; shown on the hosted Coverage page and Lead finder after A-11/A-13.
 - [ ] TZ03 N/A: pipeline-only story, deploys nothing; shown on the hosted Coverage page and Lead finder after A-11/A-13.
 - [ ] TZ04 N/A: pipeline-only story, deploys nothing; shown on the hosted Coverage page and Lead finder after A-11/A-13.
@@ -244,3 +244,8 @@ oracle (G-PERMITS): T050 T052 T054 T055 in parallel → T051 → T053 → T056
 - Commits start with `A-04:`; never on `main`; no auto-commit hooks.
 - No confidential name, owner payload or connection string in any commit, log, report or evidence.
 - Any failing case → `docs/defects/ERR-{n}.md`.
+
+## Fix passes
+
+- Commits e737561 (report verb, terminal failures mark runs failed, roofing verdict columns), 4a4910c (GIS page POST and diagnostics; Austin page timeout, retry, resume cursor) and 29e9767 (GIS full mode, IDs only) came before the E1 review round (CR-A-04).
+- E1 fix pass (F1 shared plumbing + TCAD, F2 permits, F3 GIS/coverage/CI/docs): F3 closed DP-3 (coverage gate: `count(*)`, `count(DISTINCT property_cid)`, Query DB R count, share tolerance 0.0005, non-zero exit), DP-5 GIS side (PROP_ID = pID first, geo_id only for features without PROP_ID, join proof counts, page provenance in the watermark), OR-m12 (`enabled` gate job), OR-m10 (reported, contract frozen) and OR-m11 (gate comment, ticks). T072 and T073 stay open until the full run is downloaded.

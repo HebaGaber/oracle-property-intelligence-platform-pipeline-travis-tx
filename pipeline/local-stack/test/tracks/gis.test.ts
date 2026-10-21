@@ -124,7 +124,7 @@ function artifact(opts: { complete: boolean }): string {
   );
   writeFileSync(join(dir, "pages", `${key}.json`), page);
   const receipt = {
-    url: `${LAYER}/query?f=json&objectIds=1,2`,
+    url: `${LAYER}/query?f=json&outFields=OBJECTID%2CPROP_ID`,
     http_status: 200,
     bytes: page.length,
     sha256: sha(page),
@@ -172,6 +172,29 @@ describe("A-04 T043 Loader gis track: import", () => {
     expect(s.limitations).toEqual([]);
     expect(out.rowsWritten).toBe(1 + 2 + 1);
     expect(out.watermark?.sourceKey).toBe("tcad_gis");
+  });
+
+  it("DP-5 every imported feature keeps its page provenance: layer query URL (no ids), page sha256, captured_at, receipt path", async () => {
+    const { store, s } = memoryStore();
+    const out = await mergeGis(store, await importInput(artifact({ complete: true })));
+    for (const f of s.features) {
+      const page = s.pages.find((p) => p.page_key === f.page_key);
+      expect(page, `page of feature ${String(f.object_id)}`).toBeDefined();
+      expect(String(page?.url)).toMatch(/\/MapServer\/6\/query\?/);
+      expect(String(page?.url)).not.toMatch(/objectIds=/);
+      expect(page?.sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(page?.captured_at).toBe("2026-10-22T03:00:00.000Z");
+    }
+    const value = out.watermark?.value as { provenance: { query_url: string; pages: Array<Record<string, unknown>> } };
+    expect(value.provenance.query_url).toBe(`${LAYER}/query`);
+    expect(value.provenance.pages).toEqual([
+      expect.objectContaining({
+        object_ids_sha256: s.pages[0]?.page_key,
+        receipt_path: "receipts.jsonl",
+        artifact_file: `pages/${String(s.pages[0]?.page_key)}.json`,
+        feature_count: 2,
+      }),
+    ]);
   });
 
   it("A-04-TC-026 import: a blocked artifact is recorded as blocked with the exact limitation text", async () => {
@@ -300,6 +323,17 @@ const reads = (over: Partial<CoordinateReads> = {}): CoordinateReads => ({
 });
 
 describe("A-04 T045 report section coordinates / gis (report-sections/gis.ts)", () => {
+  it("DP-5 carries the PROP_ID join proof (null before any assembly)", () => {
+    const proof = { features: 10, pid_matched: 7, pid_not_r_account: 1, pid_unmatched: 1, geoid_fallback_matched: 1, geoid_fallback_unmatched: 0 };
+    const r = reads();
+    const withProof = buildCoordinatesSection({
+      ...r,
+      assembly: { ...(r.assembly as NonNullable<typeof r.assembly>), stats: { ...(r.assembly as NonNullable<typeof r.assembly>).stats, join_proof: proof } },
+    });
+    expect(withProof.join_proof).toEqual(proof);
+    expect(buildCoordinatesSection(reads({ assembly: null })).join_proof).toBeNull();
+  });
+
   it("is the `coordinates` section and carries the contract fields, anchors and counted rules", () => {
     expect(section.key).toBe("coordinates");
     expect(sections.map((s) => s.key)).toEqual(["coordinates", "gis"]);

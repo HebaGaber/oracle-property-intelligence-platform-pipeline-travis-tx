@@ -77,10 +77,10 @@ describe("A-04 backbone CLI", () => {
     expect(code).toBe(EXIT.ok);
     expect(h.calls).toEqual([
       "BackboneReport/running",
-      "TcadBackbone/travis-a04-202610220304/run/send",
+      "TcadBackbone/travis-a04-20261022030400/run/send",
     ]);
     const lines = h.out.join("").trimEnd().split("\n");
-    expect(lines.at(-1)).toBe("job_id=travis-a04-202610220304");
+    expect(lines.at(-1)).toBe("job_id=travis-a04-20261022030400");
   });
 
   it("an unknown verb exits 64 with the verb list", async () => {
@@ -135,9 +135,9 @@ describe("A-04 backbone CLI", () => {
     }
   });
 
-  it("job ids follow travis-a04-[kind-]<yyyymmddhhmm>", () => {
-    expect(jobIdFor(null, FIXED)).toBe("travis-a04-202610220304");
-    expect(jobIdFor("permits-backfill", FIXED)).toBe("travis-a04-permits-backfill-202610220304");
+  it("job ids follow travis-a04-[kind-]<yyyymmddhhmmss>", () => {
+    expect(jobIdFor(null, FIXED)).toBe("travis-a04-20261022030400");
+    expect(jobIdFor("permits-backfill", FIXED)).toBe("travis-a04-permits-backfill-20261022030400");
   });
 
   it("the ingress client posts to RESTATE_INGRESS_URL (default http://localhost:8080)", async () => {
@@ -177,12 +177,12 @@ describe("A-04 backbone CLI ingest --join-proof output contract", () => {
       },
     };
     const code = await runCli(
-      ["ingest", "--join-proof", "--job", "travis-a04-202610220304", "--seed", "7"],
+      ["ingest", "--join-proof", "--job", "travis-a04-20261022030400", "--seed", "7"],
       { ...h.deps, commandsDir: COMMANDS_DIR, ingress },
     );
     expect(code).toBe(EXIT.error);
     const lines = h.out.join("").trimEnd().split("\n");
     expect(lines.at(-1)).toBe("join_proof=fail matched=998 disagreements=2");
-    expect(lines).toContain("job_id=travis-a04-202610220304");
+    expect(lines).toContain("job_id=travis-a04-20261022030400");
   });
 });

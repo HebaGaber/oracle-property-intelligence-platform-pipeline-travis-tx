@@ -10,6 +10,7 @@
 import { readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type * as Restate from "@restatedev/restate-sdk";
+import type postgres from "postgres";
 import { z } from "zod";
 import { createSourceClient, type SourceClient } from "../../../oracle-runtime/travis/lib/source-client.js";
 import { fetchDataGroupCids } from "../../../oracle-runtime/travis/transforms/lexicon-manifest.js";
@@ -29,7 +30,8 @@ import {
   type Resolution,
   type TrackOp,
 } from "../../../oracle-runtime/travis/tcad/workflow.js";
-import { LOADER_KEY, failRunOnTerminal, lazyQueryDb, type createLoader } from "../loader.js";
+import { RunDataError } from "../../../oracle-runtime/travis/backbone/errors.js";
+import { LOADER_KEY, asTerminal, failRunOnTerminal, lazyQueryDb, type createLoader } from "../loader.js";
 import { TCAD_CHUNK, type createService as createChunk } from "./tcad-chunk.js";
 
 type LoaderDefinition = ReturnType<typeof createLoader>;
@@ -50,38 +52,87 @@ interface RunStatus {
   reason?: string | null;
   records?: number;
   loaded?: number;
+  /** False when the roll is not clean (the CLI exits 1 although the status is `complete`). */
+  clean?: boolean;
 }
+
+export { asTerminal };
 
 const queryDb = lazyQueryDb();
 let client: SourceClient | null = null;
 const sourceClient = (): SourceClient => (client ??= createSourceClient({ hostSpacing: true }));
 
-/** County group for one job: R parcels with their assembled coordinates (read-only SQL). */
-async function writeGroup(jobId: string) {
-  const sql = queryDb();
-  let coords = new Map<string, { latitude: number | null; longitude: number | null; source: "gis_centroid" | "permit_point" | "none" }>();
-  let assembled = true;
+type Coord = { latitude: number | null; longitude: number | null; source: "gis_centroid" | "permit_point" | "none" };
+
+/** Undefined table / column: the GIS migration (0201) is not applied, so coordinates are unassembled. */
+const isUnassembled = (e: unknown): boolean =>
+  typeof e === "object" && e !== null && ["42P01", "42703"].includes((e as { code?: string }).code ?? "");
+
+/** R parcels of the job with their assembled coordinates (read-only SQL). */
+export async function coordinateRows(
+  sql: postgres.Sql,
+  jobId: string,
+): Promise<{ coords: Map<string, Coord>; assembled: boolean }> {
   try {
     const rows = await sql<Array<{ request_identifier: string; latitude: number | null; longitude: number | null; coordinate_source: string | null }>>`
       SELECT request_identifier, latitude, longitude, coordinate_source FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R'`;
-    coords = new Map(
-      rows.map((r) => [
-        r.request_identifier,
-        { latitude: r.latitude, longitude: r.longitude, source: (r.coordinate_source ?? "none") as "gis_centroid" | "permit_point" | "none" },
-      ]),
-    );
-  } catch {
-    // Coordinates not assembled yet (0201_gis not applied): the unassembled-pilot rule.
-    assembled = false;
+    return {
+      assembled: true,
+      coords: new Map(
+        rows.map((r) => [
+          r.request_identifier,
+          { latitude: r.latitude, longitude: r.longitude, source: (r.coordinate_source ?? "none") as Coord["source"] },
+        ]),
+      ),
+    };
+  } catch (error) {
+    // Only "not assembled yet" (0201_gis not applied) falls back; any other error propagates
+    // so a database problem never writes a County group with every coordinate `none`.
+    if (!isUnassembled(error)) throw error;
     const rows = await sql<Array<{ request_identifier: string }>>`
       SELECT request_identifier FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R'`;
-    coords = new Map(rows.map((r) => [r.request_identifier, { latitude: null, longitude: null, source: "none" as const }]));
+    return {
+      assembled: false,
+      coords: new Map(rows.map((r) => [r.request_identifier, { latitude: null, longitude: null, source: "none" as const }])),
+    };
   }
+}
+
+/** The run's as_of (CR-5): the County group is derived as of the run, never as of today. */
+export async function runAsOf(sql: postgres.Sql, jobId: string): Promise<string> {
+  const rows = await sql<Array<{ as_of: string | null }>>`
+    SELECT as_of::text AS as_of FROM backbone_runs WHERE job_id = ${jobId}`;
+  const asOf = rows[0]?.as_of ?? null;
+  if (asOf === null) throw new RunDataError(`writeGroup: run ${jobId} has no as_of (it did not complete)`);
+  return asOf;
+}
+
+export async function resolveGeoIdsFor(sql: postgres.Sql, ids: readonly string[]): Promise<Map<string, string[]>> {
+  const m = new Map<string, string[]>();
+  if (ids.length === 0) return m;
+  const rows = await sql<Array<{ geo_id: string; request_identifier: string }>>`
+    SELECT geo_id, request_identifier FROM parcel_geoids WHERE prop_type = 'R' AND geo_id IN ${sql(ids as string[])}`;
+  for (const r of rows) m.set(r.geo_id, [...(m.get(r.geo_id) ?? []), r.request_identifier]);
+  return m;
+}
+
+export async function parcelIdsExistFor(sql: postgres.Sql, ids: readonly string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = await sql<Array<{ request_identifier: string }>>`
+    SELECT request_identifier FROM parcels WHERE request_identifier IN ${sql(ids as string[])}`;
+  return new Set(rows.map((r) => r.request_identifier));
+}
+
+/** County group for one job: R parcels with their assembled coordinates (read-only SQL). */
+async function writeGroup(jobId: string) {
+  const sql = queryDb();
+  const { coords, assembled } = await coordinateRows(sql, jobId);
+  const asOf = await runAsOf(sql, jobId);
   const src = exportSource();
   const cids = (await fetchDataGroupCids()).cids;
   const dir = join(runDirFor(jobId), "groups", "county");
   const inventory = createKeyInventory();
-  const ctx = { jobId, asOf: new Date().toISOString().slice(0, 10), exportSha256: src.receipt.sha256, capturedAt: src.receipt.captured_at };
+  const ctx = { jobId, asOf, exportSha256: src.receipt.sha256, capturedAt: src.receipt.captured_at };
   const geometry: Record<string, number> = {};
   let zips = 0;
   let outOfScope = 0;
@@ -130,19 +181,8 @@ async function joinProof(jobId: string, seed: number) {
         ORDER BY md5(tcad_id || ${String(s)}) LIMIT ${n}`;
       return rows.map((r) => r.tcad_id);
     },
-    resolveGeoIds: async (ids) => {
-      const rows = await sql<Array<{ geo_id: string; request_identifier: string }>>`
-        SELECT geo_id, request_identifier FROM parcel_geoids WHERE prop_type = 'R' AND geo_id IN ${sql(ids as string[])}`;
-      const m = new Map<string, string[]>();
-      for (const r of rows) m.set(r.geo_id, [...(m.get(r.geo_id) ?? []), r.request_identifier]);
-      return m;
-    },
-    parcelIdsExist: async (ids) => {
-      if (ids.length === 0) return new Set();
-      const rows = await sql<Array<{ request_identifier: string }>>`
-        SELECT request_identifier FROM parcels WHERE request_identifier IN ${sql(ids as string[])}`;
-      return new Set(rows.map((r) => r.request_identifier));
-    },
+    resolveGeoIds: (ids) => resolveGeoIdsFor(sql, ids),
+    parcelIdsExist: (ids) => parcelIdsExistFor(sql, ids),
     zipPath: src.exportPath,
     zipSha256: src.receipt.sha256,
     exportRecords: () => streamExportRecords(src.exportPath),
@@ -150,6 +190,63 @@ async function joinProof(jobId: string, seed: number) {
 }
 
 export function createService(restate: typeof Restate) {
+  const runBody = async (ctx: Restate.WorkflowContext, req: z.infer<typeof RunRequest>): Promise<BackboneResult> => {
+    // A deterministic error inside a journaled step is terminal, not retried forever (CR-3).
+    const step = <T>(name: string, fn: () => Promise<T>): Promise<T> =>
+      ctx.run(name, async () => {
+        try {
+          return await fn();
+        } catch (error) {
+          throw asTerminal(restate, error) ?? error;
+        }
+      });
+    const src = await step("export-source", async () => exportSource());
+    const cids = req.mode === "pilot" ? await step("lexicon", async () => (await fetchDataGroupCids()).cids) : undefined;
+    const loader = ctx.objectClient<LoaderDefinition>({ name: "Loader" } as LoaderDefinition, LOADER_KEY);
+    const chunks = ctx.serviceClient<ChunkDefinition>({ name: TCAD_CHUNK } as ChunkDefinition);
+    // makes a repeated or re-run status op a new Loader merge (CR-1); deterministic on replay
+    const nonce = ctx.rand.uuidv4();
+    ctx.set<RunStatus>("status", { status: "running" });
+    const deps: BackboneDeps = {
+      step: (name, fn) => step(name, fn) as never,
+      merge: async (op: TrackOp, seq: number) => {
+        if (op.kind === "run") ctx.set<RunStatus>("status", { status: op.status });
+        const out = await loader.merge({ track: "tcad", input: loaderInput(req.jobId, op, { seq, nonce }) });
+        return { rowsWritten: out.rowsWritten };
+      },
+      verify: (path, sha) => verifyExport(path, sha),
+      waitForHuman: async (name, why) => {
+        ctx.set<RunStatus>("status", { status: "waiting_human", reason: why });
+        ctx.set("waiting_on", name);
+        return ctx.promise<Resolution>(name).get();
+      },
+      download: (request) => sourceClient().download(request),
+      runChunk: (spec) => chunks.run(spec),
+      listInputs: () => readdirSync(dirname(src.exportPath)).map((n) => join(dirname(src.exportPath), n)),
+      records: (path) => streamExportRecords(path),
+      now: () => new Date(),
+    };
+    const result = await runTcadBackbone(
+      {
+        jobId: req.jobId,
+        mode: req.mode,
+        asOf: req.asOf,
+        exportPath: src.exportPath,
+        receipt: src.receipt,
+        runDir: runDirFor(req.jobId),
+        ...(req.seedPids ? { seedPids: req.seedPids } : {}),
+        ...(cids ? { cids } : {}),
+      },
+      deps,
+    );
+    ctx.set<RunStatus>("status", {
+      status: result.status,
+      records: result.summary.records,
+      loaded: result.summary.loaded,
+      clean: result.clean,
+    });
+    return result;
+  };
   return restate.workflow({
     name: TCAD_BACKBONE,
     handlers: {
@@ -159,48 +256,24 @@ export function createService(restate: typeof Restate) {
           throw new restate.TerminalError("TcadBackbone.run: {jobId = key, mode, asOf, seedPids?} required");
         }
         const req = parsed.data;
-        // a terminal failure closes the run row (it would otherwise stay `running`, FR-025)
-        return failRunOnTerminal(restate, ctx, req.jobId, async () => {
-          const src = await ctx.run("export-source", async () => exportSource());
-          const cids = req.mode === "pilot" ? await ctx.run("lexicon", async () => (await fetchDataGroupCids()).cids) : undefined;
-          const loader = ctx.objectClient<LoaderDefinition>({ name: "Loader" } as LoaderDefinition, LOADER_KEY);
-          const chunks = ctx.serviceClient<ChunkDefinition>({ name: TCAD_CHUNK } as ChunkDefinition);
-          ctx.set<RunStatus>("status", { status: "running" });
-          const deps: BackboneDeps = {
-            step: (name, fn) => ctx.run(name, fn) as never,
-            merge: async (op: TrackOp) => {
-              if (op.kind === "run") ctx.set<RunStatus>("status", { status: op.status });
-              const out = await loader.merge({ track: "tcad", input: loaderInput(req.jobId, op) });
-              return { rowsWritten: out.rowsWritten };
-            },
-            verify: (path, sha) => verifyExport(path, sha),
-            waitForHuman: async (name, why) => {
-              ctx.set<RunStatus>("status", { status: "waiting_human", reason: why });
-              ctx.set("waiting_on", name);
-              return ctx.promise<Resolution>(name).get();
-            },
-            download: (request) => sourceClient().download(request),
-            runChunk: (spec) => chunks.run(spec),
-            listInputs: () => readdirSync(dirname(src.exportPath)).map((n) => join(dirname(src.exportPath), n)),
-            records: (path) => streamExportRecords(path),
-            now: () => new Date(),
-          };
-          const result = await runTcadBackbone(
-            {
-              jobId: req.jobId,
-              mode: req.mode,
-              asOf: req.asOf,
-              exportPath: src.exportPath,
-              receipt: src.receipt,
-              runDir: runDirFor(req.jobId),
-              ...(req.seedPids ? { seedPids: req.seedPids } : {}),
-              ...(cids ? { cids } : {}),
-            },
-            deps,
-          );
-          ctx.set<RunStatus>("status", { status: result.status, records: result.summary.records, loaded: result.summary.loaded });
-          return result;
-        });
+        // A terminal failure closes the run row (it would otherwise stay `running`, FR-025) by a
+        // direct bounded UPDATE, and the workflow state `status` says `failed` (CR-2).
+        return failRunOnTerminal(
+          restate,
+          ctx,
+          req.jobId,
+          async () => {
+            try {
+              return await runBody(ctx, req);
+            } catch (error) {
+              const terminal = asTerminal(restate, error);
+              if (terminal === null) throw error;
+              ctx.set<RunStatus>("status", { status: "failed", reason: terminal.message });
+              throw terminal;
+            }
+          },
+          queryDb,
+        );
       },
       status: async (ctx: Restate.WorkflowSharedContext): Promise<RunStatus> =>
         (await ctx.get<RunStatus>("status")) ?? { status: "running" },
@@ -214,12 +287,25 @@ export function createService(restate: typeof Restate) {
         return { resolved: name };
       },
       writeGroup: async (ctx: Restate.WorkflowSharedContext, raw: unknown) => {
-        const jobId = z.object({ jobId: z.string() }).parse(raw).jobId;
-        if (jobId !== ctx.key) throw new restate.TerminalError("TcadBackbone.writeGroup: jobId must be the key");
-        return ctx.run("write-group", () => writeGroup(jobId));
+        const parsed = z.object({ jobId: z.string() }).safeParse(raw);
+        if (!parsed.success || parsed.data.jobId !== ctx.key) {
+          throw new restate.TerminalError("TcadBackbone.writeGroup: jobId must be the key");
+        }
+        const jobId = parsed.data.jobId;
+        return ctx.run("write-group", async () => {
+          try {
+            return await writeGroup(jobId);
+          } catch (error) {
+            throw asTerminal(restate, error) ?? error;
+          }
+        });
       },
       joinProof: async (ctx: Restate.WorkflowSharedContext, raw: unknown) => {
-        const req = z.object({ jobId: z.string(), seed: z.number().int().nonnegative() }).parse(raw);
+        const parsed = z.object({ jobId: z.string(), seed: z.number().int().nonnegative() }).safeParse(raw);
+        if (!parsed.success || parsed.data.jobId !== ctx.key) {
+          throw new restate.TerminalError("TcadBackbone.joinProof: {jobId = key, seed} required");
+        }
+        const req = parsed.data;
         return ctx.run("join-proof", () => joinProof(req.jobId, req.seed));
       },
     },

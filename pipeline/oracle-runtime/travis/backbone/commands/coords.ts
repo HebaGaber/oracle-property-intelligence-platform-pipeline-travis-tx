@@ -6,7 +6,7 @@
 //   coords --coverage --tables <dir> [--job <id>]     coverage both ways (coverage-report.ts), read-only
 //
 // Exit 2 when the artifact has no complete.json (`gis: blocked at {ts}; coverage not complete`).
-// Last line: job_id=travis-a04-coords-<yyyymmddhhmm> (the coverage form prints its coverage line
+// Last line: job_id=travis-a04-coords-<yyyymmddhhmmss> (the coverage form prints its coverage line
 // and then the job it read).
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -51,8 +51,8 @@ export const command: BackboneCommand<Args> = {
         jobId: a.job ?? null,
         ingress: ctx.ingress,
       });
-      ctx.print(out.line);
-      return { jobId: out.jobId, exitCode: 0 };
+      for (const l of out.lines) ctx.print(l);
+      return { jobId: out.jobId, exitCode: out.ok ? 0 : 1 };
     }
     const jobId = ctx.jobIdFor("coords");
     const body = {

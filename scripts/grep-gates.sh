@@ -17,7 +17,9 @@
 #                   @elephant-xyz/query-db, no DATABASE_URL, no postgres:// URL (AD-26, P0-1, P0-17)
 #                   A-04 (TC-NF-02): also pipeline/oracle-runtime/travis/**: no pg word, no postgres,
 #                   no DATABASE_URL (the runtime never holds a Query DB client; only
-#                   pipeline/local-stack/services tracks, report*, loader and migrate do) and no
+#                   pipeline/local-stack/services do: loader, tracks, report*, migrate, and the
+#                   read-only clients of workflows/austin-permits.ts and tcad-backbone.ts; none
+#                   of those is under the scanned paths) and no
 #                   elephant-cli upload / upload to ipfs|pinata|filebase (nothing is published)
 #   region-literal  apps/**/src/**, infra/{bin,src}/**, pipeline/publish/src/**, scripts/*.ts,
 #                   tests/e2e/**/*.ts

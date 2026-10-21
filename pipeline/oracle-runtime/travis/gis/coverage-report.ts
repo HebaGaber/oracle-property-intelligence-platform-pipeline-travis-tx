@@ -8,9 +8,12 @@
 // - Query DB: `coordinates.coverage_r` and `coordinates.by_source.permit_point` from the
 //   read-only BackboneReport (its SQL is QDB_COVERAGE_SQL for the job), through the Restate
 //   ingress; oracle-runtime never opens the Query DB.
-// Last line: `coverage_public=<p> coverage_qdb=<q> permit_point=<n>` (4 decimals). The public
-// share is lower than the Query DB share by the permit_point accounts (D-9: a permit point is
-// never public geometry).
+// Gate (DP-3): count(*) and count(DISTINCT property_cid) of v_property and the Query DB R-account
+// count (the report's `denominator_r`, i.e. the run's own reconciliation, never a literal) must
+// agree, or differ by exactly the stated explained difference; the two shares must agree within
+// SHARE_TOLERANCE after removing the permit_point accounts (D-9: a permit point is never public
+// geometry). Any failure is listed and the command exits non-zero.
+// Last line: `coverage_public=<p> coverage_qdb=<q> permit_point=<n>` (4 decimals).
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -30,6 +33,10 @@ import { z } from "zod";
 import type { RestateIngressClient } from "../backbone/restate-client.js";
 
 export const PUBLIC_COVERAGE_SQL = "SELECT avg((latitude IS NOT NULL)::int) FROM v_property";
+export const PUBLIC_COUNTS_SQL =
+  "SELECT count(*)::BIGINT AS n, count(DISTINCT property_cid)::BIGINT AS d FROM v_property";
+/** Absolute tolerance between the Query DB share (less permit points) and the v_property share. */
+export const SHARE_TOLERANCE = 0.0005;
 export const QDB_COVERAGE_SQL =
   "SELECT avg((latitude IS NOT NULL)::int) FROM parcels WHERE prop_type = 'R'";
 
@@ -145,12 +152,18 @@ function countyDir(tablesDir: string): string {
   return existsSync(nested) && statSync(nested).isDirectory() ? nested : tablesDir;
 }
 
-/** Binds v_property to the local parts and returns its public coordinate share. */
+export interface PublicStats {
+  share: number;
+  rows: number;
+  distinct: number;
+}
+
+/** Binds v_property to the local parts and returns its public coordinate share and row counts. */
 export async function localPublicCoverage(
   tablesDir: string,
   dbPath?: string,
   engineFor: (path: string) => QueryEngine = (p) => duckdbCliEngine(p),
-): Promise<number> {
+): Promise<PublicStats> {
   const qcUrl: string = new URL("packages/query-core/src/index.ts", REPO).href;
   const profileUrl: string = new URL("profiles/travis-austin@1.0.0/index.ts", REPO).href;
   const qc = (await import(qcUrl)) as QueryCore;
@@ -228,7 +241,12 @@ export async function localPublicCoverage(
     const [row] = await engine.all(PUBLIC_COVERAGE_SQL);
     const value = row === undefined ? null : Object.values(row)[0];
     if (typeof value !== "number") throw new Error("coverage: v_property is empty");
-    return value;
+    const [counts] = await engine.all(PUBLIC_COUNTS_SQL);
+    const rows = Number(counts?.n);
+    const distinct = Number(counts?.d);
+    if (!Number.isFinite(rows) || !Number.isFinite(distinct))
+      throw new Error("coverage: v_property counts are unreadable");
+    return { share: value, rows, distinct };
   } finally {
     if (scratch !== null) rmSync(scratch, { recursive: true, force: true });
   }
@@ -237,6 +255,7 @@ export async function localPublicCoverage(
 const CoordinatesSection = z
   .object({
     coverage_r: z.number(),
+    denominator_r: z.number().int().nonnegative(),
     by_source: z.object({ permit_point: z.number().int().nonnegative() }).loose(),
   })
   .loose();
@@ -246,18 +265,28 @@ export interface CoverageDeps {
   tablesDir: string;
   jobId: string | null;
   ingress: RestateIngressClient;
-  /** Public share; default binds v_property to the local parts (localPublicCoverage). */
-  publicCoverage?: (tablesDir: string) => Promise<number>;
+  /** Public share and counts; default binds v_property to the local parts (localPublicCoverage). */
+  publicCoverage?: (tablesDir: string) => Promise<PublicStats>;
   dbPath?: string;
+  /** Public rows minus Query DB R accounts that the run explains (default 0). */
+  explainedDifference?: number | undefined;
+  shareTolerance?: number;
 }
 
-export async function runCoverage(deps: CoverageDeps): Promise<{
+export interface CoverageResult {
   line: string;
+  lines: string[];
   jobId: string;
   coverage_public: number;
   coverage_qdb: number;
   permit_point: number;
-}> {
+  publicCounts: { rows: number; distinct: number };
+  qdbRAccounts: number;
+  ok: boolean;
+  failures: string[];
+}
+
+export async function runCoverage(deps: CoverageDeps): Promise<CoverageResult> {
   const jobId = deps.jobId ?? jobIdFromTables(deps.tablesDir);
   if (jobId === null) throw new Error("coverage: give --job <jobId> (the tables path names none)");
   const report = Report.parse(await deps.ingress.call("BackboneReport", "get", { jobId }));
@@ -266,11 +295,45 @@ export async function runCoverage(deps: CoverageDeps): Promise<{
   );
   const q = report.coordinates.coverage_r;
   const n = report.coordinates.by_source.permit_point;
+  const qdbR = report.coordinates.denominator_r;
+  const explained = deps.explainedDifference ?? 0;
+  const tol = deps.shareTolerance ?? SHARE_TOLERANCE;
+  const failures: string[] = [];
+  if (pub.rows !== pub.distinct)
+    failures.push(
+      `duplicate property_cid in v_property: count(*)=${pub.rows} count(DISTINCT property_cid)=${pub.distinct}`,
+    );
+  for (const [label, value] of [
+    ["count(*)", pub.rows],
+    ["count(DISTINCT property_cid)", pub.distinct],
+  ] as const) {
+    if (value - qdbR !== explained)
+      failures.push(
+        `${label} of v_property is ${value}, Query DB R accounts are ${qdbR} (explained difference ${explained})`,
+      );
+  }
+  const expectedPublic = qdbR > 0 ? q - n / qdbR : q;
+  if (Math.abs(pub.share - expectedPublic) > tol)
+    failures.push(
+      `coordinate share differs: v_property ${pub.share.toFixed(4)} vs Query DB ${q.toFixed(4)} less permit points ${expectedPublic.toFixed(4)} (tolerance ${tol})`,
+    );
+  const line = coverageLine(pub.share, q, n);
+  const lines = [
+    `v_property rows=${pub.rows} distinct_property_cid=${pub.distinct} qdb_r_accounts=${qdbR} explained_difference=${explained}`,
+    ...failures.map((f) => `coverage_gate=FAIL: ${f}`),
+    ...(failures.length === 0 ? ["coverage_gate=PASS"] : []),
+    line,
+  ];
   return {
-    line: coverageLine(pub, q, n),
+    line,
+    lines,
     jobId,
-    coverage_public: pub,
+    coverage_public: pub.share,
     coverage_qdb: q,
     permit_point: n,
+    publicCounts: { rows: pub.rows, distinct: pub.distinct },
+    qdbRAccounts: qdbR,
+    ok: failures.length === 0,
+    failures,
   };
 }

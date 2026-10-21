@@ -59,6 +59,8 @@ export interface CoordinateReads {
       gis_features_without_roll_account: number;
       permit_far_from_gis: number;
       interior_point: number;
+      /** PROP_ID = pID join proof (assemble-coordinates.ts); absent in older watermarks. */
+      join_proof?: Record<string, number>;
     };
   };
   gis: GisRunReads | null;
@@ -127,6 +129,7 @@ export function buildCoordinatesSection(r: CoordinateReads) {
     gis_features_without_roll_account: stats.gis_features_without_roll_account,
     permit_far_from_gis: stats.permit_far_from_gis,
     interior_point: stats.interior_point,
+    join_proof: (stats as { join_proof?: Record<string, number> }).join_proof ?? null,
     gis_feature_count: gisCount,
     roll_count: r.coverage.roll_count,
     gis_minus_roll: gisCount === null ? null : gisCount - r.coverage.roll_count,

@@ -44,6 +44,7 @@ import { AUSTIN_PAGES } from "../adapters/socrata/austin-3syk-w9eu.js";
 import {
   fetchCount,
   fetchPage,
+  PageGuardError,
   fetchUpdatedHistogram,
   pageFileName,
   readPage,
@@ -55,7 +56,9 @@ import {
 } from "../adapters/socrata/socrata-pages.js";
 import { backoffDelayMs, MAX_ATTEMPTS, type SourceClient } from "../lib/source-client.js";
 import {
+  archiveCursor,
   commitPage,
+  cursorMismatch,
   freshCursor,
   loadCursor,
   markComplete,
@@ -120,6 +123,8 @@ export interface PermitsDeps {
 export const PermitsRunInput = z.object({
   jobId: z.string().regex(/^travis-a04-permits-[a-z0-9-]+$/),
   mode: PermitsMode,
+  /** Backfill only: archive the existing resume cursor and start at page 1 (`--fresh`). */
+  fresh: z.boolean().optional(),
 });
 export type PermitsRunInput = z.infer<typeof PermitsRunInput>;
 
@@ -142,6 +147,16 @@ export interface PermitsRunResult {
   watermarkCheck: AustinWatermark["watermarkCheck"];
   keysetDiffRequested: boolean;
   restamp: RestampVerdict | null;
+}
+
+/**
+ * Fingerprint of what shapes the captured pages (select list, key field, digest exclusions).
+ * A cursor written by different page code or config is not resumed.
+ */
+export function codeFingerprint(config: PageConfig): string {
+  return createHash("sha256")
+    .update(JSON.stringify([config.source.name, config.select, [...config.volatileFields].sort()]))
+    .digest("hex");
 }
 
 const STOP_PREFIX = "permits-stop:";
@@ -216,7 +231,7 @@ export async function runAustinPermits(
   raw: unknown,
   deps: PermitsDeps,
 ): Promise<PermitsRunResult> {
-  const { jobId, mode } = PermitsRunInput.parse(raw);
+  const { jobId, mode, fresh } = PermitsRunInput.parse(raw);
   const base = deps.config ?? AUSTIN_PAGES;
   const config: PageConfig = { ...base, pageSize: deps.pageSize ?? base.pageSize };
   const source = config.source;
@@ -336,10 +351,26 @@ export async function runAustinPermits(
     const start: BackfillCursor | null = resumable
       ? await io.run("resume-cursor", async () => {
           const found = loadCursor(deps.artifactsRoot);
-          if (found !== null && !found.complete) return found;
-          const fresh = freshCursor(jobId);
-          saveCursor(deps.artifactsRoot, fresh);
-          return fresh;
+          const stamp = { profileSha256: PROFILE.sha256, codeSha: codeFingerprint(config) };
+          if (found !== null && !found.complete && fresh !== true) {
+            const why = cursorMismatch(found, stamp);
+            if (why !== null) {
+              // deterministic: resuming under other code could skip or double pages
+              throw io.fail(
+                `${STOP_PREFIX}${JSON.stringify({
+                  stop: "error",
+                  reason: `backfill cursor of ${found.originJobId} was written under other code (${why}); not resumed, run with --fresh to archive it and start at page 1`,
+                })}`,
+              );
+            }
+            const stamped = { ...found, ...stamp };
+            saveCursor(deps.artifactsRoot, stamped);
+            return stamped;
+          }
+          if (found !== null) archiveCursor(deps.artifactsRoot, `${found.originJobId}.${jobId}`);
+          const next = freshCursor(jobId, stamp);
+          saveCursor(deps.artifactsRoot, next);
+          return next;
         })
       : null;
     const pageDir = (owner: string): string => join(deps.artifactsRoot, owner);
@@ -382,15 +413,26 @@ export async function runAustinPermits(
         const outcome: PageStep | { retry: true; reason: string; at: string } = await io.run(
           attempt === 1 ? `page-${pad(index)}` : `page-${pad(index)}-a${attempt}`,
           async () => {
-            const r = await fetchPage({
-              client: deps.client,
-              config,
-              jobDir,
-              pageIndex: index,
-              lastId: cursor,
-              extraWhere,
-              pageAttempt: attempt,
-            });
+            let r: Awaited<ReturnType<typeof fetchPage>>;
+            try {
+              r = await fetchPage({
+                client: deps.client,
+                config,
+                jobDir,
+                pageIndex: index,
+                lastId: cursor,
+                extraWhere,
+                pageAttempt: attempt,
+              });
+            } catch (error) {
+              // a structural guard is deterministic: stop, never re-request the page
+              if (error instanceof PageGuardError) {
+                throw io.fail(
+                  `${STOP_PREFIX}${JSON.stringify({ stop: "error", reason: error.message })}`,
+                );
+              }
+              throw error;
+            }
             if (r.kind === "stop") {
               if (!r.retryable) throw stopOn(r);
               return {
@@ -494,6 +536,28 @@ export async function runAustinPermits(
     }
 
     const keys = full ? await io.run("keys", async () => writeKeys(jobDir, pages)) : null;
+    if (full && mode !== "pilot") {
+      // OR-M2: a watermark whose count check failed, or a source total that moved without the
+      // captured key set accounting for it, is never written and the run is never `complete`.
+      // The cursor and the captured pages stay, so a re-run resumes (or --fresh restarts).
+      const problems: string[] = [];
+      if (result.watermarkCheck === "fail") {
+        problems.push(
+          `count at watermark ${w ?? "none"}: ${result.capturedAtW} captured rows with :updated_at <= W but the source reports ${result.sourceCountAtW}`,
+        );
+      }
+      if (result.startTotal !== result.endTotal && keys?.count !== result.endTotal) {
+        problems.push(
+          `source total moved from ${result.startTotal} to ${result.endTotal} while paging and the ${keys?.count ?? 0} captured keys do not account for it`,
+        );
+      }
+      if (problems.length > 0) {
+        return await finish(
+          "failed",
+          `watermark not advanced: ${problems.join("; ")}. Pages and cursor kept; re-run to resume or use --fresh in a quiet window`,
+        );
+      }
+    }
     const limitations: Limitation[] = [];
     if (result.restamp?.detected) {
       limitations.push({

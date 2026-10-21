@@ -6,6 +6,7 @@
 // disk). The 3.5 GB entry is never held in memory; nothing here parses owner fields.
 import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
+import { RunDataError } from "../backbone/errors.js";
 import { listZipEntries, openZipEntry, type ZipEntry } from "../lib/zip-entry.js";
 
 /** The JSON entry of the 2026 certified export (A-03 capture-tcad-subset.ts). */
@@ -60,7 +61,7 @@ export async function* streamExportRecords(
         ordinal += 1;
       }
     }
-    if (lines !== null) throw new Error(`tcad export: record ${ordinal} is not closed`);
+    if (lines !== null) throw new RunDataError(`tcad export: record ${ordinal} is not closed`);
   } finally {
     rl.close();
     stream.destroy();

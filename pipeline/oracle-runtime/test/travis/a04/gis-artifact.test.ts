@@ -88,7 +88,10 @@ describe("A-04-TC-020 workflow: .github/workflows/a04-gis-capture.yml (D-2, cont
   });
 
   it("A-04 runner-config.json safety rule: attempt >= 1, mode pilot|full, full mode requests only OBJECTID/PROP_ID/geo_id", () => {
-    const cfg = JSON.parse(readFileSync(new URL(CONFIG_PATH, REPO), "utf8")) as Record<string, unknown>;
+    const cfg = JSON.parse(readFileSync(new URL(CONFIG_PATH, REPO), "utf8")) as Record<
+      string,
+      unknown
+    >;
     expect(Number.isInteger(cfg.attempt) && (cfg.attempt as number) >= 1).toBe(true);
     expect(["pilot", "full"]).toContain(cfg.mode);
     expect(RunnerConfig.safeParse({ ...cfg, attempt: 0 }).success).toBe(false);
@@ -365,7 +368,7 @@ describe("A-04 T043 GisImport workflow (workflow.ts)", () => {
     const dir = await artifact({ total: 4 });
     const merges: GisMergeInput[] = [];
     const run = handlerOf(merges);
-    const out = await run(fakeCtx("travis-a04-coords-202610220500"), {
+    const out = await run(fakeCtx("travis-a04-coords-20261022050000"), {
       artifactDir: dir,
       assemble: true,
       tcadJobId: null,
@@ -373,14 +376,14 @@ describe("A-04 T043 GisImport workflow (workflow.ts)", () => {
     expect(merges.map((m) => m.kind)).toEqual(["import", "assemble"]);
     expect(merges[0]).toMatchObject({
       kind: "import",
-      jobId: "travis-a04-coords-202610220500",
+      jobId: "travis-a04-coords-20261022050000",
       artifactRunId: "4242",
     });
     expect(merges[0]?.artifactSha256).toBe(inspectArtifact(dir).artifactSha256);
     expect(merges[1]).toMatchObject({
       kind: "assemble",
       tcadJobId: null,
-      artifactPath: "assemble:travis-a04-coords-202610220500",
+      artifactPath: "assemble:travis-a04-coords-20261022050000",
     });
     expect(merges[1]?.artifactSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(out.gis).toMatchObject({ status: "complete", limitation: null, pages: 2 });
@@ -457,12 +460,12 @@ describe("A-04 T043 `backbone coords` (contracts/cli.md)", () => {
     );
     expect(code).toBe(0);
     const call = h.calls.find((c) => c.service === "GisImport");
-    expect(call).toMatchObject({ handler: "run", key: "travis-a04-coords-202610220500" });
+    expect(call).toMatchObject({ handler: "run", key: "travis-a04-coords-20261022050000" });
     expect(call?.body).toMatchObject({ assemble: true, tcadJobId: null });
     expect(String((call?.body as { artifactDir: string }).artifactDir)).toMatch(
       /pipeline\/data\/raw\/gis\/us-runner-1$/,
     );
-    expect(h.out.at(-1)).toBe("job_id=travis-a04-coords-202610220500\n");
+    expect(h.out.at(-1)).toBe("job_id=travis-a04-coords-20261022050000\n");
   });
 
   it("a blocked artifact exits 2 and prints the limitation", async () => {

@@ -40,12 +40,22 @@ export const BackfillCursor = z.object({
   written: z.number().int().min(0),
   maxUpdatedAt: z.string().nullable(),
   pending: Pending.nullable(),
+  /**
+   * What produced the cursor (profile SHA-256 and a fingerprint of the page code/config).
+   * Absent on a cursor written before this check: such a cursor is resumed and stamped.
+   */
+  profileSha256: z.string().optional(),
+  codeSha: z.string().optional(),
 });
 export type BackfillCursor = z.infer<typeof BackfillCursor>;
 
 export const CURSOR_FILE = "backfill-cursor.json";
 
-export const freshCursor = (originJobId: string): BackfillCursor => ({
+export const freshCursor = (
+  originJobId: string,
+  stamp: { profileSha256?: string; codeSha?: string } = {},
+): BackfillCursor => ({
+  ...stamp,
   originJobId,
   complete: false,
   lastId: null,
@@ -105,6 +115,30 @@ export function commitPage(
         : cursor.maxUpdatedAt,
     pending: null,
   });
+}
+
+/** Why a cursor must not be resumed (null: it may be). A cursor with no stamp is accepted. */
+export function cursorMismatch(
+  cursor: BackfillCursor,
+  current: { profileSha256: string; codeSha: string },
+): string | null {
+  const diffs: string[] = [];
+  if (cursor.profileSha256 !== undefined && cursor.profileSha256 !== current.profileSha256) {
+    diffs.push(`profile SHA-256 ${cursor.profileSha256} != ${current.profileSha256}`);
+  }
+  if (cursor.codeSha !== undefined && cursor.codeSha !== current.codeSha) {
+    diffs.push(`code SHA ${cursor.codeSha} != ${current.codeSha}`);
+  }
+  return diffs.length === 0 ? null : diffs.join("; ");
+}
+
+/** Moves the active cursor aside (never deleted) and returns the archive file name, or null. */
+export function archiveCursor(root: string, tag: string): string | null {
+  const path = join(root, CURSOR_FILE);
+  if (!existsSync(path)) return null;
+  const name = `backfill-cursor.${tag}.json`;
+  renameSync(path, join(root, name));
+  return name;
 }
 
 export function markComplete(root: string): void {

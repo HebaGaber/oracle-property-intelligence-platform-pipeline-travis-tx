@@ -230,7 +230,7 @@ describe("T022 fields", () => {
     expect(withImprv.parcel.property_type_note).toContain("1 improvement");
     const bare = mapOne(a04Record({ pID: 10, geoID: "10", stateCd: "E1" }));
     expect(bare.parcel).toMatchObject({
-      property_type: "VacantLand",
+      property_type: "LandParcel",
       property_type_rule: "improvement_fallback",
       property_type_missing_reason: null,
     });
@@ -255,7 +255,7 @@ describe("T022 fields", () => {
       ...a04Record({ pID: 12, geoID: "12", stateCd: "F5", improvements: [] }),
     });
     expect(propertyFields(rec)).toMatchObject({
-      property_type: "VacantLand",
+      property_type: "LandParcel",
       property_type_rule: "improvement_fallback",
     });
     const rec2 = parseTcadRecord({

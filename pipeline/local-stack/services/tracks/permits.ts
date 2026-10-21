@@ -17,6 +17,7 @@
 //              open_days (as_of = the run date) over every loaded permit
 // Contractor and applicant fields stay in permit_source_rows.payload only (AD-06).
 import { existsSync, readFileSync } from "node:fs";
+import { TerminalError } from "@restatedev/restate-sdk";
 import type postgres from "postgres";
 import type { z } from "zod";
 import type { LoaderTrack, MergeOutcome } from "../loader.js";
@@ -56,6 +57,10 @@ if (ISSUING_JURISDICTION !== "austin") throw new Error("permits track: issuing j
 
 const SOURCE = PERMITS_SOURCE_KEY;
 const KEY_BATCH = 50_000;
+/** OR-M3: a key set this far below the source total, or removals above this share, is refused. */
+const KEYS_TOLERANCE_FLOOR = 1000;
+const KEYS_TOLERANCE_SHARE = 0.001;
+const MAX_REMOVAL_SHARE = 0.01;
 const LINK_BATCH = 20_000;
 
 const text = (v: unknown): string | null => {
@@ -161,10 +166,10 @@ async function mergePage(tx: Tx, input: Extract<Input, { kind: "page" }>): Promi
     const out = await tx<{ permit_number: string }[]>`
       INSERT INTO property_improvements (source, permit_number, issuing_jurisdiction, located_jurisdiction, source_row_id, tcad_id,
         status_raw, issue_date, expiry_date, latitude, longitude, payload_sha256, content_sha256, previous_content_sha256,
-        updated_in_job, source_url, captured_at, tombstoned)
+        updated_in_job, source_url, captured_at, tombstoned, page_key)
       SELECT ${SOURCE}, u.permit_number, 'austin', u.located, u.row_id, u.tcad_id, u.status_raw, u.issue_date::date,
              u.expiry_date::date, u.lat::double precision, u.lon::double precision, ${input.artifactSha256}, u.content_sha256,
-             u.previous, ${input.jobId}, u.source_url, ${capturedAt}::timestamptz, false
+             u.previous, ${input.jobId}, u.source_url, ${capturedAt}::timestamptz, false, ${pageKey(receipt)}
       FROM unnest(${col((p) => p.row.permitNumber)}::text[], ${col((p) => locatedJurisdiction(p.row.payload))}::text[],
                   ${col((p) => p.row.rowId)}::text[], ${col((p) => text(p.row.payload.tcad_id))}::text[],
                   ${col((p) => text(p.row.payload.status_current))}::text[], ${col((p) => dateOf(p.row.payload.issue_date))}::text[],
@@ -178,11 +183,19 @@ async function mergePage(tx: Tx, input: Extract<Input, { kind: "page" }>): Promi
         latitude = excluded.latitude, longitude = excluded.longitude, payload_sha256 = excluded.payload_sha256,
         previous_content_sha256 = property_improvements.content_sha256, content_sha256 = excluded.content_sha256,
         updated_in_job = excluded.updated_in_job, source_url = excluded.source_url, captured_at = excluded.captured_at,
-        tombstoned = false
+        tombstoned = false, page_key = excluded.page_key
       WHERE property_improvements.content_sha256 IS DISTINCT FROM excluded.content_sha256
       RETURNING permit_number`;
     written = out.length;
   }
+  // A permit served again is live again, even when its content digest is unchanged (the upsert
+  // above is skipped then): clear the downgrade and the tombstone row in the same transaction.
+  await tx`
+    UPDATE property_improvements SET tombstoned = false
+    WHERE issuing_jurisdiction = 'austin' AND tombstoned AND permit_number = ANY(${numbers}::text[])`;
+  await tx`
+    DELETE FROM source_tombstones
+    WHERE source_key = ${SOURCE} AND row_key = ANY(${incoming.map((r) => r.rowId)}::text[])`;
   await insertReceipt(tx, input.jobId, receipt);
   return { rowsWritten: written };
 }
@@ -204,6 +217,28 @@ async function mergeFinalize(
         ON CONFLICT DO NOTHING`;
     }
     await tx`CREATE INDEX IF NOT EXISTS permits_seen_keys_permit ON permits_seen_keys (permit_number)`;
+    // OR-M3: a truncated key set must never mass-tombstone. Checked before anything is removed.
+    const distinct = new Set(keys.map((k) => k.rowId)).size;
+    const endTotal = input.watermark?.endTotal ?? null;
+    if (endTotal !== null) {
+      const tolerance = Math.max(KEYS_TOLERANCE_FLOOR, Math.ceil(endTotal * KEYS_TOLERANCE_SHARE));
+      if (distinct < endTotal - tolerance) {
+        throw new TerminalError(
+          `permits finalize refused: ${distinct} distinct keys is below endTotal ${endTotal} minus tolerance ${tolerance}; nothing tombstoned`,
+        );
+      }
+    }
+    // a permit that reappears is live again: clear the downgrade and its tombstone row first
+    await tx`
+      UPDATE property_improvements SET tombstoned = false
+      WHERE issuing_jurisdiction = 'austin' AND tombstoned
+        AND permit_number IN (SELECT permit_number FROM permits_seen_keys)`;
+    await tx`
+      DELETE FROM source_tombstones
+      WHERE source_key = ${SOURCE} AND row_key IN (SELECT row_id FROM permits_seen_keys)`;
+    const stored = await tx<{ n: number | string }[]>`
+      SELECT count(*) AS n FROM permit_source_rows WHERE source = ${SOURCE}`;
+    const storedRows = Number(stored[0]?.n ?? 0);
     const missing = await tx<{ row_id: string; permit_number: string; permit_seen: boolean }[]>`
       SELECT p.row_id, p.permit_number,
              EXISTS (SELECT 1 FROM permits_seen_keys s WHERE s.permit_number = p.permit_number) AS permit_seen
@@ -212,6 +247,11 @@ async function mergeFinalize(
     const diff = classifyMissing(
       missing.map((m) => ({ rowId: m.row_id, permitNumber: m.permit_number, permitSeen: m.permit_seen })),
     );
+    if (diff.removed.length > storedRows * MAX_REMOVAL_SHARE) {
+      throw new TerminalError(
+        `permits finalize refused: ${diff.removed.length} removals exceed ${MAX_REMOVAL_SHARE * 100}% of ${storedRows} stored rows; nothing tombstoned`,
+      );
+    }
     if (diff.removed.length > 0) {
       const ids = diff.removed.map((r) => r.rowId);
       const nums = diff.removed.map((r) => r.permitNumber);
@@ -268,6 +308,22 @@ export const situsOf = (v: unknown): SitusLike | null => {
 };
 
 async function mergeLink(tx: Tx, input: Extract<Input, { kind: "link" }>): Promise<MergeOutcome> {
+  // OR-m8: link only against a fully loaded parcels table. A shared geoID looks unique in a
+  // partial table, so a complete TCAD run must exist and none may still be loading.
+  const tcadRuns = await tx<{ job_id: string; status: string; mode: string }[]>`
+    SELECT job_id, status, mode FROM backbone_runs
+    WHERE track = 'appraisal' AND mode IN ('full', 'pilot')`;
+  const running = tcadRuns.find((r) => r.status === "running");
+  if (running !== undefined) {
+    throw new TerminalError(
+      `permits --link refused: TCAD run ${running.job_id} is still running, so the parcels table is partial; link after it completes`,
+    );
+  }
+  if (!tcadRuns.some((r) => r.status === "complete")) {
+    throw new TerminalError(
+      "permits --link refused: no complete TCAD full or pilot run in backbone_runs; load TCAD first",
+    );
+  }
   const parcels = await tx<{ request_identifier: string; geo_id: string | null; prop_type: string; situs_address: unknown }[]>`
     SELECT request_identifier, geo_id, prop_type, situs_address FROM parcels WHERE prop_type = 'R'`;
   const extraGeoIds = await tx<{ geo_id: string; request_identifier: string }[]>`

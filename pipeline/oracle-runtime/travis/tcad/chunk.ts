@@ -3,18 +3,20 @@
 // artifact → ONE Loader merge (track tcad) → (pilot) the County group zips. The input and the
 // mapped artifact are deleted after the merge; the outcome holds counts only.
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
+import { RunDataError } from "../backbone/errors.js";
 import type { DataGroupCids } from "../transforms/lexicon-manifest.js";
 import type { ExportRecordText } from "./export-stream.js";
-import { createKeyInventory } from "./key-inventory.js";
+import { createKeyInventory, UnknownKeyError } from "./key-inventory.js";
 import {
   processChunk,
   writeChunkFile,
   type ChunkContext,
   type ChunkSummary,
   type DeadRecord,
+  type TypeStats,
 } from "./process.js";
 import { coverageReport, writeCountyZips, type CoverageRow } from "./write-group.js";
 
@@ -40,6 +42,8 @@ export interface ChunkOutcome {
   mappedSha256: string;
   zips: number;
   coverage: CoverageRow[] | null;
+  /** Counts behind the property_type source limitations (process.ts TypeStats). */
+  typeStats: TypeStats;
 }
 
 export interface ChunkMergeOp {
@@ -64,16 +68,57 @@ export function writeChunkInput(path: string, records: readonly ExportRecordText
 
 export function readChunkInput(path: string, expectedSha256: string): ExportRecordText[] {
   const body = readFileSync(path);
-  if (sha256(body) !== expectedSha256) throw new Error(`chunk input ${path}: sha256 changed`);
+  if (sha256(body) !== expectedSha256)
+    throw new RunDataError(`chunk input ${path}: sha256 changed`);
   const text = gunzipSync(body).toString("utf8");
   return text === "" ? [] : text.split("\n").map((l) => JSON.parse(l) as ExportRecordText);
+}
+
+/** Counts-only outcome kept next to the mapped file so a retry after cleanup can skip (CR-9). */
+export const outcomePathOf = (spec: ChunkSpec): string =>
+  spec.mappedPath.replace(/(\.ndjson\.gz)?$/, ".outcome.json");
+
+function recordedOutcome(spec: ChunkSpec): ChunkOutcome | null {
+  try {
+    const rec = JSON.parse(readFileSync(outcomePathOf(spec), "utf8")) as {
+      inputSha256?: string;
+      outcome?: ChunkOutcome;
+    };
+    return rec.inputSha256 === spec.inputSha256 && rec.outcome !== undefined ? rec.outcome : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * The file work of one chunk (journal it as one step): read the input, parse → redact → map,
  * write the mapped artifact (and, pilot, the County group zips). Returns counts only.
+ *
+ * Idempotent after cleanup (CR-9): when the input is gone and this chunk's outcome was
+ * recorded, that outcome is returned (the Loader merge is itself a no-op for a merged sha).
+ * A missing input with no record is a RunDataError, not a retryable ENOENT. A deterministic
+ * failure removes the unredacted input before it propagates (OR-m2).
  */
 export async function prepareChunk(spec: ChunkSpec): Promise<ChunkOutcome> {
+  if (!existsSync(spec.inputPath)) {
+    const done = recordedOutcome(spec);
+    if (done !== null) return done;
+    throw new RunDataError(`chunk ${spec.n}: input is missing and no outcome was recorded`);
+  }
+  try {
+    const out = await prepareFromInput(spec);
+    writeFileSync(
+      outcomePathOf(spec),
+      JSON.stringify({ inputSha256: spec.inputSha256, outcome: out }),
+    );
+    return out;
+  } catch (error) {
+    if (error instanceof UnknownKeyError || error instanceof RunDataError) cleanupChunk(spec);
+    throw error;
+  }
+}
+
+async function prepareFromInput(spec: ChunkSpec): Promise<ChunkOutcome> {
   const records = readChunkInput(spec.inputPath, spec.inputSha256);
   const inventory = createKeyInventory();
   let mappedSha256 = "";
@@ -104,6 +149,7 @@ export async function prepareChunk(spec: ChunkSpec): Promise<ChunkOutcome> {
     mappedSha256,
     zips,
     coverage,
+    typeStats: result.typeStats,
   };
 }
 

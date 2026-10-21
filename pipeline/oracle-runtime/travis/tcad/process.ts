@@ -12,7 +12,7 @@ import { dirname } from "node:path";
 import { createHash } from "node:crypto";
 import type { DataGroupCids } from "../transforms/lexicon-manifest.js";
 import type { ExportRecordText } from "./export-stream.js";
-import { InvalidRecordError, mapParcel, type MappedRecord } from "./fields.js";
+import { InvalidRecordError, mapParcel, type MappedRecord, type ParcelRow } from "./fields.js";
 import { parseExportRecord, UnknownKeyError, type KeyInventory } from "./key-inventory.js";
 import { redactRecord } from "./redact.js";
 import { planCountyGroup, type CountyGroup } from "./write-group.js";
@@ -69,6 +69,7 @@ export interface ChunkResult {
   reconciliation: ReconRow[];
   dead: DeadRecord[];
   summary: ChunkSummary;
+  typeStats: TypeStats;
 }
 
 export type Step = "parse" | "redact" | "map" | "store" | "validate";
@@ -81,7 +82,51 @@ export interface ChunkHooks {
   cids?: DataGroupCids;
 }
 
-const short = (e: unknown): string => (e instanceof Error ? e.message : String(e)).slice(0, 200);
+/**
+ * A failure's detail for roll_reconciliation, dead.json and the journal: the error class, where
+ * it happened and the record length, never a snippet of the record (OR-m1). Parser messages
+ * quote the offending JSON, so only the class and numeric position are taken from them.
+ */
+export function safeDetail(e: unknown, rec: ExportRecordText): string {
+  const name = e instanceof Error ? e.name : "Error";
+  const message = e instanceof Error ? e.message : "";
+  const at = /position (\d+)/.exec(message) ?? null;
+  const lineCol = /line (\d+) column (\d+)/.exec(message) ?? null;
+  const where = at
+    ? ` at position ${at[1]}`
+    : lineCol
+      ? ` at line ${lineCol[1]} column ${lineCol[2]}`
+      : "";
+  const issues = (e as { issues?: Array<{ path?: unknown[] }> } | null)?.issues;
+  const path =
+    Array.isArray(issues) && Array.isArray(issues[0]?.path) ? issues[0].path.join(".") : "";
+  return `${name}${where}${path === "" ? "" : ` (${path})`}, record length ${rec.bytes}`;
+}
+
+/** Counts behind the property_type source limitations (OR-M4, DP-8); key names only. */
+export interface TypeStats {
+  /** R accounts typed by the improvement fallback. */
+  fallback: number;
+  /** Those fallback accounts by TCAD state code. */
+  fallbackByState: Record<string, number>;
+  /** R accounts with state code A4 (typed Townhouse, unverified) and F4. */
+  a4: number;
+  f4: number;
+}
+
+export const emptyTypeStats = (): TypeStats => ({ fallback: 0, fallbackByState: {}, a4: 0, f4: 0 });
+
+export function addTypeStats(into: TypeStats, row: ParcelRow): void {
+  if (!row.county_emit) return;
+  const code = row.state_cd?.trim() ?? "";
+  if (row.property_type_rule === "improvement_fallback") {
+    into.fallback += 1;
+    const key = code === "" ? "(empty)" : code;
+    into.fallbackByState[key] = (into.fallbackByState[key] ?? 0) + 1;
+  }
+  if (code === "A4") into.a4 += 1;
+  if (code === "F4") into.f4 += 1;
+}
 
 /** Classifies and maps one record; an UnknownKeyError propagates (the run fails). */
 export function processRecord(
@@ -96,7 +141,7 @@ export function processRecord(
   try {
     raw = JSON.parse(rec.text);
   } catch (e) {
-    const detail = `not JSON: ${short(e)}`;
+    const detail = `not JSON: ${safeDetail(e, rec)}`;
     return {
       recon: { ...base, request_identifier: null, geo_id: null, class: "dead", detail },
       dead: { ordinal: rec.ordinal, sha256: rec.sha256, bytes: rec.bytes, detail },
@@ -114,7 +159,7 @@ export function processRecord(
         request_identifier: null,
         geo_id: null,
         class: "invalid",
-        detail: short(e),
+        detail: safeDetail(e, rec),
       },
       redacted: false,
     };
@@ -140,7 +185,13 @@ export function processRecord(
     const pid =
       typeof record.pID === "number" || typeof record.pID === "string" ? String(record.pID) : null;
     return {
-      recon: { ...base, request_identifier: pid, geo_id: null, class: cls, detail: short(e) },
+      recon: {
+        ...base,
+        request_identifier: pid,
+        geo_id: null,
+        class: cls,
+        detail: safeDetail(e, rec),
+      },
       redacted: redaction.redacted,
     };
   }
@@ -154,6 +205,7 @@ export async function processChunk(
 ): Promise<ChunkResult> {
   const trace = hooks.trace ?? (() => undefined);
   const result: ChunkResult = {
+    typeStats: emptyTypeStats(),
     loaded: [],
     reconciliation: [],
     dead: [],
@@ -175,6 +227,7 @@ export async function processChunk(
     if (out.dead) result.dead.push(out.dead);
     if (out.loaded) {
       result.loaded.push(out.loaded);
+      addTypeStats(result.typeStats, out.loaded.parcel);
       if (out.redacted) result.summary.redacted += 1;
       const t = out.loaded.parcel.prop_type;
       result.summary.by_prop_type[t] = (result.summary.by_prop_type[t] ?? 0) + 1;

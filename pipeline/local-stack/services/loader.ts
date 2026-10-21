@@ -14,8 +14,12 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import type * as Restate from "@restatedev/restate-sdk";
+import { basename } from "node:path";
 import postgres from "postgres";
 import { z } from "zod";
+import { RunDataError } from "../../oracle-runtime/travis/backbone/errors.js";
+import { DiskGuardError } from "../../oracle-runtime/travis/backbone/disk-guard.js";
+import { UnknownKeyError } from "../../oracle-runtime/travis/tcad/key-inventory.js";
 
 export const LOADER_KEY = "travis";
 export const TRACKS_DIR = fileURLToPath(new URL("./tracks/", import.meta.url));
@@ -28,6 +32,79 @@ export const LoaderInputBase = z.object({
   artifactSha256: z.string().regex(/^[a-f0-9]{64}$/),
 });
 export type LoaderInput = z.infer<typeof LoaderInputBase>;
+
+/** The FR-025 partial unique index: one ingest run (full, backfill, incremental) at a time. */
+export const ONE_INGEST_INDEX = "backbone_runs_one_ingest_running";
+/** A merge that keeps failing with a transient error is retried this many times, then fails. */
+export const MERGE_MAX_RETRIES = 5;
+
+/** A deterministic merge failure (a sha mismatch, a malformed artifact): retrying cannot help. */
+export class MergeDataError extends Error {
+  override name = "MergeDataError";
+}
+
+/**
+ * The refusal message for an error a retry cannot fix, or null for a transient one. Covers
+ * Postgres SQLSTATE class 22 (data), 23 (integrity incl. the FR-025 index) and 42 (syntax or
+ * schema), zod errors, sha mismatches, missing files, unknown export keys and the disk guard.
+ * Never quotes a row: Postgres messages and details can contain record values.
+ */
+export function deterministicFailure(error: unknown): string | null {
+  if (
+    error instanceof MergeDataError ||
+    error instanceof RunDataError ||
+    error instanceof DiskGuardError ||
+    error instanceof UnknownKeyError
+  ) {
+    return error.message;
+  }
+  if (error instanceof z.ZodError) {
+    const issue = error.issues[0];
+    return `invalid input${issue === undefined ? "" : `: ${issue.path.join(".")} ${issue.message}`}`;
+  }
+  if (typeof error === "object" && error !== null) {
+    const e = error as { code?: unknown; constraint_name?: unknown; path?: unknown };
+    if (e.code === "ENOENT") {
+      return `required file is missing${typeof e.path === "string" ? ` (${basename(e.path)})` : ""}`;
+    }
+    if (typeof e.code === "string" && /^[0-9A-Z]{5}$/.test(e.code)) {
+      const constraint = typeof e.constraint_name === "string" ? e.constraint_name : null;
+      if (e.code === "23505" && constraint === ONE_INGEST_INDEX) {
+        return "refused: another ingest run is already running (FR-025); finish or fail it before starting this one";
+      }
+      if (["22", "23", "42"].includes(e.code.slice(0, 2))) {
+        return `Query DB rejected the write (SQLSTATE ${e.code}${constraint === null ? "" : `, constraint ${constraint}`})`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The TerminalError for an error Restate would otherwise retry forever: the error itself when
+ * it already is one, a new one for a deterministic failure, null for a transient error.
+ */
+export function asTerminal(restateSdk: typeof Restate, error: unknown): Restate.TerminalError | null {
+  if (error instanceof restateSdk.TerminalError) return error;
+  const message = deterministicFailure(error);
+  return message === null ? null : new restateSdk.TerminalError(message);
+}
+
+/** runMerge, with a deterministic failure turned into a TerminalError (Restate stops retrying). */
+export async function runMergeOrTerminal(
+  restateSdk: typeof Restate,
+  sql: postgres.Sql,
+  track: LoaderTrack,
+  raw: unknown,
+): Promise<MergeResult> {
+  try {
+    return await runMerge(sql, track, raw);
+  } catch (error) {
+    const message = deterministicFailure(error);
+    if (message !== null) throw new restateSdk.TerminalError(message);
+    throw error;
+  }
+}
 
 export type TrackName = "tcad" | "gis" | "permits";
 
@@ -159,25 +236,41 @@ const FailRunRequest = z.object({ jobId: z.string().regex(/^travis-a04-[a-z0-9-]
 
 /**
  * Runs a workflow body; when it ends in a terminal failure (a TerminalError, which Restate does
- * not retry) the run row is closed as failed through the Loader (the single writer) and the
- * error is rethrown unchanged. A transient error is retried by Restate, so it is not a failure.
+ * not retry) the run row is closed as failed and the error is rethrown unchanged. A transient
+ * error is retried by Restate, so it is not a failure.
+ *
+ * With `direct` (the lazy Query DB connection) the row is closed by one bounded UPDATE in a
+ * plain ctx.run, so it works even while the exclusive Loader key is busy or its merge is stuck
+ * (OR-M1). Without it the Loader's failRun handler is called (it queues behind a merge).
  */
 export async function failRunOnTerminal<T>(
   restateSdk: typeof Restate,
   ctx: Restate.WorkflowContext,
   jobId: string | null,
   work: () => Promise<T>,
+  direct?: () => postgres.Sql,
 ): Promise<T> {
   try {
     return await work();
   } catch (error) {
     if (jobId !== null && error instanceof restateSdk.TerminalError) {
-      await ctx
-        .objectClient<ReturnType<typeof createLoader>>(
-          { name: "Loader" } as ReturnType<typeof createLoader>,
-          LOADER_KEY,
-        )
-        .failRun({ jobId });
+      if (direct === undefined) {
+        await ctx
+          .objectClient<ReturnType<typeof createLoader>>(
+            { name: "Loader" } as ReturnType<typeof createLoader>,
+            LOADER_KEY,
+          )
+          .failRun({ jobId });
+      } else {
+        try {
+          await ctx.run(`fail-run-${jobId}`, () => failRun(direct(), jobId), {
+            maxRetryAttempts: MERGE_MAX_RETRIES,
+          });
+        } catch {
+          // The original failure is the one to report; the run row is closed by `backbone` or
+          // the next start when the database is down.
+        }
+      }
     }
     throw error;
   }
@@ -210,8 +303,10 @@ export function createLoader(restate: typeof Restate, deps: LoaderDeps) {
           if (error instanceof QueryDbConfigError) throw new restate.TerminalError(error.message);
           throw error;
         }
-        return ctx.run(`merge-${track.name}-${input.data.artifactSha256.slice(0, 12)}`, () =>
-          runMerge(sql, track, input.data),
+        return ctx.run(
+          `merge-${track.name}-${input.data.artifactSha256.slice(0, 12)}`,
+          () => runMergeOrTerminal(restate, sql, track, input.data),
+          { maxRetryAttempts: MERGE_MAX_RETRIES, initialRetryInterval: { seconds: 2 } },
         );
       },
       failRun: async (ctx: Restate.ObjectContext, req: unknown): Promise<{ failed: boolean }> => {
@@ -227,7 +322,9 @@ export function createLoader(restate: typeof Restate, deps: LoaderDeps) {
           if (error instanceof QueryDbConfigError) throw new restate.TerminalError(error.message);
           throw error;
         }
-        return ctx.run(`fail-${parsed.data.jobId}`, () => failRun(sql, parsed.data.jobId));
+        return ctx.run(`fail-${parsed.data.jobId}`, () => failRun(sql, parsed.data.jobId), {
+          maxRetryAttempts: MERGE_MAX_RETRIES,
+        });
       },
     },
     options: {

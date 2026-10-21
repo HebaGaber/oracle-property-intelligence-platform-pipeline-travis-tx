@@ -138,14 +138,14 @@ describe("T027 backbone pilot verb", () => {
       print: (l) => printed.push(l),
     });
     const r = await command.run(ctx, { seed, pollMs: 0 });
-    expect(r).toEqual({ jobId: "travis-a04-pilot-202610220506", exitCode: 0 });
+    expect(r).toEqual({ jobId: "travis-a04-pilot-20261022050600", exitCode: 0 });
     expect(sent[0]).toMatchObject({
-      jobId: "travis-a04-pilot-202610220506",
+      jobId: "travis-a04-pilot-20261022050600",
       mode: "pilot",
       seedPids: out.rows.map((x) => x.pID),
     });
     expect(printed.at(-1)).toBe(
-      "validate: ~/.local/share/elephant-cli-main/node_modules/.bin/elephant-cli validate pipeline/data/runs/travis-a04-pilot-202610220506/groups/county",
+      "validate: ~/.local/share/elephant-cli-main/node_modules/.bin/elephant-cli validate pipeline/data/runs/travis-a04-pilot-20261022050600/groups/county",
     );
     expect(command.args.safeParse({ select: true, seed: "x" }).success).toBe(false);
   });

@@ -16,7 +16,7 @@ import { readFileSync } from "node:fs";
 import type postgres from "postgres";
 import { z } from "zod";
 import { readChunkFile } from "../../../oracle-runtime/travis/tcad/process.js";
-import { LoaderInputBase, type LoaderTrack, type MergeOutcome } from "../loader.js";
+import { LoaderInputBase, MergeDataError, type LoaderTrack, type MergeOutcome } from "../loader.js";
 
 export const WATERMARK_SOURCE_KEY = "tcad-certified";
 
@@ -32,6 +32,7 @@ const PARCEL_TYPES = {
   property_type_missing_reason: "text",
   property_type_rule: "text",
   property_type_note: "text",
+  property_type_rules_version: "text",
   situs_address: "jsonb",
   owner_name: "text",
   owner_kind: "text",
@@ -187,7 +188,7 @@ async function mergeChunk(tx: postgres.TransactionSql, input: TcadTrackInput): P
   const bytes = readFileSync(input.artifactPath);
   const sha = createHash("sha256").update(bytes).digest("hex");
   if (sha !== input.artifactSha256) {
-    throw new Error(`tcad track: chunk sha256 ${sha} is not the input artifactSha256`);
+    throw new MergeDataError(`tcad track: chunk sha256 ${sha} is not the input artifactSha256`);
   }
   const chunk = readChunkFile(input.artifactPath);
   const written = new Set<string>();

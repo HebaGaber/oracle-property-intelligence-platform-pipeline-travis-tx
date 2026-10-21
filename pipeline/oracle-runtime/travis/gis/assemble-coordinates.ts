@@ -4,8 +4,8 @@
 // this, and writes the result (pipeline/local-stack/services/tracks/gis.ts). No address is ever turned into a point.
 //
 // Rank (first that applies):
-//   1. GIS feature joined by exact-string pID (geoID when the layer has no pID values; then
-//      only when one R account holds that geoID). Split parcels: largest area, tie lowest
+//   1. GIS feature joined by exact-string pID (PROP_ID = pID). Only a feature WITHOUT a PROP_ID
+//      value falls back to its geoID, and then only when one R account holds that geoID. Split parcels: largest area, tie lowest
 //      OBJECTID (`largest_area`); otherwise the feature's `centroid` / `interior_point` /
 //      `centroid_outside_polygon`. Public `gis_centroid`; provenance = the GIS page.
 //   2. TCAD export point, only `export_point_kind = real` (`export_point`; public
@@ -117,6 +117,17 @@ export interface AssemblyStats {
   permit_far_from_gis: number;
   interior_point: number;
   join_key: "pid" | "geoid";
+  /** DP-5: how the layer's features met the roll (exact PROP_ID = pID first, geo_id only without PROP_ID). */
+  join_proof: JoinProof;
+}
+
+export interface JoinProof {
+  features: number;
+  pid_matched: number;
+  pid_not_r_account: number;
+  pid_unmatched: number;
+  geoid_fallback_matched: number;
+  geoid_fallback_unmatched: number;
 }
 
 export interface AssemblyOutput {
@@ -247,7 +258,19 @@ export function assembleCoordinates(input: AssemblyInput): AssemblyOutput {
     permit_far_from_gis: 0,
     interior_point: 0,
     join_key: joinKey,
+    join_proof: {
+      features: input.features.length,
+      pid_matched: 0,
+      pid_not_r_account: 0,
+      pid_unmatched: 0,
+      geoid_fallback_matched: 0,
+      geoid_fallback_unmatched: 0,
+    },
   };
+  const byGeoidNoPid = group(
+    input.features.filter((f) => f.pid_value === null),
+    (f) => f.geoid_value,
+  );
   const condoBuildings = new Set<string>();
   const rows: CoordinateRow[] = [];
   const permitFlags: PermitFlag[] = [];
@@ -256,12 +279,10 @@ export function assembleCoordinates(input: AssemblyInput): AssemblyOutput {
     const rid = p.request_identifier;
     const permits = permitsById.get(rid) ?? [];
     const sharers = p.geo_id === null ? [] : (rAccountsByGeoid.get(p.geo_id) ?? []);
-    const own: FeatureIn[] =
-      joinKey === "pid"
-        ? (byPid.get(rid) ?? [])
-        : p.geo_id !== null && sharers.length <= 1
-          ? (byGeoid.get(p.geo_id) ?? [])
-          : [];
+    const own: FeatureIn[] = [
+      ...(byPid.get(rid) ?? []),
+      ...(p.geo_id !== null && sharers.length <= 1 ? (byGeoidNoPid.get(p.geo_id) ?? []) : []),
+    ];
 
     let point: Point | null = null;
     let rule: CoordinateRule | null = null;
@@ -371,10 +392,23 @@ export function assembleCoordinates(input: AssemblyInput): AssemblyOutput {
   stats.condo_building_point.buildings = condoBuildings.size;
   // GIS is compared with the roll, never the population (TC-032): features with no roll account
   // are counted, never loaded as properties.
-  const onRoll = (f: FeatureIn): boolean =>
-    joinKey === "pid"
-      ? f.pid_value !== null && parcelsById.has(f.pid_value)
-      : f.geoid_value !== null && rAccountsByGeoid.has(f.geoid_value);
-  stats.gis_features_without_roll_account = input.features.filter((f) => !onRoll(f)).length;
+  const proof = stats.join_proof;
+  let withoutRoll = 0;
+  for (const f of input.features) {
+    if (f.pid_value !== null) {
+      const acct = parcelsById.get(f.pid_value);
+      if (acct === undefined) {
+        proof.pid_unmatched += 1;
+        withoutRoll += 1;
+      } else if (acct.prop_type !== "R") proof.pid_not_r_account += 1;
+      else proof.pid_matched += 1;
+    } else if (f.geoid_value !== null && (rAccountsByGeoid.get(f.geoid_value)?.length ?? 0) === 1) {
+      proof.geoid_fallback_matched += 1;
+    } else {
+      proof.geoid_fallback_unmatched += 1;
+      if (f.geoid_value === null || !rAccountsByGeoid.has(f.geoid_value)) withoutRoll += 1;
+    }
+  }
+  stats.gis_features_without_roll_account = withoutRoll;
   return { rows, permitFlags, stats };
 }

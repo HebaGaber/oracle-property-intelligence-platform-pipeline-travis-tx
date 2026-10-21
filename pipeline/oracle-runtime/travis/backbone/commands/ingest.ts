@@ -43,6 +43,7 @@ const Status = z.looseObject({
   reason: z.string().nullable().optional(),
   loaded: z.number().int().optional(),
   records: z.number().int().optional(),
+  clean: z.boolean().optional(),
 });
 
 export const EXIT_FOR_STATUS: Readonly<Record<string, ExitCode>> = {
@@ -64,6 +65,12 @@ export async function waitForRun(
       ctx.print(
         `tcad: status=${s.status}${s.records === undefined ? "" : ` records=${s.records}`}${s.loaded === undefined ? "" : ` loaded=${s.loaded}`}${s.reason ? ` reason=${s.reason}` : ""}`,
       );
+      if (s.status === "complete" && s.clean === false) {
+        // The status list has no "complete with differences": the run is complete, the roll is
+        // not clean (limitation roll_difference_unexplained), so the CLI exits 1 (OR-m6).
+        ctx.print("tcad: roll_difference_unexplained (see the report limitations)");
+        return 1;
+      }
       return EXIT_FOR_STATUS[s.status] ?? 1;
     }
     if (pollMs > 0) await new Promise((r) => setTimeout(r, pollMs));

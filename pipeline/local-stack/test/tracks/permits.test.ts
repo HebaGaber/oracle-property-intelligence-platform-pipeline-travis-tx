@@ -201,6 +201,7 @@ describe("Loader track `permits` (T053)", () => {
       receiptsPath: null,
     };
     const answer = (text: string): unknown[] => {
+      if (text.startsWith("SELECT count(*)")) return [{ n: 1000 }];
       if (text.startsWith("SELECT p.row_id")) {
         return [
           { row_id: "r2", permit_number: "B", permit_seen: false },
@@ -268,6 +269,7 @@ describe("Loader track `permits` (T053)", () => {
     ];
     let served = false;
     const { tx, queries } = fakeTx((text) => {
+      if (text.startsWith("SELECT job_id, status, mode FROM backbone_runs")) return [{ job_id: "travis-a04-tcad-full-1", status: "complete", mode: "full" }];
       if (text.startsWith("SELECT request_identifier, geo_id, prop_type, situs_address FROM parcels")) return parcels;
       if (text.startsWith("SELECT g.geo_id")) return [];
       if (text.startsWith("SELECT pi.permit_number, psr.payload")) {

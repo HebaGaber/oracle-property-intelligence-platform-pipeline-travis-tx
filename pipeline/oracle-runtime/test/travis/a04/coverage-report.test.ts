@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RestateIngressClient } from "../../../travis/backbone/restate-client.js";
 import {
+  PUBLIC_COUNTS_SQL,
   PUBLIC_COVERAGE_SQL,
   QDB_COVERAGE_SQL,
   coverageLine,
@@ -27,13 +28,13 @@ const tmp = (): string => {
   return d;
 };
 
-const report = (coverage_r: number, permit_point: number) => ({
+const report = (coverage_r: number, permit_point: number, denominator_r = 441961) => ({
   job_id: "travis-a04-202610220100",
   as_of: "2026-10-22",
   code_sha: null,
   coordinates: {
     coverage_r,
-    denominator_r: 441961,
+    denominator_r,
     by_source: { gis_centroid: 1, permit_point, none: 1 },
   },
   limitations: [],
@@ -63,14 +64,61 @@ describe("A-04 T045 coverage both ways (coverage-report.ts)", () => {
       tablesDir: "/x/pipeline/data/runs/travis-a04-202610220100/tables",
       jobId: null,
       ingress: ingressFor(report(0.99497, 1680), calls),
-      publicCoverage: async () => 0.99117,
+      publicCoverage: async () => ({ share: 0.99117, rows: 441961, distinct: 441961 }),
     });
+    expect(out.ok).toBe(true);
+    expect(out.lines).toContain(
+      "v_property rows=441961 distinct_property_cid=441961 qdb_r_accounts=441961 explained_difference=0",
+    );
     expect(out.line).toBe("coverage_public=0.9912 coverage_qdb=0.9950 permit_point=1680");
     expect(out.jobId).toBe("travis-a04-202610220100");
     expect(calls).toEqual([
       { service: "BackboneReport", handler: "get", req: { jobId: "travis-a04-202610220100" } },
     ]);
     expect(coverageLine(1, 0, 0)).toBe("coverage_public=1.0000 coverage_qdb=0.0000 permit_point=0");
+  });
+
+  const run = (
+    stats: { share: number; rows: number; distinct: number },
+    over: { qdb?: number; explainedDifference?: number; q?: number; n?: number } = {},
+  ) =>
+    runCoverage({
+      tablesDir: "/x/pipeline/data/runs/travis-a04-202610220100/tables",
+      jobId: null,
+      ingress: ingressFor(report(over.q ?? 0.99497, over.n ?? 1680, over.qdb ?? 441961)),
+      publicCoverage: async () => stats,
+      explainedDifference: over.explainedDifference,
+    });
+
+  it("DP-3 fails when v_property has duplicate property_cid (count(*) != count(DISTINCT property_cid))", async () => {
+    const out = await run({ share: 0.99117, rows: 441962, distinct: 441961 });
+    expect(out.ok).toBe(false);
+    expect(out.failures.join("\n")).toMatch(/duplicate property_cid/);
+  });
+
+  it("DP-3 fails when the public count differs from the Query DB R-account count, unless the difference is the explained one", async () => {
+    const short = { share: 0.99117, rows: 441900, distinct: 441900 };
+    const bad = await run(short);
+    expect(bad.ok).toBe(false);
+    expect(bad.failures.join("\n")).toMatch(/441900.*441961/);
+    const explained = await run(short, { explainedDifference: -61 });
+    expect(explained.ok).toBe(true);
+    const wrongExplanation = await run(short, { explainedDifference: -60 });
+    expect(wrongExplanation.ok).toBe(false);
+  });
+
+  it("DP-3 compares the two shares (public = Query DB minus permit_point accounts) within an absolute tolerance of 0.0005", async () => {
+    // expected public share = 0.99497 - 1680/441961 = 0.99117
+    expect((await run({ share: 0.9915, rows: 441961, distinct: 441961 })).ok).toBe(true);
+    const off = await run({ share: 0.9925, rows: 441961, distinct: 441961 });
+    expect(off.ok).toBe(false);
+    expect(off.failures.join("\n")).toMatch(/share.*0\.0005/);
+  });
+
+  it("the public counts SQL is count(*) and count(DISTINCT property_cid) over v_property", () => {
+    expect(PUBLIC_COUNTS_SQL).toBe(
+      "SELECT count(*)::BIGINT AS n, count(DISTINCT property_cid)::BIGINT AS d FROM v_property",
+    );
   });
 
   it("the job comes from --job or from the tables path; otherwise it is refused", () => {
@@ -135,9 +183,11 @@ describe("A-04 T045 coverage both ways (coverage-report.ts)", () => {
       const out = await runCoverage({
         tablesDir: tables,
         jobId: null,
-        ingress: ingressFor(report(0.5, 0)),
+        ingress: ingressFor(report(0.5, 0, 2)),
         dbPath: join(root, "coverage.duckdb"),
       });
+      expect(out.ok).toBe(true);
+      expect(out.publicCounts).toEqual({ rows: 2, distinct: 2 });
       expect(out.line).toBe("coverage_public=0.5000 coverage_qdb=0.5000 permit_point=0");
     },
   );

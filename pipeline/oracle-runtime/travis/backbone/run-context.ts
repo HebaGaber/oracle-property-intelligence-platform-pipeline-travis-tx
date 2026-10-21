@@ -4,7 +4,7 @@ import { checkDiskSpace, MIN_FREE_BYTES } from "./disk-guard.js";
 import type { RestateIngressClient } from "./restate-client.js";
 
 export interface RunContext {
-  /** Default job id of this invocation, `travis-a04-<yyyymmddhhmm>`; verbs may mint their own with jobIdFor. */
+  /** Default job id of this invocation, `travis-a04-<yyyymmddhhmmss>`; verbs may mint their own with jobIdFor. */
   jobId: string;
   /** The run's as-of ISO date, fixed once per run; never now() inside a derivation. */
   asOf: () => string;
@@ -15,11 +15,11 @@ export interface RunContext {
   sourceClient(): SourceClient;
   /** One stdout line: counts and paths only (the CLI scrubs secrets on the way out). */
   print(line: string): void;
-  /** Mints `travis-a04-[kind-]<yyyymmddhhmm>` from this run's clock. */
+  /** Mints `travis-a04-[kind-]<yyyymmddhhmmss>` from this run's clock. */
   jobIdFor(kind: string | null): string;
 }
 
-const stamp = (d: Date): string => d.toISOString().replace(/[-:T]/g, "").slice(0, 12);
+const stamp = (d: Date): string => d.toISOString().replace(/[-:T]/g, "").slice(0, 14);
 
 export function jobIdFor(kind: string | null, at: Date): string {
   const id = `travis-a04-${kind === null ? "" : `${kind}-`}${stamp(at)}`;

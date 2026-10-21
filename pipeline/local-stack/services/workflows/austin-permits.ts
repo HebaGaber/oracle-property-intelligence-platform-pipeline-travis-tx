@@ -51,7 +51,8 @@ export function createService(restate: typeof Restate) {
         const io: PermitsIO = {
           now: async () => new Date(await ctx.date.now()),
           sleep: (ms) => ctx.sleep(ms),
-          run: (name, fn) => ctx.run(name, fn, { maxRetryAttempts: 3 }),
+          // the page loop owns its 5 attempts; a Restate retry on top would re-request an ~88 MB page
+          run: (name, fn) => ctx.run(name, fn, { maxRetryAttempts: 1 }),
           merge: async (_name, mergeInput) => loader.merge({ track: "permits", input: mergeInput }),
           fail: (message) => new restate.TerminalError(message),
         };

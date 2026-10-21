@@ -16,6 +16,7 @@ const MIGRATION = readFileSync(new URL("../../migrations/0101_tcad.sql", import.
 const norm = MIGRATION.replace(/\s+/g, " ");
 const MIGRATION_0102 = readFileSync(new URL("../../migrations/0102_tcad_type_rule.sql", import.meta.url), "utf8");
 const norm0102 = MIGRATION_0102.replace(/\s+/g, " ");
+const norm0103 = readFileSync(new URL("../../migrations/0103_parcel_type_rules_version.sql", import.meta.url), "utf8").replace(/\s+/g, " ");
 const JOB = "travis-a04-pilot-202610220100";
 const EXPORT = "6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346";
 
@@ -23,7 +24,7 @@ function parcel(id: string, sha = "b".repeat(64), over: Record<string, unknown> 
   return {
     request_identifier: id, job_id: JOB, geo_id: `0${id}`, prop_type: "R", state_cd: "A1",
     property_type: "SingleFamily", property_usage_type: "Residential", property_type_missing_reason: null,
-    property_type_rule: "state_code_table", property_type_note: null,
+    property_type_rule: "state_code_table", property_type_note: null, property_type_rules_version: "property_type_rules@2026-10-22",
     situs_address: { text: "1 SYNTHETIC ST, AUSTIN, TX 78701" }, owner_name: "SYNTHETIC OWNER LLC",
     owner_kind: "company", owner_missing_reason: null, owner_redacted: false, owner_redaction_rule: null,
     owner_mailing_postal_code: "78701", owner_mailing_country: null, owner_area_class: "in_county",
@@ -104,7 +105,7 @@ describe("T025 0101_tcad.sql", () => {
   });
 
   it("parcels holds every data-model column", () => {
-    for (const c of PARCEL_COLUMNS) expect(`${norm} ${norm0102}`).toMatch(new RegExp(`\\b${c} [a-z]`));
+    for (const c of PARCEL_COLUMNS) expect(`${norm} ${norm0102} ${norm0103}`).toMatch(new RegExp(`\\b${c} [a-z]`));
   });
 
   it("closed lists and the redaction rule are CHECK constraints", () => {

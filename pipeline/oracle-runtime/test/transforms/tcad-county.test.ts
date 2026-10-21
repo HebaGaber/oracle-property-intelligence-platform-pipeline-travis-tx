@@ -187,7 +187,7 @@ describe("transformTcadCounty: provenance and links", () => {
     const record = parseTcadRecord(tcadRecord({ pID: 100010, geoID: "0100030105" }));
     record.propertyProfile = [{ stateCd: "E1", imprvActualYearBuilt: 0 }];
     expect(propertyFields(record)).toMatchObject({
-      property_type: "VacantLand", // the fixture prints no improvement
+      property_type: "LandParcel", // the fixture prints no improvement
       property_type_rule: "improvement_fallback",
       warnings: ["unmapped_state_code:E1"],
     });
