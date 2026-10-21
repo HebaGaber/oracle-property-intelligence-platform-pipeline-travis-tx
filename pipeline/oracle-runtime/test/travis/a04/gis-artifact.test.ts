@@ -46,9 +46,10 @@ describe("A-04-TC-020 workflow: .github/workflows/a04-gis-capture.yml (D-2, cont
     expect(workflowText()).not.toMatch(/secrets\./);
     expect(wf().concurrency).toEqual({ group: "gis-pages", "cancel-in-progress": false });
     const jobs = Object.values(wf().jobs);
-    expect(jobs).toHaveLength(1);
-    expect(jobs[0]?.["runs-on"]).toBe("ubuntu-latest");
-    expect(jobs[0]?.["timeout-minutes"]).toBe(90);
+    expect(jobs).toHaveLength(2); // gate + capture
+    const capture = wf().jobs.capture;
+    expect(capture?.["runs-on"]).toBe("ubuntu-latest");
+    expect(capture?.["timeout-minutes"]).toBe(90);
   });
 
   it("A-04-TC-020 workflow is fetch-only: no Query DB, no DATABASE_URL, no publish or IPFS upload step", () => {
@@ -86,11 +87,36 @@ describe("A-04-TC-020 workflow: .github/workflows/a04-gis-capture.yml (D-2, cont
     expect(upload[0]?.with?.["retention-days"]).toBe(7);
   });
 
-  it("A-04 runner-config.json carries attempt 2 (path-filter bump) and stays in pilot mode", () => {
-    const cfg = JSON.parse(readFileSync(new URL(CONFIG_PATH, REPO), "utf8"));
-    expect(cfg.attempt).toBe(2);
-    expect(cfg.mode).toBe("pilot");
+  it("A-04 runner-config.json safety rule: attempt >= 1, mode pilot|full, full mode requests only OBJECTID/PROP_ID/geo_id", () => {
+    const cfg = JSON.parse(readFileSync(new URL(CONFIG_PATH, REPO), "utf8")) as Record<string, unknown>;
+    expect(Number.isInteger(cfg.attempt) && (cfg.attempt as number) >= 1).toBe(true);
+    expect(["pilot", "full"]).toContain(cfg.mode);
     expect(RunnerConfig.safeParse({ ...cfg, attempt: 0 }).success).toBe(false);
+    const outFields = cfg.outFields as string[];
+    if (cfg.mode === "full") {
+      for (const f of outFields) expect(["OBJECTID", "PROP_ID", "geo_id"]).toContain(f);
+      for (const k of ["pidField", "geoidField"]) {
+        if (cfg[k] !== null) expect(outFields).toContain(cfg[k]);
+      }
+    }
+    for (const f of outFields) expect(f).not.toMatch(PRIVATE_FIELD);
+    // OR-m12: `enabled` defaults to true; both values are allowed
+    expect(cfg.enabled === undefined || typeof cfg.enabled === "boolean").toBe(true);
+    expect(RunnerConfig.parse({ ...cfg, enabled: undefined }).enabled).toBe(true);
+    expect(RunnerConfig.parse({ ...cfg, enabled: false }).enabled).toBe(false);
+  });
+
+  it("OR-m12 a first `gate` job reads runner-config.json `enabled`; the capture job needs it and runs only when enabled", () => {
+    const w = wf();
+    const gate = w.jobs.gate as unknown as { steps: Step[]; outputs?: Record<string, string> };
+    expect(gate).toBeDefined();
+    expect(gate.outputs?.enabled).toMatch(/steps\.\w+\.outputs\.enabled/);
+    expect(gate.steps.map((s) => s.run ?? "").join("\n")).toMatch(/runner-config\.json/);
+    const cap = w.jobs.capture as unknown as { needs?: string; if?: string };
+    expect(cap.needs).toBe("gate");
+    expect(String(cap.if)).toMatch(/needs\.gate\.outputs\.enabled\s*==\s*'true'/);
+    // the gate has no secrets, no fetch of the source host
+    expect(JSON.stringify(gate)).not.toMatch(/gis\.traviscountytx|secrets\./);
   });
 
   it("A-04-TC-020 workflow runner-config.json parses, names a mode, and its outFields hold no owner or address field", () => {

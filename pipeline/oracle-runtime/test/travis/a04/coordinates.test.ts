@@ -479,3 +479,58 @@ describe("A-04 T044 coordinate assembly (assemble-coordinates.ts)", () => {
     }
   });
 });
+
+describe("DP-5 join key: exact-string PROP_ID = pID first, geo_id only for features without PROP_ID", () => {
+  it("reports the join proof: matched / pid_not_r_account / unmatched / geoid fallback", () => {
+    const out = assembleCoordinates(
+      input({
+        parcels: [
+          parcel("1", { geo_id: "G1" }),
+          parcel("2", { geo_id: "G2" }),
+          parcel("3", { geo_id: "G3", prop_type: "P" }),
+        ],
+        features: [
+          feature(1, { pid_value: "1", geoid_value: "G1" }), // matched by pID
+          feature(2, { pid_value: "3", geoid_value: "G3" }), // pID is a non-R account
+          feature(3, { pid_value: "999", geoid_value: "G2" }), // pID not on the roll: NOT rescued by geoID
+          feature(4, { pid_value: null, geoid_value: "G2", point_lat: 30.31 }), // no PROP_ID: geoID fallback
+          feature(5, { pid_value: null, geoid_value: "GX" }), // no PROP_ID, no account
+        ],
+      }),
+    );
+    expect(out.stats.join_proof).toEqual({
+      features: 5,
+      pid_matched: 1,
+      pid_not_r_account: 1,
+      pid_unmatched: 1,
+      geoid_fallback_matched: 1,
+      geoid_fallback_unmatched: 1,
+    });
+    // account 2 got its point from the PROP_ID-less feature only, never from feature 3
+    expect(rowOf(out, "2")).toMatchObject({ latitude: 30.31, coordinate_rule: "centroid" });
+    expect(rowOf(out, "1").coordinate_source).toBe("gis_centroid");
+  });
+
+  it("a feature that has a PROP_ID never falls back to its geo_id", () => {
+    const out = assembleCoordinates(
+      input({
+        parcels: [parcel("2", { geo_id: "G2" })],
+        features: [feature(3, { pid_value: "999", geoid_value: "G2" })],
+      }),
+    );
+    expect(rowOf(out, "2")).toMatchObject({ coordinate_source: "none", coordinate_reason: "no_gis_feature" });
+  });
+
+  it("every imported feature keeps its page provenance: layer query URL, captured_at, page sha256", () => {
+    const out = assembleCoordinates(
+      input({
+        parcels: [parcel("1")],
+        features: [feature(1, { pid_value: "1" })],
+      }),
+    );
+    expect(rowOf(out, "1").coordinate_source_url).toMatch(/\/MapServer\/6\/query\?/);
+    expect(rowOf(out, "1").coordinate_source_url).not.toMatch(/objectIds=\d{3,}/);
+    expect(rowOf(out, "1").coordinate_captured_at).toBe("2026-10-22T03:00:00Z");
+    expect(rowOf(out, "1").coordinate_sha256).toBe(SHA("a"));
+  });
+});

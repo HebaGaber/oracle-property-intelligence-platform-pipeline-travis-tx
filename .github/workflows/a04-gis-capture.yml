@@ -6,7 +6,9 @@
 # Push-triggered on the story branch when this file or runner-config.json changes (a manual
 # dispatch input would need the file on main). The mode is the `mode` field of
 # runner-config.json: push 1 "pilot" (metadata, count, ids, one page), push 2 "full". The lead
-# sets the job's `if: false` after the full run. The artifact is downloaded with
+# sets `"enabled": false` in runner-config.json after the full run: the `gate` job reads it and
+# the capture job runs only while it is true (default true), so a later touch of the workflow or
+# the config cannot repeat a finished full capture. The artifact is downloaded with
 # `gh run download <id> -D pipeline/data/raw/gis/us-runner-<id>` and imported offline.
 name: a04-gis-capture
 
@@ -25,7 +27,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.cfg.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read runner-config.json enabled flag (default true)
+        id: cfg
+        run: |
+          enabled=$(jq -r 'if .enabled == false then "false" else "true" end' pipeline/oracle-runtime/travis/gis/runner-config.json)
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+
   capture:
+    needs: gate
+    if: ${{ needs.gate.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     defaults:

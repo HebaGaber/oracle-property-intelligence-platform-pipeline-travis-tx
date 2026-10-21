@@ -63,6 +63,8 @@ export const RunnerConfig = z
     userAgent: z.literal(USER_AGENT),
     /** Bumped to retrigger the workflow's path filter; never changes behaviour. */
     attempt: z.number().int().min(1).default(1),
+    /** Read by the workflow's gate job: false after the finished full run (no repeat capture). */
+    enabled: z.boolean().default(true),
   })
   .strict()
   .superRefine((c, ctx) => {
