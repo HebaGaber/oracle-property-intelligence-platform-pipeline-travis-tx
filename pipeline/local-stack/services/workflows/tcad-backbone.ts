@@ -29,7 +29,7 @@ import {
   type Resolution,
   type TrackOp,
 } from "../../../oracle-runtime/travis/tcad/workflow.js";
-import { LOADER_KEY, lazyQueryDb, type createLoader } from "../loader.js";
+import { LOADER_KEY, failRunOnTerminal, lazyQueryDb, type createLoader } from "../loader.js";
 import { TCAD_CHUNK, type createService as createChunk } from "./tcad-chunk.js";
 
 type LoaderDefinition = ReturnType<typeof createLoader>;
@@ -159,45 +159,48 @@ export function createService(restate: typeof Restate) {
           throw new restate.TerminalError("TcadBackbone.run: {jobId = key, mode, asOf, seedPids?} required");
         }
         const req = parsed.data;
-        const src = await ctx.run("export-source", async () => exportSource());
-        const cids = req.mode === "pilot" ? await ctx.run("lexicon", async () => (await fetchDataGroupCids()).cids) : undefined;
-        const loader = ctx.objectClient<LoaderDefinition>({ name: "Loader" } as LoaderDefinition, LOADER_KEY);
-        const chunks = ctx.serviceClient<ChunkDefinition>({ name: TCAD_CHUNK } as ChunkDefinition);
-        ctx.set<RunStatus>("status", { status: "running" });
-        const deps: BackboneDeps = {
-          step: (name, fn) => ctx.run(name, fn) as never,
-          merge: async (op: TrackOp) => {
-            if (op.kind === "run") ctx.set<RunStatus>("status", { status: op.status });
-            const out = await loader.merge({ track: "tcad", input: loaderInput(req.jobId, op) });
-            return { rowsWritten: out.rowsWritten };
-          },
-          verify: (path, sha) => verifyExport(path, sha),
-          waitForHuman: async (name, why) => {
-            ctx.set<RunStatus>("status", { status: "waiting_human", reason: why });
-            ctx.set("waiting_on", name);
-            return ctx.promise<Resolution>(name).get();
-          },
-          download: (request) => sourceClient().download(request),
-          runChunk: (spec) => chunks.run(spec),
-          listInputs: () => readdirSync(dirname(src.exportPath)).map((n) => join(dirname(src.exportPath), n)),
-          records: (path) => streamExportRecords(path),
-          now: () => new Date(),
-        };
-        const result = await runTcadBackbone(
-          {
-            jobId: req.jobId,
-            mode: req.mode,
-            asOf: req.asOf,
-            exportPath: src.exportPath,
-            receipt: src.receipt,
-            runDir: runDirFor(req.jobId),
-            ...(req.seedPids ? { seedPids: req.seedPids } : {}),
-            ...(cids ? { cids } : {}),
-          },
-          deps,
-        );
-        ctx.set<RunStatus>("status", { status: result.status, records: result.summary.records, loaded: result.summary.loaded });
-        return result;
+        // a terminal failure closes the run row (it would otherwise stay `running`, FR-025)
+        return failRunOnTerminal(restate, ctx, req.jobId, async () => {
+          const src = await ctx.run("export-source", async () => exportSource());
+          const cids = req.mode === "pilot" ? await ctx.run("lexicon", async () => (await fetchDataGroupCids()).cids) : undefined;
+          const loader = ctx.objectClient<LoaderDefinition>({ name: "Loader" } as LoaderDefinition, LOADER_KEY);
+          const chunks = ctx.serviceClient<ChunkDefinition>({ name: TCAD_CHUNK } as ChunkDefinition);
+          ctx.set<RunStatus>("status", { status: "running" });
+          const deps: BackboneDeps = {
+            step: (name, fn) => ctx.run(name, fn) as never,
+            merge: async (op: TrackOp) => {
+              if (op.kind === "run") ctx.set<RunStatus>("status", { status: op.status });
+              const out = await loader.merge({ track: "tcad", input: loaderInput(req.jobId, op) });
+              return { rowsWritten: out.rowsWritten };
+            },
+            verify: (path, sha) => verifyExport(path, sha),
+            waitForHuman: async (name, why) => {
+              ctx.set<RunStatus>("status", { status: "waiting_human", reason: why });
+              ctx.set("waiting_on", name);
+              return ctx.promise<Resolution>(name).get();
+            },
+            download: (request) => sourceClient().download(request),
+            runChunk: (spec) => chunks.run(spec),
+            listInputs: () => readdirSync(dirname(src.exportPath)).map((n) => join(dirname(src.exportPath), n)),
+            records: (path) => streamExportRecords(path),
+            now: () => new Date(),
+          };
+          const result = await runTcadBackbone(
+            {
+              jobId: req.jobId,
+              mode: req.mode,
+              asOf: req.asOf,
+              exportPath: src.exportPath,
+              receipt: src.receipt,
+              runDir: runDirFor(req.jobId),
+              ...(req.seedPids ? { seedPids: req.seedPids } : {}),
+              ...(cids ? { cids } : {}),
+            },
+            deps,
+          );
+          ctx.set<RunStatus>("status", { status: result.status, records: result.summary.records, loaded: result.summary.loaded });
+          return result;
+        });
       },
       status: async (ctx: Restate.WorkflowSharedContext): Promise<RunStatus> =>
         (await ctx.get<RunStatus>("status")) ?? { status: "running" },

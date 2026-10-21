@@ -13,5 +13,10 @@ export function createService(restate: typeof Restate) {
       ctx
         .objectClient<LoaderDefinition>({ name: "Loader" } as LoaderDefinition, LOADER_KEY)
         .merge({ track: "gis", input }),
+    // a terminal failure closes the run row so it cannot hold the FR-025 unique index
+    onTerminalFailure: (ctx, jobId) =>
+      ctx
+        .objectClient<LoaderDefinition>({ name: "Loader" } as LoaderDefinition, LOADER_KEY)
+        .failRun({ jobId }),
   });
 }

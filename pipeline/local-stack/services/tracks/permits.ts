@@ -300,7 +300,7 @@ async function mergeLink(tx: Tx, input: Extract<Input, { kind: "link" }>): Promi
       ORDER BY pi.permit_number
       LIMIT ${LINK_BATCH}`;
     if (batch.length === 0) break;
-    const cols: (string | null)[][] = Array.from({ length: 12 }, () => []);
+    const cols: (string | null)[][] = Array.from({ length: 16 }, () => []);
     for (const b of batch) {
       const payload = b.payload ?? {};
       const link = linkPermit(index, permitAddress(payload));
@@ -319,21 +319,29 @@ async function mergeLink(tx: Tx, input: Extract<Input, { kind: "link" }>): Promi
         cls.profileSha256,
         days.openDays === null ? null : String(days.openDays),
         days.reason,
+        cls.permit.roofing,
+        cls.permit.reason,
+        cls.permit.improvement_type,
+        cls.permit.improvement_action,
       ];
       values.forEach((v, i) => cols[i]?.push(v));
     }
-    const [numbers, reqIds, methods, rules, confidence, reasons, inTravis, includeTerm, statusClass, profileSha, days, daysReason] = cols;
+    const [numbers, reqIds, methods, rules, confidence, reasons, inTravis, includeTerm, statusClass, profileSha, days, daysReason, verdict, verdictReason, impType, impAction] = cols;
     const out = await tx<{ permit_number: string }[]>`
       UPDATE property_improvements AS pi SET
         request_identifier = u.request_identifier, link_method = u.link_method, link_rule = u.link_rule,
         link_confidence = u.link_confidence::numeric, unmatched_reason = u.unmatched_reason,
         in_travis = u.in_travis::boolean, reroof_match = u.include_term::boolean, status_class = u.status_class,
-        profile_sha256 = u.profile_sha256, open_days = u.open_days::int, open_days_reason = u.open_days_reason
+        profile_sha256 = u.profile_sha256, open_days = u.open_days::int, open_days_reason = u.open_days_reason,
+        roofing_verdict = u.roofing_verdict, roofing_reason = u.roofing_reason,
+        improvement_type = u.improvement_type, improvement_action = u.improvement_action
       FROM unnest(${numbers ?? []}::text[], ${reqIds ?? []}::text[], ${methods ?? []}::text[], ${rules ?? []}::text[],
                   ${confidence ?? []}::text[], ${reasons ?? []}::text[], ${inTravis ?? []}::text[], ${includeTerm ?? []}::text[],
-                  ${statusClass ?? []}::text[], ${profileSha ?? []}::text[], ${days ?? []}::text[], ${daysReason ?? []}::text[])
+                  ${statusClass ?? []}::text[], ${profileSha ?? []}::text[], ${days ?? []}::text[], ${daysReason ?? []}::text[],
+                  ${verdict ?? []}::text[], ${verdictReason ?? []}::text[], ${impType ?? []}::text[], ${impAction ?? []}::text[])
            AS u(permit_number, request_identifier, link_method, link_rule, link_confidence, unmatched_reason, in_travis,
-                include_term, status_class, profile_sha256, open_days, open_days_reason)
+                include_term, status_class, profile_sha256, open_days, open_days_reason, roofing_verdict, roofing_reason,
+                improvement_type, improvement_action)
       WHERE pi.permit_number = u.permit_number AND pi.issuing_jurisdiction = 'austin'
       RETURNING pi.permit_number`;
     written += out.length;

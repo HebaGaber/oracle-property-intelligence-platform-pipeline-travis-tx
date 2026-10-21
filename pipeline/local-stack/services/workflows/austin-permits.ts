@@ -15,13 +15,14 @@ import { jurisdictionLimitations } from "../../../oracle-runtime/travis/permits/
 import { AustinWatermark, PERMITS_SOURCE_KEY } from "../../../oracle-runtime/travis/permits/merge-input.js";
 import {
   DEFAULT_ARTIFACTS_ROOT,
+  PermitsRunInput,
   WORKFLOW_NAME,
   runAustinPermits,
   type PermitsDeps,
   type PermitsIO,
   type PermitsRunResult,
 } from "../../../oracle-runtime/travis/permits/workflow.js";
-import { LOADER_KEY, lazyQueryDb, type createLoader } from "../loader.js";
+import { LOADER_KEY, failRunOnTerminal, lazyQueryDb, type createLoader } from "../loader.js";
 
 type LoaderDefinition = ReturnType<typeof createLoader>;
 
@@ -53,8 +54,12 @@ export function createService(restate: typeof Restate) {
           merge: async (_name, mergeInput) => loader.merge({ track: "permits", input: mergeInput }),
           fail: (message) => new restate.TerminalError(message),
         };
+        const id = PermitsRunInput.safeParse(input);
         try {
-          return await runAustinPermits(io, input, deps);
+          // a terminal failure (a source error, a refused page order) closes the run row
+          return await failRunOnTerminal(restate, ctx, id.success ? id.data.jobId : null, () =>
+            runAustinPermits(io, input, deps),
+          );
         } catch (error) {
           if (error instanceof Error && error.name === "ZodError") {
             throw new restate.TerminalError(`AustinPermits.run: invalid input: ${error.message}`);

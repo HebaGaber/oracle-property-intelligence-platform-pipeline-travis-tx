@@ -143,6 +143,46 @@ export interface LoaderDeps {
   sql: () => postgres.Sql;
 }
 
+/**
+ * Marks a still-`running` run `failed` with finished_at. waiting_human, blocked, complete and
+ * failed rows are left alone, so a human wait or a refused source keeps its status.
+ */
+export async function failRun(sql: postgres.Sql, jobId: string): Promise<{ failed: boolean }> {
+  const rows = await sql<Array<{ job_id: string }>>`
+    UPDATE backbone_runs SET status = 'failed', finished_at = now()
+    WHERE job_id = ${jobId} AND status = 'running'
+    RETURNING job_id`;
+  return { failed: rows.length > 0 };
+}
+
+const FailRunRequest = z.object({ jobId: z.string().regex(/^travis-a04-[a-z0-9-]+$/) });
+
+/**
+ * Runs a workflow body; when it ends in a terminal failure (a TerminalError, which Restate does
+ * not retry) the run row is closed as failed through the Loader (the single writer) and the
+ * error is rethrown unchanged. A transient error is retried by Restate, so it is not a failure.
+ */
+export async function failRunOnTerminal<T>(
+  restateSdk: typeof Restate,
+  ctx: Restate.WorkflowContext,
+  jobId: string | null,
+  work: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (jobId !== null && error instanceof restateSdk.TerminalError) {
+      await ctx
+        .objectClient<ReturnType<typeof createLoader>>(
+          { name: "Loader" } as ReturnType<typeof createLoader>,
+          LOADER_KEY,
+        )
+        .failRun({ jobId });
+    }
+    throw error;
+  }
+}
+
 export const MergeRequest = z.object({ track: z.string(), input: z.unknown() });
 
 export function createLoader(restate: typeof Restate, deps: LoaderDeps) {
@@ -173,6 +213,21 @@ export function createLoader(restate: typeof Restate, deps: LoaderDeps) {
         return ctx.run(`merge-${track.name}-${input.data.artifactSha256.slice(0, 12)}`, () =>
           runMerge(sql, track, input.data),
         );
+      },
+      failRun: async (ctx: Restate.ObjectContext, req: unknown): Promise<{ failed: boolean }> => {
+        if (ctx.key !== LOADER_KEY) {
+          throw new restate.TerminalError(`Loader key must be ${LOADER_KEY}`);
+        }
+        const parsed = FailRunRequest.safeParse(req);
+        if (!parsed.success) throw new restate.TerminalError("Loader.failRun: {jobId} required");
+        let sql: postgres.Sql;
+        try {
+          sql = deps.sql();
+        } catch (error) {
+          if (error instanceof QueryDbConfigError) throw new restate.TerminalError(error.message);
+          throw error;
+        }
+        return ctx.run(`fail-${parsed.data.jobId}`, () => failRun(sql, parsed.data.jobId));
       },
     },
     options: {

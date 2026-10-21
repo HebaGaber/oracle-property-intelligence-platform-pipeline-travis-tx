@@ -48,6 +48,8 @@ export interface GisImportDeps {
     ctx: Restate.WorkflowContext,
     input: GisMergeInput,
   ): PromiseLike<{ rowsWritten: number; skipped: boolean }>;
+  /** Called once with the run's job id when the handler ends in a terminal failure. */
+  onTerminalFailure?(ctx: Restate.WorkflowContext, jobId: string): PromiseLike<unknown>;
 }
 
 export interface GisImportResult {
@@ -74,65 +76,72 @@ export function createGisImport(restate: typeof Restate, deps: GisImportDeps) {
         const key = JobId.safeParse(ctx.key);
         if (!key.success)
           throw new restate.TerminalError("GisImport: key must be a travis-a04 job id");
-        const parsed = GisImportRequest.safeParse(raw);
-        if (!parsed.success) {
-          throw new restate.TerminalError(
-            "GisImport.run: {artifactDir, assemble, tcadJobId} required",
-          );
+        try {
+          return await runBody(ctx, raw, key.data);
+        } catch (error) {
+          // a run that ends in a terminal failure must not stay `running` (FR-025 index)
+          if (error instanceof restate.TerminalError) await deps.onTerminalFailure?.(ctx, key.data);
+          throw error;
         }
-        const req = parsed.data;
-        if (req.artifactDir === null && !req.assemble) {
-          throw new restate.TerminalError(
-            "GisImport.run: nothing to do (no artifact, no assemble)",
-          );
-        }
-        const jobId = key.data;
-        let gis: GisImportResult["gis"] = null;
-        if (req.artifactDir !== null) {
-          const dir = req.artifactDir;
-          const s = await ctx.run("inspect-artifact", () => {
-            try {
-              const x = inspectArtifact(dir);
-              return {
-                root: x.root,
-                artifactRunId: x.artifactRunId,
-                artifactSha256: x.artifactSha256,
-                status: x.status,
-                detail: x.detail,
-                limitation: x.limitation,
-                pages: x.pages.length,
-                sourceCount: x.sourceCount,
-              };
-            } catch (error) {
-              // a bad artifact is a human matter, never retried
-              throw new restate.TerminalError(
-                error instanceof Error ? error.message : String(error),
-              );
-            }
-          });
-          const m = await deps.merge(ctx, {
-            kind: "import",
-            jobId,
-            artifactPath: s.root,
-            artifactSha256: s.artifactSha256,
-            artifactRunId: s.artifactRunId,
-          });
-          const { root: _root, ...rest } = s;
-          gis = { ...rest, rowsWritten: m.rowsWritten, skipped: m.skipped };
-        }
-        let assembled: GisImportResult["assembled"] = null;
-        if (req.assemble) {
-          const m = await deps.merge(ctx, {
-            kind: "assemble",
-            jobId,
-            artifactPath: `assemble:${jobId}`,
-            artifactSha256: createHash("sha256").update(`assemble:${jobId}`).digest("hex"),
-            tcadJobId: req.tcadJobId,
-          });
-          assembled = { rowsWritten: m.rowsWritten, skipped: m.skipped };
-        }
-        return { jobId, gis, assembled };
       },
     },
   });
+
+  async function runBody(
+    ctx: Restate.WorkflowContext,
+    raw: unknown,
+    jobId: string,
+  ): Promise<GisImportResult> {
+    const parsed = GisImportRequest.safeParse(raw);
+    if (!parsed.success) {
+      throw new restate.TerminalError("GisImport.run: {artifactDir, assemble, tcadJobId} required");
+    }
+    const req = parsed.data;
+    if (req.artifactDir === null && !req.assemble) {
+      throw new restate.TerminalError("GisImport.run: nothing to do (no artifact, no assemble)");
+    }
+    let gis: GisImportResult["gis"] = null;
+    if (req.artifactDir !== null) {
+      const dir = req.artifactDir;
+      const s = await ctx.run("inspect-artifact", () => {
+        try {
+          const x = inspectArtifact(dir);
+          return {
+            root: x.root,
+            artifactRunId: x.artifactRunId,
+            artifactSha256: x.artifactSha256,
+            status: x.status,
+            detail: x.detail,
+            limitation: x.limitation,
+            pages: x.pages.length,
+            sourceCount: x.sourceCount,
+          };
+        } catch (error) {
+          // a bad artifact is a human matter, never retried
+          throw new restate.TerminalError(error instanceof Error ? error.message : String(error));
+        }
+      });
+      const m = await deps.merge(ctx, {
+        kind: "import",
+        jobId,
+        artifactPath: s.root,
+        artifactSha256: s.artifactSha256,
+        artifactRunId: s.artifactRunId,
+      });
+      const { root: _root, ...rest } = s;
+      gis = { ...rest, rowsWritten: m.rowsWritten, skipped: m.skipped };
+    }
+    let assembled: GisImportResult["assembled"] = null;
+    if (req.assemble) {
+      const m = await deps.merge(ctx, {
+        kind: "assemble",
+        jobId,
+        artifactPath: `assemble:${jobId}`,
+        artifactSha256: createHash("sha256").update(`assemble:${jobId}`).digest("hex"),
+        tcadJobId: req.tcadJobId,
+      });
+      assembled = { rowsWritten: m.rowsWritten, skipped: m.skipped };
+    }
+    return { jobId, gis, assembled };
+  }
 }

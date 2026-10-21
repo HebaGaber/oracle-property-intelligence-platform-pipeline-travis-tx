@@ -294,6 +294,24 @@ describe("Loader track `permits` (T053)", () => {
     expect(new Set(profileSha)).toEqual(new Set(["c8fd15cf8deb654c2959d7cca3b05560bc9830de2518c56a092bd87bdf53dfa6"]));
     expect(openDays).toEqual(["16191", String((Date.UTC(2026, 9, 21) - Date.UTC(2000, 0, 5)) / 864e5)]);
     expect(openReason).toEqual([null, null]);
+    // the profile's verdict is stored beside reroof_match (the baseline population stays include_term)
+    const [verdict, verdictReason, impType, impAction] = (upd!.values as (string | null)[][]).slice(12);
+    expect(upd?.text).toMatch(/roofing_verdict = u\.roofing_verdict/);
+    expect(verdict).toEqual(["not_roofing", "not_roofing"]);
+    expect(verdictReason).toEqual(["no_include_term", "no_include_term"]);
+    expect(impType).toEqual([null, null]);
+    expect(impAction).toEqual([null, null]);
+  });
+});
+
+describe("0302_permit_roofing_verdict.sql", () => {
+  const SQL = readFileSync(new URL("../../migrations/0302_permit_roofing_verdict.sql", import.meta.url), "utf8");
+  it("adds the four nullable verdict columns with a CHECK on the profile's verdict values", () => {
+    for (const col of ["roofing_verdict", "roofing_reason", "improvement_type", "improvement_action"]) {
+      expect(SQL).toMatch(new RegExp(`ADD COLUMN IF NOT EXISTS ${col} text`));
+    }
+    expect(SQL).toMatch(/roofing_verdict IN \('roofing', 'not_roofing', 'needs_review'\)/);
+    expect(SQL).not.toMatch(/NOT NULL/);
   });
 });
 
