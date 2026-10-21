@@ -1,8 +1,4 @@
-// The SQL files query-core binds: views.sql (T060) and the profile-generated status map (T022).
-// Read once at module load (Node). A browser bundle (A-13) imports the same files as text.
-import { readFileSync } from "node:fs";
-
-const read = (relative: string): string => readFileSync(new URL(relative, import.meta.url), "utf8");
-
-export const VIEWS_SQL: string = read("../views.sql");
-export const STATUS_MAP_SQL: string = read("../generated/travis-austin@1.0.0.status-map.sql");
+// The SQL query-core binds: views.sql (T060) and the profile-generated status map (T022), as the
+// string constants scripts/gen-sql.ts writes to sql.generated.ts (A-03 T012). No file is read at
+// load, so the same module bundles for the browser (A-13) and runs in the Lambda.
+export { STATUS_MAP_SQL, VIEWS_SQL } from "./sql.generated.js";

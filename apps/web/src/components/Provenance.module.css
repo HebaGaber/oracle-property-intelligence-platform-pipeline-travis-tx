@@ -1,0 +1,27 @@
+/* Provenance line (A-03 T055): Atlas § 8, body-small, on-surface-variant, leading icon. Long
+   URLs and CIDs wrap inside the line (no horizontal scroll at 390 px). */
+
+.line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  font-weight: var(--md-sys-typescale-body-small-weight);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking);
+  overflow-wrap: anywhere;
+}
+
+.line > :first-child {
+  margin-top: var(--space-1);
+}
+
+.text {
+  min-width: 0;
+}
+
+.link {
+  color: var(--md-sys-color-primary);
+}

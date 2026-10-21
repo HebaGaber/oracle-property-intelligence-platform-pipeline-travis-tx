@@ -10,6 +10,8 @@ import {
   detectChallengeSignal,
   detectGeoSignal,
   isGeoBlock,
+  stopClass,
+  stopExitCode,
   type FetchLike,
   type SourceClientOptions,
   wafSignal,
@@ -147,6 +149,52 @@ describe("A-01-TC-019 no evasion: source-client StopOnBlocked (403, challenge, t
     const res = await client({ fetch }).capture({ url: "https://example.test/missing" });
     expect(calls).toHaveLength(1);
     expect(res.receipt).toMatchObject({ status: 404, attempts: 1, outcome: "failed" });
+  });
+});
+
+describe("N-1 stop class: a timeout is error (exit 1), a 403 or challenge is blocked (exit 2)", () => {
+  it("a real timeout receipt classifies as error with exit code 1", async () => {
+    vi.useFakeTimers();
+    const fetch: FetchLike = (_url, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    const pending = client({ fetch, timeoutMs: 1_000 }).capture({
+      url: "https://example.test/slow",
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    const res = await pending;
+    expect(res.receipt.blocked_reason).toBe("timeout");
+    expect(stopClass(res.receipt)).toBe("error");
+    expect(stopExitCode(stopClass(res.receipt))).toBe(1);
+  });
+
+  it("an HTTP 403 receipt classifies as blocked with exit code 2", async () => {
+    const { fetch } = scripted([() => respond(403, "forbidden")]);
+    const res = await client({ fetch }).capture({ url: "https://example.test/forbidden" });
+    expect(stopClass(res.receipt)).toBe("blocked");
+    expect(stopExitCode(stopClass(res.receipt))).toBe(2);
+  });
+
+  it("a challenge receipt classifies as blocked with exit code 2", async () => {
+    const html = "<html><title>Just a moment...</title><body>Checking your browser</body></html>";
+    const { fetch } = scripted([() => respond(200, html, { "content-type": "text/html" })]);
+    const res = await client({ fetch }).capture({
+      url: "https://example.test/resource/abcd-1234.json",
+      schema: CountSchema,
+    });
+    expect(res.receipt.blocked_reason).toBe("challenge");
+    expect(stopClass(res.receipt)).toBe("blocked");
+    expect(stopExitCode(stopClass(res.receipt))).toBe(2);
+  });
+
+  it("ok, throttled-then-ok and failed map to ok 0, ok 0 and error 1", () => {
+    expect(stopClass({ outcome: "ok", blocked_reason: null })).toBe("ok");
+    expect(stopClass({ outcome: "throttled-then-ok", blocked_reason: null })).toBe("ok");
+    expect(stopClass({ outcome: "failed", blocked_reason: null })).toBe("error");
+    expect(stopExitCode("ok")).toBe(0);
   });
 });
 

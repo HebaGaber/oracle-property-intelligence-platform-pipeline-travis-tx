@@ -22,3 +22,10 @@ elephant-cli.log
 pipeline/data/raw/census/
 **/*.parquet
 !contract/v1/sample.parquet
+
+# A-03: local run captures (raw Austin pages, receipts, Parquet parts). Only runs/ manifests
+# and the run index are committed. cdk.out/, dist/, test-results/ and playwright-report/ are
+# listed above.
+pipeline/data/runs/
+apps/web/public/build.json
+apps/web/public/runs/

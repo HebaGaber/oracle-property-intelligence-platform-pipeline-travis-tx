@@ -255,6 +255,15 @@ ${Object.entries(VIEWS)
   .map(([v, cols]) => `### \`${v}\`\n\n${table(cols)}`)
   .join("\n\n")}
 
+## Manifest \`car\` artifacts: \`carCid\` (PO decision D-5, 2026-10-21)
+
+Additive, no schema change. A \`car\` artifact in the run manifest may carry \`carCid\`: the UnixFS
+file CID of the \`.car\` bytes themselves (raw-leaves CIDv1), because each \`.car\` file is also added
+to IPFS as a plain file. A CAR's own root CID addresses the DAG inside it, not the file, so
+\`verify-manifest\` fetches \`carCid\` and checks the file's size and SHA-256 against the manifest.
+The columns and views above do not change. PO decision D-5, 2026-10-21: "Approve additive carCid
+(Recommended)".
+
 ## Change rule
 
 Adding a column or an enum member (including a missing reason) is additive and stays in

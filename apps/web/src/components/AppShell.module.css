@@ -1,0 +1,149 @@
+/* App shell (A-03 T007): Atlas § 7 Top app bar, Bottom navigation (compact, < 600 px) and
+   Navigation rail (≥ 600 px); § 4 margins 16 compact / 24 medium+; § 5 elevation 2 on scroll.
+   Every colour, font, spacing and radius is a tokens.css custom property (Atlas § 13 rule 4;
+   stylelint declaration-strict-value). Component dimensions the system fixes in pixels (64 px
+   bar, 80 px navigation, 56 × 32 px pill) are derived from the spacing scale. */
+
+.shell {
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "bar"
+    "main"
+    "nav";
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+}
+
+/* Top app bar: 64 px, surface, title-large; elevation 2 while the main region is scrolled. */
+.bar {
+  grid-area: bar;
+  z-index: 1;
+  box-sizing: border-box;
+  height: var(--space-10);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  transition: box-shadow var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
+}
+
+.barScrolled {
+  box-shadow: var(--md-sys-elevation-level2);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--md-sys-typescale-title-large-font);
+  font-size: var(--md-sys-typescale-title-large-size);
+  font-weight: var(--md-sys-typescale-title-large-weight);
+  line-height: var(--md-sys-typescale-title-large-line-height);
+  letter-spacing: var(--md-sys-typescale-title-large-tracking);
+}
+
+/* The scroll container; 16 px margins on compact. */
+.main {
+  grid-area: main;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+/* Bottom navigation on compact: 80 px tall, surface-container, destinations spread evenly. */
+.nav {
+  grid-area: nav;
+  box-sizing: border-box;
+  height: calc(var(--space-10) + var(--space-4));
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: var(--md-sys-color-surface-container);
+}
+
+/* One destination: pill indicator above a label-medium label; 48 px touch target (§ 14.1). */
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  min-width: var(--space-9);
+  min-height: var(--space-9);
+  padding: var(--space-1) var(--space-2);
+  text-decoration: none;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: var(--md-sys-typescale-label-medium-weight);
+  line-height: var(--md-sys-typescale-label-medium-line-height);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking);
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: calc(var(--space-9) + var(--space-2));
+  height: var(--space-7);
+  border-radius: var(--md-sys-shape-corner-full);
+  transition: background-color var(--md-sys-motion-duration-short)
+    var(--md-sys-motion-easing-standard);
+}
+
+.item:hover .pill {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) calc(var(--md-sys-state-hover-opacity) * 100%),
+    transparent
+  );
+}
+
+.item:active .pill {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) calc(var(--md-sys-state-pressed-opacity) * 100%),
+    transparent
+  );
+}
+
+.itemActive {
+  color: var(--md-sys-color-on-surface);
+}
+
+.itemActive .pill {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.label {
+  text-align: center;
+}
+
+/* Medium and up (Atlas § 4): navigation rail, 80 px wide, left of the main region; 24 px margins. */
+@media (min-width: 600px) {
+  .shell {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "bar bar"
+      "nav main";
+  }
+
+  .nav {
+    height: auto;
+    width: calc(var(--space-10) + var(--space-4));
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-2) 0 0;
+  }
+
+  .main {
+    padding: var(--space-6);
+  }
+}

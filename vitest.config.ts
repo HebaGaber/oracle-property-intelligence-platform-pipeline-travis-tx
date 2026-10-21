@@ -7,6 +7,13 @@ export default defineConfig({
     projects: [
       "packages/contract",
       "packages/query-core",
+      "packages/shared",
+      "packages/eslint-config",
+      "packages/api-client",
+      "apps/web",
+      "apps/api",
+      "infra",
+      { test: { name: "scripts", include: ["scripts/test/**/*.test.ts"] } },
       "profiles/travis-austin@1.0.0",
       "pipeline/publish",
     ],
@@ -14,6 +21,7 @@ export default defineConfig({
       provider: "v8",
       include: [
         "packages/*/src/**/*.ts",
+        "apps/*/src/**/*.{ts,tsx}",
         "packages/query-core/gazetteer/**/*.ts",
         "profiles/*/*.ts",
         "pipeline/publish/src/**/*.ts",

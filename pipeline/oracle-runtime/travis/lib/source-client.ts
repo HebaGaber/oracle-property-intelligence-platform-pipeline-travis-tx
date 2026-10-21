@@ -11,6 +11,10 @@
 //   without a challenge signal is `failed` ("unexpected body"), not `blocked`;
 // - a network error (no HTTP response) is `failed` with `error`; only a real timeout sets
 //   `timeout_ms`;
+// - the receipt keeps a timeout as `blocked` / `timeout` (one attempt, no retry: the A-01
+//   discovery evidence contract), but a run's exit class comes from `stopClass`: a timeout
+//   is `error` (exit 1); only a 403 or a challenge is `blocked` (exit 2). Every adapter maps
+//   its receipts through `stopClass` / `stopExitCode`, never by reading `outcome` itself;
 // - backoff only on 429/5xx: full jitter, 1 s base, 60 s cap, 5 attempts, honouring
 //   Retry-After; still failing after 5 attempts gives outcome `failed` (FR-006e);
 // - a download that drops part-way resumes with `Range: bytes=<received>-` only when the
@@ -46,6 +50,29 @@ export const MAX_RESUMES = 5;
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 export type CaptureOutcome = "ok" | "blocked" | "throttled-then-ok" | "failed";
 export type BlockedReason = "http-403" | "challenge" | "timeout";
+/** How a capture ends a run (contracts/cli.md): ok exit 0, error exit 1, blocked exit 2. */
+export type StopClass = "ok" | "blocked" | "error";
+
+/**
+ * Exit class of one receipt. `blocked` (exit 2, a human must look) only for an HTTP 403 or
+ * an explicit challenge; a timeout, a network error, an unexpected body or any other
+ * failure is `error` (exit 1). The receipt itself is unchanged.
+ */
+export function stopClass(receipt: Pick<CaptureReceipt, "outcome" | "blocked_reason">): StopClass {
+  if (receipt.outcome === "ok" || receipt.outcome === "throttled-then-ok") return "ok";
+  if (
+    receipt.outcome === "blocked" &&
+    (receipt.blocked_reason === "http-403" || receipt.blocked_reason === "challenge")
+  ) {
+    return "blocked";
+  }
+  return "error";
+}
+
+/** Process exit code for a stop class: ok 0, error 1, blocked 2. */
+export function stopExitCode(cls: StopClass): 0 | 1 | 2 {
+  return cls === "ok" ? 0 : cls === "blocked" ? 2 : 1;
+}
 
 export interface CaptureReceipt {
   url: string;

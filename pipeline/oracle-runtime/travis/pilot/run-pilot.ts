@@ -488,6 +488,7 @@ export async function runPilot(options: RunPilotOptions): Promise<RunPilotResult
   const roofProfileSha = roofAge[0]?.profile.sha256;
   const built = await buildManifest({
     runId,
+    ownersRedacted: countyCounts.filter((c) => c.confidential).length,
     county: COUNTY.slug,
     state: COUNTY.state,
     fips: COUNTY.fips,
