@@ -10,7 +10,7 @@ status: Fixed
 found_by: smeargle
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
-fix_commit:
+fix_commit: 660f73ccfe1805673e0b0efae38c0bb002ea75b5
 retest_date:
 ---
 
