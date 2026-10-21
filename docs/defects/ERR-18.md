@@ -10,7 +10,7 @@ status: Fixed
 found_by: TC-NF-05 hosted bench (scripts/bench-lambda.ts)
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
-fix_commit:
+fix_commit: a1fd50a6f644f9e1f8bc40f8021ddb63d87f390f
 retest_date:
 ---
 
