@@ -120,20 +120,59 @@ export function situsOf(record: TcadRecord): string | null {
   return street === "" ? null : parts.join(", ");
 }
 
-/** Texas PTD state codes (propertyProfile[].stateCd) → lexicon property_type / property_usage_type. */
-const STATE_CODES: Record<string, { property_type: string; property_usage_type: string | null }> = {
-  A1: { property_type: "SingleFamily", property_usage_type: "Residential" },
-  A2: { property_type: "MobileHome", property_usage_type: "Residential" },
-  A3: { property_type: "Condominium", property_usage_type: "Residential" },
-  A4: { property_type: "Townhouse", property_usage_type: "Residential" },
-  B1: { property_type: "MultipleFamily", property_usage_type: "Residential" },
-  B2: { property_type: "Duplex", property_usage_type: "Residential" },
-  B3: { property_type: "3Units", property_usage_type: "Residential" },
-  B4: { property_type: "4Units", property_usage_type: "Residential" },
-  C1: { property_type: "VacantLand", property_usage_type: null },
-  F1: { property_type: "Building", property_usage_type: "Commercial" },
-  F2: { property_type: "Building", property_usage_type: "Industrial" },
-};
+/** Where every STATE_CODES entry comes from (no official table cited yet). */
+export const A02_PILOT_MAPPING =
+  "A-02 pilot mapping (shared-seed.ts), no official code table cited";
+
+/**
+ * TCAD state codes (propertyProfile[].stateCd) → lexicon property_type / property_usage_type.
+ * A-04 (oracle disagreement #8): this map is the A-02 pilot mapping, kept unchanged, and is
+ * extended only with a cited official PTD/TCAD code table. None is on disk: the TCAD Export
+ * Layout (Legacy 8.0.33) names the code file APPRAISAL_STATE_CODE.TXT but it is not part of
+ * the JSON export, so no code is added. A4 is NOT read as a condominium here (DEC-A-01's
+ * condo reading is unverified; the coordinate condo rule uses the shared geoID instead). Any
+ * other code → property_type null with reason `enum_lacks_value`.
+ */
+export const STATE_CODES: Readonly<
+  Record<string, { property_type: string; property_usage_type: string | null; source: string }>
+> = Object.freeze(
+  Object.fromEntries(
+    (
+      [
+        ["A1", "SingleFamily", "Residential"],
+        ["A2", "MobileHome", "Residential"],
+        ["A3", "Condominium", "Residential"],
+        ["A4", "Townhouse", "Residential"],
+        ["B1", "MultipleFamily", "Residential"],
+        ["B2", "Duplex", "Residential"],
+        ["B3", "3Units", "Residential"],
+        ["B4", "4Units", "Residential"],
+        ["C1", "VacantLand", null],
+        ["F1", "Building", "Commercial"],
+        ["F2", "Building", "Industrial"],
+      ] as const
+    ).map(([code, property_type, property_usage_type]) => [
+      code,
+      { property_type, property_usage_type, source: A02_PILOT_MAPPING },
+    ]),
+  ),
+);
+
+/** The mapped type of a state code, or null + enum_lacks_value. */
+export function propertyTypeOf(code: string): {
+  property_type: string | null;
+  property_usage_type: string | null;
+  missing_reason: "enum_lacks_value" | null;
+} {
+  const m = STATE_CODES[code.trim()];
+  return m
+    ? {
+        property_type: m.property_type,
+        property_usage_type: m.property_usage_type,
+        missing_reason: null,
+      }
+    : { property_type: null, property_usage_type: null, missing_reason: "enum_lacks_value" };
+}
 
 export interface PropertyFields {
   parcel_identifier: string;
@@ -145,12 +184,16 @@ export interface PropertyFields {
   warnings: string[];
 }
 
-export function propertyFields(record: TcadRecord): PropertyFields {
+/**
+ * `yearBuilt` (A-04): the year from the recorded year-built rule (travis/tcad/year-built.ts);
+ * when absent, the A-02 reading of propertyProfile[0].imprvActualYearBuilt is used.
+ */
+export function propertyFields(record: TcadRecord, yearBuilt?: number | null): PropertyFields {
   const profile = record.propertyProfile[0];
   const code = (profile?.stateCd ?? "").trim();
   const mapped = STATE_CODES[code];
   const warnings = mapped ? [] : [`unmapped_state_code:${code || "(empty)"}`];
-  const year = profile?.imprvActualYearBuilt ?? null;
+  const year = yearBuilt !== undefined ? yearBuilt : (profile?.imprvActualYearBuilt ?? null);
   const legal = (record.propertyLegalDescription[0]?.legalDescription ?? "").trim();
   return {
     parcel_identifier: pidOf(record),
@@ -187,6 +230,8 @@ export interface SharedFilesInput {
   seed: SeedRow;
   /** Seed data-group schema CID from the live lexicon manifest. */
   seedCid: string;
+  /** A-04: year built by the recorded rule (see propertyFields). */
+  yearBuilt?: number | null;
 }
 
 /** The seed files and property.json, as file name → exact text. */
@@ -196,7 +241,7 @@ export function buildSharedFiles(input: SharedFilesInput): Record<string, string
   if (seed.parcel_id !== pID) throw new Error(`seed row ${seed.parcel_id} is not TCAD pID ${pID}`);
   const request = { ...TCAD_EXPORT_REQUEST };
   const point = pointOf(record);
-  const fields = propertyFields(record);
+  const fields = propertyFields(record, input.yearBuilt);
   const property: Record<string, unknown> = {
     source_http_request: request,
     request_identifier: pID,

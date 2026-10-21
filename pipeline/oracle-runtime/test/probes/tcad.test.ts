@@ -2,7 +2,7 @@
 // tiny invented landing page and export; traviscad.org is never called. Downloads go to
 // a temporary folder except where the default folder itself is under test.
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,16 +10,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createSourceClient, type FetchLike } from "../../travis/lib/source-client.js";
 import {
   INACTIVITY_LIMIT_MS,
+  ExportVerifyError,
   ROLL_YEAR,
   TCAD_PUBLIC_INFO_URL,
   TCAD_RAW_DIR,
   TOTAL_LIMIT_MS,
   findTcadLinks,
+  exportSummaryPath,
   layoutNameFor,
   priorExportFrom,
   probeTcad,
   scanExport,
   tcadExportPath,
+  verifyExport,
 } from "../../travis/discovery/probes/tcad.js";
 import { fakeHttp, silent, text, type Route } from "../fixtures/fake-http.js";
 import { buildZip } from "../fixtures/synthetic-zip.js";
@@ -559,5 +562,56 @@ describe("OR-m8: the export is not downloaded again when the prior file still ma
       priorExport: { receipt, path: must(first.export_path), seconds: 1 },
     });
     expect(calls.filter((c) => c.url === EXPORT_URL)).toHaveLength(1);
+  });
+});
+
+// A-04 T020 (CR2-10, A-04-TC-016 step 1): the 3.5 GB export is re-hashed only when its
+// {size, mtime, inode} differ from `<zip>.summary.json`; a SHA-256 that is not the A-01
+// receipt's stops with export_sha256_mismatch. Synthetic test input (a tiny invented zip).
+describe("A-04-TC-016 export verification (CR2-10)", () => {
+  const zipAt = (dir: string): string => {
+    const path = join(dir, "export.zip");
+    writeFileSync(path, buildZip([{ name: "x.json", data: Buffer.from("[]") }]));
+    return path;
+  };
+  const sha = (path: string): string =>
+    createHash("sha256").update(readFileSync(path)).digest("hex");
+
+  it("A-04-TC-016 re-hashes only when {size, mtime, inode} changed", async () => {
+    const path = zipAt(tmp());
+    let hashes = 0;
+    const hashFile = async (p: string): Promise<string> => {
+      hashes += 1;
+      return sha(p);
+    };
+    const first = await verifyExport(path, sha(path), { hashFile });
+    expect(first).toMatchObject({ sha256: sha(path), rehashed: true });
+    expect(existsSync(exportSummaryPath(path))).toBe(true);
+    const second = await verifyExport(path, sha(path), { hashFile });
+    expect(second.rehashed).toBe(false);
+    expect(hashes).toBe(1);
+    const later = new Date("2026-10-21T00:00:00Z");
+    utimesSync(path, later, later);
+    const third = await verifyExport(path, sha(path), { hashFile });
+    expect(third.rehashed).toBe(true);
+    expect(hashes).toBe(2);
+  });
+
+  it("A-04-TC-016 a SHA-256 different from the A-01 receipt stops with export_sha256_mismatch", async () => {
+    const path = zipAt(tmp());
+    let error: unknown;
+    try {
+      await verifyExport(path, "6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346");
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(ExportVerifyError);
+    expect((error as ExportVerifyError).code).toBe("export_sha256_mismatch");
+  });
+
+  it("A-04-TC-016 a missing export stops with export_missing", async () => {
+    await expect(verifyExport(join(tmp(), "absent.zip"), "0".repeat(64))).rejects.toMatchObject({
+      code: "export_missing",
+    });
   });
 });

@@ -77,10 +77,10 @@ const STRUCTURE_NULL_FIELDS = [
 ] as const;
 
 /** Entity words that make an unsplit owner name a company (never a person guess). */
-const ENTITY_NAME =
+export const ENTITY_NAME =
   /\b(LLC|L\.L\.C\.?|INC|INCORPORATED|CORP|CORPORATION|CO|COMPANY|LP|L\.P\.|LTD|LLP|PLLC|TRUST|TRUSTEES?|PARTNERSHIP|PARTNERS|ASSOCIATION|ASSN|BANK|CHURCH|HOLDINGS|PROPERTIES|INVESTMENTS|FUND|FOUNDATION|ISD|CITY OF|COUNTY OF|STATE OF)\b/;
 
-const PERSON_NAME = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+export const PERSON_NAME = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
 
 export interface RoofAgeEntry {
   pID: string;
@@ -119,6 +119,11 @@ export interface CountyTransformInput {
   cids: DataGroupCids;
   /** The property's row from the roof-age ledger (kit estimator), or null. */
   roofAge: RoofAgeEntry | null;
+  /**
+   * A-04: the year built by the recorded rule (travis/tcad/year-built.ts); when absent the
+   * A-02 reading of propertyProfile[0].imprvActualYearBuilt is kept.
+   */
+  yearBuilt?: number | null;
 }
 
 export type OwnerOutcome =
@@ -197,7 +202,12 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
   }
   const base = { source_http_request: { ...TCAD_EXPORT_REQUEST }, request_identifier: pID };
   const files: Record<string, string> = {
-    ...buildSharedFiles({ record, seed: input.seed, seedCid: input.cids.seed }),
+    ...buildSharedFiles({
+      record,
+      seed: input.seed,
+      seedCid: input.cids.seed,
+      ...(input.yearBuilt !== undefined ? { yearBuilt: input.yearBuilt } : {}),
+    }),
   };
   const rel: Record<string, { "/": string } | { "/": string }[]> = {};
   const many = (key: string, name: string): void => {
