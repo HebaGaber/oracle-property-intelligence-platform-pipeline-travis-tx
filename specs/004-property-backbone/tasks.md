@@ -101,7 +101,7 @@ created: 2026-10-21
 
 ## Phase 5: Integration check (lead)
 
-- [ ] T060 [lead] Merge the three group branches/worktrees into `004-property-backbone`; run `npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check` in `pipeline/oracle-runtime` and `npm test`, `npm run typecheck` in `pipeline/local-stack`, plus `bash scripts/grep-gates.sh`, all at once; red → fix before anything else; `npm --prefix pipeline/local-stack run migrate` on the local DB; restart services, confirm `TcadBackbone`, `TcadChunk`, `GisImport`, `AustinPermits`, `Loader`, `BackboneReport` registered; commit `A-04: build (G-FIX, G-TCAD, G-GIS, G-PERMITS)` — owns: (merge only); records in: specs/004-property-backbone/run-log.md · ⏱ 10m
+- [X] T060 [lead] Merge the three group branches/worktrees into `004-property-backbone`; run `npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check` in `pipeline/oracle-runtime` and `npm test`, `npm run typecheck` in `pipeline/local-stack`, plus `bash scripts/grep-gates.sh`, all at once; red → fix before anything else; `npm --prefix pipeline/local-stack run migrate` on the local DB; restart services, confirm `TcadBackbone`, `TcadChunk`, `GisImport`, `AustinPermits`, `Loader`, `BackboneReport` registered; commit `A-04: build (G-FIX, G-TCAD, G-GIS, G-PERMITS)` — owns: (merge only); records in: specs/004-property-backbone/run-log.md · ⏱ 10m
 
 ---
 
