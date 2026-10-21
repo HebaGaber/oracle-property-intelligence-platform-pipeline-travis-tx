@@ -10,7 +10,7 @@ status: Fixed
 found_by: hosted Playwright (TC-NF-04, hosted run 2)
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
-fix_commit:
+fix_commit: 9191b3cae0e87b9613a5278b78ad2337ab91c8c2
 retest_date:
 ---
 
