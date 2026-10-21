@@ -6,7 +6,13 @@
 // so the fallback is deployed and measured.
 import { z } from "zod";
 import { CidV1 } from "@countylens/contract";
-import { DEFAULT_LIMIT, MAX_ROWS, radiusSql, roofAgeSql } from "@countylens/query-core";
+import {
+  DEFAULT_LIMIT,
+  MAX_ROWS,
+  radiusSql,
+  roofAgeSql,
+  viewsReadBy,
+} from "@countylens/query-core";
 import { bindOnce, timedQuery, type TimedRows } from "../engine/duckdb-node.js";
 import { publicProcedure, router } from "../trpc.js";
 
@@ -25,13 +31,16 @@ export const RoofAgeInput = RadiusInput.extend({
 export const queryRouter = router({
   radius: publicProcedure.input(RadiusInput).query(async ({ input }): Promise<TimedRows> => {
     const { manifestCid, ...params } = input;
-    const bound = await bindOnce(manifestCid);
-    return timedQuery(radiusSql(params), { name: "radiusSql", manifestCid: bound.manifestCid });
+    const sql = radiusSql(params);
+    const bound = await bindOnce(manifestCid, viewsReadBy(sql)); // ERR-19: its views only
+    return timedQuery(sql, { name: "radiusSql", manifestCid: bound.manifestCid });
   }),
 
   roofAge: publicProcedure.input(RoofAgeInput).query(async ({ input }): Promise<TimedRows> => {
     const { manifestCid, ...params } = input;
-    const bound = await bindOnce(manifestCid);
+    // roofAgeSql's text needs as_of from the bound run; the views it reads do not depend on it.
+    const views = viewsReadBy(roofAgeSql({ ...params, asOf: "1970-01-01T00:00:00.000Z" }));
+    const bound = await bindOnce(manifestCid, views); // ERR-19: its views only
     return timedQuery(roofAgeSql({ ...params, asOf: bound.asOf }), {
       name: "roofAgeSql",
       manifestCid: bound.manifestCid,

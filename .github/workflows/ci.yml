@@ -221,6 +221,8 @@ jobs:
       CID_COPY_HOST: ${{ vars.CID_COPY_HOST }}
       FILEBASE_GATEWAY_HOST: ${{ vars.FILEBASE_GATEWAY_HOST }}
       PINATA_GATEWAY_HOST: ${{ vars.PINATA_GATEWAY_HOST }}
+      # TC-030: the permit number(s) the run counted under permits_no_tcad_geoid (manifest coverage).
+      NO_TCAD_PERMIT_NUMBERS: ${{ vars.NO_TCAD_PERMIT_NUMBERS }}
     steps:
       - uses: actions/checkout@v4
 
@@ -233,6 +235,11 @@ jobs:
 
       - name: pnpm install
         run: pnpm install --frozen-lockfile
+
+      # build-checks.spec.ts (TC-006) runs the kit runtime's Vitest suite, an npm project outside pnpm.
+      - name: npm ci (kit runtime, for the TC-006 build check)
+        working-directory: pipeline/oracle-runtime
+        run: npm ci
 
       # Amplify builds the branch from the same push (branch slug: "/" becomes "-") and writes
       # /build.json with the commit sha. Poll until it is this commit; 12 minutes at most.

@@ -492,7 +492,13 @@ describe("ERR-17: the engine starts with the first data read, not before it (TC-
         if (options.engineFails) throw new EngineStartError(new Error("fake"));
         return engine;
       }),
-      bindRun: vi.fn(async () => ({ runId: "test-run", manifestCid, asOf: "x", tables: [] })),
+      bindRun: vi.fn(async () => ({
+        runId: "test-run",
+        manifestCid,
+        asOf: "x",
+        tables: [],
+        views: [],
+      })),
       countPermits: vi.fn(async () => 0),
       listPermits: vi.fn(async () => []),
     };

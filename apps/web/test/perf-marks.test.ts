@@ -170,7 +170,13 @@ describe("createPermitsLoader runs the COUNT and checks it against the manifest 
     };
     const engineModule: EngineModule = {
       openEngine: vi.fn(async () => engine),
-      bindRun: vi.fn(async () => ({ runId: "test-run", manifestCid, asOf: "x", tables: [] })),
+      bindRun: vi.fn(async () => ({
+        runId: "test-run",
+        manifestCid,
+        asOf: "x",
+        tables: [],
+        views: [],
+      })),
       countPermits: vi.fn(async () => engineCount),
       listPermits: vi.fn(async () => []),
     };

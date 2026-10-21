@@ -6,12 +6,12 @@ story: A-03
 test_case: A-03-TC-024
 ac_reference: A-03-AC-4
 severity: Medium
-status: Fixed
+status: Re-tested
 found_by: hosted Playwright
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
 fix_commit: a1fd50a6f644f9e1f8bc40f8021ddb63d87f390f
-retest_date:
+retest_date: 2026-10-21
 ---
 
 # ERR-16: Permits load – with a 2 s delay on each CID-copy request the page never finishes
@@ -65,7 +65,7 @@ How many requests one load makes to the copy, and whether they are sequential (`
 
 - [x] Hosted Playwright `tests/e2e/playwright-report/batch1.log` / `batch3.log`: TC-024 failed after 2.1 min
 - [x] Dev check 2026-10-21, local production build, headless Chromium, real CID copy with the same 2 s route delay: HEAD `36783c1` made 133 copy requests per load. The fix makes 24 copy requests per load (manifest plus 23 parts) and shows rows in 7.0–9.0 s (2 of 2 runs) with no fallback label.
-- [ ] Hosted re-test
+- [x] Hosted re-test: PASS in hosted run 2 (build `fbdb68b`)
 
 ## Resolution
 
@@ -75,5 +75,5 @@ How many requests one load makes to the copy, and whether they are sequential (`
 | Root cause | One load serialised about 133 round trips to the copy inside DuckDB's synchronous XHR file system. |
 | Fix | One probe decides the host for the whole load: the manifest read by `fetchByCid` (copy, or the Filebase gateway after the 4 s first-byte rule). The page then reads each table part once from that host, with one ranged GET (`Range: bytes=0-{size-1}` → 206, as TC-026 expects) and up to 16 in parallel on the copy (`apps/web/src/data/fetch-parts.ts`). It accepts the bytes only when their raw-leaves CID equals the manifest's (constitution A3), then registers them in the engine (`registerFileBuffer`) and binds the views to the registered names. The engine makes no network request for the parts. A run whose parts total more than 16 MiB is not prefetched: DuckDB range-reads it with the ADR-0001 flags as before. Commit: _(filled after commit)_ on `003-walking-skeleton`. |
 | Tests | `apps/web/test/read-path-defects.test.ts` › "ERR-16: a slow but working CID copy still finishes (TC-024, 2 s per request)": "reads each part with exactly one ranged GET (206, TC-026), in parallel on the copy"; "asks for the whole part as one range; an empty part asks for none"; "prefetches only the table parts, and nothing when they exceed PART_PREFETCH_MAX_BYTES (DuckDB range-reads them)"; "registers a part under a host-free name". `apps/web/test/duckdb-config.test.ts` › "reads the parts from the host that served the manifest, registers them and binds them by name; stages in order". Red before the fix: `src/data/fetch-parts.ts` did not exist. |
-| Re-test | TC-024 on the redeployed preview: pending |
-| Status | Fixed (awaiting hosted re-test) |
+| Re-test | TC-024 PASS in hosted run 2 (build `fbdb68b`, 2026-10-21) |
+| Status | Re-tested: PASS in hosted run 2 (build `fbdb68b`, 2026-10-21) |

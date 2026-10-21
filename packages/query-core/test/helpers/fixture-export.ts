@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bindManifest, type BoundRun } from "../../src/bind-manifest.js";
+import { bindManifest, type BindOptions, type BoundRun } from "../../src/bind-manifest.js";
 import { rawCid } from "../../src/raw-cid.js";
 import { openDuckDb, type DuckDbEngine } from "../../scripts/duckdb-engine.js";
 import { GAZETTEER } from "../../gazetteer/travis-places@1.0.0/index.js";
@@ -115,6 +115,8 @@ export async function bindFixture(
   /** Bind on this engine instead of a fresh one (a warm engine rebinding to another manifest);
    *  close() then removes the fixture's files but leaves the engine open. */
   engine?: DuckDbEngine,
+  /** bindManifest options, given the fixture's tables directory (ERR-19 subset binds). */
+  options?: (dir: string) => BindOptions,
 ): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), "views-fixture-"));
   const db = engine ?? (await openDuckDb());
@@ -157,7 +159,12 @@ export async function bindFixture(
   manifest.artifacts = [...manifest.artifacts.filter((a) => a.kind !== "table"), ...parts];
   mutate(manifest);
   try {
-    const bound = await bindManifest(new TextEncoder().encode(JSON.stringify(manifest)), dir, db);
+    const bound = await bindManifest(
+      new TextEncoder().encode(JSON.stringify(manifest)),
+      dir,
+      db,
+      options?.(dir),
+    );
     return {
       db,
       bound,

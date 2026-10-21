@@ -7,7 +7,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import { mockClient } from "aws-sdk-client-mock";
 import type { APIGatewayProxyEventV2, Context as LambdaContext } from "aws-lambda";
 import { DEFAULT_LIMIT, MAX_ROWS, radiusSql, roofAgeSql, type Row } from "@countylens/query-core";
@@ -19,7 +19,7 @@ import {
   FINISHED_AT,
   fakeEngine,
   fixtureManifest,
-  s3Body,
+  serveFixture,
   type FakeEngine,
   type Fixture,
 } from "./helpers/fakes.js";
@@ -54,9 +54,7 @@ beforeEach(() => {
   tmp = mkdtempSync(join(REAL_TMP, "countylens-api-query-"));
   vi.stubEnv("TMPDIR", tmp);
   s3.reset();
-  s3.on(GetObjectCommand, { Bucket: "copy-bucket", Key: `ipfs/${fixture.cid}` }).resolves(
-    s3Body(fixture.bytes),
-  );
+  serveFixture(s3, fixture); // ERR-19: the manifest and its parts
   engine.statements.length = 0;
   engine.queries.length = 0;
   engine.rowsFor = () => [];
@@ -166,7 +164,7 @@ describe("SQL comes from the query-core builders only (AD-19)", () => {
       runId: "travis-later",
       finishedAt: "2027-01-02T03:04:05.000Z",
     });
-    s3.on(GetObjectCommand, { Key: `ipfs/${later.cid}` }).resolves(s3Body(later.bytes));
+    serveFixture(s3, later);
     await caller.query.roofAge({ manifestCid: later.cid, ...CENTRE, minYears: 15 });
     expect(lastQuery()).toContain("CAST('2027-01-02T03:04:05.000Z' AS TIMESTAMPTZ)");
   });

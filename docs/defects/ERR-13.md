@@ -6,12 +6,12 @@ story: A-03
 test_case: A-03-TC-NF-03
 ac_reference: A-03-AC-2
 severity: Low
-status: Fixed
+status: Re-tested
 found_by: smeargle
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
 fix_commit: 660f73ccfe1805673e0b0efae38c0bb002ea75b5
-retest_date:
+retest_date: 2026-10-21
 ---
 
 # ERR-13: App shell – at 600 px and wider, Tab reaches the page content before the navigation rail
@@ -65,7 +65,7 @@ Focus visits every focusable element in `<main>` first; the rail's links come la
 
 - [x] smeargle report 2026-10-21 (screenshots `docs/evidence/img/A-03-smeargle-runs-{768,1440}.png`)
 - [x] Red unit run before the fix: "renders the navigation before main in DOM order; the grid areas place them visually" failed ("navigation before main")
-- [ ] Hosted re-test
+- [x] Hosted re-test: PASS in hosted run 2 (build `fbdb68b`)
 
 ## Resolution
 
@@ -74,5 +74,5 @@ Focus visits every focusable element in `<main>` first; the rail's links come la
 | Root cause | `AppShell` rendered `header, main, nav`; the grid moves the rail to the left only visually. |
 | Fix | `AppShell` renders `header, nav, main`. The CSS grid areas (`"bar" "main" "nav"` below 600 px, `"bar bar" "nav main"` from 600 px) are unchanged, so nothing moves on screen; on compact widths the bottom navigation stays at the bottom. Commit: _(filled after commit)_ on `003-walking-skeleton`. |
 | Tests | `apps/web/test/app-shell.test.tsx` › "ERR-13: landmark order: banner, navigation, then main …" › "renders the navigation before main in DOM order; the grid areas place them visually" and "keeps the layout in grid-template-areas (DOM order does not move anything visually)". |
-| Re-test | TC-NF-03 keyboard order on the redeployed preview: pending |
-| Status | Fixed (awaiting hosted re-test) |
+| Re-test | TC-NF-03 PASS in hosted run 2 (build `fbdb68b`, 2026-10-21); `smeargle` re-check: nav before main |
+| Status | Re-tested: PASS in hosted run 2 (build `fbdb68b`, 2026-10-21) |

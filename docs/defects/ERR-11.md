@@ -6,12 +6,12 @@ story: A-03
 test_case: A-03-TC-020 (error path; fixed texts of test plan § 3)
 ac_reference: A-03-AC-3
 severity: Medium
-status: Fixed
+status: Re-tested
 found_by: smeargle
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
 fix_commit: 660f73ccfe1805673e0b0efae38c0bb002ea75b5
-retest_date:
+retest_date: 2026-10-21
 ---
 
 # ERR-11: Permits error banner – shows the raw zod validation message instead of a fixed text
@@ -65,7 +65,7 @@ The banner shows `Permit row 0 does not match contract/v1 v_roofing_permit: [ { 
 
 - [x] Screenshots `docs/evidence/img/A-03-smeargle-permits-{390,768,1440}.png`
 - [x] Red unit run before the fix: the three ERR-11 tests below failed (`PERMITS_TEXTS.rowsUnreadable` undefined)
-- [ ] Hosted re-test
+- [x] Hosted re-test: PASS in hosted run 2 (build `fbdb68b`)
 
 ## Resolution
 
@@ -74,5 +74,5 @@ The banner shows `Permit row 0 does not match contract/v1 v_roofing_permit: [ { 
 | Root cause | `parsePermitRows` threw a plain `Error` carrying the zod message, and `errorText` shows any unrecognised error's message verbatim. |
 | Fix | New fixed text `PERMITS_TEXTS.rowsUnreadable` = `Permit rows could not be read from this run` (`packages/shared/src/labels.ts`), added to plan § "Fixed texts and config keys" and test plan § 3 together. `parsePermitRows` throws `PermitRowsError` (`apps/web/src/engine/errors.ts`; message = the fixed text, `detail` = row, field and schema message); `errorText` maps it to the fixed text; the page logs every load failure with `console.error` (with `detail`). Commit: _(filled after commit)_ on `003-walking-skeleton`. |
 | Tests | `apps/web/test/permits-state.test.ts` › "ERR-11: …" › "parsePermitRows rejects the row with the fixed rows-unreadable text, keeping the zod detail off the message" and "shows PERMITS_TEXTS.rowsUnreadable in the banner (never the zod message) and logs the detail with console.error"; `packages/shared/test/labels-extra.test.ts` › "has the rows-unreadable text (ERR-11), verbatim" and "has exactly the keys empty, countMismatch, engineFailure and rowsUnreadable". |
-| Re-test | Hosted: pending |
-| Status | Fixed (awaiting hosted re-test) |
+| Re-test | A-03-TC-020 PASS in hosted run 2 (build `fbdb68b`, 2026-10-21): the Permits page reaches `ready` with 35 rows; `smeargle` re-check 6/6 PASS |
+| Status | Re-tested: PASS in hosted run 2 (build `fbdb68b`, 2026-10-21) |

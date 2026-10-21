@@ -4,7 +4,14 @@
 // raw-leaves CIDv1 of its bytes, so the rawCid check in s3-read.ts is exercised for real. The
 // fake engine records every statement and answers DESCRIBE with the columns views.sql requires.
 import { createHash } from "node:crypto";
-import type { GetObjectCommandOutput } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  type GetObjectCommandOutput,
+  type S3ClientResolvedConfig,
+  type ServiceInputTypes,
+  type ServiceOutputTypes,
+} from "@aws-sdk/client-s3";
+import type { AwsStub } from "aws-sdk-client-mock";
 import { RUN_MANIFEST_SCHEMA, RunManifestV1 } from "@countylens/contract";
 import { PROFILE } from "@countylens/profile-travis-austin";
 import {
@@ -35,19 +42,40 @@ export interface Fixture {
   readonly bytes: Uint8Array;
   /** rawCid(bytes): what a client passes as manifestCid. */
   readonly cid: string;
-  /** The CID of the one table part (tables/county/property/part-00000.parquet). */
+  /** The CID of the first table part (tables/county/property/part-00000.parquet by default). */
   readonly partCid: string;
+  /** Every table part: name, CID, bytes (what ipfs/<cid> holds) and the manifest's size. */
+  readonly parts: readonly FixturePart[];
 }
+
+export interface FixturePart {
+  readonly name: string;
+  readonly cid: string;
+  readonly bytes: Uint8Array;
+  readonly size: number;
+}
+
+/** A part to put in the fixture manifest; `size` overrides the declared size (ERR-19). */
+export interface PartSpec {
+  readonly name: string;
+  readonly size?: number;
+}
+
+export const PROPERTY_PART = "tables/county/property/part-00000.parquet";
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 /** A minimal, schema-valid manifest with one county.property part; `runId` changes its CID. */
 export async function fixtureManifest(
-  options: { runId?: string; finishedAt?: string } = {},
+  options: { runId?: string; finishedAt?: string; parts?: readonly PartSpec[] } = {},
 ): Promise<Fixture> {
   const runId = options.runId ?? "travis-fixture";
-  const partBytes = new TextEncoder().encode(`fixture parquet bytes for ${runId}`);
-  const partCid = await rawCid(partBytes);
+  const parts: FixturePart[] = await Promise.all(
+    (options.parts ?? [{ name: PROPERTY_PART }]).map(async (spec) => {
+      const bytes = new TextEncoder().encode(`fixture parquet bytes for ${runId} ${spec.name}`);
+      return { name: spec.name, cid: await rawCid(bytes), bytes, size: spec.size ?? bytes.length };
+    }),
+  );
   const manifest = RunManifestV1.parse({
     schema: RUN_MANIFEST_SCHEMA,
     runId,
@@ -81,16 +109,14 @@ export async function fixtureManifest(
         limitations: [],
       },
     ],
-    artifacts: [
-      {
-        name: "tables/county/property/part-00000.parquet",
-        cid: partCid,
-        codec: "raw",
-        size: partBytes.length,
-        sha256: sha256(partBytes),
-        kind: "table",
-      },
-    ],
+    artifacts: parts.map((p) => ({
+      name: p.name,
+      cid: p.cid,
+      codec: "raw",
+      size: p.size,
+      sha256: sha256(p.bytes),
+      kind: "table",
+    })),
     profiles: [
       {
         name: PROFILE.name,
@@ -111,7 +137,7 @@ export async function fixtureManifest(
     limitations: [],
   });
   const bytes = new TextEncoder().encode(JSON.stringify(manifest));
-  return { manifest, bytes, cid: await rawCid(bytes), partCid };
+  return { manifest, bytes, cid: await rawCid(bytes), partCid: parts[0]?.cid ?? "", parts };
 }
 
 export interface FakeEngine extends QueryEngine {
@@ -151,6 +177,16 @@ export function fakeEngine(): FakeEngine {
     },
   };
   return engine;
+}
+
+/** ERR-19: answers GetObject for the fixture's manifest and every part (`ipfs/<cid>`). */
+export function serveFixture(
+  s3: AwsStub<ServiceInputTypes, ServiceOutputTypes, S3ClientResolvedConfig>,
+  fixture: Fixture,
+): void {
+  s3.on(GetObjectCommand, { Key: `ipfs/${fixture.cid}` }).resolves(s3Body(fixture.bytes));
+  for (const part of fixture.parts)
+    s3.on(GetObjectCommand, { Key: `ipfs/${part.cid}` }).resolves(s3Body(part.bytes));
 }
 
 /** A GetObject output whose Body yields `bytes` (the SDK's transformToByteArray shape). */

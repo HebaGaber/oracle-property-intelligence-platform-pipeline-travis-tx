@@ -14,8 +14,9 @@ import { runSummarySql } from "@countylens/query-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "../src/routers/index.js";
 import { runsRouter } from "../src/routers/runs.js";
-import { BIND_TTL_MS, DUCKDB_THREADS } from "../src/engine/duckdb-node.js";
+import { BIND_TTL_MS, DUCKDB_THREADS, PREFETCH_MAX_PART_BYTES } from "../src/engine/duckdb-node.js";
 import {
+  PART_CACHE_DIR,
   getManifest,
   presignPart,
   presignPrefix,
@@ -28,7 +29,9 @@ import {
   FINISHED_AT,
   fakeEngine,
   fixtureManifest,
+  PROPERTY_PART,
   s3Body,
+  serveFixture,
   type FakeEngine,
   type Fixture,
 } from "./helpers/fakes.js";
@@ -64,6 +67,7 @@ const summaryRow = (f: Fixture, roofingPermitRows: number) => (sql: string) =>
     : undefined;
 
 const getCalls = () => s3.commandCalls(GetObjectCommand).length;
+const getKeys = () => s3.commandCalls(GetObjectCommand).map((c) => c.args[0].input.Key);
 const partUrlStatement = (partCid: string) =>
   engine.statements.find((sql) => sql.includes("read_parquet(") && sql.includes(partCid));
 
@@ -170,7 +174,7 @@ describe("runs.summary (T070)", () => {
   });
 
   it("returns {manifestCid, verified, tablesBound, roofingPermitRows, queryDurationMs} from runSummarySql", async () => {
-    s3.on(GetObjectCommand, { Key: `ipfs/${fixture.cid}` }).resolves(s3Body(fixture.bytes));
+    serveFixture(s3, fixture);
     const result = await caller.runs.summary({ manifestCid: fixture.cid });
     expect(result).toEqual({
       manifestCid: fixture.cid,
@@ -183,23 +187,39 @@ describe("runs.summary (T070)", () => {
     expect(engine.queries).toContain(runSummarySql());
   });
 
-  it("binds once per manifest CID over presigned ipfs/<cid> part URLs, then serves the manifest from /tmp", async () => {
-    const twice = await fixtureManifest({ runId: "travis-twice" });
-    engine.rowsFor = summaryRow(twice, 3);
-    s3.on(GetObjectCommand, { Key: `ipfs/${twice.cid}` }).resolves(s3Body(twice.bytes));
+  // ERR-19: the cold bind read every emitted table over presigned URLs, two sequential range
+  // requests per part (≈ 46 round trips for the published run). It now binds only the tables the
+  // query's views read, and fetches each small part once, in parallel, over the S3 SDK.
+  const UNREAD_PART = "tables/county/address/part-00000.parquet";
+  const PERMIT_PART = "tables/property_improvement/property_improvement/part-00000.parquet";
 
-    await caller.runs.summary({ manifestCid: twice.cid });
+  it("ERR-19: binds once per manifest CID, fetching only the parts runs.summary's views read, each verified and cached under /tmp; no presigned URL", async () => {
+    const twice = await fixtureManifest({
+      runId: "travis-twice",
+      parts: [{ name: PROPERTY_PART }, { name: UNREAD_PART }, { name: PERMIT_PART }],
+    });
+    const [property, unread, permits] = twice.parts;
+    engine.rowsFor = summaryRow(twice, 3);
+    serveFixture(s3, twice);
+
+    const result = await caller.runs.summary({ manifestCid: twice.cid });
+    expect(result.tablesBound).toBe(2); // county.property + property_improvement.property_improvement
+    expect(getKeys().sort()).toEqual(
+      [`ipfs/${twice.cid}`, `ipfs/${property?.cid}`, `ipfs/${permits?.cid}`].sort(),
+    );
     const bindStatements = engine.statements.length;
-    expect(bindStatements).toBeGreaterThan(0);
-    const view = partUrlStatement(twice.partCid);
-    expect(view).toBeDefined();
-    expect(view).toContain(`https://copy-bucket.s3.xx-test-1.amazonaws.com/ipfs/${twice.partCid}?`);
-    expect(view).toContain("X-Amz-Signature=");
-    expect(view).toContain(`X-Amz-Expires=${PRESIGN_EXPIRES_S}`);
+    for (const part of [property, permits]) {
+      const view = partUrlStatement(part?.cid ?? "");
+      expect(view).toBeDefined();
+      expect(view).toContain(join(tmp, PART_CACHE_DIR, part?.cid ?? ""));
+      expect(view).not.toContain("X-Amz-Signature=");
+    }
+    expect(partUrlStatement(unread?.cid ?? "")).toBeUndefined(); // county.address: no view reads it
+    expect(engine.statements.join("\n")).not.toContain("CREATE OR REPLACE VIEW v_property");
 
     await caller.runs.summary({ manifestCid: twice.cid });
     expect(engine.statements).toHaveLength(bindStatements); // no re-bind
-    expect(getCalls()).toBe(1); // second request read the /tmp cache
+    expect(getCalls()).toBe(3); // the second request read nothing from S3
     expect(seam.opens).toHaveLength(1); // one DuckDB instance per sandbox
     expect(seam.opens[0]).toMatchObject({
       threads: DUCKDB_THREADS,
@@ -209,18 +229,75 @@ describe("runs.summary (T070)", () => {
     expect(DUCKDB_THREADS).toBe(4);
   });
 
-  it("re-binds after BIND_TTL_MS so the presigned part URLs never outlive their signature", async () => {
+  it("ERR-19: a part declared larger than one raw chunk is range-read over a presigned ipfs/<cid> URL, never fetched whole", async () => {
+    expect(PREFETCH_MAX_PART_BYTES).toBe(262_144);
+    const large = await fixtureManifest({
+      runId: "travis-large-part",
+      parts: [{ name: PROPERTY_PART, size: PREFETCH_MAX_PART_BYTES + 1 }],
+    });
+    engine.rowsFor = summaryRow(large, 1);
+    serveFixture(s3, large);
+
+    await caller.runs.summary({ manifestCid: large.cid });
+    expect(getKeys()).toEqual([`ipfs/${large.cid}`]);
+    const view = partUrlStatement(large.partCid);
+    expect(view).toContain(`https://copy-bucket.s3.xx-test-1.amazonaws.com/ipfs/${large.partCid}?`);
+    expect(view).toContain("X-Amz-Signature=");
+    expect(view).toContain(`X-Amz-Expires=${PRESIGN_EXPIRES_S}`);
+  });
+
+  it("ERR-19: a part whose bytes do not hash to its CID fails the request with INTERNAL_SERVER_ERROR and is never cached or bound", async () => {
+    const bad = await fixtureManifest({ runId: "travis-bad-part" });
+    s3.on(GetObjectCommand, { Key: `ipfs/${bad.cid}` }).resolves(s3Body(bad.bytes));
+    s3.on(GetObjectCommand, { Key: `ipfs/${bad.partCid}` }).resolves(
+      s3Body(new TextEncoder().encode("other bytes")),
+    );
+    await expect(caller.runs.summary({ manifestCid: bad.cid })).rejects.toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+    });
+    expect(partUrlStatement(bad.partCid)).toBeUndefined();
+    await expect(caller.runs.summary({ manifestCid: bad.cid })).rejects.toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+    });
+    expect(getKeys().filter((k) => k === `ipfs/${bad.partCid}`)).toHaveLength(2);
+  });
+
+  it("ERR-19: a later query that reads more views re-binds the same run with both view sets, reusing the /tmp parts", async () => {
+    const union = await fixtureManifest({
+      runId: "travis-union",
+      parts: [{ name: PROPERTY_PART }, { name: PERMIT_PART }],
+    });
+    engine.rowsFor = summaryRow(union, 2);
+    serveFixture(s3, union);
+
+    await caller.runs.summary({ manifestCid: union.cid });
+    const summaryStatements = engine.statements.length;
+    expect(getCalls()).toBe(3);
+
+    await caller.query.radius({ manifestCid: union.cid, lat: 30.2672, lon: -97.7431, miles: 1 });
+    const rebind = engine.statements.slice(summaryStatements).join("\n");
+    expect(rebind).toContain("CREATE OR REPLACE VIEW v_property");
+    expect(rebind).toContain("CREATE OR REPLACE VIEW v_roofing_permit");
+    expect(getCalls()).toBe(3); // manifest and parts came from /tmp
+
+    const settled = engine.statements.length;
+    await caller.runs.summary({ manifestCid: union.cid });
+    await caller.query.radius({ manifestCid: union.cid, lat: 30.2672, lon: -97.7431, miles: 1 });
+    expect(engine.statements).toHaveLength(settled); // both view sets stay bound
+  });
+
+  it("re-binds after BIND_TTL_MS so presigned part URLs (large parts) never outlive their signature", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const ttl = await fixtureManifest({ runId: "travis-ttl" });
     engine.rowsFor = summaryRow(ttl, 1);
-    s3.on(GetObjectCommand, { Key: `ipfs/${ttl.cid}` }).resolves(s3Body(ttl.bytes));
+    serveFixture(s3, ttl);
 
     await caller.runs.summary({ manifestCid: ttl.cid });
     const bindStatements = engine.statements.length;
     vi.setSystemTime(Date.now() + BIND_TTL_MS + 1);
     await caller.runs.summary({ manifestCid: ttl.cid });
     expect(engine.statements.length).toBe(2 * bindStatements);
-    expect(getCalls()).toBe(1);
+    expect(getCalls()).toBe(2); // the manifest and its one part, each once: the re-bind reads /tmp
     expect(BIND_TTL_MS).toBeLessThan(PRESIGN_EXPIRES_S * 1000);
   });
 });

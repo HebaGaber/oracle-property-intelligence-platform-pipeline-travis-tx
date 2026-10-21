@@ -6,7 +6,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { CidV1 } from "@countylens/contract";
-import { runSummarySql } from "@countylens/query-core";
+import { runSummarySql, viewsReadBy } from "@countylens/query-core";
 import { bindOnce, timedQuery } from "../engine/duckdb-node.js";
 import { publicProcedure, router } from "../trpc.js";
 
@@ -16,7 +16,8 @@ export interface RunSummary {
   readonly manifestCid: string;
   /** Always true on success: a mismatch between bytes and CID is an error, never a summary. */
   readonly verified: true;
-  /** Tables the manifest publishes and the views are bound over (not the empty placeholders). */
+  /** Published tables the bound views read (not the empty placeholders); ERR-19: only the
+   *  tables of the views bound for this request and earlier ones on the same sandbox. */
   readonly tablesBound: number;
   readonly roofingPermitRows: number;
   readonly queryDurationMs: number;
@@ -24,8 +25,9 @@ export interface RunSummary {
 
 export const runsRouter = router({
   summary: publicProcedure.input(RunSummaryInput).query(async ({ input }): Promise<RunSummary> => {
-    const bound = await bindOnce(input.manifestCid);
-    const { rows, queryDurationMs } = await timedQuery(runSummarySql(), {
+    const sql = runSummarySql();
+    const bound = await bindOnce(input.manifestCid, viewsReadBy(sql)); // ERR-19: its views only
+    const { rows, queryDurationMs } = await timedQuery(sql, {
       name: "runSummarySql",
       manifestCid: bound.manifestCid,
     });

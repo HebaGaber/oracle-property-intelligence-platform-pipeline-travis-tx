@@ -274,6 +274,7 @@ describe("createPermitsLoader: index → manifest → engine → bind → list (
         manifestCid,
         asOf: "2026-10-01T00:00:00Z",
         tables: [],
+        views: [],
       })),
       countPermits: vi.fn(async () => coverageCount ?? 0),
       listPermits: vi.fn(async () => rows as never),

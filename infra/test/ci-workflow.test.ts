@@ -60,6 +60,7 @@ describe("ci.yml (metagross M4): e2e-hosted environment", () => {
       CID_COPY_HOST: "${{ vars.CID_COPY_HOST }}",
       FILEBASE_GATEWAY_HOST: "${{ vars.FILEBASE_GATEWAY_HOST }}",
       PINATA_GATEWAY_HOST: "${{ vars.PINATA_GATEWAY_HOST }}",
+      NO_TCAD_PERMIT_NUMBERS: "${{ vars.NO_TCAD_PERMIT_NUMBERS }}",
     });
     for (const value of Object.values(job.env ?? {})) {
       expect(value, "every value is a repository variable").toMatch(/^\$\{\{ vars\.[A-Z_]+ \}\}$/);
@@ -141,6 +142,7 @@ describe("ci.yml (AM-08): CI never deploys and never needs AWS credentials", () 
       "AWS_REGION",
       "CID_COPY_HOST",
       "FILEBASE_GATEWAY_HOST",
+      "NO_TCAD_PERMIT_NUMBERS",
       "OPERATOR_EMAIL",
       "PINATA_GATEWAY_HOST",
     ]);

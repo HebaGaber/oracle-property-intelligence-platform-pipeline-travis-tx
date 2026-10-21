@@ -11,6 +11,7 @@ import { deriveMacrosSql, zctaAreaRows } from "./derive.js";
 import type { QueryEngine } from "./engine.js";
 import { rawCid } from "./raw-cid.js";
 import { STATUS_MAP_SQL, VIEWS_SQL } from "./sql.js";
+import { CONTRACT_VIEWS, planViews, type ContractView, type ViewPlan } from "./view-plan.js";
 
 const V = "VARCHAR";
 /** The manifest profiles[] name of the travis-places gazetteer (area_list_sha256). */
@@ -85,6 +86,13 @@ export const REQUIRED_TABLES: readonly RequiredTable[] = [
   },
 ];
 
+/** ERR-19: the required tables `views` read (transitively, through meta.permit and
+ *  v_roofing_permit), in REQUIRED_TABLES order. */
+export function tablesForViews(views: readonly ContractView[]): RequiredTable[] {
+  const { tables } = planViews(views);
+  return REQUIRED_TABLES.filter((r) => tables.has(`${r.group}.${r.table}`));
+}
+
 /** The manifest source each data group's records were captured from (used when a record has no
  *  source_http_request, or one whose url is not a manifest source). */
 export const TRAVIS_GROUP_SOURCES: Readonly<Record<string, string>> = {
@@ -100,6 +108,13 @@ export interface BindOptions {
    * `${tablesDir}/${group}/${table}/${part}`, the export-tables layout (A-03 T013, additive).
    */
   partUrl?: (artifact: { name: string; cid: string }) => string;
+  /**
+   * ERR-19: bind only what these contract views read (view-plan.ts): the export tables they need
+   * (emitted → read over their parts, absent → empty typed tables) and their views.sql statements.
+   * Other parts are never passed to `partUrl` nor read. Default: every emitted table and all four
+   * views (unchanged). Rows of a created view are the same either way.
+   */
+  views?: readonly ContractView[];
 }
 
 export interface BoundTable {
@@ -114,6 +129,8 @@ export interface BoundRun {
   manifestCid: string;
   asOf: string;
   tables: BoundTable[];
+  /** The contract views created, in CONTRACT_VIEWS order (all four unless `views` was given). */
+  views: ContractView[];
 }
 
 const str = (s: string | null | undefined): string =>
@@ -160,12 +177,18 @@ export async function bindManifest(
     );
   const areaList = places.sha256;
   const groupSources = options.groupSources ?? TRAVIS_GROUP_SOURCES;
+  const plan: ViewPlan | undefined =
+    options.views === undefined ? undefined : planViews(options.views);
+  const wanted = (key: string): boolean => plan === undefined || plan.tables.has(key);
 
   // A warm engine may hold another run: emitted tables are VIEWs and absent required ones are
   // empty TABLEs, and DuckDB cannot CREATE OR REPLACE across the two kinds; the previous run's
   // extra views (over presigned URLs that expire) must not survive either. The three run schemas
   // are dropped whole; the main-schema views and macros are replaced below (code-review Major 4).
+  // ERR-19: the four contract views are dropped too, so a subset bind leaves none of the previous
+  // run's views behind (each is recreated below when the plan includes it).
   const sql: string[] = [
+    ...CONTRACT_VIEWS.map((v) => `DROP VIEW IF EXISTS ${v}`),
     "DROP SCHEMA IF EXISTS meta CASCADE",
     "DROP SCHEMA IF EXISTS county CASCADE",
     "DROP SCHEMA IF EXISTS property_improvement CASCADE",
@@ -245,6 +268,7 @@ export async function bindManifest(
     const p = partOf(a.name);
     if (!p) continue;
     const key = `${p.group}.${p.table}`;
+    if (!wanted(key)) continue;
     const t = emitted.get(key) ?? { group: p.group, table: p.table, emitted: true, parts: [] };
     t.parts.push(a.name);
     emitted.set(key, t);
@@ -267,6 +291,7 @@ export async function bindManifest(
 
   const tables: BoundTable[] = [...emitted.values()];
   for (const r of REQUIRED_TABLES) {
+    if (!wanted(`${r.group}.${r.table}`)) continue;
     const t = emitted.get(`${r.group}.${r.table}`);
     if (t) {
       const described = await engine.all(`DESCRIBE SELECT * FROM ${r.group}.${r.table}`);
@@ -287,6 +312,13 @@ export async function bindManifest(
     tables.push({ group: r.group, table: r.table, emitted: false, parts: [] });
   }
 
-  await engine.run(`${STATUS_MAP_SQL}\n${deriveMacrosSql()}\n${VIEWS_SQL}`);
-  return { runId: manifest.runId, manifestCid, asOf: manifest.finishedAt, tables };
+  const views = plan === undefined ? VIEWS_SQL : plan.statements.map((s) => s.sql).join("\n");
+  await engine.run(`${STATUS_MAP_SQL}\n${deriveMacrosSql()}\n${views}`);
+  return {
+    runId: manifest.runId,
+    manifestCid,
+    asOf: manifest.finishedAt,
+    tables,
+    views: plan === undefined ? [...CONTRACT_VIEWS] : [...plan.views],
+  };
 }

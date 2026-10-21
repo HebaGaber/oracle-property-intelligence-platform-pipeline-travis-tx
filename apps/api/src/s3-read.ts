@@ -8,6 +8,9 @@
 // unchanged (ERR-18: DuckDB caches footers and bytes by URL). No function reads any other key
 // (contracts/api.md). The region is the runtime's AWS_REGION, never a literal (P0-18). Presigned
 // URLs are returned to the engine and never logged (FR-007).
+// ERR-19: `localPart` GETs a small `ipfs/<cid>` table part whole, verifies its raw-leaves CIDv1 and
+// keeps it under /tmp by CID, so DuckDB binds a local file instead of two sequential range
+// requests per part over a presigned URL (the cold-start cost of the published run).
 // metagross N3: a GetObject 403 is reported to the client as NOT_FOUND (see isAbsent), so a broken
 // read grant would otherwise be silent; that branch logs one warning (identifiers only) and emits
 // the ManifestAccessDenied Count metric so a wave of them is visible in CloudWatch.
@@ -45,6 +48,8 @@ if (PRESIGN_REUSE_MS >= PRESIGN_EXPIRES_S * 1000) {
 }
 /** The /tmp cache of verified manifests: one file per CID under the sandbox's temp directory. */
 export const MANIFEST_CACHE_DIR = "countylens-manifests";
+/** ERR-19: the /tmp cache of verified table parts, one file per CID (immutable bytes). */
+export const PART_CACHE_DIR = "countylens-parts";
 
 /** Count metric: one per GetObject 403 that getManifest reported as NOT_FOUND (metagross N3). */
 export const METRIC_MANIFEST_ACCESS_DENIED = "ManifestAccessDenied";
@@ -89,11 +94,14 @@ function ipfsKey(cid: string): string {
   return `ipfs/${cid}`;
 }
 
-const cacheDir = (): string => join(tmpdir(), MANIFEST_CACHE_DIR);
+const cacheDir = (name: string = MANIFEST_CACHE_DIR): string => join(tmpdir(), name);
 
 /** The cached bytes of `cid` if present and still hashing to it; a stale file is removed. */
-async function readCached(cid: string): Promise<Uint8Array | undefined> {
-  const file = join(cacheDir(), cid);
+async function readCached(
+  cid: string,
+  dir: string = MANIFEST_CACHE_DIR,
+): Promise<Uint8Array | undefined> {
+  const file = join(cacheDir(dir), cid);
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(await readFile(file));
@@ -110,15 +118,20 @@ async function readCached(cid: string): Promise<Uint8Array | undefined> {
 }
 
 /** Best-effort atomic write (temp file + rename); the verified bytes are already in hand. */
-async function writeCached(cid: string, bytes: Uint8Array): Promise<void> {
-  const dir = cacheDir();
+async function writeCached(
+  cid: string,
+  bytes: Uint8Array,
+  name: string = MANIFEST_CACHE_DIR,
+): Promise<boolean> {
+  const dir = cacheDir(name);
   try {
     await mkdir(dir, { recursive: true });
     const tmp = join(dir, `${cid}.${randomUUID()}.tmp`);
     await writeFile(tmp, bytes);
     await rename(tmp, join(dir, cid));
+    return true;
   } catch {
-    // the cache is an optimisation only
+    return false; // the manifest cache is an optimisation only
   }
 }
 
@@ -194,6 +207,41 @@ const presign = (bucket: string, key: string): Promise<string> =>
   getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket, Key: key }), {
     expiresIn: PRESIGN_EXPIRES_S,
   });
+
+/**
+ * ERR-19: the local path of table part `ipfs/<cid>` (≤ one 256 KiB raw chunk): the verified /tmp
+ * copy, else one GetObject whose bytes must hash to `cid` (INTERNAL_SERVER_ERROR otherwise,
+ * nothing written). Throws when the verified copy cannot be written (the caller then fails the
+ * bind rather than pointing DuckDB at a missing file).
+ */
+export async function localPart(cid: string): Promise<string> {
+  const key = ipfsKey(cid);
+  const file = join(cacheDir(PART_CACHE_DIR), cid);
+  if ((await readCached(cid, PART_CACHE_DIR)) !== undefined) return file;
+  const object = await s3().send(
+    new GetObjectCommand({ Bucket: getConfig().cidCopyBucket, Key: key }),
+  );
+  if (object?.Body === undefined) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `${key}: empty body` });
+  }
+  const bytes = await object.Body.transformToByteArray();
+  let actual: string;
+  try {
+    actual = await rawCid(bytes);
+  } catch {
+    actual = `a ${bytes.length}-byte body`;
+  }
+  if (actual !== cid) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `part ${cid}: the copy's bytes hash to ${actual}`,
+    });
+  }
+  if (!(await writeCached(cid, bytes, PART_CACHE_DIR))) {
+    throw new Error(`part ${cid}: could not write the verified copy under ${PART_CACHE_DIR}`);
+  }
+  return file;
+}
 
 /** A presigned in-region GET URL for `ipfs/<cid>`. */
 export async function presignPart(cid: string): Promise<string> {

@@ -6,12 +6,12 @@ story: A-03
 test_case: A-03-TC-020 (also blocks A-03-TC-021, A-03-TC-022, A-03-TC-025, A-03-TC-NF-02)
 ac_reference: A-03-AC-3
 severity: High
-status: Fixed
+status: Re-tested
 found_by: smeargle
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
 fix_commit: 660f73ccfe1805673e0b0efae38c0bb002ea75b5
-retest_date:
+retest_date: 2026-10-21
 ---
 
 # ERR-10: Permits list – every row rejected by the contract/v1 check, page never reaches ready
@@ -66,7 +66,7 @@ On the hosted preview the Permits page loads DuckDB-WASM, binds the run and coun
 
 - [x] Screenshots `docs/evidence/img/A-03-smeargle-permits-390.png`, `-768.png`, `-1440.png`
 - [x] Red unit run (real DuckDB-WASM, before the fix): `apps/web/test/arrow-rows-real.test.ts` 7 failed, including "the Permits list SQL over v_roofing_permit passes parsePermitRows" with the same message as the hosted banner (`path ["missing", 0] … expected object, received array`)
-- [ ] Playwright re-run of A-03-TC-020 on the redeployed preview
+- [x] Playwright re-run of A-03-TC-020 on the redeployed preview: PASS in hosted run 2 (build `fbdb68b`)
 
 ## Resolution
 
@@ -75,5 +75,5 @@ On the hosted preview the Permits page loads DuckDB-WASM, binds the run and coun
 | Root cause | `plain()` in `duckdb-wasm.ts` checked `toArray()` before `toJSON()`. An Arrow `StructRow` (each element of the `missing` LIST<STRUCT>) has both, and `StructRow.toArray()` returns its member **values** (`["status_raw","no_lexicon_carrier"]`), dropping the names. Numeric lists were also wrong (`Vector.toArray()` is a typed array, `BigInt64Array` for BIGINT, which became `{"0":…}`), and nested DATE/TIMESTAMP values stayed epoch numbers. The old unit test used hand-made `{toArray, toJSON}` objects, so it never met the real classes. |
 | Fix | `arrowToRows` is now led by the Arrow type, recursively (`convert`: LIST/FixedSizeList → array via Vector iteration, nulls kept; STRUCT → object by the type's child fields via `toJSON()`; DATE → YYYY-MM-DD and TIMESTAMP → ISO 8601 at any depth; bigint → number); the untyped fallback prefers `toJSON` and turns typed arrays into arrays. The API's `@duckdb/node-api` conversion (`apps/api/src/engine/duckdb-instance.ts`) is type-led the same way (its top-level columns were already correct; nested DATE/TIMESTAMP inside a STRUCT/LIST were not). Commit: _(filled after commit)_ on `003-walking-skeleton`. |
 | Tests | `apps/web/test/arrow-rows-real.test.ts` (real DuckDB-WASM node build, same apache-arrow classes as the browser): "returns a LIST<STRUCT> as an array of plain objects (StructRow has toArray and toJSON)", "returns numeric lists as plain number arrays (typed arrays, BIGINT → number, null elements kept) and nested dates per contract", "{view} (filled / nulls): every column is JSON-shaped and passes the contract/v1 row schema" for all four views, "the Permits list SQL over v_roofing_permit passes parsePermitRows (the page's own check)". `apps/api/test/duckdb-node.test.ts` › "ERR-10: openDuckDb rows over every contract/v1 column (real @duckdb/node-api)" (8 view cases + "keeps nested values JSON-shaped: STRUCT dates and timestamps per contract, BIGINT lists as numbers"). Shared fixtures: `packages/contract/test/helpers/view-row-literals.ts`. |
-| Re-test | A-03-TC-020 on the redeployed preview: pending |
-| Status | Fixed (awaiting hosted re-test) |
+| Re-test | A-03-TC-020 PASS in hosted run 2 (build `fbdb68b`, 2026-10-21): the Permits page reaches `ready` with 35 rows. TC-021, TC-022, TC-025 and TC-NF-02 PASS too; `smeargle` re-check 6/6 PASS at 390 / 768 / 1440 |
+| Status | Re-tested: PASS in hosted run 2 (build `fbdb68b`, 2026-10-21) |

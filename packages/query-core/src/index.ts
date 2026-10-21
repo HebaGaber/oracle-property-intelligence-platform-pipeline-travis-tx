@@ -10,6 +10,7 @@ export {
   REQUIRED_TABLES,
   TRAVIS_GROUP_SOURCES,
   bindManifest,
+  tablesForViews,
   type BindOptions,
   type BoundRun,
   type BoundTable,
@@ -20,4 +21,13 @@ export * as derive from "./derive.js";
 export { rawCid } from "./raw-cid.js";
 export { SAMPLE_RULE, SAMPLE_SIZE, sampleSql } from "./sample.js";
 export { STATUS_MAP_SQL, VIEWS_SQL } from "./sql.js";
+export {
+  CONTRACT_VIEWS,
+  VIEW_STATEMENTS,
+  planViews,
+  viewsReadBy,
+  type ContractView,
+  type ViewPlan,
+  type ViewStatement,
+} from "./view-plan.js";
 export * as gazetteer from "../gazetteer/travis-places@1.0.0/index.js";
