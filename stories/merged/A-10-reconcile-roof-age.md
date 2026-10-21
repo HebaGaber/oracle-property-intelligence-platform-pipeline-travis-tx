@@ -19,11 +19,14 @@ agents:
   verify: "worked example with lineage"
 skills: [query-db-loading-matching, use-oracle, unify-metrics, apply-engineering-guidelines]
 ui: false
-status: Draft
+status: Merged
+merged_into: A-07
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
+> **Merged into [A-07](../A-07-enrich-reconcile.md) on 2026-10-21.** This file is kept for reference only; do not run it as a story. Its ACs now live in A-07 as tagged "(was A-10 AC-n)".
+
 
 # A-10 Reconcile duplicates and derive roof age with lineage
 

@@ -19,11 +19,14 @@ agents:
   verify: "Playwright admin sign-in + Start run reaches the bridge; non-admin gets 403"
 skills: [build-frontend-backends, build-batch-workflows, frontend-bug-fix, responsive-design-tests, apply-engineering-guidelines]
 ui: true
-status: Draft
+status: Merged
+merged_into: A-16
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
+
+> **Merged on 2026-10-21 into [A-16 Prove zero idle cost and let the operator run the pipeline from the hosted app](../A-16-cost-and-admin.md).** Kept for history only: do not plan, build or gate this file. Its ACs are now AC-1 to AC-5 (A-16) or AC-6 to AC-11 (A-17) there, each tagged with its old ID.
 
 # A-17 Let the operator sign in and start, stop or retry a pipeline run from the hosted app
 

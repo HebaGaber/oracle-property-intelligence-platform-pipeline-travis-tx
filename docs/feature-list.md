@@ -79,24 +79,24 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 | FEAT-ID | Story | Class | Feature name | Description (≤ 20 words) | MoSCoW | Eval pt | Scenario | Vision ref |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | FEAT-A04 | A-04 | Feature | TCAD property and owner backbone | Loads every TCAD certified-roll property with owner, mailing address, year built and sale date, matching the roll count. | Must | A1, A2 | SCN-A | VIS-A |
-| FEAT-A05 | A-05 | Feature | Property coordinates | Attaches GIS coordinates to at least 99% of roll properties and classifies every property without them. | Must | A1, A5 | SCN-A | VIS-A |
-| FEAT-A06 | A-06 | Feature | Permits from every jurisdiction | Loads permits from each classified jurisdiction with status, issue and final dates, and open duration. | Must | A1 | SCN-A | VIS-A |
+| FEAT-A05 | A-04 (part A-05) | Feature | Property coordinates | Attaches GIS coordinates to at least 99% of roll properties and classifies every property without them. | Must | A1, A5 | SCN-A | VIS-A |
+| FEAT-A06 | A-04 (part A-06) | Feature | Permits from every jurisdiction | Loads permits from each classified jurisdiction with status, issue and final dates, and open duration. | Must | A1 | SCN-A | VIS-A |
 | FEAT-A07 | A-07 | Feature | Contractor identity | Resolves permit contractors to official business records, reporting all five identity states. | Must | A1, A2 | SCN-A | VIS-A |
-| FEAT-A08 | A-08 | Feature | BBB ratings | Adds BBB ratings to resolved contractors within source terms, showing coverage and stopping on 403 responses. | Must | A1 | SCN-A | VIS-A |
-| FEAT-A09 | A-09 | Feature | Business and places records | Loads Texas business records and licensed places data for the county, with counts and licence recorded. | Must | A1 | SCN-A | VIS-A |
+| FEAT-A08 | A-07 (part A-08) | Feature | BBB ratings | Adds BBB ratings to resolved contractors within source terms, showing coverage and stopping on 403 responses. | Must | A1 | SCN-A | VIS-A |
+| FEAT-A09 | A-07 (part A-09) | Feature | Business and places records | Loads Texas business records and licensed places data for the county, with counts and licence recorded. | Must | A1 | SCN-A | VIS-A |
 
 ### 4.3 Reconciliation and roof age
 
 | FEAT-ID | Story | Class | Feature name | Description (≤ 20 words) | MoSCoW | Eval pt | Scenario | Vision ref |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| FEAT-A10 | A-10 | Feature | Duplicate merge and roof age | Merges duplicate properties, owners and contractors, and derives roof age with basis, confidence and lineage. | Must | A2, A5 | SCN-A | VIS-A |
+| FEAT-A10 | A-07 (part A-10) | Feature | Duplicate merge and roof age | Merges duplicate properties, owners and contractors, and derives roof age with basis, confidence and lineage. | Must | A2, A5 | SCN-A | VIS-A |
 
 ### 4.4 Publication and continuity
 
 | FEAT-ID | Story | Class | Feature name | Description (≤ 20 words) | MoSCoW | Eval pt | Scenario | Vision ref |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | FEAT-A11 | A-11 | Feature | Verifiable full-county publication | Publishes the county as CIDv1 CARs and tables with a manifest verified on two public gateways. | Must | A4 | SCN-C | VIS-A |
-| FEAT-A12 | A-12 | Feature | Incremental runs and history | Runs windowed refreshes that add at least three runs with deltas and new CIDs, keeping prior CIDs resolvable. | Must | A3, A4 | SCN-D | VIS-A |
+| FEAT-A12 | A-11 (part A-12) | Feature | Incremental runs and history | Runs windowed refreshes that add at least three runs with deltas and new CIDs, keeping prior CIDs resolvable. | Must | A3, A4 | SCN-D | VIS-A |
 
 ### 4.5 Explorer, agent and MCP
 
@@ -104,7 +104,7 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | FEAT-A13 | A-13 | Feature | Explorer UI | Shows run history, coverage, manifest verification and roofing-lead searches with provenance on the hosted explorer. | Must | A1–A5 | SCN-A | VIS-A |
 | FEAT-A14 | A-14 | Feature | Roofing-lead agent | Answers both README roofing prompts over real records with reasoning, evidence, assumptions and missing data. | Must | A6 | SCN-A | VIS-A |
-| FEAT-A15 | A-15 | Feature | MCP interface | Exposes the frozen contract as MCP tools that list and answer queries on the hosted endpoint. | Must | A6 | SCN-A, SCN-B | VIS-A |
+| FEAT-A15 | A-14 (part A-15) | Feature | MCP interface | Exposes the frozen contract as MCP tools that list and answer queries on the hosted endpoint. | Must | A6 | SCN-A, SCN-B | VIS-A |
 
 ### 4.6 Cost and limits
 
@@ -116,8 +116,8 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 
 | FEAT-ID | Story | Class | Feature name | Description (≤ 20 words) | MoSCoW | Eval pt | Scenario | Vision ref |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| FEAT-A17 | A-17 | Feature | Admin sign-in and run commands | Operator signs in by email code and starts, stops or retries runs through a queue the laptop pulls. | Should | A3 | SCN-D | VIS-A |
-| FEAT-A18 | A-18 | Feature | Content and Coming soon pages | Shows hub, legal, catalog and run-log pages from real files and marks planned features Coming soon without sample data. | Should | A5 | SCN-A | VIS-A |
+| FEAT-A17 | A-16 (part A-17) | Feature | Admin sign-in and run commands | Operator signs in by email code and starts, stops or retries runs through a queue the laptop pulls. | Should | A3 | SCN-D | VIS-A |
+| FEAT-A18 | A-13 (part A-18) | Feature | Content and Coming soon pages | Shows hub, legal, catalog and run-log pages from real files and marks planned features Coming soon without sample data. | Should | A5 | SCN-A | VIS-A |
 
 **Notes on the backlog**
 
@@ -189,7 +189,7 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 | DEP-09 | FEAT-A02 | Task B (CRM) data stories | The CRM builds on the frozen contract and its sample rows |
 | DEP-10 | FEAT-A03, A11 | Task B (CRM) data stories | The CRM reads Oracle data by manifest CID |
 
-Critical path: A-01 → A-03 → A-04 → A-06 → A-10 → A-11 → A-12. A-13 to A-15 run in parallel once A-03 exists.
+Critical path: A-01 → A-03 → A-04 → A-06 → A-10 → A-11 → A-12. A-13 to A-15 run in parallel once A-03 exists. Since the 2026-10-21 story merge this is A-01 → A-03 → A-04 → A-07 → A-11, with A-13 → A-14 → A-16 in parallel.
 
 ---
 
@@ -210,6 +210,8 @@ Critical path: A-01 → A-03 → A-04 → A-06 → A-10 → A-11 → A-12. A-13 
 **AI pre-check report:** v0.2 re-run 2026-10-19: PASS, 0 FAILs, 3 notes (after one FAIL run whose 3 findings were fixed). Full report: [gates/G1-FL-A-precheck.md](gates/G1-FL-A-precheck.md). v0.1 (2026-10-17): PASS, 0 FAILs, 2 notes.
 
 **Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-17 (v0.1) · re-approved 2026-10-19 (v0.2)
+
+**Amendment 0.2.1 (2026-10-21, story merge only, no scope change, PO decision):** stories A-04 … A-18 were merged into 6 stories so the story loop runs 6 times instead of 15. Every FEAT row stays; its story cell names the merged story and the part it was (for example `A-04 (part A-05)`). A merged story delivers all of its parts' FEATs, and keeps each part's acceptance criteria. G1-01 now reads "matches its story or part ID". The G1 approval stands.
 
 **Amendment 0.2 (2026-10-19, scope addition, PO decision during P8):** FEAT-A17 (admin sign-in and run commands, implementing the Accepted architecture decision AD-12, which had no story) and FEAT-A18 (Hub, legal, catalog and run-log pages, plus Coming soon items from `docs/02-design.md` § 3) were added as **Should**, built after every Must. The place gazetteer and the observability baseline were folded into FEAT-A02 and FEAT-A03, so they need no new rows. Re-run `/developmentsupport-g1-precheck` before G4 of A-17.
 

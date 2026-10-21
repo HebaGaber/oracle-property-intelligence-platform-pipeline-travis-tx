@@ -19,11 +19,14 @@ agents:
   verify: "counts + licence recorded"
 skills: [overture-places-ingest, apply-engineering-guidelines]
 ui: false
-status: Draft
+status: Merged
+merged_into: A-07
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
+> **Merged into [A-07](../A-07-enrich-reconcile.md) on 2026-10-21.** This file is kept for reference only; do not run it as a story. Its ACs now live in A-07 as tagged "(was A-09 AC-n)".
+
 
 # A-09 Load business and places data for the county
 

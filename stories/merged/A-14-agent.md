@@ -19,11 +19,14 @@ agents:
   verify: "golden queries G1–G6"
 skills: [build-rag-systems, build-ai-agents, responsive-design-tests, apply-engineering-guidelines]
 ui: true
-status: Draft
+status: Merged
+merged_into: A-14
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
+
+> **Merged 2026-10-21 into [A-14 Answer roofing-lead questions through a source-backed agent and an MCP server](../A-14-agent-and-mcp.md)** (branch `014-agent-and-mcp`). This file is kept for reference only: do not build, gate or branch from it. Its ACs and requirements are renumbered in the merged story, each tagged with its original ID.
 
 # A-14 Answer roofing-lead questions with a source-backed agent
 

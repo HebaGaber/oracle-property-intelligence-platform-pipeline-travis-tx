@@ -150,6 +150,8 @@ None sent. On 2026-10-17 the product owner decided not to message the assessor a
 
 Planning step P1, 2026-10-17. `soofi-xyz-team-kit:arceus` (kit 0.99.1) was asked for the primary and supporting agents and skills for the eight build areas of the README. Every area also loads `apply-engineering-guidelines`. Agent names are invoked as `soofi-xyz-team-kit:{name}`. Decisions on the differences from `AGENT-MAP.md` are in [kit-usage.md](kit-usage.md#kit-routing-decisions-p1).
 
+*Story merge (2026-10-21):* A-04 … A-18 now run as 6 merged stories. Story IDs in this table are **part** IDs, and each part belongs to one merged story: A-05, A-06 → A-04 · A-08, A-09, A-10 → A-07 · A-12 → A-11 · A-18 → A-13 · A-15 → A-14 · A-17 → A-16.
+
 | Area | Stories | Primary | Supporting | Skills | Invocation hint |
 | --- | --- | --- | --- | --- | --- |
 | County ingestion | A-01, A-04, A-05, A-06, A-08, A-09 | `oracle` | `mew` (contract and schema), `donphan` (read-only count checks) | `onboard-county`, `county-discovery`, `county-readiness-preflight`, `bootstrap-oracle-infra`, `county-seed-data`, `county-appraisal-onboarding`, `build-county-transform`, `county-ingest-run`, `county-permit-adapter`, `bbb-harvest`, `overture-places-ingest`, `monitoring-county-ingestion`, `use-neutral-lexicon` (via `mew`) | Use the `oracle` subagent to discover and ingest Travis County TCAD appraisal, roofing permits, BBB ratings and Overture places, loading `onboard-county` and `county-ingest-run`. |

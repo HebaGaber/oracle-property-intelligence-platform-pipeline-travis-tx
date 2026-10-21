@@ -19,13 +19,16 @@ agents:
   verify: "Playwright demo lines 1–8"
 skills: [build-frontend-backends, frontend-bug-fix, responsive-design-tests, apply-engineering-guidelines]
 ui: true
-status: Draft
+status: Merged
+merged_into: A-13
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
 
 # A-13 Build the Explorer UI for runs, coverage, manifest verification and roofing queries
+
+> **Merged into A-13 on 2026-10-21.** This story is now part of [A-13 Build the Explorer UI with its hub, legal, catalog and Coming soon pages](../A-13-explorer-and-pages.md), branch `013-explorer-and-pages`. Its ACs and requirements are kept there with "was" tags. This file is kept for reference only: don't run the story loop on it.
 
 | Field | Value |
 | --- | --- |

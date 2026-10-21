@@ -19,13 +19,17 @@ agents:
   verify: "per-jurisdiction counts"
 skills: [county-permit-adapter, county-ingest-run, durable-workflow-builder, apply-engineering-guidelines]
 ui: false
-status: Draft
+status: Merged
+merged_into: A-04
+merged_on: 2026-10-21
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
 
 # A-06 Harvest permits from every classified jurisdiction
+
+> Merged into **A-04** on 2026-10-21 ([../A-04-property-backbone.md](../A-04-property-backbone.md)). Kept for history; the ACs live there now.
 
 | Field | Value |
 | --- | --- |

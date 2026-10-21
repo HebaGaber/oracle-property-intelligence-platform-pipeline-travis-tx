@@ -19,11 +19,14 @@ agents:
   verify: "MCP Inspector on the hosted URL; `donphan` answers through it"
 skills: [deploy-open-data-mcp, use-elephant-mcp, apply-engineering-guidelines]
 ui: false
-status: Draft
+status: Merged
+merged_into: A-14
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
+
+> **Merged 2026-10-21 into [A-14 Answer roofing-lead questions through a source-backed agent and an MCP server](../A-14-agent-and-mcp.md)** (branch `014-agent-and-mcp`). This file is kept for reference only: do not build, gate or branch from it. Its ACs and requirements are renumbered in the merged story, each tagged with its original ID.
 
 # A-15 Expose the data through an MCP server
 

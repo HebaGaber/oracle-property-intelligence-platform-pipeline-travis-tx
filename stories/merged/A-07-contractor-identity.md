@@ -19,11 +19,14 @@ agents:
   verify: "resolved / unresolved / ambiguous counts (five AD-05 states in Task A)"
 skills: [query-db-loading-matching, use-neutral-lexicon, apply-engineering-guidelines]
 ui: false
-status: Draft
+status: Merged
+merged_into: A-07
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
+> **Merged into [A-07](../A-07-enrich-reconcile.md) on 2026-10-21.** This file is kept for reference only; do not run it as a story. Its ACs now live in A-07 as tagged "(was A-07 AC-n)".
+
 
 # A-07 Resolve contractor identity from official business records
 

@@ -19,13 +19,17 @@ agents:
   verify: "coverage SQL ≥ 99%"
 skills: [use-oracle, query-db-loading-matching, apply-engineering-guidelines]
 ui: false
-status: Draft
+status: Merged
+merged_into: A-04
+merged_on: 2026-10-21
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
 
 # A-05 Attach coordinates to every property and reconcile GIS with the roll
+
+> Merged into **A-04** on 2026-10-21 ([../A-04-property-backbone.md](../A-04-property-backbone.md)). Kept for history; the ACs live there now.
 
 | Field | Value |
 | --- | --- |

@@ -19,13 +19,17 @@ agents:
   verify: "`verify-manifest` on 2 gateways"
 skills: [use-oracle, apply-engineering-guidelines]
 ui: false
-status: Draft
+status: Merged
+merged_into: A-11
+merged_on: 2026-10-21
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
 
 # A-11 Publish the full county as verifiable CIDs (Run 1)
+
+> **Merged on 2026-10-21 into [A-11 Publish the full county by CID and keep it current with incremental runs](../A-11-publish-and-runs.md).** Kept for history only: do not plan, build or gate this file. Its ACs are now AC-1 to AC-6 there, each tagged with its old ID.
 
 | Field | Value |
 | --- | --- |

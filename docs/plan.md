@@ -349,19 +349,14 @@ Each story runs the six-stage loop (playbook Part 2). The kit agent named in the
 | A-01 | oracle | oracle | oracle | onboard-county, county-discovery, county-readiness-preflight, bootstrap-oracle-infra |
 | A-02 | mew, oracle | oracle | oracle, donphan | use-oracle, use-neutral-lexicon |
 | A-03 | metagross, oracle | metagross (app), oracle (publish) | metagross, oracle | build-frontend-backends, integrate-ci-cd, use-oracle, county-permit-adapter |
-| A-04 | oracle | oracle | oracle, donphan | county-seed-data, county-appraisal-onboarding, build-county-transform, county-ingest-run, monitoring-county-ingestion |
-| A-05 | oracle | oracle | oracle, donphan | use-oracle, query-db-loading-matching |
-| A-06 | oracle | oracle | oracle, donphan | county-permit-adapter, county-ingest-run, durable-workflow-builder |
-| A-07 | oracle, mew | oracle | oracle, donphan | query-db-loading-matching |
-| A-08 | oracle | oracle | oracle, donphan | bbb-harvest |
-| A-09 | oracle | oracle | oracle | overture-places-ingest |
-| A-10 | oracle | oracle | oracle, donphan, porygon | query-db-loading-matching, use-oracle, unify-metrics |
-| A-11 | oracle | oracle | oracle, donphan | use-oracle |
-| A-12 | oracle, machamp | oracle (runs), machamp (scheduler) | oracle, machamp, porygon | use-oracle, build-batch-workflows, durable-workflow-builder, monitoring-oracle-ingestion |
-| A-13 | metagross | metagross | metagross, audino | build-frontend-backends, frontend-bug-fix, responsive-design-tests |
-| A-14 | alakazam, ash | alakazam (retrieval), ash (runtime) | alakazam, ash | build-rag-systems, build-ai-agents |
-| A-15 | oracle | oracle | oracle, donphan | deploy-open-data-mcp, use-elephant-mcp |
-| A-16 | metagross, machamp | metagross | metagross, machamp | build-frontend-backends, build-batch-workflows |
+| A-04 (parts A-04, A-05, A-06) | oracle | oracle | oracle, donphan | county-seed-data, county-appraisal-onboarding, build-county-transform, county-ingest-run, monitoring-county-ingestion, use-oracle, query-db-loading-matching, county-permit-adapter, durable-workflow-builder |
+| A-07 (parts A-07, A-08, A-09, A-10) | oracle, mew | oracle | oracle, donphan, porygon | query-db-loading-matching, use-neutral-lexicon, bbb-harvest, overture-places-ingest, use-oracle, unify-metrics |
+| A-11 (parts A-11, A-12) | oracle, machamp | oracle (runs, publication), machamp (scheduler) | oracle, donphan, machamp, porygon | use-oracle, build-batch-workflows, durable-workflow-builder, monitoring-oracle-ingestion, unify-metrics |
+| A-13 (parts A-13, A-18) | metagross | metagross | metagross, audino | build-frontend-backends, frontend-bug-fix, responsive-design-tests |
+| A-14 (parts A-14, A-15) | alakazam, ash, oracle | alakazam (retrieval), ash (agent runtime), oracle (MCP) | alakazam, ash, oracle, donphan | build-rag-systems, build-ai-agents, deploy-open-data-mcp, use-elephant-mcp |
+| A-16 (parts A-16, A-17) | metagross, machamp | metagross (cost page, sign-in, UI, API), machamp (cost jobs, queue, DLQ, bridge) | metagross, machamp, audino | build-frontend-backends, build-batch-workflows, frontend-bug-fix |
+
+Since 2026-10-21 the 15 stories A-04 … A-18 run as **6 merged stories**; each keeps every acceptance criterion of its parts (tagged "was A-05 AC-2"). The per-part stories are kept in `stories/merged/`.
 
 `babysit-release` is not used: the PR is never merged (P1 decision, `docs/kit-usage.md`).
 
@@ -567,21 +562,12 @@ Every branch is created from `feature/oracle-pipeline` and merged back with `--n
 | `specs/001-discover-sources` | A-01 | 0 | specify → clarify → plan → tasks → analyze → implement |
 | `specs/002-data-contract` | A-02 | 0 | specify → clarify → plan → tasks → analyze → implement |
 | `specs/003-walking-skeleton` | A-03 | 0 | spike → specify → clarify → plan → tasks → analyze → implement |
-| `specs/004-tcad-backbone` | A-04 | 1 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/005-coordinates` | A-05 | 1 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/006-permits` | A-06 | 1 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/007-contractor-identity` | A-07 | 2 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/008-bbb-ratings` | A-08 | 2 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/009-business-places` | A-09 | 2 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/010-reconcile-roof-age` | A-10 | 2 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/011-full-publish` | A-11 | 3 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/012-incremental-runs` | A-12 | 4 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/013-explorer-ui` | A-13 | 3 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/014-agent` | A-14 | 4 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/015-mcp` | A-15 | 4 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/016-cost-limits` | A-16 | 4 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/017-admin-login` | A-17 | 4 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/018-content-pages` | A-18 | 4 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/004-property-backbone` | A-04 (parts A-04, A-05, A-06) | 1 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/007-enrich-reconcile` | A-07 (parts A-07, A-08, A-09, A-10) | 2 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/011-publish-and-runs` | A-11 (parts A-11, A-12) | 3–4 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/013-explorer-and-pages` | A-13 (parts A-13, A-18) | 3–4 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/014-agent-and-mcp` | A-14 (parts A-14, A-15) | 4 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/016-cost-and-admin` | A-16 (parts A-16, A-17) | 4 | specify → clarify → plan → tasks → analyze → implement |
 
 ## 12. Gate G2: Plan Approval
 
@@ -623,3 +609,4 @@ Every branch is created from `feature/oracle-pipeline` and merged back with `--n
 | 0.1 | 2026-10-17 | Domain DNS on Namecheap (Q-02); UX research done (Q-06); nice-to-have helper features and RISK-14 added |
 | 0.1 | 2026-10-17 | System overview drawn top to bottom; § 3.3 expanded into the full data reference (ER diagram with fields, record reference, contract views, derivation rules, Elephant storage pattern) |
 | 0.2 | 2026-10-19 | Aligned with the G3 architecture constitution (ARD-A): § 3 points at ARD-A; read path is the S3 + CloudFront CID copy with Filebase as fallback (AD-02); MCP has six fixed tools and no SQL (AD-21); no IPNS fields in the manifest (AD-03, AD-04); secrets in SSM (AD-14); RISK-01 mitigation updated. No scope, phase or feature change. |
+| 0.2.1 | 2026-10-21 | Story merge (PO decision): A-04 … A-18 merged into 6 stories (A-04, A-07, A-11, A-13, A-14, A-16) so the story loop runs 6 times instead of 15. No scope, phase or acceptance-criterion change; § 3.4 agent table and § 11 Spec Kit mapping updated. The G2 approval stands |

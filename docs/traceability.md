@@ -2,6 +2,8 @@
 
 There are two matrices. The **requirements matrix** gives each README acceptance criterion and demo line one row. The **chain matrix** follows each feature down to its release. An empty cell means something is missing.
 
+*Story merge (2026-10-21):* A-04 … A-18 now run as 6 merged stories. Story IDs in this file are **part** IDs, and each part belongs to one merged story: A-05, A-06 → A-04 · A-08, A-09, A-10 → A-07 · A-12 → A-11 · A-18 → A-13 · A-15 → A-14 · A-17 → A-16. Spec FR and test-case cells for a part cite the merged story's spec (for example `A-04: FR-012 (was A-05 FR-002)`).
+
 Every artifact names its parent in its front matter, so the `developmentsupport-progress` skill can rebuild the chain matrix from the files. You fill only the first matrix by hand.
 
 ## 1. Requirements matrix (README → evidence)

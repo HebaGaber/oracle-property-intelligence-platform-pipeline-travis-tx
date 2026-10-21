@@ -19,11 +19,14 @@ agents:
   verify: "`docs/cost.md` + billing screenshot"
 skills: [build-frontend-backends, build-batch-workflows, responsive-design-tests, apply-engineering-guidelines]
 ui: true
-status: Draft
+status: Merged
+merged_into: A-16
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
+
+> **Merged on 2026-10-21 into [A-16 Prove zero idle cost and let the operator run the pipeline from the hosted app](../A-16-cost-and-admin.md).** Kept for history only: do not plan, build or gate this file. Its ACs are now AC-1 to AC-5 (A-16) or AC-6 to AC-11 (A-17) there, each tagged with its old ID.
 
 # A-16 Prove zero idle cost and document source speed limits
 

@@ -19,13 +19,17 @@ agents:
   verify: "immutability check"
 skills: [use-oracle, build-batch-workflows, durable-workflow-builder, monitoring-oracle-ingestion, unify-metrics, apply-engineering-guidelines]
 ui: false
-status: Draft
+status: Merged
+merged_into: A-11
+merged_on: 2026-10-21
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-19
 ---
 
 # A-12 Run incremental refreshes and keep run history
+
+> **Merged on 2026-10-21 into [A-11 Publish the full county by CID and keep it current with incremental runs](../A-11-publish-and-runs.md).** Kept for history only: do not plan, build or gate this file. Its ACs are now AC-7 to AC-12 there, each tagged with its old ID.
 
 | Field | Value |
 | --- | --- |
