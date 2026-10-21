@@ -6,12 +6,12 @@ story: A-03
 test_case: A-03-TC-NF-04
 ac_reference: A-03-AC-7
 severity: High
-status: Fixed
+status: Re-tested
 found_by: hosted Playwright (TC-NF-04, hosted run 2)
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
 fix_commit: 9191b3cae0e87b9613a5278b78ad2337ab91c8c2
-retest_date:
+retest_date: 2026-10-21
 ---
 
 # ERR-19: API cold start – a cold `runs.summary` takes 5.3–6.3 s, above NFR-004's 3 s
@@ -98,13 +98,13 @@ Every view creation took 2 × the injected latency, plus about 4 ms. At about 10
 - [x] Hosted run 2 logs (TC-NF-04 failed twice: run 2 batch and the re-run)
 - [x] Local profile: requests and timings per bind (table above). The published run gives identical rows from a full bind and a subset bind: `runSummarySql` (1 row), `listRoofingPermitsSql` (35 rows), `radiusSql` 25 mi (14 rows).
 - [x] Red then green: `packages/query-core/test/view-plan.test.ts` (statement split, view and table sets, subset bind = full bind on real DuckDB, unread tables never passed to `partUrl`, stale views dropped). `apps/api/test/runs.test.ts`: only the needed parts are fetched, verified and bound from `/tmp` with no presigned URL; a part > 256 KiB stays presigned; a part with the wrong hash gives INTERNAL_SERVER_ERROR and is not cached; a later radius query re-binds with the union from `/tmp`. `tests/e2e/lib/cold-start.test.ts` uses the hosted trace shape.
-- [ ] Hosted re-run of TC-NF-04 after `cdk deploy CountyLensApi`
+- [x] Hosted re-run of TC-NF-04 after `cdk deploy CountyLensApi` (hosted run 3, build `86694cc`, 2026-10-21 16:52:18Z): **PASS**. Cold trace `1-6ad8eddd-11c91b3a6ff67e456052d4ea` (correlation ID `FmoawjXUAi0EKYg=`): `Init` 593 ms + `## index.handler` 1,932 ms = **2,525 ms** < 3,000 ms, read from X-Ray. Warm: response p50 212 / p95 243 / max 367 ms over 30 calls, all 200; `QueryDurationMs` p50 18.7 / p95 21.8 ms. Source: Playwright attachment `tc-nf-04-evidence.json`.
 
 ## Resolution
 
 | Field      | Value                                                                                                                                                                                                                                                                 |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Root cause | The cold bind created one view per emitted table (23), two sequential range requests each over presigned URLs (≈ 46 round trips), for a query that reads 4 tables. The test read only `Invocation` and relied on a REPORT line that SystemLogLevel WARN never writes. |
-| Fix        | Bind only the views the query reads; small parts fetched once, in parallel, CID-verified, bound from `/tmp`; union re-bind on the same run; X-Ray-only cold-start reading. Branch `003-walking-skeleton`. Commit: _(filled after commit)_                             |
-| Re-test    | Pending: TC-NF-04 on the hosted runtime after `cdk deploy CountyLensApi`                                                                                                                                                                                              |
-| Status     | Fixed (awaiting hosted re-test)                                                                                                                                                                                                                                       |
+| Fix        | Bind only the views the query reads; small parts fetched once, in parallel, CID-verified, bound from `/tmp`; union re-bind on the same run; X-Ray-only cold-start reading. Branch `003-walking-skeleton`. Commit: `9191b3c`                             |
+| Re-test    | PASS, hosted run 3 (build `86694cc`), 2026-10-21: cold start 2,525 ms (`Init` 593 + `## index.handler` 1,932 ms), warm response p95 243 ms |
+| Status     | Re-tested                                                                                                                                                                                                                                                             |

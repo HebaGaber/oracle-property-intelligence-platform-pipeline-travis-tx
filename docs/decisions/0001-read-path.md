@@ -195,7 +195,17 @@ Verdict: DuckDB compute for these queries is ≤ 175 ms at p95 on one thread and
 
 ## Known gaps
 
-- **The Lambda fallback's p95 is not measured in-region.** The PO approved only the spike stack in the plan, so no Lambda was deployed. A-03 must measure it on the hosted Lambda (20 runs, Playwright on the hosted URL). *Method set by D-4 (2026-10-21, "Private prefix + direct invoke"): 20 timed direct `aws lambda invoke` runs over a private-prefix copy of the full table in `CountyLensData`, deleted afterwards.*
+- **The Lambda fallback's p95, measured in-region in A-03 (2026-10-21, closes the earlier gap "not measured in-region").** Method set by D-4 ("Private prefix + direct invoke"): 1 warm-up + 20 timed direct `aws lambda invoke` runs per query × preset on the hosted API Lambda (eu-north-1) over a private-prefix copy of the full Austin table in `CountyLensData` (40 parts, 2,380,939 rows), 2026-10-21 16:15:31Z–16:17:04Z, TC-NF-05 in hosted run 2 (build `fbdb68b`; `specs/003-walking-skeleton/run-log.md` 19:33). Sizing now deployed (ERR-18 fix, `a1fd50a`): Lambda arm64 **3,008 MB**, DuckDB `threads = 4`, warm read cache, timeout 15 s, no reserved concurrency; this replaces the 1,769 MB / `threads = 2` projection above. `queryDurationMs`, p50 / p95 (first query in a fresh sandbox), all < 3,000 ms p95:
+
+  | Query | Preset | p50 | p95 | First query |
+  | --- | --- | --- | --- | --- |
+  | count | TC_NF_05 | 3 | 5 | 6 |
+  | radius | TC_NF_05 | 189 | 200 | 2,818 |
+  | roofAge | TC_NF_05 | 85 | 95 | 82 |
+  | radius | ADR_0001 | 191 | 200 | 186 |
+  | roofAge | ADR_0001 | 85 | 93 | 80 |
+
+  The bench copy was refused publicly (CloudFront 403, API 400 / 404) and the private prefix was emptied afterwards (all 40 keys HEAD 404 at 16:17:14Z). Hosted run 1 at 1,769 MB had missed the target (radius p95 6,194 ms, roof-age 4,988 ms; ERR-18). Evidence: `docs/evidence/A-03.md` § AC-4.
 - **Filebase at scale is still unmeasured** (A-11). The gateway rows on A-03's own CIDs were measured after D-8 (T067, 2026-10-21 13:05–13:11Z), but this run's largest public file is 78.5 KB, so they show behaviour and per-request latency, not throughput.
 - **The Parquet is a proxy:** DuckDB with the CLI's codec, level, row-group budget and part rule, not `hyparquet-writer` itself. Statistics and page layout may differ.
 - Network: one laptop on one home network and one edge (MRS). The browser numbers are dominated by round-trip time, so they will differ by location.

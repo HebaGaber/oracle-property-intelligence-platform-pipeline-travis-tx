@@ -168,7 +168,15 @@ const forbiddenIn = (text: string): string[] =>
   FORBIDDEN.filter((f) => f.pattern.test(text)).map((f) => f.name);
 
 /** Digits → `9`, letters → `x`: two IDs from one generator share a shape. */
-const idShape = (id: string): string => id.replace(/[0-9]/g, "9").replace(/[a-z]/gi, "x");
+// The format of an id, not its random characters: length plus character class (base64 for the
+// correlation id, the X-Ray "1-<8 hex>-<24 hex>" pattern for trace ids). A per-character mask
+// made two valid random correlation ids differ wherever their digits fell.
+const idShape = (id: string): string =>
+  /^1-[0-9a-f]{8}-[0-9a-f]{24}$/.test(id)
+    ? "xray-trace-id"
+    : /^[A-Za-z0-9+/]+={0,2}$/.test(id)
+      ? `base64:${id.length}`
+      : `other:${id.length}`;
 
 interface RecordedObservability {
   correlationId: string | undefined;
