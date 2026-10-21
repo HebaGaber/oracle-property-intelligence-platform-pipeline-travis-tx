@@ -6,12 +6,13 @@ story: A-03
 test_case: A-03-TC-032
 ac_reference: A-03-AC-5
 severity: High
-status: Re-tested
+status: Closed
 found_by: hosted Playwright
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
 fix_commit: a1fd50a6f644f9e1f8bc40f8021ddb63d87f390f
 retest_date: 2026-10-21
+closed_date: 2026-10-21
 ---
 
 # ERR-15: Filebase fallback – table-part reads fail with net::ERR_FAILED (the gateway's 429 has no CORS headers)
@@ -77,4 +78,4 @@ Chrome net-log of the failing XHR: status line and headers of the response the p
 | Fix | Table parts are no longer read by DuckDB over HTTP. The page reads each part once from the host that served the manifest (`apps/web/src/data/fetch-parts.ts`, ERR-16): one ranged GET per part, at most 3 in flight on the gateway (16 on the copy), so a load needs 24 gateway requests, within the burst. A dropped request (how a CORS-less 429 reaches the page: a `TypeError`), a 429 or a 5xx is retried after 1, 2, 4 and 8 s. The bytes must match the manifest size and raw-leaves CID. A part that still fails ends the load with a `PartReadError` naming the part, the CID and the host. The URL stays the path form `https://ipfs.filebase.io/ipfs/<cid>`, which is what the gateway serves directly with no redirect, and what `fallback.spec.ts` expects. `reliableHeadRequests: false` remains for runs too large to prefetch. Commit: _(filled after commit)_ on `003-walking-skeleton`. |
 | Tests | `apps/web/test/read-path-defects.test.ts` › "ERR-15: Filebase fallback reads survive the gateway's CORS-less 429 (TC-032…034)": "reads from the path-style gateway URL https://ipfs.filebase.io/ipfs/<cid> (no subdomain redirect)"; "retries a dropped request (a 429 without CORS reaches the page as a TypeError) and a 429 status, then succeeds"; "gives up after the retries with a PartReadError naming the part and the host"; "never sends more than PART_CONCURRENCY.fallback requests to the gateway at once"; "rejects bytes that do not hash to the manifest CID, without retrying". `apps/web/test/duckdb-config.test.ts` › "reads the parts from the host that served the manifest, registers them and binds them by name; stages in order". Red before the fix: `src/data/fetch-parts.ts` did not exist. |
 | Re-test | TC-032, TC-033 and TC-034 PASS in hosted run 2 (build `fbdb68b`, 2026-10-21), each run on its own with about 90 s between them (starts 16:23:36Z, 16:25:16Z, 16:26:54Z) |
-| Status | Re-tested: PASS in hosted run 2 (build `fbdb68b`, 2026-10-21) |
+| Status | ☒ Closed (2026-10-21) ☐ Reopened · Re-tested: PASS in hosted run 2 (build `fbdb68b`, 2026-10-21) |

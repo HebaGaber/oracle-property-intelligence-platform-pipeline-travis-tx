@@ -225,6 +225,9 @@ jobs:
       NO_TCAD_PERMIT_NUMBERS: ${{ vars.NO_TCAD_PERMIT_NUMBERS }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # TC-061 checks the evidence names the deployed build or a docs-only ancestor of it.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 

@@ -6,12 +6,13 @@ story: A-03
 test_case: A-03-TC-NF-05
 ac_reference: A-03-AC-4
 severity: High
-status: Re-tested
+status: Closed
 found_by: TC-NF-05 hosted bench (scripts/bench-lambda.ts)
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
 fix_commit: a1fd50a6f644f9e1f8bc40f8021ddb63d87f390f
 retest_date: 2026-10-21
+closed_date: 2026-10-21
 ---
 
 # ERR-18: Lambda read-path fallback – radius and roof-age p95 above 3 s over the full Austin Parquet
@@ -115,4 +116,4 @@ Lever 1 reads more bytes and makes more requests, so it is **not adopted** and n
 | Root cause | Per-invocation re-presign and re-bind threw away DuckDB's footer and chunk caches (keyed by URL). Cold reads are bound by request latency with 2 threads. The two-step query cannot skip chunks on one-row-group parts.                                                                                                                                                                                                                                                                                                                                                   |
 | Fix        | Remote-read caching with stable presigned URLs (lever 2), and 3,008 MB with DuckDB threads 4 (lever 3), on `003-walking-skeleton`. Commit: _(filled after commit)_                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Re-test    | TC-NF-05 PASS in hosted run 2 (Lambda 3,008 MB, DuckDB threads 4, build `fbdb68b`; 40 parts, 2,380,939 rows; 2026-10-21 16:15:31Z–16:17:04Z), queryDurationMs p50 / p95 over 20 warm runs, with the first query in a fresh sandbox: TC_NF_05 count 3 / 5 ms (first 6), radius 189 / 200 ms (first 2,818), roofAge 85 / 95 ms (first 82); ADR_0001 radius 191 / 200 ms (first 186), roofAge 85 / 93 ms (first 80). The bench copy was refused publicly (CloudFront 403, API 400 / 404), the prefix was emptied (40 keys HEAD 404 at 16:17:14Z) and the Lambda env restored |
-| Status     | Re-tested: PASS in hosted run 2 (build `fbdb68b`, 2026-10-21)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Status     | ☒ Closed (2026-10-21) ☐ Reopened · Re-tested: PASS in hosted run 2 (build `fbdb68b`, 2026-10-21) |

@@ -6,12 +6,13 @@ story: A-03
 test_case: A-03-TC-NF-03
 ac_reference: A-03-AC-2
 severity: Medium
-status: Re-tested
+status: Closed
 found_by: smeargle
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
 fix_commit: 660f73ccfe1805673e0b0efae38c0bb002ea75b5
 retest_date: 2026-10-21
+closed_date: 2026-10-21
 ---
 
 # ERR-12: Runs page – Copy CID button computes Arial 13.33px, outside the Atlas tokens
@@ -75,4 +76,4 @@ The button's font comes from the Atlas tokens: it inherits the surrounding types
 | Fix | `.copy` declares `font: inherit` (the surrounding Atlas typescale from `tokens.css`). Stylelint's strict-value list now also covers the `font` shorthand (only tokens or `inherit`); stylelint stays green. Commit: _(filled after commit)_ on `003-walking-skeleton`. |
 | Tests | `apps/web/test/app-shell.test.tsx` › "ERR-12: every <button> sets its font from the tokens …" › "finds the app's buttons (Copy CID, Retry)", ".copy: declares font: inherit, or a token font-family and font-size", ".retry: declares font: inherit, or a token font-family and font-size". |
 | Re-test | TC-NF-03 PASS in hosted run 2 (build `fbdb68b`, 2026-10-21); `smeargle` re-check 6/6 PASS at 390 / 768 / 1440, 0 token violations |
-| Status | Re-tested: PASS in hosted run 2 (build `fbdb68b`, 2026-10-21) |
+| Status | ☒ Closed (2026-10-21) ☐ Reopened · Re-tested: PASS in hosted run 2 (build `fbdb68b`, 2026-10-21) |

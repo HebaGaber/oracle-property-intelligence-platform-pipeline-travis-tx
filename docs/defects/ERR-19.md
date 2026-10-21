@@ -6,12 +6,13 @@ story: A-03
 test_case: A-03-TC-NF-04
 ac_reference: A-03-AC-7
 severity: High
-status: Re-tested
+status: Closed
 found_by: hosted Playwright (TC-NF-04, hosted run 2)
 found_date: 2026-10-21
 fix_branch: 003-walking-skeleton
 fix_commit: 9191b3cae0e87b9613a5278b78ad2337ab91c8c2
 retest_date: 2026-10-21
+closed_date: 2026-10-21
 ---
 
 # ERR-19: API cold start – a cold `runs.summary` takes 5.3–6.3 s, above NFR-004's 3 s
@@ -107,4 +108,4 @@ Every view creation took 2 × the injected latency, plus about 4 ms. At about 10
 | Root cause | The cold bind created one view per emitted table (23), two sequential range requests each over presigned URLs (≈ 46 round trips), for a query that reads 4 tables. The test read only `Invocation` and relied on a REPORT line that SystemLogLevel WARN never writes. |
 | Fix        | Bind only the views the query reads; small parts fetched once, in parallel, CID-verified, bound from `/tmp`; union re-bind on the same run; X-Ray-only cold-start reading. Branch `003-walking-skeleton`. Commit: `9191b3c`                             |
 | Re-test    | PASS, hosted run 3 (build `86694cc`), 2026-10-21: cold start 2,525 ms (`Init` 593 + `## index.handler` 1,932 ms), warm response p95 243 ms |
-| Status     | Re-tested                                                                                                                                                                                                                                                             |
+| Status     | ☒ Closed (2026-10-21) ☐ Reopened · Re-tested: PASS in hosted run 3 (build `86694cc`, 2026-10-21) |
