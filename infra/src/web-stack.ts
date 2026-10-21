@@ -4,8 +4,10 @@
 // amplify.yml in the repository, previews for every 0* story branch, feature/oracle-pipeline as
 // PRODUCTION (the branch the PR is opened from), the /api/<*> rewrite to the HTTP API so the
 // API is same-origin on every preview (no CORS), the SPA fallback, and the response headers the
-// hosted tests need (/build.json never cached; the pre-compressed DuckDB .wasm served as
-// application/wasm + Content-Encoding br, plan risk R2).
+// hosted tests need (/build.json never cached). No header for the DuckDB WASM: Amplify rejects
+// read-only headers (content-length, transfer-encoding, content-encoding, warning, via) in
+// customHeaders, so the build ships it as a plain .wasm.gz that the engine gunzips itself
+// (plan risk R2 fallback, 2026-10-21).
 //
 // The GitHub token is a CloudFormation parameter with NoEcho (AD-14: no Secrets Manager; CFN
 // does not resolve ssm-secure for Amplify). Amplify uses it once to authorise the GitHub App and
@@ -38,7 +40,7 @@ export const API_REWRITE_SOURCE = "/api/<*>";
  * emits is listed so a missing asset is a real 404, never a silent index.html.
  */
 export const SPA_FALLBACK_SOURCE =
-  "</^[^.]+$|\\.(?!(css|gif|ico|jpg|jpeg|js|json|map|png|svg|txt|wasm|webmanifest|webp|woff|woff2|ttf)$)([^.]+$)/>";
+  "</^[^.]+$|\\.(?!(css|gif|gz|ico|jpg|jpeg|js|json|map|png|svg|txt|wasm|webmanifest|webp|woff|woff2|ttf)$)([^.]+$)/>";
 
 export const HTTP_API_URL_NOT_WIRED_WARNING =
   "CountyLensWeb: httpApiUrl is not wired from CountyLensApi, so the /api/<*> rewrite is not emitted; " +
@@ -174,15 +176,6 @@ export class WebStack extends Stack {
           // CI and the hosted tests poll /build.json for the deployed sha; never serve a stale one.
           pattern: "/build.json",
           headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
-        },
-        {
-          // apps/web/scripts/compress-wasm.ts (T057) Brotli-compresses duckdb-eh.wasm in place:
-          // the bytes are br, the name stays .wasm, so the browser needs both headers.
-          pattern: "**/*.wasm",
-          headers: [
-            { key: "Content-Type", value: "application/wasm" },
-            { key: "Content-Encoding", value: "br" },
-          ],
         },
       ]),
       enableBranchAutoDeletion: false,

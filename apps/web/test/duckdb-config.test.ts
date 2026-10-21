@@ -2,13 +2,14 @@
 // (jsdom; no network). ADR-0001 Findings 1–2 and decision 4: the engine is opened with exactly
 // `{ allowFullHTTPReads: true, forceFullHTTPReads: false, reliableHeadRequests: false }` (else
 // every file is downloaded whole), the eh bundle is self-hosted and lazy-loaded, and the WASM is
-// served Brotli-compressed under its own file name (T057, TC-028). The loader wiring is checked
+// shipped only as duckdb-eh.wasm.gz, which the engine fetches and gunzips itself (T057, TC-028;
+// 2026-10-21: Amplify rejects a Content-Encoding custom header, plan R2). The loader wiring is checked
 // with fakes: the host that served the manifest is the host `partUrl` binds for the parts.
 // Red run (before T054/T057): `Cannot find module '../src/engine/duckdb-wasm'`.
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { brotliDecompressSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import type { RunManifestV1, RunsIndexV1 } from "@countylens/contract";
 import { PERMITS_TEXTS, readPathUrls } from "@countylens/shared";
@@ -18,7 +19,10 @@ import {
   DUCKDB_OPEN_CONFIG,
   SELF_HOSTED_BUNDLE,
   arrowToRows,
+  compressedModuleUrl,
+  fetchGzippedWasm,
   openEngine,
+  type WasmFetchDeps,
   type ArrowTableLike,
   type AsyncDuckDbLike,
   type DuckDbOpenConfig,
@@ -28,7 +32,7 @@ import type { FetchByCidOptions } from "../src/data/fetch-by-cid";
 import { EngineStartError } from "../src/engine/errors";
 import { createPermitsLoader, type EngineModule } from "../src/engine/load-permits";
 import { STAGE_TEXTS } from "../src/routes/Permits.page";
-import { WASM_FILE_PATTERN, compressWasm } from "../scripts/compress-wasm";
+import { GZIP_LEVEL, WASM_FILE_PATTERN, compressWasm } from "../scripts/compress-wasm";
 
 const RANGE_READ_FLAGS = {
   allowFullHTTPReads: true,
@@ -77,10 +81,15 @@ function fakeDb(options: { failInstantiate?: boolean } = {}): FakeDb {
   };
 }
 
-function fakeRuntime(db: FakeDb): DuckDbRuntime {
+function fakeRuntime(
+  db: FakeDb,
+  mainModule = "/assets/duckdb-eh-test.wasm",
+  mainModuleEncoding: "gzip" | "identity" = "identity",
+): DuckDbRuntime {
   return {
     bundle: {
-      mainModule: "/assets/duckdb-eh-test.wasm",
+      mainModule,
+      mainModuleEncoding,
       mainWorker: "/assets/duckdb-browser-eh.worker-test.js",
       pthreadWorker: null,
     },
@@ -308,7 +317,159 @@ describe("createPermitsLoader: index → manifest → engine → bind → list (
   });
 });
 
-describe("compress-wasm (T057, TC-028): Brotli level 11 of duckdb-eh.wasm, file name kept", () => {
+describe("gzip-compressed WASM (T057, TC-028; plan R2 fallback 2026-10-21)", () => {
+  const WASM = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 1, 2, 3, 4, 5]);
+
+  interface FakeWasmDeps extends WasmFetchDeps {
+    readonly fetched: string[];
+    readonly blobs: Blob[];
+    readonly revoked: string[];
+    readonly formats: string[];
+  }
+
+  function wasmDeps(
+    options: {
+      body?: Uint8Array;
+      status?: number;
+      headers?: Record<string, string>;
+      noDecompressionStream?: boolean;
+      log?: string[];
+    } = {},
+  ): FakeWasmDeps {
+    const fetched: string[] = [];
+    const blobs: Blob[] = [];
+    const revoked: string[] = [];
+    const formats: string[] = [];
+    const body = options.body ?? new Uint8Array(gzipSync(WASM));
+    // Records the format the engine asks for, then gunzips with the platform's own stream.
+    class RecordingDecompressionStream extends DecompressionStream {
+      constructor(format: CompressionFormat) {
+        formats.push(format);
+        super(format);
+      }
+    }
+    return {
+      fetched,
+      blobs,
+      revoked,
+      formats,
+      fetch: async (url: string) => {
+        fetched.push(url);
+        options.log?.push(`fetch:${url}`);
+        return new Response(body as Uint8Array<ArrayBuffer>, {
+          status: options.status ?? 200,
+          headers: options.headers ?? { "content-type": "application/gzip" },
+        });
+      },
+      DecompressionStream: options.noDecompressionStream ? undefined : RecordingDecompressionStream,
+      createObjectURL: (blob: Blob) => {
+        blobs.push(blob);
+        return `blob:https://countylens.test/wasm-${blobs.length}`;
+      },
+      revokeObjectURL: (url: string) => {
+        revoked.push(url);
+        options.log?.push(`revoke:${url}`);
+      },
+    };
+  }
+
+  const bytesOf = async (blob: Blob): Promise<Uint8Array> =>
+    new Uint8Array(await blob.arrayBuffer());
+
+  it("names the .gz asset next to the Vite-emitted .wasm URL", () => {
+    expect(compressedModuleUrl("/assets/duckdb-eh-Ab12cD3e.wasm")).toBe(
+      "/assets/duckdb-eh-Ab12cD3e.wasm.gz",
+    );
+  });
+
+  it("fetches the .gz, gunzips it through DecompressionStream and returns an application/wasm object URL", async () => {
+    const deps = wasmDeps();
+    const module = await fetchGzippedWasm("/assets/duckdb-eh-x.wasm.gz", deps);
+    expect(deps.fetched).toEqual(["/assets/duckdb-eh-x.wasm.gz"]);
+    expect(deps.formats).toEqual(["gzip"]);
+    expect(module.url).toBe("blob:https://countylens.test/wasm-1");
+    const blob = deps.blobs[0] as Blob;
+    expect(blob.type).toBe("application/wasm");
+    expect(await bytesOf(blob)).toEqual(WASM);
+    module.revoke();
+    expect(deps.revoked).toEqual([module.url]);
+  });
+
+  it("does not gunzip twice when the host already decoded a Content-Encoding: gzip response", async () => {
+    const deps = wasmDeps({ body: WASM, headers: { "content-encoding": "gzip" } });
+    const module = await fetchGzippedWasm("/assets/duckdb-eh-x.wasm.gz", deps);
+    expect(deps.formats).toEqual([]);
+    expect(await bytesOf(deps.blobs[0] as Blob)).toEqual(WASM);
+    module.revoke();
+  });
+
+  it("fails on a non-2xx response naming the URL and status", async () => {
+    const deps = wasmDeps({ status: 404 });
+    await expect(fetchGzippedWasm("/assets/duckdb-eh-x.wasm.gz", deps)).rejects.toThrow(
+      /duckdb-eh-x\.wasm\.gz.*404/,
+    );
+    expect(deps.blobs).toEqual([]);
+  });
+
+  it("fails before downloading when the browser has no DecompressionStream", async () => {
+    const deps = wasmDeps({ noDecompressionStream: true });
+    await expect(fetchGzippedWasm("/assets/duckdb-eh-x.wasm.gz", deps)).rejects.toThrow(
+      /DecompressionStream/,
+    );
+    expect(deps.fetched).toEqual([]);
+  });
+
+  it("openEngine instantiates the gunzipped object URL, then revokes it, then opens with the flags", async () => {
+    const db = fakeDb();
+    const log = db.calls;
+    const deps = wasmDeps({ log });
+    const engine = await openEngine(
+      () => Promise.resolve(fakeRuntime(db, "/assets/duckdb-eh-x.wasm.gz", "gzip")),
+      deps,
+    );
+    expect(log.slice(0, 5)).toEqual([
+      "createDb:/assets/duckdb-browser-eh.worker-test.js",
+      "fetch:/assets/duckdb-eh-x.wasm.gz",
+      "instantiate:blob:https://countylens.test/wasm-1",
+      "revoke:blob:https://countylens.test/wasm-1",
+      "open",
+    ]);
+    expect(db.openConfigs).toEqual([{ filesystem: RANGE_READ_FLAGS }]);
+    expect(
+      deps.fetched.some((url) => /\.wasm$/.test(url)),
+      "raw .wasm never fetched",
+    ).toBe(false);
+    await engine.close();
+  });
+
+  it("revokes the object URL when instantiate fails, and reports the fixed engine text", async () => {
+    const db = fakeDb({ failInstantiate: true });
+    const deps = wasmDeps();
+    const failure = openEngine(
+      () => Promise.resolve(fakeRuntime(db, "/assets/duckdb-eh-x.wasm.gz", "gzip")),
+      deps,
+    );
+    await expect(failure).rejects.toMatchObject({ message: PERMITS_TEXTS.engineFailure });
+    expect(deps.revoked).toEqual(["blob:https://countylens.test/wasm-1"]);
+    expect(db.calls).toContain("terminate");
+  });
+
+  it("no DecompressionStream: EngineStartError with the shared fixed text, nothing instantiated", async () => {
+    const db = fakeDb();
+    const deps = wasmDeps({ noDecompressionStream: true });
+    const failure = openEngine(
+      () => Promise.resolve(fakeRuntime(db, "/assets/duckdb-eh-x.wasm.gz", "gzip")),
+      deps,
+    );
+    await expect(failure).rejects.toBeInstanceOf(EngineStartError);
+    await expect(failure).rejects.toMatchObject({ message: PERMITS_TEXTS.engineFailure });
+    expect(db.calls.filter((c) => c.startsWith("instantiate"))).toEqual([]);
+    expect(deps.fetched).toEqual([]);
+    expect(db.calls).toContain("terminate");
+  });
+});
+
+describe("compress-wasm (T057, TC-028): gzip level 9 to duckdb-eh.wasm.gz, raw .wasm deleted", () => {
   const WASM_MAGIC = [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
 
   function dist(): { dir: string; wasm: string; other: string; original: Buffer } {
@@ -329,29 +490,38 @@ describe("compress-wasm (T057, TC-028): Brotli level 11 of duckdb-eh.wasm, file 
     expect(WASM_FILE_PATTERN.test("duckdb-eh-Ab12cD3e.wasm")).toBe(true);
     expect(WASM_FILE_PATTERN.test("duckdb-mvp.wasm")).toBe(false);
     expect(WASM_FILE_PATTERN.test("duckdb-browser-eh.worker.js")).toBe(false);
+    expect(GZIP_LEVEL).toBe(9);
   });
 
-  it("writes Brotli bytes over the same path, decompressing to the original, and skips other files", () => {
+  it("writes <name>.wasm.gz that gunzips to the original, deletes the raw .wasm, skips other files", () => {
     const { dir, wasm, other, original } = dist();
-    const report = compressWasm(dir, { quality: 11 });
-    expect(report.files.map((f) => f.path)).toEqual([wasm]);
-    const compressed = readFileSync(wasm);
-    expect(compressed.subarray(0, 4).equals(Buffer.from(WASM_MAGIC.slice(0, 4)))).toBe(false);
-    expect(brotliDecompressSync(compressed).equals(original)).toBe(true);
+    const report = compressWasm(dir);
+    expect(report.files.map((f) => f.path)).toEqual([`${wasm}.gz`]);
+    expect(existsSync(wasm), "the uncompressed .wasm is never served").toBe(false);
+    const compressed = readFileSync(`${wasm}.gz`);
+    expect(gunzipSync(compressed).equals(original)).toBe(true);
     expect(report.files[0]).toMatchObject({
       bytes: original.length,
       compressedBytes: compressed.length,
+      skipped: false,
     });
     expect(readFileSync(other).equals(original), "non-eh wasm untouched").toBe(true);
   });
 
-  it("is idempotent: a second run leaves an already compressed file alone", () => {
+  it("is idempotent: a second run keeps the .gz and reports it as already compressed", () => {
     const { dir, wasm, original } = dist();
-    compressWasm(dir, { quality: 11 });
-    const once = readFileSync(wasm);
-    const report = compressWasm(dir, { quality: 11 });
-    expect(report.files[0]).toMatchObject({ path: wasm, skipped: true });
-    expect(readFileSync(wasm).equals(once)).toBe(true);
-    expect(brotliDecompressSync(readFileSync(wasm)).equals(original)).toBe(true);
+    compressWasm(dir);
+    const once = readFileSync(`${wasm}.gz`);
+    const report = compressWasm(dir);
+    expect(report.files).toHaveLength(1);
+    expect(report.files[0]).toMatchObject({ path: `${wasm}.gz`, skipped: true });
+    expect(existsSync(wasm)).toBe(false);
+    expect(readFileSync(`${wasm}.gz`).equals(once)).toBe(true);
+    expect(gunzipSync(readFileSync(`${wasm}.gz`)).equals(original)).toBe(true);
+  });
+
+  it("reports nothing when no eh bundle is in the output", () => {
+    const dir = mkdtempSync(join(tmpdir(), "countylens-wasm-empty-"));
+    expect(compressWasm(dir).files).toEqual([]);
   });
 });

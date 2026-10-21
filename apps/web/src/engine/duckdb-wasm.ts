@@ -1,8 +1,10 @@
 // The browser query engine (A-03 T054; ARD § 4 AD-19: the only module of apps/web that imports
 // DuckDB). DuckDB-WASM's eh bundle is self-hosted (the WASM and its worker are Vite assets of
 // this build, no CDN) and lazy-loaded through dynamic `import()`, so it stays outside the
-// 300 KB gate; the WASM asset is served Brotli-compressed (scripts/compress-wasm.ts, ADR-0001
-// Finding 2). The database is opened with exactly `{ allowFullHTTPReads: true,
+// 300 KB gate. The build ships the WASM only as `duckdb-eh-<hash>.wasm.gz` (scripts/compress-wasm.ts,
+// ADR-0001 Finding 2; plan R2 fallback 2026-10-21, as Amplify rejects a Content-Encoding custom
+// header): the engine fetches the .gz, gunzips it with DecompressionStream into an
+// application/wasm Blob and instantiates DuckDB from its object URL. The database is opened with exactly `{ allowFullHTTPReads: true,
 // forceFullHTTPReads: false, reliableHeadRequests: false }` (ADR-0001 Finding 1, decision 4):
 // without them this build downloads every table part whole instead of range-reading it.
 // Values come back JSON-shaped as the QueryEngine contract says (dates YYYY-MM-DD, timestamps
@@ -40,7 +42,7 @@ export const DUCKDB_OPEN_CONFIG: DuckDbOpenConfig = Object.freeze({
   filesystem: DUCKDB_FILESYSTEM_FLAGS,
 });
 
-/** The self-hosted eh bundle files (`@duckdb/duckdb-wasm/dist`), by name; TC-028 serves the WASM with `Content-Encoding: br`. */
+/** The self-hosted eh bundle files (`@duckdb/duckdb-wasm/dist`), by name; the build serves the WASM as `<name>.gz` (TC-028). */
 export const SELF_HOSTED_BUNDLE = Object.freeze({
   mainModule: "duckdb-eh.wasm",
   mainWorker: "duckdb-browser-eh.worker.js",
@@ -77,7 +79,9 @@ export interface AsyncDuckDbLike {
 
 export interface DuckDbRuntime {
   readonly bundle: {
+    /** URL of the WASM: the `.wasm.gz` in a build (`gzip`), the raw `.wasm` under `vite dev` (`identity`). */
     readonly mainModule: string;
+    readonly mainModuleEncoding: "gzip" | "identity";
     readonly mainWorker: string;
     readonly pthreadWorker: string | null;
   };
@@ -86,6 +90,11 @@ export interface DuckDbRuntime {
 
 export type LoadDuckDb = () => Promise<DuckDbRuntime>;
 
+/** Where compress-wasm.ts puts the WASM: next to the Vite-emitted `.wasm` URL, plus `.gz`. */
+export function compressedModuleUrl(wasmUrl: string): string {
+  return `${wasmUrl}.gz`;
+}
+
 /** Lazy-loads the library and the self-hosted eh bundle (Vite emits both files as assets). */
 export const loadSelfHostedDuckDb: LoadDuckDb = async () => {
   const [duckdb, wasm, worker] = await Promise.all([
@@ -93,11 +102,81 @@ export const loadSelfHostedDuckDb: LoadDuckDb = async () => {
     import("@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url"),
     import("@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url"),
   ]);
+  // The dev server has no compress step; every build (preview and hosted) runs it.
+  const dev = import.meta.env.DEV;
   return {
-    bundle: { mainModule: wasm.default, mainWorker: worker.default, pthreadWorker: null },
+    bundle: {
+      mainModule: dev ? wasm.default : compressedModuleUrl(wasm.default),
+      mainModuleEncoding: dev ? "identity" : "gzip",
+      mainWorker: worker.default,
+      pthreadWorker: null,
+    },
     createDb: (workerUrl) => new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl)),
   };
 };
+
+/** The browser APIs the gzip path uses; fakes replace them in unit tests. */
+export interface WasmFetchDeps {
+  fetch(url: string): Promise<Response>;
+  /** Missing in a browser without Compression Streams: the engine fails with the fixed text. */
+  readonly DecompressionStream:
+    (new (format: CompressionFormat) => DecompressionStream) | undefined;
+  createObjectURL(blob: Blob): string;
+  revokeObjectURL(url: string): void;
+}
+
+/** The page's own fetch, DecompressionStream and object URLs. */
+export function browserWasmDeps(): WasmFetchDeps {
+  return {
+    fetch: (url) => globalThis.fetch(url),
+    DecompressionStream: (globalThis as { DecompressionStream?: typeof DecompressionStream })
+      .DecompressionStream,
+    createObjectURL: (blob) => URL.createObjectURL(blob),
+    revokeObjectURL: (url) => URL.revokeObjectURL(url),
+  };
+}
+
+export interface WasmModuleUrl {
+  readonly url: string;
+  revoke(): void;
+}
+
+async function readAll(stream: ReadableStream<Uint8Array>): Promise<BlobPart[]> {
+  const chunks: BlobPart[] = [];
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return chunks;
+    chunks.push(value as Uint8Array<ArrayBuffer>);
+  }
+}
+
+/**
+ * Fetches the `.wasm.gz`, streams it through `DecompressionStream('gzip')` and returns an object
+ * URL of an `application/wasm` Blob (so the worker can use `instantiateStreaming`). A host that
+ * already decoded the body (`Content-Encoding: gzip`) is not gunzipped twice.
+ */
+export async function fetchGzippedWasm(url: string, deps: WasmFetchDeps): Promise<WasmModuleUrl> {
+  const Decompress = deps.DecompressionStream;
+  if (Decompress === undefined) {
+    throw new Error(
+      "DecompressionStream is not available: the gzip-compressed engine cannot be read",
+    );
+  }
+  const response = await deps.fetch(url);
+  if (!response.ok || response.body === null) {
+    throw new Error(`Engine download failed: ${url} answered HTTP ${response.status}`);
+  }
+  const decoded = /\bgzip\b/i.test(response.headers.get("content-encoding") ?? "");
+  const stream = decoded
+    ? response.body
+    : response.body.pipeThrough(
+        new Decompress("gzip") as ReadableWritablePair<Uint8Array, Uint8Array>,
+      );
+  const blob = new Blob(await readAll(stream), { type: "application/wasm" });
+  const objectUrl = deps.createObjectURL(blob);
+  return { url: objectUrl, revoke: () => deps.revokeObjectURL(objectUrl) };
+}
 
 export interface BrowserEngine extends QueryEngine {
   /** Closes the connection and terminates the worker. */
@@ -153,13 +232,32 @@ export function arrowToRows(table: ArrowTableLike): Row[] {
   });
 }
 
+async function instantiate(
+  db: AsyncDuckDbLike,
+  bundle: DuckDbRuntime["bundle"],
+  deps: WasmFetchDeps,
+): Promise<void> {
+  if (bundle.mainModuleEncoding === "identity") {
+    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    return;
+  }
+  const module = await fetchGzippedWasm(bundle.mainModule, deps);
+  try {
+    await db.instantiate(module.url, bundle.pthreadWorker);
+  } finally {
+    // The worker has compiled the module once instantiate resolves; the Blob is no longer needed.
+    module.revoke();
+  }
+}
+
 async function start(
   load: LoadDuckDb,
+  deps: WasmFetchDeps,
 ): Promise<{ db: AsyncDuckDbLike; conn: DuckDbConnectionLike }> {
   const runtime = await load();
   const db = runtime.createDb(runtime.bundle.mainWorker);
   try {
-    await db.instantiate(runtime.bundle.mainModule, runtime.bundle.pthreadWorker);
+    await instantiate(db, runtime.bundle, deps);
     await db.open(DUCKDB_OPEN_CONFIG);
     const conn = await db.connect();
     // builders.ts: the engine's TimeZone must be UTC so as_of is the manifest's UTC date.
@@ -172,10 +270,13 @@ async function start(
 }
 
 /** Loads, instantiates and opens DuckDB-WASM with the range-read flags; EngineStartError on failure. */
-export async function openEngine(load: LoadDuckDb = loadSelfHostedDuckDb): Promise<BrowserEngine> {
+export async function openEngine(
+  load: LoadDuckDb = loadSelfHostedDuckDb,
+  deps: WasmFetchDeps = browserWasmDeps(),
+): Promise<BrowserEngine> {
   let started: { db: AsyncDuckDbLike; conn: DuckDbConnectionLike };
   try {
-    started = await timed(PERF_MEASURES.init, () => start(load), {
+    started = await timed(PERF_MEASURES.init, () => start(load, deps), {
       start: PERF_MARKS.initStart,
       end: PERF_MARKS.initEnd,
     });

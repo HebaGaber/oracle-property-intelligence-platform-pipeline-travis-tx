@@ -19,9 +19,10 @@
 #      {sha, branch} from Amplify's own AWS_COMMIT_ID / AWS_BRANCH, which CI and the hosted
 #      tests poll (TC-052 step 0).
 #   4. vite build (VITE_CID_COPY_HOST and VITE_FILEBASE_GATEWAY_HOST come from the app's
-#      environment, never from this file), then Brotli-compress duckdb-eh.wasm in dist/ in place
-#      (apps/web/scripts/compress-wasm.ts, T057); the Web stack serves *.wasm with
-#      Content-Encoding: br. Both are called directly rather than through `pnpm run build`
+#      environment, never from this file), then gzip duckdb-eh.wasm in dist/ to .wasm.gz and
+#      delete the raw .wasm (apps/web/scripts/compress-wasm.ts, T057); the engine fetches the .gz
+#      and gunzips it in the browser (no Content-Encoding header: Amplify rejects it as read-only,
+#      plan R2). Both are called directly rather than through `pnpm run build`
 #      (which chains them too), so the compressor runs exactly once here. tsx resolves from
 #      apps/web because the root project's devDependencies are installed (see 2).
 #

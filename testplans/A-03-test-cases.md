@@ -127,7 +127,7 @@ A-03 is the walking skeleton: one real month (September 2026) of Austin reroof p
 | A-03-TC-025 | Contractor via contractor_resolution with its label | P1 | @missing-data | UI | AC-3, FR-011 | `permits.spec.ts @scenario:A-03-TC-025` |
 | A-03-TC-026 | Table parts read with HTTP 206 range requests | P1 | @perf | UI | AC-3, AC-4, FR-003 | `permits.spec.ts @scenario:A-03-TC-026` |
 | A-03-TC-027 | Label map covers every reason in `missingReasons` (unit) | P1 | @missing-data @unit | Unit | AC-3, FR-011 | `tests/e2e/build-checks.spec.ts @scenario:A-03-TC-027` (runs Vitest `missing-labels.test.ts` at the deployed SHA) |
-| A-03-TC-028 | DuckDB-WASM binary served Brotli-compressed | P2 | @perf | UI | AC-4, FR-004 | `permits.spec.ts @scenario:A-03-TC-028` |
+| A-03-TC-028 | DuckDB-WASM binary transferred compressed | P2 | @perf | UI | AC-4, FR-004 | `permits.spec.ts @scenario:A-03-TC-028` |
 | A-03-TC-029 | Empty state when `permits_emitted` is 0; count mismatch otherwise (unit) | P1 | @edge @missing-data @unit | Unit | FR-008, FR-009 | `tests/e2e/build-checks.spec.ts @scenario:A-03-TC-029` (runs Vitest `permits-state.test.ts` at the deployed SHA) |
 | A-03-TC-030 | No-tcad_id permit is not published | P1 | @missing-data | UI | AC-5, FR-005 | `permits.spec.ts @scenario:A-03-TC-030` |
 | A-03-TC-031 | Runs shows `permits_no_tcad_geoid` labelled "No TCAD id on source record" | P1 | @missing-data | UI | AC-5, FR-005, FR-009 | `runs.spec.ts @scenario:A-03-TC-031` |
@@ -387,14 +387,17 @@ A-03 is the walking skeleton: one real month (September 2026) of Austin reroof p
   4. **Verify** adding a fake reason to a copy of `missingReasons` makes the check fail naming that reason.
 - **Expected result:** 21/21 reasons labelled with the approved strings; a missing label fails the test with the reason code.
 
-#### A-03-TC-028: DuckDB-WASM binary served Brotli-compressed
+#### A-03-TC-028: DuckDB-WASM binary transferred compressed
+
+> 2026-10-21 note (plan R2 fallback, same intent: a compressed WASM transfer): the first deploy showed Amplify rejects a `Content-Encoding` custom header (read-only), so Brotli with `Content-Encoding: br` was replaced by a build-time `duckdb-eh-<hash>.wasm.gz` (gzip -9) that the engine gunzips with `DecompressionStream`; the raw `.wasm` is not deployed.
 
 - **Priority / tags:** P2 · `@perf`
 - **Maps to:** AC-4, FR-004 (0001 Findings 1–2)
 - **Steps:**
-  1. **Open** `{RUNTIME_URL}/permits` in a private window; record the response for the DuckDB-WASM `.wasm` file(s).
-  2. **Verify** each `.wasm` response has `content-encoding: br` and status 200 or 304.
-- **Expected result:** every DuckDB-WASM binary is served pre-compressed with Brotli; an uncompressed `.wasm` response fails the test naming the file.
+  1. **Open** `{RUNTIME_URL}/permits` in a private window; record every request and the transfer size of the DuckDB-WASM `.wasm.gz`.
+  2. **Verify** the `.wasm.gz` was fetched with status 200 or 304 and its response body is under 12 MB.
+  3. **Verify** no request for an uncompressed `.wasm` was made.
+- **Expected result:** the DuckDB-WASM binary is transferred compressed (`.wasm.gz`, < 12 MB); a request for a raw `.wasm` or a transfer of 12 MB or more fails the test naming the file.
 
 #### A-03-TC-029: Empty state when `permits_emitted` is 0; count mismatch otherwise (unit, edge)
 

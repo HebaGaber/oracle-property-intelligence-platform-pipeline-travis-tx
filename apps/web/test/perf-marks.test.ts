@@ -36,7 +36,12 @@ function runtime(options: { failOpen?: boolean } = {}): DuckDbRuntime {
     terminate: async () => undefined,
   };
   return {
-    bundle: { mainModule: "/m.wasm", mainWorker: "/w.js", pthreadWorker: null },
+    bundle: {
+      mainModule: "/m.wasm",
+      mainModuleEncoding: "identity",
+      mainWorker: "/w.js",
+      pthreadWorker: null,
+    },
     createDb: () => db,
   };
 }

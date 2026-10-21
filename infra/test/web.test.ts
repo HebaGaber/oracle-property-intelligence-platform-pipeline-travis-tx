@@ -2,8 +2,8 @@
 // research R-09, ARD AD-13 / AD-14 / § 16 AM-02 and the test plan (TC-052 build-time checks):
 // the Amplify L1 app for apps/web (platform WEB, build spec from amplify.yml in the repo, the
 // GitHub token as a noEcho parameter, previews for 0* branches, feature/oracle-pipeline as
-// PRODUCTION, the /api rewrite to the HTTP API, the SPA fallback, the build.json and .wasm
-// headers) and the custom-domain association only (countylens.aldarraj.com, never the root).
+// PRODUCTION, the /api rewrite to the HTTP API, the SPA fallback, the build.json header and no
+// read-only header Amplify rejects) and the custom-domain association only (countylens.aldarraj.com, never the root).
 //
 // The stacks are built two ways. "Wired" builds them directly with explicit props, so every
 // value is a literal and the assertions are exact. "In the app" builds them through
@@ -40,6 +40,14 @@ const HTTP_API_URL = "https://api.example.invalid";
 const CID_COPY_HOST = "d111111abcdef8.cloudfront.net";
 const PRODUCTION_BRANCH = "feature/oracle-pipeline";
 const EXAMPLE_APP_ID = "d1exampleappid";
+/** Amplify's error text on the first deploy: headers customHeaders may not set. */
+const READONLY_AMPLIFY_HEADERS = [
+  "content-length",
+  "transfer-encoding",
+  "content-encoding",
+  "warning",
+  "via",
+] as const;
 
 interface CfnResource {
   Type: string;
@@ -210,13 +218,14 @@ describe("CountyLensWeb: the Amplify app for apps/web (agent-design metagross §
       /^<\/\^\[\^.\]\+\$\|\\\.\(\?!\(.*\)\$\)\(\[\^.\]\+\$\)\/>$/,
     );
     const excluded = (SPA_FALLBACK_SOURCE.match(/\(\?!\(([^)]*)\)\$\)/) ?? [])[1]?.split("|") ?? [];
-    for (const ext of ["wasm", "json", "js", "css", "map", "ico", "png", "svg", "woff2"]) {
+    // gz: the engine fetches the gzip-compressed duckdb-eh.wasm.gz (compress-wasm.ts, plan R2).
+    for (const ext of ["wasm", "gz", "json", "js", "css", "map", "ico", "png", "svg", "woff2"]) {
       expect(excluded, `${ext} is served as a file, not index.html`).toContain(ext);
     }
     expect(json(rules)).not.toContain("404");
   });
 
-  it("custom headers (monorepo YAML): /build.json no-cache; *.wasm application/wasm + Content-Encoding br", () => {
+  it("custom headers (monorepo YAML): /build.json no-cache; no read-only header Amplify rejects", () => {
     const headers = app.CustomHeaders;
     expect(typeof headers).toBe("string");
     const yaml = headers as string;
@@ -224,9 +233,14 @@ describe("CountyLensWeb: the Amplify app for apps/web (agent-design metagross §
     expect(yaml).toMatch(
       /pattern: '\/build\.json'\n\s+headers:\n\s+- key: 'Cache-Control'\n\s+value: '[^']*no-cache[^']*'/,
     );
-    expect(yaml).toMatch(
-      /pattern: '\*\*\/\*\.wasm'\n\s+headers:\n\s+- key: 'Content-Type'\n\s+value: 'application\/wasm'\n\s+- key: 'Content-Encoding'\n\s+value: 'br'/,
-    );
+    // First deploy (2026-10-21): CREATE_FAILED "can not specify a readonly header in
+    // customHeaders. Readonly headers are: [content-length, transfer-encoding, content-encoding,
+    // warning, via]". The WASM is now a plain .gz the engine decompresses itself (plan R2).
+    const keys = [...yaml.matchAll(/- key: '([^']*)'/g)].map((m) => (m[1] ?? "").toLowerCase());
+    expect(keys.length).toBeGreaterThan(0);
+    for (const readonly of READONLY_AMPLIFY_HEADERS) {
+      expect(keys, `${readonly} is read-only in Amplify customHeaders`).not.toContain(readonly);
+    }
     expect(yaml).not.toMatch(/\t/);
   });
 

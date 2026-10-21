@@ -768,21 +768,50 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
     });
   });
 
-  test.describe("A-03-TC-028 DuckDB-WASM binary served Brotli-compressed", () => {
+  test.describe("A-03-TC-028 DuckDB-WASM binary transferred compressed", () => {
+    // Plan R2 fallback (2026-10-21): Amplify rejects a Content-Encoding custom header, so the
+    // build ships duckdb-eh-<hash>.wasm.gz only and the engine gunzips it in the browser.
     test("@scenario:A-03-TC-028", async ({ page }, testInfo) => {
+      const MAX_TRANSFER_BYTES = 12 * 1024 * 1024;
       const network = recordNetwork(page);
+      const transfers: { url: string; status: number | null; bodyBytes: number }[] = [];
+      const pending: Promise<void>[] = [];
+      page.on("requestfinished", (request) => {
+        if (!new URL(request.url()).pathname.endsWith(".wasm.gz")) return;
+        pending.push(
+          (async () => {
+            const sizes = await request.sizes();
+            const response = await request.response();
+            transfers.push({
+              url: request.url(),
+              status: response?.status() ?? null,
+              bodyBytes: sizes.responseBodySize,
+            });
+          })(),
+        );
+      });
       await page.goto("/permits");
       await waitForPermitRows(page);
+      await Promise.all(pending);
       await attachNetwork(testInfo, network);
+      await testInfo.attach("wasm-transfer.json", {
+        body: JSON.stringify(transfers, null, 2),
+        contentType: "application/json",
+      });
 
-      const binaries = network.responses.filter((response) =>
-        response.url.pathname.endsWith(".wasm"),
-      );
-      expect(binaries.length, "the DuckDB-WASM binary was loaded").toBeGreaterThan(0);
-      for (const binary of binaries) {
-        const name = binary.url.pathname.split("/").at(-1) ?? binary.url.href;
-        expect([200, 304], `${name}: status`).toContain(binary.status);
-        expect(binary.headers["content-encoding"], `${name}: Content-Encoding`).toBe("br");
+      const raw = network.requests.filter((request) => request.url.pathname.endsWith(".wasm"));
+      expect(
+        raw.map((request) => request.url.href),
+        "the uncompressed .wasm is never requested",
+      ).toEqual([]);
+      expect(transfers.length, "the DuckDB-WASM .wasm.gz was fetched").toBeGreaterThan(0);
+      for (const transfer of transfers) {
+        const name = new URL(transfer.url).pathname.split("/").at(-1) ?? transfer.url;
+        expect([200, 304], `${name}: status`).toContain(transfer.status);
+        expect(
+          transfer.bodyBytes,
+          `${name}: transfer ${transfer.bodyBytes} B < ${MAX_TRANSFER_BYTES} B`,
+        ).toBeLessThan(MAX_TRANSFER_BYTES);
       }
     });
   });
