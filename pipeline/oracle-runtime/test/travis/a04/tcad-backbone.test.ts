@@ -118,6 +118,8 @@ import { redactRecord } from "../../../travis/tcad/redact.js";
 import {
   A02_PILOT_MAPPING,
   propertyTypeOf,
+  propertyFields,
+  parseTcadRecord,
   STATE_CODES,
 } from "../../../travis/transforms/shared-seed.js";
 
@@ -199,11 +201,76 @@ describe("T022 fields", () => {
     });
     for (const entry of Object.values(STATE_CODES)) expect(entry.source).toBe(A02_PILOT_MAPPING);
     expect(Object.keys(STATE_CODES)).toHaveLength(11);
-    const m = mapOne(a04Record({ pID: 8, geoID: "08", stateCd: "ZZ9" }));
+    // a non-emitted class (P) with an unmapped code stays null with its reason
+    const m = mapOne(a04Record({ pID: 8, geoID: "08", stateCd: "ZZ9", propType: "P" }));
     expect(m.parcel).toMatchObject({
       property_type: null,
       property_type_missing_reason: "enum_lacks_value",
+      property_type_rule: null,
+      property_type_note: null,
     });
+  });
+
+  it("an R account with an unmapped state code validates: improvement_fallback from the record's own improvements only", () => {
+    const withImprv = mapOne(
+      a04Record({
+        pID: 9,
+        geoID: "09",
+        stateCd: "F5",
+        improvements: [{ stateCd: "F5", livingArea: 900, actualYearBuilt: 1990 }],
+      }),
+    );
+    expect(withImprv.parcel).toMatchObject({
+      property_type: "Building",
+      property_usage_type: null,
+      property_type_missing_reason: null,
+      property_type_rule: "improvement_fallback",
+    });
+    expect(withImprv.parcel.property_type_note).toContain("F5");
+    expect(withImprv.parcel.property_type_note).toContain("1 improvement");
+    const bare = mapOne(a04Record({ pID: 10, geoID: "10", stateCd: "E1" }));
+    expect(bare.parcel).toMatchObject({
+      property_type: "VacantLand",
+      property_type_rule: "improvement_fallback",
+      property_type_missing_reason: null,
+    });
+    expect(bare.parcel.property_type_note).toContain("no improvement");
+    // never a residential or condominium guess
+    for (const p of [withImprv.parcel.property_type, bare.parcel.property_type])
+      expect(["SingleFamily", "Condominium", "Townhouse", "MultipleFamily"]).not.toContain(p);
+  });
+
+  it("a mapped code keeps its table value and rule state_code_table", () => {
+    const m = mapOne(a04Record({ pID: 11, geoID: "11", stateCd: "A1" }));
+    expect(m.parcel).toMatchObject({
+      property_type: "SingleFamily",
+      property_type_rule: "state_code_table",
+    });
+    expect(m.parcel.property_type_note).toBeNull();
+    expect(propertyTypeOf("A4").property_type).toBe("Townhouse"); // A4 unchanged (unverified)
+  });
+
+  it("propertyFields (the County/shared-seed writer) gives every R account a lexicon property_type", () => {
+    const rec = parseTcadRecord({
+      ...a04Record({ pID: 12, geoID: "12", stateCd: "F5", improvements: [] }),
+    });
+    expect(propertyFields(rec)).toMatchObject({
+      property_type: "VacantLand",
+      property_type_rule: "improvement_fallback",
+    });
+    const rec2 = parseTcadRecord({
+      ...a04Record({
+        pID: 13,
+        geoID: "13",
+        stateCd: "E1",
+        improvements: [{ stateCd: "E1", livingArea: 100, actualYearBuilt: 2000 }],
+      }),
+    });
+    expect(propertyFields(rec2).property_type).toBe("Building");
+    const mh = parseTcadRecord({
+      ...a04Record({ pID: 14, geoID: "14", stateCd: "M1", propType: "MH" }),
+    });
+    expect(propertyFields(mh).property_type).toBeNull();
   });
 });
 

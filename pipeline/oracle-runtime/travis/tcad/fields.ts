@@ -7,7 +7,11 @@
 // plus `record_sha256` of the original bytes (oracle disagreement #11, plan CT-3).
 import { z } from "zod";
 import { GAZETTEER_SHA256 } from "../../../../packages/query-core/src/sql.generated.js";
-import { TCAD_EXPORT_REQUEST, propertyTypeOf } from "../transforms/shared-seed.js";
+import {
+  TCAD_EXPORT_REQUEST,
+  propertyTypeFor,
+  type PropertyTypeRule,
+} from "../transforms/shared-seed.js";
 import { ENTITY_NAME } from "../transforms/tcad-county.js";
 import { countyEmit, isPropType, type PropType } from "./account-class.js";
 import { exportPointKind, parseExportPoint, type ExportPointKind } from "./export-point.js";
@@ -60,6 +64,8 @@ export interface ParcelRow extends OwnerAreaFields, TenureFields, YearBuiltField
   property_type: string | null;
   property_usage_type: string | null;
   property_type_missing_reason: "enum_lacks_value" | null;
+  property_type_rule: PropertyTypeRule | null;
+  property_type_note: string | null;
   situs_address: SitusAddress | null;
   owner_name: string | null;
   owner_kind: OwnerKind | null;
@@ -276,7 +282,6 @@ export function mapParcel(redaction: Redaction, ctx: MapContext): MappedRecord {
     ),
   ];
   const stateCd = text(r.propertyProfile?.[0]?.stateCd);
-  const type = propertyTypeOf(stateCd ?? "");
   const owners = r.owners ?? [];
   const firstOwner = owners[0];
   const area = ownerAreaOf({
@@ -286,7 +291,12 @@ export function mapParcel(redaction: Redaction, ctx: MapContext): MappedRecord {
     addrInternational: firstOwner?.addrInternational,
   });
   const point = parseExportPoint(r.geometry);
-  const structures = improvementsOf(redaction.record).map((imp, ordinal) => ({
+  const improvements = improvementsOf(redaction.record);
+  const type = propertyTypeFor(stateCd ?? "", {
+    emitted: countyEmit(r.propType),
+    improvementCount: improvements.length,
+  });
+  const structures = improvements.map((imp, ordinal) => ({
     request_identifier: pID,
     ordinal,
     imprv_type: imp.imprvType,
@@ -304,6 +314,8 @@ export function mapParcel(redaction: Redaction, ctx: MapContext): MappedRecord {
     property_type: type.property_type,
     property_usage_type: type.property_usage_type,
     property_type_missing_reason: type.missing_reason,
+    property_type_rule: type.rule,
+    property_type_note: type.note,
     situs_address: situsOf(r.situses ?? []),
     ...ownerColumns(owners, redaction.redacted),
     owner_redacted: redaction.redacted,

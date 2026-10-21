@@ -14,6 +14,8 @@ import { writeChunkFile, type ChunkFile } from "../../../oracle-runtime/travis/t
 
 const MIGRATION = readFileSync(new URL("../../migrations/0101_tcad.sql", import.meta.url), "utf8");
 const norm = MIGRATION.replace(/\s+/g, " ");
+const MIGRATION_0102 = readFileSync(new URL("../../migrations/0102_tcad_type_rule.sql", import.meta.url), "utf8");
+const norm0102 = MIGRATION_0102.replace(/\s+/g, " ");
 const JOB = "travis-a04-pilot-202610220100";
 const EXPORT = "6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346";
 
@@ -21,6 +23,7 @@ function parcel(id: string, sha = "b".repeat(64), over: Record<string, unknown> 
   return {
     request_identifier: id, job_id: JOB, geo_id: `0${id}`, prop_type: "R", state_cd: "A1",
     property_type: "SingleFamily", property_usage_type: "Residential", property_type_missing_reason: null,
+    property_type_rule: "state_code_table", property_type_note: null,
     situs_address: { text: "1 SYNTHETIC ST, AUSTIN, TX 78701" }, owner_name: "SYNTHETIC OWNER LLC",
     owner_kind: "company", owner_missing_reason: null, owner_redacted: false, owner_redaction_rule: null,
     owner_mailing_postal_code: "78701", owner_mailing_country: null, owner_area_class: "in_county",
@@ -101,7 +104,7 @@ describe("T025 0101_tcad.sql", () => {
   });
 
   it("parcels holds every data-model column", () => {
-    for (const c of PARCEL_COLUMNS) expect(norm).toMatch(new RegExp(`\\b${c} [a-z]`));
+    for (const c of PARCEL_COLUMNS) expect(`${norm} ${norm0102}`).toMatch(new RegExp(`\\b${c} [a-z]`));
   });
 
   it("closed lists and the redaction rule are CHECK constraints", () => {
@@ -112,6 +115,17 @@ describe("T025 0101_tcad.sql", () => {
     expect(norm).toContain("CHECK (export_point_kind IN ('real', 'placeholder', 'duplicate', 'outside_county'))");
     expect(norm).toMatch(/CHECK \(NOT owner_redacted OR \(owner_name IS NULL .*owner_missing_reason = 'owner_confidential'/);
     expect(norm).not.toMatch(/'confidential'\)/);
+  });
+});
+
+describe("0102_tcad_type_rule.sql (property_type evidence)", () => {
+  it("adds property_type_rule and property_type_note as a new migration, closed rule list", () => {
+    expect(norm0102).toContain("ALTER TABLE parcels");
+    expect(norm0102).toMatch(/ADD COLUMN IF NOT EXISTS property_type_rule text/);
+    expect(norm0102).toMatch(/ADD COLUMN IF NOT EXISTS property_type_note text/);
+    expect(norm0102).toContain("CHECK (property_type_rule IN ('state_code_table', 'improvement_fallback'))");
+    expect(PARCEL_COLUMNS).toContain("property_type_rule");
+    expect(PARCEL_COLUMNS).toContain("property_type_note");
   });
 });
 

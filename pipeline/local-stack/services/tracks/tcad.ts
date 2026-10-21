@@ -30,6 +30,8 @@ const PARCEL_TYPES = {
   property_type: "text",
   property_usage_type: "text",
   property_type_missing_reason: "text",
+  property_type_rule: "text",
+  property_type_note: "text",
   situs_address: "jsonb",
   owner_name: "text",
   owner_kind: "text",

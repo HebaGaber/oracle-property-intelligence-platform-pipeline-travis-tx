@@ -8,6 +8,7 @@
 // ("[lat, lon]"), propertyIdentification[].geoID, situses[] (primarySitus), propertyProfile[]
 // (stateCd, imprvActualYearBuilt), propertyLegalDescription[].legalDescription.
 import { z } from "zod";
+import { improvementsOf } from "../tcad/year-built.js";
 
 /** The bulk export GET every TCAD entity comes from (A-01 sources catalog). Headers: none. */
 export const TCAD_EXPORT_REQUEST = {
@@ -174,10 +175,71 @@ export function propertyTypeOf(code: string): {
     : { property_type: null, property_usage_type: null, missing_reason: "enum_lacks_value" };
 }
 
+export type PropertyTypeRule = "state_code_table" | "improvement_fallback";
+
+/** The two lexicon values the fallback may use: the ones STATE_CODES already uses for F1 and C1. */
+export const FALLBACK_WITH_IMPROVEMENT = "Building";
+export const FALLBACK_WITHOUT_IMPROVEMENT = "VacantLand";
+
+export interface PropertyTypeChoice {
+  property_type: string | null;
+  property_usage_type: string | null;
+  missing_reason: "enum_lacks_value" | null;
+  rule: PropertyTypeRule | null;
+  note: string | null;
+}
+
+/**
+ * The property_type of one account (A-04 pilot fix). The lexicon requires a string for every
+ * emitted property (county_emit = R). Order: (a) STATE_CODES (rule state_code_table); (b) for
+ * an emitted account whose code has no table entry, a generic fallback from the record's own
+ * facts only: `Building` when it prints at least one improvement, else `VacantLand`
+ * (rule improvement_fallback, note says which code and which fact). The fallback never asserts
+ * a residential or condominium type and sets no property_usage_type. A non-emitted account
+ * (P, MH, MN) with an unmapped code stays null + enum_lacks_value. No official code table is
+ * on disk (APPRAISAL_STATE_CODE.TXT is not in the JSON export), so no code was added.
+ */
+export function propertyTypeFor(
+  code: string,
+  opts: { emitted: boolean; improvementCount: number },
+): PropertyTypeChoice {
+  const c = code.trim();
+  const m = STATE_CODES[c];
+  if (m)
+    return {
+      property_type: m.property_type,
+      property_usage_type: m.property_usage_type,
+      missing_reason: null,
+      rule: "state_code_table",
+      note: null,
+    };
+  if (!opts.emitted)
+    return {
+      property_type: null,
+      property_usage_type: null,
+      missing_reason: "enum_lacks_value",
+      rule: null,
+      note: null,
+    };
+  const has = opts.improvementCount > 0;
+  const shown = c === "" ? "(empty)" : c;
+  return {
+    property_type: has ? FALLBACK_WITH_IMPROVEMENT : FALLBACK_WITHOUT_IMPROVEMENT,
+    property_usage_type: null,
+    missing_reason: null,
+    rule: "improvement_fallback",
+    note: has
+      ? `state code ${shown} has no table entry; the record prints ${opts.improvementCount} improvement(s), so the generic type ${FALLBACK_WITH_IMPROVEMENT} is used (no residential or condominium claim)`
+      : `state code ${shown} has no table entry; the record prints no improvement, so the generic type ${FALLBACK_WITHOUT_IMPROVEMENT} is used`,
+  };
+}
+
 export interface PropertyFields {
   parcel_identifier: string;
   property_type: string | null;
   property_usage_type: string | null;
+  property_type_rule: PropertyTypeRule | null;
+  property_type_note: string | null;
   property_structure_built_year: number | null;
   property_legal_description_text: string | null;
   /** Unmapped source codes (kept out of the record, reported in the findings). */
@@ -191,14 +253,19 @@ export interface PropertyFields {
 export function propertyFields(record: TcadRecord, yearBuilt?: number | null): PropertyFields {
   const profile = record.propertyProfile[0];
   const code = (profile?.stateCd ?? "").trim();
-  const mapped = STATE_CODES[code];
-  const warnings = mapped ? [] : [`unmapped_state_code:${code || "(empty)"}`];
+  const type = propertyTypeFor(code, {
+    emitted: record.propType === "R",
+    improvementCount: improvementsOf(record as Record<string, unknown>).length,
+  });
+  const warnings = STATE_CODES[code] ? [] : [`unmapped_state_code:${code || "(empty)"}`];
   const year = yearBuilt !== undefined ? yearBuilt : (profile?.imprvActualYearBuilt ?? null);
   const legal = (record.propertyLegalDescription[0]?.legalDescription ?? "").trim();
   return {
     parcel_identifier: pidOf(record),
-    property_type: mapped?.property_type ?? null,
-    property_usage_type: mapped?.property_usage_type ?? null,
+    property_type: type.property_type,
+    property_usage_type: type.property_usage_type,
+    property_type_rule: type.rule,
+    property_type_note: type.note,
     property_structure_built_year:
       year !== null && Number.isInteger(year) && year >= 1000 && year <= 9999 ? year : null,
     property_legal_description_text: legal === "" ? null : legal,
