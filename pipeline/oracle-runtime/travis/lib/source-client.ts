@@ -115,7 +115,7 @@ export function stopExitCode(cls: StopClass): 0 | 1 | 2 {
 
 export interface CaptureReceipt {
   url: string;
-  method: "GET" | "HEAD";
+  method: "GET" | "HEAD" | "POST";
   status: number | null;
   bytes: number;
   sha256: string;
@@ -167,7 +167,12 @@ export interface StopEvidence {
 
 export interface CaptureRequest<T> {
   url: string;
-  method?: "GET" | "HEAD";
+  method?: "GET" | "HEAD" | "POST";
+  /**
+   * A POST form body (`application/x-www-form-urlencoded`), for a query too long for a URL.
+   * Not part of the receipt URL; the receipt records only `method`.
+   */
+  formBody?: string;
   /** Zod schema the body must satisfy; a 2xx that fails it is a challenge (`blocked`). */
   schema?: ZodType<T>;
   /** How the body is handed to the schema: parsed JSON (default) or raw text. */
@@ -623,9 +628,10 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
 
   async function attemptOnce(
     url: string,
-    method: "GET" | "HEAD",
+    method: "GET" | "HEAD" | "POST",
     headers: Record<string, string>,
     timeoutMs: number,
+    formBody?: string,
   ): Promise<Attempt> {
     const at = now();
     const controller = new AbortController();
@@ -634,6 +640,7 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       const response = await fetchImpl(url, {
         method,
         headers,
+        ...(formBody === undefined ? {} : { body: formBody }),
         signal: controller.signal,
         redirect: "follow",
       });
@@ -661,6 +668,9 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       accept: request.accept ?? "*/*",
     };
     if (tokenUsed && appToken !== null) headers["x-app-token"] = appToken;
+    if (request.formBody !== undefined) {
+      headers["content-type"] = "application/x-www-form-urlencoded";
+    }
 
     const observed: string[] = [];
     let attempts = 0;
@@ -669,7 +679,7 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
     const budget = Math.max(1, Math.min(MAX_ATTEMPTS, request.maxAttempts ?? MAX_ATTEMPTS));
     while (attempts < budget) {
       attempts += 1;
-      last = await attemptOnce(request.url, method, headers, timeoutMs);
+      last = await attemptOnce(request.url, method, headers, timeoutMs, request.formBody);
       if (last.kind !== "response" || !isRetryable(last.status)) break;
       // a challenge is never retried, whatever its status (StopOnBlocked)
       if (challengeOf(last.status, last.headers, last.body) !== null) break;

@@ -86,6 +86,13 @@ describe("A-04-TC-020 workflow: .github/workflows/a04-gis-capture.yml (D-2, cont
     expect(upload[0]?.with?.["retention-days"]).toBe(7);
   });
 
+  it("A-04 runner-config.json carries attempt 2 (path-filter bump) and stays in pilot mode", () => {
+    const cfg = JSON.parse(readFileSync(new URL(CONFIG_PATH, REPO), "utf8"));
+    expect(cfg.attempt).toBe(2);
+    expect(cfg.mode).toBe("pilot");
+    expect(RunnerConfig.safeParse({ ...cfg, attempt: 0 }).success).toBe(false);
+  });
+
   it("A-04-TC-020 workflow runner-config.json parses, names a mode, and its outFields hold no owner or address field", () => {
     const cfg = RunnerConfig.parse(JSON.parse(readFileSync(new URL(CONFIG_PATH, REPO), "utf8")));
     expect(["pilot", "full"]).toContain(cfg.mode);

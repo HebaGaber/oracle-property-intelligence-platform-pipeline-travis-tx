@@ -281,4 +281,104 @@ describe("A-04 T041 GIS runner fetch (gis-adapter)", () => {
       code: "out_field_not_in_layer",
     });
   });
+
+  it("A-04 page queries are POSTed as a form body; count, ids and metadata stay GET; the receipt URL has no ids", async () => {
+    const { server, result, receipts } = await run({ total: 6 }, config());
+    expect(result.status).toBe("complete");
+    const posts = server.requests.filter((r) => r.method === "POST");
+    expect(posts).toHaveLength(3);
+    for (const r of posts) {
+      expect(r.contentType).toBe("application/x-www-form-urlencoded");
+      expect(r.url).toBe(`${FAKE_LAYER}/query`);
+      const form = new URLSearchParams(r.body ?? "");
+      expect([...form.keys()].sort()).toEqual(
+        ["f", "geometryPrecision", "objectIds", "outFields", "outSR", "returnGeometry"].sort(),
+      );
+      expect(form.get("f")).toBe("json");
+      expect(form.get("returnGeometry")).toBe("true");
+      expect(form.get("outSR")).toBe("4326");
+      expect(form.get("geometryPrecision")).toBe("7");
+      expect(form.get("outFields")).toBe("OBJECTID,PROP_ID,GEO_ID");
+    }
+    const gets = server.requests.filter((r) => r.method === "GET");
+    expect(gets.length).toBeGreaterThanOrEqual(3);
+    expect(gets.some((r) => r.url.includes("objectIds="))).toBe(false);
+    for (const r of receipts.filter((x) => x.kind === "page")) {
+      expect(r.url).not.toContain("objectIds");
+      expect(r.url).not.toMatch(/\d,\d/);
+      expect(r.method).toBe("POST");
+    }
+  });
+
+  it("A-04 an HTML 200 answer to a page: failed.json carries status, content-type, bytes and the first 300 characters", async () => {
+    const html = `<html><head><title>Request Rejected</title></head><body>${"x".repeat(900)}</body></html>`;
+    const { result, out, receipts } = await run(
+      { total: 6, pageRaw: () => ({ status: 200, contentType: "text/html", body: html }) },
+      config({ mode: "pilot" }),
+    );
+    expect(result.status).toBe("failed");
+    const failed = JSON.parse(readFileSync(join(out, "failed.json"), "utf8"));
+    expect(failed.diagnostic).toMatchObject({
+      kind: "not_json",
+      http_status: 200,
+      content_type: "text/html",
+      bytes: html.length,
+    });
+    expect(failed.diagnostic.excerpt).toHaveLength(300);
+    expect(failed.diagnostic.excerpt).toBe(html.slice(0, 300));
+    const last = receipts.at(-1);
+    expect(last).toMatchObject({ outcome: "error", http_status: 200, content_type: "text/html" });
+    expect(last?.excerpt).toBe(html.slice(0, 300));
+    expect(JSON.stringify(failed)).not.toMatch(/user-agent|authorization|cookie/i);
+  });
+
+  it("A-04 the excerpt is scrubbed like stop evidence (a token parameter is redacted)", async () => {
+    const body = "<p>see https://example.test/x?token=SECRETVALUE123 and Bearer abcdef123456</p>";
+    const { out } = await run(
+      { total: 4, pageRaw: () => ({ status: 200, contentType: "text/html", body }) },
+      config({ mode: "pilot" }),
+    );
+    const failed = readFileSync(join(out, "failed.json"), "utf8");
+    expect(failed).not.toContain("SECRETVALUE123");
+    expect(failed).not.toContain("abcdef123456");
+  });
+
+  it("A-04 a 200 JSON {error} envelope is reported as an ArcGIS error with its code and message, not 'not JSON'", async () => {
+    const body = JSON.stringify({ error: { code: 400, message: "Unable to complete operation.", details: [] } });
+    const { result, out, receipts } = await run(
+      { total: 6, pageRaw: () => ({ status: 200, contentType: "application/json", body }) },
+      config({ mode: "pilot" }),
+    );
+    expect(result.status).toBe("failed");
+    const failed = JSON.parse(readFileSync(join(out, "failed.json"), "utf8"));
+    expect(failed.diagnostic).toMatchObject({
+      kind: "arcgis_error",
+      http_status: 200,
+      content_type: "application/json",
+      bytes: body.length,
+      arcgis_error: { code: 400, message: "Unable to complete operation." },
+    });
+    expect(JSON.stringify(failed)).not.toMatch(/not JSON/);
+    expect(receipts.at(-1)).toMatchObject({ outcome: "error", content_type: "application/json" });
+  });
+
+  it("A-04 pilot success writes the page summary: feature count, fields, geometry type, 3 sample bounds, OBJECTID only", async () => {
+    const { server, result, out } = await run({ total: 10 }, config({ mode: "pilot", bulkPageSize: 5 }));
+    expect(result.status).toBe("pilot");
+    expect(pageRequests(server.events)).toHaveLength(1);
+    const pilot = JSON.parse(readFileSync(join(out, "pilot.json"), "utf8"));
+    expect(pilot.page).toMatchObject({
+      feature_count: 5,
+      geometry_type: "esriGeometryPolygon",
+      fields: ["OBJECTID"],
+    });
+    expect(pilot.page.sample).toHaveLength(3);
+    for (const s of pilot.page.sample) {
+      expect(Object.keys(s).sort()).toEqual(["OBJECTID", "bounds"]);
+      expect(s.bounds).toHaveLength(4);
+      expect(s.bounds[0]).toBeLessThan(s.bounds[2]);
+    }
+    expect(JSON.stringify(pilot)).not.toContain(OWNER_SENTINEL);
+    expect(server.maxInFlightPages()).toBe(1);
+  });
 });

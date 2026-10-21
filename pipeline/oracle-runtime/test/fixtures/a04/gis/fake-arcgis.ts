@@ -10,6 +10,14 @@ export const OWNER_SENTINEL = "ZZSYNTHETICOWNERSENTINEL";
 
 export type PageAnswer = "timeout" | number | undefined;
 
+/** What the fake saw of one request (never the headers' values beyond content-type). */
+export interface FakeRequest {
+  method: string;
+  url: string;
+  contentType: string | null;
+  body: string | null;
+}
+
 export interface FakeEvent {
   type: "start" | "end";
   url: string;
@@ -26,6 +34,8 @@ export interface FakeOptions {
   latencyMs?: number;
   /** Return an HTTP status or "timeout" for a page (1-based by first id order); undefined = 200. */
   page?: (pageNo: number, attempt: number) => PageAnswer;
+  /** Answer a page with a raw body (an HTML page, a 200 JSON error envelope). */
+  pageRaw?: (pageNo: number) => { status: number; contentType: string; body: string } | undefined;
   fields?: string[];
 }
 
@@ -34,6 +44,7 @@ const json = (body: unknown, status = 200): Response =>
 
 export function fakeArcgis(options: FakeOptions) {
   const events: FakeEvent[] = [];
+  const requests: FakeRequest[] = [];
   const pageAttempts = new Map<number, number>();
   let inFlightPages = 0;
   let maxInFlightPages = 0;
@@ -46,7 +57,21 @@ export function fakeArcgis(options: FakeOptions) {
 
   const fetch = async (input: string, init: RequestInit): Promise<Response> => {
     const url = new URL(input);
-    const p = url.searchParams;
+    const headers = new Headers(init.headers);
+    const rawBody = typeof init.body === "string" ? init.body : null;
+    requests.push({
+      method: init.method ?? "GET",
+      url: input,
+      contentType: headers.get("content-type"),
+      body: rawBody,
+    });
+    // a POSTed form body carries the same parameters a GET carries in its query string
+    const p = new URLSearchParams(url.search);
+    if (init.method === "POST" && rawBody !== null) {
+      for (const [k, v] of new URLSearchParams(rawBody)) p.set(k, v);
+    }
+    // events show the logical query (path + merged parameters) whether it came as GET or POST
+    const logical = `${url.origin}${url.pathname}?${p.toString()}`;
     const kind: FakeEvent["kind"] = p.has("objectIds")
       ? "page"
       : p.get("returnCountOnly") === "true"
@@ -56,12 +81,12 @@ export function fakeArcgis(options: FakeOptions) {
           : url.pathname.endsWith("/query")
             ? "other"
             : "meta";
-    const ev: FakeEvent = { type: "start", url: input, kind };
+    const ev: FakeEvent = { type: "start", url: logical, kind };
     events.push(ev);
     const end = (r: Response, pageNo?: number): Response => {
       events.push({
         type: "end",
-        url: input,
+        url: logical,
         kind,
         status: r.status,
         ...(pageNo === undefined ? {} : { pageNo }),
@@ -101,11 +126,18 @@ export function fakeArcgis(options: FakeOptions) {
       const pageNo = Math.floor(((pageIds[0] ?? 1) - 1) / (firstPageSize || 1)) + 1;
       const attempt = (pageAttempts.get(pageNo) ?? 0) + 1;
       pageAttempts.set(pageNo, attempt);
+      const raw = options.pageRaw?.(pageNo);
+      if (raw !== undefined) {
+        return end(
+          new Response(raw.body, { status: raw.status, headers: { "content-type": raw.contentType } }),
+          pageNo,
+        );
+      }
       const answer = options.page?.(pageNo, attempt);
       if (answer === "timeout") {
         return new Promise<Response>((_resolve, reject) => {
           init.signal?.addEventListener("abort", () => {
-            events.push({ type: "end", url: input, kind, pageNo });
+            events.push({ type: "end", url: logical, kind, pageNo });
             reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
           });
         });
@@ -142,6 +174,7 @@ export function fakeArcgis(options: FakeOptions) {
   return {
     fetch,
     events,
+    requests,
     pageAttempts,
     pageSizeSeen,
     maxInFlightPages: () => maxInFlightPages,

@@ -23,6 +23,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { redact } from "../lib/log.js";
 import {
   backoffDelayMs,
   MAX_ATTEMPTS,
@@ -49,7 +50,29 @@ export interface GisReceipt {
   ua: string;
   page_key: string | null;
   kind: RequestKind;
+  /** "POST" for page queries (the ids travel in the form body, never in the URL). */
+  method?: "GET" | "POST";
   blocked_at?: string;
+  /** Non-ok answers: the content-type and the scrubbed first EXCERPT_CHARS of the body. */
+  content_type?: string | null;
+  excerpt?: string;
+}
+
+export const EXCERPT_CHARS = 300;
+
+/** Why a stop happened, for failed.json: never request headers, body scrubbed and cut. */
+export interface GisDiagnostic {
+  kind: "not_json" | "arcgis_error" | "http_status";
+  http_status: number | null;
+  content_type: string | null;
+  bytes: number;
+  excerpt: string;
+  arcgis_error?: { code: number | string | null; message: string | null };
+}
+
+/** The first 300 characters of a body, through the same redaction as stop evidence. */
+export function scrubExcerpt(body: Buffer): string {
+  return redact(body.subarray(0, 4096).toString("utf8")).slice(0, EXCERPT_CHARS);
 }
 
 /** Where the runner keeps its artifact (`out/`): relative paths only. */
@@ -107,6 +130,7 @@ export class GisRequestError extends Error {
     readonly httpStatus: number | null,
     readonly url: string,
     message: string,
+    readonly diagnostic: GisDiagnostic | null = null,
   ) {
     super(message);
   }
@@ -151,12 +175,24 @@ export function requestKind(url: URL): RequestKind {
   return "other";
 }
 
-/** Page queries only: geometry in WGS84 at 1e-7° and the minimal fields. */
-export function pageUrl(url: URL, outFields: readonly string[]): URL {
-  const next = new URL(url.href);
-  next.searchParams.set("outFields", outFields.join(","));
-  for (const [k, v] of Object.entries(GEOMETRY_PARAMS)) next.searchParams.set(k, v);
-  return next;
+/**
+ * Page queries only: the POST for the kit's `objectIds=` GET. The ids (up to 2,000, ~14 KB)
+ * go in a form body (f, outFields, returnGeometry, outSR, geometryPrecision, objectIds); the
+ * URL stays the layer's /query path, so the receipt URL never holds the ids.
+ */
+export function pageRequest(
+  url: URL,
+  outFields: readonly string[],
+): { url: URL; formBody: string } {
+  const form = new URLSearchParams();
+  form.set("f", url.searchParams.get("f") ?? "json");
+  form.set("outFields", outFields.join(","));
+  form.set("returnGeometry", GEOMETRY_PARAMS.returnGeometry);
+  form.set("outSR", GEOMETRY_PARAMS.outSR);
+  form.set("geometryPrecision", GEOMETRY_PARAMS.geometryPrecision);
+  form.set("objectIds", url.searchParams.get("objectIds") ?? "");
+  const target = new URL(url.origin + url.pathname);
+  return { url: target, formBody: form.toString() };
 }
 
 const retryable = (r: CaptureReceipt): boolean =>
@@ -186,12 +222,24 @@ export function createGeometryClient(options: GeometryClientOptions): GeometryCl
     if (h !== null) throw new GisStoppedError(`gis: run stopped (${h.message}); no request made`);
   };
 
+  const diagnosticOf = (
+    kind: GisDiagnostic["kind"],
+    status: number | null,
+    res: { body: Buffer; headers: Record<string, string> },
+  ): GisDiagnostic => ({
+    kind,
+    http_status: status,
+    content_type: res.headers["content-type"] ?? null,
+    bytes: res.body.byteLength,
+    excerpt: scrubExcerpt(res.body),
+  });
+
   async function fetchOnce(input: string): Promise<{ body: unknown }> {
     refuseIfStopped();
     const original = new URL(input);
     const kind = requestKind(original);
-    const target = kind === "page" ? pageUrl(original, options.outFields) : original;
-    const url = target.href;
+    const page = kind === "page" ? pageRequest(original, options.outFields) : null;
+    const url = (page?.url ?? original).href;
     const pageKey =
       kind === "page"
         ? options.pageKeyOf(
@@ -202,50 +250,79 @@ export function createGeometryClient(options: GeometryClientOptions): GeometryCl
       r: CaptureReceipt,
       outcome: ReceiptOutcome,
       attempts: number,
-      body: Buffer,
+      res: { body: Buffer; headers: Record<string, string> },
       blockedAt?: string,
-    ): GisReceipt => ({
-      url,
-      http_status: r.status,
-      bytes: body.byteLength,
-      sha256: sha256Hex(body),
-      captured_at: r.captured_at,
-      outcome,
-      attempts,
-      ua: r.user_agent,
-      page_key: pageKey,
-      kind,
-      ...(blockedAt === undefined ? {} : { blocked_at: blockedAt }),
-    });
+    ): GisReceipt => {
+      const body = res.body;
+      return {
+        url,
+        http_status: r.status,
+        bytes: body.byteLength,
+        sha256: sha256Hex(body),
+        captured_at: r.captured_at,
+        outcome,
+        attempts,
+        ua: r.user_agent,
+        page_key: pageKey,
+        kind,
+        ...(page === null ? {} : { method: "POST" as const }),
+        ...(blockedAt === undefined ? {} : { blocked_at: blockedAt }),
+        ...(outcome === "ok" || outcome === "skipped_checkpoint"
+          ? {}
+          : { content_type: res.headers["content-type"] ?? null, excerpt: scrubExcerpt(body) }),
+      };
+    };
 
     for (let attempt = 1; ; attempt += 1) {
       refuseIfStopped();
       sent += 1;
-      const res = await options.source.capture({ url, maxAttempts: 1, accept: "application/json" });
+      const res = await options.source.capture({
+        url,
+        maxAttempts: 1,
+        accept: "application/json",
+        ...(page === null ? {} : { method: "POST" as const, formBody: page.formBody }),
+      });
       const r = res.receipt;
       if (r.outcome === "ok" || r.outcome === "throttled-then-ok") {
         let body: unknown;
         try {
           body = JSON.parse(res.body.toString("utf8"));
         } catch {
-          options.out.appendReceipt(receiptOf(r, "error", attempt, res.body));
-          stop = new GisRequestError(r.status, url, `gis: ${kind} answer is not JSON`);
+          options.out.appendReceipt(receiptOf(r, "error", attempt, res));
+          stop = new GisRequestError(
+            r.status,
+            url,
+            `gis: ${kind} answer is not JSON`,
+            diagnosticOf("not_json", r.status, res),
+          );
           throw stop;
         }
         const arcgisError =
           typeof body === "object" && body !== null && "error" in body && !("features" in body);
         options.out.write(fileFor(kind, pageKey), res.body);
-        const receipt = receiptOf(r, arcgisError ? "error" : "ok", attempt, res.body);
+        const receipt = receiptOf(r, arcgisError ? "error" : "ok", attempt, res);
         options.out.appendReceipt(receipt);
         if (kind === "page" && pageKey !== null && !arcgisError) pages.set(pageKey, receipt);
         // an ArcGIS error payload is returned as is: the kit refuses it (arcgis_query_failed)
-        if (arcgisError)
-          stop = new GisRequestError(r.status, url, `gis: ${kind} answered an ArcGIS error`);
+        if (arcgisError) {
+          const e = (body as { error: { code?: unknown; message?: unknown } }).error;
+          const detail = {
+            code: typeof e?.code === "number" || typeof e?.code === "string" ? e.code : null,
+            message:
+              typeof e?.message === "string" ? redact(e.message).slice(0, EXCERPT_CHARS) : null,
+          };
+          stop = new GisRequestError(
+            r.status,
+            url,
+            `gis: ${kind} answered an ArcGIS error (${detail.code ?? "no code"}: ${detail.message ?? "no message"})`,
+            { ...diagnosticOf("arcgis_error", r.status, res), arcgis_error: detail },
+          );
+        }
         return { body };
       }
       if (stopClass(r) === "blocked") {
         const at = now().toISOString();
-        options.out.appendReceipt(receiptOf(r, "blocked", attempt, res.body, at));
+        options.out.appendReceipt(receiptOf(r, "blocked", attempt, res, at));
         stop = new GisBlockedError(
           r.blocked_reason === "challenge" ? "challenge" : "http_403",
           at,
@@ -258,15 +335,20 @@ export function createGeometryClient(options: GeometryClientOptions): GeometryCl
       if (retryable(r)) {
         if (attempt >= MAX_ATTEMPTS) {
           const at = now().toISOString();
-          options.out.appendReceipt(receiptOf(r, "blocked", attempt, res.body, at));
+          options.out.appendReceipt(receiptOf(r, "blocked", attempt, res, at));
           stop = new GisBlockedError("gave_up", at, r.status, pageKey, url);
           throw stop;
         }
         await options.sleep(backoffDelayMs(attempt, random));
         continue;
       }
-      options.out.appendReceipt(receiptOf(r, "error", attempt, res.body));
-      stop = new GisRequestError(r.status, url, `gis: ${kind} answered HTTP ${r.status ?? "none"}`);
+      options.out.appendReceipt(receiptOf(r, "error", attempt, res));
+      stop = new GisRequestError(
+        r.status,
+        url,
+        `gis: ${kind} answered HTTP ${r.status ?? "none"}`,
+        diagnosticOf("http_status", r.status, res),
+      );
       throw stop;
     }
   }
