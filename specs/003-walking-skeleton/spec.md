@@ -1,0 +1,200 @@
+# Feature Specification: Publish one month of Austin roofing permits by CID and show them in the hosted UI
+
+**Feature Branch**: `003-walking-skeleton`
+
+**Created**: 2026-10-21
+
+**Status**: Draft
+
+**Input**: User description: "Specify the story in stories/A-03-walking-skeleton.md. Every acceptance criterion becomes at least one FR with the same numbers. Fill the spec header (story, evaluation point A4 · A5, demo lines D-1, D-2, D-4, owner agents) from the story front matter. Facts: ../assessment-guide/reference/A-oracle.md. No technology choices."
+
+**Story**: `stories/A-03-walking-skeleton.md` | **Evaluation point**: A4 (primary) · A5 | **Demo line(s)**: D-1 (opening: data on IPFS, queryable in the browser), D-2 (Runs page), D-4 (query layer in the browser)
+
+**Owner agents** (from the story front matter; used by the plan, not by this spec): design `metagross`, `oracle` · builder `metagross` (app), `oracle` (publish) · reviewers `metagross`, `oracle` · verify Playwright demo line 1 + `verify-manifest`
+
+> Every story acceptance criterion becomes at least one FR below. No technology choices in this file; they belong in plan.md.
+
+**Numbering.** FR-001 to FR-007 match AC-1 to AC-7 one to one. FR-008 onward carry the story's edge cases and the remaining requirements. The story's own REQ IDs are given in brackets, e.g. *(story FR-003)*. Product names that appear below (the publishing CLI, IPFS, the gateways, the in-browser engine line) are fixed by the story's acceptance text or the approved ARD; this spec does not choose them.
+
+## Clarifications
+
+### Session 2026-10-21
+
+- Q: Which data and which read path does the AC-4 scale test use? → A: The full 2,380,725-row Austin permit table, read through a private signed path on the fast copy (never a public CID); the gateway legs (Filebase, ipfs.io, dweb.link) are measured on existing public CIDs now and on this run's own CIDs after the first upload. *(PO decision D-3, 2026-10-21.)*
+- Q: Which columns does the Permits list show for status and contractor, given `status_raw` and the printed contractor have no lexicon carrier? → A: The frozen contract columns: `improvement_status` + `status_class`, `contractor_resolution`, and each `missing` reason shown as its human label. *(PO decision D-1, 2026-10-21; `contract/v1/README.md` "No-carrier and not-emitted fields"; ADR-0002, AD-24.)*
+- Q: How are permits with no `tcad_id` shown, and which sources and data groups does the run carry? → A: They are not published; the Runs page shows the manifest count `permits_no_tcad_geoid` labelled "No TCAD id on source record". Runs lists both manifest sources, Austin first then TCAD; the run publishes the `county` and `property_improvement` groups. NFR-003 is checked in AC-2/AC-3 and NFR-004 in AC-7. *(PO decision D-1, 2026-10-21.)*
+- Q: What is the "record count" shown on the Runs page? → A: Each source's `records` value from the manifest `sources[]`, shown per source, never recomputed in the browser. *(`contract/v1/README.md` `v_run.sources`; story AC-2 "the record count from the manifest".)*
+- Q: Do the hosted Runs and Permits pages need sign-in? → A: No. Both are public and read-only; admin sign-in and run controls are out of scope (built last). *(Story "Out of scope"; ARD AD-12.)*
+- Q: How and where are the browser performance numbers measured? → A: At least 20 timed runs, p95 written to the evidence (the spike's to `docs/decisions/0001-read-path.md`), measured on the hosted runtime, never localhost. *(ARD NFR-01 row; walkthrough § 5 "Browser"; CLAUDE.md "localhost is never evidence".)*
+
+## User Scenarios & Testing *(mandatory)*
+
+### User Story 1 - See the run that published the data (Priority: P1)
+
+A CRM developer (or the evaluator) opens the hosted Runs page and sees one real publication run: its ID, start and finish time in UTC, the sources it read, the number of records it published, and the content address (CID) of its manifest. From that CID they can check every published file on two independent public gateways.
+
+**Why this priority**: The evaluator scores only what runs on the hosted URL. A run with a verifiable manifest is the proof that the source → publish → hosted path works end to end (evaluation point A4, demo line D-2).
+
+**Independent Test**: Open `https://countylens.aldarraj.com/runs` (or the Amplify branch URL) and see the run with both sources, the record count and the manifest CID; then run `verify-manifest` against that manifest and see `ALL ARTIFACTS VERIFIED`.
+
+**Acceptance Scenarios**:
+
+1. **Given** September 2026 Austin reroof permits captured through the kit runtime, **When** the publication sequence runs, **Then** each step runs in order with none skipped, and the manifest lists every artifact with a CIDv1, name, codec, size and SHA-256, and the tables directory has a CAR CID. *(AC-1)*
+2. **Given** the hosted site, **When** the evaluator opens Runs, **Then** it shows the run ID, UTC start and finish, every manifest source (Austin first, then the TCAD 2026 certified export), the record count from the manifest and the manifest CID, and the page passes at 390, 768 and 1440 px with Atlas tokens only. *(AC-2)*
+3. **Given** the run's manifest, **When** `verify-manifest` fetches every artifact from ipfs.io and dweb.link, **Then** sizes and SHA-256 match and it prints `ALL ARTIFACTS VERIFIED`. *(AC-6)*
+
+---
+
+### User Story 2 - List the published permits in the browser, with provenance (Priority: P1)
+
+The CRM developer opens the Permits list. The browser itself reads the published tables (no database server) and lists every published September 2026 reroof permit with its status, contractor state and provenance. Every absent value says why it is absent.
+
+**Why this priority**: It proves the zero-idle-cost read path and the "every value shows where it came from; missing data says why" rule before the full county depends on them (evaluation point A5, demo lines D-1 and D-4).
+
+**Independent Test**: Open the Permits list on the hosted URL, see the September 2026 rows with provenance and labelled missing reasons, and see the engine line "DuckDB-WASM in your browser · read-only".
+
+**Acceptance Scenarios**:
+
+1. **Given** the Permits list, **When** it loads, **Then** every published September 2026 reroof permit is listed with permit number, `improvement_status`, `status_class`, `issue_date`, `contractor_resolution` and provenance (source URL, capture time, table CID, run), and each absent field shows the human label of its reason. *(AC-3)*
+2. **Given** the published permits, **When** they are listed, **Then** every row shows a label for each of its `missing` reasons, never a blank. *(AC-5)*
+3. **Given** the fast copy of the published files is unreachable, **When** the page loads, **Then** it reads through the Filebase gateway and labels the result "fallback". *(AC-5)*
+4. **Given** the in-browser engine is still starting, **When** the page loads, **Then** a progress bar shows and no empty table flashes. *(edge case)*
+
+---
+
+### User Story 3 - Know what was left out, and why (Priority: P1)
+
+The Runs page tells the reader how many captured permits were not published because the source record has no TCAD id, so nothing is silently dropped.
+
+**Why this priority**: Data honesty (constitution: missing data says why) and the demo's "never pad, never hide" rule.
+
+**Independent Test**: On the Runs page, read the count labelled "No TCAD id on source record" and compare it with the manifest's `permits_no_tcad_geoid`.
+
+**Acceptance Scenarios**:
+
+1. **Given** a captured permit with no `tcad_id`, **When** the run is published, **Then** that permit is not published and the Runs page shows the manifest count `permits_no_tcad_geoid` labelled "No TCAD id on source record". *(AC-5)*
+
+---
+
+### User Story 4 - Trust the read path at full scale (Priority: P1)
+
+Before the full county is built on the browser read path, a time-boxed spike proves that browser queries over a full-size Austin permit table stay fast enough, or switches the design to the server-side fallback.
+
+**Why this priority**: The read path decides the Explorer's architecture (RISK-08); it must be proven before Stage 3.
+
+**Independent Test**: Read `docs/decisions/0001-read-path.md` and see p50/p95 over 20 timed runs for COUNT, radius and roof-age queries, plus the first-load time.
+
+**Acceptance Scenarios**:
+
+1. **Given** the spike's full-size Parquet of the 2,380,725-row Austin permit table, **When** 20 timed runs query it through the fast copy, **Then** COUNT, bounding-box + haversine radius and roof-age filters each have p95 < 3 s and the first load is ≤ 8 s with a progress bar; otherwise the decision record switches to the server-side fallback before Stage 3. *(AC-4)*
+
+---
+
+### User Story 5 - Operate the hosted API with evidence (Priority: P2)
+
+An operator can see, for one hosted request, a structured log line, a trace that includes the query, and a query-duration metric; failures raise an alarm by email; spend is capped by a budget alert.
+
+**Why this priority**: Required observability for every later story (NFR-03); not visible in the demo but checked by the reviewers.
+
+**Independent Test**: Load the hosted Runs page once; find the log line, the trace ID and the metric; see the trace ID in `docs/evidence/A-03.md`.
+
+**Acceptance Scenarios**:
+
+1. **Given** the deployed API and operations stacks, **When** the Runs page calls the API once, **Then** one JSON log line with the request's correlation ID, a trace with the query as a sub-step and a `QueryDurationMs` metric are written, and the infrastructure assertions for retention, dead-letter alarms and the budget pass. *(AC-7)*
+
+---
+
+### Edge Cases
+
+- Fewer than 42 permits survive the profile (on 2026-10-20 the frozen profile accepted 38; the other 4 are trade sub-permits) → the pages show the manifest's count; nothing is padded.
+- A captured permit has no `tcad_id` (1 of 38 on 2026-10-20) → not published; counted as `permits_no_tcad_geoid` on the Runs page.
+- The custom-domain certificate is still pending → the Amplify branch URL is the hosted runtime (ASM-8); the evidence names which URL was used.
+- The account's total function concurrency limit is 10 → no reserved concurrency (AD-11); the API throttles only.
+- The in-browser engine is still initialising → progress bar, no empty-table flash.
+- The fast copy is unreachable → read through the Filebase gateway, labelled "fallback".
+- A row carries a reason the UI has no label for → this must not happen: the label table below covers the whole closed list, and a test fails on any unlabelled reason.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001** *(AC-1; story FR-001)*: System MUST publish the September 2026 Austin reroof slice only as publishing-CLI output, through the fixed sequence validate → hash with CAR output → validate the CAR → export tables → upload with readback, per data group, with no step skipped; an automated test asserts the order. The run's manifest (`runs/{runId}/manifest.json`) MUST list every artifact with a CIDv1 (`bafy…`), name, codec, size and SHA-256, and the tables directory MUST carry a `carCid`. The run index (`runs/index.json`) MUST list the run.
+- **FR-002** *(AC-2; story FR-002, NFR-003)*: The hosted Runs page MUST read the run index and the manifest by CID and show the run ID, UTC start and finish, every manifest source in manifest order (first "City of Austin Issued Construction Permits (3syk-w9eu)", then the TCAD 2026 certified export `tcad-2026-certified-json`), the record count from the manifest (each source's `records` from manifest `sources[]`, per source, never recomputed) and the manifest CID. The run MUST publish the `county` group (the TCAD parcels the slice's permits match) and the `property_improvement` group, as in the A-02 pilot. The page MUST pass at 390, 768 and 1440 px using Atlas tokens only, checked by a hosted browser test (demo line D-2).
+- **FR-003** *(AC-3; story FR-003, FR-004, NFR-003)*: The Permits list MUST query the published tables in the browser over the fast copy, with no database server, and list every published September 2026 reroof permit with `permit_number`, `improvement_status`, `status_class` (open / stalled / closed), `issue_date`, `contractor_resolution` and provenance (source URL, capture time, table CID, run). Each absent field MUST show the human label of its reason from the row's `missing` list (see the label table). The engine line MUST read "DuckDB-WASM in your browser · read-only". The page MUST pass at 390, 768 and 1440 px using Atlas tokens only.
+- **FR-004** *(AC-4; story NFR-001)*: The read-path spike MUST measure, over 20 timed runs on a full-size table of the 2,380,725-row Austin permit dataset read through a private signed path on the fast copy, COUNT, bounding-box + haversine radius and roof-age filters, and the first load with a progress bar; it MUST record p50/p95, the gateway legs, the Filebase plan limits, the projected full-county size and the chosen table part size in `docs/decisions/0001-read-path.md`. If any p95 ≥ 3 s, the record MUST switch to the server-side fallback before Stage 3. The full-size table is a private spike asset and is never published as a public CID. The gateway legs are measured on existing public CIDs now and on this run's own CIDs after the first upload.
+- **FR-005** *(AC-5; story FR-004)*: System MUST (a) show a label for every `missing` reason on every listed row, never a blank; (b) not publish a captured permit with no `tcad_id`, and show the manifest coverage count `permits_no_tcad_geoid` on the Runs page labelled "No TCAD id on source record"; (c) when the fast copy is unreachable, read through the Filebase gateway and label the result "fallback".
+- **FR-006** *(AC-6; story FR-001)*: A `verify-manifest` command MUST fetch every artifact in a run manifest from ipfs.io and dweb.link (never from the fast copy), check size and SHA-256 against the manifest, and print `ALL ARTIFACTS VERIFIED` only when every artifact matches on both gateways.
+- **FR-007** *(AC-7; story FR-005, NFR-002, NFR-004)*: One hosted API call from the Runs page MUST produce one structured JSON log line carrying the request's correlation ID, one trace with the query as a sub-step, and a `QueryDurationMs` metric. Logs MUST be kept 14 days (query log 30 days); every queue MUST have a dead-letter queue with one self-resolving alarm that emails the operator; a $10 budget alert MUST exist. Infrastructure assertions MUST check all of these, and the trace ID MUST be written to `docs/evidence/A-03.md`.
+- **FR-008** *(edge case)*: While the in-browser engine initialises, the Permits list MUST show a progress bar and MUST NOT show an empty table.
+- **FR-009** *(edge case)*: Every count shown MUST come from the manifest; no count is padded, estimated or taken from sample or prototype data.
+- **FR-010** *(edge case)*: When the custom domain is not ready, the Amplify branch URL MUST serve as the hosted runtime, and the evidence MUST name the URL used. localhost is never evidence.
+- **FR-011** *(AC-3, AC-5; G4 note C-06)*: The UI MUST map every reason in the contract's closed list to exactly the label in the **Missing-reason labels** table below; a test MUST fail if any reason in the closed list lacks a label.
+- **FR-012** *(story Description; ARD AD-02, A2)*: The fast copy MUST hold only byte-for-byte copies of publishing-CLI output, keyed by CID, written only after a size and SHA-256 match, never overwritten. Nothing else (no internal reconciliation store, no side files) is public.
+- **FR-013** *(Out of scope; AD-12)*: The hosted Runs and Permits pages MUST be public and read-only, with no sign-in and no run controls.
+
+### Missing-reason labels
+
+The closed list is `contract/v1/README.md` line 131 (`columns.json` `missingReasons`, 21 reasons). The contract defines no human labels, so these are new UI wording derived from the README's meaning for each reason; adding a reason is additive (README "Change rule") and must add a row here.
+
+| Reason code | Label shown in the UI | Where it occurs (contract) |
+| --- | --- | --- |
+| `no_lexicon_carrier` | No place for this field in the published data model | `status_raw`, `expiry_date`, `contractor_name_raw`, `description`, `work_class_raw`, `bbb_rating`, `bbb_url` |
+| `not_in_export` | Not included in the published tables | address fields, `source_url` |
+| `source_missing` | Not on the source record | `permit_number`, `issue_date`, `permit_close_date`, `final_inspection_date`, … |
+| `no_coordinates` | No coordinates for this parcel | location columns |
+| `no_roof_date` | No roof date found | roof age |
+| `basis_unmatched` | No roof-age basis matched | roof-age basis |
+| `no_dated_sale` | No dated sale to read the owner from | `owner_name` |
+| `no_owner_record` | No owner on the latest sale | `owner_name` |
+| `no_mailing_address` | No owner mailing address | owner area |
+| `zip_not_zcta` | ZIP is not a Census ZIP area | ZIP lookups |
+| `not_open` | Permit is not open | `open_days` |
+| `not_closed` | Permit is not closed | `final_date` |
+| `contractor_unresolved` | Contractor not matched to a company | `contractor_company_cid`, `bbb_status_reason` |
+| `bbb_blocked` | BBB blocked the lookup | BBB fields |
+| `bbb_not_found` | No BBB profile found | BBB fields |
+| `needs_review` | Needs review: could not be derived | `status_class`, `jurisdiction`, `final_date`, `open_days`, `contractor_company_cid` (several edges), `owner_name` |
+| `first_run` | First run: no previous manifest | `previous_manifest_cid` (v_run) |
+| `out_of_scope` | Outside Travis County | place / ZIP lookups |
+| `enum_lacks_value` | Status has no matching value (e.g. Expired) | `improvement_status` |
+| `owner_unparsed` | Owner name could not be parsed | `owner_name` |
+| `owner_confidential` | Owner is confidential (TCAD) | `owner_name` |
+
+Story labels: "No TCAD id on source record" is the label of the Runs-page coverage count `permits_no_tcad_geoid` (that is a manifest count, not a row reason, because such permits are never published). "Contractor not printed on permit" applies to a contractor field whose reason is `source_missing` (the source record printed no contractor; 0 of 38 on 2026-10-20); it replaces the generic `source_missing` label for contractor fields only.
+
+### Non-functional requirements
+
+- **NFR-001** *(story NFR-001; verified by FR-004)*: Browser query p95 < 3 s; first load ≤ 8 s with a progress bar.
+- **NFR-002** *(story NFR-002; verified by FR-007 for the budget)*: $0.00 fixed cost per month while idle; no hosted DNS zone (AD-13); budget alert at $10. Idle $0.00 is proven in A-16.
+- **NFR-003** *(story NFR-003; verified by FR-002, FR-003)*: Responsive at 390 / 768 / 1440 px with Atlas tokens only.
+- **NFR-004** *(story NFR-004; verified by FR-007)*: JSON logs; tracing on 100% of hosted requests; logs 14 days, query log 30 days; one alarm per dead-letter queue; API p95 < 1 s warm; cold start including query-engine init < 3 s.
+
+### Key Entities
+
+- **Run**: one publication of the slice; ID, UTC start and finish, sources, record counts, coverage counts (including `permits_no_tcad_geoid`), manifest CID.
+- **Run manifest**: the per-run list of published artifacts (CIDv1, name, codec, size, SHA-256), the tables directory with its CAR CID, sources in order, coverage; itself addressed by CID.
+- **Run index**: the committed list of runs with their manifest CIDs, read by the hosted site.
+- **Source**: a captured public source with its label, URL, capture time and record count (Austin `3syk-w9eu`; TCAD 2026 certified export).
+- **Roofing permit row**: one `v_roofing_permit` row from the frozen contract, with status, contractor state, provenance and its `missing` list.
+- **Missing entry**: `{field, reason}`, reason from the closed list of 21, shown through its label.
+
+## Success Criteria *(mandatory)*
+
+### Measurable Outcomes
+
+- **SC-001**: The publication-order test passes, and 100% of manifest artifacts carry a CIDv1, name, codec, size and SHA-256.
+- **SC-002**: The hosted Runs page shows both sources, the manifest's record count and its CID, and passes at 3 of 3 widths.
+- **SC-003**: The hosted Permits list shows exactly the manifest's published permit count, with provenance on 100% of rows and 0 blank absent fields.
+- **SC-004**: COUNT, radius and roof-age queries each have p95 < 3 s over 20 runs on the full-size table; first load ≤ 8 s (or the decision record switches to the fallback).
+- **SC-005**: The Runs-page "No TCAD id on source record" count equals the manifest's `permits_no_tcad_geoid`; a blocked fast copy yields a page labelled "fallback".
+- **SC-006**: `verify-manifest` prints `ALL ARTIFACTS VERIFIED` for 100% of artifacts on both gateways.
+- **SC-007**: One hosted request yields one log line, one trace ID (recorded in the evidence) and one metric; warm API p95 < 1 s; cold start < 3 s; all infrastructure assertions pass.
+- **SC-008**: 21 of 21 closed-list reasons have a label; 0 unlabelled reasons appear on any page.
+
+## Assumptions
+
+- The frozen contract `contract/v1` (A-02) and the profile `travis-austin@1.0.0` are used unchanged; any rename needs `contract/v2`.
+- The TCAD 2026 certified JSON export located in A-01 supplies the parcels the slice's permits match; no new source story is needed.
+- The read-path spike (Stage 2S) runs before Stage 3 and its decision record exists before the plan relies on the read path.
+- Prototype screens (`Runs1440`, `ExploreQ-sqlperm`, `ShellStates`) are layout references only; their numbers and CIDs are placeholders and never appear on the hosted site.
+- Out of scope: full-county data, coverage page, Verify button (A-04 … A-13); admin sign-in and run controls (AD-12).
