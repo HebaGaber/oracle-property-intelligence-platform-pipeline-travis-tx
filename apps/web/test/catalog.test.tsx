@@ -223,8 +223,9 @@ describe("Catalog: one row per table (TC-053)", () => {
   it("reads each footer from the CID copy host, never from a gateway fallback list", async () => {
     const page = await renderCatalog();
     await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
+    // The footers are read after `ready` (ERR-41, concurrency 2): wait for all three.
+    await vi.waitFor(() => expect(footer.read.mock.calls.length).toBe(3));
     const urls = footer.read.mock.calls.map((c) => String(c[0]));
-    expect(urls.length).toBe(3);
     for (const url of urls) expect(new URL(url).host).toBe(COPY_HOST);
   });
 
@@ -405,7 +406,8 @@ describe("Catalog: unavailable (TC-054)", () => {
     const bad = page.querySelector<HTMLElement>(
       '[data-table="property_improvement.property_improvement"]',
     ) as HTMLElement;
-    expect(bad.textContent).toContain("range read failed");
+    // The failing table says why once ITS footer has been attempted (ERR-41: per-table state).
+    await vi.waitFor(() => expect(bad.textContent).toContain("range read failed"));
     expect(page.querySelectorAll("[data-table]")).toHaveLength(2);
   });
 });

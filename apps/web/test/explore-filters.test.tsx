@@ -163,7 +163,7 @@ describe("Explore · Filters search and header (AC-4, FR-004, FR-006a)", () => {
       EXPLORE_TEXTS.engineServer,
     );
     const section = document.querySelector('section[data-route="explore"]');
-    expect(section?.getAttribute("data-state")).toBe("ready");
+    await waitFor(() => expect(section?.getAttribute("data-state")).toBe("ready"));
     expect(section?.getAttribute("data-view")).toBe("list");
   });
 
@@ -199,8 +199,11 @@ describe("Explore · Filters search and header (AC-4, FR-004, FR-006a)", () => {
     fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "3" } });
     expect(lastLocation).toContain("r=3");
     expect(api.search).toHaveBeenCalledTimes(1);
+    const waitedFrom = performance.now();
     await act(async () => new Promise((resolve) => setTimeout(resolve, 100)));
-    expect(api.search).toHaveBeenCalledTimes(1);
+    // Still inside the 250 ms debounce, unless a loaded machine stalled the wait past it (then the
+    // clock, not the page, decides: the assertion only applies when the wait really took < 200 ms).
+    if (performance.now() - waitedFrom < 200) expect(api.search).toHaveBeenCalledTimes(1);
     await waitFor(() =>
       expect(header()?.textContent).toBe(EXPLORE_TEXTS.header(1, 3, "Pflugerville", 15)),
     );

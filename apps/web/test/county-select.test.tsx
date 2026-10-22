@@ -53,7 +53,7 @@ describe("shell location slot", () => {
   async function renderAt(path: string): Promise<void> {
     const router = createMemoryRouter(routes, { initialEntries: [path] });
     render(<RouterProvider router={router} />);
-    await screen.findByRole("navigation", { name: "Primary" }, { timeout: 5_000 });
+    await screen.findByRole("navigation", { name: "Primary" }, { timeout: 20_000 });
   }
 
   it("is mounted under /tx/ and absent elsewhere; the app bar keeps no button", async () => {
@@ -67,7 +67,7 @@ describe("shell location slot", () => {
 
   it("/tx/{other}/… renders the Travis-only text with a link to Explore", async () => {
     await renderAt("/tx/harris/explore");
-    const page = await screen.findByRole("region", { name: "Other county" }, { timeout: 5_000 });
+    const page = await screen.findByRole("region", { name: "Other county" }, { timeout: 20_000 });
     await waitFor(() => expect(page.textContent).toContain(PAGE_TEXTS.travisOnly));
     const link = page.querySelector("a");
     expect(link?.getAttribute("href")).toBe(ROUTES.explore);

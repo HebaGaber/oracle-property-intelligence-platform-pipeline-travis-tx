@@ -11,6 +11,10 @@ export default defineConfig({
     name: "web",
     environment: "jsdom",
     include: ["test/**/*.test.{ts,tsx}"],
+    setupFiles: ["./test-setup.ts"],
+    // See test-setup.ts: tests wait for lazy routes, jsdom layout and mocked fetches.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],

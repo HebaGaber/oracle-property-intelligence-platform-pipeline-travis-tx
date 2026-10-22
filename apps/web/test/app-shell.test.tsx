@@ -48,7 +48,7 @@ async function renderAt(path: string) {
   // React has committed the shell yet. On a slow runner the waitFor interval fired before the
   // commit and the queries below saw an empty container (CI 2026-10-21, ubuntu: `<body><div />`).
   // Wait for the committed shell itself.
-  await screen.findByRole("navigation", { name: "Primary" }, { timeout: 5_000 });
+  await screen.findByRole("navigation", { name: "Primary" }, { timeout: 20_000 });
   return { router, ...view };
 }
 
@@ -107,10 +107,10 @@ describe("app shell routes (A-13 T015: every route of contracts/ui-routes.md, la
         // data has loaded; without the VITE_* hosts they show the error banner inside their
         // labelled section, so the check is that labelled region.
         expect(
-          await within(main).findByRole("region", { name: entry.title }, { timeout: 5_000 }),
+          await within(main).findByRole("region", { name: entry.title }, { timeout: 20_000 }),
         ).toBeTruthy();
       } else {
-        const heading = await within(main).findByRole("heading", { level: 2 }, { timeout: 5_000 });
+        const heading = await within(main).findByRole("heading", { level: 2 }, { timeout: 20_000 });
         expect(heading.textContent?.trim().length, entry.path).toBeGreaterThan(0);
       }
       unmount();

@@ -183,8 +183,9 @@ describe("the header names the request it answers (finding 6)", () => {
     fireEvent.click(screen.getByRole("button", { name: "ooa78753" }));
     expect(lastLocation).toContain("place=78753");
     await act(async () => release(result([0, 1])));
-    await waitFor(() => expect(header()?.textContent).toContain("Pflugerville"));
-    expect(header()?.textContent).toBe(EXPLORE_TEXTS.headerNoRoof(2, 5, "Pflugerville"));
+    await waitFor(() =>
+      expect(header()?.textContent).toBe(EXPLORE_TEXTS.headerNoRoof(2, 5, "Pflugerville")),
+    );
   });
 });
 
