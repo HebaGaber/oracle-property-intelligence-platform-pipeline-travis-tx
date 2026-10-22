@@ -217,6 +217,52 @@ describe("Coverage gaps say why (FR-002, FR-007, TC-017)", () => {
   });
 });
 
+describe("Each kind card shows its own denominator (FR-002, AC-2)", () => {
+  it("names the missing denominator and its A-01 source inside every kind card", async () => {
+    const built = await buildRun();
+    install(built);
+    await renderCoverage();
+    await screen.findAllByRole("article");
+
+    const expected: Record<string, string> = {
+      property: COVERAGE_TEXTS.denominatorMissingFor("tcad-2026-certified-json"),
+      ownership: COVERAGE_TEXTS.denominatorMissingFor("tcad-2026-certified-json"),
+      permit: COVERAGE_TEXTS.denominatorMissingFor("austin-3syk-w9eu"),
+      contractor: COVERAGE_TEXTS.denominatorMissingFor("austin-3syk-w9eu"),
+      coordinates: COVERAGE_TEXTS.denominatorMissingFor("tcad-2026-certified-json"),
+      bbb: COVERAGE_TEXTS.denominatorMissing,
+      business: COVERAGE_TEXTS.denominatorMissing,
+      places: COVERAGE_TEXTS.denominatorMissing,
+    };
+    for (const [id, text] of Object.entries(expected)) {
+      const el = kind(id).querySelector<HTMLElement>("[data-kind-denominator]");
+      expect(el, `denominator in ${id}`).not.toBeNull();
+      expect(el?.textContent).toContain(text);
+    }
+  });
+
+  it("shows the manifest's source_total value, derivation label and time in the kind card", async () => {
+    const built = await buildRun({
+      "source_total:austin-3syk-w9eu": { count: 4321, derivation: "capture_receipt" },
+    });
+    install(built);
+    await renderCoverage();
+    await screen.findAllByRole("article");
+
+    for (const id of ["permit", "contractor"]) {
+      const el = kind(id).querySelector<HTMLElement>("[data-kind-denominator]");
+      expect(el?.getAttribute("data-kind-denominator")).toBe("austin-3syk-w9eu");
+      expect(el?.textContent).toContain("4321");
+      expect(el?.textContent).toContain(DERIVATION_LABELS["capture_receipt"]);
+      expect(el?.textContent).toContain("2026-10-21 08:01:00 UTC");
+      expect(el?.textContent).not.toContain(COVERAGE_TEXTS.denominatorMissing);
+    }
+    expect(kind("property").querySelector("[data-kind-denominator]")?.textContent).toContain(
+      COVERAGE_TEXTS.denominatorMissingFor("tcad-2026-certified-json"),
+    );
+  });
+});
+
 describe("Coverage errors (FR-021, TC-013)", () => {
   it("says `Manifest unavailable · {cid} · {reason}` when no host serves the manifest", async () => {
     const built = await buildRun();

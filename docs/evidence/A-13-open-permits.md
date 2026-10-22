@@ -2,6 +2,11 @@
 
 **Decision:** Austin city (PO D-11, round R4, 2026-10-22: "Austin city (Recommended)"). A-14 reuses it for its demo lines D-10 and D-11.
 
+Machine-readable demo area (read by the hosted tests, `tests/e2e/lib/a13-fixtures.ts` `demoArea()`; gazetteer name, radius):
+
+- place: Austin
+- radius: 5 mi
+
 **Why not Pflugerville:** on the published run, Pflugerville (30.447765, −97.602116, 5 mi) holds 0 properties and 0 reroof permits. The story's 2026-10-19 reference (44 Austin reroofs, 3 Expired, 0 open) came from the full Austin dataset; the published run holds only one month of it.
 
 ## Measurement (2026-10-21 21:59–22:02 UTC; re-measured at run time by TC-009)
@@ -24,3 +29,27 @@ The run holds 14 properties and 35 reroof permits (22 open, 13 closed, 0 stalled
 - With A-04, A-07 and A-11 (full county, all permit years) the same area shows the long-open and stalled list; this file is re-measured then.
 
 Hosted p95 and the 5 → 3 mi change are recorded in `A-13-roof-age.md` after the hosted run.
+
+## Hosted result of D-9 on the final build (015fbf9, read 2026-10-22 09:07 UTC)
+
+Preview `https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com` (`/build.json` sha `015fbf99bed1d784c908714c56418c83ce2d5e4f`). Explore with the demo area and the D-9 filters, read by a scripted browser:
+
+`/tx/travis/explore?place=austin&r=5&roof=15&permit=open_stalled&openYrs=5&sort=open_desc` (set on the page: "Open or stalled" ticked, "Open ≥" 5, Sort "Open longest")
+
+| What the page shows | Value |
+| --- | --- |
+| Engine line | `DuckDB on the server · same views` |
+| Header | `0 within 5 mi of Austin · roof ≥ 15 yrs` |
+| Rows | 0 |
+| Empty-state sentence (exact) | **no open roofing permits in this radius on the current run** |
+| Server | HTTP 200, `explore.search`, `rows` 0, `queryDurationMs` 166 (CloudWatch, `CountyLensApi-FunctionLogs…`, 09:07:28Z) |
+
+This is correct for the published run: the longest open permit is 47 days (0.13 yrs), far under 5 years, and no permit is `stalled`. The sentence appears because the permit filter is the only filter that excludes the rows (ERR-25 and the MG-10 review fix). Stalled permits stay at 0 until A-04, A-07 and A-11 publish the full permit history and a carrier for "Expired".
+
+**Open-permit search timing (TC-041, series 2).** `docs/evidence/A-13-TC-041-timings.json`: 20 distinct radii, p50 806 ms, p95 **812 ms**, max 813 ms, against p95 < 3,000 ms. Provisional: measured on the 14-property slice. The radius + roof-age series is in [A-13-roof-age.md](A-13-roof-age.md): p50 812 ms, p95 817 ms.
+
+**Test result.** TC-009 (D-9), TC-031 (chips and sort), TC-035 (empty open list) and TC-032 to TC-034 PASS on `015fbf9` (`docs/reports/A-13-test-report.md`). One caveat: the TC-009 test reads the demo area from this file only when it finds a `place:` line, and this file has none (the decision is written as prose), so the case ran on its default area, Pflugerville (0 properties), not on Austin city. The Austin city read above was made separately by a scripted browser and gives the same result: 0 rows and the exact sentence. Either way the assertion "today: no permit open ≥ 5 years" holds.
+
+**Screenshots.** `docs/evidence/img/A-13-TC-009-3.png` (open filters and sort set) and `A-13-TC-009-6.png` (the empty state) are the test checkpoints (default area); `docs/evidence/img/A-13-d9-austin.png` is the Austin city page from this read.
+
+Hosted p95 and the 5 → 3 mi change for the roof-age search are recorded in `A-13-roof-age.md`.

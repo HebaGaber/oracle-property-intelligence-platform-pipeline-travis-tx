@@ -26,7 +26,6 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
     expect(RUNS_TEXTS.manifestUnavailable("bafkreiabc", "not JSON")).toBe(
       "Manifest unavailable · bafkreiabc · not JSON",
     );
-    expect(RUNS_TEXTS.completedRun).toMatch(/completed run/);
   });
 
   it("Verify", () => {

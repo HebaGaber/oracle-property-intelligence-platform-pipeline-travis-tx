@@ -7,12 +7,12 @@ story: A-13
 test_case: A-13-TC-041
 ac_reference: A-13-AC-10
 severity: Medium
-status: Fixed, re-test pending (hosted)
+status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
 found_by: hosted Playwright run (perf phase)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-fix_commit:
-retest_date:
+fix_commit: a285dbe
+retest_date: 2026-10-22
 ---
 
 # ERR-36: Filters search timing – TC-041 exceeds its 300 s timeout in `waitForResponse`

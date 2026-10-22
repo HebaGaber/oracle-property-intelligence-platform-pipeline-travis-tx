@@ -7,12 +7,12 @@ story: A-13
 test_case: A-13-TC-073
 ac_reference: A-13-AC-10
 severity: High
-status: Fixed, re-test pending (hosted)
+status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
 found_by: hosted Playwright run 2 (general phase)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-fix_commit:
-retest_date:
+fix_commit: d3ae47e
+retest_date: 2026-10-22
 ---
 
 # ERR-40: No-sample-data scan – real record CIDs flagged, and `explore` clicks hit a moving page

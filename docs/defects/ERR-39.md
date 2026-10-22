@@ -7,12 +7,12 @@ story: A-13
 test_case: A-13-TC-009
 ac_reference: A-13-AC-4
 severity: High
-status: Fixed, re-test pending (hosted)
+status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
 found_by: hosted Playwright run (explorer phase)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-fix_commit:
-retest_date:
+fix_commit: d3ae47e
+retest_date: 2026-10-22
 ---
 
 # ERR-39: Explore filters – "Open or stalled" and "Out-of-area owner" checkboxes flicker back (TC-009)

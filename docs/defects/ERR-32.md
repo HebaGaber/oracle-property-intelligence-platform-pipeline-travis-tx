@@ -7,12 +7,12 @@ story: A-13
 test_case: A-13-TC-072, A-13-TC-080
 ac_reference: A-13-AC-13
 severity: High
-status: Fixed, re-test pending (hosted)
+status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
 found_by: hosted Playwright run (general phase)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-fix_commit:
-retest_date:
+fix_commit: a285dbe
+retest_date: 2026-10-22
 ---
 
 # ERR-32: Touch targets under 48 px and form controls with UA font (390 and 1440)

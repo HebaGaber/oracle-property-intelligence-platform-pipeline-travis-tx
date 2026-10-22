@@ -171,3 +171,13 @@ Wave 3, one message:  metagross[G3] T034–T042                          ||   me
 ## Implementation strategy
 
 MVP = Part 1 (US1–US6) green on the hosted preview (D-2 to D-9). Part 2 (US7–US10) follows in wave 3 and is the cut line (D-12). No sample data at any point; a page without its data shows the reason.
+
+---
+
+## Phase 13: Convergence (speckit-converge, 2026-10-22)
+
+Assessment of the code on build 34c8eaf against spec.md, plan.md and tasks.md: 0 CRITICAL, 0 HIGH, 1 MEDIUM, 2 LOW. Gaps that wait for other stories (A-04, A-07, A-11, A-14) are not findings; see docs/evidence/A-13.md "Known gaps".
+
+- [x] T046 (G2 · metagross · 20m) Show each record kind's denominator inside that kind's card on Coverage, or "denominator not in this run's manifest · A-01 source {name}" when the manifest carries none (look it up through the kind's source in `Coverage.kinds.ts`); keep the separate Denominators card only if it adds the A-01 source and date, never a number typed into the page — `apps/web/src/routes/Coverage.tsx`, `apps/web/src/routes/Coverage.kinds.ts`, `apps/web/test/coverage.test.tsx` per FR-002, US1/AC2 (partial)
+- [x] T047 (G1 · metagross · 5m) Remove the unused `RUNS_TEXTS.completedRun` constant (the "completed run" rule of contracts/ui-routes.md is a data rule, not on-screen text: every entry of `runs/index.json` is a completed run), and its test — `packages/shared/src/texts.ts`, `packages/shared/test/a13-labels.test.ts` per contracts/ui-routes.md "Completed run" (unrequested)
+- [ ] T048 Tick TZ01–TZ06, T044 and T045 with their recorded outcomes (CR-A-13.md, A-13-test-report.md, A-13.md, quickstart result) and record the converge result — `specs/013-explorer-and-pages/tasks.md` per tasks bookkeeping (partial)

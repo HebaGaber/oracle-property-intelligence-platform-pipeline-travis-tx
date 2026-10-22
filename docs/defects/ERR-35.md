@@ -7,12 +7,12 @@ story: A-13
 test_case: A-13-TC-023 (TC-024 was skipped behind it in the serial group)
 ac_reference: Edge 2 (CID copy down), FR-016
 severity: Low
-status: Fixed, re-test pending (hosted)
+status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
 found_by: hosted Playwright run (verify phase)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-fix_commit:
-retest_date:
+fix_commit: a285dbe
+retest_date: 2026-10-22
 ---
 
 # ERR-35: Fallback test counts requests to the dead CID-copy host across three page loads

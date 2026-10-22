@@ -7,12 +7,12 @@ story: A-13
 test_case: A-13-TC-081
 ac_reference: A-13-AC-10
 severity: Medium
-status: Fixed, re-test pending (hosted)
+status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
 found_by: hosted vitals run (mobile 4G profile, median of 5)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-fix_commit:
-retest_date:
+fix_commit: 7f04685
+retest_date: 2026-10-22
 ---
 
 # ERR-41: Data · Catalog – median LCP 4836 ms against the 2500 ms budget

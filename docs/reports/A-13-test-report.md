@@ -1,0 +1,229 @@
+---
+id: QC-RPT-A-13
+type: test-execution-report
+feature: FEAT-A13
+story: A-13
+test_cases: testplans/A-13-test-cases.md
+runtime_url: https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com
+build: "015fbf99bed1d784c908714c56418c83ce2d5e4f (015fbf9), read from /build.json on 2026-10-22; earlier runs: 641bc25, a285dbe, d3ae47e, 7f04685"
+data_snapshot: bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i
+owner: HebaGaber             # QC Lead
+status: "Final, awaiting PO sign-off at G7"   # Draft → Complete → Signed Off
+gate: G7
+created: 2026-10-22
+signed_off_date:
+---
+
+# QC Test Report: A-13 Build the Explorer UI with its hub, legal, catalog and Coming soon pages
+
+Every case in `testplans/A-13-test-cases.md` (73 cases, TC-001 to TC-086) runs against the **hosted** Amplify branch preview `https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com`. No case ran on localhost (TC-085 proves the harness refuses it). The production URL `https://countylens.aldarraj.com` serves `feature/oracle-pipeline` until the G7 merge.
+
+**Final result: 72 of 73 cases pass on build `015fbf9`; 1 is skipped (TC-015, "waits for A-11 (PO D-1/D-2)"); 0 fail.** The final run is one sequential operator session of four Playwright phases on 2026-10-22 (UTC): general (59 passed, 1 skipped, 7.7 min), verify (8 passed, 1.3 min), perf (3 passed, 1.2 min) and vitals (2 passed, 14.3 min). Nothing else used `tests/e2e` during it.
+
+**The published run is a slice, so every scale number below is provisional.** The only published run, `travis-202609-permits-20261021t103516z`, holds 14 properties and 35 reroof permits (22 open, 13 closed, 0 stalled). TC-040 and TC-041 timings, TC-058 and the Catalog and Coverage cases are therefore measured on that slice and marked "provisional until A-11" in the evidence files the tests write. They do not prove the full-county behaviour.
+
+## Run history
+
+Five full hosted runs, each on its own preview build, 2026-10-22. Start times are the Playwright JSON `startTime` (UTC). Each defect fix was pushed to the fork, Amplify built the branch, `/build.json` was read, and the suite was run again.
+
+| Run | Build | Start (UTC) | General phase (60 cases) | Verify (8) | Perf (3) | Vitals (2) | Outcome |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `641bc25` | 04:10 | 44 pass, **15 fail**, 1 skipped (TC-002, 003, 008, 009, 012, 014, 016, 039, 042, 071, 072, 073 timed out at 1,800 s, 080, 083, 086) | 6 pass, 1 fail (TC-023), TC-024 skipped behind it | TC-040 pass, TC-041 timed out at 300 s, TC-082 skipped behind it | TC-058 pass, TC-081 fail | Baseline: 18 failing cases (15 + 1 + 1 + 1), recorded as ERR-21 to ERR-37 |
+| 2 | `a285dbe` | 05:09 | 57 pass, 2 fail (TC-009 checkbox state, TC-073 scan), 1 skipped | **void** | **void** | **void** | Verify, perf and vitals ran while another Playwright process shared `tests/e2e/test-results` (ENOENT on trace files); the results were discarded and the process stopped. General phase counts. ERR-38 (smeargle) to ERR-40 found |
+| 3 | `d3ae47e` | 05:36 | 57 pass, 2 fail (TC-072 filter sheet 406 px, TC-073 click on a row after the SQL tab unmounted), 1 skipped | 8 pass | 3 pass | TC-058 pass, TC-081 fail (Data · Catalog median LCP 4,836 ms) | Clean run, nothing else on `tests/e2e`. ERR-41 found |
+| 4 | `7f04685` | 06:09 | 58 pass, 1 fail (TC-072, 406 px, second time under 4-worker load), 1 skipped | 8 pass | 3 pass | 2 pass | ERR-42 root cause found by delaying `explore.search` by 4 s |
+| 5 (final) | **`015fbf9`** | 06:38 | **59 pass, 0 fail, 1 skipped** (TC-015) | **8 pass** | **3 pass** | **2 pass** | **72 pass / 1 skipped.** Evidence build |
+
+Numbers come from the Playwright JSON reports of each run (`stats.expected`, `stats.unexpected`, `stats.skipped`). Run 1 counts 15 failed in its general phase; the run-log first recorded 13 at the 07:40 (EEST) triage, while 3 long scan cases were still running, and the two late ones are TC-083 and TC-073. The run-log wording for run 3 ("general 57 pass / 2 fail") and run 4 ("58 / 1") matches the JSON.
+
+## Summary
+
+| Item | Value |
+| --- | --- |
+| Environment | https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com · build `015fbf9` (`015fbf99bed1d784c908714c56418c83ce2d5e4f`) · 2026-10-22 |
+| Total TC executed | 73 in the plan; 72 executed and 1 skipped in the final run |
+| Passed / failed / blocked | **72 / 0 / 0**, plus 1 skipped (TC-015, waits for A-11) |
+| Pass rate | 100 % of executed cases (72 / 72); 98.6 % of the plan (72 / 73) |
+| Open Critical defects | 0. ERR-21 to ERR-42 are 7 High, 9 Medium, 6 Low; none Critical; all re-tested PASS on `015fbf9` |
+| Unit test report | `docs/reports/A-13-unit-test-report.md` (written at `70561ec`: 1,319 passed). A fresh `pnpm test` at `015fbf9` on 2026-10-22: 100 files passed, 1 skipped; **1,448 passed, 7 skipped, 0 failed** |
+| Code review log | `docs/reviews/CR-A-13.md` (metagross 77, audino 82, `/code-review` medium, 0 open Critical) |
+| Playwright run | Operator session, JSON reports `hosted-general.json`, `hosted-verify.json`, `hosted-perf.json`, `hosted-vitals.json` (session scratchpad, not in the repo) with line output; run command `playwright test -g A-13` per phase with `RUNTIME_URL` set to the preview. No GitHub Actions run exists for `015fbf9` (pushed with `[skip ci]` so Actions would not run a competing hosted job); the evidence push runs the CI job that counts |
+| Evidence | `docs/evidence/A-13.md`, `A-13-duckdb.md`, `A-13-roof-age.md`, `A-13-open-permits.md`, `A-13-pages.md`, `A-13-smeargle.md`, `A-13-TC-040-timings.json`, `A-13-TC-041-timings.json`; screenshots `docs/evidence/img/A-13-TC-*.png` |
+
+## Results
+
+Result columns: "Result on 015fbf9" is the final run. "Earlier runs" lists the result in runs 1 to 4 in order (`void` = discarded run 2 phases, see the history). "waits A-11" marks the 11 cases the plan tags that way; the next section says what each checked today. Cases are grouped by the Playwright file that holds them. Every row is one `@scenario:A-13-TC-nnn` test.
+
+### A-13-explorer.spec.ts (Part 1: demo lines, runs, coverage, manifest, filters, SQL): 31 cases
+
+| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A-13-TC-002 | AC-1, FR-001, FR-016 | demo | D-2 Runs: latest completed run summary | **PASS** | FAIL → pass → pass → pass | ERR-21 | `A-13-TC-002-1.png`, `A-13-TC-002-3.png`, `A-13-TC-002-6.png` |
+| A-13-TC-003 | AC-2, FR-002 | demo | D-3 Coverage: counts, denominators, time, derivation, table | **PASS** | FAIL → pass → pass → pass | ERR-23 | `A-13-TC-003-1.png`, `A-13-TC-003-3.png`, `A-13-TC-003-4.png` |
+| A-13-TC-004 | AC-6, FR-006 | demo | D-4 SQL count in the browser, engine line | **PASS** | pass | — | `A-13-TC-004-2.png`, `A-13-TC-004-7.png` |
+| A-13-TC-005 | AC-3, FR-003d, FR-016 | demo | D-5 Manifest: every artifact, run chain | **PASS** | pass | — | `A-13-TC-005-2.png`, `A-13-TC-005-4.png`, `A-13-TC-005-6.png` |
+| A-13-TC-007 | AC-1, FR-001a | demo · waits A-11 | D-7 Compare latest vs previous run | **PASS** | pass | — | `A-13-TC-007-today.png` |
+| A-13-TC-008 | AC-4, FR-004 | demo · waits A-11 | D-8 Pflugerville 5 mi, roof ≥ 15 yrs | **PASS** | FAIL → pass → pass → pass | ERR-24 | `A-13-TC-008-2.png`, `A-13-TC-008-6.png`, `A-13-TC-008-8.png` |
+| A-13-TC-009 | AC-5, FR-005 | demo · waits A-11 | D-9 Open or stalled ≥ 5 yrs, longest first | **PASS** | FAIL → FAIL → pass → pass | ERR-25, ERR-39 | `A-13-TC-009-3.png`, `A-13-TC-009-6.png` |
+| A-13-TC-010 | AC-1, FR-001c | edge | Per-source deltas; first run says so | **PASS** | pass | — | `A-13-TC-010-3.png` |
+| A-13-TC-011 | AC-1, FR-001 | missing-data | Limitations and "Next sync" line | **PASS** | pass | — | `A-13-TC-011-3.png` |
+| A-13-TC-012 | AC-1, FR-021 | negative error | Run index unreadable → explicit error | **PASS** | FAIL → pass → pass → pass | ERR-26 | `A-13-TC-012-abort-hub.png`, `A-13-TC-012-abort-runs.png`, `A-13-TC-012-invalid-json-hub.png`, `A-13-TC-012-invalid-json-runs.png` |
+| A-13-TC-013 | AC-1, FR-021 | negative error | Manifest unreadable → explicit error naming the CID | **PASS** | pass | — | `A-13-TC-013-coverage.png`, `A-13-TC-013-runs.png` |
+| A-13-TC-014 | AC-1, FR-001b | edge missing-data | Single published run → Compare explains why | **PASS** | FAIL → pass → pass → pass | ERR-27 | `A-13-TC-014-3.png`, `A-13-TC-014-4.png` |
+| A-13-TC-015 | AC-1, FR-001a | negative · waits A-11 | "Still resolves" pill only after both gateways answer | **SKIPPED** | skipped in all runs | — |  |
+| A-13-TC-016 | AC-2, FR-002, FR-024 | integration | Coverage counts equal the manifest, with labels and table CID | **PASS** | FAIL → pass → pass → pass | ERR-28 | `A-13-TC-016-3.png`, `A-13-TC-016-5.png` |
+| A-13-TC-017 | AC-2, FR-002, FR-007 | missing-data | Coverage kinds or denominators missing → reason in words | **PASS** | pass | — | `A-13-TC-017-3.png` |
+| A-13-TC-025 | AC-4, FR-004 | integration | Place search resolves Pflugerville through the gazetteer | **PASS** | pass | — | `A-13-TC-025-3.png`, `A-13-TC-025-5.png` |
+| A-13-TC-026 | AC-4, FR-004, FR-022, NFR-003 | integration | Every row has its fields and provenance (100%) | **PASS** | pass | — | `A-13-TC-026-3.png` |
+| A-13-TC-027 | AC-4, FR-004 | edge | Radius 5 → 3 mi updates the count live | **PASS** | pass | — | `A-13-TC-027-2.png`, `A-13-TC-027-4.png` |
+| A-13-TC-028 | Edge 1, FR-015 | edge missing-data | Zero results → Close matches with miles outside | **PASS** | pass | — | `A-13-TC-028-3.png` |
+| A-13-TC-029 | AC-4, FR-004a, FR-025 | integration | URL state restores filters; `view=map` → List | **PASS** | pass | — | `A-13-TC-029-2.png`, `A-13-TC-029-4.png` |
+| A-13-TC-030 | AC-4, FR-004b | integration | Row opens the Property drawer with provenance | **PASS** | pass | — | `A-13-TC-030-3.png`, `A-13-TC-030-4.png` |
+| A-13-TC-031 | AC-5, FR-005 | integration · waits A-11 | Stalled / open chips, sorted by open longest | **PASS** | pass | — | `A-13-TC-031-today.png` |
+| A-13-TC-032 | AC-5, FR-005, FR-022 | missing-data | Contractor "as printed on permit" + badge; BBB rating or reason | **PASS** | pass | — | `A-13-TC-032-4.png` |
+| A-13-TC-033 | AC-7, FR-007 | missing-data | MissingReason for roof basis, contractor, BBB, tenure | **PASS** | pass | — | `A-13-TC-033-4.png` |
+| A-13-TC-034 | AC-5, FR-005 | missing-data | No-carrier fields → "not published · no lexicon carrier" | **PASS** | pass | — | `A-13-TC-034-3.png` |
+| A-13-TC-035 | AC-5, FR-005 | negative missing-data | Empty open list → exact message | **PASS** | pass | — | `A-13-TC-035-3.png` |
+| A-13-TC-036 | AC-8, FR-008 | integration | Tenure > 10 + `ooa78753`: fields and definitions | **PASS** | pass | — | `A-13-TC-036-3.png`, `A-13-TC-036-4.png` |
+| A-13-TC-037 | AC-8, FR-008 | missing-data | Unknown tenure excluded and counted | **PASS** | pass | — | `A-13-TC-037-2.png`, `A-13-TC-037-3.png` |
+| A-13-TC-038 | AC-6, FR-006 | negative security | SQL write statement refused (read-only) | **PASS** | pass | — | `A-13-TC-038-3.png`, `A-13-TC-038-create.png`, `A-13-TC-038-delete.png` |
+| A-13-TC-039 | Edge 3, FR-017 | negative error | SQL typo → one error line with fix, no stack trace | **PASS** | FAIL → pass → pass → pass | ERR-30 | `A-13-TC-039-2.png`, `A-13-TC-039-3.png` |
+| A-13-TC-043 | AC-4, AC-6, FR-006a | integration | Filters run on the server with "DuckDB on the server · same views" | **PASS** | pass | — | `A-13-TC-043-3.png`, `A-13-TC-043-4.png` |
+
+### A-13-verify.spec.ts (Verify lanes, serial): 8 cases
+
+| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A-13-TC-006 | AC-3, FR-003 | demo | D-6 Verify: two ✓ lanes, Pinata + Filebase, digest match | **PASS** | pass → void → pass → pass | — | `A-13-TC-006-2.png`, `A-13-TC-006-5.png` |
+| A-13-TC-018 | AC-3, FR-003c | edge | Directory artifact → "Verify via CAR" | **PASS** | pass → void → pass → pass | — | `A-13-TC-018-3.png` |
+| A-13-TC-019 | AC-3, FR-003c | edge · waits A-11 | File artifact > 50 MB → "Verify via CAR" | **PASS** | pass → void → pass → pass | — | `A-13-TC-019-3.png` |
+| A-13-TC-020 | AC-7, FR-003b | negative error | 429 during Verify → "rate-limited, retrying", no false ✓ | **PASS** | pass → void → pass → pass | — | `A-13-TC-020-3.png`, `A-13-TC-020-5.png`, `A-13-TC-020-6.png`, `A-13-TC-020-7.png` |
+| A-13-TC-021 | AC-3, FR-003 | negative | Gateway bytes differ → mismatch, no ✓ | **PASS** | pass → void → pass → pass | — | `A-13-TC-021-3.png` |
+| A-13-TC-022 | AC-3, FR-003a, AM-01 | security | Verify hosts only Pinata + Filebase, plain GET | **PASS** | pass → void → pass → pass | — | `A-13-TC-022-2.png` |
+| A-13-TC-023 | Edge 2, FR-016 | negative error | CID copy down → Filebase "fallback"; Verify unaffected | **PASS** | FAIL → void → pass → pass | ERR-35 | `A-13-TC-023-3.png`, `A-13-TC-023-4.png`, `A-13-TC-023-5.png` |
+| A-13-TC-024 | AC-3, FR-003d | integration | Run chain Verify and Copy CID | **PASS** | skipped → void → pass → pass | — | `A-13-TC-024-3.png`, `A-13-TC-024-4.png` |
+
+### A-13-perf.spec.ts (serial): 3 cases
+
+| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A-13-TC-040 | AC-6, FR-006, NFR-001 | perf · waits A-11 | First DuckDB load ≤ 8 s with a progress bar | **PASS** | pass → void → pass → pass | — | `A-13-TC-040-ready.png`, `A-13-TC-040-timings.json` |
+| A-13-TC-041 | AC-6, NFR-001 | perf · waits A-11 | 20 timed runs per search, p95 < 3 s | **PASS** | TIMEOUT → void → pass → pass | ERR-36 | `A-13-TC-041-open-permit.png`, `A-13-TC-041-radius-roof.png`, `A-13-TC-041-timings.json` |
+| A-13-TC-082 | NFR-002 | perf | Initial JS ≤ 300 KB gzipped excluding DuckDB | **PASS** | skipped → void → pass → pass | ERR-38 | `A-13-TC-082-explore.png`, `A-13-TC-082-hub.png` |
+
+### A-13-pages.spec.ts (Hub, Catalog, Legal, Runs log, Coming soon, cross-cutting): 23 cases
+
+| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A-13-TC-001 | AC-9, FR-009 | smoke demo | D-1 Hub: CountyLens card, CRM Coming soon, run chip | **PASS** | pass | — | `A-13-TC-001-1.png`, `A-13-TC-001-4.png`, `A-13-TC-001-5.png` |
+| A-13-TC-042 | FR-023 | integration | Help · MCP: tools, setup, no sample response | **PASS** | FAIL → pass → pass → pass | ERR-22 | `A-13-TC-042-1.png`, `A-13-TC-042-3.png` |
+| A-13-TC-050 | AC-9, Edge 6, FR-020 | edge | CRM card switches to a live URL through config | **PASS** | pass | — | `A-13-TC-050-5.png`, `A-13-TC-050-6.png` |
+| A-13-TC-051 | AC-9, FR-009 | edge | Watch demo and PR links hidden until configured | **PASS** | pass | — | `A-13-TC-051-2.png`, `A-13-TC-051-3.png` |
+| A-13-TC-052 | AC-9, NFR-002 | perf | Hub never loads the query engine | **PASS** | pass | — | `A-13-TC-052-1.png` |
+| A-13-TC-053 | AC-10, FR-010, FR-024 | integration · waits A-11 | Catalog: one row per table, columns, rows, CID, size | **PASS** | pass | — | `A-13-TC-053-1.png`, `A-13-TC-053-4.png`, `A-13-TC-053-5.png` |
+| A-13-TC-054 | AC-10, Edge 5, FR-019 | negative error | Table list unreachable → "Catalog unavailable · {reason}" | **PASS** | pass | — | `A-13-TC-054-2.png` |
+| A-13-TC-055 | AC-11, FR-011 | content | Legal · Data: seven sources, terms links, access rules | **PASS** | pass | — | `A-13-TC-055-1.png`, `A-13-TC-055-3.png` |
+| A-13-TC-056 | AC-11, FR-011 | content | Legal · Privacy and Terms render static text | **PASS** | pass | — | `A-13-TC-056-1.png`, `A-13-TC-056-2.png` |
+| A-13-TC-057 | AC-12, FR-012 | integration · waits A-11 | Runs · Log: every event in time order with run ID | **PASS** | pass | — | `A-13-TC-057-1.png`, `A-13-TC-057-3.png` |
+| A-13-TC-060 | AC-13, FR-013 | coming-soon | Coming soon · Builder mode | **PASS** | pass | — | `A-13-TC-060-entry.png`, `A-13-TC-060-route.png` |
+| A-13-TC-061 | AC-13, FR-013 | coming-soon | Coming soon · Other counties and states | **PASS** | pass | — | `A-13-TC-061-entry.png`, `A-13-TC-061-route.png` |
+| A-13-TC-062 | AC-13, FR-013 | coming-soon | Coming soon · Street View | **PASS** | pass | — | `A-13-TC-062-entry.png`, `A-13-TC-062-route.png` |
+| A-13-TC-063 | AC-13, FR-013 | coming-soon | Coming soon · AI-user sign-in (not linked) | **PASS** | pass | — | `A-13-TC-063-1.png` |
+| A-13-TC-064 | AC-13, FR-013 | coming-soon | Coming soon · Saved searches | **PASS** | pass | — | `A-13-TC-064-entry.png`, `A-13-TC-064-route.png` |
+| A-13-TC-065 | AC-13, FR-013 | coming-soon | Coming soon · Similar properties | **PASS** | pass | — | `A-13-TC-065-entry.png`, `A-13-TC-065-route.png` |
+| A-13-TC-066 | AC-13, FR-013 | coming-soon | Coming soon · SQL checks | **PASS** | pass | — | `A-13-TC-066-entry.png`, `A-13-TC-066-route.png` |
+| A-13-TC-067 | AC-13, FR-013 | coming-soon | Coming soon · Pipeline diagram and Gantt | **PASS** | pass | — | `A-13-TC-067-entry.png`, `A-13-TC-067-route.png` |
+| A-13-TC-068 | AC-13, FR-013 | coming-soon | Coming soon · Area matrix | **PASS** | pass | — | `A-13-TC-068-entry.png`, `A-13-TC-068-route.png` |
+| A-13-TC-069 | AC-13, FR-013 | coming-soon | Coming soon · Run timeline scrubber (unless approved at D-7) | **PASS** | pass | — | `A-13-TC-069-entry.png`, `A-13-TC-069-route.png` |
+| A-13-TC-070 | AC-13, FR-013 | coming-soon | Coming soon · Gateway race (unless approved at D-7) | **PASS** | pass | — | `A-13-TC-070-entry.png`, `A-13-TC-070-route.png` |
+| A-13-TC-071 | AC-13, FR-013 | negative edge | Another county (picker or URL) → "CountyLens has data for Travis County, TX only" | **PASS** | TIMEOUT → pass → pass → pass | ERR-29 | `A-13-TC-071-2.png`, `A-13-TC-071-3.png` |
+| A-13-TC-072 | AC-13, Edge 4, FR-018 | responsive edge | 390: filter sheet, Coming soon in the More sheet, 48 px | **PASS** | FAIL → pass → FAIL → FAIL | ERR-32, ERR-42 | `A-13-TC-072-2.png`, `A-13-TC-072-3.png` |
+
+### A-13-scan.spec.ts (no-sample-data scan, axe, responsive, localhost refusal, deep links): 6 cases
+
+| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A-13-TC-073 | AC-14, FR-014, FR-024 | scan security | No-sample-data scan over every route | **PASS** | TIMEOUT → FAIL → FAIL → pass | ERR-34, ERR-40 | `A-13-TC-073-*.png` (27 files), `A-13-pages.md` |
+| A-13-TC-074 | AC-14, FR-014 | scan | No "not wired" toast and no ProtoBar on any control | **PASS** | pass | — | `A-13-TC-074-*.png` (25 files) |
+| A-13-TC-080 | NFR-002, FR-018 | responsive | Every page at 390 / 768 / 1440, Atlas tokens only (smeargle) | **PASS** | FAIL → pass → pass → pass | ERR-32 | `A-13-TC-080-*.png` (75 files) |
+| A-13-TC-083 | NFR-002 | a11y | WCAG 2.2 AA (axe) on every route | **PASS** | FAIL → pass → pass → pass | ERR-33 | `A-13-TC-083-*.png` (25 files), `A-13-pages.md` |
+| A-13-TC-085 | Harness rule | harness negative | Harness refuses localhost | **PASS** | pass | — |  |
+| A-13-TC-086 | FR-025 | smoke | Every route loads directly, on refresh and as a deep link | **PASS** | FAIL → pass → pass → pass | ERR-31 | `A-13-TC-086-1.png` |
+
+### A-13-vitals.spec.ts (serial): 2 cases
+
+| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A-13-TC-058 | AC-12, NFR-002 | perf · waits A-11 | Runs · Log LCP < 2.5 s on mobile 4G | **PASS** | pass → void → pass → pass | — | `A-13-pages.md` |
+| A-13-TC-081 | NFR-002 | perf | LCP < 2.5 s, CLS < 0.1, INP < 200 ms on mobile 4G | **PASS** | FAIL → void → FAIL → pass | ERR-37, ERR-41 | `A-13-pages.md` |
+
+## Cases that wait for A-11
+
+Eleven cases carry the plan's "Waits for A-11 (PO D-1/D-2, 2026-10-21)" label. A-11 has not published runs 2 and 3, the full county, `tables-export.json` or run events. Each case ran its "today" branch on the single published run and reported that branch in the test annotations (`a11-branch`). 10 of the 11 pass today; their full assertions switch on automatically once `runs/index.json` holds at least 3 runs. TC-015 is skipped.
+
+| TC | Result | What it checked today (single run, 14 properties, 35 permits) | What A-11 adds |
+| --- | --- | --- | --- |
+| TC-007 D-7 Compare | PASS | `/runs/compare` says "first run · nothing to compare against"; the single manifest CID resolves with HTTP 200 on Pinata and on Filebase (`A-13-TC-007-today.png`) | Run 3 vs Run 2: distinct CIDs, `previousManifestCid` link, resolve pill, CAR links |
+| TC-008 D-8 roof age | PASS | Pflugerville 5 mi, roof ≥ 15: header, engine line "DuckDB on the server · same views", the server total equals the list and the browser SQL count of the same filter; Pflugerville holds 0 properties, so the zero-results line shows (see `A-13-roof-age.md` for the Austin demo area, 3 properties) | Full county, n > 0, rows sorted nearest |
+| TC-009 D-9 open permits | PASS | No permit is open ≥ 5 years (longest open 47 days): 0 rows and the exact line "no open roofing permits in this radius on the current run" (`A-13-open-permits.md`) | Oldest open or stalled reroofs of the full county, from 2004 |
+| TC-015 resolve pill | **SKIPPED** | Skipped with the reason "1 run published": the pill needs two runs | Pill only after both gateways answer for the old CID |
+| TC-019 file > 50 MB | PASS | No artifact in this run exceeds 50 MB (recorded); every file ≤ 50 MB shows "Verify" | Every file > 50 MB shows "Verify via CAR" |
+| TC-031 chips and sort | PASS | `permits_emitted_stalled` is 0 and no permit is open ≥ 5 years: the list is empty with the exact message (`A-13-TC-031-today.png`) | Stalled and open chips sorted by open longest |
+| TC-040 first DuckDB load | PASS | First load 4,123 to 4,607 ms over 5 loads (limit 8,000 ms), progress bar shown; **provisional** (slice) | Same test on full-county tables |
+| TC-041 search p95 | PASS | 20 distinct radii per series: radius + roof p50 812 ms, p95 817 ms; open-permit p50 806 ms, p95 812 ms (limit 3,000 ms); **provisional** (slice) | Same test on full-county tables |
+| TC-053 Catalog | PASS | 23 table rows from the manifest (16 `tables/county/*`, 7 `tables/property_improvement/*`), columns from each Parquet footer, notice "table export not in this run's manifest" | Columns from `tables-export.json` |
+| TC-057 Runs · Log | PASS | The 4 events of the single run (start, two source captures, finish with 3 limitations) in time order with the run ID | All events of at least 3 runs |
+| TC-058 Runs · Log LCP | PASS | Median LCP 2,356 ms, CLS 0.000 on the Lighthouse mobile profile (150 ms RTT, 1.6 Mbps, 4x CPU, 390 px, median of 5); **provisional** (1 run) | Same test with at least 3 runs |
+
+## Non-functional results
+
+| TC ID | NFR | Tool | Result | Actual | Threshold |
+| --- | --- | --- | --- | --- | --- |
+| A-13-TC-040 | NFR-001 first load | Playwright timing, 5 loads | PASS (provisional) | 4,200 · 4,285 · 4,237 · 4,123 · 4,607 ms (median 4,237, max 4,607) on the 14-property slice | ≤ 8,000 ms |
+| A-13-TC-041 | NFR-001 search p95 | Playwright timing, 20 runs per series | PASS (provisional) | radius + roof: p50 812 / p95 817 / max 817 ms; open permit: p50 806 / p95 812 / max 813 ms. The server `queryDurationMs` of the same runs was 207 to 254 ms | p95 < 3,000 ms |
+| A-13-TC-058 | NFR-002 Runs · Log LCP | Lighthouse mobile profile in Playwright, median of 5 | PASS (provisional) | LCP runs 2,368 · 2,472 · 2,284 · 2,308 · 2,356 ms, median 2,356 ms; CLS 0.000 | LCP < 2,500 ms |
+| A-13-TC-081 | NFR-002 LCP, CLS, INP | same profile, median of 5, 8 pages | PASS | median LCP 1,388 to 2,468 ms (slowest `/tx/travis/coverage` 2,468, `/data/catalog` 2,456, `/data/manifest` 2,452, `/runs` 2,408); median CLS ≤ 0.037; median INP ≤ 40 ms; INP "n/a" on `/runs/log` and `/legal/data` (no link, button or tab in main) | LCP < 2,500 ms, CLS < 0.1, INP < 200 ms |
+| A-13-TC-082 | NFR-002 bundle | Playwright network bytes | PASS | JS loaded: `/` 117,831 B; `/tx/travis/explore` 181,814 B (both exclude the DuckDB chunks). Build gate on a fresh `pnpm --filter @countylens/web build`: 220.7 KB gzipped of 300 KB; Hub graph 124.5 KB of 150 KB | ≤ 300 KB gzipped excluding DuckDB |
+| A-13-TC-052 | NFR-002 Hub never loads the engine | Playwright network | PASS | no DuckDB or `.wasm` request on `/` | none |
+| A-13-TC-080 | NFR-002 responsive, 48 px | Playwright, 25 routes × 390 / 768 / 1440 | PASS | 75 screenshots; `documentElement.scrollWidth` ≤ viewport on every route and width, targets ≥ 48 px at 390. **Gap:** smeargle run 3 on `015fbf9` found `/help/mcp` at 390 px scrolling sideways inside `main` (scrollWidth 693 vs 390; N3 in `A-13-smeargle.md`), which this document-level check cannot see. N3 is ERR-43 (Medium, product); fixed at source in `34c8eaf`, which is not on the preview (`/build.json` still returns `015fbf9`), so it is not re-tested | per `testplans/A-13-test-cases.md` |
+| A-13-TC-083 | NFR-002 WCAG 2.2 AA | axe-core 4.10.2 on 25 routes | PASS | 0 violations, 0 serious or critical, 0 tab stops without a focus ring on every route (`A-13-pages.md`) | 0 serious or critical |
+| A-13-TC-073, 074 | FR-014 no sample data | scan of 27 routes × 2 widths (1440, 390) and every control | PASS | 0 denylist phrases, 0 prototype CIDs, 0 CIDs outside a manifest, 0 ProtoBar selectors, 0 "not wired" toasts | 0 hits |
+
+## Defects
+
+All 22 defects were found in the hosted runs of 2026-10-22 on branch `013-explorer-and-pages`. "Fix commit" is the first push that carried the fix. "Re-test" is the final run on `015fbf9`; a TC listed under ERR-n passed there. None is Critical.
+
+| ERR | Kind | TC | Severity | Fix commit | Status |
+| --- | --- | --- | --- | --- | --- |
+| ERR-21 | product (Runs source lines omit the watermark) | TC-002 | High | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-22 | product (Help · MCP `search_properties` has no `[data-schema]`) | TC-042 | Medium | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-23 | test (textContent fuses blocks) | TC-003 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-24 | test (zero-results text built with NaN) | TC-008 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-25 | product (D-9 zero results lacked "no open roofing permits"; a regression from a review fix) | TC-009 | High | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-26 | test ("no article" too broad) | TC-012 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-27 | product (single-run Compare had no manifest link and counted one card as a compared run) | TC-014 | Medium | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-28 | test (demanded a table chip on a kind with no table) | TC-016 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-29 | test (County option label does not exist) | TC-071 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-30 | product (SQL typo got the read-only refusal, not "message · Try: fix") | TC-039 | Medium | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-31 | product (`/permits` had no level-2 heading while loading or on error) | TC-086 | Medium | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-32 | product (touch targets under 48 px, UA font on controls) | TC-072, TC-080 | High | `a285dbe` | Fixed, re-test PASS on 015fbf9 (TC-072 and TC-080); see also ERR-38 and ERR-42 |
+| ERR-33 | product (Catalog definition lists held bare divs, axe `definition-list` on 23 nodes) | TC-083 | High | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-34 | test (TC-073 exceeded 30 minutes without naming the stuck step) | TC-073 | High | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-35 | test (fallback test counted copy-host requests across three page loads) | TC-023 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-36 | test (TC-041 waited on a network call the page caches) | TC-041 | Medium | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-37 | test (INP control table; `/runs/log` has no control in main) | TC-081 | Medium | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-38 | product (`.link` 14 px high on `/runs` and `/runs/compare`, found by smeargle run 2) | TC-080 (the defect file names TC-082, which is the bundle test; the touch-target proof is TC-080) | Medium | `d3ae47e` | Fixed, re-test PASS on 015fbf9 (TC-080); smeargle final pass: see `A-13-smeargle.md` |
+| ERR-39 | product (controlled checkbox/select flicker until the URL commits) | TC-009 | High | `d3ae47e` | Fixed, re-test PASS on 015fbf9 |
+| ERR-40 | test (scan allowlist too narrow; clicks on a moving page) | TC-073 | High | `d3ae47e` | Fixed, re-test PASS on 015fbf9 |
+| ERR-41 | product (Data · Catalog median LCP 4,836 ms) | TC-081 | Medium | `7f04685` | Fixed, re-test PASS on 015fbf9 (Catalog median LCP 2,456 ms) |
+| ERR-42 | product (bottom-nav icon showed its glyph name until the font loaded, widening 390 px to 406 px) | TC-072 | Medium | `015fbf9` | Fixed, re-test PASS on 015fbf9 |
+
+Counts: 12 product defects (ERR-21, 22, 25, 27, 30, 31, 32, 33, 38, 39, 41, 42) and 10 test defects (ERR-23, 24, 26, 28, 29, 34, 35, 36, 37, 40). Severity as written in the defect files: 7 High (ERR-21, 25, 32, 33, 34, 39, 40), 9 Medium (ERR-22, 27, 30, 31, 36, 37, 38, 41, 42), 6 Low (ERR-23, 24, 26, 28, 29, 35).
+
+Open finding outside the 73 cases: smeargle N3 (`/help/mcp`, 390 px, `main` scrolls sideways), recorded in `docs/evidence/A-13-smeargle.md` and as **ERR-43** (Medium, product defect, found on `015fbf9`). The source fix is committed in `34c8eaf` with a unit test, but the preview still serves `015fbf9`, so ERR-43 is **fixed, not re-tested on the hosted build**. TC-080 passes because it measures the document, not `main`.
+
+Notes: (1) The `docs/defects/ERR-21.md` to `ERR-43.md` files still read "Fixed, re-test pending (hosted)" with empty `fix_commit` and `retest_date`; the table above is the re-test record until they are closed at G7. (2) Product fixes of ERR-21 to ERR-32 were written with their tests, not seen red first, as the run-log records. (3) TC-072 failed once at 406 px under 4-worker load in runs 3 and 4 and could not be reproduced in 6 clean single runs on `d3ae47e`; it was reproduced only by delaying `explore.search` (ERR-42) and passes on `015fbf9`.
+
+## Sign-off
+
+**Decision:** ☐ Validated (counts toward G7) ☐ Returned, reason: {…} · to be completed by the PO (HebaGaber) at G7

@@ -5,8 +5,8 @@
 // provenance line (manifest CID, run). A kind with no key, a missing table or source, and every
 // denominator without a `source_total:{source}` key say why in words (data/coverage-rows). Every
 // count comes from the manifest; nothing is computed here. A react-router lazy route module.
-import type { ManifestArtifact, RunManifestV1 } from "@countylens/contract";
-import { PROGRESS_LABELS } from "@countylens/shared";
+import type { ManifestArtifact, ManifestSource, RunManifestV1 } from "@countylens/contract";
+import { COVERAGE_TEXTS, DERIVATION_LABELS, PROGRESS_LABELS } from "@countylens/shared";
 import type { ReactElement } from "react";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
@@ -15,7 +15,12 @@ import { LinearProgress } from "../components/LinearProgress";
 import { Provenance, formatUtc } from "../components/Provenance";
 import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
-import { coverageRows, denominatorRows, type CoverageRow } from "../data/coverage-rows";
+import {
+  SOURCE_TOTAL_PREFIX,
+  coverageRows,
+  denominatorRows,
+  type CoverageRow,
+} from "../data/coverage-rows";
 import { formatCount } from "../data/format";
 import type { LoadedRun } from "../data/run-loader";
 import {
@@ -142,6 +147,9 @@ function KindCard({
       )}
       {kind.id === OTHER_KIND.id ? null : (
         <>
+          <p className={styles.itemBody} data-kind-denominator={kind.source ?? "none"}>
+            {denominatorNode(kind, manifest, source)}
+          </p>
           <p className={styles.itemBody}>
             {source === undefined ? (
               <StatusPill status="unavailable" text={COVERAGE_SOURCE_MISSING} />
@@ -173,6 +181,42 @@ function KindCard({
         Manifest <CidDisplay cid={manifestCid} /> · run {manifest.runId}
       </Provenance>
     </article>
+  );
+}
+
+// The kind's own denominator (FR-002): the manifest's `source_total:{source}` key of the kind's
+// source with its derivation label and collection time, else the exact "not in this run's
+// manifest" reason (naming the A-01 source when the kind has one). Never a typed number.
+function denominatorNode(
+  kind: CoverageKind,
+  manifest: RunManifestV1,
+  source: ManifestSource | undefined,
+): ReactElement {
+  const total =
+    kind.source === null ? undefined : manifest.coverage[`${SOURCE_TOTAL_PREFIX}${kind.source}`];
+  if (total === undefined) {
+    return (
+      <StatusPill
+        status="unavailable"
+        text={
+          kind.source === null
+            ? COVERAGE_TEXTS.denominatorMissing
+            : COVERAGE_TEXTS.denominatorMissingFor(kind.source)
+        }
+      />
+    );
+  }
+  return (
+    <>
+      Denominator <span data-denominator-value={total.count}>{formatCount(total.count)}</span> ·{" "}
+      {DERIVATION_LABELS[total.derivation]}
+      {source === undefined ? null : (
+        <>
+          {" · collected "}
+          <time dateTime={source.captured_at}>{formatUtc(source.captured_at)}</time> UTC
+        </>
+      )}
+    </>
   );
 }
 

@@ -35,7 +35,7 @@ Fixed strings live in `packages/shared/src/labels.ts` and are imported by tests:
 | Tenure unknown | "tenure unknown · no dated sale on record" |
 | Owner area unknown | "owner area unknown · mailing address not in the published export" |
 | Hub chip | "Run {n} · {finishedAt as YYYY-MM-DD HH:mm UTC}" |
-| Completed run | every entry of `runs/index.json` is a completed run (the pipeline writes the index only after finish) |
+| Completed run | data rule, no on-screen text: every entry of `runs/index.json` is a completed run (the pipeline writes the index only after finish) |
 | Other county URL (`/tx/{other}/…`) | renders the Travis-only message "CountyLens has data for Travis County, TX only" with a link to `/tx/travis/explore`; no data |
 | CRM config key | `crmUrl` in `public/site-links.json` (contracts/site-links.md) |
 | Open permit (no carrier) | "Open {x} yrs · source status not published · no lexicon carrier" while `status_raw` has no carrier |

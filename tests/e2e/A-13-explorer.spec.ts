@@ -286,6 +286,19 @@ test.describe("A-13 explorer · demo lines", () => {
         expect(intOf(await row.locator(SEL.count).first().innerText())).toBe(total.count);
       }
     }
+    // 5. Each record kind's own card says its denominator (T046, FR-002): the manifest value, or
+    // the reason; never blank. Every card carries the in-card line.
+    const cards = section.locator("[data-kind]:not([data-kind='other'])");
+    const cardCount = await cards.count();
+    expect(cardCount, "record kind cards").toBeGreaterThanOrEqual(5);
+    for (let i = 0; i < cardCount; i++) {
+      const line = cards.nth(i).locator("[data-kind-denominator]");
+      await expect(line, `kind card ${i} denominator line`).toHaveCount(1);
+      expect(
+        (await line.innerText()).trim().length,
+        `kind card ${i} denominator text`,
+      ).toBeGreaterThan(0);
+    }
     await checkpoint(page, "003", 4, { fullPage: true });
   });
 

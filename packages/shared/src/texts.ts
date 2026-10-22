@@ -24,8 +24,6 @@ export const RUNS_TEXTS = Object.freeze({
   firstRun: "first run · nothing to compare against",
   /** The numbering contract of `a`/`b` on Compare and of the Hub chip: run n = the n-th entry of runs/index.json ordered by finishedAt (1-based). */
   numbering: "Run n is the n-th entry of runs/index.json, ordered by finish time",
-  /** Every entry of runs/index.json is a completed run (the index is written after finish). */
-  completedRun: "Listed in the run index: a completed run",
   indexUnavailable: (reason: string): string => `Run index unavailable · ${reason}`,
   manifestUnavailable: (cid: string, reason: string): string =>
     `Manifest unavailable · ${cid} · ${reason}`,

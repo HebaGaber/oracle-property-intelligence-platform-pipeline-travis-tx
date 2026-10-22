@@ -7,12 +7,12 @@ story: A-13
 test_case: A-13-TC-081
 ac_reference: A-13-AC-12
 severity: Medium
-status: Fixed, re-test pending (hosted)
+status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
 found_by: hosted Playwright run (vitals phase)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-fix_commit:
-retest_date:
+fix_commit: a285dbe
+retest_date: 2026-10-22
 ---
 
 # ERR-37: Web vitals – TC-081 INP click times out on /runs/log (no control in main)
