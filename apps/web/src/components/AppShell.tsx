@@ -44,7 +44,7 @@ export const DESTINATIONS: readonly Destination[] = [
 
 function Glyph({ name }: { readonly name: string }): ReactElement {
   return (
-    <span className="material-symbols-rounded" aria-hidden="true">
+    <span className={`material-symbols-rounded ${styles.glyph}`} aria-hidden="true">
       {name}
     </span>
   );

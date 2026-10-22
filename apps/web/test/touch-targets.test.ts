@@ -98,3 +98,21 @@ describe("N1: Runs and Compare in-page links are 48 px high (smeargle run 2, bui
     expect(body).toMatch(/align-items:\s*center/);
   });
 });
+
+describe("N2: icon glyphs have a fixed 1em box (TC-072 under load, build d3ae47e: 'more_horiz' 111 px wide)", () => {
+  // Until the symbols font arrives, the glyph name shows as fallback text; without a clipped box it
+  // widens the bottom nav to 406 px at 390 (horizontal scroll and layout shift on slow networks).
+  const boxed = (body: string): void => {
+    expect(body, body).toMatch(/(^|[;\s])width:\s*1em\s*;/);
+    expect(body, body).toMatch(/(^|[;\s])height:\s*1em\s*;/);
+    expect(body, body).toMatch(/overflow:\s*hidden/);
+    expect(body, body).toMatch(/white-space:\s*nowrap/);
+  };
+  it("Icon `.icon` is a clipped 1em box", () => {
+    boxed(ruleBody(src("components/Icon.module.css"), "icon"));
+  });
+  it("the app shell's `.glyph` is a clipped 1em box and Glyph uses it", () => {
+    boxed(ruleBody(src("components/AppShell.module.css"), "glyph"));
+    expect(src("components/AppShell.tsx")).toMatch(/material-symbols-rounded \$\{styles\.glyph\}/);
+  });
+});

@@ -4,6 +4,10 @@
 .icon {
   display: inline-block;
   flex: none;
+  width: 1em;
+  height: 1em;
+  overflow: hidden;
+  white-space: nowrap;
   vertical-align: middle;
 }
 
