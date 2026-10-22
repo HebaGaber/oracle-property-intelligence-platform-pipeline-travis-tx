@@ -2,7 +2,7 @@
 // is at least 48 x 48 px (Atlas § 14.1: min-width / min-height / width / height var(--space-9))
 // and every form control takes its font from the tokens (ERR-12). Source-level checks on the CSS
 // Modules, in the style of app-shell.test.tsx: jsdom computes no layout.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -132,15 +132,43 @@ describe("N3: Help · MCP snippet wrapper can shrink (smeargle run 3, build 015f
   });
 });
 
-describe("N4: the first permit provenance line stays inside 390 x 844 (ERR-47, A-03-TC-NF-03, build 0e9be08)", () => {
-  // The 48 px source link (D5) and copy button (D3) are atomic boxes: each made its line 48 px high,
-  // so the provenance text grew from ~80 to 144 px and the first [data-cid] ended at y 860 > 844.
-  // Inside the provenance line the CID box takes a -16 px block margin (the 48 px button still
-  // paints and hits at 48; the line box is 16 px), and the link pads instead of growing.
-  const css = src("components/Provenance.module.css").replace(/\/\*[\s\S]*?\*\//g, "");
-  const cid = /\.text\s+\[data-cid\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
-  it("the CID box inside .text has margin-block calc(var(--space-4) * -1)", () => {
-    expect(cid).toMatch(/margin-block:\s*calc\(var\(--space-4\)\s*\*\s*-1\)\s*;/);
+describe("N4: the first permit provenance line stays inside 390 x 844 (ERR-47, A-03-TC-NF-03)", () => {
+  // The 48 px source link (D5) and copy button (D3) are atomic boxes and cost ~30 px of height, so
+  // the first [data-cid] of /permits ended at y 828-860 > 844. The fix compacts the first card:
+  // each label/value pair shares one line (two-column grid, token gaps) at < 600 px, with no
+  // negative or literal value anywhere (the hosted token audit reports a -16 px margin as a violation).
+  const permits = src("routes/Permits.module.css").replace(/\/\*[\s\S]*?\*\//g, "");
+  it("the card fields are a three-column grid (3fr 2fr 2fr, token column gap) with a token row gap", () => {
+    const body = ruleBody(permits, "cardRows");
+    expect(body, body).toMatch(/(^|[;\s])display:\s*grid\s*;/);
+    expect(body, body).toMatch(
+      /grid-template-columns:\s*minmax\(0,\s*3fr\)\s+minmax\(0,\s*2fr\)\s+minmax\(0,\s*2fr\)\s*;/,
+    );
+    expect(body, body).toMatch(/column-gap:\s*var\(--space-3\)\s*;/);
+    expect(body, body).toMatch(/row-gap:\s*var\(--space-1\)\s*;/);
+  });
+  it("the Contractor and Missing data rows (several wide pills) span the full card width", () => {
+    expect(permits).toMatch(
+      /\.cardRow:nth-last-child\(-n \+ 2\)\s*\{[^}]*grid-column:\s*1\s*\/\s*-1\s*;/,
+    );
+  });
+  it("the page and card stack one token step tighter (space-2) with 12 px top and bottom card padding", () => {
+    expect(ruleBody(permits, "page")).toMatch(/(^|[;\s])gap:\s*var\(--space-2\)\s*;/);
+    const card = ruleBody(permits, "card");
+    expect(card).toMatch(/(^|[;\s])gap:\s*var\(--space-2\)\s*;/);
+    expect(card).toMatch(/padding:\s*var\(--space-3\)\s+var\(--space-4\)\s*;/);
+  });
+  it("no stylesheet uses a negative margin (not a token value; ERR-47 first attempt)", () => {
+    const dirs = ["components", "routes", "styles"];
+    for (const dir of dirs) {
+      for (const f of readdirSync(join(__dirname, "../src", dir)).filter((n) =>
+        n.endsWith(".css"),
+      )) {
+        const css = src(`${dir}/${f}`).replace(/\/\*[\s\S]*?\*\//g, "");
+        expect(css, `${dir}/${f}`).not.toMatch(/margin[a-z-]*:[^;]*((?<![\w-])-\s*\d|\*\s*-)/);
+        expect(css, `${dir}/${f}`).not.toMatch(/calc\(var\(--space-\d+\)\s*\*\s*-/);
+      }
+    }
   });
   it("the copy button itself is still a fixed 48 x 48 box", () => {
     const body = ruleBody(src("components/CidDisplay.module.css"), "copy");

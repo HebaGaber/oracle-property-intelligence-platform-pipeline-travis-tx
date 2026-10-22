@@ -29,10 +29,3 @@
   padding-block: var(--space-4);
   color: var(--md-sys-color-primary);
 }
-
-/* ERR-47: the 48 px copy button (D3) sits in the text flow; a -16 px block margin on the CID box
-   keeps its line at 16 px while the button still paints and takes taps at 48 x 48, so the first
-   provenance line of a permit card stays inside the 390 x 844 viewport (A-03-TC-NF-03). */
-.text [data-cid] {
-  margin-block: calc(var(--space-4) * -1);
-}

@@ -40,6 +40,7 @@ import {
   CONTRACTOR_STATES,
   COVERAGE_KIND_ABSENT_TEXT,
   KIND_IDS,
+  ExploreSearchResult,
   SEL,
   areaCountSql,
   chipYears,
@@ -53,8 +54,8 @@ import {
   placeSuggestion,
   scenario,
   templatePattern,
+  trpcData,
   type ExploreRowShape,
-  type ExploreSearchResult,
 } from "./lib/a13-ui.js";
 import { harnessConfig } from "./lib/runtime.js";
 
@@ -179,6 +180,37 @@ async function openExplore(page: Page, url: string): Promise<ExploreSearchResult
   const result = await nextSearch(page, () => page.goto(url));
   await ready(page, "explore");
   return result;
+}
+
+/**
+ * Every explore.search response the page receives, with the request it answered (ERR-48). The
+ * page shows the answer to its LAST request; picking "the first response after an action" can
+ * take an earlier request's answer (in-flight on a slow runner), whose close matches differ.
+ */
+function trackSearches(page: Page): {
+  readonly request: Record<string, unknown>;
+  readonly result: ExploreSearchResult;
+}[] {
+  const seen: { request: Record<string, unknown>; result: ExploreSearchResult }[] = [];
+  page.on("response", (response) => {
+    if (!EXPLORE_SEARCH.test(response.url()) || response.request().method() === "OPTIONS") return;
+    void (async () => {
+      try {
+        const url = new URL(response.url());
+        const raw = url.searchParams.get("input");
+        const body: unknown = raw === null ? response.request().postDataJSON() : JSON.parse(raw);
+        const first = (body as Record<string, unknown> | null)?.["0"] ?? body;
+        const request = ((first as { json?: unknown } | null)?.json ?? first) as Record<
+          string,
+          unknown
+        >;
+        seen.push({ request, result: ExploreSearchResult.parse(trpcData(await response.json())) });
+      } catch {
+        // an aborted or unparsable response is not an answer
+      }
+    })();
+  });
+  return seen;
 }
 
 async function expectHeader(
@@ -437,6 +469,7 @@ test.describe("A-13 explorer · demo lines", () => {
   test(scenario("008"), async ({ page, oracle }) => {
     noteBranch(oracle);
     const place = gazetteerPlace("Pflugerville");
+    const searches = trackSearches(page);
     // 1. Open Explore.
     await page.goto(EXPLORE);
     await settled(page, "explore");
@@ -446,12 +479,22 @@ test.describe("A-13 explorer · demo lines", () => {
     await expect(suggestion).toHaveCount(1);
     await checkpoint(page, "008", 2);
     await suggestion.click();
-    // 4. Radius 5 mi, roof ≥ 15 yrs (the last change's search is the one under test).
+    // 4. Radius 5 mi, roof ≥ 15 yrs. Earlier changes start searches of their own, so the result
+    // under test is the LAST answer to the final request (radius 5, roof 15, first page), the one
+    // the page shows (ERR-48), not the first response after the last control change.
     await setControl(page.getByLabel("Radius", { exact: true }), "5");
-    const result = await nextSearch(page, () =>
-      setControl(page.getByLabel("Roof age", { exact: true }), "15"),
-    );
-    // 5. Header.
+    await setControl(page.getByLabel("Roof age", { exact: true }), "15");
+    const answerOf = (): ExploreSearchResult | undefined =>
+      searches
+        .filter((s) => s.request["radius_mi"] === 5 && s.request["roof"] === 15)
+        .filter((s) => s.request["page"] === undefined || s.request["page"] === 0)
+        .at(-1)?.result;
+    await expect.poll(answerOf, { timeout: 30_000 }).toBeDefined();
+    // 5. Header (its count belongs to the same final request).
+    await expect(page.locator(SEL.header)).toContainText("roof ≥ 15");
+    await page.waitForLoadState("networkidle");
+    const result = answerOf();
+    if (result === undefined) throw new Error("no explore.search answer for radius 5, roof 15");
     const n = result.total_within_r;
     await expectHeader(page, n, 5, place.name, 15);
     // 6. Engine line and the server's total.
