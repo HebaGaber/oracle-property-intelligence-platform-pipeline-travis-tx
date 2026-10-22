@@ -18,6 +18,7 @@ export const SECTION_KEYS = [
   "gis",
   "permits",
   "jurisdictions",
+  "identity",
 ] as const;
 export type SectionKey = (typeof SECTION_KEYS)[number];
 
@@ -39,6 +40,7 @@ export const BackboneReportV1 = z
     gis: z.unknown().optional(),
     permits: z.unknown().optional(),
     jurisdictions: z.unknown().optional(),
+    identity: z.unknown().optional(),
     limitations: z.array(z.string()),
     /** The same limitations with the job that recorded each (own job first, then source_jobs). */
     limitation_jobs: z.array(z.object({ job_id: z.string(), text: z.string() }).strict()),
