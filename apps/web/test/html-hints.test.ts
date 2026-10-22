@@ -16,13 +16,52 @@ const attr = (tag: string, name: string): string | undefined =>
   (new RegExp(`\\s${name}(?=[\\s>/])`).test(tag) ? "" : undefined);
 
 describe("index.html resource hints", () => {
-  it("preloads /runs/index.json as a same-origin credentialed-default fetch", () => {
-    const tag = tags(html).find((t) => attr(t, "rel") === "preload");
-    expect(tag, "no rel=preload link").toBeDefined();
-    expect(attr(tag ?? "", "as")).toBe("fetch");
-    expect(attr(tag ?? "", "href")).toBe("/runs/index.json");
-    expect(attr(tag ?? "", "crossorigin")).toBe("anonymous");
+  // The preload is added by a tiny inline script, only on routes that read published data: the
+  // static pages (Legal, Help, Coming soon) make no data request (TC-056, FR-011, FR-013).
+  const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? "";
+  const run = (pathname: string): Array<Record<string, string>> => {
+    const added: Array<Record<string, string>> = [];
+    const fake = {
+      createElement: () => ({}) as Record<string, string>,
+      head: { appendChild: (el: Record<string, string>) => added.push(el) },
+    };
+    new Function("location", "document", script)({ pathname }, fake);
+    return added;
+  };
+
+  it("has no static preload link (it would fetch the index on static pages)", () => {
+    expect(tags(html).some((t) => attr(t, "rel") === "preload")).toBe(false);
+    expect(script, "inline preload script").toContain("/runs/index.json");
   });
+
+  it.each([
+    "/",
+    "/runs",
+    "/runs/compare",
+    "/runs/log",
+    "/tx/travis/coverage",
+    "/tx/travis/explore",
+    "/data/manifest",
+    "/data/catalog",
+    "/data/verify/bafkrei",
+    "/permits",
+  ])("preloads /runs/index.json as a same-origin fetch on %s", (path) => {
+    const [link, ...rest] = run(path);
+    expect(rest).toEqual([]);
+    expect(link).toMatchObject({
+      rel: "preload",
+      as: "fetch",
+      href: "/runs/index.json",
+      crossOrigin: "anonymous",
+    });
+  });
+
+  it.each(["/legal/data", "/legal/privacy", "/legal/terms", "/help/mcp", "/soon/builder-mode"])(
+    "adds no preload on the static page %s",
+    (path) => {
+      expect(run(path)).toEqual([]);
+    },
+  );
 
   it("preconnects to the CID copy host placeholder, crossorigin, and not to gateways", () => {
     const hosts = tags(html).filter((t) => attr(t, "rel") === "preconnect");
@@ -54,15 +93,10 @@ describe("loadRunsIndex requests exactly the preloaded URL", () => {
 const distHtml = join(WEB, "dist", "index.html");
 describe.skipIf(!existsSync(distHtml))("built dist/index.html", () => {
   const built = existsSync(distHtml) ? readFileSync(distHtml, "utf8") : "";
-  it("keeps the index preload and never ships an unresolved placeholder", () => {
-    expect(
-      tags(built).some(
-        (t) =>
-          attr(t, "rel") === "preload" &&
-          attr(t, "href") === "/runs/index.json" &&
-          attr(t, "as") === "fetch",
-      ),
-    ).toBe(true);
+  it("keeps the conditional index preload script and never ships an unresolved placeholder", () => {
+    expect(built).toContain("/runs/index.json");
+    expect(built).toMatch(/<script>[\s\S]*preload[\s\S]*<\/script>/);
+    expect(tags(built).some((t) => attr(t, "rel") === "preload")).toBe(false);
     expect(built).not.toContain("%VITE_");
   });
   const host = process.env["VITE_CID_COPY_HOST"];

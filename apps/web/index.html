@@ -7,9 +7,23 @@
     <meta name="color-scheme" content="light" />
     <title>CountyLens</title>
     <!-- Atlas § 3 fonts, the same request tokens.css makes: Roboto, Roboto Mono, Material Symbols. -->
-    <!-- ERR-44 (TC-081): start the run index request with the HTML, in parallel with the JS; the
-         app fetches the same URL with default init, so the preloaded response is reused. -->
-    <link rel="preload" as="fetch" href="/runs/index.json" crossorigin="anonymous" />
+    <!-- ERR-44 (TC-081): start the run index request with the HTML, in parallel with the JS, on the
+         routes that read published data; the app fetches the same URL with default init, so the
+         preloaded response is reused. Static pages (Legal, Help, Coming soon) make no data request
+         (TC-056), so they get no preload. -->
+    <script>
+      (function () {
+        var p = location.pathname;
+        if (p === "/" || /^\/(runs|data|tx|permits)(\/|$)/.test(p)) {
+          var l = document.createElement("link");
+          l.rel = "preload";
+          l.as = "fetch";
+          l.href = "/runs/index.json";
+          l.crossOrigin = "anonymous";
+          document.head.appendChild(l);
+        }
+      })();
+    </script>
     <!-- ERR-44: warm DNS+TCP+TLS to the CID copy host before the manifest fetch. vite.config.ts
          drops this tag when VITE_CID_COPY_HOST is unset at build time. -->
     <link rel="preconnect" href="https://%VITE_CID_COPY_HOST%" crossorigin />
