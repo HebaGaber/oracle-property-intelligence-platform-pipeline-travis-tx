@@ -453,17 +453,22 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, no GitHub OIDC (resea
       expect(ref, `${fn.stack}/${fn.logicalId} has an explicit log group`).toBeDefined();
       expect(groups.get(`${fn.stack}/${ref}`)?.Properties?.RetentionInDays).toBe(14);
     }
+    // A-14 T018 added a second stage (the MCP block's own HTTP API, infra/src/api-stack.ts): each
+    // stage gets its own access log group assertion below, rather than assuming exactly one.
     const stages = all.filter((r) => r.resource.Type === "AWS::ApiGatewayV2::Stage");
-    expect(stages).toHaveLength(1);
-    const arn = json(
-      (stages[0]?.resource.Properties as { AccessLogSettings?: { DestinationArn?: unknown } })
-        .AccessLogSettings?.DestinationArn,
-    );
-    const accessGroup = [...groups.entries()].find(([key]) =>
-      arn.includes(`"${key.split("/")[1]}"`),
-    );
-    expect(accessGroup, "the stage's access log group is in the app").toBeDefined();
-    expect(accessGroup?.[1].Properties?.RetentionInDays).toBe(30);
+    expect(stages.length).toBeGreaterThanOrEqual(1);
+    for (const stage of stages) {
+      const arn = json(
+        (stage.resource.Properties as { AccessLogSettings?: { DestinationArn?: unknown } })
+          .AccessLogSettings?.DestinationArn,
+      );
+      const accessGroup = [...groups.entries()].find(([key]) =>
+        arn.includes(`"${key.split("/")[1]}"`),
+      );
+      expect(accessGroup, `${stage.stack}/${stage.logicalId}'s access log group is in the app`)
+        .toBeDefined();
+      expect(accessGroup?.[1].Properties?.RetentionInDays).toBe(30);
+    }
     for (const [, group] of groups) {
       expect([14, 30]).toContain(group.Properties?.RetentionInDays);
     }

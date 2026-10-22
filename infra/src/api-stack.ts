@@ -17,6 +17,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+  ArnFormat,
   CfnOutput,
   Duration,
   RemovalPolicy,
@@ -27,6 +28,8 @@ import {
 import { AccessLogField, AccessLogFormat } from "aws-cdk-lib/aws-apigateway";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
@@ -56,6 +59,53 @@ export const ACCESS_LOG_RETENTION = logs.RetentionDays.ONE_MONTH;
 /** SSM String parameter mirroring the HttpApiUrl output. */
 export const HTTP_API_URL_PARAMETER = "/countylens/api/http-api-url";
 
+// --- MCP (A-14/A-15 T017/T018, G-4) ---
+// AD-21: oracle's own MCP server lives on a separate Lambda, HTTP API and throttle from the
+// tRPC Lambda above (its own blast radius). The six tool adapters and the Streamable HTTP
+// transport (apps/api/src/mcp/server.ts, T024-T026) land in a later wave; this block wires the
+// CDK resources now so the MCP Lambda, its /mcp route/throttle and its SSM read grant exist and
+// are tested (infra/test/countylens-api-mcp.test.ts, T010) ahead of that.
+/** Function name, Powertools service name of the MCP Lambda (distinct from API_FUNCTION_NAME). */
+export const MCP_FUNCTION_NAME = "countylens-mcp";
+/** Lightest standard Lambda tier (1 vCPU); the MCP server runs the same engine, lighter traffic. */
+export const MCP_MEMORY_MB = 1769;
+export const MCP_TIMEOUT = Duration.seconds(15);
+export const MCP_ROUTE_PATH = "/mcp";
+export const MCP_HEALTH_PATH = "/health";
+/** NFR-003/AC-10: 5 rps sustained, burst 10, enforced at the route level (not stage-wide) so it
+ *  never throttles GET /health or (being a separate API entirely) the tRPC API's own routes. */
+export const MCP_THROTTLE = { rateLimit: 5, burstLimit: 10 } as const;
+/** The MCP bearer token: an SSM SecureString created and rotated out of band by an operator
+ *  (never by this stack, never a default, never Secrets Manager — AD-10, AD-14). This name must
+ *  stay in sync with apps/api/src/mcp/auth.ts's MCP_TOKEN_PARAMETER_NAME (not imported directly:
+ *  infra does not depend on apps/api's TypeScript source, only its bundled entry file below). */
+export const MCP_TOKEN_PARAMETER_NAME = "/countylens/mcp/token";
+
+// --- Agent (A-14 T016, G-2) ---
+// AD-27: the agent Lambda is its own function, independent of both the tRPC query Lambda above
+// (AM-06's 15 s timeout governs a different workload: DuckDB COUNT queries) and the MCP Lambda
+// (AD-21's own blast radius). This block wires the Lambda, the spend-counter DynamoDB table and
+// the 80% alarm now; the real `agent.ask` tool loop (apps/api/src/agent/ask.ts, T019-T022) and
+// its own API Gateway route/throttle land in the wave-2 follow-up — tasks.md scopes T016 to
+// exactly these three resources.
+/** Function name, Powertools service name of the agent Lambda (distinct from the other two). */
+export const AGENT_FUNCTION_NAME = "countylens-agent";
+/** AD-27 sizing: the lightest standard tier (1 vCPU), same tier as the MCP Lambda. */
+export const AGENT_MEMORY_MB = 1769;
+/** AD-27: 23 s in-process abort → `timed_out`, 25 s Lambda timeout (the backstop), independent
+ *  of AM-06's 15 s query-API timeout (research.md "timeout layering"). */
+export const AGENT_TIMEOUT_SECONDS = 25;
+/** data-model.md "Spend counter": one on-demand item per UTC day, key `pk`. Must stay in sync
+ *  with apps/api/src/agent/spend.ts's own DAILY_SPEND_CAP_USD (not imported directly, same
+ *  reason as MCP_TOKEN_PARAMETER_NAME above: infra depends on the bundled entry, not the source). */
+export const SPEND_TABLE_NAME = "CountyLensAiSpend";
+/** The daily spend cap (USD) the alarm below watches 80% of. */
+export const DAILY_SPEND_CAP_USD = 3;
+/** 80% of DAILY_SPEND_CAP_USD ($2.40): agent-design.md § "ash" > "Spend-cap + alarm design". */
+export const SPEND_ALARM_THRESHOLD_USD = DAILY_SPEND_CAP_USD * 0.8;
+/** Powertools EMF metric name the agent Lambda emits per request (`src/agent/ask.ts`, T022). */
+export const SPEND_METRIC_NAME = "AiSpendUsd";
+
 /** Where Lambda unpacks the asset; the extension directory is relative to it. */
 export const LAMBDA_TASK_ROOT = "/var/task";
 /** `<asset>/duckdb-extensions/<duckdb version>/<platform>/<name>.duckdb_extension` (DuckDB layout). */
@@ -69,6 +119,12 @@ const ESBUILD_TARGET = `node${RUNTIME.name.replace(/^nodejs(\d+)\.x$/, "$1")}`;
 
 const ENTRY = fileURLToPath(new URL("../../apps/api/src/handlers/trpc.ts", import.meta.url));
 const API_PACKAGE_JSON = fileURLToPath(new URL("../../apps/api/package.json", import.meta.url));
+/** A placeholder handler until apps/api/src/mcp/server.ts (T024-T026) lands. */
+const MCP_ENTRY = fileURLToPath(new URL("../../apps/api/src/handlers/mcp.ts", import.meta.url));
+/** A placeholder handler until apps/api/src/agent/ask.ts (T019-T022) lands. */
+const AGENT_ENTRY = fileURLToPath(
+  new URL("../../apps/api/src/handlers/agent.ts", import.meta.url),
+);
 
 /** The `@duckdb/node-api` version apps/api pins; the asset installs exactly that one. */
 export function duckDbNodeApiVersion(): string {
@@ -210,6 +266,17 @@ export class ApiStack extends Stack {
   readonly accessLogGroup: logs.LogGroup;
   /** The NodejsFunction bundling options in use (asserted by infra/test/api.test.ts). */
   readonly bundling: nodejs.BundlingOptions;
+  // --- MCP (T018) ---
+  readonly mcpFn: nodejs.NodejsFunction;
+  readonly mcpHttpApi: apigwv2.HttpApi;
+  readonly mcpStage: apigwv2.HttpStage;
+  readonly mcpFunctionLogGroup: logs.LogGroup;
+  readonly mcpAccessLogGroup: logs.LogGroup;
+  // --- Agent (T016) ---
+  readonly agentFn: nodejs.NodejsFunction;
+  readonly agentFunctionLogGroup: logs.LogGroup;
+  readonly spendTable: dynamodb.Table;
+  readonly spendAlarm: cloudwatch.Alarm;
 
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
@@ -387,6 +454,319 @@ export class ApiStack extends Stack {
       stringValue: this.httpApiUrl,
       description: "HTTP API invoke URL (CountyLensApi output HttpApiUrl)",
       tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // --- MCP (A-14/A-15 T017/T018, G-4) ---
+    // A separate Lambda, HTTP API and throttle from the tRPC resources above (AD-21's own blast
+    // radius). Execution role: its own log group, the shared CID-copy reader grant (same
+    // boundary as the tRPC role, contracts/storage.md), and exactly one ssm:GetParameter read
+    // scoped to MCP_TOKEN_PARAMETER_NAME — no Secrets Manager resource, no wildcard (AD-14).
+    this.mcpFunctionLogGroup = new logs.LogGroup(this, "McpFunctionLogs", {
+      retention: FUNCTION_LOG_RETENTION,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    this.mcpAccessLogGroup = new logs.LogGroup(this, "McpAccessLogs", {
+      retention: ACCESS_LOG_RETENTION,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    const mcpTokenParameterArn = Stack.of(this).formatArn({
+      service: "ssm",
+      resource: "parameter",
+      resourceName: MCP_TOKEN_PARAMETER_NAME.replace(/^\//, ""),
+      arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
+    });
+
+    const mcpRole = new iam.Role(this, "McpFunctionRole", {
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      description: `Execution role of ${MCP_FUNCTION_NAME}: its own log group, GetObject on the CID copy's ipfs/* and private/bench/*, and one scoped ssm:GetParameter read on ${MCP_TOKEN_PARAMETER_NAME}`,
+      inlinePolicies: {
+        FunctionLogs: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              sid: "WriteOwnLogGroup",
+              actions: ["logs:CreateLogStream", "logs:PutLogEvents"],
+              resources: [this.mcpFunctionLogGroup.logGroupArn],
+            }),
+          ],
+        }),
+      },
+    });
+    // A standalone AWS::IAM::Policy (DefaultPolicy), same mechanism as Data.grantApiRead below —
+    // scoped to exactly this one parameter's ARN, no wildcard (AD-14).
+    mcpRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: "ReadMcpToken",
+        actions: ["ssm:GetParameter"],
+        resources: [mcpTokenParameterArn],
+      }),
+    );
+
+    this.mcpFn = new nodejs.NodejsFunction(this, "Mcp", {
+      functionName: MCP_FUNCTION_NAME,
+      description:
+        "CountyLens MCP server (AD-21: search_properties, list_permits, get_property, " +
+        "get_coverage, list_runs, get_schema) over the published CID copy; its own Lambda, " +
+        "throttle and SSM read grant, separate from the tRPC API",
+      entry: MCP_ENTRY,
+      handler: "handler",
+      runtime: RUNTIME,
+      architecture: lambda.Architecture.ARM_64,
+      memorySize: MCP_MEMORY_MB,
+      timeout: MCP_TIMEOUT,
+      role: mcpRole,
+      tracing: lambda.Tracing.ACTIVE,
+      loggingFormat: lambda.LoggingFormat.JSON,
+      systemLogLevelV2: lambda.SystemLogLevel.WARN,
+      applicationLogLevelV2: lambda.ApplicationLogLevel.INFO,
+      logGroup: this.mcpFunctionLogGroup,
+      environment: {
+        CID_COPY_BUCKET: props.data.bucket.bucketName,
+        CID_COPY_HOST: props.data.distribution.distributionDomainName,
+        FILEBASE_GATEWAY_HOST,
+        READPATH_PRIVATE_PREFIX: props.data.privateBenchPrefix,
+        DUCKDB_EXTENSION_DIRECTORY: `${LAMBDA_TASK_ROOT}/${DUCKDB_EXTENSION_DIR_NAME}`,
+        // apps/api/src/mcp/auth.ts: the one SSM parameter this Lambda is allowed to read.
+        MCP_TOKEN_PARAMETER_NAME,
+        POWERTOOLS_SERVICE_NAME: MCP_FUNCTION_NAME,
+        POWERTOOLS_METRICS_NAMESPACE: API_METRICS_NAMESPACE,
+        POWERTOOLS_LOG_LEVEL: "INFO",
+        NODE_OPTIONS: "--enable-source-maps",
+      },
+      bundling: this.bundling,
+    });
+    // Same reader boundary as the tRPC Lambda (contracts/storage.md): GetObject on ipfs/* and
+    // private/bench/* only, via a separate grant on this Lambda's own role.
+    props.data.grantApiRead(this.mcpFn);
+
+    this.mcpHttpApi = new apigwv2.HttpApi(this, "McpHttp", {
+      apiName: MCP_FUNCTION_NAME,
+      description:
+        "CountyLens MCP (AD-21): POST /mcp (Streamable HTTP, bearer-token auth in the handler) " +
+        "and GET /health (no auth); a separate API from the tRPC one, its own throttle",
+      createDefaultStage: false,
+    });
+    const mcpIntegration = new HttpLambdaIntegration("Mcp", this.mcpFn, {
+      payloadFormatVersion: apigwv2.PayloadFormatVersion.VERSION_2_0,
+    });
+    this.mcpHttpApi.addRoutes({
+      path: MCP_ROUTE_PATH,
+      methods: [apigwv2.HttpMethod.POST],
+      integration: mcpIntegration,
+    });
+    this.mcpHttpApi.addRoutes({
+      path: MCP_HEALTH_PATH,
+      methods: [apigwv2.HttpMethod.GET],
+      integration: mcpIntegration,
+    });
+    this.mcpStage = new apigwv2.HttpStage(this, "McpDefault", {
+      httpApi: this.mcpHttpApi,
+      stageName: "$default",
+      autoDeploy: true,
+      accessLogSettings: {
+        destination: new apigwv2.LogGroupLogDestination(this.mcpAccessLogGroup),
+        // Identifiers and counts only (FR-007), same shape as the tRPC API's access log.
+        format: AccessLogFormat.custom(
+          JSON.stringify({
+            requestId: AccessLogField.contextRequestId(),
+            requestTime: AccessLogField.contextRequestTimeEpoch(),
+            httpMethod: AccessLogField.contextHttpMethod(),
+            routeKey: AccessLogField.contextRouteKey(),
+            path: AccessLogField.contextPath(),
+            status: AccessLogField.contextStatus(),
+            responseLength: AccessLogField.contextResponseLength(),
+            responseLatency: AccessLogField.contextResponseLatency(),
+            integrationLatency: AccessLogField.contextIntegrationLatency(),
+            integrationError: "$context.integrationErrorMessage",
+          }),
+        ),
+      },
+    });
+    // Route-level throttle on POST /mcp only (AD-21 "its own throttle"; NFR-003/AC-10: 5 rps,
+    // burst 10). The L2 HttpStage's `throttle` prop only sets DefaultRouteSettings (stage-wide,
+    // would also cover GET /health); the per-route limit needs the underlying CfnStage escape
+    // hatch, keyed by the exact route key API Gateway renders ("POST /mcp").
+    // `routeSettings` is untyped (`any`) in the L1 construct, so CDK does not camelCase→PascalCase
+    // it the way a typed prop would: the keys below must already be the literal CFN property
+    // names (confirmed by inspecting the synthesized template directly).
+    const cfnMcpStage = this.mcpStage.node.defaultChild as apigwv2.CfnStage;
+    cfnMcpStage.routeSettings = {
+      [`POST ${MCP_ROUTE_PATH}`]: {
+        ThrottlingRateLimit: MCP_THROTTLE.rateLimit,
+        ThrottlingBurstLimit: MCP_THROTTLE.burstLimit,
+      },
+    };
+
+    Validations.of(this.mcpHttpApi).acknowledge({
+      id: "AwsSolutions-APIG4",
+      reason:
+        "POST /mcp is gated by its own bearer-token check inside the handler " +
+        "(apps/api/src/mcp/auth.ts, AD-10/AD-14: an SSM SecureString, never a default), not by " +
+        "an API Gateway authorizer. GET /health is an unauthenticated liveness probe with no " +
+        "data access.",
+    });
+    const mcpDefaultPolicy = mcpRole.node.tryFindChild("DefaultPolicy") as iam.Policy | undefined;
+    if (mcpDefaultPolicy !== undefined) {
+      Validations.of(mcpDefaultPolicy).acknowledge({
+        id: "AwsSolutions-IAM5[Resource::*]",
+        reason:
+          "xray:PutTraceSegments and xray:PutTelemetryRecords support no resource-level " +
+          "permission (the service accepts only *); this is the active-tracing policy CDK " +
+          "attaches (NFR-03), same acknowledgement as the tRPC Lambda's role above.",
+      });
+      acknowledgeWildcardResources(
+        mcpDefaultPolicy,
+        () => [(mcpDefaultPolicy.node.defaultChild as iam.CfnPolicy).policyDocument],
+        (resource) => /\/(ipfs|private\/bench)\/\*$/.test(resource),
+        "GetObject on <bucket>/ipfs/* and <bucket>/private/bench/* is the exact reader boundary " +
+          "of contracts/storage.md, mirrored from the tRPC Lambda's own grant (Data.grantApiRead).",
+      );
+    }
+
+    new CfnOutput(this, "McpApiUrl", {
+      value: this.mcpHttpApi.apiEndpoint,
+      description: "MCP HTTP API invoke URL: POST /mcp (bearer token), GET /health (no auth)",
+    });
+    new CfnOutput(this, "McpFunctionName", {
+      value: this.mcpFn.functionName,
+      description: "MCP Lambda function name",
+    });
+    new CfnOutput(this, "McpFunctionLogGroupName", {
+      value: this.mcpFunctionLogGroup.logGroupName,
+      description: "MCP function log group (14 days)",
+    });
+
+    // --- Agent (A-14 T016, G-2) ---
+    // Its own Lambda (AD-27), spend-counter table and 80% alarm. No API Gateway route yet (the
+    // real `agent.ask` tRPC procedure and its route/throttle are T019-T022, wave 2) — this block
+    // is scoped to exactly what tasks.md T016 asks for.
+    this.agentFunctionLogGroup = new logs.LogGroup(this, "AgentFunctionLogs", {
+      retention: FUNCTION_LOG_RETENTION,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    // One on-demand item per UTC day (data-model.md "Spend counter"): no provisioned capacity,
+    // no idle cost (A7, P0-19), and deliberately no TimeToLiveSpecification — a counter that
+    // silently expired mid-day would let spend quietly reset to zero (apps/api/src/agent/spend.ts).
+    this.spendTable = new dynamodb.Table(this, "SpendTable", {
+      tableName: SPEND_TABLE_NAME,
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    Validations.of(this.spendTable).acknowledge({
+      id: "AwsSolutions-DDB3",
+      reason:
+        "One tiny on-demand item per UTC day, derived entirely from Bedrock/Gateway call counts " +
+        "the agent Lambda can recompute from its own CloudWatch logs; continuous backups would " +
+        "add cost (A7) for a counter that is cheap to rebuild and never the system of record.",
+    });
+
+    const agentRole = new iam.Role(this, "AgentFunctionRole", {
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      description: `Execution role of ${AGENT_FUNCTION_NAME}: its own log group, GetObject on the CID copy's ipfs/* and private/bench/*, and read/write on ${SPEND_TABLE_NAME}`,
+      inlinePolicies: {
+        FunctionLogs: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              sid: "WriteOwnLogGroup",
+              actions: ["logs:CreateLogStream", "logs:PutLogEvents"],
+              resources: [this.agentFunctionLogGroup.logGroupArn],
+            }),
+          ],
+        }),
+      },
+    });
+
+    this.agentFn = new nodejs.NodejsFunction(this, "Agent", {
+      functionName: AGENT_FUNCTION_NAME,
+      description:
+        "CountyLens agent.ask (AD-27): Vercel AI SDK tool loop over the published CID copy, " +
+        "with a DynamoDB daily spend cap; its own Lambda, independent of the tRPC query API's " +
+        "15 s timeout (AM-06)",
+      entry: AGENT_ENTRY,
+      handler: "handler",
+      runtime: RUNTIME,
+      architecture: lambda.Architecture.ARM_64,
+      memorySize: AGENT_MEMORY_MB,
+      timeout: Duration.seconds(AGENT_TIMEOUT_SECONDS),
+      role: agentRole,
+      tracing: lambda.Tracing.ACTIVE,
+      loggingFormat: lambda.LoggingFormat.JSON,
+      systemLogLevelV2: lambda.SystemLogLevel.WARN,
+      applicationLogLevelV2: lambda.ApplicationLogLevel.INFO,
+      logGroup: this.agentFunctionLogGroup,
+      environment: {
+        CID_COPY_BUCKET: props.data.bucket.bucketName,
+        CID_COPY_HOST: props.data.distribution.distributionDomainName,
+        FILEBASE_GATEWAY_HOST,
+        READPATH_PRIVATE_PREFIX: props.data.privateBenchPrefix,
+        DUCKDB_EXTENSION_DIRECTORY: `${LAMBDA_TASK_ROOT}/${DUCKDB_EXTENSION_DIR_NAME}`,
+        // apps/api/src/agent/spend.ts: the one table this Lambda reads/increments.
+        SPEND_TABLE_NAME,
+        POWERTOOLS_SERVICE_NAME: AGENT_FUNCTION_NAME,
+        POWERTOOLS_METRICS_NAMESPACE: API_METRICS_NAMESPACE,
+        POWERTOOLS_LOG_LEVEL: "INFO",
+        NODE_OPTIONS: "--enable-source-maps",
+      },
+      bundling: this.bundling,
+    });
+    // Same reader boundary as the other two Lambdas (contracts/storage.md).
+    props.data.grantApiRead(this.agentFn);
+    // Read/increment the daily spend item only (no Scan, no other table).
+    this.spendTable.grantReadWriteData(this.agentFn);
+
+    // The 80% alarm (agent-design.md § "ash" > "Spend-cap + alarm design"): watches the
+    // Powertools EMF metric the agent Lambda emits per request. No alarm action is wired here —
+    // CountyLensOps (which already fans the Lambda Errors/Throttles/5xx alarms out to the
+    // operator's SNS topic) deploys after this stack, so wiring this alarm's action into that
+    // topic is a CountyLensOps follow-up, not invented here as a forward reference.
+    this.spendAlarm = new cloudwatch.Metric({
+      namespace: API_METRICS_NAMESPACE,
+      metricName: SPEND_METRIC_NAME,
+      dimensionsMap: { service: AGENT_FUNCTION_NAME },
+      statistic: "Maximum",
+      period: Duration.minutes(5),
+    }).createAlarm(this, "SpendAlarm", {
+      alarmDescription: `${AGENT_FUNCTION_NAME}: today's spend ≥ 80% of the $${DAILY_SPEND_CAP_USD}/day cap`,
+      threshold: SPEND_ALARM_THRESHOLD_USD,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    const agentDefaultPolicy = agentRole.node.tryFindChild("DefaultPolicy") as
+      | iam.Policy
+      | undefined;
+    if (agentDefaultPolicy !== undefined) {
+      Validations.of(agentDefaultPolicy).acknowledge({
+        id: "AwsSolutions-IAM5[Resource::*]",
+        reason:
+          "xray:PutTraceSegments and xray:PutTelemetryRecords support no resource-level " +
+          "permission (the service accepts only *); this is the active-tracing policy CDK " +
+          "attaches (NFR-03), same acknowledgement as the tRPC and MCP Lambdas' roles above.",
+      });
+      acknowledgeWildcardResources(
+        agentDefaultPolicy,
+        () => [(agentDefaultPolicy.node.defaultChild as iam.CfnPolicy).policyDocument],
+        (resource) => /\/(ipfs|private\/bench)\/\*$/.test(resource),
+        "GetObject on <bucket>/ipfs/* and <bucket>/private/bench/* is the exact reader boundary " +
+          "of contracts/storage.md, mirrored from the tRPC and MCP Lambdas' own grants " +
+          "(Data.grantApiRead).",
+      );
+    }
+
+    new CfnOutput(this, "AgentFunctionName", {
+      value: this.agentFn.functionName,
+      description: "Agent Lambda function name",
+    });
+    new CfnOutput(this, "AgentFunctionLogGroupName", {
+      value: this.agentFunctionLogGroup.logGroupName,
+      description: "Agent function log group (14 days)",
+    });
+    new CfnOutput(this, "SpendTableName", {
+      value: this.spendTable.tableName,
+      description: "Spend-counter DynamoDB table name (data-model.md)",
     });
   }
 }

@@ -15,7 +15,7 @@ import {
   METRIC_MANIFEST_ACCESS_DENIED,
   getManifest,
   setS3ReadObservability,
-} from "../src/s3-read.js";
+} from "../src/engine/s3-read.js";
 import { ENV, fixtureManifest } from "./helpers/fakes.js";
 
 const REAL_TMP = tmpdir();

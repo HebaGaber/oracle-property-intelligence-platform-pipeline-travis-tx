@@ -36,3 +36,7 @@ export {
   type ViewStatement,
 } from "./view-plan.js";
 export * as gazetteer from "../gazetteer/travis-places@1.0.0/index.js";
+// T002/T011/T011a/T012/T013 (A-14): the agent/MCP tool layer (Zod input schemas, the six
+// functions and geocodePlace) and the new permit-level builder.
+export * from "./tools/index.js";
+export * from "./permits.js";

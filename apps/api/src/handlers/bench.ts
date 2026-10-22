@@ -24,7 +24,7 @@ import {
 import { z } from "zod";
 import { getConfig, type ApiConfig } from "../config.js";
 import { getEngine } from "../engine/duckdb-node.js";
-import { presignPrefix } from "../s3-read.js";
+import { presignPrefix } from "../engine/s3-read.js";
 
 export const BENCH_QUERIES = ["count", "radius", "roofAge"] as const;
 export type BenchQuery = (typeof BENCH_QUERIES)[number];
