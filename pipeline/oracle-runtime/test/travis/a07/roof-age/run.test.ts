@@ -2,19 +2,10 @@
 // invocation wrapper (travis/roof-age/run.ts), no writes. The wrapper never reimplements the
 // vendored kit estimator; these tests prove it wires inputs correctly and adds the one gate the
 // kit estimator itself does not express: an implausible TCAD built year.
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { estimateOne, runAudit, type RoofAgeRunRecord } from "../../../../travis/roof-age/run.js";
+import { describe, expect, it } from "vitest";
+import { estimateOne, type RoofAgeRunRecord } from "../../../../travis/roof-age/run.js";
 
 const AS_OF = "2026-10-22T18:00:00.000Z";
-
-let tmp: string | undefined;
-afterEach(() => {
-  if (tmp !== undefined) rmSync(tmp, { recursive: true, force: true });
-  tmp = undefined;
-});
 
 describe("estimateOne", () => {
   it("an open permit does not reset roof age: the completed replacement anchors, not the open one", () => {
@@ -131,25 +122,5 @@ describe("estimateOne", () => {
     expect(row.estimate.confidence).toBe("none");
     expect(row.roof_date).toBeNull();
     expect(row.builtYearReason).toBeNull();
-  });
-});
-
-describe("runAudit", () => {
-  it("writes the report file and respects --limit/--offset without applying anything", () => {
-    tmp = mkdtempSync(join(tmpdir(), "a07-roofage-"));
-    const records: RoofAgeRunRecord[] = Array.from({ length: 3 }, (_, i) => ({
-      pID: `100000${i}`,
-      finishedAt: AS_OF,
-      builtYear: null,
-      permits: [],
-    }));
-    const reportPath = join(tmp, "audit.json");
-    const report = runAudit({ records, limit: 2, offset: 1, jobId: "travis-a07-test", reportPath });
-    expect(report.rows).toHaveLength(2);
-    expect(report.rows[0]?.pID).toBe("1000001");
-    const written = JSON.parse(readFileSync(reportPath, "utf8"));
-    expect(written.mode).toBe("audit");
-    expect(written.jobId).toBe("travis-a07-test");
-    expect(written.rows).toHaveLength(2);
   });
 });

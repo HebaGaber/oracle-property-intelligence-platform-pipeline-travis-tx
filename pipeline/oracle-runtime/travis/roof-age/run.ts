@@ -1,16 +1,13 @@
 // A-07 T050 (Track D, contracts/estimator.md): the roof-age estimator invocation wrapper.
-// Audit/apply/re-run wiring only — the vendored kit estimator (travis-roof-age-profile.ts ->
-// kit/.../roof-age/estimator.ts) is never reimplemented or modified here. The one business
-// gate the kit estimator does not itself express is an implausible TCAD built year (a future
-// year, or one before any Travis structure could plausibly have been built); that gate lives
-// here, in the wrapper, not in the vendored estimator.
+// `estimateOne` wires one property's facts into the vendored kit estimator (travis-roof-age-
+// profile.ts -> kit/.../roof-age/estimator.ts), which is never reimplemented or modified here.
+// The one business gate the kit estimator does not itself express is an implausible TCAD built
+// year (a future year, or one before any Travis structure could plausibly have been built);
+// that gate lives here, in the wrapper, not in the vendored estimator.
 //
-// Sequence (contracts/estimator.md): audit (dry run, --limit 25) -> human review (D-21) ->
-// apply the 25, re-run the same 25 (must be rowsWritten: 0) -> widen to the full roll. This
-// module wires all three invocations; actually calling apply (`--apply`) requires the caller to
-// pass `apply: true` and a `write` function — Wave-1 work here never does that (D-21 pending).
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+// The real audit/apply sequence (contracts/estimator.md) runs server-side, against live
+// Postgres data, in pipeline/local-stack/services/workflows/roof-age-{audit,backfill}.ts —
+// both call `estimateOne`/`simpleBasisOf` directly rather than a file-based runner here.
 import {
   estimateTravisRoofAge,
   type RoofAgeLedgerRow,
@@ -72,76 +69,4 @@ export function estimateOne(record: RoofAgeRunRecord): RoofAgeRunRow {
     permits: record.permits,
   });
   return { ...row, builtYearReason: reason };
-}
-
-function writeReport(reportPath: string, report: unknown): void {
-  mkdirSync(dirname(reportPath), { recursive: true });
-  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-}
-
-export interface RoofAgeAuditOptions {
-  records: readonly RoofAgeRunRecord[];
-  jobId: string;
-  reportPath: string;
-  limit?: number;
-  offset?: number;
-}
-
-export interface RoofAgeAuditReport {
-  mode: "audit";
-  jobId: string;
-  limit: number | null;
-  offset: number;
-  rows: RoofAgeRunRow[];
-}
-
-/** `roof-age:audit` — always a dry run; never writes to the Query DB. */
-export function runAudit(opts: RoofAgeAuditOptions): RoofAgeAuditReport {
-  const offset = opts.offset ?? 0;
-  const slice =
-    opts.limit === undefined
-      ? opts.records.slice(offset)
-      : opts.records.slice(offset, offset + opts.limit);
-  const report: RoofAgeAuditReport = {
-    mode: "audit",
-    jobId: opts.jobId,
-    limit: opts.limit ?? null,
-    offset,
-    rows: slice.map(estimateOne),
-  };
-  writeReport(opts.reportPath, report);
-  return report;
-}
-
-export interface RoofAgeApplyOptions {
-  records: readonly RoofAgeRunRecord[];
-  jobId: string;
-  reportPath: string;
-  /** Mirrors `--apply`: false computes the estimate but writes nothing (rowsWritten stays 0). */
-  apply: boolean;
-  /** Persists the estimated rows; only called when `apply` is true. Returns rows written. */
-  write?: (rows: readonly RoofAgeRunRow[]) => Promise<number> | number;
-}
-
-export interface RoofAgeApplyReport {
-  mode: "apply";
-  jobId: string;
-  apply: boolean;
-  rowsWritten: number;
-  rows: RoofAgeRunRow[];
-}
-
-/** `roof-age:backfill` — computes always; persists only when `apply` is true (gated on D-21). */
-export async function runApply(opts: RoofAgeApplyOptions): Promise<RoofAgeApplyReport> {
-  const rows = opts.records.map(estimateOne);
-  let rowsWritten = 0;
-  if (opts.apply) {
-    if (opts.write === undefined) {
-      throw new Error("runApply: apply=true requires a write() callback");
-    }
-    rowsWritten = await opts.write(rows);
-  }
-  const report: RoofAgeApplyReport = { mode: "apply", jobId: opts.jobId, apply: opts.apply, rowsWritten, rows };
-  writeReport(opts.reportPath, report);
-  return report;
 }

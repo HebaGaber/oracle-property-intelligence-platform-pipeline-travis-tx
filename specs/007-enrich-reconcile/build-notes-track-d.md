@@ -172,3 +172,25 @@ deleted. `pipeline/oracle-runtime` now needs no new dependency for T056.
 T053–T055 (Wave 5, depend on T020/T034/T042/T060), T057 (Wave 4 contractor-cluster merge,
 depends on T020), T058–T061 (Wave 5 roof-age apply/full-roll/worked-example — `--apply` requires
 D-21 approval, never run here).
+
+## T053/T054/T055 — manifest coverage assembly + agents.verify check
+
+- `travis/runs/a07-coverage.ts` (T053): `assembleA07Coverage()` reads each track's own report
+  JSON (never the Query DB, AD-04) and emits the six required `contracts/report.md` rows.
+  Tracks B/C (no report file this pass) degrade to the documented-gap shape, reusing FR-013's
+  `"<Group>: not loaded · {reason}"` pattern with `reason: track_not_built`, never a crash.
+  T052's existing fixture test (`test/travis/a07/runs/a07-coverage.test.ts`) now passes.
+- `test/travis/a07/runs/a07-verify.test.ts` (T054, confirmed RED before the module existed, 5
+  tests): known-good fixture set passes with Tracks B/C `not_applicable`; one broken-report
+  fixture per condition fails that condition specifically.
+- `travis/runs/a07-verify.ts` (T055): the `agents.verify` check. Four conditions per spec.md's
+  independent test / tasks.md TZ05: (1) five-state sum == permit total (vacuous citation check
+  when resolved = 0); (2) BBB coverage with receipts — `not_applicable` this pass; (3) business
+  count == watermark — `not_applicable` this pass; (4) 25-property audit 25/25 + re-run
+  `rowsWritten: 0` + worked example traced. `not_applicable` never fails the run; only `fail`
+  does. Ran it for real against this run's actual report files — exit 0, conditions:
+  `PASS five_state_sum_matches_permit_total`, `N/A bbb_coverage_with_receipts`,
+  `N/A business_count_matches_watermark`, `PASS roof_age_25_sample_and_worked_example`.
+
+Full `pipeline/oracle-runtime` suite: 87 files, 1007 passed, 2 skipped, 0 failed — no more
+by-design-red files. `pipeline/local-stack` suite unaffected (not touched this round).
