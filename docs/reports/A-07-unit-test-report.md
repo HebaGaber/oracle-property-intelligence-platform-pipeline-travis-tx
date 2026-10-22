@@ -3,8 +3,8 @@ id: UT-A-07
 type: unit-test-report
 story: A-07
 branch: 007-enrich-reconcile
-commit: 450c8ef (tests added after the G7 pre-check's coverage findings are in the commit that follows)
-ci_run: "https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39860024821 (commit 450c8ef's parent 2cdb1dd: gitleaks, oracle-runtime, workspace, e2e-hosted all success). Coverage numbers below are local runs on the operator machine on 2026-10-23 (V8 provider, offline Vitest — the no-network setup file makes any real fetch fail)."
+commit: 0ceffa1
+ci_run: "https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39869733358 (commit 0ceffa1, the current HEAD: gitleaks, oracle-runtime, workspace, e2e-hosted all success, confirmed via the GitHub API). Coverage numbers below are local runs on the operator machine on 2026-10-23 (V8 provider, offline Vitest — the no-network setup file makes any real fetch fail)."
 created: 2026-10-23
 ---
 
@@ -21,7 +21,7 @@ All numbers were copied from local command output on 2026-10-23, on branch `007-
 | Suites / tests | runtime 87 files / 1021 tests · local-stack 25 files / 199 tests · query-core 18 files / 246 tests |
 | Passed / failed / skipped | runtime 1019 / 0 / 2 · local-stack 196 / 0 / 3 · query-core 241 / 0 / 5 |
 | grep-gates | `grep-gates: OK (5 gates)`, exit 0 |
-| Coverage, whole tree | runtime 86.41% stmts / 88.5% lines · local-stack 84.06% stmts / 85.41% lines · query-core 92.27% stmts / 93.6% lines — all clear NFR-09's 80% target |
+| Coverage, whole tree | runtime 86.55% stmts / 88.62% lines · local-stack 84.06% stmts / 85.41% lines · query-core 92.27% stmts / 93.6% lines — all clear NFR-09's 80% target |
 | Duration | runtime ≈7 s · local-stack ≈1.5 s · query-core ≈2 s |
 
 The 2 skipped runtime tests are pre-existing A-04 cases unrelated to this story (`GIS_ARTIFACT`-gated). The 3 skipped local-stack tests and 5 skipped query-core tests are likewise pre-existing, unrelated to A-07.

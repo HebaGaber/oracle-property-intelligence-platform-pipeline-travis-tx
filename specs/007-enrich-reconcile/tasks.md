@@ -183,7 +183,7 @@ description: "Task list for A-07 enrich and reconcile (merged story: tracks A-D)
 
 **Purpose**: Constitution I, XVI, XXII. The story is not done until these pass.
 
-- [x] TZ01 Run the reviewer agents (`oracle`, `donphan`, `porygon`) plus `/code-review medium`, read-only, one round (L5); record scores in `docs/reviews/CR-A-07.md` (each ≥ 75 or fixed/deferred)
+- [x] TZ01 Run the reviewer agents (`oracle`, `donphan`, `porygon`) plus `/code-review medium`, read-only, one round (L5); record scores in `docs/reviews/CR-A-07.md` (each ≥ 75 or fixed/deferred). **As actually run**, cost mode C6 overrode this to 2 reviewers + `/code-review low`: `oracle` did not run; `donphan` declined (scoped to published-Atlas-data queries only, not this unpublished pipeline work) and was substituted with a `general-purpose` subagent (90/100); `porygon` ran as itself (92/100); `/code-review low` ran, not `medium` (4 findings, all fixed or deferred) — see `docs/reviews/CR-A-07.md`'s "Review round composition" section
 - [x] TZ02 N/A (no file produced): pipeline-only story (`ui: false`), deploys nothing
 - [x] TZ03 N/A (no file produced): pipeline-only story (`ui: false`), deploys nothing
 - [x] TZ04 N/A (no file produced): pipeline-only story (`ui: false`), deploys nothing

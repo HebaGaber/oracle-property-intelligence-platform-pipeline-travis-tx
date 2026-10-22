@@ -5,7 +5,7 @@ feature: FEAT-A07
 story: A-07
 test_cases: testplans/A-07-test-cases.md
 runtime_url: "N/A: pipeline-only story"
-build: 3bc43a6e3d389bbd42ba88e390febc61dedd0bce
+build: 0ceffa1
 data_snapshot: "N/A: no manifest CID this run; local registry job travis-a07-identity-resolve-20261022185017 (digest d1d0a5a2…)"
 owner: HebaGaber             # QC Lead
 status: Draft                # Draft → Complete → Signed Off
@@ -28,10 +28,10 @@ Save as `docs/reports/A-07-test-report.md`. This is a pipeline-only story: nothi
 
 | Item | Value |
 | --- | --- |
-| Environment | N/A: pipeline-only story · build `3bc43a6e3d389bbd42ba88e390febc61dedd0bce` (branch `007-enrich-reconcile`) · 2026-10-23 |
+| Environment | N/A: pipeline-only story · build `0ceffa1` (branch `007-enrich-reconcile`) · 2026-10-23 |
 | Total TC executed | 24 (of 44; 20 are N/A, Tracks B/C not built) |
-| Passed / failed / blocked | 23 / 0 / 1 (TC-002, see note) |
-| Pass rate | 96% (23 of 24 executed; TC-002 passes on its documented fixture branch, see below) |
+| Passed / failed / blocked | 24 / 0 / 0 (TC-002 PASSes on its documented fixture branch — see its row — not a block) |
+| Pass rate | 100% (24 of 24 executed) |
 | Open Critical defects | 0 |
 | Real defects found this pass | 0 |
 | Unit test report | `docs/reports/A-07-unit-test-report.md` |
