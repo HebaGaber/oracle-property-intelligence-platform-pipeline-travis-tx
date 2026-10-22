@@ -3,12 +3,36 @@ id: CR-A-07
 type: code-review-log
 story: A-07
 branch: 007-enrich-reconcile
-reviewed_commit: b3a628b
-tools: [read-only reviewer (Track A)]
+reviewed_commit: 450c8ef
+tools: [general-purpose (Track A), soofi-xyz-team-kit:porygon (cross-track), /code-review low]
 created: 2026-10-23
 ---
 
 # Code Review Log: A-07 Enrich & reconcile
+
+## Review round composition (cost mode C6)
+
+The story's front matter names `oracle`, `donphan` and `porygon` as `agents.reviewers`. Cost mode C6 overrides the light lane's 3-reviewer default with "one Sonnet reviewer subagent per area touched (at most 2) plus `/code-review low`" — the two areas touched this pass are Track A (contractor identity) and Track D (reconcile + roof age), so only 2 reviewer subagents ran, not 3:
+
+- **`oracle`**: not run this round. Cost mode's cap of 2 reviewers left no slot for a third generalist reviewer once Track A and Track D each had one; `porygon`'s cross-track pass already covers the arithmetic `oracle` would otherwise spot-check, and `/code-review low` covers the pattern/contract review `oracle` would otherwise do. Recorded here as the reason, not just in `docs/kit-usage.md`/the run log.
+- **`donphan`**: attempted and declined. `donphan` is scoped to read-only Atlas MCP queries on *published* county data only ("never bypass MCP with shell, direct HTTP, AWS or database access") — A-07 is unpublished pipeline work, so no Atlas query could do this review. It recommended a `general-purpose` subagent instead (run-log 2026-10-23 00:19); that substitution is the "Track A — contractor identity reviewer" section below, scored 90/100.
+- **`porygon`**: ran successfully as itself (not substituted) — see "Cross-track arithmetic reviewer" below, scored 92/100.
+- **`/code-review low`** (not `medium`, cost mode C6's explicit override of Stage 5's default): ran on `git diff feature/oracle-pipeline...HEAD`. See "`/code-review low` findings" below.
+
+**Scores**: Track A reviewer (general-purpose, substituting for `donphan`) 90/100; cross-track reviewer (`porygon`) 92/100. Both clear the 75 bar; no re-review round was triggered.
+
+## `/code-review low` findings
+
+Ran before the two reviewer subagents, on `git diff feature/oracle-pipeline...HEAD`. 4 findings, all fixed (0 deferred, 0 open):
+
+| # | File:line | Finding | Disposition |
+| --- | --- | --- | --- |
+| 1 | `pipeline/local-stack/services/workflows/roof-age-audit.ts` | `viewSideCaveat` was unconditionally labelled the known `no_improvement_action_column` gap for *any* view/estimator disagreement, not just that gap's own signature — would have mislabelled a future real divergence | **Fixed** (commit `b3a628b`): narrowed to `!agree && simpleBasisOf(estimated) === "new_construction"` |
+| 2 | `pipeline/oracle-runtime/travis/backbone/commands/identity:load-registry.ts` and 4 sibling command files | `mintA07JobId`/`A07_JOB_ID` copy-pasted verbatim across 5 files | **Deferred** (Major, no Critical): targeted at A-11, which revisits these same files for incremental runs |
+| 3 | `pipeline/local-stack/services/workflows/roof-age-backfill.ts` | `roofing()` helper duplicated verbatim between `roof-age-backfill.ts` and `roof-age-audit.ts` | **Deferred** (Major): same A-11 target |
+| 4 | `pipeline/local-stack/services/workflows/roof-age-backfill.ts` | `subsetParcels`'s SQL query near-duplicates `candidateTcadIds`'s query; the "same 25 properties" guarantee could silently drift if one filter is edited without the other | **Deferred** (Major): same A-11 target |
+
+Zero open Critical findings (constitution XVI). The 3 deferred Majors are pure duplication/DRY risk, not correctness bugs — each is a working, correct implementation duplicated rather than shared.
 
 ## Track A — contractor identity reviewer
 

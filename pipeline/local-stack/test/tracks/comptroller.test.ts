@@ -162,4 +162,39 @@ describe("identity report section", () => {
     expect(result.five_state_sum_matches_permit_total).toBe(true);
     expect(result.derivation).toBe("aggregate_match");
   });
+
+  it("section.build loads the latest registry load and the live five-state counts from Postgres", async () => {
+    const { tx } = fakeTx((text) => {
+      if (text.startsWith("SELECT row_count, watermark, snapshot_digest, source_url")) {
+        return [{ row_count: 342_333, watermark: "2026-10-17T10:35:22.788Z", snapshot_digest: "b".repeat(64), source_url: "https://data.texas.gov/resource/9cir-efmm.json" }];
+      }
+      if (text.startsWith("SELECT state, count(*)")) {
+        return [
+          { state: "candidate", n: 311 },
+          { state: "conflicting", n: 78 },
+          { state: "unresolved", n: 21_695 },
+        ];
+      }
+      if (text.startsWith("SELECT count(*)::int AS n FROM contractor_resolution_current")) {
+        return [{ n: 22_084 }];
+      }
+      return [];
+    });
+    const result = await section.build(tx as unknown as postgres.Sql);
+    expect(result).toMatchObject({
+      registry_row_count: 342_333,
+      five_state_totals: { resolved: 0, candidate: 311, ambiguous: 0, conflicting: 78, unresolved: 21_695 },
+      five_state_sum: 22_084,
+      permit_total: 22_084,
+      five_state_sum_matches_permit_total: true,
+      limitation: null,
+    });
+  });
+
+  it("section.build reports 'registry not loaded' when no registry load row exists yet", async () => {
+    const { tx } = fakeTx(() => []);
+    const result = await section.build(tx as unknown as postgres.Sql);
+    expect(result.registry_loaded).toBe(false);
+    expect(result.limitation).toBe("registry not loaded");
+  });
 });

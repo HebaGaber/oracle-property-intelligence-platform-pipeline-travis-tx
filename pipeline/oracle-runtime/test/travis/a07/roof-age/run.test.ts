@@ -3,9 +3,33 @@
 // vendored kit estimator; these tests prove it wires inputs correctly and adds the one gate the
 // kit estimator itself does not express: an implausible TCAD built year.
 import { describe, expect, it } from "vitest";
-import { estimateOne, type RoofAgeRunRecord } from "../../../../travis/roof-age/run.js";
+import {
+  estimateOne,
+  simpleBasisOf,
+  type RoofAgeRunRecord,
+  type RoofAgeRunRow,
+} from "../../../../travis/roof-age/run.js";
 
 const AS_OF = "2026-10-22T18:00:00.000Z";
+
+function runRow(
+  anchor: RoofAgeRunRow["estimate"]["anchor"],
+  workClassification: RoofAgeRunRow["estimate"]["workClassification"],
+): RoofAgeRunRow {
+  return {
+    pID: "test",
+    as_of: "2026-10-22",
+    roof_date: null,
+    profile: { version: "test", sha256: "0".repeat(64) },
+    builtYearReason: null,
+    estimate: {
+      anchor,
+      workClassification,
+      confidence: "none",
+      estimatedAgeYears: null,
+    } as unknown as RoofAgeRunRow["estimate"],
+  };
+}
 
 describe("estimateOne", () => {
   it("an open permit does not reset roof age: the completed replacement anchors, not the open one", () => {
@@ -122,5 +146,41 @@ describe("estimateOne", () => {
     expect(row.estimate.confidence).toBe("none");
     expect(row.roof_date).toBeNull();
     expect(row.builtYearReason).toBeNull();
+  });
+});
+
+describe("simpleBasisOf", () => {
+  it("maps a null anchor to unknown", () => {
+    expect(simpleBasisOf(runRow(null, null))).toBe("unknown");
+  });
+
+  it("maps a property_built_year anchor to built_year, regardless of workClassification", () => {
+    expect(
+      simpleBasisOf(
+        runRow({ type: "property_built_year", year: 1975 } as never, "needs_review" as never),
+      ),
+    ).toBe("built_year");
+  });
+
+  it("maps a permit anchor with primary_roof_new_construction to new_construction", () => {
+    expect(
+      simpleBasisOf(
+        runRow(
+          { type: "permit_terminal_date", date: "2015-04-15" } as never,
+          "primary_roof_new_construction" as never,
+        ),
+      ),
+    ).toBe("new_construction");
+  });
+
+  it("maps a permit anchor with any other workClassification to permit", () => {
+    expect(
+      simpleBasisOf(
+        runRow(
+          { type: "permit_terminal_date", date: "2015-04-15" } as never,
+          "primary_roof_replacement" as never,
+        ),
+      ),
+    ).toBe("permit");
   });
 });

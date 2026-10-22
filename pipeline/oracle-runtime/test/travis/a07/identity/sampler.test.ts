@@ -6,8 +6,13 @@
 // that every non-empty ledger state is represented in the sample when the source ledger has
 // enough rows of each state.
 import { describe, expect, it } from "vitest";
-import { sampleContractorLedger } from "../../../../travis/identity/sampler.js";
-import type { LedgerRow } from "../../../../travis/identity/resolver.js";
+import {
+  buildEvidenceSkeleton,
+  buildEvidenceSkeletonRow,
+  comptrollerRecordUrl,
+  sampleContractorLedger,
+} from "../../../../travis/identity/sampler.js";
+import type { LedgerRow, RegistryRecord } from "../../../../travis/identity/resolver.js";
 
 const DIGEST = "d".repeat(64);
 const EFFECTIVE_ON = "2026-10-22T00:00:00.000Z";
@@ -70,5 +75,72 @@ describe("sampleContractorLedger (NFR-001)", () => {
     const result = sampleContractorLedger(ledger, { seed: 1 });
     expect(result.sample.every((r: LedgerRow) => r.state !== "resolved")).toBe(true);
     expect(result.sample.length).toBe(Math.min(25, ledger.length));
+  });
+});
+
+describe("comptrollerRecordUrl", () => {
+  it("builds the per-entity GET for a taxpayer number, never the bulk dataset landing page", () => {
+    expect(comptrollerRecordUrl("32000000009")).toBe(
+      "https://data.texas.gov/resource/9cir-efmm.json?taxpayer_number=32000000009",
+    );
+  });
+
+  it("URL-encodes a taxpayer number with special characters", () => {
+    expect(comptrollerRecordUrl("320 000/009")).toBe(
+      "https://data.texas.gov/resource/9cir-efmm.json?taxpayer_number=320%20000%2F009",
+    );
+  });
+});
+
+describe("buildEvidenceSkeletonRow", () => {
+  const registry = new Map<string, RegistryRecord>([
+    [
+      "32000000009",
+      { taxpayerNumber: "32000000009", legalName: "SAMPLE CO", sosStatusCode: "active" },
+    ],
+  ]);
+
+  it("resolves a matched taxpayer number to its registry record, with blank verdict/unsure for the human reviewer", () => {
+    const skeleton = buildEvidenceSkeletonRow(row("candidate", "candidate-0"), registry);
+    expect(skeleton.permitKey).toBe("candidate-0");
+    expect(skeleton.printedName).toBe("Sample Co.");
+    expect(skeleton.state).toBe("candidate");
+    expect(skeleton.matchedCompanies).toEqual([
+      {
+        taxpayerNumber: "32000000009",
+        legalName: "SAMPLE CO",
+        sosStatusCode: "active",
+        sourceUrl: "https://data.texas.gov/resource/9cir-efmm.json?taxpayer_number=32000000009",
+      },
+    ]);
+    expect(skeleton.verdict).toBe("");
+    expect(skeleton.unsure).toBe(false);
+  });
+
+  it("falls back to placeholder legal name/status when the matched id isn't in the loaded registry", () => {
+    const skeleton = buildEvidenceSkeletonRow(row("candidate", "candidate-1"), new Map());
+    expect(skeleton.matchedCompanies).toEqual([
+      {
+        taxpayerNumber: "32000000009",
+        legalName: "(not found in the loaded registry)",
+        sosStatusCode: "unknown",
+        sourceUrl: "https://data.texas.gov/resource/9cir-efmm.json?taxpayer_number=32000000009",
+      },
+    ]);
+  });
+
+  it("an unresolved row with no matched ids gets an empty matchedCompanies list", () => {
+    const skeleton = buildEvidenceSkeletonRow(row("unresolved", "unresolved-0"), registry);
+    expect(skeleton.matchedCompanies).toEqual([]);
+    expect(skeleton.reasonCode).toBe("contractor_not_printed");
+  });
+});
+
+describe("buildEvidenceSkeleton", () => {
+  it("maps one evidence-skeleton row per sampled ledger row, in order", () => {
+    const sample = [row("candidate", "c-0"), row("conflicting", "k-0")];
+    const skeleton = buildEvidenceSkeleton(sample, new Map());
+    expect(skeleton.map((r) => r.permitKey)).toEqual(["c-0", "k-0"]);
+    expect(skeleton.map((r) => r.state)).toEqual(["candidate", "conflicting"]);
   });
 });
