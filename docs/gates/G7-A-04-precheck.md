@@ -1,15 +1,15 @@
 ---
 gate: G7
 artifact: stories/A-04-property-backbone.md
-artifact_version: "run 1; branch 004-property-backbone @ 277ed13 (pushed; origin/004-property-backbone = 277ed13); test report build e48ec93"
+artifact_version: "run 2; branch 004-property-backbone @ 2cfc5b1; last completed CI on 277ed13"
 run_date: 2026-10-22
 tool: Claude
-verdict: FAIL
+verdict: PASS
 ---
 
-# G7 pre-check (run 1): A-04 Load the county backbone (TCAD properties and owners, coordinates, permits from every jurisdiction)
+# G7 pre-check (run 2): A-04 Load the county backbone (TCAD properties and owners, coordinates, permits from every jurisdiction)
 
-This is an AI completeness pre-check. It reports gaps only and does not approve. **Decision: pending, for the PO.**
+This is an AI completeness pre-check. It reports gaps only and does not approve. **Decision: pending, for the PO (D-20).**
 
 ## Recorded exceptions (walkthrough section 1; recorded once here)
 
@@ -17,35 +17,37 @@ This is an AI completeness pre-check. It reports gaps only and does not approve.
 - **PO-approved, in `docs/decisions/`:** `DEC-A-04-permit-match-rate` (AC-13/NFR-005 97% became a measured 88.36%, every unmatched permit reasoned) and `DEC-A-04-coverage-exception` (AC-8/NFR-003 99% of all R became 99% of ordinary land parcels, measured 99.63%, condo-coded reported separately). Also `DEC-A-04-gis-runner`.
 - **Not an exception:** G7 C-02 (CI green on the pushed branch).
 
-**Inputs read:** `specs/004-property-backbone/{tasks.md,run-log.md}`, `docs/reports/A-04-unit-test-report.md`, `docs/reports/A-04-test-report.md`, `docs/reviews/CR-A-04.md`, `docs/defects/ERR-21.md` to `ERR-23.md`, `docs/evidence/A-04.md`, `docs/traceability.md`, `docs/kit-usage.md`, `stories/A-04-property-backbone.md`, `git log feature/oracle-pipeline..HEAD` (54 commits), `gitleaks git` over that range, and `gh api` on run 39783309484 of the fork.
+**Inputs read:** `specs/004-property-backbone/tasks.md`, `docs/reports/A-04-unit-test-report.md` (read, tests not re-run), `docs/reports/A-04-test-report.md`, `docs/reviews/CR-A-04.md`, `docs/defects/ERR-21.md` to `ERR-23.md`, `docs/evidence/A-04.md`, `docs/traceability.md`, `docs/kit-usage.md`, `stories/A-04-property-backbone.md`, `git log feature/oracle-pipeline..HEAD` (56 commits), and `gh api` on the fork's runs for `004-property-backbone`.
 
 | Check | Criterion | Result | Finding |
 | --- | --- | --- | --- |
-| C-01 | Tasks done | PASS (exception) | `tasks.md` has 4 unticked boxes: T088 (`[ ] T088 [lead] Merge ... then /developmentsupport-g7-precheck A-04`, which is this run) and TZ02, TZ03, TZ04 (each written "N/A: pipeline-only story, deploys nothing"). TZ02-TZ04 are the recorded exception. Every other task is ticked, including converge T089-T092. Tick T088 once this report is written, and TZ02-TZ04 as "N/A (accepted)" so the file shows 0 open. |
-| C-02 | Unit tests | **FAIL** | **CI is green:** run [39783309484](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39783309484) on `277ed13` (head_sha verified = branch HEAD) is `completed / success`; workspace, oracle-runtime, gitleaks and e2e-hosted are all `success`, including the "Playwright on the hosted URL" step, so the relaxed A-03 TC-061 (commit 121878e) now passes. **Coverage fails:** the unit report shows oracle-runtime new code at 91-96% (tcad 93.73, gis 93.10, permits 95.99, backbone 91.30), but `pipeline/local-stack` is **75.69% statements** (workflows 70.28, loader 75.65, `app.ts` 65.11; `austin-permits.ts` and `gis-import.ts` are not imported by any test, so the true figure is lower). It says "stays below the 80% target" and is not a PO exception. Non-blocking: the report's `ci_run` still says "Not a CI run" and its `commit` is `79e21d0`. |
-| C-03 | Code review | PASS | CR-A-04: oracle **80/100** and donphan **80/100** (both `agents.reviewers`, both at least 75), `/code-review` medium run (10 findings). The 5 oracle Majors (OR-M1 to OR-M5) and the donphan Majors are Fixed in `84672ce`. "Open Critical findings: 0". Non-blocking: reviewers scored `4a4910c`, and no delta re-score exists after the fixes. |
-| C-04 | TC executed on hosted URL | PASS (exception) | Pipeline-only exception: no hosted runtime. `A-04-test-report.md` is `status: Final`: 52 cases, **PASS 43, PASS-WITH-NOTE 9, FAIL 0**, run from a terminal on the local stack at `e48ec93`. The 9 notes are stated per row. It shows live once A-11/A-13 publish and read. Non-blocking: the build is `e48ec93`, HEAD is `277ed13` (later commits are docs, evidence and tasks, plus fixes covered by the unit report). |
-| C-05 | Defects closed | **FAIL** | ERR-21 (Low), ERR-22 (High) and ERR-23 (Medium) are `status: Re-tested (2026-10-22: ... passes ...)`, not `Closed`. The re-tests pass (TC-NF-03, TC-052, TC-004). Fix: set `status: Closed`, add `closed_date: 2026-10-22` and tick "Closed" in each file. A-03's run 1 failed on exactly this. |
-| C-06 | No open Critical | PASS | No Critical defect (Low, High, Medium, all re-tested PASS); CR-A-04 has 0 open Critical findings. |
-| C-07 | Evidence | **FAIL** | `docs/evidence/A-04.md` exists with the run report, reconciliation (493,246 loaded), coverage both ways (99.63% ordinary parcels, 88.26% all R), per-jurisdiction counts, receipts, the 88.36% permit match with reasons, and the CI table. The screenshot is an accepted exception (no UI). **Gaps:** (1) line 317 `TODO-AFTER-PUSH(final CI run id and result)` is **resolvable now**: the branch is pushed and the answer is run 39783309484 on `277ed13`, 4/4 jobs success. Replace it, and change the line 16 banner "pending the push and the merge" to "pending the merge". (2) Line 10 `merge_commit: "TODO-AFTER-MERGE(...)"` is legitimately post-merge (see below). |
-| C-08 | Traceability | PASS | `docs/traceability.md` rows for AC-3, AC-4, AC-5, AC-6, AC-10 and the BN-A rows (lines 96-98) cite spec FRs, TC ids and evidence. `docs/kit-usage.md` A-04 row names the oracle builder (4 task groups, 7 fixer passes), skills, and the review scores (oracle 80, donphan 80). The gate log has G4, G5 and G6 rows; the G7 row (line 125) says "pending ... not yet run" and must be updated with this report and the PO decision. |
-| C-09 | Commits | PASS | All 54 commits in `feature/oracle-pipeline..HEAD` start with `A-04`. Secrets: CI `gitleaks` job is green on `277ed13`. A local `gitleaks git` over the range reports 6 `generic-api-key` hits (commits `f00d9cd`, `666e0c4`: the public dataset id `austin-3syk-w9eu`, a SHA-256 constant, `SYNTH_API_TOKEN: "tok_synthetic_..."`, test fixtures) with no matching fingerprint in `.gitleaksignore` (its A-04 entries use pre-rewrite shas). These are false positives, not secrets. Optional: add the 6 fingerprints with `# reason:` lines. |
-| C-10 | Story status | PASS | `status: Ready`, `gate: G4`, `qc_testability_signoff: false`. Ready to set after the PO approves: `status: Done`, `gate: G7`, and `qc_testability_signoff: true` (G6 is approved in the gate log; A-03 had `true`). Not set yet, correctly. |
+| C-01 | Tasks done | PASS | `tasks.md`: 0 unticked boxes (TZ02-TZ04 ticked as N/A, recorded exception). |
+| C-02 | Unit tests | PASS | **CI:** run [39783309484](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39783309484) on `277ed13` is `completed / success`; workspace, oracle-runtime, gitleaks, e2e-hosted all success. A new run 39787546180 on HEAD `2cfc5b1` is `queued` (not started). The diff `277ed13..2cfc5b1` is 12 files, +894/-17, only tests (`pipeline/local-stack/test`, 4 files) and docs (defects, evidence, gates, reports, specs). **Coverage:** unit report shows local-stack 80.91% statements / 82.47% lines (was 75.69%), runtime new code 91-96%; both at least 80%. Note: the report says local-stack 116 passed / 0 / 2 skipped (runtime 967/0/2, query-core 237/0/5), not the "154 / 3" quoted in the request; the figure is read from the report and not re-run. Non-blocking: `austin-permits.ts` and `gis-import.ts` are still not imported by any test (report line 70). |
+| C-03 | Code review | PASS | CR-A-04: oracle 80/100 and donphan 80/100 (both at least 75), `/code-review medium`, 0 open Critical. Non-blocking: no delta re-score after the fixes. |
+| C-04 | TC executed on hosted URL | PASS (exception) | Pipeline-only exception. Test report `Final`: 52 cases, PASS 43, PASS-WITH-NOTE 9, FAIL 0, local terminal at `e48ec93`; no case on a hosted URL by design. |
+| C-05 | Defects closed | PASS | ERR-21, ERR-22, ERR-23 front matter `status: Closed`, `closed_date: 2026-10-22`; re-tests PASS. Non-blocking: the body "Status" rows still read "Re-tested (PASS); closure by the QC Lead at G7" (ERR-22, ERR-23) and an unticked "Closed" box (ERR-21). |
+| C-06 | No open Critical | PASS | No Critical defect; CR-A-04 has 0 open Critical. |
+| C-07 | Evidence | PASS (exception) | `docs/evidence/A-04.md`: 0 `TODO-AFTER-PUSH`; run report, reconciliation, coverage both ways, per-jurisdiction counts, receipts, CI table. Only `TODO-AFTER-MERGE(merge commit sha ...)` remains, by design. Screenshot is the accepted exception. |
+| C-08 | Traceability | PASS | Traceability rows AC-3/4/5/6/10 and BN-A (lines 96-98) and the kit-usage A-04 row are complete. The gate log G7 row (line 125) is `pending`, which is correct before the PO decides. Non-blocking: BN-A rows say "@ `40fa2e2`" (HEAD `2cfc5b1`) and "numbers pending". |
+| C-09 | Commits | PASS | All 56 commits in `feature/oracle-pipeline..HEAD` start with `A-04: ` (the search for a non-`A-04: ` subject returned none; the two merge commits also start `A-04:`). CI gitleaks job green on `277ed13`. |
+| C-10 | Story status | PASS | `status: Ready`, `gate: G4`, `qc_testability_signoff: false`: correct before approval. On approval set `Done` / `G7` and `qc_testability_signoff: true`. |
 
-**Verdict: FAIL** (3 FAILs: C-02, C-05, C-07). All three are small: one needs a PO decision or tests, two are file edits.
+**Verdict: PASS** (0 FAILs, 10/10), decision pending the PO.
 
-## Fix list (ordered by impact on the assessment score)
+## Fix list (nothing blocking)
 
-1. **C-02 coverage:** either (a) add tests for `local-stack/services/workflows/austin-permits.ts`, `gis-import.ts`, `app.ts` and the loader error paths until `pipeline/local-stack` is at least 80%, then update the unit report; or (b) the PO records a DEC (for example `DEC-A-04-local-stack-coverage`: Restate/bootstrap glue stays at 75.69%, exercised live by the test report) and the unit report cites it. Also set the report's `ci_run` to 39783309484 and `commit` to the HEAD sha.
-2. **C-05:** set ERR-21, ERR-22 and ERR-23 to `status: Closed` with `closed_date: 2026-10-22`.
-3. **C-07:** replace `TODO-AFTER-PUSH(final CI run id and result)` (evidence line 317) with run 39783309484 on `277ed13` (workspace, oracle-runtime, gitleaks, e2e-hosted all success). Fix the line 16 banner.
-4. Tick T088 and TZ02-TZ04 (N/A) in `tasks.md`; update the G7 row in `docs/traceability.md` (line 125).
-5. Optional: add the 6 gitleaks fingerprints with reasons; note in CR-A-04 that the Majors were fixed after `4a4910c`.
+1. Re-check run 39787546180 on `2cfc5b1` (queued) once it finishes. If it fails, open an ERR and re-run this pre-check.
+2. Optional tidy: ERR-21/22/23 body Status rows; BN-A rows' sha and "numbers pending"; delta re-score in CR-A-04.
 
 ## Open items that are not defects
 
-- **PO approval** of G7 (this check never approves).
-- **`TODO-AFTER-MERGE(merge commit sha after G7 merge --no-ff)`** in the evidence front matter: fill in after `git merge --no-ff`.
-- On approval: set the story to `Done` / `G7`, tick the G7 checklist, record decision and date, add the gate log row, merge `--no-ff`, run `bash scripts/progress.sh`. Re-run this pre-check after fixes 1 to 3; if it passes, the only open items are the PO approval and the post-merge sha.
+- PO approval of G7 (D-20).
+- `TODO-AFTER-MERGE(merge commit sha)` in the evidence front matter, filled after `git merge --no-ff`.
+- The 2cfc5b1 CI result.
+- On approval: set story `Done` / `G7` and `qc_testability_signoff: true`, tick the G7 checklist, update the gate log row, merge `--no-ff`, run `bash scripts/progress.sh`.
 
-**Decision:** ☐ Approved ☐ Returned · pending (PO)
+**Decision:** pending
+
+## Run 1 (summary)
+
+Run 1 (2026-10-22, branch at `277ed13`) was FAIL with 3 FAILs: C-02 (local-stack coverage 75.69%), C-05 (ERR-21/22/23 `Re-tested`, not `Closed`) and C-07 (`TODO-AFTER-PUSH` in the evidence). Run 2 checks each fix against the files: coverage 80.91%, the three defects Closed, and no `TODO-AFTER-PUSH` left.

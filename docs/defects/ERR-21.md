@@ -78,4 +78,4 @@ Fix the test plan, not the code: step 3 expected `colo=<code>` plus `loc=US` (or
 | Root cause | Test-plan wording written before `source-client.ts` gained its policy table and before the runner logged `colo=` |
 | Fix        |                                                                                                                  |
 | Re-test    | A-04-TC-NF-03                                                                                                    |
-| Status     | ☐ Closed ☐ Reopened, reason:                                                                                     |
+| Status     | ☒ Closed (2026-10-22) ☐ Reopened |

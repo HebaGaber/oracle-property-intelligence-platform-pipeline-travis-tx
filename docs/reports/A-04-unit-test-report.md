@@ -20,8 +20,8 @@ Coverage: neither package configures a coverage block in `vitest.config.ts`. The
 | Command (local stack) | `cd pipeline/local-stack && npx vitest run --coverage` |
 | Command (query-core) | `cd packages/query-core && npx vitest run` |
 | Command (gates) | `bash scripts/grep-gates.sh` |
-| Suites / tests | runtime 78 files / 969 tests · local-stack 118 tests · query-core 17 files / 242 tests |
-| Passed / failed / skipped | runtime 967 / 0 / 2 · local-stack 116 / 0 / 2 (real-Postgres integration test enabled) · query-core 237 / 0 / 5 |
+| Suites / tests | runtime 78 files / 969 tests · local-stack 20 files / 157 tests · query-core 17 files / 242 tests |
+| Passed / failed / skipped | runtime 967 / 0 / 2 · local-stack 154 / 0 / 3 (no database needed; the real-Postgres integration test passed separately) · query-core 237 / 0 / 5 |
 | grep-gates | `grep-gates: OK (5 gates ...)`, exit 0 |
 | Coverage of new A-04 code | runtime: tcad 93.73% stmts, gis 93.10%, permits 95.99%, backbone 91.30% (see below); socrata-pages.ts 93.68%; local-stack **80.91%** statements / 82.47% lines (tracks 88.16%, loader 82.6%, report 97%, configured-db 93.3%): meets the 80% target (was 72.4% in the first pass and 75.69% with the real-Postgres test; 39 behaviour tests added on 2026-10-22) |
 | Duration (first pass at 40fa2e2) | runtime 15.10 s · local-stack 2.01 s · query-core 2.61 s |

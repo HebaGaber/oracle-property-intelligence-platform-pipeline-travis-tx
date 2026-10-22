@@ -79,4 +79,4 @@ TC-052 step 1: last line `job_id=travis-a04-permits-incremental-…`, exit 0; th
 | Root cause | `buildUpdatedHistogramQuery` used `date_trunc_ymdh(:updated_at)`, a function Socrata does not have; the fake Austin server in the Vitest tests accepted any query, so the offline suite could not catch it |
 | Fix        | Commit `be805f8`: buckets by day plus hour of day, `date_trunc_ymd(to_floating_timestamp(:updated_at,'UTC'))` and `date_extract_hh(...)`, verified live with 3 requests (HTTP 400 for `date_trunc_ymdh`; HTTP 200 with two real buckets of the 2026-10-21 re-stamp: hour 13 = 1,420,983 rows, hour 14 = 960,243 rows); the strict fake Austin server now rejects unknown functions |
 | Re-test    | A-04-TC-052, 2026-10-22: real incremental run, job `travis-a04-permits-incremental-20261022122922`, status complete, pages 1, rows 0, written 0, watermark 2026-10-21T14:42:23.154Z, re-stamp detected false (no row newer than the watermark). Fix and first live verification: run-log 15:32 row. |
-| Status     | Re-tested (PASS); closure by the QC Lead at G7                    |
+| Status     | Closed (2026-10-22) after the passing re-test |
