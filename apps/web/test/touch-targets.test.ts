@@ -78,10 +78,13 @@ describe("D4: Explore checkboxes are 48 px targets with the token font", () => {
 });
 
 describe("D5: Property drawer source links and name", () => {
-  it("the provenance link is a 48 px high flex box", () => {
+  it("the provenance link is a 48 px target that does not grow its line (ERR-47)", () => {
+    // Inline with block padding: the box is at least 48 px high (16 + 16 + one 16 px line) but the
+    // line box keeps the text height, so a 48 px target no longer pushes the CID line down.
     const body = ruleBody(src("components/Provenance.module.css"), "link");
-    expect(has(body, "min-height"), body).toBe(true);
-    expect(body).toMatch(/display:\s*inline-flex/);
+    expect(body, body).toMatch(/(^|[;\s])display:\s*inline\s*;/);
+    expect(body, body).toMatch(/(^|[;\s])padding-block:\s*var\(--space-4\)\s*;/);
+    expect(body, body).not.toMatch(/min-height/);
   });
   it("the drawer dialog is named by its heading at every width", () => {
     const tsx = src("routes/PropertyDrawer.tsx");
@@ -126,5 +129,24 @@ describe("N3: Help · MCP snippet wrapper can shrink (smeargle run 3, build 015f
     expect(src("routes/HelpMcp.tsx")).toMatch(
       /<div key=\{snippet\.id\} className=\{styles\.snippetBox\}>/,
     );
+  });
+});
+
+describe("N4: the first permit provenance line stays inside 390 x 844 (ERR-47, A-03-TC-NF-03, build 0e9be08)", () => {
+  // The 48 px source link (D5) and copy button (D3) are atomic boxes: each made its line 48 px high,
+  // so the provenance text grew from ~80 to 144 px and the first [data-cid] ended at y 860 > 844.
+  // Inside the provenance line the CID box takes a -16 px block margin (the 48 px button still
+  // paints and hits at 48; the line box is 16 px), and the link pads instead of growing.
+  const css = src("components/Provenance.module.css").replace(/\/\*[\s\S]*?\*\//g, "");
+  const cid = /\.text\s+\[data-cid\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+  it("the CID box inside .text has margin-block calc(var(--space-4) * -1)", () => {
+    expect(cid).toMatch(/margin-block:\s*calc\(var\(--space-4\)\s*\*\s*-1\)\s*;/);
+  });
+  it("the copy button itself is still a fixed 48 x 48 box", () => {
+    const body = ruleBody(src("components/CidDisplay.module.css"), "copy");
+    for (const prop of ["width", "min-width", "height", "min-height"]) {
+      expect(has(body, prop), `${prop}: ${body}`).toBe(true);
+    }
+    expect(body).toMatch(/flex:\s*none/);
   });
 });

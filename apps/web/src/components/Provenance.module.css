@@ -22,10 +22,17 @@
   min-width: 0;
 }
 
+/* ERR-47: the source link is a 48 px target (D5) made of block padding on an inline box, so the
+   line keeps the 16 px text height (an inline-flex min-height box made its line 48 px high). */
 .link {
-  display: inline-flex;
-  align-items: center;
-  box-sizing: border-box;
-  min-height: var(--space-9);
+  display: inline;
+  padding-block: var(--space-4);
   color: var(--md-sys-color-primary);
+}
+
+/* ERR-47: the 48 px copy button (D3) sits in the text flow; a -16 px block margin on the CID box
+   keeps its line at 16 px while the button still paints and takes taps at 48 x 48, so the first
+   provenance line of a permit card stays inside the 390 x 844 viewport (A-03-TC-NF-03). */
+.text [data-cid] {
+  margin-block: calc(var(--space-4) * -1);
 }
