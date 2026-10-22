@@ -28,8 +28,14 @@ import {
   type BackboneDeps,
   type BackboneResult,
   type Resolution,
+  type RunProgress,
   type TrackOp,
 } from "../../../oracle-runtime/travis/tcad/workflow.js";
+import {
+  BATCH_PAUSE_RANGE,
+  CHUNK_SIZE_RANGE,
+  WINDOW_RANGE,
+} from "../../../oracle-runtime/travis/backbone/batch-defaults.js";
 import { RunDataError } from "../../../oracle-runtime/travis/backbone/errors.js";
 import { LOADER_KEY, asTerminal, failRunOnTerminal, lazyQueryDb, type createLoader } from "../loader.js";
 import { TCAD_CHUNK, type createService as createChunk } from "./tcad-chunk.js";
@@ -44,6 +50,9 @@ const RunRequest = z.object({
   mode: z.enum(["pilot", "full"]),
   asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   seedPids: z.array(z.string().regex(/^[1-9][0-9]*$/)).optional(),
+  chunkSize: z.number().int().min(CHUNK_SIZE_RANGE.min).max(CHUNK_SIZE_RANGE.max).optional(),
+  window: z.number().int().min(WINDOW_RANGE.min).max(WINDOW_RANGE.max).optional(),
+  batchPauseMs: z.number().int().min(BATCH_PAUSE_RANGE.min).max(BATCH_PAUSE_RANGE.max).optional(),
 });
 const ResolveRequest = z.object({ attempt: z.number().int().nonnegative(), action: z.enum(["download", "abort"]) });
 
@@ -54,6 +63,24 @@ interface RunStatus {
   loaded?: number;
   /** False when the roll is not clean (the CLI exits 1 although the status is `complete`). */
   clean?: boolean;
+  /** Counts only: chunks done / started / total, records loaded. */
+  progress?: RunProgress;
+}
+
+/** Health probe: the Query DB answers `select 1` within `timeoutMs`. Never throws. */
+export async function queryDbHealthy(sql: () => postgres.Sql, timeoutMs = 5_000): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    const probe = Promise.resolve(sql()`select 1 as ok`).then(() => true);
+    const timeout = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+    });
+    return await Promise.race([probe, timeout]);
+  } catch {
+    return false;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 export { asTerminal };
@@ -207,10 +234,22 @@ export function createService(restate: typeof Restate) {
     // makes a repeated or re-run status op a new Loader merge (CR-1); deterministic on replay
     const nonce = ctx.rand.uuidv4();
     ctx.set<RunStatus>("status", { status: "running" });
+    let progress: RunProgress | undefined;
     const deps: BackboneDeps = {
       step: (name, fn) => step(name, fn) as never,
+      // journaled durable sleeps (a replay does not wait again)
+      sleep: async (ms, name) => {
+        await ctx.sleep(ms, name);
+      },
+      health: () => queryDbHealthy(queryDb),
+      progress: (p) => {
+        progress = p;
+        ctx.set<RunStatus>("status", { status: "running", progress: p });
+      },
       merge: async (op: TrackOp, seq: number) => {
-        if (op.kind === "run") ctx.set<RunStatus>("status", { status: op.status });
+        if (op.kind === "run") {
+          ctx.set<RunStatus>("status", { status: op.status, ...(progress ? { progress } : {}) });
+        }
         const out = await loader.merge({ track: "tcad", input: loaderInput(req.jobId, op, { seq, nonce }) });
         return { rowsWritten: out.rowsWritten };
       },
@@ -235,6 +274,9 @@ export function createService(restate: typeof Restate) {
         receipt: src.receipt,
         runDir: runDirFor(req.jobId),
         ...(req.seedPids ? { seedPids: req.seedPids } : {}),
+        ...(req.chunkSize !== undefined ? { chunkSize: req.chunkSize } : {}),
+        ...(req.window !== undefined ? { window: req.window } : {}),
+        ...(req.batchPauseMs !== undefined ? { batchPauseMs: req.batchPauseMs } : {}),
         ...(cids ? { cids } : {}),
       },
       deps,
@@ -244,6 +286,7 @@ export function createService(restate: typeof Restate) {
       records: result.summary.records,
       loaded: result.summary.loaded,
       clean: result.clean,
+      ...(progress ? { progress } : {}),
     });
     return result;
   };

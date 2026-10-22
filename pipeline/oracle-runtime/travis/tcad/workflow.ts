@@ -16,6 +16,11 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import {
+  DEFAULT_BATCH_PAUSE_MS,
+  DEFAULT_CHUNK_SIZE,
+  DEFAULT_WINDOW,
+} from "../backbone/batch-defaults.js";
 import { RunDataError } from "../backbone/errors.js";
 import { MIN_FREE_BYTES, freeBytesAt } from "../backbone/disk-guard.js";
 import type { DownloadRequest, DownloadResult } from "../lib/source-client.js";
@@ -34,8 +39,16 @@ import type { CoverageRow } from "./write-group.js";
 export type { ChunkOutcome, ChunkSpec } from "./chunk.js";
 
 export const TCAD_SOURCE_KEY = "tcad-2026-certified-json";
-export const DEFAULT_CHUNK_SIZE = 10_000;
-export const DEFAULT_WINDOW = 4;
+export {
+  DEFAULT_BATCH_PAUSE_MS,
+  DEFAULT_CHUNK_SIZE,
+  DEFAULT_WINDOW,
+} from "../backbone/batch-defaults.js";
+/** Health gate: wait 10 s, doubling to at most 60 s, for up to 30 minutes in total. */
+export const HEALTH_BACKOFF_FIRST_MS = 10_000;
+export const HEALTH_BACKOFF_MAX_MS = 60_000;
+export const HEALTH_WAIT_TOTAL_MS = 30 * 60 * 1000;
+export const HEALTH_GATE_MESSAGE = "health gate: Postgres/Docker unreachable for 30 min"; // grep-gates:allow message required by the run contract
 /** Download limits for the one identified request (A-01 FR-003). */
 export const DOWNLOAD_INACTIVITY_MS = 10 * 60 * 1000;
 export const DOWNLOAD_TOTAL_MS = 2 * 60 * 60 * 1000;
@@ -121,6 +134,8 @@ export interface BackboneInput {
   seedPids?: string[];
   chunkSize?: number;
   window?: number;
+  /** Durable pause before each chunk (default 2000 ms; 0 = none). */
+  batchPauseMs?: number;
   /** Pilot: write the County group (needs the live lexicon data-group CIDs). */
   cids?: DataGroupCids;
   codeSha?: string;
@@ -133,7 +148,24 @@ export class Suspended extends Error {
   override name = "Suspended";
 }
 
+/** Counts only; readable through the workflow's status handler. */
+export interface RunProgress {
+  chunks_done: number;
+  chunks_started: number;
+  /** Known for a pilot (seed size); null while the full export is still streaming. */
+  chunks_total: number | null;
+  records_loaded: number;
+  /** Records loaded / elapsed seconds since the first chunk was prepared; null until time passes. */
+  records_per_s: number | null;
+}
+
 export interface BackboneDeps {
+  /** A journaled sleep (ctx.sleep). Absent: no pause and no back-off wait. */
+  sleep?(ms: number, name: string): Promise<void>;
+  /** Health probe before each chunk: true when the Loader's database is reachable. */
+  health?(): Promise<boolean>;
+  /** Called after each chunk starts or completes; the binding stores it in workflow state. */
+  progress?(p: RunProgress): void;
   /** A journaled side effect (ctx.run): replays return the recorded value. */
   step<T>(name: string, fn: () => Promise<T>): Promise<T>;
   /** Loader.merge on track tcad (a journaled child call); `seq` counts the run's non-chunk ops. */
@@ -342,8 +374,65 @@ export async function runTcadBackbone(
   let batch: ExportRecordText[] = [];
   let n = 0;
   let seen = 0;
+  let done = 0;
+  let loadedRecords = 0;
+  const pause = input.batchPauseMs ?? DEFAULT_BATCH_PAUSE_MS;
+  const total = wanted === null ? null : Math.ceil(wanted.size / size);
+  let startedAt: number | null = null;
+  const rate = (): number | null => {
+    if (startedAt === null) return null;
+    const secs = (deps.now().getTime() - startedAt) / 1000;
+    return secs > 0 && loadedRecords > 0 ? Math.round((loadedRecords / secs) * 10) / 10 : null;
+  };
+  const report = (): void =>
+    deps.progress?.({
+      chunks_done: done,
+      chunks_started: n,
+      chunks_total: total,
+      records_loaded: loadedRecords,
+      records_per_s: rate(),
+    });
+  const finished = (o: ChunkOutcome): void => {
+    outcomes.push(o);
+    done += 1;
+    loadedRecords += o.summary.loaded;
+    report();
+  };
+  let sleepSeq = 0;
+  const sleep = async (ms: number, what: string): Promise<void> => {
+    if (deps.sleep === undefined || ms <= 0) return;
+    sleepSeq += 1;
+    await deps.sleep(ms, `${what}-${sleepSeq}`);
+  };
+  /** Waits (journaled sleeps) while the probe says unhealthy; fails after 30 minutes in total. */
+  const healthGate = async (): Promise<void> => {
+    if (deps.health === undefined) return;
+    const probe = deps.health;
+    let waited = 0;
+    let backoff = HEALTH_BACKOFF_FIRST_MS;
+    for (let attempt = 0; ; attempt += 1) {
+      const ok = await deps.step(`health-${n}-${attempt}`, async () => {
+        try {
+          return await probe();
+        } catch {
+          return false;
+        }
+      });
+      if (ok) return;
+      if (waited >= HEALTH_WAIT_TOTAL_MS) throw new RunDataError(HEALTH_GATE_MESSAGE);
+      await sleep(backoff, "health-wait");
+      waited += backoff;
+      backoff = Math.min(backoff * 2, HEALTH_BACKOFF_MAX_MS);
+    }
+  };
   const flush = async (): Promise<void> => {
     failFast();
+    // journaled once, so the rate is measured from the same instant after a replay
+    startedAt ??= Date.parse(
+      await deps.step("throughput-start", async () => deps.now().toISOString()),
+    );
+    await sleep(pause, "batch-pause");
+    await healthGate();
     guardDisk();
     const records = batch;
     const index = n;
@@ -364,12 +453,13 @@ export async function runTcadBackbone(
           : {}),
       };
     });
-    if (inflight.length >= window) outcomes.push(await (inflight.shift() as Promise<ChunkOutcome>));
+    if (inflight.length >= window) finished(await (inflight.shift() as Promise<ChunkOutcome>));
     const child = deps.runChunk(spec);
     child.catch((error: unknown) => {
       failure ??= { error };
     });
     inflight.push(child);
+    report();
   };
   for await (const rec of deps.records(input.exportPath)) {
     failFast();
@@ -382,7 +472,7 @@ export async function runTcadBackbone(
     if (batch.length >= size) await flush();
   }
   if (batch.length > 0) await flush();
-  while (inflight.length > 0) outcomes.push(await (inflight.shift() as Promise<ChunkOutcome>));
+  while (inflight.length > 0) finished(await (inflight.shift() as Promise<ChunkOutcome>));
   if (wanted !== null && seen !== wanted.size) {
     throw new RunDataError(`pilot: ${wanted.size - seen} seed pIDs are not in the export`);
   }

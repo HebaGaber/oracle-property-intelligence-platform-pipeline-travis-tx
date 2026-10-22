@@ -19,9 +19,15 @@ const RUNNING = "travis-a04-202610220100";
 const FIXED = new Date("2026-10-22T03:04:00Z");
 
 function harness(
-  opts: { running?: string | null; freeBytes?: number; env?: Record<string, string> } = {},
+  opts: {
+    running?: string | null;
+    freeBytes?: number;
+    env?: Record<string, string>;
+    commandsDir?: string;
+  } = {},
 ) {
   const calls: string[] = [];
+  const sent: unknown[] = [];
   const out: string[] = [];
   const err: string[] = [];
   const ingress: RestateIngressClient = {
@@ -39,9 +45,13 @@ function harness(
               }
         ) as T;
       }
+      if (service === "TcadBackbone" && handler === "status") {
+        return { status: "complete", clean: true } as T;
+      }
       return null as T;
     },
-    async send(service, key, handler) {
+    async send(service, key, handler, payload) {
+      sent.push(payload);
       calls.push(`${service}/${key}/${handler}/send`);
       return { invocationId: "inv_synthetic" };
     },
@@ -51,7 +61,7 @@ function harness(
     },
   };
   const deps: CliDeps = {
-    commandsDir: COMMANDS,
+    commandsDir: opts.commandsDir ?? COMMANDS,
     ingress,
     now: () => FIXED,
     env: opts.env ?? {},
@@ -59,7 +69,7 @@ function harness(
     stdout: (s) => out.push(s),
     stderr: (s) => err.push(s),
   };
-  return { deps, calls, out, err };
+  return { deps, calls, sent, out, err };
 }
 
 describe("A-04 backbone CLI", () => {
@@ -81,6 +91,57 @@ describe("A-04 backbone CLI", () => {
     ]);
     const lines = h.out.join("").trimEnd().split("\n");
     expect(lines.at(-1)).toBe("job_id=travis-a04-20261022030400");
+  });
+
+  it("sends the SAFE batch defaults (2000 / 3 / 1000 ms) when the flags are absent", async () => {
+    const h = harness({ commandsDir: COMMANDS_DIR });
+    expect(await runCli(["ingest", "--track", "appraisal"], h.deps)).toBe(EXIT.ok);
+    expect(h.sent[0]).toMatchObject({ chunkSize: 2000, window: 3, batchPauseMs: 1000 });
+  });
+
+  it("passes --chunk-size, --window and --batch-pause-ms through", async () => {
+    const h = harness({ commandsDir: COMMANDS_DIR });
+    const argv = ["ingest", "--track", "appraisal", "--chunk-size", "500", "--window", "1"];
+    expect(await runCli([...argv, "--batch-pause-ms", "0"], h.deps)).toBe(EXIT.ok);
+    expect(h.sent[0]).toMatchObject({ chunkSize: 500, window: 1, batchPauseMs: 0 });
+  });
+
+  it("the poll prints the progress counts on every poll", async () => {
+    const lines: string[] = [];
+    const replies = [
+      {
+        status: "running",
+        progress: {
+          chunks_done: 1,
+          chunks_started: 2,
+          chunks_total: null,
+          records_loaded: 2000,
+          records_per_s: 41.5,
+        },
+      },
+      { status: "complete", records: 4000, loaded: 4000, clean: true },
+    ];
+    const { waitForRun } = await import("../../../travis/backbone/commands/ingest.js");
+    const ctx = {
+      ingress: { call: async () => replies.shift() },
+      print: (l: string) => lines.push(l),
+    };
+    expect(await waitForRun(ctx as never, "travis-a04-20261022030400", 0)).toBe(0);
+    expect(lines[0]).toBe("tcad: progress chunks=1/? started=2 loaded=2000 rps=41.5");
+  });
+
+  it.each([
+    ["--chunk-size", "99"],
+    ["--chunk-size", "20001"],
+    ["--chunk-size", "abc"],
+    ["--window", "0"],
+    ["--window", "9"],
+    ["--batch-pause-ms", "600001"],
+    ["--batch-pause-ms", "-1"],
+  ])("rejects %s %s (out of range) with exit 64 and sends nothing", async (flag, value) => {
+    const h = harness({ commandsDir: COMMANDS_DIR });
+    expect(await runCli(["ingest", "--track", "appraisal", flag, value], h.deps)).toBe(64);
+    expect(h.calls.filter((c) => c.endsWith("/send"))).toEqual([]);
   });
 
   it("an unknown verb exits 64 with the verb list", async () => {

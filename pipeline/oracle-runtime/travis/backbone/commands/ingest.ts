@@ -8,8 +8,23 @@
 import { z } from "zod";
 import type { BackboneCommand, ExitCode } from "../cli.js";
 import type { RunContext } from "../run-context.js";
+import {
+  BATCH_PAUSE_RANGE,
+  CHUNK_SIZE_RANGE,
+  DEFAULT_BATCH_PAUSE_MS,
+  DEFAULT_CHUNK_SIZE,
+  DEFAULT_WINDOW,
+  WINDOW_RANGE,
+} from "../batch-defaults.js";
 
 const JobId = z.string().regex(/^travis-a04-[a-z0-9-]+$/);
+
+/** A flag value (string from argv, or a number in tests) checked as an integer in range. */
+const intFlag = (range: { min: number; max: number }) =>
+  z
+    .union([z.string().regex(/^\d+$/), z.number()])
+    .transform((v) => Number(v))
+    .pipe(z.number().int().min(range.min).max(range.max));
 
 const Args = z
   .object({
@@ -20,6 +35,12 @@ const Args = z
     seed: z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative()]).optional(),
     /** Poll interval in ms (tests pass 0). */
     pollMs: z.number().int().nonnegative().optional(),
+    /** Records per chunk (100..20000, default 2000). */
+    chunkSize: intFlag(CHUNK_SIZE_RANGE).optional(),
+    /** Chunks in flight (1..8, default 2). */
+    window: intFlag(WINDOW_RANGE).optional(),
+    /** Pause before each chunk in ms (0..600000, default 2000). */
+    batchPauseMs: intFlag(BATCH_PAUSE_RANGE).optional(),
   })
   .strict()
   .refine(
@@ -36,7 +57,7 @@ const Args = z
   .refine((a) => (a.joinProof === true) === (a.seed !== undefined), {
     message: "--join-proof needs --seed <int>",
   });
-export type IngestArgs = z.infer<typeof Args>;
+export type IngestArgs = z.output<typeof Args>;
 
 const Status = z.looseObject({
   status: z.enum(["running", "waiting_human", "blocked", "complete", "failed"]),
@@ -44,6 +65,15 @@ const Status = z.looseObject({
   loaded: z.number().int().optional(),
   records: z.number().int().optional(),
   clean: z.boolean().optional(),
+  progress: z
+    .looseObject({
+      chunks_done: z.number().int(),
+      chunks_started: z.number().int(),
+      chunks_total: z.number().int().nullable(),
+      records_loaded: z.number().int(),
+      records_per_s: z.number().nullable().optional(),
+    })
+    .optional(),
 });
 
 export const EXIT_FOR_STATUS: Readonly<Record<string, ExitCode>> = {
@@ -72,6 +102,12 @@ export async function waitForRun(
         return 1;
       }
       return EXIT_FOR_STATUS[s.status] ?? 1;
+    }
+    if (s.progress !== undefined) {
+      const p = s.progress;
+      ctx.print(
+        `tcad: progress chunks=${p.chunks_done}/${p.chunks_total ?? "?"} started=${p.chunks_started} loaded=${p.records_loaded}${p.records_per_s == null ? "" : ` rps=${p.records_per_s}`}`,
+      );
     }
     if (pollMs > 0) await new Promise((r) => setTimeout(r, pollMs));
   }
@@ -123,7 +159,14 @@ export const command: BackboneCommand<IngestArgs> = {
       return { jobId: args.job, exitCode: out.pass ? 0 : 1, jobIdPrinted: true };
     }
     const jobId = ctx.jobIdFor(null);
-    await ctx.ingress.send("TcadBackbone", jobId, "run", { jobId, mode: "full", asOf: ctx.asOf() });
+    await ctx.ingress.send("TcadBackbone", jobId, "run", {
+      jobId,
+      mode: "full",
+      asOf: ctx.asOf(),
+      chunkSize: args.chunkSize ?? DEFAULT_CHUNK_SIZE,
+      window: args.window ?? DEFAULT_WINDOW,
+      batchPauseMs: args.batchPauseMs ?? DEFAULT_BATCH_PAUSE_MS,
+    });
     return { jobId, exitCode: await waitForRun(ctx, jobId, args.pollMs) };
   },
 };

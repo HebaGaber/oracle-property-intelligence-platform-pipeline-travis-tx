@@ -8,6 +8,7 @@ import { PARCEL_COLUMNS } from "../services/tracks/tcad.js";
 import {
   asTerminal,
   coordinateRows,
+  queryDbHealthy,
   parcelIdsExistFor,
   resolveGeoIdsFor,
   runAsOf,
@@ -97,5 +98,24 @@ describe("0103 migration and the tcad track", () => {
   it("adds property_type_rules_version as a new migration and the track writes it", () => {
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS property_type_rules_version text");
     expect(PARCEL_COLUMNS).toContain("property_type_rules_version");
+  });
+});
+
+describe("health probe for the batched run", () => {
+  const answering = (impl: () => Promise<unknown>) =>
+    (() => (() => impl()) as unknown as postgres.Sql) as () => postgres.Sql;
+  it("true when select 1 answers", async () => {
+    expect(await queryDbHealthy(answering(async () => [{ ok: 1 }]))).toBe(true);
+  });
+  it("false when the connection fails or the config is missing", async () => {
+    expect(await queryDbHealthy(answering(async () => Promise.reject(new Error("ECONNREFUSED"))))).toBe(false);
+    expect(
+      await queryDbHealthy(() => {
+        throw new Error("DATABASE_URL is not set");
+      }),
+    ).toBe(false);
+  });
+  it("false when the database does not answer within the timeout", async () => {
+    expect(await queryDbHealthy(answering(() => new Promise(() => {})), 20)).toBe(false);
   });
 });

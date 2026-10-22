@@ -22,6 +22,7 @@ import { proveDestination } from "../../oracle-runtime/travis/discovery/destinat
 import { configuredSystemIdentifier } from "./configured-db.js";
 import { runValidator } from "../../oracle-runtime/travis/discovery/run-validator.js";
 import { TRAVIS_JURISDICTION_PROFILE } from "../../oracle-runtime/travis/profiles/jurisdictions.js";
+import { applyConcurrencyCap } from "../../oracle-runtime/travis/backbone/concurrency.js";
 import { createLoader, lazyQueryDb, loadTracks, TRACKS_DIR } from "./loader.js";
 import { createBackboneReport, loadSections, SECTIONS_DIR } from "./report.js";
 
@@ -48,6 +49,10 @@ import { createBackboneReport, loadSections, SECTIONS_DIR } from "./report.js";
 // A-04 (T009): `Loader` (single Query DB writer, tracks from services/tracks/*.ts) and
 // `BackboneReport` (read-only, sections from services/report-sections/*.ts) are bound beside
 // every workflow file. The Query DB connection is opened lazily on first use and never logged.
+// Worker counts from the env file are capped (transform 6, prepare 2) unless
+// TCAD_UNSAFE_CONCURRENCY=1: the old values (16 / 8) exhausted memory on a 16 GiB machine.
+applyConcurrencyCap();
+
 let client: SourceClient | null = null;
 const sharedClient = (): SourceClient => (client ??= createSourceClient());
 const now = (): Date => new Date();

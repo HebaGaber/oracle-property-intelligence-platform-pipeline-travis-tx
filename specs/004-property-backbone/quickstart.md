@@ -33,11 +33,15 @@ Set `"mode": "pilot"` in `pipeline/oracle-runtime/travis/gis/runner-config.json`
 ## 4. Full runs (one at a time)
 
 1. `backbone -- permits --mode backfill` → report `permits.captured_at_watermark = source_total_at_watermark`.
-2. `backbone -- ingest --track appraisal` → `monitoring-county-ingestion` reports complete; `qdb_ro "SELECT class, count(*) FROM roll_reconciliation WHERE job_id = '<jobId>' GROUP BY class"` → difference < 9,865, 0 unexplained.
+2. `backbone -- ingest --track appraisal [--chunk-size 2000] [--window 3] [--batch-pause-ms 1000]` (ranges 100..20000, 1..8, 0..600000; the values shown are the SAFE DEFAULTS, about 360 MB of raw JSON in flight instead of 2.4 GB). Before each chunk the run pauses (durable sleep) and checks the Query DB (`select 1`, 5 s timeout); if it is down it WAITS 10 s, 20 s, 40 s, then 60 s at a time, up to 30 minutes, then fails with `health gate: Postgres/Docker unreachable for 30 min`. The poll prints `tcad: progress chunks=<done>/<total|?> started=<n> loaded=<n> rps=<records/s>` (counts and throughput only). Worker counts from the env file are capped at transform 6 / prepare 2 when the service starts (`TCAD_TRANSFORM_WORKERS=<1..8>` raises transform explicitly, never above 8; `TCAD_UNSAFE_CONCURRENCY=1` lifts the cap) → `monitoring-county-ingestion` reports complete; `qdb_ro "SELECT class, count(*) FROM roll_reconciliation WHERE job_id = '<jobId>' GROUP BY class"` → difference < 9,865, 0 unexplained.
 3. `backbone -- coords --gis-artifact pipeline/data/raw/gis/us-runner-<id>`; `backbone -- permits --link`; `backbone -- coords --assemble-only`.
 4. `backbone -- ingest --write-group --job <jobId>`; `elephant-cli validate` → `hash` → `validate` (CAR) → `export-tables --part-size 48m` into `pipeline/data/runs/<jobId>/tables/` (never uploaded).
 5. `backbone -- coords --coverage --tables pipeline/data/runs/<jobId>/tables` → `coverage_public ≥ 0.99`, `coverage_qdb ≥ 0.99` over the 441,961 R accounts; difference = `permit_point`.
 6. `backbone -- permits --mode incremental` → re-stamp verdict, rows written, tombstones.
+
+### Confidential-name check in small slices
+
+`scripts/verify-batched.sh <names-file>` (one string per line; the file and the names are never printed, and the SQL goes to psql on stdin). It runs through `docker exec … psql`, table by table, in heap-block ranges of at most 20,000 rows per call (`SLICE_ROWS`, default 20000) with a 2 s pause between slices (`PAUSE_SECONDS`), and prints only `table=… rows_scanned=… slices=… hits=…` plus `total_hits=`. Exit 0 = no hits, 1 = hits, 3 = Docker unreachable (it aborts cleanly and prints `START_TABLE=<table>` to resume from). Optional env: `PG_CONTAINER`, `PGUSER` (default `postgres`), `PGDATABASE` (default `elephant`).
 
 ## 5. Expected outcomes
 
