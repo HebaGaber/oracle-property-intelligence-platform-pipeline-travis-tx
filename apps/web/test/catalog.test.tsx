@@ -358,7 +358,11 @@ describe("Catalog: valid definition lists (TC-083, ERR-33)", () => {
     }
     const p = page.querySelector<HTMLElement>('[data-table="county.property"]') as HTMLElement;
     expect(p.querySelector("[data-size]")?.getAttribute("data-value")).toBe("201");
-    expect(p.querySelector("[data-rows]")?.getAttribute("data-value")).toBe("20");
+    // `ready` means the table list is painted; a row's count arrives with ITS footer (ERR-41), so
+    // wait for it instead of reading it at once (a race that only loses on a loaded machine, CI).
+    await vi.waitFor(() =>
+      expect(p.querySelector("[data-rows]")?.getAttribute("data-value")).toBe("20"),
+    );
     expect(p.querySelector("[data-published-rows]")?.getAttribute("data-value")).toBe("7");
   });
 });
