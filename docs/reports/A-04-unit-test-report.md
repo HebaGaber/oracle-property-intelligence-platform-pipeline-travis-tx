@@ -4,7 +4,7 @@ type: unit-test-report
 story: A-04
 branch: 004-property-backbone
 commit: 79e21d0
-ci_run: "Not a CI run (see docs/evidence/A-04.md § CI runs). Final numbers from local runs on the operator machine on 2026-10-22: oracle-runtime and query-core as recorded after the last fix commit 79e21d0; local-stack re-run with the real-Postgres integration test enabled (Docker up). First-pass numbers at 40fa2e2 (Docker stopped) are kept in the notes below."
+ci_run: "https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39783309484 (commit 277ed13: workspace, oracle-runtime, gitleaks, e2e-hosted all success). Coverage numbers below are local runs on the operator machine on 2026-10-22 (V8, real-Postgres integration test enabled for local-stack)."
 created: 2026-10-22
 ---
 

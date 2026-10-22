@@ -147,7 +147,7 @@ created: 2026-10-21
 - [X] T085 [lead] Permit counts (F3), read-only in parallel: per jurisdiction vs source totals at the watermark; reroof link rate ≥ 0.97 and unmatched by reason; status split vs baseline; 1982-012866 BP `Suspended` / `open` / `no_tcad_geoid` / `open_days`; `{ANCHOR2_PERMIT}` linked; miss → 🛑 D-18 — records in: docs/evidence/A-04.md · ⏱ 8m
 - [X] T086 [lead] Run every case in `testplans/A-04-test-cases.md` (read-only cases in parallel; anything writing or calling Austin alone; nothing calls GIS); failing case → `docs/defects/ERR-{n}.md` (next ERR-21), fix, re-test; write `docs/reports/A-04-unit-test-report.md` (coverage ≥ 80% on new code) and `docs/reports/A-04-test-report.md` · ⏱ 30m
 - [X] T087 [lead] Evidence: `docs/evidence/A-04.md` (one section per part: pilot table without confidential names, N vs loaded with classes, monitoring report, export SHA-256 and gazetteer/profile digests, export-point definition · coverage both ways, gap by reason, by `coordinate_source`, GIS run URL + artifact SHA-256, join proof · per-jurisdiction counts with watermark, 22 records-request rows with evidence URLs, match rate, status split, 1982-012866 BP, backfill throughput, re-stamp log · CI run link, kit version, elephant-cli commit); `docs/source-limits.md` (GIS + Austin rows from `throughputRow`); `pipeline/docs/travis-sources.yaml` re-counts with dates; `docs/traceability.md` FEAT-A04/A05/A06 rows; one `docs/kit-usage.md` line. Counts only from the Query DB; nothing exported from it · ⏱ 25m
-- [ ] T088 [lead] Merge `feature/oracle-pipeline` into the story branch (§ P step 6); `/speckit-converge` once; then, **after TZ06**, `/developmentsupport-g7-precheck A-04` with the § 1 exceptions (C-02 = a real green CI run) — records in: docs/gates/G7-A-04-precheck.md · ⏱ 15m
+- [X] T088 [lead] Merge `feature/oracle-pipeline` into the story branch (§ P step 6); `/speckit-converge` once; then, **after TZ06**, `/developmentsupport-g7-precheck A-04` with the § 1 exceptions (C-02 = a real green CI run) — records in: docs/gates/G7-A-04-precheck.md · ⏱ 15m
 
 ---
 
@@ -156,9 +156,9 @@ created: 2026-10-21
 **Purpose**: Constitution I, XVI, XXII, within the pipeline-only exception (plan CT-1).
 
 - [X] TZ01 Run the reviewer agents from the story front matter (`oracle`, `donphan`) read-only; record scores in `docs/reviews/CR-A-04.md` (each ≥ 75 or fixed / justified; 🛑 D-19 only if still under 75 after one fix round) (⏱ 15m, during T075)
-- [ ] TZ02 N/A: pipeline-only story, deploys nothing; shown on the hosted Coverage page and Lead finder after A-11/A-13.
-- [ ] TZ03 N/A: pipeline-only story, deploys nothing; shown on the hosted Coverage page and Lead finder after A-11/A-13.
-- [ ] TZ04 N/A: pipeline-only story, deploys nothing; shown on the hosted Coverage page and Lead finder after A-11/A-13.
+- [X] TZ02 N/A: pipeline-only story, deploys nothing; shown on the hosted Coverage page and Lead finder after A-11/A-13.
+- [X] TZ03 N/A: pipeline-only story, deploys nothing; shown on the hosted Coverage page and Lead finder after A-11/A-13.
+- [X] TZ04 N/A: pipeline-only story, deploys nothing; shown on the hosted Coverage page and Lead finder after A-11/A-13.
 - [X] TZ05 Run the independent test (story `agents.verify`): `monitoring-county-ingestion` reports the run complete; Query DB property count = N − proven dead/invalid with every difference classified and 0 unexplained; the coverage SQL `SELECT avg((latitude IS NOT NULL)::int) FROM v_property` over `v_property` bound to the local `export-tables` run returns ≥ 0.99 (R accounts), the same from the Query DB, with the gap report by reason; per-jurisdiction permit counts = each source's count at the run watermark and the status split matches the profile. Output in `docs/evidence/A-04.md` (⏱ 10m)
 - [X] TZ06 Write `docs/reports/A-04-test-report.md` final column, `docs/evidence/A-04.md`, the `docs/traceability.md` row and one `docs/kit-usage.md` line (done in T086/T087; this task checks them complete) (⏱ 5m)
 

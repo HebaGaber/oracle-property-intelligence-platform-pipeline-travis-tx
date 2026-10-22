@@ -6,12 +6,13 @@ story: A-04
 test_case: A-04-TC-004
 ac_reference: A-04-AC-1
 severity: Medium
-status: Re-tested (2026-10-22: TC-004 passes live after the fix)
+status: Closed
 found_by: QC test runner (Claude), for HebaGaber
 found_date: 2026-10-22
 fix_branch: 004-property-backbone
 fix_commit: be805f8, 79e21d0
 retest_date: 2026-10-22
+closed_date: 2026-10-22
 ---
 
 # ERR-23: backbone CLI – `ingest --join-proof` gives up after about 5 minutes ("fetch failed") and never prints the `join_proof=` line
