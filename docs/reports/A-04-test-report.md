@@ -8,15 +8,15 @@ runtime_url: "not applicable: pipeline-only story (ui: false); see testplans/A-0
 build: "e48ec93 (branch 004-property-backbone, clean working tree at the start)"
 data_snapshot: "TCAD export SHA-256 6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346; GIS runner run 39684063596 (373,683 features)"
 owner: HebaGaber             # QC Lead
-status: Final                # FINAL: every case has a result; 2 FAIL open (ERR-22, ERR-23)
+status: Final                # FINAL 2026-10-22: every case has a result; 0 FAIL (ERR-22, ERR-23 re-tested PASS)
 gate: G7
 created: 2026-10-22
 signed_off_date:
 ---
 
-# QC Test Report: A-04 Load the county backbone (FINAL)
+# QC Test Report: A-04 Load the county backbone (FINAL, 2026-10-22)
 
-**FINAL (second pass, 2026-10-22).** Every case now has a result. Pass 1 ran what needed no database; pass 2 ran the PENDING-DB, PENDING-NETWORK and PASS-PARTIAL steps against the live local stack (Docker Postgres, Restate, services on :9080), read-only except the two Austin cases. Austin was called only by TC-040 (two `count(*)` requests, 2 s apart) and TC-052 (one incremental run, which failed on its second request; ERR-22). GIS, TCAD and `gis.traviscountytx.gov` were not requested; no ingest, write-group, hash or export ran. Database reads used the plan's read-only `qdb_ro` (via `docker exec`, `default_transaction_read_only = on`), never listing owner names. TC-004 also ran the 10-minute join proof once (ERR-23). Two cases FAIL (TC-004 on the CLI output, TC-052 on the live Austin call); ten PASS-WITH-NOTE cases differ from the plan only by a stale expected value or a step not repeatable here (reason in each row).
+**FINAL (2026-10-22: second pass plus re-tests of the two failed cases).** Every case now has a result. Pass 1 ran what needed no database; pass 2 ran the PENDING-DB, PENDING-NETWORK and PASS-PARTIAL steps against the live local stack (Docker Postgres, Restate, services on :9080), read-only except the two Austin cases. Austin was called only by TC-040 (two `count(*)` requests, 2 s apart) and TC-052 (one incremental run, which failed on its second request; ERR-22). GIS, TCAD and `gis.traviscountytx.gov` were not requested; no ingest, write-group, hash or export ran. Database reads used the plan's read-only `qdb_ro` (via `docker exec`, `default_transaction_read_only = on`), never listing owner names. TC-004 also ran the 10-minute join proof once (ERR-23). The second pass had two FAIL (TC-004 on the CLI output, TC-052 on the live Austin call); both were fixed (ERR-23, ERR-22) and re-tested PASS the same day, and TC-023 step 4 was re-run on the rebuilt tables. Nine PASS-WITH-NOTE cases differ from the plan only by a stale expected value or a step not repeatable here (reason in each row).
 
 **Status words.** PASS: every step ran and met the expected result. PASS-WITH-NOTE: the case intent holds; a plan value is stale or one step could not be repeated (stated in the row). FAIL: the product did not meet the expected result (defect filed). In pass 1 a PASS-PARTIAL meant offline steps passed and database or network steps were open; none remain.
 
@@ -28,10 +28,10 @@ signed_off_date:
 | --- | --- |
 | Environment | local terminal, branch `004-property-backbone`, commit `e48ec93`, 2026-10-22 (pass 1 on `40fa2e2`); no hosted runtime (pipeline-only story, C-05 exception) |
 | Total TC in plan | 52 (49 functional + 3 NF) |
-| Counts | PASS 40 · PASS-WITH-NOTE 10 · FAIL 2 · still pending 0 (total 52) |
-| Passed / failed / pending | 50 (40 + 10 with a note) / 2 / 0 |
-| Pass rate | 50 of 52 = 96% (G7 needs the 2 FAIL dispositioned: ERR-22 High, ERR-23 Medium) |
-| Open Critical defects | 0 (ERR-22 High and ERR-23 Medium open; ERR-21 Low re-tested) |
+| Counts | PASS 43 · PASS-WITH-NOTE 9 · FAIL 0 · still pending 0 (total 52) (second pass: 40 · 10 · 2; TC-004, TC-052 re-tested PASS and TC-023, whose only note was step 4, now PASS) |
+| Passed / failed / pending | 52 (43 + 9 with a note) / 0 / 0 |
+| Pass rate | 52 of 52 = 100% (9 with a note) |
+| Open Critical defects | 0 (ERR-21 Low, ERR-22 High and ERR-23 Medium all Re-tested) |
 | Unit test report | `docs/reports/A-04-unit-test-report.md` |
 | Code review log | `docs/reviews/CR-A-04.md` |
 | Playwright run | not applicable (no UI); C-09 maps each case to a named Vitest test or shell command |
@@ -43,7 +43,7 @@ signed_off_date:
 | A-04-TC-001 | AC-1 | Happy path | PASS-WITH-NOTE | Unit steps unchanged. Pilot job already run (not re-run: no ingest). Steps 2, 4, 5, 6 run on the 25 seed pIDs in the live `parcels`: seed 26 lines, anchors in seed `2`, ANCHOR2 log line `1`; `25\|25\|25\|25\|25\|25`; 221829 row `t\|t\|t\|1941\|<TCAD URL>\|2026-10-19 21:33:41.241+00\|64` as expected. Note: ANCHOR2 105471 has no year built (`year_built_missing_reason = source_missing`, rule `none`), so its year cell is empty where the plan says `{year}`; the case allows year or reason. |
 | A-04-TC-002 | AC-1 | Happy path | PASS | Vitest TC-002 3 passed (first pass). Steps 1-2 on the pilot County group `travis-a04-pilot-20261021223504`: 22 zips = 22 R accounts of the 25-row seed; `elephant-cli validate` ends `Properties processed: 22, succeeded: 22, failed: 0`. |
 | A-04-TC-003 | AC-1 | Negative | PASS | `parcels` 0, `parcel_geoids` 0, permit `1982-012866 BP\|t\|no_tcad_geoid`. |
-| A-04-TC-004 | AC-1 | Happy path | FAIL | Steps 1-2 PASS: `221829\|0223120506\|R`; 0 keys outside `^[1-9][0-9]{0,6}$`. Step 3: CLI printed `backbone: ingest failed: fetch failed` after about 5 min (exit 1, no `join_proof=` line) although the workflow completed; result read from the Restate journal of `inv_1eeWoWwOOvDp0v41Yud8lfe5M4KZHXor7j`: `sampled 1000, matched 906, no_tcad_geoid 93, ambiguous_geoid 1, disagreements 0, reverse_checked 1000, reverse_disagreements 0, pass true` (9 min 39 s). Product result correct, CLI output wrong: ERR-23. |
+| A-04-TC-004 | AC-1 | Happy path | PASS | Re-test 2026-10-22 after fix commits `be805f8` and `79e21d0` (`callLong` polls `/restate/invocation/<svc>/<key>/<handler>/<idem>/output`): live CLI join proof, seed 2026, job `travis-a04-20261022052658`, 12:34:48-12:50:44Z, printed `join_proof=pass matched=906 disagreements=0 no_tcad_geoid=93 ambiguous_geoid=1 reverse_checked=1000 reverse_disagreements=0` (ERR-23 Re-tested). First run (before the fix): steps 1-2 PASS: `221829\|0223120506\|R`; 0 keys outside `^[1-9][0-9]{0,6}$`. Step 3: CLI printed `backbone: ingest failed: fetch failed` after about 5 min (exit 1, no `join_proof=` line) although the workflow completed; result read from the Restate journal of `inv_1eeWoWwOOvDp0v41Yud8lfe5M4KZHXor7j`: `sampled 1000, matched 906, no_tcad_geoid 93, ambiguous_geoid 1, disagreements 0, reverse_checked 1000, reverse_disagreements 0, pass true` (9 min 39 s). Product result was correct, CLI output wrong: ERR-23 (now fixed). |
 | A-04-TC-005 | AC-2 | Scale | PASS-WITH-NOTE | Step 1 (the ingest) is job `travis-a04-20261022052658`, not re-run. Steps 2-7: classes only `loaded 493246`; 493,246 distinct pIDs; types MH 11,744 / MN 5 / P 39,536 / R 441,961; redacted `R\|15410`; report roll `n 493246, loaded 493246, difference 0, unexplained 0`; limitations hold both §25.025 lines (count 15410). Note: the CLI prints a trailing `job_id=…` line after the JSON, so the plan's `report --json \| jq` pipe stops with a parse error at the last line unless it is stripped. |
 | A-04-TC-006 | AC-2 | Scale | PASS | `restate sql`: 242 `TcadBackbone` invocations of the key, all `completed`. `backbone_runs`: `complete\|t\|6f7a7585…2346`. Seed sum 493246, `mergedCount` 493246. |
 | A-04-TC-007 | AC-2/FR-018 | Edge | PASS | Vitest 1 passed. Live: `100008\|2\|profile_main`. |
@@ -61,7 +61,7 @@ signed_off_date:
 | A-04-TC-020 | AC-7/8 | Scale | PASS-WITH-NOTE | Workflow tests 5 passed and runner-artifact tests 9 passed (first pass). `gh run list -R HebaGaber/…` (the plain command targets the upstream repo and returns 404): runs 39683448743, 39684063596 (full, 373,683 features) and 39685884714 all `success`; 39682166613 earlier `failure`. Pushes (steps 2, 5) not repeated by design. |
 | A-04-TC-021 | AC-7 | Negative | PASS-WITH-NOTE | Step 1 `0`. Step 3 `{on_roll:false, coordinate_source:null}` (report anchors). Step 2 printed `f\|f` (plan: `t\|t`): Austin's own row for permit 1982-012866 BP now carries lat/lon 30.2716 / -97.7474 (zip 78701); the plan assumed none (2026-10-19 note). No parcel exists or receives it, so the case intent holds; the plan's step 2 is stale. |
 | A-04-TC-022 | AC-7 | Happy path | PASS | Live: `105471\|gis_centroid\|t\|t\|t\|t\|t\|64` and `221829\|gis_centroid\|t\|t\|t\|t\|t\|64`. |
-| A-04-TC-023 | AC-8 | Scale / missing data | PASS-WITH-NOTE | Steps 1-3 live: `condo-coded\|70609\|20071\|24566\|46043`, `ordinary\|371352\|369990\|370027\|1325` (99.63%); R reasons all present (`no_gis_feature` 46,945, `no_permit_point` 423, 0 no-point rows without a reason); P 39,536 / MH 11,744 / MN 5 all `none`. Report: 441,961 R, 394,593 with point (0.8928). Step 4 not re-run: the combined export-tables folder (`hashrun/combined2/…`) is no longer on disk and rebuilding it needs hash/export (forbidden here); its result is the run-log 12:21 entry (v_property 441,961 = 441,961, gate PASS, 0.8826 / 0.8928). |
+| A-04-TC-023 | AC-8 | Scale / missing data | PASS | Steps 1-3 live: `condo-coded\|70609\|20071\|24566\|46043`, `ordinary\|371352\|369990\|370027\|1325` (99.63%); R reasons all present (`no_gis_feature` 46,945, `no_permit_point` 423, 0 no-point rows without a reason); P 39,536 / MH 11,744 / MN 5 all `none`. Report: 441,961 R, 394,593 with point (0.8928). Step 4 re-run on the rebuilt tables (after the address fix and the nine-batch rebuild, 2026-10-22): v_property rows 441,961 = distinct property_cid 441,961 = Query DB R accounts 441,961, explained_difference 0, coverage_gate PASS, coverage_public 0.8826, coverage_qdb 0.8928, permit_point 4,532: PASS. |
 | A-04-TC-024 | AC-9 | Happy path | PASS | Vitest 1 passed. Live: `1000046\|permit_point\|permit_point\|t`. |
 | A-04-TC-025 | AC-10 | Missing data / negative | PASS | Vitest 1 passed. Live step 2 `0`; geocoder grep `0`. |
 | A-04-TC-026 | AC-11 | Error / negative | PASS | `gis-adapter.test.ts`, `gis-artifact.test.ts`, local-stack `tracks/gis.test.ts` -t TC-026: 5 passed. |
@@ -84,7 +84,7 @@ signed_off_date:
 | A-04-TC-049 | AC-15/FR-022 | Edge | PASS | `BEE CAVE FULL PURPOSE\|austin\|4822`, `LAKEWAY FULL PURPOSE\|austin\|6827`, `PFLUGERVILLE ETJ\|austin\|592`, `PFLUGERVILLE FULL PURPOSE\|austin\|1117`; report `own_permits_captured:false` for bee_cave, lakeway, pflugerville. |
 | A-04-TC-050 | AC-16 | Missing data | PASS-WITH-NOTE | Vitest 5 passed. Live step 2 `0\|0\|0` (no open or stalled permit lacks an issue date in this data, so the check is vacuous live; the unit test carries the case); step 3 `0`. |
 | A-04-TC-051 | AC-16 | Error / edge | PASS | `permits-incremental.test.ts` -t TC-051: 6 passed. |
-| A-04-TC-052 | AC-16 | Pipeline | FAIL | `permits --mode incremental` (job `travis-a04-permits-incremental-20261022122136`): `status=failed pages=0 rows=0`, `histogram error (HTTP 400, 1 attempt(s))`, exit 1. Socrata: `No such function 'date_trunc_ymdh'`. The count request before it was HTTP 200. Nothing written. ERR-22. |
+| A-04-TC-052 | AC-16 | Pipeline | PASS | Re-test 2026-10-22 after fix commit `be805f8`: real incremental run, job `travis-a04-permits-incremental-20261022122922`, status complete, pages 1, rows 0, written 0, watermark 2026-10-21T14:42:23.154Z, re-stamp detected false (no row newer than the watermark). The hour-bucket SoQL was verified live with 3 requests: HTTP 400 for `date_trunc_ymdh`; HTTP 200 with two buckets of the 2026-10-21 re-stamp (hour 13 = 1,420,983 rows, hour 14 = 960,243 rows). ERR-22 Re-tested. First run (before the fix): `permits --mode incremental` (job `travis-a04-permits-incremental-20261022122136`): `status=failed pages=0 rows=0`, `histogram error (HTTP 400, 1 attempt(s))`, exit 1. Socrata: `No such function 'date_trunc_ymdh'`. The count request before it was HTTP 200. Nothing written. ERR-22 (now fixed). |
 | A-04-TC-053 | AC-17 | Error / negative | PASS | `permits-backfill.test.ts` -t TC-053: 4 passed. |
 | A-04-TC-054 | AC-17 | Error | PASS | `permits-backfill.test.ts` -t TC-054: 1 passed. |
 | A-04-TC-055 | FR-021 | Edge | PASS | `permits-incremental.test.ts` + local-stack `tracks/permits.test.ts` -t TC-055: 3 passed. |
@@ -104,11 +104,13 @@ signed_off_date:
 
 ## Defects
 
-| ERR | TC | Severity | Status | Fix commit |
-| --- | --- | --- | --- | --- |
-| ERR-21 | A-04-TC-NF-03 | Low | Re-tested (test-plan wording fixed; steps 2-3 pass) | |
-| ERR-22 | A-04-TC-052 | High | Open (incremental histogram query `date_trunc_ymdh` rejected by Socrata, HTTP 400) | |
-| ERR-23 | A-04-TC-004 | Medium | Open (`ingest --join-proof` CLI times out at 5 min and prints no result; workflow itself passes) | |
+| ERR | TC | Severity | Status | Cause | Fix commit |
+| --- | --- | --- | --- | --- | --- |
+| ERR-21 | A-04-TC-NF-03 | Low | Re-tested, PASS (steps 2-3 pass with the fixed wording) | Test-plan wording written before `source-client.ts` gained its policy table and the runner logged `colo=` | test-plan wording fix (no code change) |
+| ERR-22 | A-04-TC-052 | High | Re-tested, PASS (live incremental run `travis-a04-permits-incremental-20261022122922`: complete, rows 0, re-stamp false) | The hourly `:updated_at` histogram used `date_trunc_ymdh`, which Socrata does not have (HTTP 400); the offline fake server accepted any query | `be805f8`: day + hour-of-day buckets (`date_trunc_ymd(to_floating_timestamp(...))`, `date_extract_hh`); strict fake Austin rejects unknown functions |
+| ERR-23 | A-04-TC-004 | Medium | Re-tested, PASS (live CLI join proof: `join_proof=pass matched=906 disagreements=0 ...`) | `ingest --join-proof` made one HTTP call that the client dropped after about 5 min | `be805f8` (`callLong` send + poll), `79e21d0` (poll path `/restate/invocation/<svc>/<key>/<handler>/<idem>/output`, verified live) |
+
+Details: `docs/defects/ERR-21.md`, `ERR-22.md`, `ERR-23.md`.
 
 ## Live numbers (measured 2026-10-22 on the local stack, job `travis-a04-20261022052658`)
 
@@ -128,11 +130,11 @@ signed_off_date:
 | 2000-000025 BP | -> 221829 | -> 221829 (tcad_id, geoid_unique_r) |
 | Status classes vs 2026-10-19 baseline | open 129, stalled 2,213, closed 17,251, exclude 2,491 | open 125, stalled 2,213, closed 17,255, exclude 2,491 (4 Active moved to closed) |
 | Open split (TC-045) | Active 125 / Pending Permit 1 / Re Review 1 / Suspended 2 | Active 121 / 1 / 1 / 2 |
-| Join proof (seed 2026) | pass, 0 disagreements | pass: sampled 1,000, matched 906, no_tcad_geoid 93, ambiguous_geoid 1, disagreements 0, reverse 1,000 / 0 (9 min 39 s) |
+| Join proof (seed 2026) | pass, 0 disagreements | pass: matched 906, no_tcad_geoid 93, ambiguous_geoid 1, disagreements 0, reverse 1,000 / 0 (CLI re-test 12:34:48-12:50:44Z; the first run took 9 min 39 s) |
 | No year built (all accounts) | 52,521 R + non-R (plan note) | 92,113 |
 | No dated sale | 317,818 | 317,819 |
-| Incremental run (TC-052) | complete | failed: HTTP 400 on the histogram query (ERR-22) |
+| Incremental run (TC-052) | complete | complete after the fix: pages 1, rows 0, written 0, re-stamp false (first run failed with HTTP 400, ERR-22) |
 
 ## Sign-off
 
-**Decision:** pending QC Lead. Every case has a result: 50 pass (10 with a note), 2 fail. Not ready for G7 until ERR-22 (incremental run against the real Austin source) and ERR-23 (join-proof CLI output) are fixed and TC-052 / TC-004 are re-run, or the PO accepts them as exceptions. The plan values that moved with the sources (TC-021 step 2, TC-045 open split, TC-046 day count, TC-011 step 3, TC-012 count) are listed in the rows for a v0.4 plan edit.
+**Decision:** pending QC Lead. Every case has a result: 43 PASS, 9 PASS-WITH-NOTE, 0 FAIL. ERR-22 and ERR-23 are fixed and re-tested PASS (TC-052, TC-004), ERR-21 is re-tested. The plan values that moved with the sources (TC-021 step 2, TC-045 open split, TC-046 day count, TC-011 step 3, TC-012 count) are listed in the rows for a v0.4 plan edit.

@@ -3,14 +3,14 @@ id: UT-A-04
 type: unit-test-report
 story: A-04
 branch: 004-property-backbone
-commit: 40fa2e2
-ci_run: "Not a CI run. Numbers are from local runs on the operator machine at 40fa2e2 on 2026-10-22 (Docker stopped; no database, Restate or network used)."
+commit: 79e21d0
+ci_run: "Not a CI run (see docs/evidence/A-04.md § CI runs). Final numbers from local runs on the operator machine on 2026-10-22: oracle-runtime and query-core as recorded after the last fix commit 79e21d0; local-stack re-run with the real-Postgres integration test enabled (Docker up). First-pass numbers at 40fa2e2 (Docker stopped) are kept in the notes below."
 created: 2026-10-22
 ---
 
 # Unit and Integration Test Report: A-04
 
-All numbers were copied from local command output on 2026-10-22, on branch `004-property-backbone` at `40fa2e2`, one command at a time. These are offline Vitest runs (the no-network setup file makes any real fetch fail). They do not exercise the Query DB, Restate or any source. The DB-dependent cases are in `docs/reports/A-04-test-report.md` (marked PENDING-DB).
+All numbers were copied from local command output on 2026-10-22, on branch `004-property-backbone` at `40fa2e2`, one command at a time. The runtime and query-core runs are offline Vitest runs (the no-network setup file makes any real fetch fail). The final local-stack run also ran the real-Postgres integration test (throwaway database `a04_test_*`, dropped afterwards), so it exercises migrations, the jsonb writes, GIS assembly and the link rules against a real database. Restate and every source are not exercised by unit tests; the live cases are in `docs/reports/A-04-test-report.md`.
 
 Coverage: neither package configures a coverage block in `vitest.config.ts`. The runs used `npx vitest run --coverage --coverage.reporter=text`, which enables the installed V8 provider (`@vitest/coverage-v8`, present in `pipeline/oracle-runtime`; resolved from the workspace for `pipeline/local-stack`). The coverage report is not written into the repo.
 
@@ -20,11 +20,11 @@ Coverage: neither package configures a coverage block in `vitest.config.ts`. The
 | Command (local stack) | `cd pipeline/local-stack && npx vitest run --coverage` |
 | Command (query-core) | `cd packages/query-core && npx vitest run` |
 | Command (gates) | `bash scripts/grep-gates.sh` |
-| Suites / tests | runtime 77 files / 962 tests · local-stack 16 files / 118 tests · query-core 17 files / 242 tests |
-| Passed / failed / skipped | runtime 960 / 0 / 2 · local-stack 115 / 0 / 3 · query-core 237 / 0 / 5 |
+| Suites / tests | runtime 78 files / 969 tests · local-stack 118 tests · query-core 17 files / 242 tests |
+| Passed / failed / skipped | runtime 967 / 0 / 2 · local-stack 116 / 0 / 2 (real-Postgres integration test enabled) · query-core 237 / 0 / 5 |
 | grep-gates | `grep-gates: OK (5 gates ...)`, exit 0 |
-| Coverage of new A-04 code | runtime: tcad 93.73% stmts, gis 93.10%, permits 95.99%, backbone 91.30% (see below); socrata-pages.ts 93.68%; local-stack services (whole folder) 72.42%: **below the 80% target** for local-stack |
-| Duration | runtime 15.10 s · local-stack 2.01 s · query-core 2.61 s |
+| Coverage of new A-04 code | runtime: tcad 93.73% stmts, gis 93.10%, permits 95.99%, backbone 91.30% (see below); socrata-pages.ts 93.68%; local-stack 75.69% statements (tracks 94.97%, workflows 70.28%, loader 75.65%): **below the 80% target** for local-stack (Restate/bootstrap glue, exercised by the live runs) |
+| Duration (first pass at 40fa2e2) | runtime 15.10 s · local-stack 2.01 s · query-core 2.61 s |
 
 The 2 skipped runtime tests are the `A-04-TC-020 pilot|full` cases that read a real runner artifact; they run only with `GIS_ARTIFACT` set. With `GIS_ARTIFACT=pipeline/data/raw/gis/us-runner-39684063596/a04-gis-capture` and `--testTimeout=300000` they pass (see the test report); the default 5 s timeout is too short for the 373,683-feature read.
 
@@ -41,7 +41,7 @@ Folder rows (runtime, `pipeline/oracle-runtime`):
 | travis/adapters/socrata/socrata-pages.ts | 93.68 | 85.71 | 100 | 95.34 |
 | whole runtime | 86.37 | 74.67 | 83.81 | 88.46 |
 
-Local stack (`pipeline/local-stack/services`):
+Local stack (`pipeline/local-stack/services`). Folder rows below are from the first pass at 40fa2e2 (before the real-Postgres test was enabled); the final run raised the whole-package statement figure to 75.69% (tracks 94.97%, workflows 70.28%, loader 75.65%):
 
 | Folder / file | Stmts | Branch | Funcs | Lines |
 | --- | --- | --- | --- | --- |
@@ -49,7 +49,7 @@ Local stack (`pipeline/local-stack/services`):
 | services/report-sections | 47.66 | 56.48 | 36.84 | 49.48 |
 | services/tracks | 88.16 | 70.19 | 92.85 | 88.81 |
 | services/workflows (only tcad-backbone.ts, tcad-chunk.ts loaded) | 70.28 | 58.19 | 66.12 | 72.97 |
-| whole local-stack | 72.42 | 63.79 | 65.39 | 73.85 |
+| whole local-stack (final run, real-Postgres test enabled) | 75.69 | n/a | n/a | n/a |
 
 ### Files below 80% statements (honest list)
 
@@ -69,7 +69,7 @@ Local stack (`pipeline/local-stack/services`):
 
 `local-stack/services/workflows/austin-permits.ts` and `gis-import.ts` do not appear in the coverage table at all (no test imports them), so the local-stack figure above is generous. Runtime files at or above 80% include every file under `travis/tcad` (other than export-source.ts), `travis/gis` (lowest `runner-fetch.ts` 81.01, `assemble-coordinates` 96.81) and `travis/permits`. `travis/backbone/commands/coords.ts` is 80.95.
 
-Reading: the new runtime code meets the 80% target (every folder 91-96% statements). The local-stack service layer is 72.42% overall and below target; the gap is almost entirely code that needs a real Postgres or Restate (listed above) and is covered by the PENDING-DB cases, not by unit tests.
+Reading: the new runtime code meets the 80% target (every folder 91-96% statements). The local-stack service layer is 75.69% in the final run (72.42% in the first pass without the real-Postgres test) and stays below the 80% target; the remaining gap is the Restate and bootstrap glue (`app.ts`, `workflows/tcad-backbone.ts`, `austin-permits.ts`, `gis-import.ts`), which the live runs exercise (see the test report) and unit tests do not.
 
 ## Tests written first (TDD)
 

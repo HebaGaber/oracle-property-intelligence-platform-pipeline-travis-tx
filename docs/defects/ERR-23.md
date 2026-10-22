@@ -6,12 +6,12 @@ story: A-04
 test_case: A-04-TC-004
 ac_reference: A-04-AC-1
 severity: Medium
-status: Open
+status: Re-tested (2026-10-22: TC-004 passes live after the fix)
 found_by: QC test runner (Claude), for HebaGaber
 found_date: 2026-10-22
 fix_branch: 004-property-backbone
-fix_commit:
-retest_date:
+fix_commit: be805f8, 79e21d0
+retest_date: 2026-10-22
 ---
 
 # ERR-23: backbone CLI – `ingest --join-proof` gives up after about 5 minutes ("fetch failed") and never prints the `join_proof=` line
@@ -70,7 +70,7 @@ Last line `join_proof=pass matched=<m> disagreements=0`, exit 0 (plan TC-004 ste
 
 | Field      | Value                                       |
 | ---------- | ------------------------------------------- |
-| Root cause |                                             |
-| Fix        |                                             |
-| Re-test    | A-04-TC-004                                 |
-| Status     | ☐ Closed ☐ Reopened, reason:                |
+| Root cause | The CLI made one awaited HTTP call to Restate for a workflow that runs about 10 minutes; the client side gave up at about 5 minutes ("fetch failed") while the server kept running |
+| Fix        | Commit `be805f8`: `callLong` sends the workflow with the async `/send` form and an idempotency key and polls for the result (used by `--join-proof` and `write-group`); `report --json` now prints `job_id` on stderr. First version polled the wrong path; commit `79e21d0` ("callLong polls /restate/invocation/<svc>/<key>/<handler>/<idem>/output", verified live) corrects it |
+| Re-test    | A-04-TC-004, 2026-10-22: live CLI join proof on the rebuilt tables, seed 2026, job `travis-a04-20261022052658`, 12:34:48-12:50:44Z: `join_proof=pass matched=906 disagreements=0 no_tcad_geoid=93 ambiguous_geoid=1 reverse_checked=1000 reverse_disagreements=0` |
+| Status     | Re-tested (PASS); closure by the QC Lead at G7 |
