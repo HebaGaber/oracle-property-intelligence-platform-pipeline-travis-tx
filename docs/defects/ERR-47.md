@@ -7,11 +7,12 @@ story: A-03 (regressed by A-13)
 test_case: A-03-TC-NF-03 (tests/e2e/responsive.spec.ts, 'permits @ 390: first provenance line inside the first viewport')
 ac_reference: AC-2, AC-3, NFR-003
 severity: Medium
-status: fixed (second attempt), re-test pending (hosted)
+status: Closed (fixed, re-tested PASS in CI run 39835352646: A-03-TC-NF-03)
 found_by: CI run 39798211562 (hosted job), preview build 0e9be08 / 3efd120; regression of the first fix found by CI run 39808557005 (head c5c21f3)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-fix_commit: (this commit)
+fix_commit: 9fbf5ff
+retest_date: 2026-10-22
 ---
 
 # ERR-47: Permits at 390 x 844: first provenance line ends at y 860 (limit 844)
@@ -60,3 +61,7 @@ Measured on macOS Chromium (plain script, 390 x 844, live preview with the CSS i
 ## Impact
 
 Layout only; no data affected. The first permit's provenance (source, CID) was below the first viewport at 390 px.
+
+## Re-test
+
+CI run 39835352646 (commit `2c13e09`, code `2cc58ac`, 2026-10-22), job `e2e-hosted`, A-03 cases, one worker: 38 passed, including A-03-TC-NF-03 (permits first provenance line inside the first 390 x 844 viewport on the GitHub runner) and A-03-TC-061. The A-13 token audit (TC-080) is part of the 59 passed general cases of the same run, so the removed negative margin no longer shows. Closed.

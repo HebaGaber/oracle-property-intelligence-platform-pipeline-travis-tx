@@ -8,7 +8,7 @@ runtime_url: https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com
 build: "2e145161d15c1675d628cfdfc120dabd7fcf60c2 (2e14516), read from /build.json on 2026-10-22; earlier runs: 641bc25, a285dbe, d3ae47e, 7f04685, 015fbf9, 32a3d60"
 data_snapshot: bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i
 owner: HebaGaber             # QC Lead
-status: "Final on 2e14516 (TC-040 failed on a slow link, PO decision recorded), awaiting PO sign-off at G7"   # Draft → Complete → Signed Off
+status: "Final: every TC except TC-015 passes on the hosted URL on the final build (CI run 39835352646, code 2cc58ac); TC-040 dual measurement recorded, awaiting PO sign-off at G7"   # Draft → Complete → Signed Off
 gate: G7
 created: 2026-10-22
 signed_off_date:
@@ -18,11 +18,38 @@ signed_off_date:
 
 Every case in `testplans/A-13-test-cases.md` (73 cases, TC-001 to TC-086) runs against the **hosted** Amplify branch preview `https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com`. No case ran on localhost (TC-085 proves the harness refuses it). The production URL `https://countylens.aldarraj.com` serves `feature/oracle-pipeline` until the G7 merge.
 
-**Final result on build `2e14516`: 71 of 73 cases pass; 1 is skipped (TC-015, "waits for A-11 (PO D-1/D-2)"); 1 failed on a slow link (TC-040, first load of the in-browser SQL engine, limit 8 s).** By phase: general 59 passed, 1 skipped (2 workers, 16.6 min); verify 8 of 8; vitals 2 of 2 (TC-058, TC-081); perf: TC-040 failed (11.2 to 25.7 s), TC-041 and TC-082 passed when run alone. The first complete suite, 72 of 73 passing (TC-040 passed at 4.1 to 4.6 s), ran on `015fbf9`; run 5 and run 6 below.
+**Final result on the GitHub runner (CI run 39835352646, preview built from code `2cc58ac`, 2026-10-22): 72 of 73 cases pass, including TC-040; 1 is skipped (TC-015, waits for A-11). Every A-13 TC except TC-015 has a PASS on the hosted URL on the final build; see "Final verification on the GitHub runner" below.** On the author's slow home link, build `2e14516` gave: 71 of 73 cases pass; 1 is skipped (TC-015, "waits for A-11 (PO D-1/D-2)"); 1 failed on a slow link (TC-040, first load of the in-browser SQL engine, limit 8 s).** By phase: general 59 passed, 1 skipped (2 workers, 16.6 min); verify 8 of 8; vitals 2 of 2 (TC-058, TC-081); perf: TC-040 failed (11.2 to 25.7 s), TC-041 and TC-082 passed when run alone. The first complete suite, 72 of 73 passing (TC-040 passed at 4.1 to 4.6 s), ran on `015fbf9`; run 5 and run 6 below.
 
-**TC-040 in plain words.** The engine's compressed file is 8.09 MB; with the other files the page fetches about 11 MB in parallel. On the faster link of the morning the first load took 4.1 to 4.6 s; on the slower link of the evening, 1.1 to 1.5 MB/s at 14:55 and 0.39 then 0.78 MB/s at 16:50, it took 11.2 to 25.7 s. The page and the files did not change in a way that could account for it (ERR-46 removed Google requests, which the waterfall now confirms). PO decision (2026-10-22, "Record both measurements, keep the 8 s limit (Recommended)"): the limit stays 8 s, no code change, and G7 lists TC-040 as "passes at 1.4 MB/s or faster". Both measurements are in [../evidence/A-13-duckdb.md](../evidence/A-13-duckdb.md).
+**TC-040 in plain words.** The engine's compressed file is 8.09 MB; with the other files the page fetches about 11 MB in parallel. On the faster link of the morning the first load took 4.1 to 4.6 s; on the slower link of the evening, 1.1 to 1.5 MB/s at 14:55 and 0.39 then 0.78 MB/s at 16:50, it took 11.2 to 25.7 s. The page and the files did not change in a way that could account for it (ERR-46 removed Google requests, which the waterfall now confirms). PO decision (2026-10-22, "Record both measurements, keep the 8 s limit (Recommended)"): the limit stays 8 s, no code change, and G7 lists TC-040 as "passes at 1.4 MB/s or faster". TC-040 also passes on the GitHub runner in the final CI run (39835352646, perf phase 13 of 13 passed). Both measurements are in [../evidence/A-13-duckdb.md](../evidence/A-13-duckdb.md).
 
 **The published run is a slice, so every scale number below is provisional.** The only published run, `travis-202609-permits-20261021t103516z`, holds 14 properties and 35 reroof permits (22 open, 13 closed, 0 stalled). TC-040 and TC-041 timings, TC-058 and the Catalog and Coverage cases are therefore measured on that slice and marked "provisional until A-11" in the evidence files the tests write. They do not prove the full-county behaviour.
+
+## Final verification on the GitHub runner (CI run 39835352646)
+
+GitHub Actions run 39835352646, commit `2c13e09` (code identical to `2cc58ac`; the commit differs only in `docs/` and `specs/`), 2026-10-22, conclusion **success**. The `e2e-hosted` job ran three Playwright steps against the Amplify preview `https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com` (the Amplify build of the same push).
+
+| Step | Workers | Result |
+| --- | --- | --- |
+| A-03 cases | 1 | **38 passed** (includes A-03-TC-NF-03, the permits first-viewport rule at 390, and A-03-TC-061) |
+| A-13 general (explorer, pages, scan) | 4 | **59 passed, 1 skipped** (TC-015, waits for A-11) |
+| A-13 Verify, performance, vitals | 1 | **13 passed** (the 8 Verify cases, TC-040, TC-041, TC-082, TC-058, TC-081) |
+| Total A-13 | | **72 passed, 1 skipped** (59 + 13 passed; 73 cases in the plan) |
+
+The other jobs of the run (`gitleaks`, `workspace`, `oracle-runtime`) also succeeded; the `workspace` job holds the unit tests, the coverage gates and the bundle gate (see [A-13-unit-test-report.md](A-13-unit-test-report.md)).
+
+**Every A-13 test case except TC-015 has a PASS on the hosted URL on the final build.** TC-015 stays skipped because the "still resolves" pill needs two published runs (A-11).
+
+**TC-040 has two measurements and now a third.** It failed on the author's slow home link (11 to 26 s at 0.4 to 1.5 MB/s), passed earlier on the same link when it was faster (4.1 to 4.6 s), and passes on the GitHub runner in this run. The PO decision stands (keep the 8 s limit, record both measurements, no code change). Detail: [../evidence/A-13-duckdb.md](../evidence/A-13-duckdb.md) and the Non-functional results table below.
+
+Runs of the same CI job before the final one, for the record:
+
+| CI run | Commit | Outcome |
+| --- | --- | --- |
+| 39808557005 | `c5c21f3` | `e2e-hosted` failed: token audit (the -16 px margin, ERR-47 attempt 1), permits first viewport 940.8 px on the runner, TC-008 race (ERR-48), A-03-TC-061 |
+| 39819086782 | | `workspace` failed on timing races in web unit tests (ERR-49) |
+| 39826467354 | | `workspace` failed on timing races in web unit tests (ERR-49) |
+| 39828569416 | `2cc58ac` | all jobs green except A-03-TC-061 (a stale SHA in an evidence file; 37 A-03 cases passed, A-13 59 + 1 skipped, 13 of 13) |
+| **39835352646** | `2c13e09` (code `2cc58ac`) | **all jobs success** |
 
 ## Run history
 
@@ -46,12 +73,13 @@ Numbers come from the Playwright JSON reports of each run (`stats.expected`, `st
 | --- | --- |
 | Environment | https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com · build `2e14516` (`2e145161d15c1675d628cfdfc120dabd7fcf60c2`) · 2026-10-22 |
 | Total TC executed | 73 in the plan; 72 executed and 1 skipped in the final run |
-| Passed / failed / blocked | **71 / 1 / 0**, plus 1 skipped (TC-015, waits for A-11). The 1 failure is TC-040 on a slow link (PO decision recorded) |
-| Pass rate | 98.6 % of executed cases (71 / 72); 97.3 % of the plan (71 / 73) |
+| Passed / failed / blocked | **72 / 0 / 0**, plus 1 skipped (TC-015, waits for A-11), on the GitHub runner (CI run 39835352646). On the author's slow link on `2e14516`: 71 / 1 / 0 (TC-040 failed, PO decision recorded) |
+| Pass rate | 100 % of executed cases (72 / 72); 98.6 % of the plan (72 / 73) |
 | Open Critical defects | 0. ERR-21 to ERR-46 are 8 High, 12 Medium, 6 Low; none Critical; all re-tested PASS (ERR-21 to ERR-42 on `015fbf9`, ERR-43 to ERR-46 on `2e14516`) |
-| Unit test report | `docs/reports/A-13-unit-test-report.md` (written at `70561ec`: 1,319 passed). A fresh `pnpm test` at `2e14516` on 2026-10-22: 102 files passed, 1 skipped; **1,484 passed, 8 skipped, 0 failed** |
+| Unit test report | `docs/reports/A-13-unit-test-report.md` (written at `70561ec`: 1,319 passed). A fresh local `pnpm test` at `2cc58ac` on 2026-10-22: 102 files passed, 1 skipped; **1,489 passed, 8 skipped, 0 failed**; the same tests, coverage gates and bundle gate pass in CI run 39835352646 |
 | Code review log | `docs/reviews/CR-A-13.md` (metagross 77, audino 82, `/code-review` medium, 0 open Critical) |
-| Playwright run | Operator session, JSON reports `hosted-general.json`, `hosted-verify.json`, `hosted-perf.json`, `hosted-vitals.json` (session scratchpad, not in the repo) with line output; run command `playwright test -g A-13` per phase with `RUNTIME_URL` set to the preview. No GitHub Actions run exists for `2e14516` (pushed with `[skip ci]` so Actions would not run a competing hosted job); the evidence push runs the CI job that counts |
+| CI run | GitHub Actions 39835352646 (success, commit `2c13e09`, code `2cc58ac`): https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39835352646 |
+| Playwright run (operator) | Operator session, JSON reports `hosted-general.json`, `hosted-verify.json`, `hosted-perf.json`, `hosted-vitals.json` (session scratchpad, not in the repo) with line output; run command `playwright test -g A-13` per phase with `RUNTIME_URL` set to the preview. No GitHub Actions run exists for `2e14516` (pushed with `[skip ci]`); the final verification is CI run 39835352646 |
 | Evidence | `docs/evidence/A-13.md`, `A-13-duckdb.md`, `A-13-roof-age.md`, `A-13-open-permits.md`, `A-13-pages.md`, `A-13-smeargle.md`, `A-13-TC-040-timings.json`, `A-13-TC-041-timings.json`; screenshots `docs/evidence/img/A-13-TC-*.png` |
 
 ## Results
@@ -163,7 +191,7 @@ Result columns: "Result on 2e14516" is the final run (every case marked PASS als
 
 ## Cases that wait for A-11
 
-Eleven cases carry the plan's "Waits for A-11 (PO D-1/D-2, 2026-10-21)" label. A-11 has not published runs 2 and 3, the full county, `tables-export.json` or run events. Each case ran its "today" branch on the single published run and reported that branch in the test annotations (`a11-branch`). 9 of the 11 pass today and TC-040 failed on `2e14516` (slow link, see its row); their full assertions switch on automatically once `runs/index.json` holds at least 3 runs. TC-015 is skipped.
+Eleven cases carry the plan's "Waits for A-11 (PO D-1/D-2, 2026-10-21)" label. A-11 has not published runs 2 and 3, the full county, `tables-export.json` or run events. Each case ran its "today" branch on the single published run and reported that branch in the test annotations (`a11-branch`). 10 of the 11 pass today (TC-040 included on the GitHub runner, CI run 39835352646; it failed on the author's slow link on `2e14516`, see its row); their full assertions switch on automatically once `runs/index.json` holds at least 3 runs. TC-015 is skipped (the only A-13 case without a PASS).
 
 | TC | Result | What it checked today (single run, 14 properties, 35 permits) | What A-11 adds |
 | --- | --- | --- | --- |
@@ -173,7 +201,7 @@ Eleven cases carry the plan's "Waits for A-11 (PO D-1/D-2, 2026-10-21)" label. A
 | TC-015 resolve pill | **SKIPPED** | Skipped with the reason "1 run published": the pill needs two runs | Pill only after both gateways answer for the old CID |
 | TC-019 file > 50 MB | PASS | No artifact in this run exceeds 50 MB (recorded); every file ≤ 50 MB shows "Verify" | Every file > 50 MB shows "Verify via CAR" |
 | TC-031 chips and sort | PASS | `permits_emitted_stalled` is 0 and no permit is open ≥ 5 years: the list is empty with the exact message (`A-13-TC-031-today.png`) | Stalled and open chips sorted by open longest |
-| TC-040 first DuckDB load | **FAIL on `2e14516` (slow link)**; PASS on `015fbf9` | `2e14516`: 11,159 to 25,719 ms (limit 8,000 ms), progress bar shown; `015fbf9`: 4,123 to 4,607 ms; **provisional** (slice; the time is the engine download) | Same test on full-county tables, on a link whose speed is recorded |
+| TC-040 first DuckDB load | **FAIL on `2e14516` (slow link)**; PASS on `015fbf9` and on the runner (CI run 39835352646) | `2e14516`: 11,159 to 25,719 ms (limit 8,000 ms), progress bar shown; `015fbf9`: 4,123 to 4,607 ms; **provisional** (slice; the time is the engine download) | Same test on full-county tables, on a link whose speed is recorded |
 | TC-041 search p95 | PASS | 20 distinct radii per series: radius + roof p50 1,320 ms, p95 1,837 ms; open-permit p50 812 ms, p95 1,313 ms (limit 3,000 ms); **provisional** (slice) | Same test on full-county tables |
 | TC-053 Catalog | PASS | 23 table rows from the manifest (16 `tables/county/*`, 7 `tables/property_improvement/*`), columns from each Parquet footer, notice "table export not in this run's manifest" | Columns from `tables-export.json` |
 | TC-057 Runs · Log | PASS | The 4 events of the single run (start, two source captures, finish with 3 limitations) in time order with the run ID | All events of at least 3 runs |
@@ -183,7 +211,7 @@ Eleven cases carry the plan's "Waits for A-11 (PO D-1/D-2, 2026-10-21)" label. A
 
 | TC ID | NFR | Tool | Result | Actual | Threshold |
 | --- | --- | --- | --- | --- | --- |
-| A-13-TC-040 | NFR-001 first load | Playwright timing, 5 loads | **FAIL on `2e14516` (slow link)**; PASS on `015fbf9` (provisional) | `2e14516`: 11,351 · 13,258 · 12,788 · 19,272 · 25,719 ms (latest run; the clean run gave 11,159 to 13,008). `015fbf9`: 4,200 · 4,285 · 4,237 · 4,123 · 4,607 ms (median 4,237). Engine file 8,090,177 B measured at 1.1 to 1.5 MB/s (14:55) and 0.39 to 0.78 MB/s (16:50). 14-property slice | ≤ 8,000 ms; PO decision: keep, G7 "passes at 1.4 MB/s or faster" |
+| A-13-TC-040 | NFR-001 first load | Playwright timing, 5 loads | **FAIL on `2e14516` (slow link)**; PASS on `015fbf9` and **PASS on the GitHub runner in CI run 39835352646** (provisional) | `2e14516`: 11,351 · 13,258 · 12,788 · 19,272 · 25,719 ms (latest run; the clean run gave 11,159 to 13,008). `015fbf9`: 4,200 · 4,285 · 4,237 · 4,123 · 4,607 ms (median 4,237). Engine file 8,090,177 B measured at 1.1 to 1.5 MB/s (14:55) and 0.39 to 0.78 MB/s (16:50). 14-property slice | ≤ 8,000 ms; PO decision: keep, G7 "passes at 1.4 MB/s or faster" |
 | A-13-TC-041 | NFR-001 search p95 | Playwright timing, 20 runs per series | PASS (provisional) | radius + roof: p50 1,320 / p95 1,837 / max 5,348 ms; open permit: p50 812 / p95 1,313 / max 1,322 ms. The server `queryDurationMs` of the same runs was 203 to 245 ms | p95 < 3,000 ms |
 | A-13-TC-058 | NFR-002 Runs · Log LCP | Lighthouse mobile profile in Playwright, median of 5 | PASS (provisional) | LCP runs 2,452 · 2,296 · 2,208 · 2,728 · 4,592 ms, median 2,452 ms; CLS 0.000 | LCP < 2,500 ms |
 | A-13-TC-081 | NFR-002 LCP, CLS, INP | same profile, median of 5, 8 pages | PASS | median LCP 1,572 to 2,408 ms (data pages 2,284 to 2,408: `/runs/log` 2,408, `/tx/travis/coverage` 2,400, `/runs` 2,284; Hub 1,736); median CLS ≤ 0.037; median INP ≤ 40 ms (single click at most 56 ms); INP "n/a" on `/runs/log` and `/legal/data` (no link, button or tab in main) | LCP < 2,500 ms, CLS < 0.1, INP < 200 ms |
@@ -230,7 +258,7 @@ Counts: 16 product defects (ERR-21, 22, 25, 27, 30, 31, 32, 33, 38, 39, 41, 42, 
 
 No open finding outside the 73 cases: smeargle N3 (`/help/mcp`, 390 px, `main` scrolls sideways) is ERR-43, fixed in `34c8eaf` and re-measured on the hosted build. TC-080 measures the document, not `main`, so it could not have caught it; the smeargle cell did.
 
-Notes: (1) The `docs/defects/ERR-21.md` to `ERR-42.md` files still read "Fixed, re-test pending (hosted)" with empty `fix_commit` and `retest_date`; the table above is the re-test record until they are closed at G7. ERR-43 to ERR-46 are closed in their files. (2) Product fixes of ERR-21 to ERR-32 were written with their tests, not seen red first, as the run-log records. (3) TC-072 failed once at 406 px under 4-worker load in runs 3 and 4 and could not be reproduced in 6 clean single runs on `d3ae47e`; it was reproduced only by delaying `explore.search` (ERR-42) and passes on `015fbf9`.
+Notes: (1) The `docs/defects/ERR-21.md` to `ERR-42.md` files still read "Fixed, re-test pending (hosted)" with empty `fix_commit` and `retest_date`; the table above is the re-test record until they are closed at G7. ERR-43 to ERR-48 are closed in their files (ERR-47 and ERR-48 re-tested PASS in CI run 39835352646). (2) Product fixes of ERR-21 to ERR-32 were written with their tests, not seen red first, as the run-log records. (3) TC-072 failed once at 406 px under 4-worker load in runs 3 and 4 and could not be reproduced in 6 clean single runs on `d3ae47e`; it was reproduced only by delaying `explore.search` (ERR-42) and passes on `015fbf9`.
 
 ## Sign-off
 

@@ -3,16 +3,19 @@ id: UT-A-13
 type: unit-test-report
 story: A-13
 branch: 013-explorer-and-pages
-commit: 2e14516
-ci_run: "None yet. Totals, skips and bundle size were re-run locally at 2e14516 on 2026-10-22; coverage and the per-project table are from 70561ec. No GitHub Actions run exists for this branch tip."
+commit: 2c13e09
+code_commit: 2cc58ac
+ci_run: "GitHub Actions run 39835352646, success, 2026-10-22, commit 2c13e09 (code identical to 2cc58ac): https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39835352646"
 created: 2026-10-22
 ---
 
 # Unit and Integration Test Report: A-13
 
-**History.** First written at `70561ec` (93 files, 1,326 tests, 1,319 passed, 7 skipped); a fresh run at `015fbf9` gave 1,448 passed; **refreshed at `2e14516` on 2026-10-22 (16:50): 103 files, 1,492 tests, 1,484 passed, 8 skipped, 0 failed, 15.90 s**, with the bundle size re-measured after a fresh build. The coverage rows, the coverage caveat and the per-project table below were not re-measured and still describe `70561ec`.
+**History.** First written at `70561ec` (93 files, 1,326 tests, 1,319 passed, 7 skipped); a fresh run at `015fbf9` gave 1,448 passed; refreshed at `2e14516` on 2026-10-22 (16:50): 103 files, 1,492 tests, 1,484 passed, 8 skipped, 0 failed, 15.90 s**; **final local run at `2cc58ac` on 2026-10-22: 103 files (102 passed, 1 skipped), 1,497 tests, 1,489 passed, 8 skipped, 0 failed.** The final CI run (39835352646, commit `2c13e09`, code identical to `2cc58ac`) passed `workspace`, `oracle-runtime`, `gitleaks` and `e2e-hosted`; its coverage gates and bundle gate are in the table. The per-project table and the whole-workspace coverage row below were not re-measured and still describe `70561ec`.
 
-The numbers below come from local command output on 2026-10-22 (about 00:54 to 01:00 EEST, UTC+3) on branch `013-explorer-and-pages` at commit `70561ec`. The only modified file in the tree during the runs was `specs/013-explorer-and-pages/run-log.md`. These are **local unit tests only**. They do not prove the hosted runtime. The 73 hosted Playwright specs are written but **have not been run on any hosted URL** (see "Not measured").
+**CI failure history (ERR-49).** The first two runs that reached the `workspace` job on the GitHub runner (39819086782 and 39826467354) failed on timing races in web unit tests: a loaded runner is slower than the author's laptop, so fixed short waits in the Catalog footer, debounce and similar tests expired before the page had rendered. The fix was central, generous async waits in `apps/web/test-setup.ts` and tests that wait for the footer-derived row count (ERR-49, commits `0967d68` and `2cc58ac`), with no change to the tested code; run 39835352646 is the first fully green run.
+
+The numbers below come from local command output on 2026-10-22 (about 00:54 to 01:00 EEST, UTC+3) on branch `013-explorer-and-pages` at commit `70561ec`. The only modified file in the tree during the runs was `specs/013-explorer-and-pages/run-log.md`. These are **local unit tests only**. They do not prove the hosted runtime. The hosted Playwright specs are reported in `docs/reports/A-13-test-report.md` (they also ran on the GitHub runner in CI run 39835352646).
 
 Environment for every command (no credentials read):
 
@@ -23,15 +26,17 @@ export CDK_DEFAULT_REGION=eu-north-1 CDK_DEFAULT_ACCOUNT=000000000000 OPERATOR_E
 | Item | Value |
 | --- | --- |
 | Command | `pnpm test` (`vitest run --passWithNoTests`, all workspace projects) |
-| Files / tests | 103 files / 1,492 tests at `2e14516` (93 / 1,326 at `70561ec`) |
-| Passed / failed / skipped | **1,484 / 0 / 8** at `2e14516` (102 files passed, 1 file skipped); 1,319 / 0 / 7 at `70561ec` |
+| Files / tests | 103 files / 1,497 tests at `2cc58ac` (103 / 1,492 at `2e14516`; 93 / 1,326 at `70561ec`) |
+| Passed / failed / skipped | **1,489 / 0 / 8** at `2cc58ac` (102 files passed, 1 file skipped; local `pnpm test`, 2026-10-22); 1,484 / 0 / 8 at `2e14516`; 1,319 / 0 / 7 at `70561ec` |
+| CI run | 39835352646 (commit `2c13e09`, code = `2cc58ac`): `pnpm turbo run typecheck lint test synth` green on the runner (no failed test), so the unit tests pass on a loaded runner as well as locally |
 | Duration | 15.90 s at `2e14516` (15.86 s at `70561ec`) |
-| Coverage, `packages/query-core` | src: lines 98.58 % · branches 90.39 % · functions 100 % · statements 96.43 %. gazetteer: lines 88.12 % · branches 81.16 % · functions 86.96 % · statements 85.83 %. **PASS** against 80 % on all four metrics in both parts |
-| Coverage, `packages/contract` | 100 % lines, branches, functions, statements. **PASS** against 80 % |
+| Coverage, `packages/query-core` | src: lines 98.58 % · branches 90.39 % · functions 100 % · statements 96.43 %. gazetteer: lines 88.12 % · branches 81.16 % · functions 86.96 % · statements 85.83 %. **PASS** against 80 % on all four metrics in both parts. **CI gate (run 39835352646): PASS ≥ 80 % lines and branches**; the CI table reads all files 96.19 % lines · 88.25 % branches (src 98.11 · 89.72; gazetteer 88.11 · 81.15) |
+| Coverage, `packages/contract` | 100 % lines, branches, functions, statements. **PASS** against 80 %. **CI gate (run 39835352646): PASS**, 100 % on all four metrics |
 | Coverage, whole workspace include set | lines 92.43 % · branches 81.58 % · functions 91.39 % · statements 90.06 % |
 | `pnpm typecheck` | clean (no output, exit 0) |
 | `pnpm lint` | clean (no output, exit 0) |
-| Bundle size | at `2e14516`, after a fresh `pnpm --filter @countylens/web build`: initial JS **220.9 KB gz (226,177 B)** against 300 KB limit, DuckDB chunks excluded: **PASS**. Hub graph **124.6 KB gz (127,575 B)** against 150 KB: **PASS**; placement OK. (`70561ec`: 217.2 KB and 123.8 KB) |
+| Bundle size (CI) | run 39835352646, bundle gate: initial JS **220.9 KB gz (226,184 B)** against the 300 KB limit, DuckDB chunks excluded: **PASS**; Hub graph **124.6 KB gz (127,583 B)** against 150 KB: **PASS**; placement OK. Local at `2e14516`: 220.9 KB (226,177 B) and 124.6 KB (127,575 B) |
+| Bundle size (local) | at `2e14516`, after a fresh `pnpm --filter @countylens/web build`: initial JS **220.9 KB gz (226,177 B)** against 300 KB limit, DuckDB chunks excluded: **PASS**. Hub graph **124.6 KB gz (127,575 B)** against 150 KB: **PASS**; placement OK. (`70561ec`: 217.2 KB and 123.8 KB) |
 
 ## Coverage method and a caveat
 
@@ -100,7 +105,7 @@ Not re-verified for this report. The red-then-green order is recorded in the com
 
 ## Not measured
 
-- Hosted Playwright specs (73): not part of `pnpm test`; their hosted results are in `docs/reports/A-13-test-report.md` (71 passed, 1 skipped, 1 failed on `2e14516`).
+- Hosted Playwright specs (73): not part of `pnpm test`; their hosted results are in `docs/reports/A-13-test-report.md` (72 passed incl. TC-040, 1 skipped on the runner in CI run 39835352646; 71 passed, 1 skipped, 1 failed on `2e14516` on the author's slow link).
 - `exploreSearchSql` over the published run in Vitest: skipped (`PUBLISHED_TABLES_DIR` unset). A separate measurement over the published run is in the demo-area note, not in this test run.
 - `pipeline/oracle-runtime` tests, CDK bundled-asset test (`COUNTYLENS_BUNDLE=1`), pilot-export tests (`PILOT_DIR`).
 - The bundle numbers in the table were taken after a fresh build at `2e14516`; the `70561ec` run had read an existing `dist`.

@@ -6,11 +6,12 @@ feature: FEAT-A13
 story: A-13
 test_case: A-13-TC-008 (tests/e2e/A-13-explorer.spec.ts)
 severity: Low
-status: fixed, re-test pending (hosted)
+status: Closed (fixed, re-tested PASS in CI run 39835352646: A-13-TC-008)
 found_by: CI run 39808557005 (hosted job, head c5c21f3)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-fix_commit: (this commit)
+fix_commit: 9fbf5ff
+retest_date: 2026-10-22
 ---
 
 # ERR-48: TC-008 expected "3 close matches" from a different search than the one on screen
@@ -30,3 +31,7 @@ A race in the test, not a page defect. `nextSearch` returns the first `explore.s
 ## Impact
 
 Test only. No ERR-49: items 1 and 2 had one root cause each (the removed hack; the touch-target growth), item 3 had no second one.
+
+## Re-test
+
+CI run 39835352646 (commit `2c13e09`, code `2cc58ac`, 2026-10-22), job `e2e-hosted`, A-13 general phase, 4 workers: 59 passed, 1 skipped (TC-015, waits for A-11). A-13-TC-008 passes on the runner. Closed.

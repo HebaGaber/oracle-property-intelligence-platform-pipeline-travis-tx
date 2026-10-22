@@ -41,6 +41,7 @@ Limit 8,000 ms, five cold loads per run, from navigation until the progress bar 
 | `015fbf9` (and `5fdac1a`) | 4,200 · 4,285 · 4,237 · 4,123 · 4,607 (median 4,237) | not measured at the time | PASS |
 | `2e14516`, clean run | 11,159 to 13,008 | engine file by hand: 6.0 s, 7.2 s, 5.3 s = 1.1 to 1.5 MB/s (14:55) | **FAIL** |
 | `2e14516`, latest run | 11,351 · 13,258 · 12,788 · 19,272 · 25,719 | engine file by hand: 0.39 then 0.78 MB/s (16:50) | **FAIL** |
+| `2cc58ac` on the GitHub runner (CI run 39835352646) | not recorded in the repo (the step reports pass or fail) | runner connection | **PASS** (within the 8,000 ms limit; Verify, performance and vitals step 13 of 13) |
 
 Waterfall of the SQL panel on `2e14516` (the engine load): engine `wasm.gz` 8.09 MB took 9.3 s, the `icu` extension 1.9 MB 3.1 s, `parquet` 0.74 MB 1.8 s, `json` 0.19 MB 0.9 s (about 11 MB in parallel); everything else was done by about 4 s. After ERR-46 the waterfall holds no request to Google.
 
