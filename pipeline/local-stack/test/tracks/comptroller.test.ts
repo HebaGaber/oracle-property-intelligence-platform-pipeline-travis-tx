@@ -38,7 +38,7 @@ function stagedArtifact(rows: Record<string, unknown>[]): { path: string; sha256
   const dir = mkdtempSync(join(tmpdir(), "a07-comptroller-track-"));
   dirs.push(dir);
   const path = join(dir, "registry-rows.json");
-  const body = Buffer.from(JSON.stringify(rows));
+  const body = Buffer.from(JSON.stringify({ mappingVersion: "tx-comptroller-mapping@1.1.0", rows }));
   writeFileSync(path, body);
   return { path, sha256: createHash("sha256").update(body).digest("hex") };
 }
@@ -93,6 +93,52 @@ describe("comptroller track: load_registry", () => {
       capturedAt: "2026-10-19T21:00:38.000Z",
     };
     await expect(track.merge(tx, input)).rejects.toThrow(/sha256/);
+  });
+});
+
+describe("comptroller track: resolve_permits (T020, Wave 3)", () => {
+  it("resolves every candidate permit against the registry and batch-inserts the ledger", async () => {
+    const candidates = [
+      { permit_key: "2026-000001 BP", raw_contractor_name: "Roofing Co." }, // candidate
+      { permit_key: "2026-000002 BP", raw_contractor_name: null }, // unresolved/contractor_not_printed
+      { permit_key: "2026-000003 BP", raw_contractor_name: "Nobody Matches LLC" }, // unresolved
+    ];
+    const registry = [
+      { taxpayer_number: "32000000001", legal_name: "ROOFING COMPANY", sos_status_code: "ACTIVE", mailing_address: null, sos_file_number: null },
+    ];
+    let ledgerInsertValues: unknown[] | undefined;
+    const { tx } = fakeTx((text, values) => {
+      if (text.startsWith("SELECT pi.permit_number")) return candidates;
+      if (text.startsWith("SELECT taxpayer_number, legal_name")) return registry;
+      if (text.startsWith("INSERT INTO contractor_resolution_ledger")) {
+        ledgerInsertValues = values;
+        return candidates.map((c) => ({ permit_key: c.permit_key }));
+      }
+      return [];
+    });
+    const input = {
+      kind: "resolve_permits" as const,
+      jobId: "travis-a07-identity-resolve-202610221900",
+      artifactPath: "query-db://property_improvements+comptroller_registry/austin-reroof",
+      artifactSha256: "e".repeat(64),
+      scope: "austin-reroof" as const,
+      effectiveOn: "2026-10-22T19:00:00.000Z",
+    };
+    const outcome = await track.merge(tx, input);
+    expect(outcome.rowsWritten).toBe(3);
+    const totals = (outcome.watermark?.value as { fiveStateTotals: Record<string, number> }).fiveStateTotals;
+    expect(totals.candidate).toBe(1);
+    expect(totals.unresolved).toBe(2);
+    expect(totals.resolved).toBe(0);
+    expect(totals.ambiguous).toBe(0);
+    expect(totals.conflicting).toBe(0);
+    expect(ledgerInsertValues).toBeDefined();
+    // the state array (one of the unnest columns) carries exactly 1 "candidate" and 2
+    // "unresolved" entries, wherever it lands among the insert's parameter arrays.
+    const flattened = (ledgerInsertValues ?? []).flat(Infinity) as unknown[];
+    expect(flattened.filter((v) => v === "candidate").length).toBe(1);
+    expect(flattened.filter((v) => v === "unresolved").length).toBe(2);
+    expect(flattened.filter((v) => v === "2026-000001 BP").length).toBe(1);
   });
 });
 

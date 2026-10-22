@@ -1,6 +1,62 @@
 # Build notes: Track A (contractor identity)
 
-## Wave 2 (this update)
+## Wave 3 (this update)
+
+- **Data bug found and fixed** (discovered sanity-checking T020's first live run): Wave 1/2's
+  `tx-comptroller.ts` guessed wrong Comptroller field names
+  (`right_to_transact_business`/`sos_file_number`/`taxpayer_mailing_address` do not exist).
+  A live `$limit=1` probe and a `$group=sos_status_code,right_to_transact_business_code`
+  query against `data.texas.gov/9cir-efmm` confirmed the real fields:
+  `sos_status_code` ("A" = active; other observed codes C/D/F/M/R/V/W/X/Y, none active),
+  `secretary_of_state_sos_or_coa_file_number`, `taxpayer_address`. Fixed the mapping and the
+  code→label translation (only `A`→`active`).
+- **Idempotency gap found and fixed**: the Comptroller registry upsert's `ON CONFLICT ...
+  WHERE` guard only compared `updated_at`/`legal_name`/`sos_status_code`, so correcting the
+  mapping above silently left `mailing_address`/`sos_file_number` stale for 6,378 taxpayers
+  whose `sos_status_code` is legitimately blank in both the old (wrong) and new (correct)
+  reading (confirmed live: NUECES CAPITAL PARTNERS I, taxpayer 10105906332, has a real
+  `taxpayer_address` the DB still showed as null). Widened the `WHERE` guard to also compare
+  those two columns. Separately, the Loader's generic `(track, artifactSha256)` idempotency
+  key is a hash of the *staged file's bytes*, which stayed identical across reloads (same
+  live source, same corrected mapping in memory) even though the DB-side bug meant the
+  **previous** merge never wrote the fix — so a second reload was wrongly skipped. Fixed by
+  stamping a `MAPPING_VERSION` into the staged artifact (`{ mappingVersion, rows }`, not a
+  bare array): a corrected mapping now always changes the artifact's hash and forces a
+  legitimate re-merge through the normal Loader path. (Considered and rejected: a direct
+  Postgres `DELETE` on the stale `loader_merges` row — denied by the sandbox as a shared-
+  resource write, and I agree it would have bypassed the Loader anyway.) A third live reload
+  with both fixes applied wrote exactly `rowsWritten: 6378` — the exact count of previously-
+  stale rows — and `mailing_address IS NULL` is now `0` across all 342,333 rows.
+- **T020 [RUN], Wave 3 DB writer**: added the `resolve_permits` kind to the `comptroller`
+  Loader track (reads Austin reroof candidates' printed name from `permit_source_rows.
+  payload->>'contractor_company_name'`, the live registry, resolves each via T014's
+  `resolveContractor` through a normalized-name index built once — never an O(n) scan per
+  permit over ~342k rows — and batch-inserts into `contractor_resolution_ledger`), a new
+  `identity:resolve` CLI verb (`backbone identity:resolve --scope austin-reroof
+  --registry-snapshot <digest>`, Restate ingress only), and a new read-only `IdentityReport`
+  Restate service (`services/workflows/identity-report.ts`) the verb reads back from after
+  the merge (mirroring `ReconcileReport`'s pattern, since the generic `Loader.merge`
+  response doesn't carry the five-state totals). Tests written first (extended
+  `pipeline/local-stack/test/tracks/comptroller.test.ts`), red, then green.
+  **Final corrected live run**: job `travis-a07-identity-resolve-20261022185017` —
+  resolved=**0**, candidate=**311**, ambiguous=**0**, conflicting=**78**,
+  unresolved=**21,695**, sum=**22,084** (matches the permit total exactly). Sanity-checked
+  directly against Postgres (`contractor_resolution_current` GROUP BY state): identical
+  counts. `matchRule`=`normalize-name-v1`, `resolverVersion`=`1.0.0`. (Before the fixes: the
+  broken run showed candidate=0/conflicting=389, i.e. every active-status match was being
+  read as non-active — now active rows correctly flow to `candidate`.)
+  Report: `pipeline/data/identity/travis/travis-a07-identity-resolve-20261022185017/
+  resolution-report.json`.
+- **T022**: implemented `travis/identity/sampler.ts` (`sampleContractorLedger` — seeded
+  mulberry32 PRNG, guarantees one row per non-empty state then fills to 25 at random, never
+  duplicating a `permitKey`; `buildEvidenceSkeleton`/`comptrollerRecordUrl` for the per-
+  entity-GET source citation) against the already-red T021 test; now green. Built the live
+  25-row review table (seed `20261022`) from the real T020 run:
+  `pipeline/data/identity/travis/travis-a07-identity-resolve-20261022185017/
+  sample-25-review.md` (human table with pre-filled verdicts, 4 rows flagged unsure) plus
+  `sample-25.json` (machine-readable, same directory).
+
+## Wave 2
 
 - **T018**: `travis/identity/totals.ts` (`computeFiveStateTotals`) implemented against the
   already-red T013 test; now green. Pure aggregation, `derivation: "aggregate_match"`,

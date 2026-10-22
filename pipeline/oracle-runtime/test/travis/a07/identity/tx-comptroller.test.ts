@@ -30,8 +30,8 @@ function rawRow(n: number, over: Record<string, unknown> = {}): Record<string, u
     taxpayer_number: `3200000000${n}`,
     taxpayer_name: `SYNTHETIC ROOFING ${n} CO`,
     taxpayer_county_code: "227",
-    right_to_transact_business: "ACTIVE",
-    sos_file_number: `SOS-${n}`,
+    sos_status_code: "A",
+    secretary_of_state_sos_or_coa_file_number: `SOS-${n}`,
     ...over,
   };
 }
@@ -126,7 +126,11 @@ describe("loadComptrollerRegistry (staging + watermark + digest, over a fake Soc
       "32000000004",
     ]);
 
-    const staged = JSON.parse(readFileSync(join(dir, "registry-rows.json"), "utf8")) as unknown[];
-    expect(staged.length).toBe(4);
+    const staged = JSON.parse(readFileSync(join(dir, "registry-rows.json"), "utf8")) as {
+      mappingVersion: string;
+      rows: unknown[];
+    };
+    expect(staged.mappingVersion.length).toBeGreaterThan(0);
+    expect(staged.rows.length).toBe(4);
   });
 });
