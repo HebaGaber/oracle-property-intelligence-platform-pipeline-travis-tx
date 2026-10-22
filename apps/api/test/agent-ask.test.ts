@@ -1,0 +1,172 @@
+// T023 (A-14, contracts/agent-ask.md, agent-design.md § "ash" > "Outcome taxonomy and how to
+// trigger each for testing"): contract-level tests asserting each `outcome` value (`answered`,
+// `paused`, `throttled`, `timed_out`) is reachable via documented, reversible configuration --
+// a lowered abort threshold, a lowered spend cap, or a forced throttle -- never a hand-crafted
+// fake `outcome`. `cancelled` is client-only (the Cancel button aborts the fetch before the
+// server ever answers, agent-design.md's AI-tab-states table) and `failed` is an unexpected-error
+// path (re-thrown, never swallowed, per ask.ts's catch block), so neither is exercised here.
+// This stands in for the AI-tab Playwright suite until A-13's Explore shell merges (T033); the
+// real `tests/agent/golden.json` grader (T020) and the hosted verification (TZ03) still need a
+// deployed endpoint and are not duplicated here.
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { mockClient } from "aws-sdk-client-mock";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { QueryEngine } from "@countylens/query-core";
+import {
+  abortMs,
+  dailySpendCapUsd,
+  type AskDeps,
+  type ModelLoopOutput,
+  type RunModelLoop,
+  runAgentAsk,
+} from "../src/agent/ask.js";
+
+const ddb = DynamoDBDocumentClient.from(
+  new DynamoDBClient({
+    region: "xx-test-1",
+    credentials: { accessKeyId: "AKIAIOSFODNN7EXAMPLE", secretAccessKey: "test" },
+  }),
+);
+const ddbMock = mockClient(ddb);
+
+const FAKE_ENGINE: QueryEngine = { run: async () => {}, all: async () => [] };
+const FAKE_BOUND = {
+  runId: "travis-202609-permits-20261021t103516z",
+  manifestCid: "bafyreicompletelyfakemanifestcidusedonlyinthistestxxxxxxxxxxxxxx",
+  asOf: "2026-10-21T10:35:16.000Z",
+  tables: [],
+  views: [] as never[],
+};
+
+/** The dependency overrides every test shares: no real AWS call, a fixed bound run. */
+function baseDeps(overrides: Partial<AskDeps> = {}): Partial<AskDeps> {
+  return {
+    ddb,
+    spendTableName: "CountyLensAiSpendTest",
+    now: () => new Date("2026-10-23T12:00:00.000Z"),
+    getEngine: async () => FAKE_ENGINE,
+    bindOnce: async () => FAKE_BOUND,
+    ...overrides,
+  };
+}
+
+function okModelLoop(text = "No roofing permits matched this question."): RunModelLoop {
+  return async (): Promise<ModelLoopOutput> => ({
+    text,
+    steps: [{ tool: "searchRoofingPermits", input: {}, summary: "1 tool call(s), 1 result(s)" }],
+    totalTokens: 120,
+  });
+}
+
+/** Resolves after `resolveAfterMs` unless `params.abortSignal` fires first, in which case it
+ *  rejects the same way `AbortSignal.timeout` does (a "TimeoutError" DOMException) -- the real
+ *  shape ask.ts's `isAbortError` must recognise. */
+function slowModelLoop(resolveAfterMs: number): RunModelLoop {
+  return (params) =>
+    new Promise<ModelLoopOutput>((resolve, reject) => {
+      const timer = setTimeout(
+        () => resolve({ text: "too slow to matter", steps: [], totalTokens: 1 }),
+        resolveAfterMs,
+      );
+      params.abortSignal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new DOMException("The operation was aborted.", "TimeoutError"));
+      });
+    });
+}
+
+function throttledModelLoop(): RunModelLoop {
+  return async () => {
+    const error = new Error("ThrottlingException: Rate exceeded") as Error & { statusCode: number };
+    error.statusCode = 429;
+    throw error;
+  };
+}
+
+const INPUT = {
+  prompt: "Which properties near Pflugerville have a roof older than 15 years?",
+  manifest_cid: FAKE_BOUND.manifestCid,
+};
+
+beforeEach(() => {
+  ddbMock.reset();
+  ddbMock.on(GetCommand).resolves({ Item: undefined }); // spentUsd 0 unless a test overrides it
+  ddbMock.on(UpdateCommand).resolves({ Attributes: { pk: "SPEND#2026-10-23", spent_usd: 0, model_calls: 1 } });
+});
+
+describe("agent.ask outcome taxonomy (T023)", () => {
+  it("answered: a normal tool-loop turn under budget, under the spend cap", async () => {
+    const result = await runAgentAsk(INPUT, baseDeps({ runModelLoop: okModelLoop() }));
+    expect(result.outcome).toBe("answered");
+    expect(result.answer.length).toBeGreaterThan(0);
+    expect(result.matches).toEqual([]); // the fake loop never calls a real tool
+    expect(result.steps).toHaveLength(1);
+  });
+
+  it("paused: the daily spend cap is reached (lowered via dailySpendCapUsd override, a documented, reversible config change -- not a fake outcome)", async () => {
+    ddbMock.on(GetCommand).resolves({ Item: { pk: "SPEND#2026-10-23", spent_usd: 0, model_calls: 0 } });
+    const result = await runAgentAsk(
+      INPUT,
+      baseDeps({ dailySpendCapUsd: 0, runModelLoop: okModelLoop() }),
+    );
+    expect(result.outcome).toBe("paused");
+    expect(result.matches).toEqual([]);
+    expect(result.answer).toMatch(/budget/i);
+  });
+
+  it("paused is checked before any model call is placed: the pre-check short-circuits even if the model loop would otherwise answer", async () => {
+    let called = false;
+    const loop: RunModelLoop = async () => {
+      called = true;
+      return { text: "should never run", steps: [], totalTokens: 1 };
+    };
+    await runAgentAsk(INPUT, baseDeps({ dailySpendCapUsd: 0, runModelLoop: loop }));
+    expect(called).toBe(false);
+  });
+
+  it("throttled: Bedrock's real throttling shape (429 statusCode) surfaces as outcome=throttled, not a thrown error", async () => {
+    const result = await runAgentAsk(INPUT, baseDeps({ runModelLoop: throttledModelLoop() }));
+    expect(result.outcome).toBe("throttled");
+    expect(result.matches).toEqual([]);
+  });
+
+  it("throttled is also reachable from a provider error message alone (no statusCode field)", async () => {
+    const loop: RunModelLoop = async () => {
+      throw new Error("ThrottlingException from provider");
+    };
+    const result = await runAgentAsk(INPUT, baseDeps({ runModelLoop: loop }));
+    expect(result.outcome).toBe("throttled");
+  });
+
+  it("timed_out: the 23s abort layer, lowered via abortMs override to fire before a deliberately slow model loop resolves -- a documented, reversible config change, never a fabricated outcome", async () => {
+    const result = await runAgentAsk(
+      INPUT,
+      baseDeps({ abortMs: 5, runModelLoop: slowModelLoop(2000) }),
+    );
+    expect(result.outcome).toBe("timed_out");
+    expect(result.answer).toMatch(/took too long/i);
+    expect(result.matches).toEqual([]);
+  }, 10_000);
+
+  it("an unexpected error is re-thrown, never swallowed as a fake outcome", async () => {
+    const loop: RunModelLoop = async () => {
+      throw new Error("something genuinely unexpected");
+    };
+    await expect(runAgentAsk(INPUT, baseDeps({ runModelLoop: loop }))).rejects.toThrow(
+      "something genuinely unexpected",
+    );
+  });
+});
+
+describe("documented, reversible config helpers (T023)", () => {
+  it("dailySpendCapUsd reads AI_DAILY_CAP_USD, else spend.ts's $3 default", () => {
+    expect(dailySpendCapUsd({})).toBe(3);
+    expect(dailySpendCapUsd({ AI_DAILY_CAP_USD: "0.05" })).toBe(0.05);
+  });
+
+  it("abortMs reads AGENT_ABORT_MS, else the 23s default", () => {
+    expect(abortMs({})).toBe(23_000);
+    expect(abortMs({ AGENT_ABORT_MS: "1000" })).toBe(1000);
+  });
+});
