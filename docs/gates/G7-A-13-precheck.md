@@ -39,3 +39,7 @@ The pre-check criteria above pass; whether to approve G7 now (and merge later) o
 ## Fix list
 
 None open. This run fixed the bookkeeping gaps C-02 and C-05 (unit report and ERR-47/ERR-48).
+
+## PO decision
+
+☑ **Approved** · HebaGaber · 2026-10-22 (D-15, round R6: "Approve G7, merge when A-11 publishes (Recommended)"). The merge into `feature/oracle-pipeline` is **on hold until A-11 has published** and the A-11-dependent cases (TC-002, 007, 014, 015, 016, 017, 019, 040, 041, 053, 054, 057, 058 on their full-data branch) have been re-run on the hosted URL; this is the D-2 decision of 2026-10-21, unchanged. Until then the preview `https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com` is the evidence URL.

@@ -20,7 +20,7 @@ agents:
   verify: "Playwright demo lines 1–8; Playwright: every page and Coming soon item renders; no sample data on the hosted site"
 skills: [build-frontend-backends, frontend-bug-fix, responsive-design-tests, apply-engineering-guidelines]
 ui: true
-status: Ready
+status: Done (G7 approved 2026-10-22; merge into feature/oracle-pipeline waits for A-11)
 gate: G4
 qc_testability_signoff: true
 created: 2026-10-19
