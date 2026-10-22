@@ -81,15 +81,20 @@ describe("CR-3 deterministic errors become TerminalError", () => {
 });
 
 describe("OR-M5 TcadChunk stops below 5 GiB before it prepares", () => {
-  it("throws a TerminalError 'disk below 5 GiB' and never calls ctx.run", async () => {
+  it("throws a TerminalError 'disk below 5 GiB' from the journaled guard and never prepares", async () => {
     const def = createChunkService(restate, { freeBytes: () => 1024 ** 3 });
     const run = (def as unknown as { service: { run: (c: unknown, s: unknown) => Promise<unknown> } }).service.run;
-    let ran = 0;
-    const ctx = { run: async () => void (ran += 1) };
+    const names: string[] = [];
+    const ctx = {
+      run: async (name: string, fn: () => Promise<unknown>) => {
+        names.push(name);
+        return fn();
+      },
+    };
     const err = await run(ctx, { jobId: JOB, n: 0, inputPath: "/nope/x", inputSha256: "a".repeat(64), mappedPath: "/nope/y" }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(restate.TerminalError);
     expect((err as Error).message).toBe("disk below 5 GiB");
-    expect(ran).toBe(0);
+    expect(names).toEqual(["disk-before-prepare-c0"]);
   });
 });
 

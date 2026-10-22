@@ -182,7 +182,11 @@ export interface BackboneDeps {
   /** Files currently in the export's directory. */
   listInputs(): string[];
   records(path: string): AsyncIterable<ExportRecordText>;
-  now(): Date;
+  /**
+   * The current time. Must be journaled in a durable binding (ctx.date.now): it feeds the
+   * progress figure written with ctx.set, which a replay has to reproduce byte for byte.
+   */
+  now(): Date | Promise<Date>;
 }
 
 export interface BackboneResult {
@@ -325,8 +329,15 @@ export async function runTcadBackbone(
       return freeBytesAt(dir);
     });
   /** OR-M5: stop cleanly (the run fails, the row closes) below 5 GiB free. */
-  const guardDisk = (): void => {
-    if (free() < MIN_FREE_BYTES) throw new RunDataError("disk below 5 GiB");
+  // journaled (a step): the free-space reading differs between a run and its replay, and it
+  // decides whether the run continues
+  let diskChecks = 0;
+  const guardDisk = async (): Promise<void> => {
+    diskChecks += 1;
+    await deps.step(`disk-guard-${diskChecks}`, async () => {
+      if (free() < MIN_FREE_BYTES) throw new RunDataError("disk below 5 GiB");
+      return true;
+    });
   };
   await merge(runOp("running"));
   const empty: ChunkSummary = {
@@ -379,24 +390,27 @@ export async function runTcadBackbone(
   const pause = input.batchPauseMs ?? DEFAULT_BATCH_PAUSE_MS;
   const total = wanted === null ? null : Math.ceil(wanted.size / size);
   let startedAt: number | null = null;
-  const rate = (): number | null => {
+  const rate = async (): Promise<number | null> => {
     if (startedAt === null) return null;
-    const secs = (deps.now().getTime() - startedAt) / 1000;
+    // deps.now() is journaled, so a replay computes the same elapsed time
+    const secs = ((await deps.now()).getTime() - startedAt) / 1000;
     return secs > 0 && loadedRecords > 0 ? Math.round((loadedRecords / secs) * 10) / 10 : null;
   };
-  const report = (): void =>
-    deps.progress?.({
+  const report = async (): Promise<void> => {
+    if (deps.progress === undefined) return;
+    deps.progress({
       chunks_done: done,
       chunks_started: n,
       chunks_total: total,
       records_loaded: loadedRecords,
-      records_per_s: rate(),
+      records_per_s: await rate(),
     });
-  const finished = (o: ChunkOutcome): void => {
+  };
+  const finished = async (o: ChunkOutcome): Promise<void> => {
     outcomes.push(o);
     done += 1;
     loadedRecords += o.summary.loaded;
-    report();
+    await report();
   };
   let sleepSeq = 0;
   const sleep = async (ms: number, what: string): Promise<void> => {
@@ -427,13 +441,11 @@ export async function runTcadBackbone(
   };
   const flush = async (): Promise<void> => {
     failFast();
-    // journaled once, so the rate is measured from the same instant after a replay
-    startedAt ??= Date.parse(
-      await deps.step("throughput-start", async () => deps.now().toISOString()),
-    );
+    // journaled once (deps.now), so the rate is measured from the same instant after a replay
+    startedAt ??= (await deps.now()).getTime();
     await sleep(pause, "batch-pause");
     await healthGate();
-    guardDisk();
+    await guardDisk();
     const records = batch;
     const index = n;
     batch = [];
@@ -453,13 +465,14 @@ export async function runTcadBackbone(
           : {}),
       };
     });
-    if (inflight.length >= window) finished(await (inflight.shift() as Promise<ChunkOutcome>));
+    if (inflight.length >= window)
+      await finished(await (inflight.shift() as Promise<ChunkOutcome>));
     const child = deps.runChunk(spec);
     child.catch((error: unknown) => {
       failure ??= { error };
     });
     inflight.push(child);
-    report();
+    await report();
   };
   for await (const rec of deps.records(input.exportPath)) {
     failFast();
@@ -472,7 +485,7 @@ export async function runTcadBackbone(
     if (batch.length >= size) await flush();
   }
   if (batch.length > 0) await flush();
-  while (inflight.length > 0) finished(await (inflight.shift() as Promise<ChunkOutcome>));
+  while (inflight.length > 0) await finished(await (inflight.shift() as Promise<ChunkOutcome>));
   if (wanted !== null && seen !== wanted.size) {
     throw new RunDataError(`pilot: ${wanted.size - seen} seed pIDs are not in the export`);
   }
@@ -505,7 +518,7 @@ export async function runTcadBackbone(
     count,
     evidence_url: null,
   });
-  guardDisk();
+  await guardDisk();
   await merge({
     kind: "limitations",
     items: [

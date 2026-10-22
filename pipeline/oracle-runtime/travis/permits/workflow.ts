@@ -277,13 +277,15 @@ export async function runAustinPermits(
     reason: string,
   ): Promise<PermitsRunResult> => {
     const finishedAt = (await io.now()).toISOString();
+    // a file-system reading, so journaled: a replay must send the same receiptsPath
+    const hasReceipts = await io.run("receipts-present", async () => existsSync(receiptsPath));
     await io.merge("stop", {
       kind: "stop",
       ...runKey("stop", { status }),
       status,
       finishedAt,
       reason,
-      receiptsPath: existsSync(receiptsPath) ? receiptsPath : null,
+      receiptsPath: hasReceipts ? receiptsPath : null,
     });
     return { ...result, status, exitCode: status === "waiting_human" ? 2 : 1, reason };
   };

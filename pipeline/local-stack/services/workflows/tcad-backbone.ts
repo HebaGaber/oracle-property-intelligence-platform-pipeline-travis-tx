@@ -263,7 +263,8 @@ export function createService(restate: typeof Restate) {
       runChunk: (spec) => chunks.run(spec),
       listInputs: () => readdirSync(dirname(src.exportPath)).map((n) => join(dirname(src.exportPath), n)),
       records: (path) => streamExportRecords(path),
-      now: () => new Date(),
+      // journaled: the progress figure derived from it is written with ctx.set
+      now: async () => new Date(await ctx.date.now()),
     };
     const result = await runTcadBackbone(
       {

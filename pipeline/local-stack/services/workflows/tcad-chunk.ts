@@ -22,21 +22,25 @@ export interface ChunkServiceOptions {
 
 export function createService(restate: typeof Restate, options: ChunkServiceOptions = {}) {
   const free = options.freeBytes ?? freeBytesAt;
-  const guardDisk = (path: string): void => {
-    let bytes: number;
-    try {
-      bytes = free(path);
-    } catch {
-      return; // the volume cannot be read: the writes will fail loudly if it is full
-    }
-    if (bytes < MIN_FREE_BYTES) throw new restate.TerminalError("disk below 5 GiB");
-  };
+  // The free-space reading differs between a run and its replay and decides the control flow, so
+  // it is journaled (ctx.run); a terminal throw inside is journaled too.
+  const guardDisk = (ctx: Restate.Context, name: string, path: string): Promise<boolean> =>
+    ctx.run(name, async () => {
+      let bytes: number;
+      try {
+        bytes = free(path);
+      } catch {
+        return true; // the volume cannot be read: the writes will fail loudly if it is full
+      }
+      if (bytes < MIN_FREE_BYTES) throw new restate.TerminalError("disk below 5 GiB");
+      return true;
+    });
   return restate.service({
     name: TCAD_CHUNK,
     handlers: {
       run: async (ctx: Restate.Context, spec: ChunkSpec): Promise<ChunkOutcome> => {
         try {
-          guardDisk(spec.mappedPath.replace(/\/[^/]*$/, ""));
+          await guardDisk(ctx, `disk-before-prepare-c${spec.n}`, spec.mappedPath.replace(/\/[^/]*$/, ""));
           const out = await ctx.run(
             `prepare-c${spec.n}`,
             async () => {
@@ -48,7 +52,7 @@ export function createService(restate: typeof Restate, options: ChunkServiceOpti
             },
             { maxRetryAttempts: MERGE_MAX_RETRIES },
           );
-          guardDisk(spec.mappedPath.replace(/\/[^/]*$/, ""));
+          await guardDisk(ctx, `disk-before-merge-c${spec.n}`, spec.mappedPath.replace(/\/[^/]*$/, ""));
           await ctx
             .objectClient<LoaderDefinition>({ name: "Loader" } as LoaderDefinition, LOADER_KEY)
             .merge({
