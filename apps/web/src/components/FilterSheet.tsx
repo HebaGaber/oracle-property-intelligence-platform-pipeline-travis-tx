@@ -7,7 +7,7 @@
 // 840 px they sit beside the results. Atlas outlined text fields, 48 px targets. Render-only.
 import { EXPLORE_BOUNDS } from "@countylens/query-core/explore";
 import type { ResolvedPlace } from "@countylens/query-core/places";
-import { useId, useState, type KeyboardEvent, type ReactElement } from "react";
+import { useEffect, useId, useState, type KeyboardEvent, type ReactElement } from "react";
 import styles from "./FilterSheet.module.css";
 
 /** One-line filter definitions (FR-008, TC-036). */
@@ -79,6 +79,17 @@ export function FilterSheet({
   const [active, setActive] = useState(-1);
   // What the person is typing in a number box, until they leave it (the URL only takes valid numbers).
   const [drafts, setDrafts] = useState<Partial<Record<FilterKey, string>>>({});
+  // The person's latest choice on the checkboxes and Sort, shown at once: the URL commits a moment
+  // later and React would otherwise put the control back to its old value in between (ERR-39).
+  // Cleared when the URL-derived value changes, or on blur if the patch never landed.
+  const [pending, setPending] = useState<{ permit?: boolean; ooa?: boolean; sort?: string }>({});
+  const sortUrl = value("sort");
+  useEffect(() => setPending({}), [openOrStalled, ooa, sortUrl]);
+  const clearPending = (key: "permit" | "ooa" | "sort"): void =>
+    setPending((p) => {
+      const { [key]: _gone, ...rest } = p;
+      return rest;
+    });
   const typed = text.trim();
   const options = typed === "" ? [] : suggest(typed);
   const listId = `${id}-places`;
@@ -217,8 +228,12 @@ export function FilterSheet({
             id={`${id}-permit`}
             className={styles.box}
             type="checkbox"
-            checked={openOrStalled}
-            onChange={(e) => onPatch({ permit: e.target.checked ? "open_stalled" : null })}
+            checked={pending.permit ?? openOrStalled}
+            onChange={(e) => {
+              setPending((p) => ({ ...p, permit: e.target.checked }));
+              onPatch({ permit: e.target.checked ? "open_stalled" : null });
+            }}
+            onBlur={() => clearPending("permit")}
           />
           <label className={styles.label} htmlFor={`${id}-permit`}>
             Open or stalled
@@ -232,8 +247,12 @@ export function FilterSheet({
           <select
             id={`${id}-sort`}
             className={styles.input}
-            value={value("sort")}
-            onChange={(e) => onPatch({ sort: e.target.value })}
+            value={pending.sort ?? sortUrl}
+            onChange={(e) => {
+              setPending((p) => ({ ...p, sort: e.target.value }));
+              onPatch({ sort: e.target.value });
+            }}
+            onBlur={() => clearPending("sort")}
           >
             {SORT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -251,8 +270,12 @@ export function FilterSheet({
             id={`${id}-ooa`}
             className={styles.box}
             type="checkbox"
-            checked={ooa}
-            onChange={(e) => onPatch({ ooa: e.target.checked })}
+            checked={pending.ooa ?? ooa}
+            onChange={(e) => {
+              setPending((p) => ({ ...p, ooa: e.target.checked }));
+              onPatch({ ooa: e.target.checked });
+            }}
+            onBlur={() => clearPending("ooa")}
           />
           <label className={styles.label} htmlFor={`${id}-ooa`}>
             Out-of-area owner

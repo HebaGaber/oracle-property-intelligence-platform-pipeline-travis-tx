@@ -136,6 +136,9 @@
 }
 
 .link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-9);
   color: var(--md-sys-color-primary);
   overflow-wrap: anywhere;
 }

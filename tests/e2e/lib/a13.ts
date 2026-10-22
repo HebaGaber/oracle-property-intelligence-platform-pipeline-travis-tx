@@ -161,6 +161,22 @@ export function cidTokens(text: string): string[] {
   return tokens;
 }
 
+/** A full CID inside response text (JSON strings): base32 `baf…`/`bag…`, at least 23 characters. */
+const RESPONSE_CID = /\bba[fg][a-z2-7]{20,}\b/g;
+
+/**
+ * The allowlist plus every CID found in the given response bodies (the `explore.search` replies the page
+ * received itself): real published record CIDs of the run's tables. Returns a new set.
+ */
+export function mergeResponseCids(
+  allow: ReadonlySet<string>,
+  bodies: readonly string[],
+): Set<string> {
+  const merged = new Set(allow);
+  for (const body of bodies) for (const m of body.matchAll(RESPONSE_CID)) merged.add(m[0]);
+  return merged;
+}
+
 /** A full token must be in the allowlist; a truncated one must be a prefix…suffix of an allowed CID. */
 export function isAllowedCidToken(token: string, allow: ReadonlySet<string>): boolean {
   const cut = token.indexOf("…");

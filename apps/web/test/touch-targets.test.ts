@@ -89,3 +89,12 @@ describe("D5: Property drawer source links and name", () => {
     expect(tsx).toMatch(/<h3 id=\{titleId\}/);
   });
 });
+
+describe("N1: Runs and Compare in-page links are 48 px high (smeargle run 2, build a285dbe)", () => {
+  const body = ruleBody(src("routes/Runs.module.css"), "link");
+  it("is a flex box with min-height var(--space-9) so the text stays centred", () => {
+    expect(has(body, "min-height"), body).toBe(true);
+    expect(body).toMatch(/display:\s*inline-flex/);
+    expect(body).toMatch(/align-items:\s*center/);
+  });
+});

@@ -4,6 +4,10 @@
 // added to the app is scanned without editing this file. The allowed CID set is every CID of every manifest
 // reachable from runs/index.json (lib/a13.ts buildCidAllowlist); the denylist is
 // fixtures/prototype-placeholders.json plus every CID-shaped token in design/prototype/**.
+// The record CIDs shown on Explore (property and permit rows) are real published CIDs of the run's tables,
+// not in any manifest; so the allowed set is also extended with every CID in the `explore.search` tRPC
+// responses the page itself received during the same visit (lib/a13.ts mergeResponseCids). The denylist
+// and the prototype-CID check are unchanged, so a prototype CID that no response carried still fails.
 import type { Page } from "@playwright/test";
 import { ROUTES } from "@countylens/shared";
 import {
@@ -12,10 +16,11 @@ import {
   denylistHits,
   disallowedCidTokens,
   fetchAllManifests,
+  mergeResponseCids,
   loadPlaceholderDenylist,
   prototypeCidTokens,
 } from "./lib/a13.js";
-import { checkpoint, ensureFiltersOpen, expect, test } from "./lib/a13-fixtures.js";
+import { checkpoint, expect, test } from "./lib/a13-fixtures.js";
 import { writeEvidenceSection } from "./lib/a13-evidence.js";
 import {
   AXE_VERSION,
@@ -58,6 +63,33 @@ async function pageStrings(page: Page): Promise<string> {
   });
 }
 
+/** Waits until Explore stops changing: ready, no progress bar, header text unchanged for 500 ms. */
+async function exploreSettled(page: Page): Promise<void> {
+  const section = page.locator('section[data-route="explore"]');
+  if ((await section.count()) === 0) return;
+  await expect(section).toHaveAttribute("data-state", "ready", { timeout: 15_000 });
+  await expect(page.locator('[role="progressbar"]')).toHaveCount(0, { timeout: 15_000 });
+  const header = page.locator(
+    'section[data-route="explore"] h2, section[data-route="explore"] header',
+  );
+  let last = "";
+  let since = Date.now();
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const now = (
+      await header
+        .first()
+        .innerText()
+        .catch(() => "")
+    ).trim();
+    if (now !== last) {
+      last = now;
+      since = Date.now();
+    } else if (Date.now() - since >= 500) return;
+    await page.waitForTimeout(100);
+  }
+}
+
 /** Opens every tab, the More sheet, the filter sheet (390) and the first property drawer. */
 async function openEverything(
   page: Page,
@@ -77,13 +109,17 @@ async function openEverything(
   }
   if (width < 840) {
     note("open the filter sheet");
-    await ensureFiltersOpen(page);
+    await exploreSettled(page);
+    const toggle = page.getByRole("button", { name: "Filters", exact: true });
+    if ((await toggle.isVisible()) && (await toggle.getAttribute("aria-expanded")) === "false")
+      await toggle.click({ timeout: 15_000 });
     seen.push(await pageStrings(page));
   }
   const row = page.locator(SEL.resultRow).first();
   if ((await row.count()) > 0) {
     note("open the first property drawer");
-    await row.click();
+    await exploreSettled(page);
+    await row.click({ timeout: 15_000 });
     if (await page.getByRole("dialog").first().isVisible()) seen.push(await pageStrings(page));
     await page.keyboard.press("Escape");
   }
@@ -114,6 +150,11 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
         try {
           await test.step(label, async () => {
             const page = await context.newPage();
+            const reads: Promise<string>[] = [];
+            page.on("response", (response) => {
+              if (response.url().includes("explore.search"))
+                reads.push(response.text().catch(() => ""));
+            });
             page.setDefaultTimeout(ACTION_MS);
             page.setDefaultNavigationTimeout(SETTLE_MS);
             const texts = await runBudgeted(label, STEP_BUDGET_MS, async (note) => {
@@ -126,7 +167,10 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
             const all = texts.join("\n");
             const phrases = denylistHits(all, denylist, { runCount: oracle.runs.length });
             const protoCids = cidTokens(all).filter((t) => prototypeCids.includes(t));
-            const foreign = disallowedCidTokens(all, allow);
+            const foreign = disallowedCidTokens(
+              all,
+              mergeResponseCids(allow, await Promise.all(reads)),
+            );
             let selectors = 0;
             for (const selector of denylist.selectors)
               selectors += await page.locator(selector).count();

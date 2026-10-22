@@ -182,7 +182,10 @@ const TABLES: FixtureTables = {
   },
 };
 
-describe("exploreSearchSql over a bound fixture (DuckDB)", () => {
+// DuckDB cold-starts and binds the fixture in-process: on a shared CI runner one statement can
+// take several seconds (CI run 39720505410: "Test timed out in 5000ms", whole file 17.6 s), so
+// this block gets a 30 s budget per test and hook instead of Vitest's 5 s default.
+describe("exploreSearchSql over a bound fixture (DuckDB)", { timeout: 30_000 }, () => {
   let fx: Fixture;
   beforeAll(async () => {
     fx = await bindFixture(TABLES);
