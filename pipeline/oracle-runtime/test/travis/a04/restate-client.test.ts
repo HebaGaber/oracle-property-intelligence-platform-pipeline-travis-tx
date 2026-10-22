@@ -153,7 +153,9 @@ describe("ingress callLong() for minutes-long handlers", () => {
     expect(send?.idem).toMatch(/^joinProof-/);
     const polls = s.log.filter((l) => l.path.endsWith("/output"));
     expect(polls.length).toBeGreaterThan(5);
-    expect(polls[0]?.path).toBe(`/TcadBackbone/job/joinProof/${send?.idem}/output`);
+    expect(polls[0]?.path).toBe(
+      `/restate/invocation/TcadBackbone/job/joinProof/${send?.idem}/output`,
+    );
   });
 
   it("rejects with the handler's own failure message", async () => {

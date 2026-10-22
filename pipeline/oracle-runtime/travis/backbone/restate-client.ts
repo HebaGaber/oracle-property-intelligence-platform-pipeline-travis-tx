@@ -156,7 +156,13 @@ export function createRestateIngressClient(
       const idem = `${handler}-${randomUUID()}`;
       const base_ = `/${seg(service)}/${seg(key)}/${seg(handler)}`;
       await request("POST", `${base_}/send`, body, { "idempotency-key": idem });
-      return pollOutput(`${base_}/${seg(idem)}/output`, `${service}/${key}/${handler}`, opts);
+      // The ingress serves the output of an idempotent invocation under /restate/invocation/…
+      // (verified live: 470 while pending, 200 with the result; /attach also waits for it).
+      return pollOutput(
+        `/restate/invocation${base_}/${seg(idem)}/output`,
+        `${service}/${key}/${handler}`,
+        opts,
+      );
     },
   };
 }
