@@ -7,12 +7,12 @@ story: A-13
 test_case: A-13-TC-056
 ac_reference: AC-11, FR-011 (static Legal pages: no data request)
 severity: Medium
-status: Fixed, re-test pending (hosted)
+status: Closed (fixed, re-tested PASS on hosted build 2e14516: TC-056 Legal pages make no data request)
 found_by: hosted Playwright run (general phase) on build dfed5b0
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-fix_commit:
-retest_date:
+fix_commit: 32a3d60
+retest_date: 2026-10-22
 ---
 
 # ERR-45: The /runs/index.json preload also fired on the static Legal pages

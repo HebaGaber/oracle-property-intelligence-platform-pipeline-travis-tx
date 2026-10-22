@@ -5,10 +5,10 @@ feature: FEAT-A13
 story: A-13
 test_cases: testplans/A-13-test-cases.md
 runtime_url: https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com
-build: "015fbf99bed1d784c908714c56418c83ce2d5e4f (015fbf9), read from /build.json on 2026-10-22; earlier runs: 641bc25, a285dbe, d3ae47e, 7f04685"
+build: "2e145161d15c1675d628cfdfc120dabd7fcf60c2 (2e14516), read from /build.json on 2026-10-22; earlier runs: 641bc25, a285dbe, d3ae47e, 7f04685, 015fbf9, 32a3d60"
 data_snapshot: bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i
 owner: HebaGaber             # QC Lead
-status: "Final, awaiting PO sign-off at G7"   # Draft → Complete → Signed Off
+status: "Final on 2e14516 (TC-040 failed on a slow link, PO decision recorded), awaiting PO sign-off at G7"   # Draft → Complete → Signed Off
 gate: G7
 created: 2026-10-22
 signed_off_date:
@@ -18,13 +18,15 @@ signed_off_date:
 
 Every case in `testplans/A-13-test-cases.md` (73 cases, TC-001 to TC-086) runs against the **hosted** Amplify branch preview `https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com`. No case ran on localhost (TC-085 proves the harness refuses it). The production URL `https://countylens.aldarraj.com` serves `feature/oracle-pipeline` until the G7 merge.
 
-**Final result: 72 of 73 cases pass on build `015fbf9`; 1 is skipped (TC-015, "waits for A-11 (PO D-1/D-2)"); 0 fail.** The final run is one sequential operator session of four Playwright phases on 2026-10-22 (UTC): general (59 passed, 1 skipped, 7.7 min), verify (8 passed, 1.3 min), perf (3 passed, 1.2 min) and vitals (2 passed, 14.3 min). Nothing else used `tests/e2e` during it.
+**Final result on build `2e14516`: 71 of 73 cases pass; 1 is skipped (TC-015, "waits for A-11 (PO D-1/D-2)"); 1 failed on a slow link (TC-040, first load of the in-browser SQL engine, limit 8 s).** By phase: general 59 passed, 1 skipped (2 workers, 16.6 min); verify 8 of 8; vitals 2 of 2 (TC-058, TC-081); perf: TC-040 failed (11.2 to 25.7 s), TC-041 and TC-082 passed when run alone. The first complete suite, 72 of 73 passing (TC-040 passed at 4.1 to 4.6 s), ran on `015fbf9`; run 5 and run 6 below.
+
+**TC-040 in plain words.** The engine's compressed file is 8.09 MB; with the other files the page fetches about 11 MB in parallel. On the faster link of the morning the first load took 4.1 to 4.6 s; on the slower link of the evening, 1.1 to 1.5 MB/s at 14:55 and 0.39 then 0.78 MB/s at 16:50, it took 11.2 to 25.7 s. The page and the files did not change in a way that could account for it (ERR-46 removed Google requests, which the waterfall now confirms). PO decision (2026-10-22, "Record both measurements, keep the 8 s limit (Recommended)"): the limit stays 8 s, no code change, and G7 lists TC-040 as "passes at 1.4 MB/s or faster". Both measurements are in [../evidence/A-13-duckdb.md](../evidence/A-13-duckdb.md).
 
 **The published run is a slice, so every scale number below is provisional.** The only published run, `travis-202609-permits-20261021t103516z`, holds 14 properties and 35 reroof permits (22 open, 13 closed, 0 stalled). TC-040 and TC-041 timings, TC-058 and the Catalog and Coverage cases are therefore measured on that slice and marked "provisional until A-11" in the evidence files the tests write. They do not prove the full-county behaviour.
 
 ## Run history
 
-Five full hosted runs, each on its own preview build, 2026-10-22. Start times are the Playwright JSON `startTime` (UTC). Each defect fix was pushed to the fork, Amplify built the branch, `/build.json` was read, and the suite was run again.
+Six full hosted runs, each on its own preview build, 2026-10-22 (runs 1 to 5 times are UTC; run 6 and the intermediate row use the operator clock, UTC+3, as the run-log does). Start times are the Playwright JSON `startTime` (UTC). Each defect fix was pushed to the fork, Amplify built the branch, `/build.json` was read, and the suite was run again.
 
 | Run | Build | Start (UTC) | General phase (60 cases) | Verify (8) | Perf (3) | Vitals (2) | Outcome |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -32,7 +34,9 @@ Five full hosted runs, each on its own preview build, 2026-10-22. Start times ar
 | 2 | `a285dbe` | 05:09 | 57 pass, 2 fail (TC-009 checkbox state, TC-073 scan), 1 skipped | **void** | **void** | **void** | Verify, perf and vitals ran while another Playwright process shared `tests/e2e/test-results` (ENOENT on trace files); the results were discarded and the process stopped. General phase counts. ERR-38 (smeargle) to ERR-40 found |
 | 3 | `d3ae47e` | 05:36 | 57 pass, 2 fail (TC-072 filter sheet 406 px, TC-073 click on a row after the SQL tab unmounted), 1 skipped | 8 pass | 3 pass | TC-058 pass, TC-081 fail (Data · Catalog median LCP 4,836 ms) | Clean run, nothing else on `tests/e2e`. ERR-41 found |
 | 4 | `7f04685` | 06:09 | 58 pass, 1 fail (TC-072, 406 px, second time under 4-worker load), 1 skipped | 8 pass | 3 pass | 2 pass | ERR-42 root cause found by delaying `explore.search` by 4 s |
-| 5 (final) | **`015fbf9`** | 06:38 | **59 pass, 0 fail, 1 skipped** (TC-015) | **8 pass** | **3 pass** | **2 pass** | **72 pass / 1 skipped.** Evidence build |
+| 5 | `015fbf9` | 06:38 | 59 pass, 0 fail, 1 skipped (TC-015) | 8 pass | 3 pass | 2 pass | 72 pass / 1 skipped. First complete green run |
+| (between) | `32a3d60` | 13:59 to 14:31 | 58 pass, 1 fail (TC-073: screenshot timed out "waiting for fonts to load"), 1 skipped | 8 pass | TC-040 **fail** (12.3 s; 9 to 18 s repeated) | TC-058 pass, TC-081 fail (Catalog 2,656 ms, Coverage 2,572 ms) | ERR-46 found (also: `dfed5b0` failed TC-056, ERR-45; `5fdac1a`, `34c8eaf` ran partial re-checks) |
+| 6 (final) | **`2e14516`** | clean run 16:06 to 16:28; general again 16:28 to 16:45 | clean run: 57 pass, 2 fail, 1 skipped (TC-053 columns counted before the progressive Parquet footers arrived; TC-073 explore-wide at 390 waited 15 s for its data state under 4 workers). Both are **test defects**, fixed in the tests (wait for the pending notes; 30 s). General phase re-run with 2 workers: **59 pass, 0 fail, 1 skipped** | **8 pass** | TC-040 **fail** (11.2 to 13.0 s; latest 11.4 to 25.7 s); TC-041 and TC-082 skipped behind it, then run alone: **pass** | **2 pass** | **71 pass, 1 skipped, 1 fail (TC-040, slow link).** Evidence build |
 
 Numbers come from the Playwright JSON reports of each run (`stats.expected`, `stats.unexpected`, `stats.skipped`). Run 1 counts 15 failed in its general phase; the run-log first recorded 13 at the 07:40 (EEST) triage, while 3 long scan cases were still running, and the two late ones are TC-083 and TC-073. The run-log wording for run 3 ("general 57 pass / 2 fail") and run 4 ("58 / 1") matches the JSON.
 
@@ -40,23 +44,23 @@ Numbers come from the Playwright JSON reports of each run (`stats.expected`, `st
 
 | Item | Value |
 | --- | --- |
-| Environment | https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com · build `015fbf9` (`015fbf99bed1d784c908714c56418c83ce2d5e4f`) · 2026-10-22 |
+| Environment | https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com · build `2e14516` (`2e145161d15c1675d628cfdfc120dabd7fcf60c2`) · 2026-10-22 |
 | Total TC executed | 73 in the plan; 72 executed and 1 skipped in the final run |
-| Passed / failed / blocked | **72 / 0 / 0**, plus 1 skipped (TC-015, waits for A-11) |
-| Pass rate | 100 % of executed cases (72 / 72); 98.6 % of the plan (72 / 73) |
-| Open Critical defects | 0. ERR-21 to ERR-42 are 7 High, 9 Medium, 6 Low; none Critical; all re-tested PASS on `015fbf9` |
-| Unit test report | `docs/reports/A-13-unit-test-report.md` (written at `70561ec`: 1,319 passed). A fresh `pnpm test` at `015fbf9` on 2026-10-22: 100 files passed, 1 skipped; **1,448 passed, 7 skipped, 0 failed** |
+| Passed / failed / blocked | **71 / 1 / 0**, plus 1 skipped (TC-015, waits for A-11). The 1 failure is TC-040 on a slow link (PO decision recorded) |
+| Pass rate | 98.6 % of executed cases (71 / 72); 97.3 % of the plan (71 / 73) |
+| Open Critical defects | 0. ERR-21 to ERR-46 are 8 High, 12 Medium, 6 Low; none Critical; all re-tested PASS (ERR-21 to ERR-42 on `015fbf9`, ERR-43 to ERR-46 on `2e14516`) |
+| Unit test report | `docs/reports/A-13-unit-test-report.md` (written at `70561ec`: 1,319 passed). A fresh `pnpm test` at `2e14516` on 2026-10-22: 102 files passed, 1 skipped; **1,484 passed, 8 skipped, 0 failed** |
 | Code review log | `docs/reviews/CR-A-13.md` (metagross 77, audino 82, `/code-review` medium, 0 open Critical) |
-| Playwright run | Operator session, JSON reports `hosted-general.json`, `hosted-verify.json`, `hosted-perf.json`, `hosted-vitals.json` (session scratchpad, not in the repo) with line output; run command `playwright test -g A-13` per phase with `RUNTIME_URL` set to the preview. No GitHub Actions run exists for `015fbf9` (pushed with `[skip ci]` so Actions would not run a competing hosted job); the evidence push runs the CI job that counts |
+| Playwright run | Operator session, JSON reports `hosted-general.json`, `hosted-verify.json`, `hosted-perf.json`, `hosted-vitals.json` (session scratchpad, not in the repo) with line output; run command `playwright test -g A-13` per phase with `RUNTIME_URL` set to the preview. No GitHub Actions run exists for `2e14516` (pushed with `[skip ci]` so Actions would not run a competing hosted job); the evidence push runs the CI job that counts |
 | Evidence | `docs/evidence/A-13.md`, `A-13-duckdb.md`, `A-13-roof-age.md`, `A-13-open-permits.md`, `A-13-pages.md`, `A-13-smeargle.md`, `A-13-TC-040-timings.json`, `A-13-TC-041-timings.json`; screenshots `docs/evidence/img/A-13-TC-*.png` |
 
 ## Results
 
-Result columns: "Result on 015fbf9" is the final run. "Earlier runs" lists the result in runs 1 to 4 in order (`void` = discarded run 2 phases, see the history). "waits A-11" marks the 11 cases the plan tags that way; the next section says what each checked today. Cases are grouped by the Playwright file that holds them. Every row is one `@scenario:A-13-TC-nnn` test.
+Result columns: "Result on 2e14516" is the final run (every case marked PASS also passed on `015fbf9` in run 5; TC-040 is the exception, marked below). "Earlier runs" lists the result in runs 1 to 4 in order (`void` = discarded run 2 phases, see the history). "waits A-11" marks the 11 cases the plan tags that way; the next section says what each checked today. Cases are grouped by the Playwright file that holds them. Every row is one `@scenario:A-13-TC-nnn` test.
 
 ### A-13-explorer.spec.ts (Part 1: demo lines, runs, coverage, manifest, filters, SQL): 31 cases
 
-| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| TC ID | Requirement | Type | Case | Result on 2e14516 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A-13-TC-002 | AC-1, FR-001, FR-016 | demo | D-2 Runs: latest completed run summary | **PASS** | FAIL → pass → pass → pass | ERR-21 | `A-13-TC-002-1.png`, `A-13-TC-002-3.png`, `A-13-TC-002-6.png` |
 | A-13-TC-003 | AC-2, FR-002 | demo | D-3 Coverage: counts, denominators, time, derivation, table | **PASS** | FAIL → pass → pass → pass | ERR-23 | `A-13-TC-003-1.png`, `A-13-TC-003-3.png`, `A-13-TC-003-4.png` |
@@ -92,7 +96,7 @@ Result columns: "Result on 015fbf9" is the final run. "Earlier runs" lists the r
 
 ### A-13-verify.spec.ts (Verify lanes, serial): 8 cases
 
-| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| TC ID | Requirement | Type | Case | Result on 2e14516 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A-13-TC-006 | AC-3, FR-003 | demo | D-6 Verify: two ✓ lanes, Pinata + Filebase, digest match | **PASS** | pass → void → pass → pass | — | `A-13-TC-006-2.png`, `A-13-TC-006-5.png` |
 | A-13-TC-018 | AC-3, FR-003c | edge | Directory artifact → "Verify via CAR" | **PASS** | pass → void → pass → pass | — | `A-13-TC-018-3.png` |
@@ -105,15 +109,15 @@ Result columns: "Result on 015fbf9" is the final run. "Earlier runs" lists the r
 
 ### A-13-perf.spec.ts (serial): 3 cases
 
-| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| TC ID | Requirement | Type | Case | Result on 2e14516 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| A-13-TC-040 | AC-6, FR-006, NFR-001 | perf · waits A-11 | First DuckDB load ≤ 8 s with a progress bar | **PASS** | pass → void → pass → pass | — | `A-13-TC-040-ready.png`, `A-13-TC-040-timings.json` |
+| A-13-TC-040 | AC-6, FR-006, NFR-001 | perf · waits A-11 | First DuckDB load ≤ 8 s with a progress bar | **FAIL on a slow link** (11.2 to 25.7 s; passed 4.1 to 4.6 s on `015fbf9` and `5fdac1a`; PO decision: keep 8 s, G7 lists it as "passes at 1.4 MB/s or faster") | pass → void → pass → pass | — | `A-13-TC-040-ready.png`, `A-13-TC-040-timings.json` |
 | A-13-TC-041 | AC-6, NFR-001 | perf · waits A-11 | 20 timed runs per search, p95 < 3 s | **PASS** | TIMEOUT → void → pass → pass | ERR-36 | `A-13-TC-041-open-permit.png`, `A-13-TC-041-radius-roof.png`, `A-13-TC-041-timings.json` |
 | A-13-TC-082 | NFR-002 | perf | Initial JS ≤ 300 KB gzipped excluding DuckDB | **PASS** | skipped → void → pass → pass | ERR-38 | `A-13-TC-082-explore.png`, `A-13-TC-082-hub.png` |
 
 ### A-13-pages.spec.ts (Hub, Catalog, Legal, Runs log, Coming soon, cross-cutting): 23 cases
 
-| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| TC ID | Requirement | Type | Case | Result on 2e14516 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A-13-TC-001 | AC-9, FR-009 | smoke demo | D-1 Hub: CountyLens card, CRM Coming soon, run chip | **PASS** | pass | — | `A-13-TC-001-1.png`, `A-13-TC-001-4.png`, `A-13-TC-001-5.png` |
 | A-13-TC-042 | FR-023 | integration | Help · MCP: tools, setup, no sample response | **PASS** | FAIL → pass → pass → pass | ERR-22 | `A-13-TC-042-1.png`, `A-13-TC-042-3.png` |
@@ -141,7 +145,7 @@ Result columns: "Result on 015fbf9" is the final run. "Earlier runs" lists the r
 
 ### A-13-scan.spec.ts (no-sample-data scan, axe, responsive, localhost refusal, deep links): 6 cases
 
-| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| TC ID | Requirement | Type | Case | Result on 2e14516 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A-13-TC-073 | AC-14, FR-014, FR-024 | scan security | No-sample-data scan over every route | **PASS** | TIMEOUT → FAIL → FAIL → pass | ERR-34, ERR-40 | `A-13-TC-073-*.png` (27 files), `A-13-pages.md` |
 | A-13-TC-074 | AC-14, FR-014 | scan | No "not wired" toast and no ProtoBar on any control | **PASS** | pass | — | `A-13-TC-074-*.png` (25 files) |
@@ -152,14 +156,14 @@ Result columns: "Result on 015fbf9" is the final run. "Earlier runs" lists the r
 
 ### A-13-vitals.spec.ts (serial): 2 cases
 
-| TC ID | Requirement | Type | Case | Result on 015fbf9 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
+| TC ID | Requirement | Type | Case | Result on 2e14516 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A-13-TC-058 | AC-12, NFR-002 | perf · waits A-11 | Runs · Log LCP < 2.5 s on mobile 4G | **PASS** | pass → void → pass → pass | — | `A-13-pages.md` |
 | A-13-TC-081 | NFR-002 | perf | LCP < 2.5 s, CLS < 0.1, INP < 200 ms on mobile 4G | **PASS** | FAIL → void → FAIL → pass | ERR-37, ERR-41 | `A-13-pages.md` |
 
 ## Cases that wait for A-11
 
-Eleven cases carry the plan's "Waits for A-11 (PO D-1/D-2, 2026-10-21)" label. A-11 has not published runs 2 and 3, the full county, `tables-export.json` or run events. Each case ran its "today" branch on the single published run and reported that branch in the test annotations (`a11-branch`). 10 of the 11 pass today; their full assertions switch on automatically once `runs/index.json` holds at least 3 runs. TC-015 is skipped.
+Eleven cases carry the plan's "Waits for A-11 (PO D-1/D-2, 2026-10-21)" label. A-11 has not published runs 2 and 3, the full county, `tables-export.json` or run events. Each case ran its "today" branch on the single published run and reported that branch in the test annotations (`a11-branch`). 9 of the 11 pass today and TC-040 failed on `2e14516` (slow link, see its row); their full assertions switch on automatically once `runs/index.json` holds at least 3 runs. TC-015 is skipped.
 
 | TC | Result | What it checked today (single run, 14 properties, 35 permits) | What A-11 adds |
 | --- | --- | --- | --- |
@@ -169,29 +173,29 @@ Eleven cases carry the plan's "Waits for A-11 (PO D-1/D-2, 2026-10-21)" label. A
 | TC-015 resolve pill | **SKIPPED** | Skipped with the reason "1 run published": the pill needs two runs | Pill only after both gateways answer for the old CID |
 | TC-019 file > 50 MB | PASS | No artifact in this run exceeds 50 MB (recorded); every file ≤ 50 MB shows "Verify" | Every file > 50 MB shows "Verify via CAR" |
 | TC-031 chips and sort | PASS | `permits_emitted_stalled` is 0 and no permit is open ≥ 5 years: the list is empty with the exact message (`A-13-TC-031-today.png`) | Stalled and open chips sorted by open longest |
-| TC-040 first DuckDB load | PASS | First load 4,123 to 4,607 ms over 5 loads (limit 8,000 ms), progress bar shown; **provisional** (slice) | Same test on full-county tables |
-| TC-041 search p95 | PASS | 20 distinct radii per series: radius + roof p50 812 ms, p95 817 ms; open-permit p50 806 ms, p95 812 ms (limit 3,000 ms); **provisional** (slice) | Same test on full-county tables |
+| TC-040 first DuckDB load | **FAIL on `2e14516` (slow link)**; PASS on `015fbf9` | `2e14516`: 11,159 to 25,719 ms (limit 8,000 ms), progress bar shown; `015fbf9`: 4,123 to 4,607 ms; **provisional** (slice; the time is the engine download) | Same test on full-county tables, on a link whose speed is recorded |
+| TC-041 search p95 | PASS | 20 distinct radii per series: radius + roof p50 1,320 ms, p95 1,837 ms; open-permit p50 812 ms, p95 1,313 ms (limit 3,000 ms); **provisional** (slice) | Same test on full-county tables |
 | TC-053 Catalog | PASS | 23 table rows from the manifest (16 `tables/county/*`, 7 `tables/property_improvement/*`), columns from each Parquet footer, notice "table export not in this run's manifest" | Columns from `tables-export.json` |
 | TC-057 Runs · Log | PASS | The 4 events of the single run (start, two source captures, finish with 3 limitations) in time order with the run ID | All events of at least 3 runs |
-| TC-058 Runs · Log LCP | PASS | Median LCP 2,356 ms, CLS 0.000 on the Lighthouse mobile profile (150 ms RTT, 1.6 Mbps, 4x CPU, 390 px, median of 5); **provisional** (1 run) | Same test with at least 3 runs |
+| TC-058 Runs · Log LCP | PASS | Median LCP 2,452 ms, CLS 0.000 on the Lighthouse mobile profile (150 ms RTT, 1.6 Mbps, 4x CPU, 390 px, median of 5); **provisional** (1 run) | Same test with at least 3 runs |
 
 ## Non-functional results
 
 | TC ID | NFR | Tool | Result | Actual | Threshold |
 | --- | --- | --- | --- | --- | --- |
-| A-13-TC-040 | NFR-001 first load | Playwright timing, 5 loads | PASS (provisional) | 4,200 · 4,285 · 4,237 · 4,123 · 4,607 ms (median 4,237, max 4,607) on the 14-property slice | ≤ 8,000 ms |
-| A-13-TC-041 | NFR-001 search p95 | Playwright timing, 20 runs per series | PASS (provisional) | radius + roof: p50 812 / p95 817 / max 817 ms; open permit: p50 806 / p95 812 / max 813 ms. The server `queryDurationMs` of the same runs was 207 to 254 ms | p95 < 3,000 ms |
-| A-13-TC-058 | NFR-002 Runs · Log LCP | Lighthouse mobile profile in Playwright, median of 5 | PASS (provisional) | LCP runs 2,368 · 2,472 · 2,284 · 2,308 · 2,356 ms, median 2,356 ms; CLS 0.000 | LCP < 2,500 ms |
-| A-13-TC-081 | NFR-002 LCP, CLS, INP | same profile, median of 5, 8 pages | PASS | median LCP 1,388 to 2,468 ms (slowest `/tx/travis/coverage` 2,468, `/data/catalog` 2,456, `/data/manifest` 2,452, `/runs` 2,408); median CLS ≤ 0.037; median INP ≤ 40 ms; INP "n/a" on `/runs/log` and `/legal/data` (no link, button or tab in main) | LCP < 2,500 ms, CLS < 0.1, INP < 200 ms |
-| A-13-TC-082 | NFR-002 bundle | Playwright network bytes | PASS | JS loaded: `/` 117,831 B; `/tx/travis/explore` 181,814 B (both exclude the DuckDB chunks). Build gate on a fresh `pnpm --filter @countylens/web build`: 220.7 KB gzipped of 300 KB; Hub graph 124.5 KB of 150 KB | ≤ 300 KB gzipped excluding DuckDB |
+| A-13-TC-040 | NFR-001 first load | Playwright timing, 5 loads | **FAIL on `2e14516` (slow link)**; PASS on `015fbf9` (provisional) | `2e14516`: 11,351 · 13,258 · 12,788 · 19,272 · 25,719 ms (latest run; the clean run gave 11,159 to 13,008). `015fbf9`: 4,200 · 4,285 · 4,237 · 4,123 · 4,607 ms (median 4,237). Engine file 8,090,177 B measured at 1.1 to 1.5 MB/s (14:55) and 0.39 to 0.78 MB/s (16:50). 14-property slice | ≤ 8,000 ms; PO decision: keep, G7 "passes at 1.4 MB/s or faster" |
+| A-13-TC-041 | NFR-001 search p95 | Playwright timing, 20 runs per series | PASS (provisional) | radius + roof: p50 1,320 / p95 1,837 / max 5,348 ms; open permit: p50 812 / p95 1,313 / max 1,322 ms. The server `queryDurationMs` of the same runs was 203 to 245 ms | p95 < 3,000 ms |
+| A-13-TC-058 | NFR-002 Runs · Log LCP | Lighthouse mobile profile in Playwright, median of 5 | PASS (provisional) | LCP runs 2,452 · 2,296 · 2,208 · 2,728 · 4,592 ms, median 2,452 ms; CLS 0.000 | LCP < 2,500 ms |
+| A-13-TC-081 | NFR-002 LCP, CLS, INP | same profile, median of 5, 8 pages | PASS | median LCP 1,572 to 2,408 ms (data pages 2,284 to 2,408: `/runs/log` 2,408, `/tx/travis/coverage` 2,400, `/runs` 2,284; Hub 1,736); median CLS ≤ 0.037; median INP ≤ 40 ms (single click at most 56 ms); INP "n/a" on `/runs/log` and `/legal/data` (no link, button or tab in main) | LCP < 2,500 ms, CLS < 0.1, INP < 200 ms |
+| A-13-TC-082 | NFR-002 bundle | Playwright network bytes | PASS | JS loaded (measured on `015fbf9`): `/` 117,831 B; `/tx/travis/explore` 181,814 B (both exclude the DuckDB chunks). Build gate on a fresh `pnpm --filter @countylens/web build` at `2e14516`: 220.9 KB gzipped of 300 KB; Hub graph 124.6 KB of 150 KB | ≤ 300 KB gzipped excluding DuckDB |
 | A-13-TC-052 | NFR-002 Hub never loads the engine | Playwright network | PASS | no DuckDB or `.wasm` request on `/` | none |
-| A-13-TC-080 | NFR-002 responsive, 48 px | Playwright, 25 routes × 390 / 768 / 1440 | PASS | 75 screenshots; `documentElement.scrollWidth` ≤ viewport on every route and width, targets ≥ 48 px at 390. **Gap:** smeargle run 3 on `015fbf9` found `/help/mcp` at 390 px scrolling sideways inside `main` (scrollWidth 693 vs 390; N3 in `A-13-smeargle.md`), which this document-level check cannot see. N3 is ERR-43 (Medium, product); fixed at source in `34c8eaf`, which is not on the preview (`/build.json` still returns `015fbf9`), so it is not re-tested | per `testplans/A-13-test-cases.md` |
+| A-13-TC-080 | NFR-002 responsive, 48 px | Playwright, 25 routes × 390 / 768 / 1440 | PASS | 75 screenshots; `documentElement.scrollWidth` ≤ viewport on every route and width, targets ≥ 48 px at 390. **Gap closed:** smeargle run 3 on `015fbf9` found `/help/mcp` at 390 px scrolling sideways inside `main` (scrollWidth 693 vs 390; N3 in `A-13-smeargle.md`), which this document-level check cannot see. N3 is ERR-43 (Medium, product); fixed in `34c8eaf` and re-measured on the hosted build (`main` 390 / 688 / 1360 = viewport) | per `testplans/A-13-test-cases.md` |
 | A-13-TC-083 | NFR-002 WCAG 2.2 AA | axe-core 4.10.2 on 25 routes | PASS | 0 violations, 0 serious or critical, 0 tab stops without a focus ring on every route (`A-13-pages.md`) | 0 serious or critical |
 | A-13-TC-073, 074 | FR-014 no sample data | scan of 27 routes × 2 widths (1440, 390) and every control | PASS | 0 denylist phrases, 0 prototype CIDs, 0 CIDs outside a manifest, 0 ProtoBar selectors, 0 "not wired" toasts | 0 hits |
 
 ## Defects
 
-All 22 defects were found in the hosted runs of 2026-10-22 on branch `013-explorer-and-pages`. "Fix commit" is the first push that carried the fix. "Re-test" is the final run on `015fbf9`; a TC listed under ERR-n passed there. None is Critical.
+All 26 defects were found in the hosted runs of 2026-10-22 on branch `013-explorer-and-pages`. "Fix commit" is the first push that carried the fix. "Re-test" is the final run: `015fbf9` for ERR-21 to ERR-42, `2e14516` for ERR-43 to ERR-46; a TC listed under ERR-n passed there. None is Critical.
 
 | ERR | Kind | TC | Severity | Fix commit | Status |
 | --- | --- | --- | --- | --- | --- |
@@ -217,12 +221,16 @@ All 22 defects were found in the hosted runs of 2026-10-22 on branch `013-explor
 | ERR-40 | test (scan allowlist too narrow; clicks on a moving page) | TC-073 | High | `d3ae47e` | Fixed, re-test PASS on 015fbf9 |
 | ERR-41 | product (Data · Catalog median LCP 4,836 ms) | TC-081 | Medium | `7f04685` | Fixed, re-test PASS on 015fbf9 (Catalog median LCP 2,456 ms) |
 | ERR-42 | product (bottom-nav icon showed its glyph name until the font loaded, widening 390 px to 406 px) | TC-072 | Medium | `015fbf9` | Fixed, re-test PASS on 015fbf9 |
+| ERR-43 | product (Help · MCP snippet wrapper had no `min-width: 0`; `main` scrolled sideways at 390 px; found by smeargle, no Playwright case) | smeargle N3 | Medium | `34c8eaf` | Closed, re-measured on the hosted build: `main` 390 / 688 / 1360 = viewport |
+| ERR-44 | product, performance (median LCP 2,508 ms on Coverage, 2.38 to 2.48 s on the other data pages; cross-origin CID-copy handshake started after the run index returned) | TC-081 | Medium | `dfed5b0` | Closed, re-test PASS on `2e14516` (TC-081: data pages 2.28 to 2.41 s) |
+| ERR-45 | product, regression from the ERR-44 fix (the `/runs/index.json` preload also fired on the static Legal pages) | TC-056 | Medium | `32a3d60` | Closed, re-test PASS on `2e14516` (TC-056: Legal pages make no data request) |
+| ERR-46 | product, performance (render-blocking Google Fonts requests: Catalog 2,656 ms, Coverage 2,572 ms; TC-040 9 to 18 s; TC-073 screenshot waited for fonts) | TC-081, TC-040, TC-073 | High | `2e14516` | Closed, re-test PASS on `2e14516` for TC-081 and TC-073; TC-040's waterfall no longer includes Google (TC-040 itself still fails on the slow link: see the summary) |
 
-Counts: 12 product defects (ERR-21, 22, 25, 27, 30, 31, 32, 33, 38, 39, 41, 42) and 10 test defects (ERR-23, 24, 26, 28, 29, 34, 35, 36, 37, 40). Severity as written in the defect files: 7 High (ERR-21, 25, 32, 33, 34, 39, 40), 9 Medium (ERR-22, 27, 30, 31, 36, 37, 38, 41, 42), 6 Low (ERR-23, 24, 26, 28, 29, 35).
+Counts: 16 product defects (ERR-21, 22, 25, 27, 30, 31, 32, 33, 38, 39, 41, 42, 43, 44, 45, 46) and 10 test defects (ERR-23, 24, 26, 28, 29, 34, 35, 36, 37, 40). Severity as written in the defect files: 8 High (ERR-21, 25, 32, 33, 34, 39, 40, 46), 12 Medium (ERR-22, 27, 30, 31, 36, 37, 38, 41, 42, 43, 44, 45), 6 Low (ERR-23, 24, 26, 28, 29, 35). Two further test-side failures in the clean run on `2e14516` (TC-053 and TC-073, see run 6) were fixed in the tests and did not get ERR numbers.
 
-Open finding outside the 73 cases: smeargle N3 (`/help/mcp`, 390 px, `main` scrolls sideways), recorded in `docs/evidence/A-13-smeargle.md` and as **ERR-43** (Medium, product defect, found on `015fbf9`). The source fix is committed in `34c8eaf` with a unit test, but the preview still serves `015fbf9`, so ERR-43 is **fixed, not re-tested on the hosted build**. TC-080 passes because it measures the document, not `main`.
+No open finding outside the 73 cases: smeargle N3 (`/help/mcp`, 390 px, `main` scrolls sideways) is ERR-43, fixed in `34c8eaf` and re-measured on the hosted build. TC-080 measures the document, not `main`, so it could not have caught it; the smeargle cell did.
 
-Notes: (1) The `docs/defects/ERR-21.md` to `ERR-43.md` files still read "Fixed, re-test pending (hosted)" with empty `fix_commit` and `retest_date`; the table above is the re-test record until they are closed at G7. (2) Product fixes of ERR-21 to ERR-32 were written with their tests, not seen red first, as the run-log records. (3) TC-072 failed once at 406 px under 4-worker load in runs 3 and 4 and could not be reproduced in 6 clean single runs on `d3ae47e`; it was reproduced only by delaying `explore.search` (ERR-42) and passes on `015fbf9`.
+Notes: (1) The `docs/defects/ERR-21.md` to `ERR-42.md` files still read "Fixed, re-test pending (hosted)" with empty `fix_commit` and `retest_date`; the table above is the re-test record until they are closed at G7. ERR-43 to ERR-46 are closed in their files. (2) Product fixes of ERR-21 to ERR-32 were written with their tests, not seen red first, as the run-log records. (3) TC-072 failed once at 406 px under 4-worker load in runs 3 and 4 and could not be reproduced in 6 clean single runs on `d3ae47e`; it was reproduced only by delaying `explore.search` (ERR-42) and passes on `015fbf9`.
 
 ## Sign-off
 

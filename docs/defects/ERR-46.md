@@ -7,11 +7,12 @@ story: A-13
 test_case: TC-081 (vitals), TC-040 (first Explore load), TC-073 (screenshot)
 ac_reference: NFR LCP budget 2,500 ms (Lighthouse mobile profile)
 severity: High
-status: fixed, re-test pending (hosted)
+status: Closed (fixed, re-tested on hosted build 2e14516: TC-081 PASS, TC-073 PASS, TC-040 engine waterfall holds no request to Google; TC-040 itself still fails on a slow link, see the test report)
 found_by: hosted vitals and request waterfall, build 32a3d60
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
-retest_date: pending
+fix_commit: 2e14516
+retest_date: 2026-10-22
 ---
 
 # ERR-46: third-party Google Fonts requests dominate load time and vary run to run

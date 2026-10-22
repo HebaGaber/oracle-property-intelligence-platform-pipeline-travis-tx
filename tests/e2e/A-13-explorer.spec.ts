@@ -809,9 +809,15 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("027"), async ({ page }) => {
-    const place = gazetteerPlace("Pflugerville");
+    // The PO's demo area (D-11: Austin city, where 5 mi → 3 mi really changes the count), not
+    // Pflugerville, where both counts are 0 on the one-month slice.
+    const area = demoArea();
+    const place = area.place;
     // 1. Open and set the window marker.
-    await openExplore(page, exploreUrl(EXPLORE, { place: "pflugerville", r: 5, roof: 15 }));
+    await openExplore(
+      page,
+      exploreUrl(EXPLORE, { place: place.name.toLowerCase(), r: area.radiusMi, roof: 15 }),
+    );
     await page.evaluate(() => {
       (window as unknown as { __tcMarker: number }).__tcMarker = 1;
     });

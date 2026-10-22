@@ -67,8 +67,8 @@ async function pageStrings(page: Page): Promise<string> {
 async function exploreSettled(page: Page): Promise<void> {
   const section = page.locator('section[data-route="explore"]');
   if ((await section.count()) === 0) return;
-  await expect(section).toHaveAttribute("data-state", "ready", { timeout: 15_000 });
-  await expect(page.locator('[role="progressbar"]')).toHaveCount(0, { timeout: 15_000 });
+  await expect(section).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+  await expect(page.locator('[role="progressbar"]')).toHaveCount(0, { timeout: 30_000 });
   const header = page.locator(
     'section[data-route="explore"] h2, section[data-route="explore"] header',
   );

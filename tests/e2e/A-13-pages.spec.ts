@@ -344,6 +344,13 @@ test.describe("A-13 pages · Catalog, Legal, Runs log", { tag: "@a13-pages" }, (
         PAGE_TEXTS.tableExportMissing,
       );
       for (const table of tables) {
+        // Each table fills in as ITS Parquet footer arrives (progressive render, ERR-41): wait for
+        // the "reading the Parquet footer…" note of this row to clear before counting columns. A
+        // footer that really fails still fails here (the row then shows a reason, not columns).
+        await expect(
+          section.locator(`[data-catalog-row="${table}"] [data-footer-status="pending"]`),
+          `${table}: footer still pending`,
+        ).toHaveCount(0, { timeout: 60_000 });
         const cols = section.locator(`[data-catalog-row="${table}"] [data-column]`);
         expect(await cols.count(), `${table}: columns from the Parquet schema`).toBeGreaterThan(0);
         for (const col of await cols.all()) {

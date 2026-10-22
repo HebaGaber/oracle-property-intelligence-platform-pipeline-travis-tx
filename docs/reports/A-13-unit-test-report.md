@@ -3,14 +3,16 @@ id: UT-A-13
 type: unit-test-report
 story: A-13
 branch: 013-explorer-and-pages
-commit: 70561ec
-ci_run: "None yet. Numbers are from local runs on the operator machine at 70561ec. No GitHub Actions run exists for this branch tip."
+commit: 2e14516
+ci_run: "None yet. Totals, skips and bundle size were re-run locally at 2e14516 on 2026-10-22; coverage and the per-project table are from 70561ec. No GitHub Actions run exists for this branch tip."
 created: 2026-10-22
 ---
 
 # Unit and Integration Test Report: A-13
 
-All numbers come from local command output on 2026-10-22 (about 00:54 to 01:00 EEST, UTC+3) on branch `013-explorer-and-pages` at commit `70561ec`. The only modified file in the tree during the runs was `specs/013-explorer-and-pages/run-log.md`. These are **local unit tests only**. They do not prove the hosted runtime. The 73 hosted Playwright specs are written but **have not been run on any hosted URL** (see "Not measured").
+**History.** First written at `70561ec` (93 files, 1,326 tests, 1,319 passed, 7 skipped); a fresh run at `015fbf9` gave 1,448 passed; **refreshed at `2e14516` on 2026-10-22 (16:50): 103 files, 1,492 tests, 1,484 passed, 8 skipped, 0 failed, 15.90 s**, with the bundle size re-measured after a fresh build. The coverage rows, the coverage caveat and the per-project table below were not re-measured and still describe `70561ec`.
+
+The numbers below come from local command output on 2026-10-22 (about 00:54 to 01:00 EEST, UTC+3) on branch `013-explorer-and-pages` at commit `70561ec`. The only modified file in the tree during the runs was `specs/013-explorer-and-pages/run-log.md`. These are **local unit tests only**. They do not prove the hosted runtime. The 73 hosted Playwright specs are written but **have not been run on any hosted URL** (see "Not measured").
 
 Environment for every command (no credentials read):
 
@@ -21,15 +23,15 @@ export CDK_DEFAULT_REGION=eu-north-1 CDK_DEFAULT_ACCOUNT=000000000000 OPERATOR_E
 | Item | Value |
 | --- | --- |
 | Command | `pnpm test` (`vitest run --passWithNoTests`, all workspace projects) |
-| Files / tests | 93 files / 1,326 tests |
-| Passed / failed / skipped | 1,319 / 0 / 7 (92 files passed, 1 file skipped) |
-| Duration | 15.86 s |
+| Files / tests | 103 files / 1,492 tests at `2e14516` (93 / 1,326 at `70561ec`) |
+| Passed / failed / skipped | **1,484 / 0 / 8** at `2e14516` (102 files passed, 1 file skipped); 1,319 / 0 / 7 at `70561ec` |
+| Duration | 15.90 s at `2e14516` (15.86 s at `70561ec`) |
 | Coverage, `packages/query-core` | src: lines 98.58 % · branches 90.39 % · functions 100 % · statements 96.43 %. gazetteer: lines 88.12 % · branches 81.16 % · functions 86.96 % · statements 85.83 %. **PASS** against 80 % on all four metrics in both parts |
 | Coverage, `packages/contract` | 100 % lines, branches, functions, statements. **PASS** against 80 % |
 | Coverage, whole workspace include set | lines 92.43 % · branches 81.58 % · functions 91.39 % · statements 90.06 % |
 | `pnpm typecheck` | clean (no output, exit 0) |
 | `pnpm lint` | clean (no output, exit 0) |
-| Bundle size | initial JS 217.2 KB gz (222,431 B) against 300 KB limit, DuckDB chunks excluded: **PASS**. Hub graph 123.8 KB gz (126,732 B) against 150 KB: **PASS**. The Hub graph lists no DuckDB chunk |
+| Bundle size | at `2e14516`, after a fresh `pnpm --filter @countylens/web build`: initial JS **220.9 KB gz (226,177 B)** against 300 KB limit, DuckDB chunks excluded: **PASS**. Hub graph **124.6 KB gz (127,575 B)** against 150 KB: **PASS**; placement OK. (`70561ec`: 217.2 KB and 123.8 KB) |
 
 ## Coverage method and a caveat
 
@@ -58,7 +60,7 @@ Coverage columns are from the coverage run (lines / branches). `n/a` means the p
 
 Per-project file counts add to 93 (the one all-skipped file is counted in its package). The 80 % requirement (NFR-09) covers only `packages/query-core` and `packages/contract`, and both pass. Below 80 % on one metric, not a story gate: `packages/api-client` (branches 71.43, functions 75.00) and `pipeline/publish` (branches 77.73). `pipeline/oracle-runtime` is its own npm project and was **not run** for this report.
 
-## Skipped tests (7), each an explicit skip with a stated reason
+## Skipped tests (8 at `2e14516`; the table lists the 7 of `70561ec`), each an explicit skip with a stated reason
 
 | Test | Why it is skipped |
 | --- | --- |
@@ -69,6 +71,7 @@ Per-project file counts add to 93 (the one all-skipped file is counted in its pa
 | `packages/query-core/test/views.pilot.test.ts` › views over the pilot export (T058) | `PILOT_DIR is not set` |
 | `packages/query-core/test/acceptance/a02.acceptance.test.ts` › A-02 pilot cases | `PILOT_DIR is not set` |
 | `infra/test/api.test.ts` › `COUNTYLENS_BUNDLE=1` real asset holds the linux-arm64 DuckDB binary and httpfs | runs only with `COUNTYLENS_BUNDLE=1`; not run here |
+| `apps/web/test/html-hints.test.ts` › built `dist/index.html` preconnects to the configured CID copy host (added since `70561ec`) | skipped unless `VITE_CID_COPY_HOST` is set for the test run (8th skip at `2e14516`) |
 
 ## New and changed A-13 test files (git diff of `74d7235^..HEAD`)
 
@@ -97,8 +100,8 @@ Not re-verified for this report. The red-then-green order is recorded in the com
 
 ## Not measured
 
-- Hosted Playwright specs (73): not run; they need a deployed URL.
+- Hosted Playwright specs (73): not part of `pnpm test`; their hosted results are in `docs/reports/A-13-test-report.md` (71 passed, 1 skipped, 1 failed on `2e14516`).
 - `exploreSearchSql` over the published run in Vitest: skipped (`PUBLISHED_TABLES_DIR` unset). A separate measurement over the published run is in the demo-area note, not in this test run.
 - `pipeline/oracle-runtime` tests, CDK bundled-asset test (`COUNTYLENS_BUNDLE=1`), pilot-export tests (`PILOT_DIR`).
-- The bundle check read the existing `apps/web/dist` (built 2026-10-22 00:53, one minute before the test run); I did not rebuild it.
+- The bundle numbers in the table were taken after a fresh build at `2e14516`; the `70561ec` run had read an existing `dist`.
 - Smeargle/Lighthouse, Web Vitals, a11y scans: Stage 6 on the hosted URL.
