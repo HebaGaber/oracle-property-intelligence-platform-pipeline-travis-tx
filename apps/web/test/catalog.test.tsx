@@ -5,6 +5,8 @@
 import { RUN_MANIFEST_SCHEMA, RUNS_INDEX_SCHEMA, type RunManifestV1 } from "@countylens/contract";
 import { rawCid } from "@countylens/query-core";
 import { PAGE_TEXTS, ROUTES } from "@countylens/shared";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -173,6 +175,7 @@ describe("Catalog: one row per table (TC-053)", () => {
     const rows = await vi.waitFor(() => {
       const found = page.querySelectorAll<HTMLElement>("[data-table]");
       expect(found.length).toBe(2);
+      expect(page.querySelectorAll("[data-rows]").length).toBe(2);
       expect(page.getAttribute("data-state")).toBe("ready");
       return found;
     });
@@ -225,11 +228,111 @@ describe("Catalog: one row per table (TC-053)", () => {
     for (const url of urls) expect(new URL(url).host).toBe(COPY_HOST);
   });
 
-  it("shows the progress bar while reading", async () => {
-    footer.read.mockImplementation(() => new Promise(() => undefined));
+  it("shows the progress bar only until the manifest is loaded", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
     const page = await renderCatalog();
     expect(await screen.findByRole("progressbar")).toBeTruthy();
     expect(page.getAttribute("data-state")).toBe("loading");
+  });
+});
+
+describe("Catalog: progressive render (ERR-41, NFR-002)", () => {
+  const NEVER = (): Promise<never> => new Promise(() => undefined);
+  const improvementCid = (): string => fx.parts[2]?.cid ?? "";
+
+  it("paints the table list from the manifest while no footer has resolved", async () => {
+    footer.read.mockImplementation(NEVER);
+    const page = await renderCatalog();
+    await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
+    expect(page.querySelectorAll("[data-catalog-row]")).toHaveLength(2);
+    const p = page.querySelector<HTMLElement>('[data-table="county.property"]') as HTMLElement;
+    expect(p.querySelector("[data-size]")?.getAttribute("data-value")).toBe("201");
+    for (const part of fx.parts.slice(0, 2)) {
+      expect(p.querySelector(`a[data-cid="${part.cid}"]`)?.getAttribute("href")).toBe(
+        `/data/verify/${part.cid}`,
+      );
+    }
+    // published_rows still shows where a coverage key maps to the table.
+    expect(p.querySelector('[data-coverage-key="parcels_emitted"]')?.textContent).toContain("7");
+    // Pending rows claim neither a row count nor columns, and say what they wait for.
+    expect(page.querySelectorAll("[data-rows]")).toHaveLength(0);
+    expect(page.querySelectorAll("[data-column]")).toHaveLength(0);
+    expect(page.querySelectorAll("[data-footer-status='pending']").length).toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(p.textContent).toContain("reading the Parquet footer");
+    expect(page.querySelector("[role='alert']")).toBeNull();
+  });
+
+  it("fills in only the table whose footer arrived; the others stay pending", async () => {
+    footer.read.mockImplementation((url: string) =>
+      url.includes(improvementCid())
+        ? Promise.resolve({ columns: [{ name: "improvement_type", type: "STRING" }], rows: 4 })
+        : NEVER(),
+    );
+    const page = await renderCatalog();
+    const done = (await vi.waitFor(() => {
+      const el = page.querySelector<HTMLElement>(
+        '[data-table="property_improvement.property_improvement"]',
+      );
+      expect(el?.querySelector("[data-rows]")?.getAttribute("data-value")).toBe("4");
+      return el;
+    })) as HTMLElement;
+    expect(done.querySelector("[data-column]")?.getAttribute("data-name")).toBe("improvement_type");
+    const pending = page.querySelector<HTMLElement>(
+      '[data-table="county.property"]',
+    ) as HTMLElement;
+    expect(pending.querySelector("[data-rows]")).toBeNull();
+    expect(pending.querySelector("[data-column]")).toBeNull();
+    expect(pending.querySelector("[data-footer-status='pending']")).not.toBeNull();
+    expect(page.getAttribute("data-state")).toBe("ready");
+  });
+
+  it("a failed footer says why on its row while the others stay pending", async () => {
+    footer.read.mockImplementation((url: string) =>
+      url.includes(improvementCid()) ? Promise.reject(new Error("range read failed")) : NEVER(),
+    );
+    const page = await renderCatalog();
+    const bad = (await vi.waitFor(() => {
+      const el = page.querySelector<HTMLElement>(
+        '[data-table="property_improvement.property_improvement"]',
+      );
+      expect(el?.textContent).toContain("range read failed");
+      return el;
+    })) as HTMLElement;
+    expect(bad.querySelector("[data-footer-status='pending']")).toBeNull();
+    const other = page.querySelector<HTMLElement>('[data-table="county.property"]') as HTMLElement;
+    expect(other.querySelector("[data-footer-status='pending']")).not.toBeNull();
+    expect(other.textContent).not.toContain("range read failed");
+    expect(page.getAttribute("data-state")).toBe("ready");
+  });
+
+  it("CLS guard: the pending and the filled columns slot share one reserved-height class", async () => {
+    footer.read.mockImplementation((url: string) =>
+      url.includes(improvementCid())
+        ? Promise.resolve({ columns: [{ name: "improvement_type", type: "STRING" }], rows: 4 })
+        : NEVER(),
+    );
+    const page = await renderCatalog();
+    await vi.waitFor(() =>
+      expect(
+        page.querySelector("[data-table='property_improvement.property_improvement'] [data-rows]"),
+      ).not.toBeNull(),
+    );
+    const slotOf = (table: string): HTMLElement =>
+      page.querySelector(`[data-table="${table}"] [data-columns-slot]`) as HTMLElement;
+    const filled = slotOf("property_improvement.property_improvement");
+    const pending = slotOf("county.property");
+    expect(filled.className).not.toBe("");
+    expect(pending.className).toBe(filled.className);
+    const css = readFileSync(
+      resolve(import.meta.dirname, "../src/routes/DataCatalog.module.css"),
+      "utf8",
+    );
+    expect(css).toMatch(/\.columnsSlot\s*\{[^}]*min-height:\s*var\(--space-/);
   });
 });
 

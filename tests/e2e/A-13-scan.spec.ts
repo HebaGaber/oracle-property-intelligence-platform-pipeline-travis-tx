@@ -98,6 +98,16 @@ async function openEverything(
 ): Promise<string[]> {
   note("read the page");
   const seen: string[] = [await pageStrings(page)];
+  // The drawer comes first: clicking the SQL tab unmounts the result rows (mode=sql), so a row
+  // found afterwards can vanish between the count and the click.
+  const row = page.locator(SEL.resultRow).first();
+  if ((await row.count()) > 0) {
+    note("open the first property drawer");
+    await exploreSettled(page);
+    await row.click({ timeout: 15_000 });
+    if (await page.getByRole("dialog").first().isVisible()) seen.push(await pageStrings(page));
+    await page.keyboard.press("Escape");
+  }
   note("list the tabs");
   for (const tab of await page.getByRole("tab").all()) {
     const name = (await tab.innerText().catch(() => "")).trim();
@@ -114,14 +124,6 @@ async function openEverything(
     if ((await toggle.isVisible()) && (await toggle.getAttribute("aria-expanded")) === "false")
       await toggle.click({ timeout: 15_000 });
     seen.push(await pageStrings(page));
-  }
-  const row = page.locator(SEL.resultRow).first();
-  if ((await row.count()) > 0) {
-    note("open the first property drawer");
-    await exploreSettled(page);
-    await row.click({ timeout: 15_000 });
-    if (await page.getByRole("dialog").first().isVisible()) seen.push(await pageStrings(page));
-    await page.keyboard.press("Escape");
   }
   note("open the More sheet");
   await openMore(page);

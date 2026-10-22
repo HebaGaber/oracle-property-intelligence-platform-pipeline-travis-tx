@@ -1,6 +1,8 @@
 // Parquet footers for Data · Catalog (A-13 T014, research R4): each table part's footer is read
 // by HTTP Range from the CID copy with hyparquet 1.31.2 (pure JS, pinned). This module is imported
 // only by the Catalog page (a lazy route), so hyparquet stays out of every other page's bundle.
+// (A dynamic import was tried for ERR-41; scripts/bundle-size.ts only follows static imports, so
+// its Catalog-only placement gate rejects it.)
 // It gives the columns, their types and the row count of the published file ("rows in the
 // published file"); it cannot check a CID (each CID links to Verify for that). `catalogTables`
 // groups the manifest's table parts by table, from the manifest only.

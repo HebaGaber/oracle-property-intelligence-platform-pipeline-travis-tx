@@ -35,6 +35,8 @@ import styles from "./DataCatalog.module.css";
 
 const TABLES_EXPORT = "tables-export.json";
 const CONCURRENCY = 2;
+/** Shown on a row until its own Parquet footer has been read. */
+const FOOTER_PENDING = "reading the Parquet footer…";
 
 type TableResult =
   | { readonly kind: "ok"; readonly columns: readonly ParquetColumn[]; readonly rows: number }
@@ -74,25 +76,25 @@ function publishedRowsFor(table: CatalogTable, manifest: RunManifestV1): Coverag
 export function Component(): ReactElement {
   const { state, retry } = useLatestRun();
   const [attempt, setAttempt] = useState(0);
-  const [results, setResults] = useState<ReadonlyMap<string, TableResult> | null>(null);
+  const [results, setResults] = useState<ReadonlyMap<string, TableResult>>(new Map());
   const run = state.kind === "ready" ? state.run : null;
 
+  // Each table's footer fills in on arrival (pending → ok | fail); the list paints before any read.
   useEffect(() => {
     if (run === null) return;
     const controller = new AbortController();
-    setResults(null);
+    setResults(new Map());
     const tables = catalogTables(run.manifest);
-    const done = new Map<string, TableResult>();
     let next = 0;
     const worker = async (): Promise<void> => {
       while (next < tables.length && !controller.signal.aborted) {
         const table = tables[next++] as CatalogTable;
-        done.set(table.table, await readTable(table, run, controller.signal));
+        const result = await readTable(table, run, controller.signal);
+        if (controller.signal.aborted) return;
+        setResults((previous) => new Map(previous).set(table.table, result));
       }
     };
-    Promise.all(Array.from({ length: Math.min(CONCURRENCY, tables.length) }, worker)).then(() => {
-      if (!controller.signal.aborted) setResults(new Map(done));
-    });
+    void Promise.all(Array.from({ length: Math.min(CONCURRENCY, tables.length) }, worker));
     return () => controller.abort();
   }, [run, attempt]);
 
@@ -102,15 +104,12 @@ export function Component(): ReactElement {
   }, [retry]);
 
   const tables = run === null ? [] : catalogTables(run.manifest);
-  const failures =
-    results === null
-      ? []
-      : [...results.values()].flatMap((r) => (r.kind === "fail" ? [r.reason] : []));
-  const allFailed = results !== null && tables.length > 0 && failures.length === tables.length;
+  const failures = [...results.values()].flatMap((r) => (r.kind === "fail" ? [r.reason] : []));
+  const allFailed = tables.length > 0 && failures.length === tables.length;
   let unavailable: string | null = null;
   if (state.kind === "error") unavailable = state.error.reason;
   else if (allFailed) unavailable = failures[0] ?? "the Parquet footers could not be read";
-  const pageState = unavailable !== null ? "error" : results === null ? "loading" : "ready";
+  const pageState = unavailable !== null ? "error" : run === null ? "loading" : "ready";
 
   return (
     <section
@@ -125,7 +124,7 @@ export function Component(): ReactElement {
           <LinearProgress
             label={PROGRESS_LABELS.runs}
             stageText={
-              state.kind === "loading" ? RUN_STAGE_TEXTS[state.stage] : "Reading the table footers"
+              state.kind === "loading" ? RUN_STAGE_TEXTS[state.stage] : "Reading the run manifest"
             }
           />
           <Skeleton variant="cards" count={3} />
@@ -142,7 +141,7 @@ export function Component(): ReactElement {
           onRetry={retryAll}
         />
       ) : null}
-      {pageState === "ready" && run !== null && results !== null ? (
+      {pageState === "ready" && run !== null ? (
         <>
           <div className={runsStyles.header}>
             <span className={runsStyles.itemBody}>Run {run.manifest.runId}</span>
@@ -213,6 +212,11 @@ function TableCard({
               rows in the published file
             </dd>
           </div>
+        ) : result === undefined ? (
+          <div className={styles.fact}>
+            <dt>Rows</dt>
+            <dd data-footer-status="pending">rows in the published file: {FOOTER_PENDING}</dd>
+          </div>
         ) : null}
         {published.map((row) => (
           <div
@@ -236,24 +240,32 @@ function TableCard({
           </li>
         ))}
       </ul>
-      {result === undefined || result.kind === "fail" ? (
-        <StatusPill
-          status="unavailable"
-          text={`columns unavailable · ${result?.kind === "fail" ? result.reason : "not read"}`}
-        />
-      ) : (
-        <details>
-          <summary className={styles.columnsSummary}>{result.columns.length} columns</summary>
-          <ul className={styles.columns}>
-            {result.columns.map((column) => (
-              <li key={column.name} data-column="" data-name={column.name} data-type={column.type}>
-                <span>{column.name}</span>
-                <span className={styles.columnType}>{column.type}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      <div className={styles.columnsSlot} data-columns-slot="">
+        {result === undefined ? (
+          <p className={styles.pending} data-footer-status="pending">
+            columns: {FOOTER_PENDING}
+          </p>
+        ) : result.kind === "fail" ? (
+          <StatusPill status="unavailable" text={`columns unavailable · ${result.reason}`} />
+        ) : (
+          <details>
+            <summary className={styles.columnsSummary}>{result.columns.length} columns</summary>
+            <ul className={styles.columns}>
+              {result.columns.map((column) => (
+                <li
+                  key={column.name}
+                  data-column=""
+                  data-name={column.name}
+                  data-type={column.type}
+                >
+                  <span>{column.name}</span>
+                  <span className={styles.columnType}>{column.type}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
     </article>
   );
 }
