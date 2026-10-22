@@ -34,8 +34,8 @@ description: "Task list for A-07 enrich and reconcile (merged story: tracks A-D)
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 Create new directories: `pipeline/oracle-runtime/travis/{identity,bbb,places,reconcile}/`, `pipeline/oracle-runtime/test/travis/a07/{identity,bbb,places,reconcile,roof-age}/`, `pipeline/oracle-runtime/test/fixtures/a07/{comptroller,bbb-stub,overture,reconcile,roof-age}/` (W1)
-- [ ] T002 [P] Confirm Node ≥22.18, pnpm, DuckDB CLI versions match Stage 0's measured toolchain (no new dependency to add); record the confirmed versions as a line in `specs/007-enrich-reconcile/run-log.md` (W1)
+- [x] T001 Create new directories: `pipeline/oracle-runtime/travis/{identity,bbb,places,reconcile}/`, `pipeline/oracle-runtime/test/travis/a07/{identity,bbb,places,reconcile,roof-age}/`, `pipeline/oracle-runtime/test/fixtures/a07/{comptroller,bbb-stub,overture,reconcile,roof-age}/` (W1)
+- [x] T002 [P] Confirm Node ≥22.18, pnpm, DuckDB CLI versions match Stage 0's measured toolchain (no new dependency to add); record the confirmed versions as a line in `specs/007-enrich-reconcile/run-log.md` (W1)
 
 ---
 
@@ -43,14 +43,14 @@ description: "Task list for A-07 enrich and reconcile (merged story: tracks A-D)
 
 **⚠️ CRITICAL**: blocks Track A (US1) and Track C (US3), both of which read the same Comptroller load. Tracks B (US2) and D (US4) do not depend on this phase.
 
-- [ ] T003 [P] Migration `pipeline/local-stack/migrations/0401_comptroller_registry.sql`: staging table for `9cir-efmm` rows, `ON CONFLICT` upsert keyed on taxpayer number, `updated_at` watermark column (W1)
-- [ ] T004 [P] Migration `pipeline/local-stack/migrations/0402_contractor_ledger.sql`: append-only ledger per data-model.md's "Contractor resolution ledger row" (`permitKey, rawContractorName, state, reasonCode, matchedRecordIds, matchRule, resolverVersion, registrySnapshotDigest, effectiveOn`) (W1)
+- [x] T003 [P] Migration `pipeline/local-stack/migrations/0401_comptroller_registry.sql`: staging table for `9cir-efmm` rows, `ON CONFLICT` upsert keyed on taxpayer number, `updated_at` watermark column (W1)
+- [x] T004 [P] Migration `pipeline/local-stack/migrations/0402_contractor_ledger.sql`: append-only ledger per data-model.md's "Contractor resolution ledger row" (`permitKey, rawContractorName, state, reasonCode, matchedRecordIds, matchRule, resolverVersion, registrySnapshotDigest, effectiveOn`) (W1)
 - [ ] T005 [P] Migration `pipeline/local-stack/migrations/0403_bbb_status.sql`: one row per resolved company per data-model.md's BBB status record (`companyId, bbbStatus ENUM(rated,not_found,blocked,not_checked), reason, evidence JSONB`) (W1)
 - [ ] T006 [P] Migration `pipeline/local-stack/migrations/0404_business_places.sql`: business + place record tables per data-model.md (W1)
-- [ ] T007 [P] Migration `pipeline/local-stack/migrations/0405_reconcile_merge.sql`: merge table keyed by `tcadId` (never a pair of TCAD ids) per data-model.md's reconciled record (W1)
-- [ ] T008 [P] Migration `pipeline/local-stack/migrations/0406_roof_age.sql`: one row per reconciled property per data-model.md's roof-age estimate (`roofAgeBasis ENUM(permit,new_construction,built_year,unknown)`, `roofAgeConfidence ENUM(high,medium,low,none)`, `roofAgeYears` nullable, null iff basis=unknown) (W1)
-- [ ] T009 [US1] Test (fails first): shared Comptroller adapter staging/upsert/watermark/digest behavior in `pipeline/oracle-runtime/test/travis/a07/identity/tx-comptroller.test.ts` (W1)
-- [ ] T010 [US1] Implement the single shared Comptroller adapter in `pipeline/oracle-runtime/travis/adapters/socrata/tx-comptroller.ts` — one writer, staged `ON CONFLICT` upsert, `:updated_at` watermark, sha256 snapshot digest of the sorted row set (depends T003, T009) (W1)
+- [x] T007 [P] Migration `pipeline/local-stack/migrations/0405_reconcile_merge.sql`: merge table keyed by `tcadId` (never a pair of TCAD ids) per data-model.md's reconciled record (W1)
+- [x] T008 [P] Migration `pipeline/local-stack/migrations/0406_roof_age.sql`: one row per reconciled property per data-model.md's roof-age estimate (`roofAgeBasis ENUM(permit,new_construction,built_year,unknown)`, `roofAgeConfidence ENUM(high,medium,low,none)`, `roofAgeYears` nullable, null iff basis=unknown) (W1)
+- [x] T009 [US1] Test (fails first): shared Comptroller adapter staging/upsert/watermark/digest behavior in `pipeline/oracle-runtime/test/travis/a07/identity/tx-comptroller.test.ts` (W1)
+- [x] T010 [US1] Implement the single shared Comptroller adapter in `pipeline/oracle-runtime/travis/adapters/socrata/tx-comptroller.ts` — one writer, staged `ON CONFLICT` upsert, `:updated_at` watermark, sha256 snapshot digest of the sorted row set (depends T003, T009) (W1)
 
 **Checkpoint**: T010 unblocks both US1 (Track A) and US3 (Track C) — no second fetch path is ever created for the Comptroller data.
 
@@ -64,21 +64,21 @@ description: "Task list for A-07 enrich and reconcile (merged story: tracks A-D)
 
 ### Tests for User Story 1 (write first, must fail) ⚠️
 
-- [ ] T011 [P] [US1] Resolver test: all five states, including the decision-order short-circuit (no printed name → `contractor_not_printed`; registry unloaded → `registry_unavailable`; two active same-name records → `ambiguous`, both kept; non-active `sos_status_code` → `conflicting`; "Roofing Co." vs "ROOFING COMPANY" → `candidate`, never `resolved`) in `pipeline/oracle-runtime/test/travis/a07/identity/resolver.test.ts` (FR-001, FR-004, FR-005) (W1)
-- [ ] T012 [P] [US1] Crosswalk negative-finding test: the labelled fixture proves the `resolved` code path exists even with 0 live matches, per FR-002's fixture-fallback clause, in `pipeline/oracle-runtime/test/travis/a07/identity/crosswalk.test.ts` (FR-002) (W1)
-- [ ] T013 [P] [US1] Five-state totals/manifest-contribution test (sum == permit total, `derivation = aggregate_match`) in `pipeline/oracle-runtime/test/travis/a07/identity/totals.test.ts` (FR-003) (W1)
+- [x] T011 [P] [US1] Resolver test: all five states, including the decision-order short-circuit (no printed name → `contractor_not_printed`; registry unloaded → `registry_unavailable`; two active same-name records → `ambiguous`, both kept; non-active `sos_status_code` → `conflicting`; "Roofing Co." vs "ROOFING COMPANY" → `candidate`, never `resolved`) in `pipeline/oracle-runtime/test/travis/a07/identity/resolver.test.ts` (FR-001, FR-004, FR-005) (W1)
+- [x] T012 [P] [US1] Crosswalk negative-finding test: the labelled fixture proves the `resolved` code path exists even with 0 live matches, per FR-002's fixture-fallback clause, in `pipeline/oracle-runtime/test/travis/a07/identity/crosswalk.test.ts` (FR-002) (W1)
+- [x] T013 [P] [US1] Five-state totals/manifest-contribution test (sum == permit total, `derivation = aggregate_match`) in `pipeline/oracle-runtime/test/travis/a07/identity/totals.test.ts` (FR-003) (W1)
 
 ### Implementation for User Story 1
 
-- [ ] T014 [US1] Implement the resolver per `contracts/resolver.md`'s decision order in `pipeline/oracle-runtime/travis/identity/resolver.ts` (depends T011) (FR-001, FR-002, FR-004, FR-005) (W1)
-- [ ] T015 [US1] Record the crosswalk negative finding (dataset `3syk-w9eu`, full column list, PDF citation) for evidence in `pipeline/oracle-runtime/travis/identity/crosswalk.ts` (depends T012) (FR-002) (W1)
-- [ ] T016 [P] [US1] Test (fails first): the Loader track registers the Comptroller track and the report section emits the expected shape, on a mocked DB client, in `pipeline/local-stack/test/tracks/comptroller.test.ts` (W1)
-- [ ] T017 [US1] Implement the Loader track + report section: `pipeline/local-stack/services/tracks/comptroller.ts`, `pipeline/local-stack/services/report-sections/identity.ts` (depends T004, T010, T016) (W1)
-- [ ] T018 [US1] Implement five-state totals per `contracts/report.md` in `pipeline/oracle-runtime/travis/identity/totals.ts` (depends T013, T014) (FR-003) (W2)
-- [ ] T019 [US1] [RUN] Execute the registry load (`EN identity:load-registry --source tx-comptroller --scope travis`), egress check first; write the row count, watermark and snapshot digest to `pipeline/data/identity/travis/<jobId>/registry-load-report.json` and record the same in `specs/007-enrich-reconcile/run-log.md` (depends T010, T017) — **Wave 2 DB writer** (FR-003, FR-005) (W2)
-- [ ] T020 [US1] [RUN] Execute the full resolution run over all 22,084 Austin reroof candidates; write each state's count and the match rule version to `pipeline/data/identity/travis/<jobId>/resolution-report.json` (depends T014, T019) — **Wave 3 DB writer** (FR-001, FR-003) (W3)
-- [ ] T021 [P] [US1] Test (fails first): the 25-row sampler's seed-recording and every-non-empty-state-represented guarantee, on fixture ledger rows, in `pipeline/oracle-runtime/test/travis/a07/identity/sampler.test.ts` (W1)
-- [ ] T022 [US1] Build the 25-row contractor sampler (random seed recorded, every non-empty state represented) and the evidence skeleton in `pipeline/oracle-runtime/travis/identity/sampler.ts` — written while T020's run goes (depends T014, T021) (NFR-001) (W3)
+- [x] T014 [US1] Implement the resolver per `contracts/resolver.md`'s decision order in `pipeline/oracle-runtime/travis/identity/resolver.ts` (depends T011) (FR-001, FR-002, FR-004, FR-005) (W1)
+- [x] T015 [US1] Record the crosswalk negative finding (dataset `3syk-w9eu`, full column list, PDF citation) for evidence in `pipeline/oracle-runtime/travis/identity/crosswalk.ts` (depends T012) (FR-002) (W1)
+- [x] T016 [P] [US1] Test (fails first): the Loader track registers the Comptroller track and the report section emits the expected shape, on a mocked DB client, in `pipeline/local-stack/test/tracks/comptroller.test.ts` (W1)
+- [x] T017 [US1] Implement the Loader track + report section: `pipeline/local-stack/services/tracks/comptroller.ts`, `pipeline/local-stack/services/report-sections/identity.ts` (depends T004, T010, T016) (W1)
+- [x] T018 [US1] Implement five-state totals per `contracts/report.md` in `pipeline/oracle-runtime/travis/identity/totals.ts` (depends T013, T014) (FR-003) (W2)
+- [x] T019 [US1] [RUN] Execute the registry load (`EN identity:load-registry --source tx-comptroller --scope travis`), egress check first; write the row count, watermark and snapshot digest to `pipeline/data/identity/travis/<jobId>/registry-load-report.json` and record the same in `specs/007-enrich-reconcile/run-log.md` (depends T010, T017) — **Wave 2 DB writer** (FR-003, FR-005) (W2)
+- [x] T020 [US1] [RUN] Execute the full resolution run over all 22,084 Austin reroof candidates; write each state's count and the match rule version to `pipeline/data/identity/travis/<jobId>/resolution-report.json` (depends T014, T019) — **Wave 3 DB writer** (FR-001, FR-003) (W3)
+- [x] T021 [P] [US1] Test (fails first): the 25-row sampler's seed-recording and every-non-empty-state-represented guarantee, on fixture ledger rows, in `pipeline/oracle-runtime/test/travis/a07/identity/sampler.test.ts` (W1)
+- [x] T022 [US1] Build the 25-row contractor sampler (random seed recorded, every non-empty state represented) and the evidence skeleton in `pipeline/oracle-runtime/travis/identity/sampler.ts` — written while T020's run goes (depends T014, T021) (NFR-001) (W3)
 
 **Checkpoint**: Track A fully functional and independently testable; `resolved = 0` with the AC-2 fixture (T012) proving the code path.
 
@@ -147,25 +147,25 @@ description: "Task list for A-07 enrich and reconcile (merged story: tracks A-D)
 
 ### Tests for User Story 4 (write first, must fail) ⚠️
 
-- [ ] T046 [P] [US4] Merge-rule test: TCAD id is the only key; a merge spanning two TCAD ids is refused and counted; a lint-level assertion that no merge function accepts two TCAD ids in `pipeline/oracle-runtime/test/travis/a07/reconcile/merge.test.ts` (FR-018) (W1)
-- [ ] T047 [P] [US4] View-derivation comparison harness test (25/25 against estimator output, on fixtures) in `packages/query-core/test/roof-age-comparison.test.ts` (FR-017) (W1)
-- [ ] T048 [P] [US4] Estimator profile-mapping tests, no writes (open permit 1982-012866 BP does not reset age; two finals → latest wins; `Expired` with no final is not an anchor; year built future/pre-1850 → `unknown` + reason; no permit + no year built → `unknown`/`none`, excluded from "roof > 15") in `pipeline/oracle-runtime/test/travis/a07/roof-age/run.test.ts` (FR-015, FR-016, FR-019) (W1)
+- [x] T046 [P] [US4] Merge-rule test: TCAD id is the only key; a merge spanning two TCAD ids is refused and counted; a lint-level assertion that no merge function accepts two TCAD ids in `pipeline/oracle-runtime/test/travis/a07/reconcile/merge.test.ts` (FR-018) (W1)
+- [x] T047 [P] [US4] View-derivation comparison harness test (25/25 against estimator output, on fixtures) in `packages/query-core/test/roof-age-comparison.test.ts` (FR-017) (W1)
+- [x] T048 [P] [US4] Estimator profile-mapping tests, no writes (open permit 1982-012866 BP does not reset age; two finals → latest wins; `Expired` with no final is not an anchor; year built future/pre-1850 → `unknown` + reason; no permit + no year built → `unknown`/`none`, excluded from "roof > 15") in `pipeline/oracle-runtime/test/travis/a07/roof-age/run.test.ts` (FR-015, FR-016, FR-019) (W1)
 
 ### Implementation for User Story 4
 
-- [ ] T049 [US4] Implement the merge rules per entity type in `pipeline/oracle-runtime/travis/reconcile/merge.ts` (depends T007, T046) (FR-018) (W1)
-- [ ] T050 [US4] Implement the roof-age estimator invocation wrapper (audit/apply/re-run, unmodified kit estimator) per `contracts/estimator.md` in `pipeline/oracle-runtime/travis/roof-age/run.ts` (depends T048) (FR-016, FR-017) (W1)
-- [ ] T051 [US4] Implement the view-derivation comparison harness (diffs `packages/query-core`'s view-side `roof_date`/basis/confidence against the estimator's output for the 25 audited properties) in `packages/query-core/roof-age-comparison.ts` (depends T047) (FR-017) (W1)
-- [ ] T052 [P] [US4] Test (fails first): `runs/a07-coverage.ts` assembles the correct manifest-coverage contribution shape (per `contracts/report.md`) from each track's report JSON files, on fixture reports, in `pipeline/oracle-runtime/test/travis/a07/runs/a07-coverage.test.ts` (W1)
-- [ ] T053 [US4] Implement `runs/a07-coverage.ts`: assembles all four tracks' counts (five-state totals, BBB per-status/coverage%, business/places counts, merge counts, roof-age coverage) into the manifest-coverage contribution shape, reading each track's report JSON, never the Query DB directly (AD-04) (depends T052) (W5)
-- [ ] T054 [P] [US4] Test (fails first): `runs/a07-verify.ts` correctly passes on a known-good fixture set of the four tracks' reports and fails (non-zero exit) on each of the four broken-report fixtures (one per independent-test condition) in `pipeline/oracle-runtime/test/travis/a07/runs/a07-verify.test.ts` (W1)
-- [ ] T055 [US4] Implement `runs/a07-verify.ts` — the story's `agents.verify` check: reads the T020/T034/T042/T060 report JSON files and T053's manifest-coverage contribution, asserts the four conditions in spec.md's "What done means", exits non-zero on any failure (depends T053, T054) (W5)
-- [ ] T056 [US4] [RUN] Property + owner merge run; write `inputRecords`/`canonical` per entity type and refused cross-TCAD merges to `pipeline/data/reconcile/travis/<jobId>/merge-property-owner-report.json` (depends T049) — **Wave 1 DB writer** (FR-018) (W1)
-- [ ] T057 [US4] [RUN] Contractor clusters merge, `resolved`-only; write the result to `pipeline/data/reconcile/travis/<jobId>/merge-contractor-report.json` (depends T020, T049) — **Wave 4 DB writer** (FR-018) (W4)
-- [ ] T058 [US4] [RUN] 25-property roof-age audit dry-run, `--as-of-date 2026-10-22` per D-9; report to `pipeline/data/roof-age/travis/<jobId>/audit.json` per `contracts/estimator.md` (depends T050, T051) — **Wave 5**, feeds 🛑 D-21 (FR-017) (W5)
-- [ ] T059 [US4] [RUN, after D-21 approval] Apply the 25 (`--apply`), then re-run the same 25 → must show `rowsWritten: 0`; report to `pipeline/data/roof-age/travis/<jobId>/apply-25.json` and `.../rerun-25.json` — **Wave 5 DB writer** (FR-017) (W5)
-- [ ] T060 [US4] [RUN] Widen to the full roll: audit → apply → re-run, `rowsWritten: 0` over the full scope; report roof-age coverage by basis/confidence to `pipeline/data/roof-age/travis/<jobId>/full-roll-report.json` (depends T059) — **Wave 5**, pre-approved at D-21(a) or gated on 🛑 D-22 (FR-017) (W5)
-- [ ] T061 [US4] Worked example for `0223120506` (substituting the absent anchor `0208011301`): every source record with URL, capture time, digest, then the anchor/basis/confidence/profile digest, written alongside T060's full-roll apply, into `pipeline/data/roof-age/travis/<jobId>/worked-example.json` (depends T060) (FR-015) (W5)
+- [x] T049 [US4] Implement the merge rules per entity type in `pipeline/oracle-runtime/travis/reconcile/merge.ts` (depends T007, T046) (FR-018) (W1)
+- [x] T050 [US4] Implement the roof-age estimator invocation wrapper (audit/apply/re-run, unmodified kit estimator) per `contracts/estimator.md` in `pipeline/oracle-runtime/travis/roof-age/run.ts` (depends T048) (FR-016, FR-017) (W1)
+- [x] T051 [US4] Implement the view-derivation comparison harness (diffs `packages/query-core`'s view-side `roof_date`/basis/confidence against the estimator's output for the 25 audited properties) in `packages/query-core/roof-age-comparison.ts` (depends T047) (FR-017) (W1)
+- [x] T052 [P] [US4] Test (fails first): `runs/a07-coverage.ts` assembles the correct manifest-coverage contribution shape (per `contracts/report.md`) from each track's report JSON files, on fixture reports, in `pipeline/oracle-runtime/test/travis/a07/runs/a07-coverage.test.ts` (W1)
+- [x] T053 [US4] Implement `runs/a07-coverage.ts`: assembles all four tracks' counts (five-state totals, BBB per-status/coverage%, business/places counts, merge counts, roof-age coverage) into the manifest-coverage contribution shape, reading each track's report JSON, never the Query DB directly (AD-04) (depends T052) (W5)
+- [x] T054 [P] [US4] Test (fails first): `runs/a07-verify.ts` correctly passes on a known-good fixture set of the four tracks' reports and fails (non-zero exit) on each of the four broken-report fixtures (one per independent-test condition) in `pipeline/oracle-runtime/test/travis/a07/runs/a07-verify.test.ts` (W1)
+- [x] T055 [US4] Implement `runs/a07-verify.ts` — the story's `agents.verify` check: reads the T020/T034/T042/T060 report JSON files and T053's manifest-coverage contribution, asserts the four conditions in spec.md's "What done means", exits non-zero on any failure (depends T053, T054) (W5)
+- [x] T056 [US4] [RUN] Property + owner merge run; write `inputRecords`/`canonical` per entity type and refused cross-TCAD merges to `pipeline/data/reconcile/travis/<jobId>/merge-property-owner-report.json` (depends T049) — **Wave 1 DB writer** (FR-018) (W1)
+- [x] T057 [US4] [RUN] Contractor clusters merge, `resolved`-only; write the result to `pipeline/data/reconcile/travis/<jobId>/merge-contractor-report.json` (depends T020, T049) — **Wave 4 DB writer** (FR-018) (W4)
+- [x] T058 [US4] [RUN] 25-property roof-age audit dry-run, `--as-of-date 2026-10-22` per D-9; report to `pipeline/data/roof-age/travis/<jobId>/audit.json` per `contracts/estimator.md` (depends T050, T051) — **Wave 5**, feeds 🛑 D-21 (FR-017) (W5)
+- [x] T059 [US4] [RUN, after D-21 approval] Apply the 25 (`--apply`), then re-run the same 25 → must show `rowsWritten: 0`; report to `pipeline/data/roof-age/travis/<jobId>/apply-25.json` and `.../rerun-25.json` — **Wave 5 DB writer** (FR-017) (W5)
+- [x] T060 [US4] [RUN] Widen to the full roll: audit → apply → re-run, `rowsWritten: 0` over the full scope; report roof-age coverage by basis/confidence to `pipeline/data/roof-age/travis/<jobId>/full-roll-report.json` (depends T059) — **Wave 5**, pre-approved at D-21(a) or gated on 🛑 D-22 (FR-017) (W5)
+- [x] T061 [US4] Worked example for `0223120506` (substituting the absent anchor `0208011301`): every source record with URL, capture time, digest, then the anchor/basis/confidence/profile digest, written alongside T060's full-roll apply, into `pipeline/data/roof-age/travis/<jobId>/worked-example.json` (depends T060) (FR-015) (W5)
 
 **Checkpoint**: Track D independently testable; 0 contractor merges is a correct outcome (Track A found 0 `resolved`), not a defect.
 
@@ -173,9 +173,9 @@ description: "Task list for A-07 enrich and reconcile (merged story: tracks A-D)
 
 ## Phase N: Polish & Cross-Cutting Concerns
 
-- [ ] TN01 [P] Run `npx vitest run --coverage` in `pipeline/oracle-runtime` and the root-workspace suites for `packages/query-core`; confirm ≥ 80% on business-rule code (NFR-09), writing the coverage summary into `docs/reports/A-07-unit-test-report.md`
-- [ ] TN02 Run `quickstart.md` end to end on the local stack and confirm every expected output matches; record any mismatch in `specs/007-enrich-reconcile/run-log.md`
-- [ ] TN03 Cross-check `specs/007-enrich-reconcile/lexicon-extension-drafts.md` is unfiled and unchanged (D-11)
+- [x] TN01 [P] Run `npx vitest run --coverage` in `pipeline/oracle-runtime` and the root-workspace suites for `packages/query-core`; confirm ≥ 80% on business-rule code (NFR-09), writing the coverage summary into `docs/reports/A-07-unit-test-report.md`
+- [x] TN02 Run `quickstart.md` end to end on the local stack and confirm every expected output matches; record any mismatch in `specs/007-enrich-reconcile/run-log.md`
+- [x] TN03 Cross-check `specs/007-enrich-reconcile/lexicon-extension-drafts.md` is unfiled and unchanged (D-11)
 
 ---
 
@@ -183,12 +183,12 @@ description: "Task list for A-07 enrich and reconcile (merged story: tracks A-D)
 
 **Purpose**: Constitution I, XVI, XXII. The story is not done until these pass.
 
-- [ ] TZ01 Run the reviewer agents (`oracle`, `donphan`, `porygon`) plus `/code-review medium`, read-only, one round (L5); record scores in `docs/reviews/CR-A-07.md` (each ≥ 75 or fixed/deferred)
-- [ ] TZ02 N/A (no file produced): pipeline-only story (`ui: false`), deploys nothing
-- [ ] TZ03 N/A (no file produced): pipeline-only story (`ui: false`), deploys nothing
-- [ ] TZ04 N/A (no file produced): pipeline-only story (`ui: false`), deploys nothing
-- [ ] TZ05 Run the story's `agents.verify` check — the four-part independent test from spec.md "What done means" — via `node pipeline/oracle-runtime/travis/runs/a07-verify.ts` (built by T055, reading T053's manifest-coverage contribution and the T020/T034/T042/T060 report JSON files; asserts all four conditions, exits non-zero on any failure): (1) five-state sum == permit total with every `resolved` row cited; (2) manifest BBB coverage by status with receipts; (3) business count == Comptroller Travis total at watermark, licence per group listed; (4) 25-property roof-age audit 25/25, re-run `rowsWritten: 0`, worked example for `0223120506` traced
-- [ ] TZ06 Write `docs/reports/A-07-unit-test-report.md`, `docs/evidence/A-07.md` (one section per track), the `docs/traceability.md` row, and one `docs/kit-usage.md` line
+- [x] TZ01 Run the reviewer agents (`oracle`, `donphan`, `porygon`) plus `/code-review medium`, read-only, one round (L5); record scores in `docs/reviews/CR-A-07.md` (each ≥ 75 or fixed/deferred)
+- [x] TZ02 N/A (no file produced): pipeline-only story (`ui: false`), deploys nothing
+- [x] TZ03 N/A (no file produced): pipeline-only story (`ui: false`), deploys nothing
+- [x] TZ04 N/A (no file produced): pipeline-only story (`ui: false`), deploys nothing
+- [x] TZ05 Run the story's `agents.verify` check — the four-part independent test from spec.md "What done means" — via `node pipeline/oracle-runtime/travis/runs/a07-verify.ts` (built by T055, reading T053's manifest-coverage contribution and the T020/T034/T042/T060 report JSON files; asserts all four conditions, exits non-zero on any failure): (1) five-state sum == permit total with every `resolved` row cited; (2) manifest BBB coverage by status with receipts; (3) business count == Comptroller Travis total at watermark, licence per group listed; (4) 25-property roof-age audit 25/25, re-run `rowsWritten: 0`, worked example for `0223120506` traced
+- [x] TZ06 Write `docs/reports/A-07-unit-test-report.md`, `docs/evidence/A-07.md` (one section per track), the `docs/traceability.md` row, and one `docs/kit-usage.md` line
 
 ---
 
