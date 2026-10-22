@@ -90,7 +90,10 @@ describe("resolveContractor (FR-001, FR-004, FR-005)", () => {
       permitKey: "2026-000005 BP",
       rawContractorName: "Roofing Company",
       registryLoaded: true,
-      registry: [active("32000000002", "ROOFING COMPANY"), active("32000000003", "Roofing Company")],
+      registry: [
+        active("32000000002", "ROOFING COMPANY"),
+        active("32000000003", "Roofing Company"),
+      ],
       registrySnapshotDigest: DIGEST,
       effectiveOn: EFFECTIVE_ON,
     });
@@ -104,7 +107,9 @@ describe("resolveContractor (FR-001, FR-004, FR-005)", () => {
       permitKey: "2026-000006 BP",
       rawContractorName: "Roofing Company",
       registryLoaded: true,
-      registry: [{ taxpayerNumber: "32000000004", legalName: "Roofing Company", sosStatusCode: "forfeited" }],
+      registry: [
+        { taxpayerNumber: "32000000004", legalName: "Roofing Company", sosStatusCode: "forfeited" },
+      ],
       registrySnapshotDigest: DIGEST,
       effectiveOn: EFFECTIVE_ON,
     });

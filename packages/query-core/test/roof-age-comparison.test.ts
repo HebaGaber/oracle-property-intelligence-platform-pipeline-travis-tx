@@ -4,10 +4,7 @@
 // the harness itself: it reuses packages/query-core's own view-side derivation functions
 // (derive.ts), never a reimplementation, and must flag any disagreement precisely.
 import { describe, expect, it } from "vitest";
-import {
-  compareRoofAgeDerivations,
-  type RoofAgeComparisonRow,
-} from "../roof-age-comparison.js";
+import { compareRoofAgeDerivations, type RoofAgeComparisonRow } from "../roof-age-comparison.js";
 
 function agreeingRow(n: number): RoofAgeComparisonRow {
   return {
@@ -51,8 +48,14 @@ describe("compareRoofAgeDerivations", () => {
     expect(result.agreeAll25).toBe(false);
     const mismatch = result.rows.find((r) => r.tcadId === "9999999");
     expect(mismatch?.agree).toBe(false);
-    expect(mismatch?.mismatchFields).toEqual(expect.arrayContaining(["basis", "confidence", "roofAgeYears"]));
-    expect(mismatch?.viewSide).toEqual({ basis: "unknown", confidence: "none", roofAgeYears: null });
+    expect(mismatch?.mismatchFields).toEqual(
+      expect.arrayContaining(["basis", "confidence", "roofAgeYears"]),
+    );
+    expect(mismatch?.viewSide).toEqual({
+      basis: "unknown",
+      confidence: "none",
+      roofAgeYears: null,
+    });
   });
 
   it("agrees on an unknown basis when both sides have no anchor", () => {

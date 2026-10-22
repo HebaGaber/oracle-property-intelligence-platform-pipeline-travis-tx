@@ -58,8 +58,20 @@ describe("COMPTROLLER_SOURCE / TRAVIS_COUNTY_WHERE", () => {
 describe("registrySnapshotDigest", () => {
   it("is a deterministic sha256 independent of input row order", () => {
     const a: ComptrollerRow[] = [
-      { taxpayerNumber: "1", legalName: "A", sosStatusCode: "ACTIVE", mailingAddress: null, sosFileNumber: null },
-      { taxpayerNumber: "2", legalName: "B", sosStatusCode: "ACTIVE", mailingAddress: null, sosFileNumber: null },
+      {
+        taxpayerNumber: "1",
+        legalName: "A",
+        sosStatusCode: "ACTIVE",
+        mailingAddress: null,
+        sosFileNumber: null,
+      },
+      {
+        taxpayerNumber: "2",
+        legalName: "B",
+        sosStatusCode: "ACTIVE",
+        mailingAddress: null,
+        sosFileNumber: null,
+      },
     ];
     const b = [...a].reverse();
     const digestA = registrySnapshotDigest(a);
@@ -70,10 +82,22 @@ describe("registrySnapshotDigest", () => {
 
   it("changes when a row changes", () => {
     const a: ComptrollerRow[] = [
-      { taxpayerNumber: "1", legalName: "A", sosStatusCode: "ACTIVE", mailingAddress: null, sosFileNumber: null },
+      {
+        taxpayerNumber: "1",
+        legalName: "A",
+        sosStatusCode: "ACTIVE",
+        mailingAddress: null,
+        sosFileNumber: null,
+      },
     ];
     const b: ComptrollerRow[] = [
-      { taxpayerNumber: "1", legalName: "A CHANGED", sosStatusCode: "ACTIVE", mailingAddress: null, sosFileNumber: null },
+      {
+        taxpayerNumber: "1",
+        legalName: "A CHANGED",
+        sosStatusCode: "ACTIVE",
+        mailingAddress: null,
+        sosFileNumber: null,
+      },
     ];
     expect(registrySnapshotDigest(a)).not.toBe(registrySnapshotDigest(b));
   });
@@ -82,11 +106,32 @@ describe("registrySnapshotDigest", () => {
 describe("stageComptrollerRows (in-memory upsert, ON CONFLICT keyed on taxpayer_number)", () => {
   it("a later page's row for the same taxpayer_number replaces the earlier one", () => {
     const existing = new Map<string, ComptrollerRow>([
-      ["1", { taxpayerNumber: "1", legalName: "OLD NAME", sosStatusCode: "ACTIVE", mailingAddress: null, sosFileNumber: null }],
+      [
+        "1",
+        {
+          taxpayerNumber: "1",
+          legalName: "OLD NAME",
+          sosStatusCode: "ACTIVE",
+          mailingAddress: null,
+          sosFileNumber: null,
+        },
+      ],
     ]);
     const staged = stageComptrollerRows(existing, [
-      { taxpayerNumber: "1", legalName: "NEW NAME", sosStatusCode: "ACTIVE", mailingAddress: null, sosFileNumber: null },
-      { taxpayerNumber: "2", legalName: "ANOTHER", sosStatusCode: "ACTIVE", mailingAddress: null, sosFileNumber: null },
+      {
+        taxpayerNumber: "1",
+        legalName: "NEW NAME",
+        sosStatusCode: "ACTIVE",
+        mailingAddress: null,
+        sosFileNumber: null,
+      },
+      {
+        taxpayerNumber: "2",
+        legalName: "ANOTHER",
+        sosStatusCode: "ACTIVE",
+        mailingAddress: null,
+        sosFileNumber: null,
+      },
     ]);
     expect(staged.get("1")?.legalName).toBe("NEW NAME");
     expect(staged.size).toBe(2);
@@ -112,7 +157,12 @@ describe("loadComptrollerRegistry (staging + watermark + digest, over a fake Soc
         },
       },
     ]);
-    const client = createSourceClient({ fetch, sleep: async () => undefined, log: silent, appToken: "" });
+    const client = createSourceClient({
+      fetch,
+      sleep: async () => undefined,
+      log: silent,
+      appToken: "",
+    });
     const result = await loadComptrollerRegistry({ client, jobDir: dir, pageSize: 3 });
     expect(result.status).toBe("ok");
     expect(result.pages).toBe(2);

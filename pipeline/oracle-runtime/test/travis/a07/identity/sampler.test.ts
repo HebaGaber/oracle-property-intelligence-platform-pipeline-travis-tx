@@ -27,7 +27,13 @@ function row(state: LedgerRow["state"], permitKey: string): LedgerRow {
 }
 
 function ledgerWithEveryState(perState = 10): LedgerRow[] {
-  const states: LedgerRow["state"][] = ["resolved", "candidate", "ambiguous", "conflicting", "unresolved"];
+  const states: LedgerRow["state"][] = [
+    "resolved",
+    "candidate",
+    "ambiguous",
+    "conflicting",
+    "unresolved",
+  ];
   const rows: LedgerRow[] = [];
   for (const state of states) {
     for (let i = 0; i < perState; i += 1) rows.push(row(state, `${state}-${i}`));
@@ -45,14 +51,18 @@ describe("sampleContractorLedger (NFR-001)", () => {
   it("every non-empty ledger state is represented in the sample", () => {
     const result = sampleContractorLedger(ledgerWithEveryState(), { seed: 7 });
     const statesInSample = new Set(result.sample.map((r: LedgerRow) => r.state));
-    expect(statesInSample).toEqual(new Set(["resolved", "candidate", "ambiguous", "conflicting", "unresolved"]));
+    expect(statesInSample).toEqual(
+      new Set(["resolved", "candidate", "ambiguous", "conflicting", "unresolved"]),
+    );
   });
 
   it("is reproducible: the same seed over the same ledger gives the same sample", () => {
     const ledger = ledgerWithEveryState();
     const first = sampleContractorLedger(ledger, { seed: 99 });
     const second = sampleContractorLedger(ledger, { seed: 99 });
-    expect(first.sample.map((r: LedgerRow) => r.permitKey)).toEqual(second.sample.map((r: LedgerRow) => r.permitKey));
+    expect(first.sample.map((r: LedgerRow) => r.permitKey)).toEqual(
+      second.sample.map((r: LedgerRow) => r.permitKey),
+    );
   });
 
   it("an empty state (e.g. 0 resolved, this run's expected outcome) is simply absent, not an error", () => {

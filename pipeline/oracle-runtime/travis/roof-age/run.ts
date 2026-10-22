@@ -54,7 +54,8 @@ function sanitizedBuiltYear(
   if (builtYear === null) return { year: null, reason: null };
   const asOfYear = Number(asOfDate.slice(0, 4));
   if (builtYear > asOfYear) return { year: null, reason: "future_built_year" };
-  if (builtYear < MIN_PLAUSIBLE_BUILT_YEAR) return { year: null, reason: "implausibly_old_built_year" };
+  if (builtYear < MIN_PLAUSIBLE_BUILT_YEAR)
+    return { year: null, reason: "implausibly_old_built_year" };
   return { year: builtYear, reason: null };
 }
 

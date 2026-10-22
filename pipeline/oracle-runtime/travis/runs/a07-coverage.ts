@@ -60,7 +60,10 @@ function fiveStateTotalsRow(identityReport: Record<string, unknown>): ManifestCo
     metric: "contractor_five_state_totals",
     value: totals,
     derivation: "aggregate_match",
-    limitation: sum === permitTotal ? null : `five-state sum ${sum} does not equal permit total ${permitTotal}`,
+    limitation:
+      sum === permitTotal
+        ? null
+        : `five-state sum ${sum} does not equal permit total ${permitTotal}`,
   };
 }
 
@@ -99,7 +102,10 @@ function businessCountRow(businessReportPath: string | undefined): ManifestCover
     metric: "business_count",
     value: { loadedCount: loaded, sourceCount: source },
     derivation: "capture_receipt",
-    limitation: loaded === source ? null : `loaded count ${loaded} differs from source count ${source} at the watermark`,
+    limitation:
+      loaded === source
+        ? null
+        : `loaded count ${loaded} differs from source count ${source} at the watermark`,
   };
 }
 
@@ -118,13 +124,18 @@ function placesCountRow(placesReportPath: string | undefined): ManifestCoverageR
     metric: "places_count_by_category",
     value: gatePassed ? (report.countsByCategory ?? report.counts ?? null) : null,
     derivation: "published_rows",
-    limitation: gatePassed ? null : `Places: not loaded · ${String(report.reason ?? "licence_gate_failed")}`,
+    limitation: gatePassed
+      ? null
+      : `Places: not loaded · ${String(report.reason ?? "licence_gate_failed")}`,
   };
 }
 
 function mergeCountsRow(mergeReportPath: string): ManifestCoverageRow {
   const report = readJson(mergeReportPath);
-  const entityTypes = (report?.entityTypes ?? {}) as Record<string, { refused?: unknown } | undefined>;
+  const entityTypes = (report?.entityTypes ?? {}) as Record<
+    string,
+    { refused?: unknown } | undefined
+  >;
   const refusedEntityTypes = Object.entries(entityTypes)
     .filter(([, v]) => Number(v?.refused ?? 0) > 0)
     .map(([k]) => k);
@@ -154,7 +165,9 @@ function roofAgeCoverageRow(roofAgeReportPath: string): ManifestCoverageRow {
       byConfidence: coverage.byConfidence ?? {},
       total,
       ...(report.coveragePctByBasis !== undefined ? { pctByBasis: report.coveragePctByBasis } : {}),
-      ...(report.coveragePctByConfidence !== undefined ? { pctByConfidence: report.coveragePctByConfidence } : {}),
+      ...(report.coveragePctByConfidence !== undefined
+        ? { pctByConfidence: report.coveragePctByConfidence }
+        : {}),
     },
     derivation: "aggregate_match",
     limitation: sumMismatch

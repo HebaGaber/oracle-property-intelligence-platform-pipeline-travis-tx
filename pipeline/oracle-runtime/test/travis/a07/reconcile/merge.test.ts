@@ -24,7 +24,12 @@ describe("mergeEntityClusters", () => {
     ];
     const result = mergeEntityClusters("property", clusters);
     expect(result.merges).toEqual([
-      { entityType: "property", tcadId: "1000000", inputRecords: 2, canonicalId: "property:1000000" },
+      {
+        entityType: "property",
+        tcadId: "1000000",
+        inputRecords: 2,
+        canonicalId: "property:1000000",
+      },
     ]);
     expect(result.refused).toEqual([]);
   });
@@ -63,8 +68,20 @@ describe("mergeEntityClusters", () => {
 
   it("handles a mixed batch: one clean merge, one refusal, independently", () => {
     const clusters: MergeCluster[] = [
-      { clusterId: "clean", records: [{ recordId: "a", tcadId: "9" }, { recordId: "b", tcadId: "9" }] },
-      { clusterId: "bad", records: [{ recordId: "c", tcadId: "9" }, { recordId: "d", tcadId: "10" }] },
+      {
+        clusterId: "clean",
+        records: [
+          { recordId: "a", tcadId: "9" },
+          { recordId: "b", tcadId: "9" },
+        ],
+      },
+      {
+        clusterId: "bad",
+        records: [
+          { recordId: "c", tcadId: "9" },
+          { recordId: "d", tcadId: "10" },
+        ],
+      },
     ];
     const result = mergeEntityClusters("property", clusters);
     expect(result.merges).toHaveLength(1);
@@ -83,7 +100,10 @@ describe("mergeEntityClusters", () => {
     for (const paramList of signatures) {
       const tcadIdMentions = paramList.match(/tcadId\w*/gi) ?? [];
       const distinctNames = new Set(tcadIdMentions.map((n) => n.toLowerCase()));
-      expect(distinctNames.size, `parameter list "${paramList}" names two TCAD ids`).toBeLessThanOrEqual(1);
+      expect(
+        distinctNames.size,
+        `parameter list "${paramList}" names two TCAD ids`,
+      ).toBeLessThanOrEqual(1);
     }
   });
 });

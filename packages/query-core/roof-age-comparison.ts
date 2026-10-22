@@ -4,7 +4,13 @@
 // 25 audited properties, at the same as-of date. Never reimplements either side; only compares
 // them. Lives outside src/ (not published through index.ts) because it is a Track D build/audit
 // tool, not part of the public query-core API surface (NFR-004/SC-006).
-import { roofAgeBasis, roofAgeConfidence, roofAgeYears, type RoofAgeBasis, type RoofAgeConfidence } from "./src/derive.js";
+import {
+  roofAgeBasis,
+  roofAgeConfidence,
+  roofAgeYears,
+  type RoofAgeBasis,
+  type RoofAgeConfidence,
+} from "./src/derive.js";
 
 /** One property's inputs to both sides of the comparison. */
 export interface RoofAgeComparisonRow {
@@ -32,7 +38,11 @@ export interface RoofAgeComparisonRowResult {
   tcadId: string;
   agree: boolean;
   viewSide: { basis: RoofAgeBasis; confidence: RoofAgeConfidence; roofAgeYears: number | null };
-  estimatorSide: { basis: RoofAgeBasis; confidence: RoofAgeConfidence; roofAgeYears: number | null };
+  estimatorSide: {
+    basis: RoofAgeBasis;
+    confidence: RoofAgeConfidence;
+    roofAgeYears: number | null;
+  };
   mismatchFields: RoofAgeComparisonField[];
 }
 

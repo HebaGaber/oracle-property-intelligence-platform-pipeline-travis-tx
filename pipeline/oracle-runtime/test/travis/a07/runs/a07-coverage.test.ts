@@ -32,7 +32,11 @@ describe("assembleA07Coverage", () => {
       unresolved: 22_081,
       permitTotal: 22_084,
     });
-    const bbbReport = write(tmp, "status-report.json", { resolved: 0, counts: {}, coveragePct: null });
+    const bbbReport = write(tmp, "status-report.json", {
+      resolved: 0,
+      counts: {},
+      coveragePct: null,
+    });
     const businessReport = write(tmp, "business-coverage-report.json", {
       loadedCount: 150_000,
       sourceCount: 150_000,
@@ -139,7 +143,9 @@ describe("assembleA07Coverage", () => {
 
     for (const row of [bbb, business, places]) {
       expect(row?.derivation).toBeDefined();
-      expect(row?.value === null || row?.value === undefined || typeof row?.value === "object").toBe(true);
+      expect(
+        row?.value === null || row?.value === undefined || typeof row?.value === "object",
+      ).toBe(true);
     }
 
     const merge = rows.find((r) => r.metric === "merge_counts");
@@ -166,7 +172,11 @@ describe("assembleA07Coverage", () => {
         contractor: { inputRecords: 0, canonical: 0, refused: 0 },
       },
     });
-    const roofAgeReport = write(tmp, "full-roll-report.json", { byBasis: {}, byConfidence: {}, total: 0 });
+    const roofAgeReport = write(tmp, "full-roll-report.json", {
+      byBasis: {},
+      byConfidence: {},
+      total: 0,
+    });
 
     const rows = assembleA07Coverage({
       identityReportPath: identityReport,
@@ -214,6 +224,8 @@ describe("assembleA07Coverage", () => {
     });
 
     const roofAge = rows.find((r) => r.metric === "roof_age_coverage");
-    expect(roofAge?.limitation).toBe("roof-age basis counts (30) do not sum to the reported total (100)");
+    expect(roofAge?.limitation).toBe(
+      "roof-age basis counts (30) do not sum to the reported total (100)",
+    );
   });
 });

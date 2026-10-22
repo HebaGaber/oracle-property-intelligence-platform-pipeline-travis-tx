@@ -38,7 +38,11 @@ interface BackfillResult {
   offset: number;
   apply: boolean;
   rowsWritten: number;
-  coverage: { byBasis: Record<string, number>; byConfidence: Record<string, number>; total: number };
+  coverage: {
+    byBasis: Record<string, number>;
+    byConfidence: Record<string, number>;
+    total: number;
+  };
 }
 
 export const command: BackboneCommand<Args> = {
@@ -46,7 +50,10 @@ export const command: BackboneCommand<Args> = {
   args: Args,
   startsRun: () => false,
   async run(ctx, a) {
-    const jobId = mintA07JobId(a.limit === undefined ? "roofage-full" : "roofage-apply25", new Date());
+    const jobId = mintA07JobId(
+      a.limit === undefined ? "roofage-full" : "roofage-apply25",
+      new Date(),
+    );
     const result = await ctx.ingress.call<BackfillResult>("RoofAgeBackfill", "run", {
       jobId,
       asOfDate: a.asOfDate,
@@ -57,7 +64,9 @@ export const command: BackboneCommand<Args> = {
     ctx.print(
       `roof-age:backfill source=${a.sourceSystem} scope=${result.scope} apply=${result.apply} total=${result.coverage.total} rowsWritten=${result.rowsWritten}`,
     );
-    ctx.print(`roof-age:backfill byBasis=${JSON.stringify(result.coverage.byBasis)} byConfidence=${JSON.stringify(result.coverage.byConfidence)}`);
+    ctx.print(
+      `roof-age:backfill byBasis=${JSON.stringify(result.coverage.byBasis)} byConfidence=${JSON.stringify(result.coverage.byConfidence)}`,
+    );
 
     const repoRoot = resolve(new URL("../../../../../", import.meta.url).pathname);
     const reportPath = resolve(repoRoot, a.report);

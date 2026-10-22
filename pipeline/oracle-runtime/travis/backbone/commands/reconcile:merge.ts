@@ -19,9 +19,7 @@ import type { BackboneCommand } from "../cli.js";
 const ENTITY_TYPES = ["property", "owner", "contractor"] as const;
 type EntityType = (typeof ENTITY_TYPES)[number];
 
-const Args = z
-  .object({ entityType: z.enum(ENTITY_TYPES) })
-  .strict();
+const Args = z.object({ entityType: z.enum(ENTITY_TYPES) }).strict();
 type Args = z.infer<typeof Args>;
 
 export const A07_JOB_ID = /^travis-a07-[a-z0-9-]+$/;
@@ -57,7 +55,12 @@ interface ReconcileSummary {
   property: ReconcileEntitySummary;
   owner: ReconcileEntitySummary;
   contractor: ReconcileEntitySummary;
-  refusedMerges: Array<{ entityType: EntityType; clusterId: string; tcadIds: string[]; reason: string }>;
+  refusedMerges: Array<{
+    entityType: EntityType;
+    clusterId: string;
+    tcadIds: string[];
+    reason: string;
+  }>;
 }
 
 export const command: BackboneCommand<Args> = {
@@ -91,13 +94,20 @@ export const command: BackboneCommand<Args> = {
     const repoRoot = resolve(new URL("../../../../../", import.meta.url).pathname);
     // T056 (property/owner) and T057 (contractor) write distinctly named report files per
     // tasks.md, even though both share this one verb and the same ReconcileReport summary.
-    const reportName = a.entityType === "contractor" ? "merge-contractor-report.json" : "merge-property-owner-report.json";
+    const reportName =
+      a.entityType === "contractor"
+        ? "merge-contractor-report.json"
+        : "merge-property-owner-report.json";
     const reportPath = resolve(repoRoot, `pipeline/data/reconcile/travis/${jobId}/${reportName}`);
     const report = {
       jobId,
       entityType: a.entityType,
       mergeResult,
-      entityTypes: { property: summary.property, owner: summary.owner, contractor: summary.contractor },
+      entityTypes: {
+        property: summary.property,
+        owner: summary.owner,
+        contractor: summary.contractor,
+      },
       refusedMerges: summary.refusedMerges,
     };
     mkdirSync(dirname(reportPath), { recursive: true });

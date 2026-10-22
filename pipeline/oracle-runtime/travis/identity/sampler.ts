@@ -41,7 +41,10 @@ function mulberry32(seed: number): () => number {
  * repeating a `permitKey`. Fewer than `size` rows available is not an error -- the sample is
  * simply as large as the ledger allows.
  */
-export function sampleContractorLedger(rows: readonly LedgerRow[], options: SampleOptions): SampleResult {
+export function sampleContractorLedger(
+  rows: readonly LedgerRow[],
+  options: SampleOptions,
+): SampleResult {
   const size = options.size ?? 25;
   const rnd = mulberry32(options.seed);
   const byState = new Map<ResolverState, LedgerRow[]>();
@@ -84,7 +87,12 @@ export interface EvidenceSkeletonRow {
   printedName: string | null;
   state: ResolverState;
   reasonCode: string | null;
-  matchedCompanies: Array<{ taxpayerNumber: string; legalName: string; sosStatusCode: string; sourceUrl: string }>;
+  matchedCompanies: Array<{
+    taxpayerNumber: string;
+    legalName: string;
+    sosStatusCode: string;
+    sourceUrl: string;
+  }>;
   /** Filled in by the builder during review; left blank for the human reviewer to complete. */
   verdict: string;
   /** True only for a row the builder is not confident calling (surfaced for the review round). */

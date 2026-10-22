@@ -100,7 +100,11 @@ function checkBusinessCount(businessReportPath: string | undefined): ConditionRe
   const loaded = Number(report.loadedCount ?? 0);
   const source = Number(report.sourceCount ?? loaded);
   if (loaded !== source) {
-    return { id, status: "fail", detail: `loaded count ${loaded} != source count ${source} at the watermark` };
+    return {
+      id,
+      status: "fail",
+      detail: `loaded count ${loaded} != source count ${source} at the watermark`,
+    };
   }
   return { id, status: "pass", detail: `loaded count ${loaded} == source count ${source}` };
 }
@@ -126,13 +130,18 @@ function checkRoofAge(opts: VerifyA07Options): ConditionResult {
   if (worked === null) failures.push("worked-example.json not found");
   else {
     const anchor = worked.anchor as Record<string, unknown> | undefined;
-    if (typeof worked.tcadId !== "string" || worked.tcadId === "") failures.push("worked example missing tcadId");
+    if (typeof worked.tcadId !== "string" || worked.tcadId === "")
+      failures.push("worked example missing tcadId");
     if (anchor === undefined || anchor.chosenBasis === undefined) {
       failures.push("worked example missing a traced anchor/basis");
     }
   }
   if (failures.length > 0) return { id, status: "fail", detail: failures.join("; ") };
-  return { id, status: "pass", detail: "25/25 agreement, re-run rowsWritten: 0, worked example traced" };
+  return {
+    id,
+    status: "pass",
+    detail: "25/25 agreement, re-run rowsWritten: 0, worked example traced",
+  };
 }
 
 export function verifyA07(options: VerifyA07Options): VerifyResult {
@@ -153,20 +162,28 @@ async function main(): Promise<number> {
   };
   const options: VerifyA07Options = {
     identityReportPath: resolve(root, arg("--identity-report") ?? ""),
-    bbbReportPath: arg("--bbb-report") === undefined ? undefined : resolve(root, arg("--bbb-report") as string),
+    bbbReportPath:
+      arg("--bbb-report") === undefined ? undefined : resolve(root, arg("--bbb-report") as string),
     businessReportPath:
-      arg("--business-report") === undefined ? undefined : resolve(root, arg("--business-report") as string),
+      arg("--business-report") === undefined
+        ? undefined
+        : resolve(root, arg("--business-report") as string),
     roofAgeAuditPath: resolve(root, arg("--roof-age-audit") ?? ""),
     roofAgeRerun25Path: resolve(root, arg("--roof-age-rerun25") ?? ""),
     workedExamplePath: resolve(root, arg("--worked-example") ?? ""),
   };
   const result = verifyA07(options);
   for (const c of result.conditions) {
-    process.stdout.write(`${c.status === "fail" ? "FAIL" : c.status === "pass" ? "PASS" : "N/A "} ${c.id}: ${c.detail}\n`);
+    process.stdout.write(
+      `${c.status === "fail" ? "FAIL" : c.status === "pass" ? "PASS" : "N/A "} ${c.id}: ${c.detail}\n`,
+    );
   }
   return result.ok ? 0 : 1;
 }
 
-if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+if (
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)
+) {
   process.exitCode = await main();
 }

@@ -56,7 +56,11 @@ export function mergeEntityClusters(
   for (const cluster of clusters) {
     const distinctTcadIds = [...new Set(cluster.records.map((r) => r.tcadId))];
     if (distinctTcadIds.length !== 1) {
-      refused.push({ clusterId: cluster.clusterId, tcadIds: distinctTcadIds, reason: "cross_tcad_id" });
+      refused.push({
+        clusterId: cluster.clusterId,
+        tcadIds: distinctTcadIds,
+        reason: "cross_tcad_id",
+      });
       continue;
     }
     const tcadId = distinctTcadIds[0] as string;

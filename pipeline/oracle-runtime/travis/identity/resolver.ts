@@ -95,12 +95,22 @@ export function resolveContractor(input: ResolverInput): LedgerRow {
 
   // 1: no printed name
   if (input.rawContractorName === null || input.rawContractorName.trim() === "") {
-    return { ...base, state: "unresolved", reasonCode: "contractor_not_printed", matchedRecordIds: [] };
+    return {
+      ...base,
+      state: "unresolved",
+      reasonCode: "contractor_not_printed",
+      matchedRecordIds: [],
+    };
   }
 
   // 2: registry not loaded/unreachable
   if (!input.registryLoaded) {
-    return { ...base, state: "unresolved", reasonCode: "registry_unavailable", matchedRecordIds: [] };
+    return {
+      ...base,
+      state: "unresolved",
+      reasonCode: "registry_unavailable",
+      matchedRecordIds: [],
+    };
   }
 
   // 3: an official identifier crosswalk match (checked before any name match, per AD-05/D-10)
@@ -116,7 +126,12 @@ export function resolveContractor(input: ResolverInput): LedgerRow {
   // 4: exactly one active match
   const onlyActive = active[0];
   if (active.length === 1 && onlyActive !== undefined) {
-    return { ...base, state: "candidate", reasonCode: null, matchedRecordIds: [onlyActive.taxpayerNumber] };
+    return {
+      ...base,
+      state: "candidate",
+      reasonCode: null,
+      matchedRecordIds: [onlyActive.taxpayerNumber],
+    };
   }
 
   // 5: two or more active matches, all kept

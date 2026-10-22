@@ -56,7 +56,9 @@ export const command: BackboneCommand<Args> = {
       ctx.print(`identity:load-registry: refused: ${egress.reason}`);
       return { jobId, exitCode: 1, jobIdPrinted: false };
     }
-    ctx.print(`identity:load-registry: egress country ${egress.egress.country} (recorded with the run)`);
+    ctx.print(
+      `identity:load-registry: egress country ${egress.egress.country} (recorded with the run)`,
+    );
 
     const repoRoot = resolve(new URL("../../../../../", import.meta.url).pathname);
     const jobDir = resolve(repoRoot, `pipeline/data/identity/travis/${jobId}`);
@@ -101,7 +103,10 @@ export const command: BackboneCommand<Args> = {
       `identity:load-registry: ${mergeResult.skipped ? "already loaded (skipped)" : "loaded"}, rowsWritten=${mergeResult.rowsWritten}`,
     );
 
-    const reportPath = resolve(repoRoot, `pipeline/data/identity/travis/${jobId}/registry-load-report.json`);
+    const reportPath = resolve(
+      repoRoot,
+      `pipeline/data/identity/travis/${jobId}/registry-load-report.json`,
+    );
     const report = {
       jobId,
       source: a.source,

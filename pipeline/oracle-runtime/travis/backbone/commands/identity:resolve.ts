@@ -44,7 +44,9 @@ function mintA07JobId(kind: string, at: Date): string {
  * correctly skipped.
  */
 export function resolveArtifactSha256(scope: string, registrySnapshot: string): string {
-  return createHash("sha256").update(`identity-resolve-full-sweep:${scope}:${registrySnapshot}`).digest("hex");
+  return createHash("sha256")
+    .update(`identity-resolve-full-sweep:${scope}:${registrySnapshot}`)
+    .digest("hex");
 }
 
 interface MergeResult {
@@ -54,7 +56,13 @@ interface MergeResult {
 }
 
 interface IdentityResolutionSummary {
-  fiveStateTotals: { resolved: number; candidate: number; ambiguous: number; conflicting: number; unresolved: number };
+  fiveStateTotals: {
+    resolved: number;
+    candidate: number;
+    ambiguous: number;
+    conflicting: number;
+    unresolved: number;
+  };
   permitTotal: number;
   matchRule: string | null;
   resolverVersion: string | null;
@@ -77,7 +85,14 @@ export const command: BackboneCommand<Args> = {
       "merge",
       {
         track: "comptroller",
-        input: { kind: "resolve_permits", jobId, artifactPath, artifactSha256, scope: a.scope, effectiveOn },
+        input: {
+          kind: "resolve_permits",
+          jobId,
+          artifactPath,
+          artifactSha256,
+          scope: a.scope,
+          effectiveOn,
+        },
       },
       "travis",
     );
@@ -85,7 +100,11 @@ export const command: BackboneCommand<Args> = {
       `identity:resolve ${a.scope} — ${mergeResult.skipped ? "already resolved (skipped)" : "resolved"}, rowsWritten=${mergeResult.rowsWritten}`,
     );
 
-    const summary = await ctx.ingress.call<IdentityResolutionSummary>("IdentityReport", "summary", null);
+    const summary = await ctx.ingress.call<IdentityResolutionSummary>(
+      "IdentityReport",
+      "summary",
+      null,
+    );
     const sum = Object.values(summary.fiveStateTotals).reduce((x, y) => x + y, 0);
     ctx.print(
       `identity:resolve — resolved=${summary.fiveStateTotals.resolved} candidate=${summary.fiveStateTotals.candidate} ` +
@@ -101,7 +120,10 @@ export const command: BackboneCommand<Args> = {
     }
 
     const repoRoot = resolve(new URL("../../../../../", import.meta.url).pathname);
-    const reportPath = resolve(repoRoot, `pipeline/data/identity/travis/${jobId}/resolution-report.json`);
+    const reportPath = resolve(
+      repoRoot,
+      `pipeline/data/identity/travis/${jobId}/resolution-report.json`,
+    );
     const report = {
       jobId,
       scope: a.scope,
