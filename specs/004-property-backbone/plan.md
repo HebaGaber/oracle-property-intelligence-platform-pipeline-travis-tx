@@ -226,7 +226,7 @@ US runner (push, mode=pilot|full) ─► kit arcgis adapter + geometry-client �
         gh run download ─► pipeline/data/raw/gis/us-runner-<id> ─► GisImport (needs complete.json) ─► Loader.gis ─► gis_pages, gis_features
 Austin 3syk-w9eu ─► AustinPermits (one ctx.run per keyset page, ≤ 1 req/s) ─► raw pages + receipts ─► Loader.permits ─► property_improvements
                      incremental: watermark + restamp detector + content digest + keyset-diff ─► source_tombstones
-link (geoID → pID; address hash only when tcad_id null) ─► classify (profile) ─► open_days
+link (geoID → pID; address hash when tcad_id is null or on no roll account) ─► classify (profile) ─► open_days
 assemble-coordinates (GIS → export point → condo_building_point → permit_point → reason) ─► parcels.coordinate_*
 write-group (R only, gis_centroid geometry only) ─► elephant-cli validate → hash → validate CAR → export-tables (local, never uploaded)
    ─► DuckDB: views.sql bound to local parts ─► SELECT avg((latitude IS NOT NULL)::int) FROM v_property   ‖  Query DB count

@@ -7,8 +7,10 @@
 //   tcad_id = a geoID shared by several R accounts    → tcad_id / geoid_plus_address  (0.95)
 //       only when exactly one candidate's situs signature equals the permit's; otherwise
 //       unmatched `ambiguous_geoid` (a shared geoID is never linked silently)
-//   tcad_id present but on no R account               → unmatched `no_tcad_geoid`, and the
-//       address fallback is NOT tried (the source named a parcel; we do not guess another)
+//   tcad_id present but on no R account (retired)     → the same exact address signature is
+//       tried (lead decision 2026-10-22, AC-13 "by tcad_id or address hash"): exactly one R
+//       account → address_hash / address_sig_v1 with `staleTcadId` set; none or several →
+//       unmatched `no_tcad_geoid`. A tcad_id that resolves is never overridden by the address.
 //   tcad_id null                                      → address fallback over every R situs,
 //       exact `address:v1` signature, unique only     → address_hash / address_sig_v1 (0.90);
 //       several → `ambiguous_address`; none → `address_unmatched`; no usable address
@@ -93,6 +95,8 @@ export interface LinkResult {
   unmatchedReason: UnmatchedReason | null;
   inTravis: boolean;
   addressSignatureComputed: boolean;
+  /** The permit's tcad_id is on no R account and the link came from the address instead. */
+  staleTcadId: boolean;
 }
 
 const str = (v: unknown): string | null => {
@@ -170,6 +174,7 @@ const linked = (
   linkMethod: LinkMethod,
   linkRule: LinkRule,
   addressSignatureComputed: boolean,
+  staleTcadId = false,
 ): LinkResult => ({
   requestIdentifier,
   linkMethod,
@@ -178,6 +183,7 @@ const linked = (
   unmatchedReason: null,
   inTravis: true,
   addressSignatureComputed,
+  staleTcadId,
 });
 
 const unmatched = (
@@ -192,6 +198,7 @@ const unmatched = (
   unmatchedReason: reason,
   inTravis: inTravis(zip),
   addressSignatureComputed,
+  staleTcadId: false,
 });
 
 export function linkPermit(index: LinkIndex, permit: PermitAddress): LinkResult {
@@ -199,7 +206,14 @@ export function linkPermit(index: LinkIndex, permit: PermitAddress): LinkResult 
   const zip = str(permit.zip);
   if (tcadId !== null) {
     const candidates = index.byGeoId.get(tcadId) ?? [];
-    if (candidates.length === 0) return unmatched("no_tcad_geoid", zip, false);
+    if (candidates.length === 0) {
+      const stale = permitSignature(permit);
+      if (stale === null) return unmatched("no_tcad_geoid", zip, false);
+      const hits = index.bySignature.get(stale) ?? [];
+      return hits.length === 1
+        ? linked(hits[0] as string, "address_hash", "address_sig_v1", true, true)
+        : unmatched("no_tcad_geoid", zip, true);
+    }
     if (candidates.length === 1) {
       return linked(
         (candidates[0] as { requestIdentifier: string }).requestIdentifier,

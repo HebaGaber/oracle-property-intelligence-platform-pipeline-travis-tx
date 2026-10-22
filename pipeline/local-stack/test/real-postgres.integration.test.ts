@@ -13,11 +13,12 @@ import { gzipSync } from "node:zlib";
 import postgres from "postgres";
 import { describe, expect, it } from "vitest";
 import { writeChunkFile, type ChunkFile } from "../../oracle-runtime/travis/tcad/process.js";
+import { buildLinkIndex, permitSignature } from "../../oracle-runtime/travis/permits/link.js";
 import { inputDigest } from "../../oracle-runtime/travis/permits/merge-input.js";
 import { runMerge } from "../services/loader.js";
 import { MIGRATIONS_DIR, migrate, postgresMigrationStore, readMigrations } from "../services/migrate.js";
 import { track as gisTrack } from "../services/tracks/gis.js";
-import { track as permitsTrack } from "../services/tracks/permits.js";
+import { situsOf, track as permitsTrack } from "../services/tracks/permits.js";
 import { track as tcadTrack } from "../services/tracks/tcad.js";
 
 const ADMIN = process.env.QDB_ADMIN_URL;
@@ -26,14 +27,22 @@ const PERMITS_JOB = "travis-a04-itest-permits-202610220300";
 const LINK_JOB = "travis-a04-itest-link-202610220400";
 const GIS_JOB = "travis-a04-itest-coords-202610220500";
 const EXPORT = "6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346";
-const SITUS = { street_number: "100", street_name: "ALPHA", street_suffix: "ST", zip: "78701", state: "TX" };
+const situs = (num: string, name: string) => ({ street_number: num, street_name: name, street_suffix: "ST", zip: "78701", state: "TX" });
+/** pID → [geoID, situs]. 9003 and 9004 share one geoID (condo-style); each prints its own street number. */
+const PARCELS: Record<string, [string, ReturnType<typeof situs>]> = {
+  "9001": ["09001", situs("100", "ALPHA")],
+  "9002": ["09002", situs("200", "BETA")],
+  "9003": ["0SHARED", situs("300", "GAMMA")],
+  "9004": ["0SHARED", situs("302", "GAMMA")],
+};
 
 function parcel(id: string): Record<string, unknown> {
+  const [geo, addr] = PARCELS[id] as [string, ReturnType<typeof situs>];
   return {
-    request_identifier: id, job_id: TCAD_JOB, geo_id: `0${id}`, prop_type: "R", state_cd: "A1",
+    request_identifier: id, job_id: TCAD_JOB, geo_id: geo, prop_type: "R", state_cd: "A1",
     property_type: "SingleFamily", property_usage_type: "Residential", property_type_missing_reason: null,
     property_type_rule: "state_code_table", property_type_note: null, property_type_rules_version: "property_type_rules@2026-10-22",
-    situs_address: SITUS, owner_name: "SYNTHETIC OWNER LLC",
+    situs_address: addr, owner_name: "SYNTHETIC OWNER LLC",
     owner_kind: "company", owner_missing_reason: null, owner_redacted: false, owner_redaction_rule: null,
     owner_mailing_postal_code: "78701", owner_mailing_country: null, owner_area_class: "in_county",
     owner_is_out_of_area: false, owner_area_evidence: "travis_zcta", area_list_sha256: "0".repeat(64),
@@ -47,28 +56,37 @@ function parcel(id: string): Record<string, unknown> {
 }
 
 function chunkFile(dir: string): { path: string; sha: string } {
-  const ids = ["9001", "9002"];
+  const ids = Object.keys(PARCELS);
   const c: ChunkFile = {
     rows: ids.map((id) => ({
       parcel: parcel(id) as never,
-      geoids: [{ geo_id: `0${id}`, request_identifier: id, prop_type: "R" }],
+      geoids: [{ geo_id: (PARCELS[id] as [string])[0], request_identifier: id, prop_type: "R" }],
       structures: [{ request_identifier: id, ordinal: 0, imprv_type: "01", is_main_residential: true, living_area: 1200, actual_year_built: 1990, effective_year_built: 1995 }],
     })),
-    reconciliation: ids.map((id) => ({ job_id: TCAD_JOB, record_ordinal: Number(id), request_identifier: id, geo_id: `0${id}`, class: "loaded" as const, detail: null })),
+    reconciliation: ids.map((id) => ({ job_id: TCAD_JOB, record_ordinal: Number(id), request_identifier: id, geo_id: (PARCELS[id] as [string])[0], class: "loaded" as const, detail: null })),
   };
   const path = join(dir, "c0.ndjson.gz");
   return { path, sha: writeChunkFile(path, c) };
 }
 
+/** [permit number, tcad_id, original_address1]: one row per linking scenario. */
+const PERMITS: Array<[string, string | null, string]> = [
+  ["2026-000001 BP", null, "100 ALPHA ST"], // no tcad_id, unique address → address_hash
+  ["2026-000002 BP", "0SHARED", "302 GAMMA ST"], // shared geoID, one address → geoid_plus_address
+  ["2026-000003 BP", "0999999999", "200 BETA ST"], // retired tcad_id, unique address → address fallback
+  ["2026-000004 BP", null, "ALPHA ST"], // no street number → unmatched
+  ["2026-000005 BP", "0888888888", "9 NOWHERE ST"], // retired tcad_id, no address match → no_tcad_geoid
+  ["2026-000006 BP", "09002", "100 ALPHA ST"], // resolving tcad_id is never overridden by the address
+];
+
 function permitPage(dir: string) {
-  const rows = [
-    {
-      ":id": "row-1", ":updated_at": "2026-10-01T00:00:00.000Z", permit_number: "2026-000001 BP", permittype: "BP",
-      work_class: "Remodel", description: "SYNTHETIC TEST INPUT", status_current: "Active",
-      issue_date: "2026-09-01T00:00:00.000", jurisdiction: "AUSTIN FULL PURPOSE",
-      original_address1: "100 ALPHA ST", original_zip: "78701", original_state: "TX", latitude: "30.1", longitude: "-97.7",
-    },
-  ];
+  const rows = PERMITS.map(([number, tcad, address], i) => ({
+    ":id": `row-${i + 1}`, ":updated_at": "2026-10-01T00:00:00.000Z", permit_number: number, permittype: "BP",
+    work_class: "Remodel", description: "SYNTHETIC TEST INPUT", status_current: "Active",
+    issue_date: "2026-09-01T00:00:00.000", jurisdiction: "AUSTIN FULL PURPOSE",
+    original_address1: address, original_zip: "78701", original_state: "TX", latitude: "30.1", longitude: "-97.7",
+    ...(tcad === null ? {} : { tcad_id: tcad }),
+  }));
   const body = Buffer.from(JSON.stringify(rows));
   const sha = createHash("sha256").update(body).digest("hex");
   mkdirSync(join(dir, "raw", "pages"), { recursive: true });
@@ -79,11 +97,11 @@ function permitPage(dir: string) {
     url: "https://data.austintexas.gov/resource/3syk-w9eu.json?%24select=*", method: "GET", http_status: 200,
     bytes: body.length, sha256: sha, captured_at: "2026-10-22T03:00:01.000Z", outcome: "ok", blocked_reason: null,
     blocked_at: null, attempts: 1, ua: "oracle-travis-discovery/0.1", app_token_used: false, rows: rows.length,
-    last_id: "row-1", file: "raw/pages/page-000001.json.gz",
+    last_id: `row-${rows.length}`, file: "raw/pages/page-000001.json.gz",
   };
   const receiptsPath = join(dir, "receipts.jsonl");
   writeFileSync(receiptsPath, `${JSON.stringify(receipt)}\n`);
-  return { path, sha, receiptsPath };
+  return { path, sha, receiptsPath, rows: rows.length };
 }
 
 function urlFor(admin: string, database: string): string {
@@ -127,18 +145,42 @@ describe.skipIf(ADMIN === undefined || ADMIN === "")("A-04 tracks against a real
       });
       await runMerge(db, permitsTrack, {
         kind: "page", jobId: PERMITS_JOB, mode: "backfill", artifactPath: page.path, artifactSha256: page.sha,
-        pageIndex: 1, rows: 1, receiptsPath: page.receiptsPath,
+        pageIndex: 1, rows: page.rows, receiptsPath: page.receiptsPath,
       });
       const payloadType = await db`SELECT jsonb_typeof(payload) AS t FROM permit_source_rows`;
-      expect(payloadType.map((r) => r.t)).toEqual(["object"]);
+      expect(payloadType.map((r) => r.t)).toEqual(PERMITS.map(() => "object"));
 
       await runMerge(db, permitsTrack, {
         kind: "link", jobId: LINK_JOB, mode: "link", artifactPath: `run:${LINK_JOB}:link`,
         artifactSha256: inputDigest({ LINK_JOB, l: 1 }), asOf: "2026-10-22",
       });
       const linked = await db`
-        SELECT request_identifier, link_method FROM property_improvements WHERE permit_number = '2026-000001 BP'`;
-      expect(linked[0]).toEqual({ request_identifier: "9001", link_method: "address_hash" });
+        SELECT permit_number, request_identifier, link_method, link_rule, unmatched_reason, stale_tcad_id
+        FROM property_improvements ORDER BY permit_number`;
+      const byPermit = Object.fromEntries(linked.map((r) => [r.permit_number as string, r]));
+      try {
+        expect(byPermit["2026-000001 BP"]).toMatchObject({ request_identifier: "9001", link_method: "address_hash", link_rule: "address_sig_v1", stale_tcad_id: false });
+        expect(byPermit["2026-000002 BP"]).toMatchObject({ request_identifier: "9004", link_method: "tcad_id", link_rule: "geoid_plus_address", stale_tcad_id: false });
+        expect(byPermit["2026-000003 BP"]).toMatchObject({ request_identifier: "9002", link_method: "address_hash", link_rule: "address_sig_v1", stale_tcad_id: true });
+        expect(byPermit["2026-000004 BP"]).toMatchObject({ request_identifier: null, link_method: null });
+        expect(byPermit["2026-000004 BP"]?.unmatched_reason).not.toBeNull();
+        expect(byPermit["2026-000005 BP"]).toMatchObject({ request_identifier: null, unmatched_reason: "no_tcad_geoid", stale_tcad_id: false });
+        expect(byPermit["2026-000006 BP"]).toMatchObject({ request_identifier: "9002", link_method: "tcad_id", link_rule: "geoid_unique_r", stale_tcad_id: false });
+      } catch (error) {
+        const index = buildLinkIndex(
+          (await db`SELECT request_identifier, geo_id, prop_type, situs_address FROM parcels`).map((p) => ({
+            requestIdentifier: p.request_identifier as string, geoId: p.geo_id as string | null, propType: p.prop_type as string, situs: situsOf(p.situs_address),
+          })),
+        );
+        const detail = {
+          parcelIndexGeoIds: index.byGeoId.size,
+          parcelSignatures: [...index.bySignature].map(([sig, ids]) => `${sig.slice(0, 12)}=${ids.join("|")}`),
+          permitSignatures: PERMITS.map(([n, , a]) => `${n}=${(permitSignature({ tcadId: null, address1: a, zip: "78701", state: "TX" }) ?? "null").slice(0, 12)}`),
+          linked,
+        };
+        process.stderr.write(`link diagnostics: ${JSON.stringify(detail)}\n`);
+        throw error;
+      }
 
       // GIS assembly (its watermark and coordinate writes use tx.json)
       await runMerge(db, gisTrack, {
@@ -165,6 +207,8 @@ describe.skipIf(ADMIN === undefined || ADMIN === "")("A-04 tracks against a real
       expect(after).toEqual([
         { request_identifier: "9001", situs: "object", payload: "object" },
         { request_identifier: "9002", situs: "string", payload: "object" },
+        { request_identifier: "9003", situs: "object", payload: "object" },
+        { request_identifier: "9004", situs: "object", payload: "object" },
       ]);
     } finally {
       if (sql !== null) await sql.end({ timeout: 5 });

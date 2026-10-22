@@ -30,6 +30,7 @@ Internal Query DB (local Postgres, `elephant` DB) plus on-disk artifacts. **Noth
 | `parcels.coordinate_review_flag` | `permit_far_from_gis` or null | — |
 | `property_improvements.link_method` | `tcad_id`, `address_hash` or null | — |
 | `property_improvements.link_rule` | `geoid_unique_r`, `geoid_plus_address`, `address_sig_v1` | — |
+| `property_improvements.stale_tcad_id` | boolean (0304): the printed `tcad_id` is on no R account and the link came from the address (`address_hash`/`address_sig_v1`) | — |
 | `property_improvements.unmatched_reason` | `no_tcad_id`, `no_tcad_geoid`, `address_unmatched`, `ambiguous_geoid`, `ambiguous_address` | — |
 | `property_improvements.status_class` | profile classes `open`, `stalled`, `closed`, `exclude`, `needs_review` | same |
 | `property_improvements.open_days_reason` | `no_issue_date`, `not_open` | `needs_review`, `not_open` |

@@ -1,7 +1,7 @@
 // A-04 T054 (A-04-TC-044, A-04-TC-049, AD-16): linking an Austin permit to a TCAD account.
 // `tcad_id` carries the TCAD geoID; the property key is the pID (request_identifier). The
-// address signature is the vendored kit `address:v1` (no ROAD→RD expansion) and is used ONLY
-// when `tcad_id` is null. Synthetic test input: invented parcels, situses and permits.
+// address signature is the vendored kit `address:v1` (no ROAD→RD expansion); it is the link when
+// `tcad_id` is null and the fallback when the `tcad_id` is on no roll account (retired geoID). Synthetic test input: invented parcels, situses and permits.
 import { describe, expect, it } from "vitest";
 import {
   ISSUING_JURISDICTION,
@@ -215,10 +215,10 @@ describe("A-04-TC-044 no tcad_id → address-hash fallback (AD-16); shared geoID
     expect(noAddress.unmatchedReason).toBe("ambiguous_geoid");
   });
 
-  it("A-04-TC-044 (g) tcad_id 0208011301 is not on the roll → no_tcad_geoid and the address signature is not computed", () => {
+  it("A-04-TC-044 (g) tcad_id 0208011301 is not on the roll and its address matches no account → no_tcad_geoid", () => {
     const r = linkPermit(index, {
       tcadId: "0208011301",
-      address1: "400 DELTA RD",
+      address1: "700 NOWHERE RD",
       zip: "78704",
       state: "TX",
     });
@@ -227,7 +227,7 @@ describe("A-04-TC-044 no tcad_id → address-hash fallback (AD-16); shared geoID
       linkMethod: null,
       linkRule: null,
       unmatchedReason: "no_tcad_geoid",
-      addressSignatureComputed: false,
+      staleTcadId: false,
     });
     // a geoID carried only by a non-R account is not an R geoID either
     expect(
@@ -238,6 +238,54 @@ describe("A-04-TC-044 no tcad_id → address-hash fallback (AD-16); shared geoID
         state: "TX",
       }).unmatchedReason,
     ).toBe("no_tcad_geoid");
+  });
+
+  it("A-04-TC-044 (g2) retired tcad_id (on no roll account): a unique address match links by address_hash and flags stale_tcad_id", () => {
+    const r = linkPermit(index, {
+      tcadId: "0999999999",
+      address1: "100 ALPHA ST",
+      zip: "78701",
+      state: "TX",
+    });
+    expect(r).toMatchObject({
+      requestIdentifier: "221829",
+      linkMethod: "address_hash",
+      linkRule: "address_sig_v1",
+      unmatchedReason: null,
+      staleTcadId: true,
+    });
+  });
+
+  it("A-04-TC-044 (g3) a retired tcad_id never falls back to an ambiguous or empty address match, and a successful tcad_id match is never overridden", () => {
+    // several accounts carry this address (shared geoID units 1 and 2 print the same street)
+    const ambiguous = linkPermit(index, {
+      tcadId: "0999999999",
+      address1: "200 BETA AVE",
+      zip: "78702",
+      state: "TX",
+    });
+    expect(ambiguous).toMatchObject({ requestIdentifier: null, staleTcadId: false });
+    expect(["no_tcad_geoid", "ambiguous_address"]).toContain(ambiguous.unmatchedReason);
+    const none = linkPermit(index, {
+      tcadId: "0999999999",
+      address1: "9 NOWHERE ST",
+      zip: "78701",
+      state: "TX",
+    });
+    expect(none).toMatchObject({ requestIdentifier: null, unmatchedReason: "no_tcad_geoid" });
+    // tcad_id resolves: the permit's (different) address is ignored and no stale flag is set
+    expect(
+      linkPermit(index, {
+        tcadId: "0223120506",
+        address1: "201 BETA AVE",
+        zip: "78702",
+        state: "TX",
+      }),
+    ).toMatchObject({ requestIdentifier: "221829", linkMethod: "tcad_id", staleTcadId: false });
+    // no street number: nothing to match
+    expect(
+      linkPermit(index, { tcadId: null, address1: "ALPHA ST", zip: "78701", state: "TX" }),
+    ).toMatchObject({ requestIdentifier: null, staleTcadId: false });
   });
 
   it("A-04-TC-044 (h) unmatched with original_zip outside the Travis ZCTAs → in_travis = false, kept (counted, not dropped)", () => {
