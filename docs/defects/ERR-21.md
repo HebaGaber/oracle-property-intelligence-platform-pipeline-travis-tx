@@ -6,12 +6,12 @@ story: A-04
 test_case: A-04-TC-NF-03
 ac_reference: A-04-AC-7
 severity: Low
-status: Fixed (test plan wording, 2026-10-22)
+status: Re-tested (2026-10-22: TC-NF-03 steps 2 and 3 pass with the fixed wording)
 found_by: QC test runner (Claude), for HebaGaber
 found_date: 2026-10-22
 fix_branch: 004-property-backbone
 fix_commit:
-retest_date:
+retest_date: 2026-10-22
 ---
 
 # ERR-21: Test plan TC-NF-03 – expected output does not match the artifact and the code (steps 2 and 3)

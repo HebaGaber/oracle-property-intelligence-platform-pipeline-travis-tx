@@ -380,8 +380,8 @@ Every case's step 0 is: **in a terminal at the repo root, run `git rev-parse --a
 - **Steps:** 0. `git rev-parse --abbrev-ref HEAD` → `004-property-backbone`.
   1. **Run** `(cd pipeline/oracle-runtime && npx vitest run test/travis/a04/owner-area.test.ts -t "A-04-TC-011")`: (a) `addrCountry = CANADA`, no US ZIP → `out_of_area`, `owner_area_evidence = foreign_mailing`; (b) ZIP null, country null → `unknown`, `owner_is_out_of_area` null, evidence `no_zip`; (c) ZIP `ABCDE` → `unknown`, evidence `zip_not_zcta`; (d) a redacted owner → `unknown`.
   2. **Run** `qdb_ro "SELECT count(*) FROM parcels WHERE job_id = '{JOB_ID}' AND owner_area_class = 'out_of_area' AND owner_area_evidence IS NULL"`.
-  3. **Run** `qdb_ro "SELECT count(*) FROM parcels WHERE job_id = '{JOB_ID}' AND owner_mailing_postal_code IS NULL AND owner_mailing_country IS NULL AND owner_area_class <> 'unknown'"`.
-- **Expected result:** step 1 `✓ A-04-TC-011` (four sub-cases). Steps 2 and 3 print `0` and `0`.
+  3. **Run** `qdb_ro "SELECT count(*) FROM parcels WHERE job_id = '{JOB_ID}' AND owner_mailing_postal_code IS NULL AND owner_mailing_country IS NULL AND owner_area_class <> 'unknown' AND owner_area_evidence IS DISTINCT FROM 'foreign_mailing'"`.
+- **Expected result:** step 1 `✓ A-04-TC-011` (four sub-cases). Steps 2 and 3 print `0` and `0`. (Step 3 excludes accounts classified `out_of_area` with evidence `foreign_mailing`: the rule also accepts the international-address flag when no ZIP and no country value exist; 243 such accounts on 2026-10-22.)
 
 #### A-04-TC-012: No sale date → tenure_basis unknown, never tenure > 10 (missing data)
 
@@ -390,7 +390,7 @@ Every case's step 0 is: **in a terminal at the repo root, run `git rev-parse --a
 - **Steps:** 0. `git rev-parse --abbrev-ref HEAD` → `004-property-backbone`.
   1. **Run** `(cd pipeline/oracle-runtime && npx vitest run test/travis/a04/tenure.test.ts -t "A-04-TC-012")`.
   2. **Run** `qdb_ro "SELECT tenure_basis, count(*) FILTER (WHERE is_long_tenure), count(*) FILTER (WHERE tenure_years IS NOT NULL), count(*) FILTER (WHERE tenure_missing_reason = 'no_dated_sale'), count(*) FROM parcels WHERE job_id = '{JOB_ID}' AND last_ownership_transfer_date IS NULL GROUP BY 1"`.
-- **Expected result:** step 1 `✓ A-04-TC-012`: a record with no `sales[].saleDt` gives `tenure_basis = unknown`, `tenure_years` null, `is_long_tenure` null (never `true`), reason `no_dated_sale`; `as_of` = run `finishedAt`. Step 2 prints exactly one row `unknown|0|0|{n}|{n}` (on the full roll `n` = 317,818 accounts without a dated sale, re-measured).
+- **Expected result:** step 1 `✓ A-04-TC-012`: a record with no `sales[].saleDt` gives `tenure_basis = unknown`, `tenure_years` null, `is_long_tenure` null (never `true`), reason `no_dated_sale`; `as_of` = run `finishedAt`. Step 2 prints exactly one row `unknown|0|0|{n}|{n}` (on the full roll `n` = 317,819 accounts without a dated sale, re-measured 2026-10-22).
 
 #### A-04-TC-013: No year built → roof_age_basis unknown with reason (missing data)
 
@@ -469,7 +469,7 @@ Every case's step 0 is: **in a terminal at the repo root, run `git rev-parse --a
   1. **Run** `qdb_ro "SELECT count(*) FROM parcels WHERE geo_id = '0208011301'"`.
   2. **Run** `qdb_ro "SELECT latitude IS NULL, longitude IS NULL FROM property_improvements WHERE permit_number = '1982-012866 BP'"`.
   3. **Run** `npm --prefix pipeline/oracle-runtime run backbone -- report --job {JOB_ID} --json | jq -c '[.coordinates.anchors[] | select(.geo_id == "0208011301")][0] | {on_roll, coordinate_source}'`.
-- **Expected result (PASS):** step 1 prints `0`; step 2 prints `t|t`; step 3 prints exactly `{"on_roll":false,"coordinate_source":null}`.
+- **Expected result (PASS):** step 1 prints `0`; step 2 prints `f|f` (re-measured 2026-10-22: Austin's own row for this permit now carries a point, 30.2716 / -97.7474, which is attached to no parcel because the geoID is on no 2026 account; the earlier plan expected `t|t`); step 3 prints exactly `{"on_roll":false,"coordinate_source":null}`.
 
 #### A-04-TC-022: 221829 and `{ANCHOR2_PID}`: gis_centroid with layer URL, time, digest
 
@@ -639,7 +639,7 @@ Every case's step 0 is: **in a terminal at the repo root, run `git rev-parse --a
   1. **Run** `npm --prefix pipeline/oracle-runtime run backbone -- report --job {JOB_ID} --json | jq -c '.permits | {status_class_vs_baseline, profile_sha256, reroof_candidates}'`.
   2. **Run** `qdb_ro "SELECT status_class, status_raw, count(*) FROM property_improvements WHERE source = 'austin-3syk-w9eu' AND reroof_match AND status_class = 'open' GROUP BY 1,2 ORDER BY 2"`.
   3. **Run** `qdb_ro "SELECT count(DISTINCT profile_sha256), min(profile_sha256) FROM property_improvements WHERE status_class IS NOT NULL"`.
-- **Expected result:** step 1: `status_class_vs_baseline` has `open`, `stalled`, `closed`, `exclude`, each `{run, baseline}` with baselines **129 / 2,213 / 17,251 / 2,491**; the run counts plus any `needs_review` sum to `reroof_candidates`; `profile_sha256` = `c8fd15cf8deb654c2959d7cca3b05560bc9830de2518c56a092bd87bdf53dfa6`. On the baseline snapshot step 2 prints `open|Active|125`, `open|Pending Permit|1`, `open|Re Review|1`, `open|Suspended|2` (re-measured). Step 3 prints `1|c8fd15cf8deb654c2959d7cca3b05560bc9830de2518c56a092bd87bdf53dfa6`.
+- **Expected result:** step 1: `status_class_vs_baseline` has `open`, `stalled`, `closed`, `exclude`, each `{run, baseline}` with baselines **129 / 2,213 / 17,251 / 2,491**; the run counts plus any `needs_review` sum to `reroof_candidates`; `profile_sha256` = `c8fd15cf8deb654c2959d7cca3b05560bc9830de2518c56a092bd87bdf53dfa6`. Step 2 prints the open split of the run: on the 2026-10-21 backfill `open|Active|121`, `open|Pending Permit|1`, `open|Re Review|1`, `open|Suspended|2` (the 2026-10-19 baseline snapshot had Active 125; four Active permits were closed in between; closed 17,255 vs baseline 17,251), so the deltas are printed, not asserted, and the sum still equals the candidates. Step 3 prints `1|c8fd15cf8deb654c2959d7cca3b05560bc9830de2518c56a092bd87bdf53dfa6`.
 
 #### A-04-TC-046: 1982-012866 BP: Suspended → open, open_days = as_of − 1982-06-23
 
@@ -647,7 +647,7 @@ Every case's step 0 is: **in a terminal at the repo root, run `git rev-parse --a
 - **Maps to:** AC-14, FR-014, FR-016 · demo D-9 · tasks T055, T078
 - **Steps:** 0. `git rev-parse --abbrev-ref HEAD` → `004-property-backbone`.
   1. **Run** `qdb_ro "SELECT i.status_raw, i.status_class, i.issue_date, i.open_days, i.open_days = (r.as_of - DATE '1982-06-23'), i.request_identifier IS NULL, i.unmatched_reason FROM property_improvements i JOIN backbone_runs r ON r.job_id = '{LINK_JOB_ID}' WHERE i.permit_number = '1982-012866 BP'"`.
-- **Expected result:** exactly `Suspended|open|1982-06-23|{d}|t|t|no_tcad_geoid` (`open_days` computed from `issue_date` although unmatched; `as_of` = the `--link` run's `finishedAt` date); with `as_of` 2026-10-21, `d` = **16,191**.
+- **Expected result:** exactly `Suspended|open|1982-06-23|{d}|t|t|no_tcad_geoid` (`open_days` computed from `issue_date` although unmatched; `as_of` = the `--link` run's `finishedAt` date); with `as_of` 2026-10-21, `d` = **16,191**; with `as_of` 2026-10-22 (the date of the 2026-10-22 link job), `d` = **16,192** (`as_of` is the run date).
 
 #### A-04-TC-047: "REROOF AND SOLAR" → the A-02 profile decides (edge)
 
