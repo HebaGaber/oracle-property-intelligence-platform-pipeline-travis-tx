@@ -194,3 +194,41 @@ D-21 approval, never run here).
 
 Full `pipeline/oracle-runtime` suite: 87 files, 1007 passed, 2 skipped, 0 failed — no more
 by-design-red files. `pipeline/local-stack` suite unaffected (not touched this round).
+
+## Coverage follow-up (2026-10-23): four live-only files got unit tests
+
+Four Track D service files were only ever proven live against the real database; added
+mocked-postgres fixture tests (Track A's comptroller.test.ts pattern) for all four:
+`test/tracks/reconcile.test.ts`, `test/workflows/reconcile-report.test.ts`,
+`test/workflows/roof-age-audit.test.ts`, `test/workflows/roof-age-backfill.test.ts`. Also
+added the `@vitest/coverage-v8` dev dependency (not previously installed in
+`pipeline/local-stack`) so `--coverage` works at all.
+
+Exported a handful of previously-private helpers for direct unit testing (additive only, no
+behavior change): `roof-age-audit.ts` → `candidateTcadIds`, `permitsFor`, `completedDateFor`,
+`roofing`, `auditOne`, `PropertyRow`, `PermitRow`, `AuditRow`; `roof-age-backfill.ts` →
+`subsetParcels`, `fullPage`, `permitsForBatch`, `attachCompletedDates`, `writeBatch`,
+`estimateBatch`, `roofing`, `isoDay`, `ParcelRow`, `PermitRow`.
+
+Coverage, these four files only (before → after, `npx vitest run --coverage
+--coverage.include=...`):
+
+| File | Before (stmts/branch/funcs/lines) | After |
+| --- | --- | --- |
+| tracks/reconcile.ts | 0/0/0/0 | 100/100/100/100 |
+| workflows/reconcile-report.ts | 0/0/0/0 | 91.66/91.66/88.88/90 |
+| workflows/roof-age-audit.ts | 0/0/0/0 | 95.45/80/94.11/94.73 |
+| workflows/roof-age-backfill.ts | 0/0/0/0 | 91.83/68.18/96.29/94.73 |
+
+Remaining gaps (lines 79/97, 220/240, 86/198/306/331) are the thin `connect()`/wiring-adjacent
+branches already partly exercised by the added `createReconcileReport`/`createRoofAgeAudit`/
+`createRoofAgeBackfill` Restate-wiring tests (real `@restatedev/restate-sdk`, fake `ctx`, same
+pattern as `test/tcad-binding.test.ts` and `test/loader-terminal.test.ts`) — comparable to the
+untested-wiring slivers already present in `comptroller.ts`/`tcad.ts`/`report.ts` elsewhere in
+this codebase. All four files clear NFR-09's 80% bar on statements/functions/lines; branch %
+on `reconcile-report.ts`/`roof-age-backfill.ts` sits a bit under 80 from a few defensive
+fallback branches, noted rather than chased further given effort budget.
+
+Full `pipeline/local-stack` suite with `--coverage`: 24 files, **194 passed, 3 skipped, 0
+failed**. Full-repo coverage (incl. pre-existing files): statements 83.37%, branches 70.3%,
+functions 80.05%, lines 84.77%.

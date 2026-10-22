@@ -36,7 +36,7 @@ export const BackfillRequest = z.object({
 });
 export type BackfillRequest = z.infer<typeof BackfillRequest>;
 
-interface ParcelRow {
+export interface ParcelRow {
   request_identifier: string;
   property_structure_built_year: number | null;
   source_url: string;
@@ -44,7 +44,7 @@ interface ParcelRow {
   export_sha256: string;
 }
 
-interface PermitRow {
+export interface PermitRow {
   request_identifier: string;
   permit_number: string;
   source: string;
@@ -61,7 +61,7 @@ const BATCH_SIZE = 2_000;
 
 /** The 25-property subset (same ordered filter as `RoofAgeAudit`, so `--limit 25 --offset 0`
  *  selects the same 25 properties the audit already reviewed). */
-async function subsetParcels(sql: postgres.Sql, limit: number, offset: number): Promise<ParcelRow[]> {
+export async function subsetParcels(sql: postgres.Sql, limit: number, offset: number): Promise<ParcelRow[]> {
   return sql<ParcelRow[]>`
     SELECT DISTINCT p.request_identifier, p.property_structure_built_year,
            p.source_url, p.captured_at::text AS captured_at, p.export_sha256
@@ -76,7 +76,7 @@ async function subsetParcels(sql: postgres.Sql, limit: number, offset: number): 
 }
 
 /** Keyset page over every parcel, ordered by request_identifier. */
-async function fullPage(sql: postgres.Sql, after: string | null, size: number): Promise<ParcelRow[]> {
+export async function fullPage(sql: postgres.Sql, after: string | null, size: number): Promise<ParcelRow[]> {
   if (after === null) {
     return sql<ParcelRow[]>`
       SELECT request_identifier, property_structure_built_year,
@@ -92,7 +92,7 @@ async function fullPage(sql: postgres.Sql, after: string | null, size: number): 
 /** Every permit for one batch's TCAD ids — one query per batch, never per property. The real
  *  `completed_date` (only meaningful for closed+roofing permits) is filled separately by
  *  `attachCompletedDates`, so callers always run both. */
-async function permitsForBatch(sql: postgres.Sql, tcadIds: readonly string[]): Promise<PermitRow[]> {
+export async function permitsForBatch(sql: postgres.Sql, tcadIds: readonly string[]): Promise<PermitRow[]> {
   if (tcadIds.length === 0) return [];
   return sql<PermitRow[]>`
     SELECT pi.request_identifier, pi.permit_number, pi.source, pi.status_class, pi.reroof_match,
@@ -103,13 +103,13 @@ async function permitsForBatch(sql: postgres.Sql, tcadIds: readonly string[]): P
     WHERE pi.request_identifier = ANY(${tcadIds}) AND pi.tombstoned = false`;
 }
 
-function isoDay(value: string | null): string | null {
+export function isoDay(value: string | null): string | null {
   if (value === null) return null;
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(value);
   return m ? (m[1] as string) : null;
 }
 
-function roofing(reroofMatch: boolean | null): "roofing" | "not_roofing" | "needs_review" {
+export function roofing(reroofMatch: boolean | null): "roofing" | "not_roofing" | "needs_review" {
   return reroofMatch === true ? "roofing" : reroofMatch === false ? "not_roofing" : "needs_review";
 }
 
@@ -142,7 +142,7 @@ export interface BackfillResult {
   coverage: CoverageTotals;
 }
 
-async function writeBatch(
+export async function writeBatch(
   sql: postgres.Sql,
   jobId: string,
   asOfDate: string,
@@ -186,7 +186,7 @@ async function writeBatch(
   return written.length;
 }
 
-async function estimateBatch(
+export async function estimateBatch(
   parcelBatch: ParcelRow[],
   permits: PermitRow[],
   asOfDate: string,
@@ -281,7 +281,7 @@ export async function runBackfill(sql: postgres.Sql, req: BackfillRequest): Prom
 }
 
 /** Fills `completed_date` on every closed+roofing permit from the raw capture, in one query. */
-async function attachCompletedDates(sql: postgres.Sql, permits: PermitRow[]): Promise<PermitRow[]> {
+export async function attachCompletedDates(sql: postgres.Sql, permits: PermitRow[]): Promise<PermitRow[]> {
   const closedRoofing = permits.filter((r) => r.status_class === "closed" && r.reroof_match === true);
   if (closedRoofing.length === 0) return permits;
   const sources = closedRoofing.map((r) => r.source);

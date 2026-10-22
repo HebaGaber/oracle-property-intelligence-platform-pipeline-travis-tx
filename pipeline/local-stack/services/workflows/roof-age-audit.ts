@@ -33,12 +33,12 @@ export const AuditRequest = z.object({
 });
 export type AuditRequest = z.infer<typeof AuditRequest>;
 
-interface PropertyRow {
+export interface PropertyRow {
   request_identifier: string;
   property_structure_built_year: number | null;
 }
 
-interface PermitRow {
+export interface PermitRow {
   permit_number: string;
   source: string;
   status_class: "open" | "stalled" | "closed" | "exclude" | "needs_review";
@@ -46,7 +46,7 @@ interface PermitRow {
   issue_date: string | null;
 }
 
-interface AuditRow {
+export interface AuditRow {
   tcadId: string;
   builtYear: number | null;
   estimator: {
@@ -71,7 +71,7 @@ export interface AuditResult {
   rows: AuditRow[];
 }
 
-async function candidateTcadIds(
+export async function candidateTcadIds(
   sql: postgres.TransactionSql | postgres.Sql,
   limit: number,
   offset: number,
@@ -90,7 +90,7 @@ async function candidateTcadIds(
     LIMIT ${limit} OFFSET ${offset}`;
 }
 
-async function permitsFor(sql: postgres.Sql, tcadId: string): Promise<PermitRow[]> {
+export async function permitsFor(sql: postgres.Sql, tcadId: string): Promise<PermitRow[]> {
   return sql<PermitRow[]>`
     SELECT permit_number, source, status_class, reroof_match, issue_date::text AS issue_date
     FROM property_improvements
@@ -100,7 +100,7 @@ async function permitsFor(sql: postgres.Sql, tcadId: string): Promise<PermitRow[
 
 /** Only the one field this audit needs from the raw capture — never the full payload (no
  *  contractor name, applicant or address reaches this report). */
-async function completedDateFor(sql: postgres.Sql, source: string, permitNumber: string): Promise<string | null> {
+export async function completedDateFor(sql: postgres.Sql, source: string, permitNumber: string): Promise<string | null> {
   const [row] = await sql<{ completed_date: string | null }[]>`
     SELECT payload ->> 'completed_date' AS completed_date
     FROM permit_source_rows
@@ -113,11 +113,11 @@ async function completedDateFor(sql: postgres.Sql, source: string, permitNumber:
   return m ? (m[1] as string) : null;
 }
 
-function roofing(reroofMatch: boolean | null): "roofing" | "not_roofing" | "needs_review" {
+export function roofing(reroofMatch: boolean | null): "roofing" | "not_roofing" | "needs_review" {
   return reroofMatch === true ? "roofing" : reroofMatch === false ? "not_roofing" : "needs_review";
 }
 
-async function auditOne(sql: postgres.Sql, property: PropertyRow, asOfDate: string): Promise<AuditRow> {
+export async function auditOne(sql: postgres.Sql, property: PropertyRow, asOfDate: string): Promise<AuditRow> {
   const permits = await permitsFor(sql, property.request_identifier);
   const withCompletion = await Promise.all(
     permits.map(async (p) => ({
