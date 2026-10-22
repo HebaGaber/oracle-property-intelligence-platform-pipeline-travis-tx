@@ -124,12 +124,18 @@ function placesCountRow(placesReportPath: string | undefined): ManifestCoverageR
 
 function mergeCountsRow(mergeReportPath: string): ManifestCoverageRow {
   const report = readJson(mergeReportPath);
-  const entityTypes = (report?.entityTypes ?? {}) as Record<string, unknown>;
+  const entityTypes = (report?.entityTypes ?? {}) as Record<string, { refused?: unknown } | undefined>;
+  const refusedEntityTypes = Object.entries(entityTypes)
+    .filter(([, v]) => Number(v?.refused ?? 0) > 0)
+    .map(([k]) => k);
   return {
     metric: "merge_counts",
     value: entityTypes,
     derivation: "aggregate_match",
-    limitation: null,
+    limitation:
+      refusedEntityTypes.length === 0
+        ? null
+        : `refused cross-TCAD merges on: ${refusedEntityTypes.join(", ")}`,
   };
 }
 
@@ -137,17 +143,23 @@ function roofAgeCoverageRow(roofAgeReportPath: string): ManifestCoverageRow {
   const report = readJson(roofAgeReportPath) ?? {};
   const apply = report.apply as Record<string, unknown> | undefined;
   const coverage = (apply?.coverage ?? report.coverage ?? report) as Record<string, unknown>;
+  const byBasis = (coverage.byBasis ?? {}) as Record<string, unknown>;
+  const total = coverage.total ?? null;
+  const basisSum = Object.values(byBasis).reduce((a: number, b) => a + Number(b ?? 0), 0);
+  const sumMismatch = total !== null && basisSum !== Number(total);
   return {
     metric: "roof_age_coverage",
     value: {
-      byBasis: coverage.byBasis ?? {},
+      byBasis,
       byConfidence: coverage.byConfidence ?? {},
-      total: coverage.total ?? null,
+      total,
       ...(report.coveragePctByBasis !== undefined ? { pctByBasis: report.coveragePctByBasis } : {}),
       ...(report.coveragePctByConfidence !== undefined ? { pctByConfidence: report.coveragePctByConfidence } : {}),
     },
     derivation: "aggregate_match",
-    limitation: null,
+    limitation: sumMismatch
+      ? `roof-age basis counts (${basisSum}) do not sum to the reported total (${String(total)})`
+      : null,
   };
 }
 
