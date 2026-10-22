@@ -6,7 +6,7 @@ All commands run against the local Restate ingress (`RESTATE_INGRESS_URL`, defau
 
 ```
 EN identity:load-registry --source tx-comptroller --scope travis --database-url-env DATABASE_URL
-EN identity:resolve --scope austin-reroof --registry-snapshot <digest>
+EN identity:resolve --scope austin-roofing-permits --registry-snapshot <digest>
 EN identity:report --json
 ```
 

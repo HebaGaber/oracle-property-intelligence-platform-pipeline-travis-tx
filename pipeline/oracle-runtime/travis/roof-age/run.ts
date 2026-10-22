@@ -36,6 +36,20 @@ export interface RoofAgeRunRow extends RoofAgeLedgerRow {
   builtYearReason: BuiltYearReason;
 }
 
+/** The query-core comparison harness's simple basis label for one estimator row (T058). Never
+ *  changes the estimate itself — a read-only projection of `anchor`/`workClassification` onto
+ *  the same four labels `roofAgeBasis` (packages/query-core/src/derive.ts) already uses. */
+export type SimpleRoofAgeBasis = "permit" | "new_construction" | "built_year" | "unknown";
+
+export function simpleBasisOf(row: RoofAgeRunRow): SimpleRoofAgeBasis {
+  const anchor = row.estimate.anchor;
+  if (anchor === null) return "unknown";
+  if (anchor.type === "property_built_year") return "built_year";
+  return row.estimate.workClassification === "primary_roof_new_construction"
+    ? "new_construction"
+    : "permit";
+}
+
 function sanitizedBuiltYear(
   builtYear: number | null,
   asOfDate: string,

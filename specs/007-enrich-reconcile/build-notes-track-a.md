@@ -32,7 +32,7 @@
   payload->>'contractor_company_name'`, the live registry, resolves each via T014's
   `resolveContractor` through a normalized-name index built once — never an O(n) scan per
   permit over ~342k rows — and batch-inserts into `contractor_resolution_ledger`), a new
-  `identity:resolve` CLI verb (`backbone identity:resolve --scope austin-reroof
+  `identity:resolve` CLI verb (`backbone identity:resolve --scope austin-roofing-permits
   --registry-snapshot <digest>`, Restate ingress only), and a new read-only `IdentityReport`
   Restate service (`services/workflows/identity-report.ts`) the verb reads back from after
   the merge (mirroring `ReconcileReport`'s pattern, since the generic `Loader.merge`

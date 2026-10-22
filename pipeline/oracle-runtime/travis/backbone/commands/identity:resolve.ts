@@ -1,4 +1,4 @@
-// A-07 T020 (Track A, contracts/cli.md): `backbone identity:resolve --scope austin-reroof
+// A-07 T020 (Track A, contracts/cli.md): `backbone identity:resolve --scope austin-roofing-permits
 // --registry-snapshot <digest>`. Talks only to the Restate ingress (Loader.merge on the
 // `comptroller` track's `resolve_permits` kind, then IdentityReport.summary) -- never
 // Postgres directly from this process, same pattern as T019/T056.
@@ -18,7 +18,10 @@ import { z } from "zod";
 import type { BackboneCommand } from "../cli.js";
 
 const Args = z
-  .object({ scope: z.literal("austin-reroof"), registrySnapshot: z.string().regex(/^[a-f0-9]{64}$/) })
+  .object({
+    scope: z.literal("austin-roofing-permits"),
+    registrySnapshot: z.string().regex(/^[a-f0-9]{64}$/),
+  })
   .strict();
 type Args = z.infer<typeof Args>;
 

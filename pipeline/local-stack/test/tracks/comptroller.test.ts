@@ -119,9 +119,9 @@ describe("comptroller track: resolve_permits (T020, Wave 3)", () => {
     const input = {
       kind: "resolve_permits" as const,
       jobId: "travis-a07-identity-resolve-202610221900",
-      artifactPath: "query-db://property_improvements+comptroller_registry/austin-reroof",
+      artifactPath: "query-db://property_improvements+comptroller_registry/austin-roofing-permits",
       artifactSha256: "e".repeat(64),
-      scope: "austin-reroof" as const,
+      scope: "austin-roofing-permits" as const,
       effectiveOn: "2026-10-22T19:00:00.000Z",
     };
     const outcome = await track.merge(tx, input);

@@ -20,7 +20,7 @@ import { PERMITS_SOURCE_KEY } from "../../../oracle-runtime/travis/permits/merge
 import type { LoaderTrack, MergeOutcome } from "../loader.js";
 
 export const COMPTROLLER_SOURCE_KEY = "tx-comptroller-9cir-efmm";
-export const IDENTITY_RESOLUTION_KEY = "identity-resolution-austin-reroof";
+export const IDENTITY_RESOLUTION_KEY = "identity-resolution-austin-roofing-permits";
 
 const JobId = z.string().regex(/^travis-a07-[a-z0-9-]+$/);
 const Sha = z.string().regex(/^[a-f0-9]{64}$/);
@@ -47,7 +47,7 @@ const ResolvePermitsInput = z.object({
   jobId: JobId,
   artifactPath: z.string().min(1),
   artifactSha256: Sha,
-  scope: z.literal("austin-reroof"),
+  scope: z.literal("austin-roofing-permits"),
   effectiveOn: z.string().min(1),
 });
 

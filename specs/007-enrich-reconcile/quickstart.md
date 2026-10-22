@@ -12,7 +12,7 @@ A-07 is pipeline-only (`ui: false`) — there is no hosted URL to click through.
 
 ```bash
 EN identity:load-registry --source tx-comptroller --scope travis --database-url-env DATABASE_URL
-EN identity:resolve --scope austin-reroof --registry-snapshot <digest-from-previous-step>
+EN identity:resolve --scope austin-roofing-permits --registry-snapshot <digest-from-previous-step>
 EN identity:report --json
 ```
 Expected: five-state totals sum to the permit total (22,084); `resolved` = 0 with the AC-2 fixture test proving the code path separately; `contractor_not_printed` count ≈ 15,060.
