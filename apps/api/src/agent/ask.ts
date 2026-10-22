@@ -17,13 +17,29 @@ import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { generateText, stepCountIs, type LanguageModel } from "ai";
 import { z } from "zod";
 import { CidV1, RunsIndexV1 } from "@countylens/contract";
+import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { BoundRun, QueryEngine } from "@countylens/query-core";
 import { bindOnce, getEngine } from "../engine/duckdb-node.js";
 import { createCitationRegistry, type Match } from "./citations.js";
-import { DAILY_SPEND_CAP_USD, getSpendDocumentClient, readSpend, recordSpend } from "./spend.js";
+import { agentObservability } from "./observability.js";
+import {
+  DAILY_SPEND_CAP_USD,
+  SPEND_RESERVATION_USD,
+  getSpendDocumentClient,
+  recordSpend,
+  reserveSpend,
+} from "./spend.js";
 import { getModel, type EnvSource } from "./model.js";
 import { createAgentTools, type AgentTools } from "./tools.js";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+
+/** Stage 5 review fix (Critical #2): the EMF metric name infra/src/api-stack.ts's `SpendAlarm`
+ *  watches (`SPEND_METRIC_NAME`, not imported directly -- infra depends on the bundled entry,
+ *  not apps/api's source, same reason as every other infra/app name pairing in this story). The
+ *  alarm's statistic is `Maximum` over 5 minutes, so the value emitted each call must be the
+ *  day's running total (`spentUsd` after the increment), not the per-call delta, or the alarm
+ *  would never see $2.40. */
+export const SPEND_METRIC_NAME = "AiSpendUsd";
 
 // ---------------------------------------------------------------------------------------
 // Contract (data-model.md § "agent.ask contract"; contracts/agent-ask.md)
@@ -117,9 +133,12 @@ export function abortMs(env: EnvSource = process.env): number {
 export interface ModelLoopOutput {
   text: string;
   steps: AgentAskStep[];
-  /** The last tool call's output envelope this turn (applied/area/empty_reason/
-   *  unknown_excluded/truncated) -- the only source `how`/`query`/`missing[]` are built from. */
-  lastToolOutput?: Record<string, unknown>;
+  /** Every tool call's output this turn, in call order (Stage 5 review fix, Major #5: using
+   *  only the LAST call's output silently dropped a real filtered result when a later call --
+   *  e.g. `geocodePlace`, run last to disambiguate before answering -- wasn't the one carrying
+   *  the `applied`/`area`/`unknown_excluded` envelope). `how`/`query`/`missing[]` are built by
+   *  aggregating across all of these, never from model text. */
+  toolOutputs: Record<string, unknown>[];
   totalTokens?: number;
 }
 
@@ -163,13 +182,14 @@ export async function defaultRunModelLoop(params: ModelLoopParams): Promise<Mode
     };
   });
 
-  const lastResult = result.toolResults.at(-1);
-  const lastToolOutput = lastResult && isRecord(lastResult.output) ? lastResult.output : undefined;
+  const toolOutputs = result.toolResults
+    .map((toolResult) => toolResult.output)
+    .filter(isRecord);
 
   return {
     text: result.text,
     steps,
-    ...(lastToolOutput !== undefined ? { lastToolOutput } : {}),
+    toolOutputs,
     ...(result.usage?.totalTokens !== undefined ? { totalTokens: result.usage.totalTokens } : {}),
   };
 }
@@ -250,13 +270,51 @@ function dedupeMissing(
   return out;
 }
 
+/** A query-core `ResultEnvelope`-shaped tool output (always carries `applied`, per
+ *  tools.ts's `projectEnvelope`) -- `geocodePlace`'s own output shape (`status`/`label`/`point`)
+ *  never does, so this filter is what tells the two apart without a tool-name allowlist. */
+function isEnvelopeOutput(
+  output: Record<string, unknown>,
+): output is Record<string, unknown> & { applied: Record<string, unknown> } {
+  return isRecord(output.applied);
+}
+
+/**
+ * Stage 5 review fix (Major #5): aggregates `how`/`query`/`missing[]` across EVERY envelope-
+ * shaped tool output this turn, not just the last tool call -- a turn that calls
+ * `searchProperties` then `geocodePlace` last (to disambiguate before answering) must not lose
+ * `searchProperties`'s real filtered-result data just because it was not the final call.
+ * `applied` fields merge left-to-right (a later call's threshold overrides an earlier one's, the
+ * ordinary "most recent wins" rule); `area`/`unknown_excluded`/`empty_reason`/`truncated`
+ * contribute to `missing[]`/`how` from every envelope, not only the last.
+ */
 function composeStructuredParts(
   matches: Match[],
-  lastToolOutput: Record<string, unknown> | undefined,
+  toolOutputs: Record<string, unknown>[],
 ): { how: string; query: Record<string, unknown>; missing: { field: string; reason: string }[] } {
-  const applied = isRecord(lastToolOutput?.applied) ? lastToolOutput.applied : {};
-  const area = isRecord(lastToolOutput?.area) ? lastToolOutput.area : undefined;
-  const areaLabel = typeof area?.label === "string" ? area.label : undefined;
+  const envelopes = toolOutputs.filter(isEnvelopeOutput);
+
+  let applied: Record<string, unknown> = {};
+  let areaLabel: string | undefined;
+  const missing: { field: string; reason: string }[] = [];
+
+  for (const envelope of envelopes) {
+    applied = { ...applied, ...envelope.applied };
+
+    const area = isRecord(envelope.area) ? envelope.area : undefined;
+    if (typeof area?.label === "string") areaLabel = area.label;
+
+    const unknownExcluded = isRecord(envelope.unknown_excluded) ? envelope.unknown_excluded : {};
+    for (const [field, count] of Object.entries(unknownExcluded)) {
+      if (typeof count === "number" && count > 0) missing.push({ field, reason: "unknown" });
+    }
+    const emptyReason = envelope.empty_reason;
+    if (typeof emptyReason === "string") missing.push({ field: "result", reason: emptyReason });
+    if (envelope.truncated === true) missing.push({ field: "result", reason: "truncated" });
+  }
+  for (const match of matches) {
+    for (const entry of match.missing) missing.push(entry);
+  }
 
   const howParts: string[] = [];
   if (areaLabel !== undefined) howParts.push(areaLabel);
@@ -264,20 +322,6 @@ function composeStructuredParts(
     if (key === "area" || key === "manifest_cid") continue;
     howParts.push(`${key}: ${JSON.stringify(value)}`);
   }
-
-  const missing: { field: string; reason: string }[] = [];
-  const unknownExcluded = isRecord(lastToolOutput?.unknown_excluded)
-    ? lastToolOutput.unknown_excluded
-    : {};
-  for (const [field, count] of Object.entries(unknownExcluded)) {
-    if (typeof count === "number" && count > 0) missing.push({ field, reason: "unknown" });
-  }
-  for (const match of matches) {
-    for (const entry of match.missing) missing.push(entry);
-  }
-  const emptyReason = lastToolOutput?.empty_reason;
-  if (typeof emptyReason === "string") missing.push({ field: "result", reason: emptyReason });
-  if (lastToolOutput?.truncated === true) missing.push({ field: "result", reason: "truncated" });
 
   return { how: howParts.join("; "), query: applied, missing: dedupeMissing(missing) };
 }
@@ -321,6 +365,7 @@ export interface AskDeps {
   maxModelCalls: number;
   maxToolSteps: number;
   maxOutputTokens: number;
+  reservationUsd: number;
   model: LanguageModel;
   getEngine: () => Promise<QueryEngine>;
   bindOnce: (manifestCid: string) => Promise<BoundRun>;
@@ -348,6 +393,7 @@ export async function runAgentAsk(
   const ddb = overrides.ddb ?? getSpendDocumentClient();
   const spendTableName = overrides.spendTableName ?? env.SPEND_TABLE_NAME ?? "";
   const cap = overrides.dailySpendCapUsd ?? dailySpendCapUsd(env);
+  const reservationUsd = overrides.reservationUsd ?? SPEND_RESERVATION_USD;
   const abortTimeoutMs = overrides.abortMs ?? abortMs(env);
   const maxModelCalls = overrides.maxModelCalls ?? MAX_MODEL_CALLS;
   const maxToolSteps = overrides.maxToolSteps ?? MAX_TOOL_STEPS;
@@ -358,10 +404,18 @@ export async function runAgentAsk(
   const resolveManifestCid = overrides.resolveManifestCid ?? defaultResolveManifestCid;
   const runModelLoop = overrides.runModelLoop ?? defaultRunModelLoop;
 
-  // Spend-cap pre-check (agent-design.md § "ash" > "Spend-cap + alarm design"): never a
-  // half-run -- checked before any model call is placed.
-  const spend = await readSpend(ddb, spendTableName, now());
-  if (spend.spentUsd >= cap) return emptyResponse("paused", "Daily AI budget reached for today.");
+  // Spend-cap pre-check (agent-design.md § "ash" > "Spend-cap + alarm design"; Stage 5 review
+  // fix, Major #3): one atomic conditional reservation, never a separate read-then-later-write
+  // (which let two concurrent requests both pass a check before either's model call finished).
+  // Never a half-run -- checked/reserved before any model call is placed.
+  const spend = await reserveSpend(ddb, spendTableName, now(), reservationUsd, cap);
+  if (spend.spentUsd >= cap) {
+    agentObservability().logger.warn("agent.ask paused: daily spend cap reached", {
+      spentUsd: spend.spentUsd,
+      cap,
+    });
+    return emptyResponse("paused", "Daily AI budget reached for today.");
+  }
 
   const manifestCid = input.manifest_cid ?? (await resolveManifestCid(env));
   const engine = await getEngineFn();
@@ -388,12 +442,26 @@ export async function runAgentAsk(
     });
 
     if (result.totalTokens !== undefined) {
-      await recordSpend(ddb, spendTableName, result.totalTokens * ESTIMATED_USD_PER_TOKEN, now());
+      // True the reservation up to the real cost (never re-incrementing model_calls -- reserveSpend
+      // already counted this call).
+      const actualUsd = result.totalTokens * ESTIMATED_USD_PER_TOKEN;
+      const status = await recordSpend(ddb, spendTableName, actualUsd - reservationUsd, now(), {
+        incrementModelCalls: false,
+      });
+      // The SpendAlarm's statistic is Maximum/5min: emit the day's running total, not the delta.
+      agentObservability().metrics.addMetric(SPEND_METRIC_NAME, MetricUnit.NoUnit, status.spentUsd);
     }
 
     const matches = registry.matches();
-    const { cleaned } = registry.postCheck(result.text);
-    const { how, query, missing } = composeStructuredParts(matches, result.lastToolOutput);
+    const { cleaned, outOfRangeCitations, ungroundedCids } = registry.postCheck(result.text);
+    const { how, query, missing } = composeStructuredParts(matches, result.toolOutputs);
+
+    agentObservability().logger.info("agent.ask answered", {
+      toolSteps: result.steps.length,
+      matches: matches.length,
+      outOfRangeCitations,
+      ungroundedCids,
+    });
 
     return {
       answer: cleaned,
@@ -406,9 +474,11 @@ export async function runAgentAsk(
     };
   } catch (error) {
     if (isAbortError(error)) {
+      agentObservability().logger.warn("agent.ask timed out (23s abort)");
       return emptyResponse("timed_out", "Took too long. Try again, or use Filters instead.");
     }
     if (isThrottleError(error)) {
+      agentObservability().logger.warn("agent.ask throttled by the model provider");
       return emptyResponse("throttled", "The model is busy right now; try again in a minute.");
     }
     throw error; // unexpected -- a real Lambda error, never swallowed as a fake outcome.

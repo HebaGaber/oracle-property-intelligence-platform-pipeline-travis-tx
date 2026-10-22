@@ -146,6 +146,54 @@ describe("searchProperties", () => {
   });
 });
 
+// Review F1 regression (code-review medium on 014-agent-and-mcp): an unrelated filter being the
+// true cause of zero rows must never be misattributed to field_not_published just because every
+// in-radius row happens to also be null on some other actively-filtered field. roof_age_years_min
+// is always null-permissive (`OR roof_age_years IS NULL`), so a null roof age can never itself be
+// why nothing came back; here all 5 in-radius properties have an unknown roof age AND a
+// status_class filter that matches none of them (none has any permit at all) — the permit EXISTS
+// clause is the real (and only) blocker, so the answer must be no_match.
+describe("searchProperties: field_not_published vs no_match (review F1)", () => {
+  const Q1 = `ba${"a".repeat(55)}qone`;
+  const Q2 = `ba${"a".repeat(55)}qtwo`;
+  const Q3 = `ba${"a".repeat(55)}qthree`;
+  const Q4 = `ba${"a".repeat(55)}qfour`;
+  const Q5 = `ba${"a".repeat(55)}qfive`;
+  const CIDS = [Q1, Q2, Q3, Q4, Q5];
+
+  // All 5 at the search centre, none with a property_has_structure edge (and no roofing permit
+  // anchor either) -> roof_age_years IS NULL for every one of them. No property_improvement rows
+  // at all -> no property ever has an EXISTS match for any status_class.
+  const F1_TABLES: FixtureTables = {
+    county: {
+      property: CIDS.map((cid) => propertyRows(cid, null)),
+      property_has_parcel: CIDS.map((cid, i) => edge(cid, `qpc${i}`)),
+      parcel_has_geometry: CIDS.map((cid, i) => edge(`qpc${i}`, `qg${i}`)),
+      geometry: CIDS.map((cid, i) => geometry(`qg${i}`, CENTRE)),
+    },
+  };
+
+  let fx: Fixture;
+  beforeAll(async () => {
+    fx = await bindFixture(F1_TABLES);
+  });
+  afterAll(() => fx.close());
+
+  it("every in-radius row null on roof_age_years coincides with radiusTotal, but the real blocker is status_class -> no_match", async () => {
+    const result = await searchProperties(fx.db, fx.bound, {
+      area: { lat: CENTRE.lat, lon: CENTRE.lon },
+      radius_mi: 5,
+      roof_age_years_min: 15,
+      status_class: "open",
+      limit: 1000,
+    });
+    expect(result.returned).toBe(0);
+    // The coincidence the bug relied on: unknown_excluded.roof_age_years === radiusTotal (5).
+    expect(result.unknown_excluded.roof_age_years).toBe(5);
+    expect(result.empty_reason).toBe("no_match");
+  });
+});
+
 describe("listPermits", () => {
   let fx: Fixture;
   beforeAll(async () => {

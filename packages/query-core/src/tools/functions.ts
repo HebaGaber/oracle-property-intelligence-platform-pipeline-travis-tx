@@ -217,15 +217,35 @@ export async function searchProperties(
 
   const { bbox, distance, radiusM } = geoFilter(centre.lat, centre.lon, input.radius_mi);
   const radiusWhere = `p.latitude IS NOT NULL AND p.longitude IS NOT NULL AND ${bbox} AND ${distance} < ${radiusM}`;
-  const where: string[] = [radiusWhere];
 
+  // Each active filter becomes one Predicate. `field` + `relaxedSql` are set only when an
+  // unknown (NULL) value for that field could plausibly be the *sole* reason nothing came back
+  // (review F1 fix): relaxedSql is the same predicate but additionally accepting NULL, so running
+  // the query with every other filter unchanged and just this one relaxed tells us whether null
+  // exclusion specifically — not some other filter, and not a real value mismatch — is the
+  // blocker. The threshold filters already read `(... OR field IS NULL)`, i.e. they are already
+  // fully null-permissive, so they never get a relaxedSql: a null value for them can never be why
+  // zero rows came back, so they can never be reported as field_not_published.
+  const predicates: Array<{ sql: string; field?: string; relaxedSql?: string }> = [];
   if (input.roof_age_years_min !== undefined)
-    where.push(`(p.roof_age_years >= ${input.roof_age_years_min} OR p.roof_age_years IS NULL)`);
+    predicates.push({
+      field: "roof_age_years",
+      sql: `(p.roof_age_years >= ${input.roof_age_years_min} OR p.roof_age_years IS NULL)`,
+    });
   if (input.tenure_years_min !== undefined)
-    where.push(`(p.tenure_years >= ${input.tenure_years_min} OR p.tenure_years IS NULL)`);
+    predicates.push({
+      field: "tenure_years",
+      sql: `(p.tenure_years >= ${input.tenure_years_min} OR p.tenure_years IS NULL)`,
+    });
   // Unlike the threshold filters above, owner_is_out_of_area is an exact boolean match: an
-  // unknown value is excluded (counted in unknown_excluded), never kept as a possible match.
-  if (input.owner_is_out_of_area === true) where.push(`p.owner_is_out_of_area = true`);
+  // unknown value is excluded (counted in unknown_excluded), never kept as a possible match. That
+  // makes it the one filter here where null exclusion really can be the sole blocker.
+  if (input.owner_is_out_of_area === true)
+    predicates.push({
+      field: "owner_is_out_of_area",
+      sql: `p.owner_is_out_of_area = true`,
+      relaxedSql: `(p.owner_is_out_of_area = true OR p.owner_is_out_of_area IS NULL)`,
+    });
 
   const statusClasses = statusClassesFor(input.status_class);
   if (statusClasses !== undefined || input.open_years_min !== undefined) {
@@ -235,8 +255,12 @@ export async function searchProperties(
     ];
     if (input.open_years_min !== undefined)
       permitWhere.push(`r.open_days >= ${(input.open_years_min * DAYS_PER_YEAR).toFixed(4)}`);
-    where.push(`EXISTS (SELECT 1 FROM v_roofing_permit r WHERE ${permitWhere.join(" AND ")})`);
+    // Not unknown-trackable: a permit/status_class miss is a genuine no_match, never
+    // field_not_published, so this predicate carries no `field`/`relaxedSql`.
+    predicates.push({ sql: `EXISTS (SELECT 1 FROM v_roofing_permit r WHERE ${permitWhere.join(" AND ")})` });
   }
+
+  const where: string[] = [radiusWhere, ...predicates.map((p) => p.sql)];
 
   const order =
     input.sort === "open_desc"
@@ -257,30 +281,41 @@ LIMIT ${input.limit}`;
   const rows = rawRows.map((r) => ({ ...r, dist_mi: toMiles(r.dist_m) }));
   const returned = rows.length;
 
+  // Review F1 minor: batched via Promise.all (was sequential awaits) to match the rows/total
+  // query above.
+  const unknownFields = predicates.filter((p) => p.field !== undefined);
+  const unknownCounts = await Promise.all(
+    unknownFields.map((p) =>
+      countOf(engine, `SELECT count(*) AS n FROM v_property p WHERE ${radiusWhere} AND p.${p.field} IS NULL`),
+    ),
+  );
   const unknownExcluded: Record<string, number> = {};
-  if (input.roof_age_years_min !== undefined)
-    unknownExcluded.roof_age_years = await countOf(
-      engine,
-      `SELECT count(*) AS n FROM v_property p WHERE ${radiusWhere} AND p.roof_age_years IS NULL`,
-    );
-  if (input.tenure_years_min !== undefined)
-    unknownExcluded.tenure_years = await countOf(
-      engine,
-      `SELECT count(*) AS n FROM v_property p WHERE ${radiusWhere} AND p.tenure_years IS NULL`,
-    );
-  if (input.owner_is_out_of_area === true)
-    unknownExcluded.owner_is_out_of_area = await countOf(
-      engine,
-      `SELECT count(*) AS n FROM v_property p WHERE ${radiusWhere} AND p.owner_is_out_of_area IS NULL`,
-    );
+  unknownFields.forEach((p, i) => {
+    unknownExcluded[p.field as string] = unknownCounts[i] ?? 0;
+  });
 
+  // Review F1 fix: field_not_published is reported only when relaxing one specific field's null
+  // exclusion — and nothing else — provably turns 0 rows into >=1, holding every other active
+  // filter fixed. This is NOT "every in-radius row happens to have this field null": that
+  // coincidence (e.g. all 5 in-radius rows have roof_age_years IS NULL) says nothing about *why*
+  // returned === 0 when an unrelated filter (status_class, a permit EXISTS clause, ...) is the
+  // actual cause. If more than one field would unblock on its own, or none would, the cause is
+  // ambiguous or lies in a non-unknown-related filter, so we fall back to no_match.
   let emptyReason: EmptyReason | null = null;
   if (returned === 0) {
-    const radiusTotal = await countOf(engine, `SELECT count(*) AS n FROM v_property p WHERE ${radiusWhere}`);
-    const allExcludedByUnknown = Object.values(unknownExcluded).some(
-      (n) => radiusTotal > 0 && n === radiusTotal,
+    const relaxable = predicates.filter((p) => p.field !== undefined && p.relaxedSql !== undefined);
+    const relaxedCounts = await Promise.all(
+      relaxable.map((p) => {
+        const relaxedWhere = [
+          radiusWhere,
+          ...predicates.filter((o) => o !== p).map((o) => o.sql),
+          p.relaxedSql as string,
+        ].join(" AND ");
+        return countOf(engine, `SELECT count(*) AS n FROM v_property p WHERE ${relaxedWhere}`);
+      }),
     );
-    emptyReason = allExcludedByUnknown ? "field_not_published" : "no_match";
+    const blockingFields = relaxable.filter((_, i) => (relaxedCounts[i] ?? 0) > 0);
+    emptyReason = blockingFields.length === 1 ? "field_not_published" : "no_match";
   }
 
   return envelope({ rows, returned, total, emptyReason, unknownExcluded, area: echo, run, applied });

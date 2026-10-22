@@ -46,6 +46,12 @@ export function geoFilter(lat: number, lon: number, miles: number, alias = "p"):
   inRange("miles", miles, Number.MIN_VALUE, 25);
   const radiusM = Number((miles * METRES_PER_MILE).toFixed(3));
   const dLat = radiusM / MIN_METRES_PER_DEGREE;
+  // cos(lat) -> 0 as |lat| -> 90 deg, which would blow up dLon; Travis County (≈30.4N) is nowhere
+  // near a pole, and tools/functions.ts's resolveArea doesn't yet reject an out-of-Travis bare
+  // point (A-13 territory, per its own docstring), so this input range is not independently
+  // bounded here either. A-14 review round, 2026-10-22: confirmed real but practically
+  // unreachable for this story's data; not fixed here, tracked alongside the out-of-Travis
+  // bare-point rejection as A-13-dependent follow-up work.
   const dLon = dLat / Math.cos((lat * Math.PI) / 180);
   const la = `${alias}.latitude`;
   const lo = `${alias}.longitude`;

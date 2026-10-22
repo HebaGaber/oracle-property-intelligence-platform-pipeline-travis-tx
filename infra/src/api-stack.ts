@@ -84,10 +84,10 @@ export const MCP_TOKEN_PARAMETER_NAME = "/countylens/mcp/token";
 // --- Agent (A-14 T016, G-2) ---
 // AD-27: the agent Lambda is its own function, independent of both the tRPC query Lambda above
 // (AM-06's 15 s timeout governs a different workload: DuckDB COUNT queries) and the MCP Lambda
-// (AD-21's own blast radius). This block wires the Lambda, the spend-counter DynamoDB table and
-// the 80% alarm now; the real `agent.ask` tool loop (apps/api/src/agent/ask.ts, T019-T022) and
-// its own API Gateway route/throttle land in the wave-2 follow-up — tasks.md scopes T016 to
-// exactly these three resources.
+// (AD-21's own blast radius). This block wires the Lambda, the spend-counter DynamoDB table, the
+// 80% alarm, and (T019-T022 follow-up, Stage 5 review fix) its own HTTP API + route +
+// route-level throttle, the same pattern as the tRPC API above and the MCP Lambda below: its own
+// API, not folded into either, so its blast radius and throttle stay AD-27's own.
 /** Function name, Powertools service name of the agent Lambda (distinct from the other two). */
 export const AGENT_FUNCTION_NAME = "countylens-agent";
 /** AD-27 sizing: the lightest standard tier (1 vCPU), same tier as the MCP Lambda. */
@@ -105,6 +105,17 @@ export const DAILY_SPEND_CAP_USD = 3;
 export const SPEND_ALARM_THRESHOLD_USD = DAILY_SPEND_CAP_USD * 0.8;
 /** Powertools EMF metric name the agent Lambda emits per request (`src/agent/ask.ts`, T022). */
 export const SPEND_METRIC_NAME = "AiSpendUsd";
+/** The HTTP API route path: the tRPC AWS Lambda adapter over `agentRouter` (one procedure,
+ *  `ask`), so the client POSTs `/agent/ask`. */
+export const AGENT_ROUTE_PATH = "/agent/{proxy+}";
+/** Route-level throttle on the agent route (Stage 5 review fix: no specific number was decided
+ *  in research.md/plan.md for this route, unlike the MCP route's documented 5 rps/burst 10). A
+ *  conservative default: Bedrock's own 10 req/min account-wide limit (CLAUDE.md) is the real
+ *  concurrency ceiling for the expensive part of this path, and the DynamoDB spend cap is the
+ *  real cost backstop (agent-design.md "no reserved concurrency" risk note) -- this route
+ *  throttle only exists to stop a client-side retry storm from hammering API Gateway itself,
+ *  well below the tRPC API's 10 rps/burst 20. */
+export const AGENT_THROTTLE = { rateLimit: 2, burstLimit: 5 } as const;
 
 /** Where Lambda unpacks the asset; the extension directory is relative to it. */
 export const LAMBDA_TASK_ROOT = "/var/task";
@@ -272,9 +283,12 @@ export class ApiStack extends Stack {
   readonly mcpStage: apigwv2.HttpStage;
   readonly mcpFunctionLogGroup: logs.LogGroup;
   readonly mcpAccessLogGroup: logs.LogGroup;
-  // --- Agent (T016) ---
+  // --- Agent (T016, T019-T022) ---
   readonly agentFn: nodejs.NodejsFunction;
   readonly agentFunctionLogGroup: logs.LogGroup;
+  readonly agentAccessLogGroup: logs.LogGroup;
+  readonly agentHttpApi: apigwv2.HttpApi;
+  readonly agentStage: apigwv2.HttpStage;
   readonly spendTable: dynamodb.Table;
   readonly spendAlarm: cloudwatch.Alarm;
 
@@ -716,6 +730,72 @@ export class ApiStack extends Stack {
     // Read/increment the daily spend item only (no Scan, no other table).
     this.spendTable.grantReadWriteData(this.agentFn);
 
+    // Its own HTTP API + route (Stage 5 review fix: `agent.ask` had no way in at all). A
+    // separate API from both the tRPC and MCP ones above, same reasoning as those two: AD-27's
+    // own blast radius and throttle, never folded into either.
+    this.agentAccessLogGroup = new logs.LogGroup(this, "AgentAccessLogs", {
+      retention: ACCESS_LOG_RETENTION,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    this.agentHttpApi = new apigwv2.HttpApi(this, "AgentHttp", {
+      apiName: AGENT_FUNCTION_NAME,
+      description:
+        "CountyLens agent.ask (AD-27): the tRPC AWS Lambda adapter over agentRouter's one " +
+        "procedure (`ask`); a separate API from the tRPC query API and the MCP server, its own " +
+        "throttle",
+      createDefaultStage: false,
+    });
+    this.agentHttpApi.addRoutes({
+      path: AGENT_ROUTE_PATH,
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
+      integration: new HttpLambdaIntegration("Agent", this.agentFn, {
+        payloadFormatVersion: apigwv2.PayloadFormatVersion.VERSION_2_0,
+      }),
+    });
+    this.agentStage = new apigwv2.HttpStage(this, "AgentDefault", {
+      httpApi: this.agentHttpApi,
+      stageName: "$default",
+      autoDeploy: true,
+      accessLogSettings: {
+        destination: new apigwv2.LogGroupLogDestination(this.agentAccessLogGroup),
+        format: AccessLogFormat.custom(
+          JSON.stringify({
+            requestId: AccessLogField.contextRequestId(),
+            requestTime: AccessLogField.contextRequestTimeEpoch(),
+            httpMethod: AccessLogField.contextHttpMethod(),
+            routeKey: AccessLogField.contextRouteKey(),
+            path: AccessLogField.contextPath(),
+            status: AccessLogField.contextStatus(),
+            responseLength: AccessLogField.contextResponseLength(),
+            responseLatency: AccessLogField.contextResponseLatency(),
+            integrationLatency: AccessLogField.contextIntegrationLatency(),
+            integrationError: "$context.integrationErrorMessage",
+          }),
+        ),
+      },
+    });
+    // Route-level throttle (same escape hatch as the MCP route above: the L2 HttpStage's
+    // `throttle` prop only sets stage-wide DefaultRouteSettings, so the per-route limit needs
+    // the underlying CfnStage, keyed by the exact route key API Gateway renders).
+    const cfnAgentStage = this.agentStage.node.defaultChild as apigwv2.CfnStage;
+    cfnAgentStage.routeSettings = {
+      [`POST ${AGENT_ROUTE_PATH}`]: {
+        ThrottlingRateLimit: AGENT_THROTTLE.rateLimit,
+        ThrottlingBurstLimit: AGENT_THROTTLE.burstLimit,
+      },
+      [`GET ${AGENT_ROUTE_PATH}`]: {
+        ThrottlingRateLimit: AGENT_THROTTLE.rateLimit,
+        ThrottlingBurstLimit: AGENT_THROTTLE.burstLimit,
+      },
+    };
+    Validations.of(this.agentHttpApi).acknowledge({
+      id: "AwsSolutions-APIG4",
+      reason:
+        "agent.ask is a public, read-only (over published data) procedure with its own spend " +
+        "cap and Bedrock-throttle backstops (ask.ts); it has no per-user data to gate behind an " +
+        "API Gateway authorizer, same posture as the tRPC query API above (FR-013).",
+    });
+
     // The 80% alarm (agent-design.md § "ash" > "Spend-cap + alarm design"): watches the
     // Powertools EMF metric the agent Lambda emits per request. No alarm action is wired here —
     // CountyLensOps (which already fans the Lambda Errors/Throttles/5xx alarms out to the
@@ -756,6 +836,10 @@ export class ApiStack extends Stack {
       );
     }
 
+    new CfnOutput(this, "AgentApiUrl", {
+      value: this.agentHttpApi.apiEndpoint,
+      description: "Agent HTTP API invoke URL: POST /agent/ask",
+    });
     new CfnOutput(this, "AgentFunctionName", {
       value: this.agentFn.functionName,
       description: "Agent Lambda function name",

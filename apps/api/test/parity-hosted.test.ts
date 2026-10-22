@@ -121,18 +121,31 @@ describe("T032: three-way property_cid parity (query-core, MCP, agent.ask)", () 
       const mcp = await searchPropertiesTool(deps, { ...INPUT, manifest_cid: bound.manifestCid } as never);
       const mcpData = mcp.structuredContent as { rows: Row[] };
 
-      const res = await fetch(`${baseUrl}/agent.ask`, {
+      // Stage 5 review fix (Critical #4): the agent Lambda's own tRPC router
+      // (apps/api/src/agent/router.ts) mounts the procedure as `ask`, not `agent.ask` -- the
+      // HTTP API route captures everything after `/agent/` as the tRPC path (infra/src/
+      // api-stack.ts's `AGENT_ROUTE_PATH = "/agent/{proxy+}"`), so the real path is
+      // `${baseUrl}/agent/ask`. `AgentAskInput` (apps/api/src/agent/ask.ts) is `.strict()` and
+      // requires `prompt` (there is no `question`/`sessionQuestionCount` field -- the 10-
+      // question session cap lives client-side per agent-design.md, not in this contract).
+      // tRPC's AWS Lambda adapter expects the no-transformer envelope `{"json": <input>}` for a
+      // mutation POST (confirmed against `@trpc/server/adapters/aws-lambda`'s request parsing).
+      const res = await fetch(`${baseUrl}/agent/ask`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          question: `Properties within 5 miles of ${CENTRE.lat},${CENTRE.lon}?`,
-          turns: [],
-          sessionQuestionCount: 0,
-          manifest_cid: bound.manifestCid,
+          json: {
+            prompt: `Properties within 5 miles of ${CENTRE.lat},${CENTRE.lon}?`,
+            turns: [],
+            manifest_cid: bound.manifestCid,
+          },
         }),
       });
       expect(res.ok).toBe(true);
-      const body = (await res.json()) as { matches: { property_cid: string }[] };
+      const envelope = (await res.json()) as {
+        result: { data: { json: { matches: { property_cid: string }[] } } };
+      };
+      const body = envelope.result.data.json;
       const agentSet = new Set(body.matches.map((m) => m.property_cid));
 
       expect(agentSet).toEqual(propertyCidSet(mcpData.rows));

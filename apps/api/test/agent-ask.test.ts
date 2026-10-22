@@ -55,6 +55,7 @@ function okModelLoop(text = "No roofing permits matched this question."): RunMod
   return async (): Promise<ModelLoopOutput> => ({
     text,
     steps: [{ tool: "searchRoofingPermits", input: {}, summary: "1 tool call(s), 1 result(s)" }],
+    toolOutputs: [],
     totalTokens: 120,
   });
 }
@@ -66,7 +67,7 @@ function slowModelLoop(resolveAfterMs: number): RunModelLoop {
   return (params) =>
     new Promise<ModelLoopOutput>((resolve, reject) => {
       const timer = setTimeout(
-        () => resolve({ text: "too slow to matter", steps: [], totalTokens: 1 }),
+        () => resolve({ text: "too slow to matter", steps: [], toolOutputs: [], totalTokens: 1 }),
         resolveAfterMs,
       );
       params.abortSignal.addEventListener("abort", () => {
@@ -89,10 +90,23 @@ const INPUT = {
   manifest_cid: FAKE_BOUND.manifestCid,
 };
 
+/** A real DynamoDB `ConditionalCheckFailedException` is a named error, not a special class the
+ *  document client re-wraps -- this is the shape `spend.ts`'s `isConditionalCheckFailed` (and
+ *  aws-sdk-client-mock's `.rejects`) both recognise by `.name`. */
+function conditionalCheckFailed(): Error {
+  const error = new Error("The conditional request failed");
+  error.name = "ConditionalCheckFailedException";
+  return error;
+}
+
 beforeEach(() => {
   ddbMock.reset();
   ddbMock.on(GetCommand).resolves({ Item: undefined }); // spentUsd 0 unless a test overrides it
-  ddbMock.on(UpdateCommand).resolves({ Attributes: { pk: "SPEND#2026-10-23", spent_usd: 0, model_calls: 1 } });
+  // reserveSpend's reservation UpdateCommand, and the post-call true-up UpdateCommand, both
+  // succeed by default with a low running total (well under every test's cap).
+  ddbMock
+    .on(UpdateCommand)
+    .resolves({ Attributes: { pk: "SPEND#2026-10-23", spent_usd: 0.05, model_calls: 1 } });
 });
 
 describe("agent.ask outcome taxonomy (T023)", () => {
@@ -104,8 +118,11 @@ describe("agent.ask outcome taxonomy (T023)", () => {
     expect(result.steps).toHaveLength(1);
   });
 
-  it("paused: the daily spend cap is reached (lowered via dailySpendCapUsd override, a documented, reversible config change -- not a fake outcome)", async () => {
-    ddbMock.on(GetCommand).resolves({ Item: { pk: "SPEND#2026-10-23", spent_usd: 0, model_calls: 0 } });
+  it("paused: the daily spend cap is reached (lowered via dailySpendCapUsd override, a documented, reversible config change -- not a fake outcome). The atomic reservation's conditional check fails server-side (DynamoDB), not a client-side >= comparison", async () => {
+    ddbMock.on(UpdateCommand).rejects(conditionalCheckFailed());
+    ddbMock
+      .on(GetCommand)
+      .resolves({ Item: { pk: "SPEND#2026-10-23", spent_usd: 0, model_calls: 0 } });
     const result = await runAgentAsk(
       INPUT,
       baseDeps({ dailySpendCapUsd: 0, runModelLoop: okModelLoop() }),
@@ -116,13 +133,30 @@ describe("agent.ask outcome taxonomy (T023)", () => {
   });
 
   it("paused is checked before any model call is placed: the pre-check short-circuits even if the model loop would otherwise answer", async () => {
+    ddbMock.on(UpdateCommand).rejects(conditionalCheckFailed());
+    ddbMock
+      .on(GetCommand)
+      .resolves({ Item: { pk: "SPEND#2026-10-23", spent_usd: 0, model_calls: 0 } });
     let called = false;
     const loop: RunModelLoop = async () => {
       called = true;
-      return { text: "should never run", steps: [], totalTokens: 1 };
+      return { text: "should never run", steps: [], toolOutputs: [], totalTokens: 1 };
     };
     await runAgentAsk(INPUT, baseDeps({ dailySpendCapUsd: 0, runModelLoop: loop }));
     expect(called).toBe(false);
+  });
+
+  it("the spend-cap gate is one atomic conditional UpdateCommand, not a Get followed by a later, separate Update (Stage 5 review fix, Major #3): the pre-check itself carries a ConditionExpression DynamoDB evaluates against the item's pre-update state, so two concurrent requests cannot both observe 'under the cap' and both proceed -- the race the old read-then-later-write gate allowed", async () => {
+    await runAgentAsk(INPUT, baseDeps({ runModelLoop: okModelLoop() }));
+    const updateCalls = ddbMock.commandCalls(UpdateCommand);
+    const reservation = updateCalls[0]?.args[0].input;
+    expect(reservation).toMatchObject({
+      TableName: "CountyLensAiSpendTest",
+      ConditionExpression: expect.stringContaining("spent_usd"),
+    });
+    expect(String(reservation?.ConditionExpression)).toMatch(/</); // "< :cap"
+    // No Get is used for the gate itself -- only as the paused-path fallback read (tested above).
+    expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
   });
 
   it("throttled: Bedrock's real throttling shape (429 statusCode) surfaces as outcome=throttled, not a thrown error", async () => {
@@ -156,6 +190,35 @@ describe("agent.ask outcome taxonomy (T023)", () => {
     await expect(runAgentAsk(INPUT, baseDeps({ runModelLoop: loop }))).rejects.toThrow(
       "something genuinely unexpected",
     );
+  });
+});
+
+describe("how/query/missing aggregate across every tool call, not just the last (Stage 5 review fix, Major #5)", () => {
+  it("a searchProperties call followed by a geocodePlace disambiguation call last still surfaces searchProperties's applied filters, area and unknown_excluded in how/query/missing", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "Found matches near Pflugerville.",
+      steps: [],
+      totalTokens: 50,
+      toolOutputs: [
+        {
+          matches: [],
+          returned: 0,
+          total: 0,
+          truncated: false,
+          empty_reason: null,
+          unknown_excluded: { roof_age_years: 3 },
+          area: { label: "Pflugerville city · Census 2024 Gazetteer · 30.45, -97.60" },
+          applied: { radius_mi: 5, roof_age_years_min: 15 },
+        },
+        // geocodePlace's own output shape: no `applied` key, so it must not clobber the above.
+        { status: "found", label: "Round Rock city", point: { lat: 30.5, lon: -97.68 } },
+      ],
+    });
+    const result = await runAgentAsk(INPUT, baseDeps({ runModelLoop: loop }));
+    expect(result.outcome).toBe("answered");
+    expect(result.how).toContain("Pflugerville");
+    expect(result.query).toMatchObject({ radius_mi: 5, roof_age_years_min: 15 });
+    expect(result.missing).toContainEqual({ field: "roof_age_years", reason: "unknown" });
   });
 });
 

@@ -36,6 +36,12 @@ import {
 import type { RunsIndexV1 } from "@countylens/contract";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import {
+  correlationIdOf,
+  createMcpObservability,
+  recordToolCall,
+  type McpObservability,
+} from "./observability.js";
 
 /** One bound run, ready for query-core's functions: the engine they run SQL through, and the
  *  BoundRun those functions stamp onto every row/envelope. */
@@ -56,8 +62,16 @@ export interface McpToolDeps {
 
 const FAKE_RUN_ECHO: RunEcho = { run_id: "", manifest_cid: "", as_of: "" };
 
-/** The `run_not_found` envelope for a tool that needs a bound run but couldn't get one. Echoes
- *  the requested `manifestCid` (when the caller named one) rather than inventing a run identity. */
+/** The `run` field every `run_not_found` shape below echoes: the requested `manifestCid` (when
+ *  the caller named one) rather than an invented run identity. The one place that builds a
+ *  `RunEcho` for a run that was never actually bound — every `run_not_found` shape goes through
+ *  this, so there is exactly one echoing rule, not one per tool. */
+function runNotFoundRunEcho(manifestCid: string | undefined): RunEcho {
+  return manifestCid === undefined ? FAKE_RUN_ECHO : { ...FAKE_RUN_ECHO, manifest_cid: manifestCid };
+}
+
+/** The `run_not_found` envelope for a row-returning tool that needs a bound run but couldn't get
+ *  one. */
 function runNotFoundEnvelope<R>(
   manifestCid: string | undefined,
   applied: Record<string, unknown>,
@@ -70,9 +84,19 @@ function runNotFoundEnvelope<R>(
     truncated: false,
     empty_reason: reason,
     unknown_excluded: {},
-    run: manifestCid === undefined ? FAKE_RUN_ECHO : { ...FAKE_RUN_ECHO, manifest_cid: manifestCid },
+    run: runNotFoundRunEcho(manifestCid),
     applied,
   };
+}
+
+/** `get_coverage`'s own return shape is not a `ResultEnvelope` (no `rows`/`total`/`truncated` —
+ *  coverage is a manifest field, not a table), so it needs its own `run_not_found` builder. Typed
+ *  against `getCoverage`'s real return type (not a hand-written fourth shape): a future change to
+ *  that function's return type fails this file to compile, instead of drifting silently. */
+type GetCoverageResult = Awaited<ReturnType<typeof getCoverage>>;
+
+function runNotFoundCoverage(manifestCid: string | undefined): GetCoverageResult {
+  return { coverage: {}, run: runNotFoundRunEcho(manifestCid), empty_reason: "run_not_found" };
 }
 
 /** Every row-returning tool's output doubles as a JSON text block (for a client that only reads
@@ -145,13 +169,7 @@ export async function getCoverageTool(
   input: GetCoverageInput,
 ): Promise<CallToolResult> {
   const ctx = await deps.resolveRun(input.manifest_cid);
-  if (ctx === undefined) {
-    return toolResult({
-      coverage: {},
-      run: input.manifest_cid === undefined ? FAKE_RUN_ECHO : { ...FAKE_RUN_ECHO, manifest_cid: input.manifest_cid },
-      empty_reason: "run_not_found",
-    });
-  }
+  if (ctx === undefined) return toolResult(asRecord(runNotFoundCoverage(input.manifest_cid)));
   const result = await getCoverage(ctx.engine, ctx.bound, input);
   return toolResult(asRecord(result));
 }
@@ -179,7 +197,38 @@ export function getSchemaTool(input: GetSchemaInput): CallToolResult {
 // Registration (AD-21 fixed names; inputSchema is the query-core schema object, unchanged)
 // ---------------------------------------------------------------------------------------
 
-export function registerMcpTools(server: McpServer, deps: McpToolDeps): void {
+/** Wraps one tool's handler with the Stage 5 review fix (CRITICAL): one log line and one
+ *  duration/count metric pair per call, via `recordToolCall`. Timed around the whole adapter
+ *  call (run resolution included), so a `run_not_found` short-circuit is still timed and logged.
+ *  `ok` is `result.isError !== true` on a normal return, `false` on a thrown error (re-thrown
+ *  after recording — the SDK's own `CallToolRequestSchema` handler turns it into an `isError`
+ *  result for the client; this wrapper never swallows it). */
+function timed(
+  obs: McpObservability,
+  tool: string,
+  run: () => Promise<CallToolResult>,
+): () => Promise<CallToolResult> {
+  return async () => {
+    const started = performance.now();
+    let ok = true;
+    try {
+      const result = await run();
+      ok = result.isError !== true;
+      return result;
+    } catch (error) {
+      ok = false;
+      throw error;
+    } finally {
+      recordToolCall(obs, { tool, durationMs: performance.now() - started, ok, ...correlationIdOf(obs) });
+    }
+  };
+}
+
+export function registerMcpTools(
+  server: McpServer,
+  deps: McpToolDeps,
+  obs: McpObservability = createMcpObservability(),
+): void {
   server.registerTool(
     "search_properties",
     {
@@ -190,7 +239,7 @@ export function registerMcpTools(server: McpServer, deps: McpToolDeps): void {
         "every row.",
       inputSchema: SearchPropertiesInput,
     },
-    async (input) => searchPropertiesTool(deps, input),
+    async (input) => timed(obs, "search_properties", () => searchPropertiesTool(deps, input))(),
   );
 
   server.registerTool(
@@ -202,7 +251,7 @@ export function registerMcpTools(server: McpServer, deps: McpToolDeps): void {
         "class, minimum open years, or an exact permit number.",
       inputSchema: ListPermitsInput,
     },
-    async (input) => listPermitsTool(deps, input),
+    async (input) => timed(obs, "list_permits", () => listPermitsTool(deps, input))(),
   );
 
   server.registerTool(
@@ -212,7 +261,7 @@ export function registerMcpTools(server: McpServer, deps: McpToolDeps): void {
       description: "One property by its CID or TCAD request identifier, with its roofing permits.",
       inputSchema: GetPropertyInput,
     },
-    async (input) => getPropertyTool(deps, input),
+    async (input) => timed(obs, "get_property", () => getPropertyTool(deps, input))(),
   );
 
   server.registerTool(
@@ -222,7 +271,7 @@ export function registerMcpTools(server: McpServer, deps: McpToolDeps): void {
       description: "The published run's coverage figures, unchanged, for the latest run or a named manifest_cid.",
       inputSchema: GetCoverageInput,
     },
-    async (input) => getCoverageTool(deps, input),
+    async (input) => timed(obs, "get_coverage", () => getCoverageTool(deps, input))(),
   );
 
   server.registerTool(
@@ -232,7 +281,7 @@ export function registerMcpTools(server: McpServer, deps: McpToolDeps): void {
       description: "The committed runs index: every published run, newest first.",
       inputSchema: ListRunsInput,
     },
-    async (input) => listRunsTool(deps, input),
+    async (input) => timed(obs, "list_runs", () => listRunsTool(deps, input))(),
   );
 
   server.registerTool(
@@ -244,7 +293,7 @@ export function registerMcpTools(server: McpServer, deps: McpToolDeps): void {
         "reason), the uncarried-field list, and the six tools' own JSON Schemas.",
       inputSchema: GetSchemaInput,
     },
-    (input) => getSchemaTool(input),
+    async (input) => timed(obs, "get_schema", () => Promise.resolve(getSchemaTool(input)))(),
   );
 }
 

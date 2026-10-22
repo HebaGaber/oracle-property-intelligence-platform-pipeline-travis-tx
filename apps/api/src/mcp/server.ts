@@ -28,6 +28,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { checkAuth, unauthorized } from "./auth.js";
+import {
+  correlationIdOf,
+  createMcpObservability,
+  recordAuthFailure,
+  type McpObservability,
+} from "./observability.js";
 import { registerMcpTools, type McpToolDeps } from "./tools.js";
 
 /** Must match infra/src/api-stack.ts's `MCP_ROUTE_PATH` (not imported directly: infra depends on
@@ -41,10 +47,15 @@ export const SERVER_NAME = "countylens-mcp";
 export const SERVER_VERSION = "1.0.0";
 
 /** One McpServer per Lambda sandbox (tool registrations are static); a fresh transport connects
- *  to it for every request (stateless mode requires this — see module header). */
-export function buildMcpServer(deps: McpToolDeps): McpServer {
+ *  to it for every request (stateless mode requires this — see module header). `obs` (Stage 5
+ *  review fix) is threaded into every registered tool so each call is logged and metered
+ *  (observability.ts's `recordToolCall`). */
+export function buildMcpServer(
+  deps: McpToolDeps,
+  obs: McpObservability = createMcpObservability(),
+): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
-  registerMcpTools(server, deps);
+  registerMcpTools(server, deps, obs);
   return server;
 }
 
@@ -105,6 +116,11 @@ async function responseToResult(response: Response): Promise<APIGatewayProxyStru
 
 export interface McpHandlerOptions {
   readonly deps: McpToolDeps;
+  /** Stage 5 review fix: shared with `handlers/mcp.ts`'s middy wrapper (`injectLambdaContext`/
+   *  `captureLambdaHandler`/`logMetrics`) so the correlation ID that middleware injects is the
+   *  same one `recordToolCall`/`recordAuthFailure` log here. Defaults to a fresh instance (tests,
+   *  the local stdio build). */
+  readonly obs?: McpObservability;
 }
 
 export type McpEventHandler = (
@@ -115,7 +131,8 @@ export type McpEventHandler = (
  *  `handler`. Separate from that file so tests can construct it with fake `deps` and never touch
  *  DuckDB, S3, or SSM. */
 export function createMcpHandler(options: McpHandlerOptions): McpEventHandler {
-  const server = buildMcpServer(options.deps);
+  const obs = options.obs ?? createMcpObservability();
+  const server = buildMcpServer(options.deps, obs);
 
   return async function handleMcpEvent(
     event: APIGatewayProxyEventV2,
@@ -131,10 +148,16 @@ export function createMcpHandler(options: McpHandlerOptions): McpEventHandler {
 
     // Origin check first (contracts/mcp-tools.md): rejected before the token check runs, so a
     // disallowed browser Origin never even reaches the auth comparison.
-    if (headerValue(event, "origin") !== undefined) return originNotAllowed();
+    if (headerValue(event, "origin") !== undefined) {
+      recordAuthFailure(obs, { reason: "origin_not_allowed", ...correlationIdOf(obs) });
+      return originNotAllowed();
+    }
 
     const auth = await checkAuth(headerValue(event, "authorization"));
-    if (!auth.ok) return unauthorizedResult();
+    if (!auth.ok) {
+      recordAuthFailure(obs, { reason: "unauthorized", ...correlationIdOf(obs) });
+      return unauthorizedResult();
+    }
 
     // sessionIdGenerator omitted (not set to undefined: exactOptionalPropertyTypes treats those
     // differently) -> stateless mode, per the option's own doc: "If not provided, session

@@ -10,6 +10,22 @@ import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-
 /** The daily spend cap (USD) past which `agent.ask` returns `outcome: "paused"` (CLAUDE.md, A7). */
 export const DAILY_SPEND_CAP_USD = 3;
 
+/** Stage 5 review fix (Major #3, alakazam's review): a conservative per-call reservation
+ *  (ask.ts's `reserveSpend` call), trued up to the real cost once token usage is known
+ *  (ask.ts's `recordSpend(..., { incrementModelCalls: false })`). Large enough that a burst of
+ *  concurrent requests cannot all slip through between a read and a later write, small enough
+ *  that it does not itself meaningfully overshoot the $3/day cap on its own. */
+export const SPEND_RESERVATION_USD = 0.05;
+
+function isConditionalCheckFailed(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "ConditionalCheckFailedException"
+  );
+}
+
 export interface SpendStatus {
   /** `SPEND#<utc-date>`'s date part, e.g. "2026-10-23". */
   readonly date: string;
@@ -54,28 +70,81 @@ export async function readSpend(
   return statusFromItem(date, Item);
 }
 
+export interface RecordSpendOptions {
+  /** Default true. `reserveSpend` already incremented `model_calls` at reservation time, so the
+   *  true-up call after the real cost is known passes `false` to avoid double-counting. */
+  readonly incrementModelCalls?: boolean;
+}
+
 /**
- * Adds `deltaUsd` to today's spend and increments `model_calls` by one, after a model call
- * completes. Uses an atomic `ADD` (not a read-modify-write) so concurrent requests on the same
- * UTC day never lose an increment. Never sets a TTL attribute.
+ * Adds `deltaUsd` to today's spend (and, by default, increments `model_calls` by one) after a
+ * model call completes. Uses an atomic `ADD` (not a read-modify-write) so concurrent requests on
+ * the same UTC day never lose an increment; `deltaUsd` may be negative (the true-up after
+ * `reserveSpend`'s reservation turns out to have over-estimated the real cost). Never sets a TTL
+ * attribute.
  */
 export async function recordSpend(
   ddb: DynamoDBDocumentClient,
   tableName: string,
   deltaUsd: number,
   now: Date = new Date(),
+  options: RecordSpendOptions = {},
 ): Promise<SpendStatus> {
+  const incrementModelCalls = options.incrementModelCalls ?? true;
   const date = utcDateKey(now);
   const { Attributes } = await ddb.send(
     new UpdateCommand({
       TableName: tableName,
       Key: { pk: spendKey(date) },
-      UpdateExpression: "ADD spent_usd :delta, model_calls :one",
-      ExpressionAttributeValues: { ":delta": deltaUsd, ":one": 1 },
+      UpdateExpression: incrementModelCalls
+        ? "ADD spent_usd :delta, model_calls :one"
+        : "ADD spent_usd :delta",
+      ExpressionAttributeValues: incrementModelCalls
+        ? { ":delta": deltaUsd, ":one": 1 }
+        : { ":delta": deltaUsd },
       ReturnValues: "ALL_NEW",
     }),
   );
   return statusFromItem(date, Attributes);
+}
+
+/**
+ * Stage 5 review fix (Major #3): the spend-cap gate as one atomic conditional `UpdateCommand`
+ * instead of a separate `readSpend` (check) then a later `recordSpend` (act) -- the gap between
+ * those two calls (while the model call itself runs) is exactly where two concurrent requests
+ * could both observe `spentUsd < cap` and both proceed, overrunning the cap. This reserves
+ * `reservationUsd` up front, conditioned on today's pre-reservation `spent_usd` still being
+ * under `capUsd` (DynamoDB evaluates the condition against the item's state immediately before
+ * applying this update, so concurrent requests on the same day serialize through it one at a
+ * time); `agent.ask` trues the reservation up to the real cost afterwards via `recordSpend(...,
+ * { incrementModelCalls: false })`. On a failed condition (the cap was already reached), no
+ * reservation is taken and the current status is read back so the caller still gets accurate
+ * numbers for its `paused` response.
+ */
+export async function reserveSpend(
+  ddb: DynamoDBDocumentClient,
+  tableName: string,
+  now: Date = new Date(),
+  reservationUsd: number = SPEND_RESERVATION_USD,
+  capUsd: number = DAILY_SPEND_CAP_USD,
+): Promise<SpendStatus> {
+  const date = utcDateKey(now);
+  try {
+    const { Attributes } = await ddb.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { pk: spendKey(date) },
+        UpdateExpression: "ADD spent_usd :delta, model_calls :one",
+        ConditionExpression: "attribute_not_exists(spent_usd) OR spent_usd < :cap",
+        ExpressionAttributeValues: { ":delta": reservationUsd, ":one": 1, ":cap": capUsd },
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return statusFromItem(date, Attributes);
+  } catch (error) {
+    if (isConditionalCheckFailed(error)) return readSpend(ddb, tableName, now);
+    throw error;
+  }
 }
 
 /** Lazily-constructed singleton Document client (one per Lambda sandbox, like `s3-read.ts`). */
