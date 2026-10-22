@@ -216,7 +216,13 @@ async function joinProof(jobId: string, seed: number) {
   }).then((r) => ({ ...r, job_id: jobId }));
 }
 
-export function createService(restate: typeof Restate) {
+export interface BackboneServiceOptions {
+  /** RestatePromise.race (injectable for tests that use a strict fake context). */
+  race?: (values: Array<Restate.RestatePromise<never>>) => Restate.RestatePromise<unknown>;
+}
+
+export function createService(restate: typeof Restate, options: BackboneServiceOptions = {}) {
+  const race = options.race ?? ((values) => restate.RestatePromise.race(values));
   const runBody = async (ctx: Restate.WorkflowContext, req: z.infer<typeof RunRequest>): Promise<BackboneResult> => {
     // A deterministic error inside a journaled step is terminal, not retried forever (CR-3).
     const step = <T>(name: string, fn: () => Promise<T>): Promise<T> =>
@@ -261,6 +267,22 @@ export function createService(restate: typeof Restate) {
       },
       download: (request) => sourceClient().download(request),
       runChunk: (spec) => chunks.run(spec),
+      // The SDK allows ONE pending awaitNext per context, and every .then/.catch/await on a
+      // RestatePromise registers one. So the in-flight chunk calls are never awaited one by
+      // one (nor given a handler): they are raced as ONE combinator, tagged by index with
+      // .map (no await). The mapper returns the failure instead of throwing it, so a failed
+      // chunk is rethrown here, at this await, as the TerminalError it is.
+      raceChunks: async (calls) => {
+        type Tagged = { index: number; outcome?: Awaited<ReturnType<typeof chunks.run>>; failure?: unknown };
+        const tagged = calls.map((call, index) =>
+          (call as unknown as Restate.RestatePromise<Awaited<ReturnType<typeof chunks.run>>>).map(
+            (outcome, failure): Tagged => ({ index, ...(failure ? { failure } : { outcome }) }),
+          ),
+        );
+        const won = (await race(tagged as never)) as Tagged;
+        if (won.failure) throw won.failure;
+        return { index: won.index, outcome: won.outcome as NonNullable<Tagged["outcome"]> };
+      },
       listInputs: () => readdirSync(dirname(src.exportPath)).map((n) => join(dirname(src.exportPath), n)),
       records: (path) => streamExportRecords(path),
       // journaled: the progress figure derived from it is written with ctx.set

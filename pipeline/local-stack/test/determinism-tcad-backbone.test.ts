@@ -8,7 +8,7 @@ import * as restate from "@restatedev/restate-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { sha256Text, type ExportRecordText } from "../../oracle-runtime/travis/tcad/export-stream.js";
 import type { ChunkSpec } from "../../oracle-runtime/travis/tcad/workflow.js";
-import { FakeJournal, recordThenReplay } from "../../oracle-runtime/test/travis/a04/fake-restate-ctx.js";
+import { FakeJournal, strictRace, recordThenReplay } from "../../oracle-runtime/test/travis/a04/fake-restate-ctx.js";
 
 const h = vi.hoisted(() => ({ dir: "", healthy: true }));
 
@@ -63,7 +63,7 @@ const outcome = (spec: ChunkSpec) => ({
 describe("TcadBackbone.run replays deterministically", () => {
   it("same ctx.set / run / sleep / call sequence under a shifted clock and different Math.random", async () => {
     mkdirSync(join(h.dir, "run"), { recursive: true });
-    const def = createService(restate) as unknown as { workflow: { run: (c: unknown, r: unknown) => Promise<unknown> } };
+    const def = createService(restate, { race: strictRace as never }) as unknown as { workflow: { run: (c: unknown, r: unknown) => Promise<unknown> } };
     const run = def.workflow.run;
     const jobId = "travis-a04-20261022999999";
     const journal = new FakeJournal();

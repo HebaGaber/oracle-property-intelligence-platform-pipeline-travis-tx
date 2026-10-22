@@ -177,8 +177,18 @@ export interface BackboneDeps {
   waitForHuman(name: string, why: string): Promise<Resolution>;
   /** The source client's download (one identified request, StopOnBlocked). */
   download(request: DownloadRequest): Promise<DownloadResult>;
-  /** One TcadChunk child (a journaled child call). */
+  /** One TcadChunk child (a journaled child call). Never attach .then/.catch/await to it: see raceChunks. */
   runChunk(spec: ChunkSpec): Promise<ChunkOutcome>;
+  /**
+   * Waits for the first of the in-flight chunk calls to complete and returns its index (in
+   * `calls`) and outcome; a failed chunk rejects here. A durable binding MUST build this from
+   * the SDK's RestatePromise.race (+ map), because the SDK allows one pending awaitNext per
+   * context: a handler on each in-flight call plus any other await ("awaitNext already
+   * pending") breaks the run. Absent: a plain-Promise race (tests).
+   */
+  raceChunks?(
+    calls: ReadonlyArray<Promise<ChunkOutcome>>,
+  ): Promise<{ index: number; outcome: ChunkOutcome }>;
   /** Files currently in the export's directory. */
   listInputs(): string[];
   records(path: string): AsyncIterable<ExportRecordText>;
@@ -374,13 +384,21 @@ export async function runTcadBackbone(
     capturedAt: input.receipt.captured_at,
   };
   const outcomes: ChunkOutcome[] = [];
+  // In-flight chunk calls. No handler is ever attached to one of them (each .then/.catch/await
+  // on a RestatePromise registers an awaitNext, and the SDK allows one at a time): they are only
+  // awaited through deps.raceChunks, and only while no other durable operation is pending, i.e.
+  // when the window is full and at the end. A failing chunk is reported at that next await
+  // (a RestatePromise is lazy: it never raises an unhandledRejection).
   const inflight: Array<Promise<ChunkOutcome>> = [];
-  // CR-4: a rejection handler is attached when a chunk starts, so a chunk that fails while the
-  // stream loop is still awaiting is never an unhandled rejection; the first failure is kept
-  // and thrown at the next record/flush (the awaited promise still rejects as well).
-  let failure: { error: unknown } | null = null;
-  const failFast = (): void => {
-    if (failure !== null) throw failure.error;
+  const race =
+    deps.raceChunks ??
+    ((calls) => {
+      return Promise.race(calls.map((c, index) => c.then((outcome) => ({ index, outcome }))));
+    });
+  const awaitOneChunk = async (): Promise<void> => {
+    const { index, outcome } = await race(inflight);
+    inflight.splice(index, 1);
+    await finished(outcome);
   };
   let batch: ExportRecordText[] = [];
   let n = 0;
@@ -440,7 +458,6 @@ export async function runTcadBackbone(
     }
   };
   const flush = async (): Promise<void> => {
-    failFast();
     // journaled once (deps.now), so the rate is measured from the same instant after a replay
     startedAt ??= (await deps.now()).getTime();
     await sleep(pause, "batch-pause");
@@ -465,17 +482,15 @@ export async function runTcadBackbone(
           : {}),
       };
     });
-    if (inflight.length >= window)
-      await finished(await (inflight.shift() as Promise<ChunkOutcome>));
-    const child = deps.runChunk(spec);
-    child.catch((error: unknown) => {
-      failure ??= { error };
-    });
-    inflight.push(child);
+    while (inflight.length >= window) await awaitOneChunk();
+    const call = deps.runChunk(spec);
+    // plain promises only: a failure before it is raced is not an unhandled rejection. With
+    // raceChunks the call is a lazy RestatePromise and must stay untouched.
+    if (deps.raceChunks === undefined) call.catch(() => undefined);
+    inflight.push(call);
     await report();
   };
   for await (const rec of deps.records(input.exportPath)) {
-    failFast();
     if (wanted !== null) {
       const pid = pidOfText(rec.text);
       if (pid === null || !wanted.has(pid)) continue;
@@ -485,7 +500,7 @@ export async function runTcadBackbone(
     if (batch.length >= size) await flush();
   }
   if (batch.length > 0) await flush();
-  while (inflight.length > 0) await finished(await (inflight.shift() as Promise<ChunkOutcome>));
+  while (inflight.length > 0) await awaitOneChunk();
   if (wanted !== null && seen !== wanted.size) {
     throw new RunDataError(`pilot: ${wanted.size - seen} seed pIDs are not in the export`);
   }

@@ -15,6 +15,73 @@ export class JournalMismatch extends Error {
   }
 }
 
+/**
+ * Strict like the real SDK (external_progress_channel.ts): a RestatePromise that is not yet
+ * settled registers an awaitNext on its first .then/.catch/.finally/await, and only ONE may be
+ * pending per context; a second throws "awaitNext already pending". Combinators (strictRace)
+ * poll as one, without touching their children. Promises are lazy: a rejection with no
+ * handler is not an unhandledRejection.
+ */
+export class FakeRestatePromise<T> implements PromiseLike<T> {
+  settled = false;
+  polling = false;
+  constructor(
+    readonly gate: { pending: number },
+    readonly inner: Promise<T>,
+    presettled = false,
+  ) {
+    this.settled = presettled;
+    const done = (): void => {
+      this.settled = true;
+      if (this.polling) {
+        this.polling = false;
+        gate.pending -= 1;
+      }
+    };
+    // marks the rejection as handled (a RestatePromise is lazy) without registering an await
+    inner.then(done, done);
+  }
+  private poll(): void {
+    if (this.settled || this.polling) return;
+    if (this.gate.pending > 0) throw new Error("[500 Internal] awaitNext already pending");
+    this.polling = true;
+    this.gate.pending += 1;
+  }
+  then<A = T, B = never>(
+    onfulfilled?: ((v: T) => A | PromiseLike<A>) | null,
+    onrejected?: ((e: unknown) => B | PromiseLike<B>) | null,
+  ): Promise<A | B> {
+    this.poll();
+    return this.inner.then(onfulfilled, onrejected);
+  }
+  catch<B = never>(onrejected?: ((e: unknown) => B | PromiseLike<B>) | null): Promise<T | B> {
+    this.poll();
+    return this.inner.catch(onrejected);
+  }
+  finally(onfinally?: (() => void) | null): Promise<T> {
+    this.poll();
+    return this.inner.finally(onfinally);
+  }
+  map<U>(
+    mapper: (value: T | undefined, failure?: unknown) => U | PromiseLike<U>,
+  ): FakeRestatePromise<U> {
+    return new FakeRestatePromise(
+      this.gate,
+      this.inner.then(
+        (v) => mapper(v, undefined),
+        (e) => mapper(undefined, e),
+      ),
+    );
+  }
+}
+
+/** RestatePromise.race over fake promises: one await for the whole set, children untouched. */
+export function strictRace<T>(values: ReadonlyArray<FakeRestatePromise<T>>): FakeRestatePromise<T> {
+  const first = values[0];
+  if (first === undefined) throw new Error("race of nothing");
+  return new FakeRestatePromise(first.gate, Promise.race(values.map((v) => v.inner)));
+}
+
 type Call = (req: unknown) => Promise<unknown>;
 export interface FakeClient {
   merge: Call;
@@ -47,7 +114,15 @@ export class FakeJournal {
   ctx(key: string, onCall: CallHandler, sleepAdvances = true): FakeCtx {
     let cursor = 0;
     this.ops = [];
-    const step = async <T>(op: Op, live: () => Promise<T> | T): Promise<T> => {
+    const gate = { pending: 0 };
+    const wrap = <T>(inner: Promise<T>, presettled: boolean): Promise<T> =>
+      new FakeRestatePromise(gate, inner, presettled) as unknown as Promise<T>;
+    const step = <T>(op: Op, live: () => Promise<T> | T): Promise<T> => {
+      const at = cursor;
+      const replayed = this.entries[at] !== undefined && this.entries[at]?.thrown === undefined;
+      return wrap(run(op, live), replayed);
+    };
+    const run = async <T>(op: Op, live: () => Promise<T> | T): Promise<T> => {
       this.ops.push(op);
       const at = cursor++;
       const prior = this.entries[at];
@@ -99,9 +174,9 @@ export class FakeJournal {
         }
         this.state.set(k, op.payload);
       },
-      get: async (k) => {
+      get: (k) => {
         const v = this.state.get(k);
-        return v === undefined ? null : JSON.parse(v);
+        return wrap(Promise.resolve(v === undefined ? null : JSON.parse(v)), true);
       },
       rand: {
         uuidv4: () => {
