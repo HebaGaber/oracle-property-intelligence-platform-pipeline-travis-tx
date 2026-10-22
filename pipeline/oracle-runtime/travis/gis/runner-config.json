@@ -1,7 +1,7 @@
 {
   "mode": "full",
   "attempt": 3,
-  "enabled": true,
+  "enabled": false,
   "layerUrl": "https://gis.traviscountytx.gov/server1/rest/services/CIPStoryMap/Main_Location_Map2/MapServer/6",
   "outFields": ["OBJECTID", "PROP_ID", "geo_id"],
   "pidField": "PROP_ID",
