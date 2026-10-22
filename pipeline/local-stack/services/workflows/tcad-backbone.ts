@@ -13,9 +13,9 @@ import type * as Restate from "@restatedev/restate-sdk";
 import type postgres from "postgres";
 import { z } from "zod";
 import { createSourceClient, type SourceClient } from "../../../oracle-runtime/travis/lib/source-client.js";
-import { fetchDataGroupCids } from "../../../oracle-runtime/travis/transforms/lexicon-manifest.js";
+import { fetchDataGroupCids, type DataGroupCids } from "../../../oracle-runtime/travis/transforms/lexicon-manifest.js";
 import { verifyExport } from "../../../oracle-runtime/travis/tcad/export-verify.js";
-import { streamExportRecords } from "../../../oracle-runtime/travis/tcad/export-stream.js";
+import { streamExportRecords, type ExportRecordText } from "../../../oracle-runtime/travis/tcad/export-stream.js";
 import { exportSource, runDirFor } from "../../../oracle-runtime/travis/tcad/export-source.js";
 import { createKeyInventory } from "../../../oracle-runtime/travis/tcad/key-inventory.js";
 import { processRecord } from "../../../oracle-runtime/travis/tcad/process.js";
@@ -53,6 +53,11 @@ const RunRequest = z.object({
   chunkSize: z.number().int().min(CHUNK_SIZE_RANGE.min).max(CHUNK_SIZE_RANGE.max).optional(),
   window: z.number().int().min(WINDOW_RANGE.min).max(WINDOW_RANGE.max).optional(),
   batchPauseMs: z.number().int().min(BATCH_PAUSE_RANGE.min).max(BATCH_PAUSE_RANGE.max).optional(),
+});
+export const WriteGroupRequest = z.object({
+  jobId: z.string(),
+  pids: z.array(z.string().regex(/^[1-9][0-9]*$/)).min(1).optional(),
+  out: z.string().startsWith("/").optional(),
 });
 const ResolveRequest = z.object({ attempt: z.number().int().nonnegative(), action: z.enum(["download", "abort"]) });
 
@@ -99,10 +104,16 @@ const isUnassembled = (e: unknown): boolean =>
 export async function coordinateRows(
   sql: postgres.Sql,
   jobId: string,
+  pids?: readonly string[],
 ): Promise<{ coords: Map<string, Coord>; assembled: boolean }> {
   try {
-    const rows = await sql<Array<{ request_identifier: string; latitude: number | null; longitude: number | null; coordinate_source: string | null }>>`
-      SELECT request_identifier, latitude, longitude, coordinate_source FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R'`;
+    type CoordRow = { request_identifier: string; latitude: number | null; longitude: number | null; coordinate_source: string | null };
+    const rows =
+      pids === undefined
+        ? await sql<CoordRow[]>`
+      SELECT request_identifier, latitude, longitude, coordinate_source FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R'`
+        : await sql<CoordRow[]>`
+      SELECT request_identifier, latitude, longitude, coordinate_source FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R' AND request_identifier IN ${sql(pids as string[])}`;
     return {
       assembled: true,
       coords: new Map(
@@ -116,8 +127,12 @@ export async function coordinateRows(
     // Only "not assembled yet" (0201_gis not applied) falls back; any other error propagates
     // so a database problem never writes a County group with every coordinate `none`.
     if (!isUnassembled(error)) throw error;
-    const rows = await sql<Array<{ request_identifier: string }>>`
-      SELECT request_identifier FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R'`;
+    const rows =
+      pids === undefined
+        ? await sql<Array<{ request_identifier: string }>>`
+      SELECT request_identifier FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R'`
+        : await sql<Array<{ request_identifier: string }>>`
+      SELECT request_identifier FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R' AND request_identifier IN ${sql(pids as string[])}`;
     return {
       assembled: false,
       coords: new Map(rows.map((r) => [r.request_identifier, { latitude: null, longitude: null, source: "none" as const }])),
@@ -150,32 +165,54 @@ export async function parcelIdsExistFor(sql: postgres.Sql, ids: readonly string[
   return new Set(rows.map((r) => r.request_identifier));
 }
 
-/** County group for one job: R parcels with their assembled coordinates (read-only SQL). */
-async function writeGroup(jobId: string) {
-  const sql = queryDb();
-  const { coords, assembled } = await coordinateRows(sql, jobId);
+export interface WriteGroupOptions {
+  /** Rewrite only these pIDs' zips (read from the Query DB's parcels and the export). */
+  pids?: readonly string[];
+  /** Absolute output directory; default is the run's `groups/county`. */
+  out?: string;
+}
+
+export interface WriteGroupDeps {
+  sql: postgres.Sql;
+  cids: DataGroupCids;
+  records: () => AsyncIterable<ExportRecordText>;
+  receipt: { sha256: string; captured_at: string };
+  /** Default output directory (the run's `groups/county`). */
+  defaultDir: string;
+}
+
+/** County group for one job (or just `opts.pids`): R parcels with their assembled coordinates. */
+export async function writeGroupWith(deps: WriteGroupDeps, jobId: string, opts: WriteGroupOptions = {}) {
+  const { sql } = deps;
+  const wanted = opts.pids === undefined ? null : new Set(opts.pids);
+  const { coords, assembled } = await coordinateRows(sql, jobId, opts.pids);
   const asOf = await runAsOf(sql, jobId);
-  const src = exportSource();
-  const cids = (await fetchDataGroupCids()).cids;
-  const dir = join(runDirFor(jobId), "groups", "county");
+  const dir = opts.out ?? deps.defaultDir;
   const inventory = createKeyInventory();
-  const ctx = { jobId, asOf, exportSha256: src.receipt.sha256, capturedAt: src.receipt.captured_at };
+  const ctx = { jobId, asOf, exportSha256: deps.receipt.sha256, capturedAt: deps.receipt.captured_at };
   const geometry: Record<string, number> = {};
+  const seen = new Set<string>();
   let zips = 0;
   let outOfScope = 0;
+  let fallback = 0;
   let batch: GroupInput[] = [];
   const flush = (): void => {
-    const plan = planCountyGroup(batch, cids);
+    const plan = planCountyGroup(batch, deps.cids);
     zips += writeCountyZips(dir, plan.groups).length;
     outOfScope += plan.out_of_scope.length;
-    for (const g of plan.groups) geometry[g.geometry_rule] = (geometry[g.geometry_rule] ?? 0) + 1;
+    for (const g of plan.groups) {
+      geometry[g.geometry_rule] = (geometry[g.geometry_rule] ?? 0) + 1;
+      fallback += g.mailing_address_fallback;
+      seen.add(g.pID);
+    }
     batch = [];
   };
-  for await (const rec of streamExportRecords(src.exportPath)) {
+  for await (const rec of deps.records()) {
     const out = processRecord(rec, ctx, inventory);
     const l = out.loaded;
     if (l === undefined) continue;
     if (l.parcel.prop_type !== "R") continue;
+    if (wanted !== null && !wanted.has(l.parcel.request_identifier)) continue;
     const c = coords.get(l.parcel.request_identifier);
     if (c === undefined) continue;
     batch.push({
@@ -193,8 +230,33 @@ async function writeGroup(jobId: string) {
     if (batch.length >= 1000) flush();
   }
   if (batch.length > 0) flush();
-  const nonR = await sql<Array<{ n: number }>>`SELECT count(*)::int AS n FROM parcels WHERE job_id = ${jobId} AND prop_type <> 'R'`;
-  return { zips, out_of_scope: outOfScope + (nonR[0]?.n ?? 0), dir: dir.replace(/^.*\/pipeline\//, "pipeline/"), geometry };
+  const nonR =
+    wanted !== null
+      ? []
+      : await sql<Array<{ n: number }>>`SELECT count(*)::int AS n FROM parcels WHERE job_id = ${jobId} AND prop_type <> 'R'`;
+  return {
+    zips,
+    out_of_scope: outOfScope + (nonR[0]?.n ?? 0),
+    dir: dir.replace(/^.*\/pipeline\//, "pipeline/"),
+    geometry,
+    mailing_address_fallback: fallback,
+    ...(wanted === null ? {} : { missing_pids: [...wanted].filter((p) => !seen.has(p)) }),
+  };
+}
+
+async function writeGroup(jobId: string, opts: WriteGroupOptions = {}) {
+  const src = exportSource();
+  return writeGroupWith(
+    {
+      sql: queryDb(),
+      cids: (await fetchDataGroupCids()).cids,
+      records: () => streamExportRecords(src.exportPath),
+      receipt: src.receipt,
+      defaultDir: join(runDirFor(jobId), "groups", "county"),
+    },
+    jobId,
+    opts,
+  );
 }
 
 async function joinProof(jobId: string, seed: number) {
@@ -353,14 +415,14 @@ export function createService(restate: typeof Restate, options: BackboneServiceO
         return { resolved: name };
       },
       writeGroup: async (ctx: Restate.WorkflowSharedContext, raw: unknown) => {
-        const parsed = z.object({ jobId: z.string() }).safeParse(raw);
+        const parsed = WriteGroupRequest.safeParse(raw);
         if (!parsed.success || parsed.data.jobId !== ctx.key) {
           throw new restate.TerminalError("TcadBackbone.writeGroup: jobId must be the key");
         }
-        const jobId = parsed.data.jobId;
+        const { jobId, pids, out } = parsed.data;
         return ctx.run("write-group", async () => {
           try {
-            return await writeGroup(jobId);
+            return await writeGroup(jobId, { ...(pids ? { pids } : {}), ...(out ? { out } : {}) });
           } catch (error) {
             throw asTerminal(restate, error) ?? error;
           }

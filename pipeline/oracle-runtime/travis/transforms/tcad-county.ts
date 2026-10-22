@@ -135,6 +135,8 @@ export interface CountyTransformCounts {
   confidential_basis: string[];
   sales_dated: number;
   owners_unparsed: number;
+  /** Mailing addresses written in the `unnormalized_address` form (a component broke a pattern). */
+  mailing_address_fallback: number;
   warnings: string[];
 }
 
@@ -163,34 +165,83 @@ function saleDate(value: string | null | undefined): string | null {
 
 type Owner = TcadRecord["owners"][number];
 
+// Lexicon `address` constraints for a mailing address (schema oneOf: structured | unnormalized):
+//   city_name ^[A-Z\s\-']+$ · state_code ^[A-Z]{2}$ · postal_code ^\d{5}$ ·
+//   plus_four_postal_code ^\d{4}$ · country_code any non-empty string · every field is
+//   string|null with minLength 1; the structured form requires the street_*, unit, route,
+//   township, range, section and block keys (null allowed); the unnormalized form requires
+//   `unnormalized_address` and takes no street_* key.
+const CITY_PATTERN = /^[A-Z\s\-']+$/;
+const STATE_PATTERN = /^[A-Z]{2}$/;
+const ZIP_PATTERN = /^(\d{5})(?:-?(\d{4}))?$/;
+
+/** Upper-cased, accent-folded, trimmed, whitespace-collapsed (a deterministic city form). */
+export function normalizeCity(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u2018\u2019\u02bc]/g, "'")
+    .replace(/\./g, " ")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const printed = (v: unknown): string =>
+  typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
+
+/**
+ * The owner's mailing address. Each component is normalised first; when every component then
+ * satisfies the lexicon, the structured form is written (unchanged for clean addresses).
+ * When any component still violates its pattern, the address is written in the lexicon's
+ * `unnormalized_address` form from the components as printed, so nothing is dropped or invented.
+ */
 function mailingAddress(
   owner: Owner,
   base: Record<string, unknown>,
-): Record<string, unknown> | null {
-  const zip = (owner.addrZip ?? "").trim();
-  const m = /^(\d{5})(?:-(\d{4}))?$/.exec(zip);
-  if (!m && !nonEmpty(owner.addrState) && !nonEmpty(owner.addrCity)) return null;
+): { address: Record<string, unknown>; fallback: boolean } | null {
+  const rawCity = printed(owner.addrCity);
+  const rawState = printed(owner.addrState);
+  const rawZip = printed(owner.addrZip);
+  if (rawCity === "" && rawState === "" && rawZip === "") return null;
+  const city = rawCity === "" ? null : normalizeCity(rawCity);
+  const state = rawState === "" ? null : rawState.toUpperCase();
+  const zip = rawZip === "" ? null : ZIP_PATTERN.exec(rawZip);
+  const country = printed(owner.addrCountry).toUpperCase();
+  const valid =
+    (city === null || CITY_PATTERN.test(city)) &&
+    (state === null || STATE_PATTERN.test(state)) &&
+    (rawZip === "" || zip !== null);
+  if (!valid) {
+    const unit = (owner as Record<string, unknown>).addrUnitDesignator;
+    const text = [owner.addrDeliveryLine, unit, rawCity, rawState, rawZip, owner.addrCountry]
+      .map(printed)
+      .filter((part) => part !== "")
+      .join(", ");
+    return { address: { ...base, unnormalized_address: text }, fallback: true };
+  }
   return {
-    ...base,
-    street_number: null,
-    street_pre_directional_text: null,
-    street_name: null,
-    street_suffix_type: null,
-    street_post_directional_text: null,
-    unit_identifier: null,
-    city_name: nonEmpty(owner.addrCity) ? (owner.addrCity as string).trim() : null,
-    state_code: /^[A-Z]{2}$/.test((owner.addrState ?? "").trim())
-      ? (owner.addrState as string).trim()
-      : null,
-    postal_code: m ? (m[1] as string) : null,
-    plus_four_postal_code: m?.[2] ?? null,
-    country_code: nonEmpty(owner.addrCountry) ? (owner.addrCountry as string).trim() : null,
-    route_number: null,
-    block: null,
-    lot: null,
-    section: null,
-    township: null,
-    range: null,
+    fallback: false,
+    address: {
+      ...base,
+      street_number: null,
+      street_pre_directional_text: null,
+      street_name: null,
+      street_suffix_type: null,
+      street_post_directional_text: null,
+      unit_identifier: null,
+      city_name: city,
+      state_code: state,
+      postal_code: zip ? (zip[1] as string) : null,
+      plus_four_postal_code: zip?.[2] ?? null,
+      country_code: country === "" ? null : country,
+      route_number: null,
+      block: null,
+      lot: null,
+      section: null,
+      township: null,
+      range: null,
+    },
   };
 }
 
@@ -278,6 +329,7 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
 
   let owner: OwnerOutcome = "none";
   let unparsed = 0;
+  let mailingFallback = 0;
   if (confidential) owner = "suppressed";
   else if (record.owners.length > 0 && dated.length === 0) owner = "no_dated_sale";
   else if (record.owners.length > 0) {
@@ -329,9 +381,10 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
       }
       const mailing = mailingAddress(o, base);
       if (mailing) {
+        if (mailing.fallback) mailingFallback += 1;
         const n = persons + companies;
         const addr = `mailing_address_${n}.json`;
-        files[addr] = jsonFile(mailing);
+        files[addr] = jsonFile(mailing.address);
         const kind = entity.startsWith("person_") ? "person" : "company";
         many(
           `${kind}_has_mailing_address`,
@@ -367,6 +420,7 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
       confidential_basis: basis,
       sales_dated: dated.length,
       owners_unparsed: unparsed,
+      mailing_address_fallback: mailingFallback,
       warnings,
     },
   };

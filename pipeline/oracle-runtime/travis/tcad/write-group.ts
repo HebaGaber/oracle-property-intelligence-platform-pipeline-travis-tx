@@ -8,7 +8,7 @@
 // the coordinates are assembled (pilot), the `real` TCAD export point stands in, rule
 // `unassembled_pilot_export_point`. Every input record is the redacted one (redact.ts): a
 // confidential owner never reaches a zip.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
 import { buildSeedRow } from "../pilot/build-seed.js";
@@ -42,11 +42,32 @@ export interface CountyGroup {
   dir: string;
   files: Record<string, string>;
   geometry_rule: GeometryRule;
+  /** Mailing addresses written in the `unnormalized_address` form (tcad-county.ts). */
+  mailing_address_fallback: number;
 }
 
 export interface GroupPlan {
   groups: CountyGroup[];
   out_of_scope: Array<{ pID: string; prop_type: PropType }>;
+}
+
+const PID = /^[1-9][0-9]*$/;
+
+/**
+ * `--pids` value: a comma / whitespace separated list of pIDs, or the path of a file holding
+ * one. Duplicates are dropped; a value that is not a pID is an error (nothing is guessed).
+ */
+export function parsePidList(
+  value: string,
+  readFile: (path: string) => string | null = (path) =>
+    existsSync(path) ? readFileSync(path, "utf8") : null,
+): string[] {
+  const text = readFile(value) ?? value;
+  const pids = [...new Set(text.split(/[\s,]+/).filter((t) => t !== ""))];
+  const bad = pids.find((t) => !PID.test(t));
+  if (bad !== undefined) throw new Error(`--pids: "${bad}" is not a pID`);
+  if (pids.length === 0) throw new Error("--pids: no pIDs given");
+  return pids;
 }
 
 function geometryFor(input: GroupInput): {
@@ -92,7 +113,13 @@ export function planCountyGroup(inputs: readonly GroupInput[], cids: DataGroupCi
       roofAge: null,
       yearBuilt: input.yearBuilt,
     });
-    groups.push({ pID: t.pID, dir: t.dir, files: t.files, geometry_rule: rule });
+    groups.push({
+      pID: t.pID,
+      dir: t.dir,
+      files: t.files,
+      geometry_rule: rule,
+      mailing_address_fallback: t.counts.mailing_address_fallback,
+    });
   }
   return { groups, out_of_scope: out };
 }

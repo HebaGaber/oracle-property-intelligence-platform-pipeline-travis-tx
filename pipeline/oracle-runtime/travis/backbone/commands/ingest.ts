@@ -2,10 +2,15 @@
 // the whole export through the Restate ingress (never the Query DB) and polls its status:
 // complete → 0 · failed → 1 · blocked → 2 · waiting_human → 3 (a missing / mismatched export,
 // or a 403 on the one allowed download). Extra flags on the same verb:
-//   --write-group --job <jobId>          the County group (R only, gis_centroid geometry only)
+//   --write-group --job <jobId> [--pids <list|file>] [--out <dir>]
+//                                        the County group (R only, gis_centroid geometry only);
+//                                        --pids rewrites only those pIDs' zips (comma list or a
+//                                        file of pIDs), --out writes them into <dir>
 //   --join-proof --job <jobId> --seed <n> the read-only 1,000-row geoID→pID proof + reverse
 // Prints counts and paths only.
+import { resolve } from "node:path";
 import { z } from "zod";
+import { parsePidList } from "../../tcad/write-group.js";
 import type { BackboneCommand, ExitCode } from "../cli.js";
 import type { RunContext } from "../run-context.js";
 import {
@@ -32,6 +37,10 @@ const Args = z
     writeGroup: z.literal(true).optional(),
     joinProof: z.literal(true).optional(),
     job: JobId.optional(),
+    /** --write-group only: pIDs (comma list, or a file path) whose zips are rewritten. */
+    pids: z.string().min(1).optional(),
+    /** --write-group only: output directory for the rewritten zips. */
+    out: z.string().min(1).optional(),
     seed: z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative()]).optional(),
     /** Poll interval in ms (tests pass 0). */
     pollMs: z.number().int().nonnegative().optional(),
@@ -53,6 +62,9 @@ const Args = z
   )
   .refine((a) => (a.track !== undefined ? a.job === undefined : a.job !== undefined), {
     message: "--write-group and --join-proof need --job <jobId>; --track appraisal takes none",
+  })
+  .refine((a) => a.writeGroup === true || (a.pids === undefined && a.out === undefined), {
+    message: "--pids and --out belong to --write-group",
   })
   .refine((a) => (a.joinProof === true) === (a.seed !== undefined), {
     message: "--join-proof needs --seed <int>",
@@ -118,6 +130,8 @@ const GroupOut = z.looseObject({
   out_of_scope: z.number().int(),
   dir: z.string(),
   geometry: z.record(z.string(), z.number()),
+  mailing_address_fallback: z.number().int().optional(),
+  missing_pids: z.array(z.string()).optional(),
 });
 const ProofOut = z.looseObject({
   pass: z.boolean(),
@@ -136,11 +150,23 @@ export const command: BackboneCommand<IngestArgs> = {
   async run(ctx, args) {
     if (args.writeGroup === true && args.job !== undefined) {
       const out = GroupOut.parse(
-        await ctx.ingress.call("TcadBackbone", "writeGroup", { jobId: args.job }, args.job),
+        await ctx.ingress.call(
+          "TcadBackbone",
+          "writeGroup",
+          {
+            jobId: args.job,
+            ...(args.pids !== undefined ? { pids: parsePidList(args.pids) } : {}),
+            ...(args.out !== undefined ? { out: resolve(args.out) } : {}),
+          },
+          args.job,
+        ),
       );
       ctx.print(
-        `county_group: zips=${out.zips} out_of_scope=${out.out_of_scope} geometry=${JSON.stringify(out.geometry)} dir=${out.dir}`,
+        `county_group: zips=${out.zips} out_of_scope=${out.out_of_scope} geometry=${JSON.stringify(out.geometry)} mailing_address_fallback=${out.mailing_address_fallback ?? 0} dir=${out.dir}`,
       );
+      if (out.missing_pids !== undefined && out.missing_pids.length > 0) {
+        ctx.print(`county_group: missing_pids=${out.missing_pids.length}`);
+      }
       return { jobId: args.job, exitCode: 0 };
     }
     if (args.joinProof === true && args.job !== undefined) {
