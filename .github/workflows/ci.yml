@@ -202,8 +202,10 @@ jobs:
     needs: [workspace, oracle-runtime, gitleaks]
     runs-on: ubuntu-latest
     # The one job outside the 15-minute budget: ≤ 12 min waiting for the Amplify build of this
-    # commit, then Playwright on the hosted URL (plan Complexity Tracking).
-    timeout-minutes: 30
+    # commit, then Playwright on the hosted URL (plan Complexity Tracking). 90 minutes since A-13:
+    # A-03's cases take about 28 minutes on one worker; A-13 adds 73 cases in three steps below
+    # (the first CI run of A-13 was cancelled at the old 30-minute limit, 2026-10-22).
+    timeout-minutes: 90
     # A newer push makes this commit's hosted run stale; cancel it.
     concurrency:
       group: e2e-hosted-${{ github.ref }}
@@ -275,9 +277,22 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       # The Playwright config refuses localhost (TC-060); RUNTIME_URL is the hosted branch URL.
-      - name: Playwright on the hosted URL
+      # Three steps, one job: every later step runs even when an earlier one fails, so one run
+      # reports everything. A-03's cases and A-13's timing-sensitive cases use one worker (public
+      # gateways rate-limit; the timings must not share the machine); A-13's other cases use 4.
+      - name: Playwright on the hosted URL (A-03 cases, one worker)
         working-directory: tests/e2e
-        run: pnpm exec playwright test
+        run: pnpm exec playwright test --grep-invert "A-13-TC"
+
+      - name: Playwright on the hosted URL (A-13 cases, 4 workers)
+        if: ${{ !cancelled() && env.RUNTIME_URL != '' }}
+        working-directory: tests/e2e
+        run: pnpm exec playwright test --grep "A-13-TC" --grep-invert "@a13-verify|@a13-perf|@a13-vitals" --workers=4
+
+      - name: Playwright on the hosted URL (A-13 Verify, performance and vitals, one worker)
+        if: ${{ !cancelled() && env.RUNTIME_URL != '' }}
+        working-directory: tests/e2e
+        run: pnpm exec playwright test --grep "@a13-verify|@a13-perf|@a13-vitals" --workers=1
 
       - name: Upload the Playwright report
         if: always()
