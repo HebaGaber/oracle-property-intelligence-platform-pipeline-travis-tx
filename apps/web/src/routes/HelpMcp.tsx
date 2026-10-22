@@ -118,7 +118,7 @@ export function Component(): ReactElement {
         <h3 className={runStyles.sectionTitle}>Connect a client</h3>
         <p className={runStyles.itemBody}>Bearer token required, shared privately with reviewers</p>
         {SNIPPETS.map((snippet) => (
-          <div key={snippet.id}>
+          <div key={snippet.id} className={styles.snippetBox}>
             <h4 className={runStyles.sectionTitle}>{snippet.title}</h4>
             <pre data-snippet={snippet.id} className={styles.snippet} tabIndex={0}>
               <code>{snippet.code}</code>

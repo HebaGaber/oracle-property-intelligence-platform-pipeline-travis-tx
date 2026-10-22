@@ -1,4 +1,8 @@
 /* Help · MCP (A-13 T031): setup snippets in a scrollable mono block; tokens only. */
+.snippetBox {
+  min-width: 0;
+}
+
 .snippet {
   box-sizing: border-box;
   max-width: 100%;

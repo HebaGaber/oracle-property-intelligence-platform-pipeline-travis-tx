@@ -116,3 +116,15 @@ describe("N2: icon glyphs have a fixed 1em box (TC-072 under load, build d3ae47e
     expect(src("components/AppShell.tsx")).toMatch(/material-symbols-rounded \$\{styles\.glyph\}/);
   });
 });
+
+describe("N3: Help · MCP snippet wrapper can shrink (smeargle run 3, build 015fbf9: main scrollWidth 693 at 390)", () => {
+  // A grid item's automatic minimum width is its content's min-content: the unwrapped <pre> made
+  // the whole card 677 px wide, so the page scrolled sideways inside `main`.
+  it("the wrapper around each <pre> has min-width: 0 and HelpMcp uses it", () => {
+    const body = ruleBody(src("routes/HelpMcp.module.css"), "snippetBox");
+    expect(body, body).toMatch(/(^|[;\s])min-width:\s*0\s*;/);
+    expect(src("routes/HelpMcp.tsx")).toMatch(
+      /<div key=\{snippet\.id\} className=\{styles\.snippetBox\}>/,
+    );
+  });
+});
