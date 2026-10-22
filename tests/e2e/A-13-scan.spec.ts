@@ -17,11 +17,25 @@ import {
 } from "./lib/a13.js";
 import { checkpoint, ensureFiltersOpen, expect, test } from "./lib/a13-fixtures.js";
 import { writeEvidenceSection } from "./lib/a13-evidence.js";
-import { AXE_VERSION, openMore, openSettled, runAxe, tabThrough } from "./lib/a13-pages.js";
+import {
+  AXE_VERSION,
+  openMore,
+  openSettled,
+  routeSettled,
+  runAxe,
+  tabThrough,
+} from "./lib/a13-pages.js";
 import { routeTargets, type RouteTarget } from "./lib/a13-routes.js";
+import { runBudgeted } from "./lib/step-budget.js";
 import { SEL, exploreUrl, scenario } from "./lib/a13-ui.js";
 
 const EXPLORE = ROUTES.explore;
+/** TC-073: one route at one width gets this long, in total, to settle and open its tabs, sheets and drawer. */
+const STEP_BUDGET_MS = 60_000;
+/** Of which the page itself gets this long to leave `data-state="loading"`. */
+const SETTLE_MS = 40_000;
+/** Any single click or query inside a step; a missing control fails fast instead of waiting for the test timeout. */
+const ACTION_MS = 5_000;
 const WIDE = { at: "30.2672,-97.7431", r: 25, roof: 0, view: "list" } as const;
 
 /** The routes of TC-086 plus the pages the scan must also open drawers and another county on. */
@@ -45,24 +59,35 @@ async function pageStrings(page: Page): Promise<string> {
 }
 
 /** Opens every tab, the More sheet, the filter sheet (390) and the first property drawer. */
-async function openEverything(page: Page, width: number): Promise<string[]> {
+async function openEverything(
+  page: Page,
+  width: number,
+  note: (text: string) => void,
+): Promise<string[]> {
+  note("read the page");
   const seen: string[] = [await pageStrings(page)];
+  note("list the tabs");
   for (const tab of await page.getByRole("tab").all()) {
+    const name = (await tab.innerText().catch(() => "")).trim();
+    note(`click tab "${name}"`);
     if (await tab.isEnabled()) {
       await tab.click();
       seen.push(await pageStrings(page));
     }
   }
   if (width < 840) {
+    note("open the filter sheet");
     await ensureFiltersOpen(page);
     seen.push(await pageStrings(page));
   }
   const row = page.locator(SEL.resultRow).first();
   if ((await row.count()) > 0) {
+    note("open the first property drawer");
     await row.click();
     if (await page.getByRole("dialog").first().isVisible()) seen.push(await pageStrings(page));
     await page.keyboard.press("Escape");
   }
+  note("open the More sheet");
   await openMore(page);
   seen.push(await pageStrings(page));
   return seen;
@@ -77,37 +102,51 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
     const prototypeCids = prototypeCidTokens();
     const rows: string[] = [];
     const failures: string[] = [];
-    // 2. Open each route at 1440 and 390; open every drawer, sheet and tab.
+    // 2. Open each route at 1440 and 390; open every drawer, sheet and tab. Each route at each width is
+    //    its own step with its own budget, so a stuck one fails by name and the others still run.
     for (const target of scanTargets(oracle.manifestCid)) {
       for (const width of [1440, 390] as const) {
+        const label = `${target.key} @ ${width}`;
         const context = await browser.newContext({
           viewport: { width, height: width === 1440 ? 900 : 844 },
           colorScheme: "light",
         });
         try {
-          const page = await context.newPage();
-          await openSettled(page, target.path);
-          const texts = await openEverything(page, width);
-          // 3. Scan text and attributes.
-          const all = texts.join("\n");
-          const phrases = denylistHits(all, denylist, { runCount: oracle.runs.length });
-          const protoCids = cidTokens(all).filter((t) => prototypeCids.includes(t));
-          const foreign = disallowedCidTokens(all, allow);
-          let selectors = 0;
-          for (const selector of denylist.selectors)
-            selectors += await page.locator(selector).count();
-          const label = `${target.key} @ ${width}`;
-          rows.push(
-            `| ${label} | ${phrases.length} | ${protoCids.length} | ${foreign.length} | ${selectors} |`,
-          );
-          if (phrases.length + protoCids.length + foreign.length + selectors > 0) {
-            failures.push(
-              `${label}: phrases=${JSON.stringify(phrases)} prototype CIDs=${JSON.stringify(protoCids)} CIDs not in any manifest=${JSON.stringify(foreign)} selectors=${selectors}`,
+          await test.step(label, async () => {
+            const page = await context.newPage();
+            page.setDefaultTimeout(ACTION_MS);
+            page.setDefaultNavigationTimeout(SETTLE_MS);
+            const texts = await runBudgeted(label, STEP_BUDGET_MS, async (note) => {
+              note(`open ${target.path} and wait for data-state loading to end`);
+              await page.goto(target.path);
+              await routeSettled(page, SETTLE_MS);
+              return openEverything(page, width, note);
+            });
+            // 3. Scan text and attributes.
+            const all = texts.join("\n");
+            const phrases = denylistHits(all, denylist, { runCount: oracle.runs.length });
+            const protoCids = cidTokens(all).filter((t) => prototypeCids.includes(t));
+            const foreign = disallowedCidTokens(all, allow);
+            let selectors = 0;
+            for (const selector of denylist.selectors)
+              selectors += await page.locator(selector).count();
+            rows.push(
+              `| ${label} | ${phrases.length} | ${protoCids.length} | ${foreign.length} | ${selectors} |`,
             );
-          }
-          if (width === 1440) await checkpoint(page, "073", target.key);
+            if (phrases.length + protoCids.length + foreign.length + selectors > 0) {
+              failures.push(
+                `${label}: phrases=${JSON.stringify(phrases)} prototype CIDs=${JSON.stringify(protoCids)} CIDs not in any manifest=${JSON.stringify(foreign)} selectors=${selectors}`,
+              );
+            }
+            if (width === 1440) await checkpoint(page, "073", target.key);
+          });
+        } catch (error) {
+          // A stuck or broken step is a failure of the case, named; the remaining routes still run.
+          const message = error instanceof Error ? error.message : String(error);
+          rows.push(`| ${label} | step failed | step failed | step failed | step failed |`);
+          failures.push(`${label}: STEP FAILED: ${message}`);
         } finally {
-          await context.close();
+          await context.close().catch(() => undefined);
         }
       }
     }

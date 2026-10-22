@@ -462,3 +462,24 @@ describe("ERR-11: a row that fails the contract/v1 check shows the fixed text; t
     expect(logged).toMatch(/expected object, received array/);
   });
 });
+
+describe("TC-086: the level-2 heading is there in every state", () => {
+  it("renders `Permits` as an h2 while loading, on error and when ready", async () => {
+    const pending = deferred<PermitsLoaded>();
+    const first = renderPage(() => pending.promise);
+    expect(screen.getByRole("heading", { level: 2, name: "Permits" })).toBeDefined();
+    first.unmount();
+
+    const failing = vi.fn<PermitsLoader>();
+    failing.mockRejectedValueOnce(new EngineStartError(new Error("boom")));
+    stubViewport(true);
+    const second = renderPage(failing);
+    await screen.findByRole("alert");
+    expect(screen.getByRole("heading", { level: 2, name: "Permits" })).toBeDefined();
+    second.unmount();
+
+    renderPage(immediate(loaded()));
+    await screen.findByRole("table");
+    expect(screen.getByRole("heading", { level: 2, name: "Permits" })).toBeDefined();
+  });
+});

@@ -20,10 +20,21 @@ import {
   test,
 } from "./lib/a13-fixtures.js";
 import { SEL, exploreUrl, scenario, trpcData } from "./lib/a13-ui.js";
+import {
+  PER_RUN_TIMEOUT_MS,
+  radiusHeaderPattern,
+  runFailureMessage,
+  searchRadii,
+  seriesBudgetMs,
+} from "./lib/a13-perf-runs.js";
 import { LIMITS, TIMED_RUNS, summarize } from "./lib/perf.js";
 
 const EXPLORE = ROUTES.explore;
 const COLD_LOADS = 5;
+/** The radius in the URL the TC-041 series open at (that search is cached by the page). */
+const URL_RADIUS = 5;
+/** The untimed warm-up radius: outside the timed list (3..8 mi except 5), so no run repeats it. */
+const WARM_UP_RADIUS = 2.75;
 /** NFR-002: initial JS ≤ 300 KB gzipped (transferred). */
 const JS_BUDGET_BYTES = 307_200;
 
@@ -82,81 +93,128 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
     }
   });
 
-  /** One timed search: input change → header names the new radius; returns ms and queryDurationMs. */
+  /**
+   * One timed search: input change -> header names the new radius, bounded by PER_RUN_TIMEOUT_MS. The
+   * radius is one the page has not searched yet (see a13-perf-runs.ts), so each run is a real
+   * explore.search; the header text of the new radius is the "updated header".
+   */
   async function timedRadius(
     page: Page,
     r: number,
+    label: string,
+    run: number,
   ): Promise<{ ms: number; queryDurationMs: number | null }> {
     const radius = page.getByLabel("Radius", { exact: true });
     const header = page.locator(SEL.header);
-    const t0 = Date.now();
-    const [response] = await Promise.all([
-      page.waitForResponse(
+    const response = page
+      .waitForResponse(
         (res) => EXPLORE_SEARCH.test(res.url()) && res.request().method() !== "OPTIONS",
-      ),
-      setControl(radius, String(r)),
-    ]);
-    await expect(header).toContainText(new RegExp(`^\\d[\\d,]* within ${r} mi of `), {
-      timeout: 15_000,
-    });
+        { timeout: PER_RUN_TIMEOUT_MS },
+      )
+      .catch(() => null);
+    const t0 = Date.now();
+    try {
+      await setControl(radius, String(r));
+      await expect(header).toContainText(radiusHeaderPattern(r), { timeout: PER_RUN_TIMEOUT_MS });
+    } catch (error) {
+      const cause = error instanceof Error ? (error.message.split("\n")[0] ?? "") : String(error);
+      throw new Error(runFailureMessage(label, run, TIMED_RUNS, r, cause), { cause: error });
+    }
     const ms = Date.now() - t0;
-    const data = trpcData(await response.json()) as { queryDurationMs?: number };
-    return { ms, queryDurationMs: data.queryDurationMs ?? null };
+    const answered = await response;
+    let queryDurationMs: number | null = null;
+    if (answered !== null) {
+      const data = trpcData(await answered.json().catch(() => null)) as {
+        queryDurationMs?: number;
+      } | null;
+      queryDurationMs = data?.queryDurationMs ?? null;
+    }
+    return { ms, queryDurationMs };
   }
 
   async function series(
     page: Page,
     url: string,
-  ): Promise<{ ms: number[]; query: (number | null)[] }> {
-    // 1. Open; wait for the first header.
+    label: string,
+    timings: { ms: number[]; radii: number[]; query: (number | null)[] },
+  ): Promise<void> {
+    // 1. Open once; wait for the first header (the URL radius is already cached by the page).
     await nextSearch(page, () => page.goto(url));
     await ready(page, "explore");
     await expect(page.locator(SEL.header)).toBeVisible();
-    // 2. One untimed warm-up, then 20 timed runs toggling 5 → 3 → 5.
-    await timedRadius(page, 3);
-    const ms: number[] = [];
-    const query: (number | null)[] = [];
-    for (let i = 0; i < TIMED_RUNS; i += 1) {
-      const run = await timedRadius(page, i % 2 === 0 ? 5 : 3);
-      ms.push(run.ms);
-      query.push(run.queryDurationMs);
+    // 2. One untimed warm-up at a radius outside the timed list, then 20 timed runs, each at a new radius.
+    await timedRadius(page, WARM_UP_RADIUS, label, 0);
+    for (const [i, r] of searchRadii(TIMED_RUNS, URL_RADIUS).entries()) {
+      const run = await timedRadius(page, r, label, i + 1);
+      timings.ms.push(run.ms);
+      timings.radii.push(r);
+      timings.query.push(run.queryDurationMs);
     }
-    return { ms, query };
   }
 
   test(scenario("041"), async ({ page, oracle }) => {
-    test.setTimeout(300_000);
+    // Two series of 1 warm-up + 20 runs, each run capped at PER_RUN_TIMEOUT_MS: the budget is the cap
+    // times the run count (the 300 s default is a few runs short of that worst case); typical use ~2 min.
+    test.setTimeout(seriesBudgetMs(2, TIMED_RUNS));
     noteBranch(oracle, "provisional until A-11");
-    const radiusRoof = await series(
-      page,
-      exploreUrl(EXPLORE, { place: "pflugerville", r: 5, roof: 15 }),
-    );
-    await checkpoint(page, "041", "radius-roof");
-    // 3. The open-permit search.
-    const openPermit = await series(
-      page,
-      exploreUrl(EXPLORE, {
-        place: "pflugerville",
-        r: 5,
-        permit: "open_stalled",
-        openYrs: 5,
-        sort: "open_desc",
-      }),
-    );
-    await checkpoint(page, "041", "open-permit");
-    // 4. p50 and p95 per search.
-    const a = summarize(radiusRoof.ms);
-    const b = summarize(openPermit.ms);
-    await evidenceJson("A-13-TC-041-timings.json", {
-      case: "A-13-TC-041",
-      provisional: oracle.branch === "today",
-      runId: oracle.M.runId,
-      limitP95Ms: LIMITS.queryP95Ms,
-      radiusRoof: { ...a, queryDurationMs: radiusRoof.query },
-      openPermit: { ...b, queryDurationMs: openPermit.query },
-    });
-    expect(a.p95Ms, "radius + roof p95").toBeLessThan(LIMITS.queryP95Ms);
-    expect(b.p95Ms, "open-permit p95").toBeLessThan(LIMITS.queryP95Ms);
+    const radiusRoof = {
+      ms: [] as number[],
+      radii: [] as number[],
+      query: [] as (number | null)[],
+    };
+    const openPermit = {
+      ms: [] as number[],
+      radii: [] as number[],
+      query: [] as (number | null)[],
+    };
+    let failure: string | null = null;
+    try {
+      await series(
+        page,
+        exploreUrl(EXPLORE, { place: "pflugerville", r: URL_RADIUS, roof: 15 }),
+        "radius + roof",
+        radiusRoof,
+      );
+      await checkpoint(page, "041", "radius-roof");
+      // 3. The open-permit search.
+      await series(
+        page,
+        exploreUrl(EXPLORE, {
+          place: "pflugerville",
+          r: URL_RADIUS,
+          permit: "open_stalled",
+          openYrs: 5,
+          sort: "open_desc",
+        }),
+        "open-permit",
+        openPermit,
+      );
+      await checkpoint(page, "041", "open-permit");
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error);
+      throw error;
+    } finally {
+      // 4. All timings, also of a failed run (the failure names the run and radius).
+      const part = (t: typeof radiusRoof): object =>
+        t.ms.length === 0
+          ? { n: 0, timingsMs: [], radiiMi: [], queryDurationMs: [] }
+          : { ...summarize(t.ms), radiiMi: t.radii, queryDurationMs: t.query };
+      await evidenceJson("A-13-TC-041-timings.json", {
+        case: "A-13-TC-041",
+        provisional: oracle.branch === "today",
+        runId: oracle.M.runId,
+        limitP95Ms: LIMITS.queryP95Ms,
+        perRunTimeoutMs: PER_RUN_TIMEOUT_MS,
+        failure,
+        radiusRoof: part(radiusRoof),
+        openPermit: part(openPermit),
+      });
+    }
+    // 5. p50 and p95 per search.
+    expect(radiusRoof.ms, "radius + roof runs").toHaveLength(TIMED_RUNS);
+    expect(openPermit.ms, "open-permit runs").toHaveLength(TIMED_RUNS);
+    expect(summarize(radiusRoof.ms).p95Ms, "radius + roof p95").toBeLessThan(LIMITS.queryP95Ms);
+    expect(summarize(openPermit.ms).p95Ms, "open-permit p95").toBeLessThan(LIMITS.queryP95Ms);
   });
 
   test(scenario("082"), async ({ browser }) => {

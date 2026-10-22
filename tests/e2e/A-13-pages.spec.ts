@@ -658,7 +658,8 @@ test.describe("A-13 pages · Coming soon", { tag: "@a13-pages" }, () => {
     await routeSettled(page);
     const picker = page.locator("[data-county-picker]").first();
     if ((await picker.evaluate((el) => el.tagName.toLowerCase())) === "select") {
-      await picker.selectOption({ label: "Harris County" });
+      // Playwright matches a <select> option label exactly; the page labels it "Harris County, TX".
+      await picker.selectOption({ label: "Harris County, TX" });
     } else {
       await picker.click();
       await page.getByRole("option", { name: /Harris County/ }).click();

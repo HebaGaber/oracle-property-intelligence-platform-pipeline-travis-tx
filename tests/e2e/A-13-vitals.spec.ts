@@ -12,6 +12,7 @@ import {
   LIMITS_VITALS,
   MOBILE_PROFILE,
   RUNS_PER_PAGE,
+  mainControlReason,
   measureInp,
   measurePage,
 } from "./lib/a13-vitals.js";
@@ -62,16 +63,17 @@ test.describe("A-13 vitals", { tag: "@a13-vitals" }, () => {
       // 1. Median LCP and CLS of five Lighthouse-profile loads.
       const vitals = await measurePage(browser, absolute(path));
       // 2. INP: click the page's main control five times under the same throttling.
-      const inp = await measureInp(browser, absolute(path));
-      const inpMedian = median(inp);
+      const inp = await measureInp(browser, absolute(path), path);
+      const inpMedian = inp === null ? null : median(inp);
       lines.push(
-        `| ${path} | ${vitals.runs.map((r) => r.lcpMs).join(", ")} | ${vitals.medianLcpMs} | ${vitals.runs.map((r) => r.cls.toFixed(3)).join(", ")} | ${vitals.medianCls.toFixed(3)} | ${inp.join(", ")} | ${inpMedian} |`,
+        `| ${path} | ${vitals.runs.map((r) => r.lcpMs).join(", ")} | ${vitals.medianLcpMs} | ${vitals.runs.map((r) => r.cls.toFixed(3)).join(", ")} | ${vitals.medianCls.toFixed(3)} | ${inp === null ? `n/a (${mainControlReason(path)})` : inp.join(", ")} | ${inpMedian ?? "n/a"} |`,
       );
       if (vitals.medianLcpMs >= LIMITS_VITALS.lcpMs)
         problems.push(`${path}: median LCP ${vitals.medianLcpMs} ms`);
       if (vitals.medianCls >= LIMITS_VITALS.cls)
         problems.push(`${path}: median CLS ${vitals.medianCls.toFixed(3)}`);
-      if (inpMedian >= LIMITS_VITALS.inpMs) problems.push(`${path}: median INP ${inpMedian} ms`);
+      if (inpMedian !== null && inpMedian >= LIMITS_VITALS.inpMs)
+        problems.push(`${path}: median INP ${inpMedian} ms`);
     }
     writeEvidenceSection(
       "A-13-TC-081",

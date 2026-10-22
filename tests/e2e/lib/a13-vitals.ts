@@ -2,7 +2,8 @@
 // 150 ms RTT, 1.6 Mbps down, 4x CPU slowdown, 390 px, applied through CDP, with PerformanceObservers
 // for LCP, layout shifts and event timing. Lighthouse itself is not installed in this repo; the plan
 // names this CDP + PerformanceObserver method. Median of 5 loads per page.
-import type { Browser, BrowserContext, Page } from "@playwright/test";
+import type { Browser, BrowserContext, Locator, Page } from "@playwright/test";
+import { ROUTES } from "@countylens/shared";
 import { median } from "./a13-routes.js";
 
 export const MOBILE_PROFILE = Object.freeze({
@@ -150,17 +151,44 @@ export async function measurePage(
   };
 }
 
-/** The page's main control: `[data-main-control]`, else the first same-site link, button or tab in main. */
-export function mainControl(page: Page): ReturnType<Page["locator"]> {
-  return page
-    .locator(
-      '[data-main-control], main :is(button:not([disabled]), a[href^="/"], [role="tab"]):not([aria-disabled="true"])',
-    )
-    .first();
+/** How the main control of a page is found: by role and name, or none (with the reason). */
+export type InpControl =
+  | { readonly role: "link" | "button" | "tab"; readonly name: string }
+  | { readonly css: string }
+  | { readonly none: string };
+
+/**
+ * The page's main control for the INP click, route by route (TC-081). A generic "first control in main"
+ * is not stable: Runs · Log and Legal · Data have none (that selector waited 30 s and timed out), and the
+ * first match elsewhere can be a link that navigates away. Each entry is a control that stays on the page
+ * or lazily loads the next route. A page with no interactive control in `main` has no interaction to
+ * measure: INP is undefined for it, recorded as n/a, not weakened to a threshold.
+ */
+export const INP_CONTROLS: Readonly<Record<string, InpControl>> = Object.freeze({
+  [ROUTES.hub]: { role: "link", name: "Open" },
+  [ROUTES.dataCatalog]: { css: "summary" },
+  [ROUTES.runsLog]: { none: "the log is a read-only list with no link, button or tab in main" },
+  [ROUTES.legalData]: { none: "the page is read-only text with no link, button or tab in main" },
+  [ROUTES.runs]: { role: "button", name: "Copy CID" },
+  [ROUTES.coverage]: { role: "button", name: "Copy CID" },
+  [ROUTES.dataManifest]: { role: "button", name: "Copy CID" },
+  [ROUTES.explore]: { role: "tab", name: "Filters" },
+});
+
+/** The page's main control, or the reason it has none. */
+export function mainControl(page: Page, path: string): Locator | string {
+  const entry = INP_CONTROLS[path];
+  if (entry === undefined) throw new Error(`INP_CONTROLS has no entry for ${path}`);
+  if ("none" in entry) return entry.none;
+  if ("css" in entry) return page.locator("main").locator(entry.css).first();
+  return page.locator("main").getByRole(entry.role, { name: entry.name }).first();
 }
 
+const CONTROL_WAIT_MS = 15_000;
+const CLICK_MS = 5_000;
+
 /** INP of one load: click the main control once under the profile and read the slowest interaction. */
-export async function inpOnce(browser: Browser, url: string): Promise<number> {
+export async function inpOnce(browser: Browser, url: string, path: string): Promise<number | null> {
   const context = await mobileContext(browser);
   try {
     const page = await context.newPage();
@@ -168,20 +196,51 @@ export async function inpOnce(browser: Browser, url: string): Promise<number> {
     await throttle(page);
     await page.goto(url, { waitUntil: "load", timeout: 90_000 });
     await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
-    await mainControl(page).click({ timeout: 30_000 });
-    await page.waitForTimeout(1_000);
+    const control = mainControl(page, path);
+    if (typeof control === "string") return null;
+    await control
+      .waitFor({ state: "visible", timeout: CONTROL_WAIT_MS })
+      .catch((error: unknown) => {
+        throw new Error(
+          `INP control for ${path} (${JSON.stringify(INP_CONTROLS[path])}) not visible within ${CONTROL_WAIT_MS} ms: ${String(error).split("\n")[0]}`,
+        );
+      });
+    await control.scrollIntoViewIfNeeded({ timeout: CLICK_MS });
+    await control.click({ timeout: CLICK_MS });
+    // The click's presentation frame: two animation frames after the handler, then the observer flushes.
+    await page.evaluate(
+      () =>
+        new Promise<void>((done) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => done())),
+        ),
+    );
+    await page.waitForTimeout(500);
     return Math.round((await readStore(page)).inp);
   } finally {
     await context.close();
   }
 }
 
+/** Five clicks on the page's main control, or null when the page has none (see INP_CONTROLS). */
 export async function measureInp(
   browser: Browser,
   url: string,
+  path: string,
   clicks = RUNS_PER_PAGE,
-): Promise<number[]> {
+): Promise<number[] | null> {
+  if (typeof mainControlReason(path) === "string") return null;
   const out: number[] = [];
-  for (let i = 0; i < clicks; i += 1) out.push(await inpOnce(browser, url));
+  for (let i = 0; i < clicks; i += 1) {
+    const value = await inpOnce(browser, url, path);
+    if (value === null) return null;
+    out.push(value);
+  }
   return out;
+}
+
+/** The reason a page has no main control, or undefined when it has one. */
+export function mainControlReason(path: string): string | undefined {
+  const entry = INP_CONTROLS[path];
+  if (entry === undefined) throw new Error(`INP_CONTROLS has no entry for ${path}`);
+  return "none" in entry ? entry.none : undefined;
 }

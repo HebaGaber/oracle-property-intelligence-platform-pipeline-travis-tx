@@ -422,11 +422,17 @@ describe("Runs page: sources in manifest order (TC-011)", () => {
     expect(within(austin).getByText(SOURCE_LABELS["austin-3syk-w9eu"])).toBeDefined();
     expect(austin.textContent).toContain(`${source0.records} records`);
     expect(austin.textContent).toContain(`collected ${source0.captured_at} UTC`);
+    // TC-002 step 3: the source's watermark is shown, labelled, as published.
+    expect(source0.watermark).not.toBeNull();
+    expect(austin.textContent).toContain(`watermark ${source0.watermark}`);
     expect(within(austin).getByRole("link").getAttribute("href")).toBe(source0.url);
 
     expect(within(tcad).getByText(SOURCE_LABELS["tcad-2026-certified-json"])).toBeDefined();
     expect(tcad.textContent).toContain("tcad-2026-certified-json");
     expect(tcad.textContent).toContain(`${source1.records} records`);
+    // A null watermark is not invented: no "watermark" label on that line.
+    expect(source1.watermark).toBeNull();
+    expect(tcad.textContent).not.toContain("watermark");
     expect(within(tcad).getByRole("link").getAttribute("href")).toBe(source1.url);
   });
 });

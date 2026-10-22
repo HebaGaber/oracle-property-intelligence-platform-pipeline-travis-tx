@@ -204,6 +204,33 @@ describe("SQL panel read-only and errors (FR-006, FR-017, TC-038, TC-039)", () =
     expect(readOnlyRefusal("SHOW TABLES")).toBeNull();
     expect(readOnlyRefusal("SELECT 'delete me' AS x")).toBeNull();
     expect(readOnlyRefusal("UPDATE v_property SET x = 1")).toBe(EXPLORE_TEXTS.sqlReadOnly);
+  });
+
+  it("answers a mistyped read keyword with one line `{message} · Try: {keyword}` (FR-017, TC-039)", () => {
+    expect(readOnlyRefusal("SELEC count(*) FROM v_property")).toBe(
+      'Syntax error near "SELEC" · Try: SELECT',
+    );
+    expect(readOnlyRefusal("selct 1")).toBe('Syntax error near "selct" · Try: SELECT');
+    expect(readOnlyRefusal("DESCRIB v_property")).toBe(
+      'Syntax error near "DESCRIB" · Try: DESCRIBE',
+    );
+    expect(readOnlyRefusal("SHOWW TABLES")).toBe('Syntax error near "SHOWW" · Try: SHOW');
+    expect(readOnlyRefusal("WIHT a AS (SELECT 1) SELECT * FROM a")).toBe(
+      'Syntax error near "WIHT" · Try: WITH',
+    );
+  });
+
+  it("keeps the read-only refusal for write words, their typos and unknown words", () => {
+    for (const sql of [
+      "DELET FROM v_property",
+      "DROP TABLE t",
+      "UPDAT v_property SET x = 1",
+      "foo bar",
+      "xx 1",
+      "1",
+    ]) {
+      expect(readOnlyRefusal(sql), sql).toBe(EXPLORE_TEXTS.sqlReadOnly);
+    }
     expect(sqlErrorLine(new Error('Parser Error: syntax error at or near "SELEC"'))).toMatch(
       /^Parser Error: syntax error at or near "SELEC" · Try: .*SELECT/,
     );

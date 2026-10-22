@@ -307,12 +307,8 @@ function Results({
 }): ReactElement {
   const zero = data.total_within_r === 0;
   const showTenureUnknown = request.tenure !== undefined;
-  // The permit sentence is true only when no other filter could also be the reason for zero rows.
-  const onlyPermitFilter =
-    request.permit !== undefined &&
-    request.roof === undefined &&
-    request.tenure === undefined &&
-    request.ooa !== true;
+  // AC-5 / D-9: with the open-or-stalled filter active and no rows, say so in the fixed words.
+  const permitFilter = request.permit !== undefined;
   const shown = data.rows.length + extraRows.length;
   return (
     <>
@@ -326,10 +322,9 @@ function Results({
       ) : null}
       {zero ? (
         <>
+          {permitFilter ? <p className={styles.empty}>{EXPLORE_TEXTS.noOpenPermits}</p> : null}
           <p className={styles.empty}>
-            {onlyPermitFilter
-              ? EXPLORE_TEXTS.noOpenPermits
-              : EXPLORE_TEXTS.zeroResults(request.radius_mi, data.close_matches.length)}
+            {EXPLORE_TEXTS.zeroResults(request.radius_mi, data.close_matches.length)}
           </p>
           {data.close_matches.length === 0 ? null : (
             <ul className={styles.list} aria-label="Close matches">

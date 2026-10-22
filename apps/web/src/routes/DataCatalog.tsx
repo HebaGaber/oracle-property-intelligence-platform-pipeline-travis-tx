@@ -194,30 +194,36 @@ function TableCard({
         {table.table}
       </h3>
       <dl className={styles.facts}>
-        <div>
-          Size{" "}
-          <span data-size="" data-value={table.size}>
-            {formatCount(table.size)} bytes
-          </span>{" "}
-          in {table.parts.length} {table.parts.length === 1 ? "file" : "files"}
+        <div className={styles.fact}>
+          <dt>Size</dt>
+          <dd>
+            <span data-size="" data-value={table.size}>
+              {formatCount(table.size)} bytes
+            </span>{" "}
+            in {table.parts.length} {table.parts.length === 1 ? "file" : "files"}
+          </dd>
         </div>
         {result?.kind === "ok" ? (
-          <div>
-            <span data-rows="" data-value={result.rows}>
-              {formatCount(result.rows)}
-            </span>{" "}
-            rows in the published file
+          <div className={styles.fact}>
+            <dt>Rows</dt>
+            <dd>
+              <span data-rows="" data-value={result.rows}>
+                {formatCount(result.rows)}
+              </span>{" "}
+              rows in the published file
+            </dd>
           </div>
         ) : null}
         {published.map((row) => (
           <div
             key={row.key}
+            className={styles.fact}
             data-published-rows=""
             data-coverage-key={row.key}
             data-value={row.count}
           >
-            published_rows · {row.label === row.key ? row.key : row.label}:{" "}
-            <span data-count={row.count}>{formatCount(row.count)}</span>
+            <dt>published_rows · {row.label === row.key ? row.key : row.label}</dt>
+            <dd data-count={row.count}>{formatCount(row.count)}</dd>
           </div>
         ))}
       </dl>

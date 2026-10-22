@@ -98,7 +98,7 @@ export function Component(): ReactElement {
             </span>
             <span className={runStyles.itemBody}>{tool.what}</span>
             {tool.name === "search_properties" ? (
-              <ul className={runStyles.list} aria-label="search_properties input">
+              <ul className={runStyles.list} aria-label="search_properties input" data-schema="">
                 {SEARCH_PARAMS.map((param) => (
                   <li key={param.name} className={runStyles.itemBody} data-param={param.name}>
                     <code className={runStyles.mono}>{param.name}</code> · {param.text}

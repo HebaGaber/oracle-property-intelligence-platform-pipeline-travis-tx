@@ -43,6 +43,9 @@ describe("Help · MCP (FR-023, TC-042)", () => {
   it("shows search_properties' input from the query-core bounds, never hand-typed copies", async () => {
     await renderHelp();
     const tool = document.querySelector('[data-tool="search_properties"]') as HTMLElement;
+    // TC-042: the real schema is marked [data-schema] inside its [data-tool].
+    expect(tool.querySelector("[data-schema]"), "search_properties schema").not.toBeNull();
+    expect(tool.querySelector("[data-schema-pending]")).toBeNull();
     const params = new Map(
       [...tool.querySelectorAll("[data-param]")].map((el) => [
         el.getAttribute("data-param"),

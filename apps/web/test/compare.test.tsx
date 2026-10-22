@@ -128,7 +128,14 @@ describe("Compare with one published run (FR-001b, TC-014)", () => {
     await renderCompare("?a=1&b=2");
 
     expect(await screen.findByText(RUNS_TEXTS.firstRun)).toBeDefined();
-    expect(document.querySelectorAll("[data-compare-run]")).toHaveLength(1);
+    // One card for the one real run, and no per-run comparison column (no second run invented).
+    expect(document.querySelectorAll("[data-compare-single]")).toHaveLength(1);
+    expect(document.querySelectorAll("[data-compare-run]")).toHaveLength(0);
+    // TC-014: a link to that run's manifest.
+    expect(
+      document.querySelector(`a[href*="${run1.cid}"]`),
+      "link to the run's manifest",
+    ).not.toBeNull();
     expect(document.querySelector(`[data-cid="${run1.cid}"]`)).not.toBeNull();
     expect(screen.getByRole("link", { name: run1.manifest.runId }).getAttribute("href")).toBe(
       "/runs",

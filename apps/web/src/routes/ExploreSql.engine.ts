@@ -195,7 +195,49 @@ function tokenize(sql: string, ends: number[] = []): Token[] | null {
   return tokens;
 }
 
-/** null when the statement may run; else the fixed read-only text. */
+/** The keywords a mistyped first word is matched against (FR-017: the suggested fix). */
+const TYPO_TARGETS = ["SELECT", "WITH", "DESCRIBE", "SHOW"] as const;
+
+/** Levenshtein edit distance (insert, delete, substitute), lower case. */
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      row.push(
+        Math.min(
+          (previous[j] as number) + 1,
+          (row[j - 1] as number) + 1,
+          (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
+        ),
+      );
+    }
+    previous = row;
+  }
+  return previous[b.length] as number;
+}
+
+/**
+ * A mistyped read keyword at the start ("SELEC count(*) ...") gets one line
+ * `Syntax error near "SELEC" · Try: SELECT` (FR-017). Nothing runs. A word that is closer to a
+ * data-changing or IO keyword than to a read keyword ("delet") keeps the read-only refusal.
+ */
+function keywordTypo(word: string): string | null {
+  const lower = word.toLowerCase();
+  if (lower.length < 3) return null;
+  let best: { readonly target: string; readonly distance: number } | null = null;
+  for (const target of TYPO_TARGETS) {
+    const distance = editDistance(lower, target.toLowerCase());
+    if (distance <= 2 && (best === null || distance < best.distance)) best = { target, distance };
+  }
+  if (best === null) return null;
+  for (const forbidden of FORBIDDEN_WORDS) {
+    if (editDistance(lower, forbidden) <= best.distance) return null;
+  }
+  return EXPLORE_TEXTS.sqlError(`Syntax error near "${word}"`, best.target);
+}
+
+/** null when the statement may run; else the fixed read-only text (or the one-line typo message). */
 export function readOnlyRefusal(sql: string): string | null {
   const tokens = tokenize(sql);
   if (tokens === null) return EXPLORE_TEXTS.sqlReadOnly;
@@ -206,7 +248,7 @@ export function readOnlyRefusal(sql: string): string | null {
     tokens.pop();
   const first = tokens[0];
   if (first?.kind !== "word" || !READ_ONLY_START.has(first.text.toLowerCase()))
-    return EXPLORE_TEXTS.sqlReadOnly;
+    return (first?.kind === "word" ? keywordTypo(first.text) : null) ?? EXPLORE_TEXTS.sqlReadOnly;
   let inFrom = false;
   let listStart = false;
   for (let k = 0; k < tokens.length; k += 1) {

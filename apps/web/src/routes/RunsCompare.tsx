@@ -117,7 +117,7 @@ function ComparePair({
     return (
       <article
         className={styles.card}
-        data-compare-run=""
+        data-compare-single=""
         data-cid={only?.manifestCid}
         aria-label="Single run"
       >
@@ -127,7 +127,10 @@ function ComparePair({
             <Link className={styles.link} to={ROUTES.runs}>
               {only.runId}
             </Link>{" "}
-            · <CidDisplay cid={only.manifestCid} />
+            · <CidDisplay cid={only.manifestCid} /> ·{" "}
+            <Link className={styles.link} to={verifyPath(only.manifestCid)} data-manifest-link="">
+              Open manifest
+            </Link>
           </p>
         )}
       </article>

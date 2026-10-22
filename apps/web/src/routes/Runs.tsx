@@ -174,6 +174,7 @@ function SourceItem({
       </span>
       <span className={styles.itemBody}>
         {formatCount(source.records)} records · collected {utcTimestamp(source.captured_at)} UTC ·{" "}
+        {source.watermark === null ? null : <>watermark {source.watermark} · </>}
         <SourceLink url={source.url} className={styles.link} />
       </span>
       <span className={styles.itemBody}>

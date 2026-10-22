@@ -233,6 +233,33 @@ describe("Catalog: one row per table (TC-053)", () => {
   });
 });
 
+describe("Catalog: valid definition lists (TC-083, ERR-33)", () => {
+  it("every child of each dl is a dt/dd or a div holding only dt/dd, and keeps its data hooks", async () => {
+    const page = await renderCatalog();
+    await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
+    const lists = page.querySelectorAll("dl");
+    expect(lists.length).toBeGreaterThan(0);
+    for (const dl of lists) {
+      for (const child of Array.from(dl.children)) {
+        const tag = child.tagName.toLowerCase();
+        if (tag === "div") {
+          const kids = Array.from(child.children).map((k) => k.tagName.toLowerCase());
+          expect(kids.length).toBeGreaterThan(0);
+          for (const k of kids) expect(["dt", "dd"]).toContain(k);
+          expect(kids).toContain("dt");
+          expect(kids).toContain("dd");
+        } else {
+          expect(["dt", "dd"]).toContain(tag);
+        }
+      }
+    }
+    const p = page.querySelector<HTMLElement>('[data-table="county.property"]') as HTMLElement;
+    expect(p.querySelector("[data-size]")?.getAttribute("data-value")).toBe("201");
+    expect(p.querySelector("[data-rows]")?.getAttribute("data-value")).toBe("20");
+    expect(p.querySelector("[data-published-rows]")?.getAttribute("data-value")).toBe("7");
+  });
+});
+
 describe("Catalog: unavailable (TC-054)", () => {
   it("every footer unreadable → Catalog unavailable · {reason} with a manifest link, no rows", async () => {
     footer.read.mockRejectedValue(new Error("copy.example.test answered 503"));

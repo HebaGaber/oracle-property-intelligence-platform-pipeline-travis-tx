@@ -143,7 +143,16 @@ async function expectRowFields(
 
 /** The table chip of the kind a coverage row belongs to names a table whose CID is in M. */
 async function expectKindTable(row: Locator, M: A13Oracle["M"]): Promise<void> {
-  const chip = row.locator("xpath=ancestor::*[@data-kind][1]").locator(SEL.table).first();
+  const kindCard = row.locator("xpath=ancestor::*[@data-kind][1]");
+  const chip = kindCard.locator(SEL.table).first();
+  // AC-2: a kind shows the published table it comes from, or says in words that it has none
+  // (contractor states are the run's internal match, not a published table).
+  if ((await kindCard.locator(SEL.table).count()) === 0) {
+    await expect(kindCard, "no table chip: the reason in words").toContainText(
+      /no published table for this kind/i,
+    );
+    return;
+  }
   await expect(chip, "the kind's table chip").toBeVisible();
   const table = (await chip.getAttribute("data-table")) ?? "";
   const cid = await chip.locator(SEL.cid).first().getAttribute("data-cid");
@@ -241,8 +250,11 @@ test.describe("A-13 explorer · demo lines", () => {
     await checkpoint(page, "003", 1);
     // 2. Rows for every record kind (contractor by its five states).
     for (const kind of KIND_IDS) await expect(section.locator(SEL.kind(kind))).toHaveCount(1);
+    // Read the rendered text (innerText): textContent fuses adjacent blocks ("unresolved" + the
+    // next row's "contractor" becomes "unresolvedcontractor"), which no reader sees.
+    const contractorText = await section.locator(SEL.kind("contractor")).innerText();
     for (const state of CONTRACTOR_STATES) {
-      await expect(section.locator(SEL.kind("contractor"))).toContainText(
+      expect(contractorText, `contractor state ${state}`).toMatch(
         new RegExp(`\\b${state}\\b`, "i"),
       );
     }
@@ -450,9 +462,7 @@ test.describe("A-13 explorer · demo lines", () => {
     }
     if (n === 0) {
       await expect(
-        page.getByText(
-          templatePattern((r, k) => EXPLORE_TEXTS.zeroResults(Number(r), Number(k)), 2),
-        ),
+        page.getByText(EXPLORE_TEXTS.zeroResults(5, result.close_matches.length), { exact: true }),
       ).toBeVisible();
     }
     await checkpoint(page, "008", 8, { fullPage: true });
@@ -574,7 +584,10 @@ test.describe("A-13 explorer · runs and compare", () => {
         expect(reason.trim(), "non-empty reason").not.toBe("");
         await expect(page.locator('a[href$="/runs/index.json"]').first()).toBeVisible();
         await expect(page.locator(SEL.cid)).toHaveCount(0);
-        await expect(page.locator("article")).toHaveCount(0);
+        // No run card and no run chip. (Not every <article>: the Hub's own cards and the Coming
+        // soon entries are articles that stay in the error state.)
+        await expect(page.locator("#run-title")).toHaveCount(0);
+        await expect(page.getByText(/^Run \d+ · /)).toHaveCount(0);
         expect(looksLikeStack(await page.locator("body").innerText())).toBe(false);
         await checkpoint(page, "012", `${name}-${path === "/" ? "hub" : "runs"}`);
       }

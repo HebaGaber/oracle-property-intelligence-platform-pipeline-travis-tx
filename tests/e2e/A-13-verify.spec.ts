@@ -317,6 +317,14 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
   test(scenario("023"), async ({ page, oracle }) => {
     const artifact = verifyFileArtifact(oracle.M);
     const aborted = new Map<string, number>();
+    // "No request reached the aborted host again after the first failure per file" holds within
+    // one page load (each navigation starts the app afresh, so a file read by three pages is
+    // legitimately tried once per page): check and reset the counters after every page.
+    const assertOncePerFile = (pageName: string): void => {
+      for (const [path, count] of aborted)
+        expect(count, `${pageName}: copy requests for ${path}`).toBeLessThanOrEqual(1);
+      aborted.clear();
+    };
     // 1. Every request to the CID copy aborts.
     await page.route(
       (url) => isCidCopy(url, oracle, new URL(runtimeUrl()).host),
@@ -332,19 +340,19 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     await expect(page.getByRole("heading", { level: 2, name: oracle.M.runId })).toBeVisible();
     await expect(page.getByText(fallbackText(FILEBASE()), { exact: true }).first()).toBeVisible();
     await checkpoint(page, "023", 3);
+    assertOncePerFile("Runs");
     // 4. SQL count as TC-004, with the fallback label.
     await page.goto(exploreUrl(ROUTES.explore, { mode: "sql" }));
     await runSql(page, "SELECT count(*) FROM v_property");
     expect(await sqlScalar(page)).toBe(oracle.M.coverage.parcels_published?.count);
     await expect(page.getByText(fallbackText(FILEBASE()), { exact: true }).first()).toBeVisible();
     await checkpoint(page, "023", 4);
+    assertOncePerFile("SQL");
     // 5. Verify unchanged: two ✓ lanes.
     await page.goto(verifyPath(artifact.cid));
     await expectVerified(page, artifact.cid, artifact.size, artifact.sha256);
     await checkpoint(page, "023", 5);
-    // No request reached the aborted host again after the first failure per file.
-    for (const [path, count] of aborted)
-      expect(count, `copy requests for ${path}`).toBeLessThanOrEqual(1);
+    assertOncePerFile("Verify");
   });
 
   test(scenario("024"), async ({ page, oracle }) => {

@@ -190,14 +190,20 @@ describe("the header names the request it answers (finding 6)", () => {
 
 describe("zero results text (finding 8)", () => {
   const zero = (): ExploreResult => result([], { total_within_r: 0 });
-  it("says no open roofing permits only when the permit filter is the only filter", async () => {
+  it("says no open roofing permits when the permit filter is active and no rows came back", async () => {
     api.search.mockImplementation(async () => zero());
     await renderExplore("?place=pflugerville&r=5&permit=open_stalled");
     expect(await screen.findByText(EXPLORE_TEXTS.noOpenPermits)).toBeDefined();
+    expect(screen.getByText(EXPLORE_TEXTS.zeroResults(5, 0))).toBeDefined();
   });
-  it("uses the generic zero-results text when another filter is active too", async () => {
+  it("keeps the permit sentence when other filters are active too (D-9: roof 15, open 5 yrs)", async () => {
     api.search.mockImplementation(async () => zero());
-    await renderExplore("?place=pflugerville&r=5&permit=open_stalled&roof=15");
+    await renderExplore("?place=pflugerville&r=5&permit=open_stalled&roof=15&openYrs=5");
+    expect(await screen.findByText(EXPLORE_TEXTS.noOpenPermits)).toBeDefined();
+  });
+  it("uses only the generic zero-results text when no permit filter is active", async () => {
+    api.search.mockImplementation(async () => zero());
+    await renderExplore("?place=pflugerville&r=5&roof=15");
     expect(await screen.findByText(EXPLORE_TEXTS.zeroResults(5, 0))).toBeDefined();
     expect(screen.queryByText(EXPLORE_TEXTS.noOpenPermits)).toBeNull();
   });

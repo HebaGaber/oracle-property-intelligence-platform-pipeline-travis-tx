@@ -66,6 +66,10 @@
 
 /* The title links to the Hub; it keeps the bar's colour and type. */
 .titleLink {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: var(--space-9);
   color: inherit;
   text-decoration: none;
 }

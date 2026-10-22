@@ -17,8 +17,11 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  flex: none;
   width: var(--space-9);
+  min-width: var(--space-9);
   height: var(--space-9);
+  min-height: var(--space-9);
   padding: 0;
   border: 0;
   border-radius: var(--md-sys-shape-corner-full);
