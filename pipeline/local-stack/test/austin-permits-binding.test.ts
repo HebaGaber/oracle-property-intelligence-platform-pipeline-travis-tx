@@ -9,7 +9,8 @@ import { FakeJournal } from "../../oracle-runtime/test/travis/a04/fake-restate-c
 const h = vi.hoisted(() => ({
   rows: [] as unknown[],
   queries: [] as string[],
-  runAustin: undefined as undefined | ((io: unknown, input: unknown, deps: unknown) => Promise<unknown>),
+  runAustin: undefined as
+    undefined | ((io: unknown, input: unknown, deps: unknown) => Promise<unknown>),
 }));
 
 vi.mock("../services/loader.js", async (orig) => ({
@@ -61,7 +62,10 @@ describe("AustinPermits binding", () => {
   it("registers the AustinPermits workflow with long step timeouts", () => {
     const def = build();
     expect(def.name).toBe("AustinPermits");
-    expect(def.options).toEqual({ inactivityTimeout: { minutes: 30 }, abortTimeout: { minutes: 60 } });
+    expect(def.options).toEqual({
+      inactivityTimeout: { minutes: 30 },
+      abortTimeout: { minutes: 60 },
+    });
   });
 
   it("hands the page loop a journaled IO: one run attempt, sleeps, Loader.merge calls, terminal fail", async () => {
@@ -135,7 +139,9 @@ describe("AustinPermits binding", () => {
     expect(await deps!.readWatermark()).toBeNull();
     h.rows = [{ value: { not: "a watermark" } }];
     expect(await deps!.readWatermark()).toBeNull();
-    expect(h.queries.every((q) => q.startsWith("SELECT value FROM watermarks WHERE track = 'permits'"))).toBe(true);
+    expect(
+      h.queries.every((q) => q.startsWith("SELECT value FROM watermarks WHERE track = 'permits'")),
+    ).toBe(true);
     expect(h.queries.length).toBe(2);
   });
 
@@ -164,7 +170,9 @@ describe("AustinPermits binding", () => {
     h.runAustin = async () => {
       throw new Error("socket hang up");
     };
-    await expect(build().handlers.run(ctx, { jobId: JOB, mode: "pilot" })).rejects.toThrow("socket hang up");
+    await expect(build().handlers.run(ctx, { jobId: JOB, mode: "pilot" })).rejects.toThrow(
+      "socket hang up",
+    );
     expect(calls).toEqual([]);
   });
 

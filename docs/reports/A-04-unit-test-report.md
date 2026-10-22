@@ -3,7 +3,7 @@ id: UT-A-04
 type: unit-test-report
 story: A-04
 branch: 004-property-backbone
-commit: 79e21d0
+commit: 4472a22 (tests added after it are in the commit that follows)
 ci_run: "https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39783309484 (commit 277ed13: workspace, oracle-runtime, gitleaks, e2e-hosted all success). Coverage numbers below are local runs on the operator machine on 2026-10-22 (V8, real-Postgres integration test enabled for local-stack)."
 created: 2026-10-22
 ---
@@ -23,7 +23,7 @@ Coverage: neither package configures a coverage block in `vitest.config.ts`. The
 | Suites / tests | runtime 78 files / 969 tests · local-stack 118 tests · query-core 17 files / 242 tests |
 | Passed / failed / skipped | runtime 967 / 0 / 2 · local-stack 116 / 0 / 2 (real-Postgres integration test enabled) · query-core 237 / 0 / 5 |
 | grep-gates | `grep-gates: OK (5 gates ...)`, exit 0 |
-| Coverage of new A-04 code | runtime: tcad 93.73% stmts, gis 93.10%, permits 95.99%, backbone 91.30% (see below); socrata-pages.ts 93.68%; local-stack 75.69% statements (tracks 94.97%, workflows 70.28%, loader 75.65%): **below the 80% target** for local-stack (Restate/bootstrap glue, exercised by the live runs) |
+| Coverage of new A-04 code | runtime: tcad 93.73% stmts, gis 93.10%, permits 95.99%, backbone 91.30% (see below); socrata-pages.ts 93.68%; local-stack **80.91%** statements / 82.47% lines (tracks 88.16%, loader 82.6%, report 97%, configured-db 93.3%): meets the 80% target (was 72.4% in the first pass and 75.69% with the real-Postgres test; 39 behaviour tests added on 2026-10-22) |
 | Duration (first pass at 40fa2e2) | runtime 15.10 s · local-stack 2.01 s · query-core 2.61 s |
 
 The 2 skipped runtime tests are the `A-04-TC-020 pilot|full` cases that read a real runner artifact; they run only with `GIS_ARTIFACT` set. With `GIS_ARTIFACT=pipeline/data/raw/gis/us-runner-39684063596/a04-gis-capture` and `--testTimeout=300000` they pass (see the test report); the default 5 s timeout is too short for the 373,683-feature read.
@@ -49,7 +49,7 @@ Local stack (`pipeline/local-stack/services`). Folder rows below are from the fi
 | services/report-sections | 47.66 | 56.48 | 36.84 | 49.48 |
 | services/tracks | 88.16 | 70.19 | 92.85 | 88.81 |
 | services/workflows (only tcad-backbone.ts, tcad-chunk.ts loaded) | 70.28 | 58.19 | 66.12 | 72.97 |
-| whole local-stack (final run, real-Postgres test enabled) | 75.69 | n/a | n/a | n/a |
+| whole local-stack (final run, 154 tests, no database needed) | 80.91 | 70.86 | 76.08 | 82.47 |
 
 ### Files below 80% statements (honest list)
 
@@ -69,7 +69,7 @@ Local stack (`pipeline/local-stack/services`). Folder rows below are from the fi
 
 `local-stack/services/workflows/austin-permits.ts` and `gis-import.ts` do not appear in the coverage table at all (no test imports them), so the local-stack figure above is generous. Runtime files at or above 80% include every file under `travis/tcad` (other than export-source.ts), `travis/gis` (lowest `runner-fetch.ts` 81.01, `assemble-coordinates` 96.81) and `travis/permits`. `travis/backbone/commands/coords.ts` is 80.95.
 
-Reading: the new runtime code meets the 80% target (every folder 91-96% statements). The local-stack service layer is 75.69% in the final run (72.42% in the first pass without the real-Postgres test) and stays below the 80% target; the remaining gap is the Restate and bootstrap glue (`app.ts`, `workflows/tcad-backbone.ts`, `austin-permits.ts`, `gis-import.ts`), which the live runs exercise (see the test report) and unit tests do not.
+Reading: the new runtime code meets the 80% target (every folder 91-96% statements) and so does the local-stack service layer at 80.91% statements (82.47% lines) in the final run, after 39 behaviour tests were added for the Austin and GIS workflow bindings (`austin-permits-binding`, `gis-import-binding`), the SQL stores (`sql-stores`) and the coordinate reads (`coordinate-reads`). Not covered by unit tests: the entry-point wiring in `app.ts` (65%) and `migrate.ts` main (69%), `tcad-backbone.ts` closures (67%) and the permits report loaders; the live runs exercise them (see the test report).
 
 ## Tests written first (TDD)
 
