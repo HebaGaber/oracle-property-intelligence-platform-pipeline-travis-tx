@@ -1,6 +1,6 @@
 // A-07 T059/T060 (Track D, contracts/estimator.md): `backbone roof-age:backfill --as-of-date
 // <date> --source-system <src> --report <path> [--limit N --offset M] [--apply]`. Talks only to
-// the Restate ingress (`RoofAgeBackfill.run`) — never Postgres directly from this process.
+// the Restate ingress (`RoofAgeBackfill.run`) — never the database directly from this process.
 // Without `--limit` the scope is the full roll (T060); with it, the same deterministic subset
 // `roof-age:audit` already reviewed (T058/T059, D-21). Without `--apply` this is a dry run
 // (rowsWritten stays 0 and nothing is persisted) — `--apply` is the only thing that writes.

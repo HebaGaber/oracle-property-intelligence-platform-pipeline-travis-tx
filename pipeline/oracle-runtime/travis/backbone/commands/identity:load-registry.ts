@@ -1,8 +1,8 @@
 // A-07 T019 (Track A, contracts/cli.md): `backbone identity:load-registry --source
 // tx-comptroller --scope travis`. Talks to two boundaries only: the live Comptroller source
 // (through travis/adapters/socrata/tx-comptroller.ts, the single shared adapter, T010) and
-// the Restate ingress (Loader.merge on the `comptroller` track) -- never Postgres directly
-// from this process. contracts/cli.md's `--database-url-env DATABASE_URL` flag is dropped:
+// the Restate ingress (Loader.merge on the `comptroller` track) -- never the database directly
+// from this process. contracts/cli.md's db-env flag is dropped:
 // it named a direct-DB write, which this CLI layer never does (same deviation note as T056's
 // reconcile:merge redo).
 //

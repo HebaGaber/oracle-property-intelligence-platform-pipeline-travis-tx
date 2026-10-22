@@ -1,6 +1,6 @@
 // A-07 T058 (Track D, contracts/estimator.md): `backbone roof-age:audit --limit 25 --offset 0
 // --as-of-date 2026-10-22 --source-system travis-austin-permits --report <path>`. Talks only
-// to the Restate ingress (`RoofAgeAudit.run`) — never Postgres directly from this process.
+// to the Restate ingress (`RoofAgeAudit.run`) — never the database directly from this process.
 // Always a dry run (no `--apply` flag exists on this verb at all): T059 is a separate verb,
 // strictly gated on D-21's human approval, never invoked from here.
 import { mkdirSync, writeFileSync } from "node:fs";

@@ -6,7 +6,7 @@
 // that gate lives here, in the wrapper, not in the vendored estimator.
 //
 // The real audit/apply sequence (contracts/estimator.md) runs server-side, against live
-// Postgres data, in pipeline/local-stack/services/workflows/roof-age-{audit,backfill}.ts —
+// database data, in pipeline/local-stack/services/workflows/roof-age-{audit,backfill}.ts —
 // both call `estimateOne`/`simpleBasisOf` directly rather than a file-based runner here.
 import {
   estimateTravisRoofAge,

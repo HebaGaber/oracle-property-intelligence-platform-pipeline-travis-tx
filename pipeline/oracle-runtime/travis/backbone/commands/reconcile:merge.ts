@@ -1,6 +1,6 @@
 // A-07 T056 (Track D, contracts/cli.md): `backbone reconcile:merge --entity-type
 // property|owner|contractor`. Talks only to the Restate ingress (Loader.merge on the
-// `reconcile` track, then ReconcileReport.summary) — never Postgres directly from this
+// `reconcile` track, then ReconcileReport.summary) — never the database directly from this
 // process (the direct-DB script this replaced was a contract deviation and has been removed).
 //
 // Mints its own A-07 job id (`travis-a07-reconcile-<yyyymmddhhmmss>`): RunContext.jobIdFor

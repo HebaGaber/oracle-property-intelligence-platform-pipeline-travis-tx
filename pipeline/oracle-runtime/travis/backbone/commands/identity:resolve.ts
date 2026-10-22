@@ -1,7 +1,7 @@
 // A-07 T020 (Track A, contracts/cli.md): `backbone identity:resolve --scope austin-roofing-permits
 // --registry-snapshot <digest>`. Talks only to the Restate ingress (Loader.merge on the
 // `comptroller` track's `resolve_permits` kind, then IdentityReport.summary) -- never
-// Postgres directly from this process, same pattern as T019/T056.
+// the database directly from this process, same pattern as T019/T056.
 //
 // `--registry-snapshot` is the digest the caller expects to resolve against (normally the
 // value T019's registry-load-report.json printed); the server recomputes its own digest from
