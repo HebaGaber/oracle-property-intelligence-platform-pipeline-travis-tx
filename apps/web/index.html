@@ -6,7 +6,6 @@
     <!-- A-03: light theme only (plan § Atlas element map → Shell → Theme); dark is A-13. -->
     <meta name="color-scheme" content="light" />
     <title>CountyLens</title>
-    <!-- Atlas § 3 fonts, the same request tokens.css makes: Roboto, Roboto Mono, Material Symbols. -->
     <!-- ERR-44 (TC-081): start the run index request with the HTML, in parallel with the JS, on the
          routes that read published data; the app fetches the same URL with default init, so the
          preloaded response is reused. Static pages (Legal, Help, Coming soon) make no data request
@@ -27,11 +26,16 @@
     <!-- ERR-44: warm DNS+TCP+TLS to the CID copy host before the manifest fetch. vite.config.ts
          drops this tag when VITE_CID_COPY_HOST is unset at build time. -->
     <link rel="preconnect" href="https://%VITE_CID_COPY_HOST%" crossorigin />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- ERR-46: fonts are self-hosted (src/styles/fonts.css, public/fonts). Preload the two files
+         every page needs: Roboto (body text) and the Material Symbols subset (icons). Roboto Mono
+         loads on demand. Font preloads need crossorigin even when same-origin. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/roboto-latin.woff2" />
     <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0..1,0&display=swap"
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      crossorigin
+      href="/fonts/material-symbols-rounded-subset.woff2"
     />
   </head>
   <body>

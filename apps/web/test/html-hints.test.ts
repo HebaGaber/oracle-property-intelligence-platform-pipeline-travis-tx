@@ -29,8 +29,10 @@ describe("index.html resource hints", () => {
     return added;
   };
 
-  it("has no static preload link (it would fetch the index on static pages)", () => {
-    expect(tags(html).some((t) => attr(t, "rel") === "preload")).toBe(false);
+  it("has no static data preload link (font preloads are ERR-46; a data one would fetch the index on static pages)", () => {
+    expect(tags(html).some((t) => attr(t, "rel") === "preload" && attr(t, "as") !== "font")).toBe(
+      false,
+    );
     expect(script, "inline preload script").toContain("/runs/index.json");
   });
 
@@ -96,7 +98,9 @@ describe.skipIf(!existsSync(distHtml))("built dist/index.html", () => {
   it("keeps the conditional index preload script and never ships an unresolved placeholder", () => {
     expect(built).toContain("/runs/index.json");
     expect(built).toMatch(/<script>[\s\S]*preload[\s\S]*<\/script>/);
-    expect(tags(built).some((t) => attr(t, "rel") === "preload")).toBe(false);
+    expect(tags(built).some((t) => attr(t, "rel") === "preload" && attr(t, "as") !== "font")).toBe(
+      false,
+    );
     expect(built).not.toContain("%VITE_");
   });
   const host = process.env["VITE_CID_COPY_HOST"];
