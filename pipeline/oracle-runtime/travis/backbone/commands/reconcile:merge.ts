@@ -89,7 +89,10 @@ export const command: BackboneCommand<Args> = {
     );
 
     const repoRoot = resolve(new URL("../../../../../", import.meta.url).pathname);
-    const reportPath = resolve(repoRoot, `pipeline/data/reconcile/travis/${jobId}/merge-property-owner-report.json`);
+    // T056 (property/owner) and T057 (contractor) write distinctly named report files per
+    // tasks.md, even though both share this one verb and the same ReconcileReport summary.
+    const reportName = a.entityType === "contractor" ? "merge-contractor-report.json" : "merge-property-owner-report.json";
+    const reportPath = resolve(repoRoot, `pipeline/data/reconcile/travis/${jobId}/${reportName}`);
     const report = {
       jobId,
       entityType: a.entityType,
