@@ -10,7 +10,8 @@
     "start": "tsx services/app.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "prove-destination": "tsx services/prove-destination.ts"
+    "prove-destination": "tsx services/prove-destination.ts",
+    "migrate": "tsx services/migrate.ts"
   },
   "keywords": [],
   "type": "module",
@@ -24,7 +25,8 @@
     "p-limit": "^7.3.3",
     "postgres": "^3.4.9",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "vitest": "^5.0.5"

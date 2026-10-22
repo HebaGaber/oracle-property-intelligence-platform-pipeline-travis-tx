@@ -120,7 +120,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: pipeline/oracle-runtime/package-lock.json
+          cache-dependency-path: |
+            pipeline/oracle-runtime/package-lock.json
+            pipeline/local-stack/package-lock.json
 
       - name: pnpm install (workspace packages imported by the runtime)
         working-directory: .
@@ -148,6 +150,22 @@ jobs:
         run: npm run format:check
 
       - name: Unit tests
+        run: npm test
+
+      # A-04 T012: the local Restate services (Loader, BackboneReport, migrations, workflow
+      # auto-registration) are type-checked and unit-tested offline in the same job. Their app
+      # imports the runtime above, so this runs after its npm ci. Query DB integration cases
+      # need QDB_TEST_URL and are skipped here (no database in CI).
+      - name: local-stack npm ci
+        working-directory: pipeline/local-stack
+        run: npm ci
+
+      - name: local-stack typecheck
+        working-directory: pipeline/local-stack
+        run: npm run typecheck
+
+      - name: local-stack unit tests
+        working-directory: pipeline/local-stack
         run: npm test
 
       - name: Readiness validator self-test (vendored kit, unmodified)

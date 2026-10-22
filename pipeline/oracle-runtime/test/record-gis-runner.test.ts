@@ -405,3 +405,22 @@ describe("recordGisRunner", () => {
     expect(lines.join("\n")).toMatch(/run 123456789/);
   });
 });
+
+// A-04 T004 (CR2-9): gapPct calls the pure gapPercent; no placeholder measurements remain.
+describe("CR2-9 record-gis-runner gap", () => {
+  const source = readFileSync(
+    join(dirname(new URL(import.meta.url).pathname), "../travis/discovery/record-gis-runner.ts"),
+    "utf8",
+  );
+
+  it("gapPct calls gapPercent directly", () => {
+    const body = /export function gapPct\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(source)?.[1] ?? "";
+    expect(body).toMatch(/\bgapPercent\(/);
+    expect(body).not.toMatch(/computeGap/);
+    expect(gapPct(493246, 373683)).toBe(24.24);
+  });
+
+  it("the module holds no example.invalid placeholder", () => {
+    expect(source).not.toContain("example.invalid");
+  });
+});

@@ -1,9 +1,16 @@
 // T005 guard tests for the single HTTP boundary. Synthetic responses only (test-only);
 // no real source is ever called: every test injects `fetch` and `sleep`.
 import { createHash } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
+  BACKOFF_BASE_MS,
+  BACKOFF_CAP_MS,
+  HOST_POLICY,
+  MAX_ATTEMPTS,
   USER_AGENT,
   backoffDelayMs,
   createSourceClient,
@@ -452,11 +459,7 @@ describe("OR-M2: a web application firewall that names itself is a block on any 
   });
 
   it("names Mod Security, mod_security, ModSecurity and Request blocked on any status", () => {
-    for (const body of [
-      "blocked by mod_security",
-      "ModSecurity Action",
-      "<p>Request blocked.</p>",
-    ]) {
+    for (const body of ["blocked by mod_security", "ModSecurity Action"]) {
       expect(wafSignal({ status: 200, headers: {}, body })).not.toBeNull();
       expect(wafSignal({ status: 501, headers: {}, body })).not.toBeNull();
     }
@@ -477,5 +480,155 @@ describe("OR-M2: a web application firewall that names itself is a block on any 
     // a large 2xx document that mentions the firewall is a document, not a block page
     const doc = `<html><body>${"x".repeat(9_000)} ModSecurity rules guide</body></html>`;
     expect(wafSignal({ status: 200, headers: {}, body: doc })).toBeNull();
+  });
+});
+
+// A-04 T002 (CR2-8): fetch decodes a gzip/br body, so an encoded Content-Length is not the
+// size of the body we read. Synthetic test input only; no source is called.
+describe("CR2-8 refused body size under content-encoding", () => {
+  const html = `<html><body>${"refused ".repeat(1024)}</body></html>`; // 8,219 decoded bytes
+  const refused =
+    (headers: Record<string, string>): FetchLike =>
+    async () =>
+      new Response(html, { status: 404, headers });
+  const dl = (fetch: FetchLike) =>
+    client({ fetch }).download({
+      url: "https://traviscad.test/export.zip",
+      destPath: join(mkdtempSync(join(tmpdir(), "cr2-8-")), "export.zip"),
+      inactivityMs: 10_000,
+      totalMs: 60_000,
+    });
+
+  for (const encoding of ["gzip", "br"]) {
+    it(`a ${encoding} refusal records the decoded excerpt size and keeps the encoded length apart`, async () => {
+      const r = await dl(
+        refused({
+          "content-type": "text/html",
+          "content-encoding": encoding,
+          "content-length": "412",
+        }),
+      );
+      const ev = must(r.receipt.stop_evidence);
+      expect(ev.body_bytes).toBe(Buffer.byteLength(html));
+      expect(ev.body_bytes_basis).toBe("decoded_excerpt");
+      expect(ev.content_length_encoded).toBe(412);
+    });
+  }
+
+  it("an identity refusal keeps the advertised Content-Length", async () => {
+    const r = await dl(refused({ "content-type": "text/html", "content-length": "999999" }));
+    const ev = must(r.receipt.stop_evidence);
+    expect(ev.body_bytes).toBe(999_999);
+    expect(ev.body_bytes_basis).toBe("content_length");
+    expect(ev.content_length_encoded).toBeUndefined();
+  });
+});
+
+// A-04 T003 (OR-N8 + host policy). Synthetic test input only.
+describe("OR-N8 WAF body needs a firewall noun; HOST_POLICY", () => {
+  const SAN_LEANNA_406 =
+    "<html><head><title>Error 406 - Not Acceptable</title><head><body><h1>Error 406 - Not Acceptable</h1><p>Generally a 406 error is caused because a request has been blocked by Mod Security. If you believe that your request has been blocked by mistake please contact the web site owner.</p></body></html>";
+
+  it("the San Leanna 406 ModSecurity page stays blocked", async () => {
+    const s = scripted([() => respond(406, SAN_LEANNA_406, { "content-type": "text/html" })]);
+    const r = await client({ fetch: s.fetch }).capture({ url: "https://example.test/x" });
+    expect(r.receipt.outcome).toBe("blocked");
+  });
+
+  it("a small 2xx Socrata JSON page whose text says REQUEST BLOCKED is not blocked", async () => {
+    const body = JSON.stringify([
+      { permit_number: "2026-000001 BP", description: "REQUEST BLOCKED BY OWNER - REVISION" },
+    ]);
+    expect(wafSignal({ status: 200, headers: {}, body })).toBeNull();
+    const s = scripted([() => respond(200, body, { "content-type": "application/json" })]);
+    const r = await client({ fetch: s.fetch }).capture({
+      url: "https://data.austintexas.test/resource/x.json",
+    });
+    expect(r.receipt.outcome).toBe("ok");
+  });
+
+  it("a 2xx page that names the firewall is still blocked", () => {
+    for (const body of [
+      "<p>Request blocked by the web application firewall.</p>",
+      "<p>This request was blocked by WAF.</p>",
+      "ModSecurity Action",
+    ]) {
+      expect(wafSignal({ status: 200, headers: {}, body })).not.toBeNull();
+    }
+  });
+
+  it("non-2xx stays fail-closed: a bare 'Request blocked' on 406 or 501 is a block", () => {
+    for (const status of [406, 501]) {
+      expect(wafSignal({ status, headers: {}, body: "<p>Request blocked.</p>" })).not.toBeNull();
+    }
+  });
+
+  it("HOST_POLICY: GIS ≤ 2, Austin 1 req/s and 1 in flight, TCAD 1; shared backoff; stop on first 403", () => {
+    expect(HOST_POLICY["gis.traviscountytx.gov"]?.concurrency).toBeLessThanOrEqual(2);
+    expect(HOST_POLICY["data.austintexas.gov"]).toMatchObject({ concurrency: 1 });
+    expect(HOST_POLICY["data.austintexas.gov"]?.minIntervalMs).toBeGreaterThanOrEqual(1_000);
+    for (const host of ["traviscad.org", "www.traviscad.org"]) {
+      expect(HOST_POLICY[host]?.concurrency).toBe(1);
+    }
+    for (const policy of Object.values(HOST_POLICY)) {
+      expect(policy.backoff).toEqual({
+        baseMs: BACKOFF_BASE_MS,
+        capMs: BACKOFF_CAP_MS,
+        attempts: MAX_ATTEMPTS,
+        jitter: "full",
+      });
+      expect(BACKOFF_BASE_MS).toBe(1_000);
+      expect(BACKOFF_CAP_MS).toBe(60_000);
+      expect(MAX_ATTEMPTS).toBe(5);
+      expect(policy.stopOn403).toBe(true);
+      expect(policy.retryOn403).toBe(false);
+      expect(policy.userAgent).toBe(USER_AGENT);
+    }
+  });
+
+  it("the client caps a configured concurrency of 5 at the host policy (GIS 2, TCAD 1 in flight)", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const fetch: FetchLike = async () => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      return respond(200, "[]", { "content-type": "application/json" });
+    };
+    const c = client({ fetch, maxConcurrencyPerHost: 5 });
+    await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        c.capture({ url: `https://gis.traviscountytx.gov/q?page=${i}` }),
+      ),
+    );
+    expect(peak).toBe(2);
+    peak = 0;
+    await Promise.all(
+      Array.from({ length: 4 }, (_, i) => c.capture({ url: `https://traviscad.org/f?i=${i}` })),
+    );
+    expect(peak).toBe(1);
+  });
+
+  it("with hostSpacing the client spaces Austin request starts by at least the policy interval", async () => {
+    let t = 0;
+    const starts: number[] = [];
+    const fetch: FetchLike = async () => {
+      starts.push(t);
+      return respond(200, "[]", { "content-type": "application/json" });
+    };
+    const c = client({
+      fetch,
+      hostSpacing: true,
+      clock: () => t,
+      sleep: async (ms) => {
+        t += ms;
+      },
+    });
+    for (let i = 0; i < 3; i += 1) {
+      await c.capture({ url: `https://data.austintexas.gov/resource/3syk-w9eu.json?p=${i}` });
+    }
+    expect(must(starts[1]) - must(starts[0])).toBeGreaterThanOrEqual(1_000);
+    expect(must(starts[2]) - must(starts[1])).toBeGreaterThanOrEqual(1_000);
   });
 });
