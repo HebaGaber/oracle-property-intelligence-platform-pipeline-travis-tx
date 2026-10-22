@@ -418,6 +418,7 @@ Every case's step 0 is: **in a terminal at the repo root, run `git rev-parse --a
   2. **Run** `grep -r -l -a ZZCONFIDENTIALSENTINEL "$(cat pipeline/oracle-runtime/test/.out/A-04-TC-014.path)" pipeline/data/artifacts pipeline/data/runs docs 2>/dev/null | wc -l`.
   3. **Run** `qdb_ro "SELECT count(*) FROM parcels WHERE job_id = '{JOB_ID}' AND owner_redacted AND (owner_name IS NOT NULL OR owner_mailing_postal_code IS NOT NULL OR payload_redacted::text ~* 'ownerName|addrLine')"`.
 - **Expected result:** step 2 prints `0` (the sentinel is in no transform output, validate input, log or report); step 3 prints `0`.
+- **Live check with real names (T066, lead):** `scripts/verify-batched.sh <names-file>` prints hits per table. Read it as follows: the redacted account's own rows, the County group files, the archives and every log must show **0**; a name that TCAD also publishes on other, uncoded accounts (here one company name on 170 other accounts) is reported as a *shared public name* with its count and is not a failure. Raw Austin permit payloads (`permit_source_rows`) are internal source data and may contain applicant names. Result on 2026-10-22: see the run-log analysis row.
 
 #### A-04-TC-016: Export mismatch / injected 403 → `waiting_human`, nothing loaded as complete (negative)
 
