@@ -9,7 +9,7 @@ verdict: PASS
 
 # G7 pre-check (run 2): A-04 Load the county backbone (TCAD properties and owners, coordinates, permits from every jurisdiction)
 
-This is an AI completeness pre-check. It reports gaps only and does not approve. **Decision: pending, for the PO (D-20).**
+This is an AI completeness pre-check. It reports gaps only and does not approve. **Decision: Approved by the PO (HebaGaber) on 2026-10-22 (Round 2, D-20; answer "merge").**
 
 ## Recorded exceptions (walkthrough section 1; recorded once here)
 
@@ -32,7 +32,7 @@ This is an AI completeness pre-check. It reports gaps only and does not approve.
 | C-09 | Commits | PASS | All 56 commits in `feature/oracle-pipeline..HEAD` start with `A-04: ` (the search for a non-`A-04: ` subject returned none; the two merge commits also start `A-04:`). CI gitleaks job green on `277ed13`. |
 | C-10 | Story status | PASS | `status: Ready`, `gate: G4`, `qc_testability_signoff: false`: correct before approval. On approval set `Done` / `G7` and `qc_testability_signoff: true`. |
 
-**Verdict: PASS** (0 FAILs, 10/10), decision pending the PO.
+**Verdict: PASS** (0 FAILs, 10/10), decision: Approved by the PO on 2026-10-22.
 
 ## Fix list (nothing blocking)
 
@@ -46,7 +46,7 @@ This is an AI completeness pre-check. It reports gaps only and does not approve.
 - The 2cfc5b1 CI result.
 - On approval: set story `Done` / `G7` and `qc_testability_signoff: true`, tick the G7 checklist, update the gate log row, merge `--no-ff`, run `bash scripts/progress.sh`.
 
-**Decision:** pending
+**Decision:** Approved 2026-10-22 (PO, D-20)
 
 ## Run 1 (summary)
 

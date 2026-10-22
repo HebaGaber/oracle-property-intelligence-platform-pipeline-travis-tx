@@ -21,9 +21,9 @@ agents:
   verify: "`monitoring-county-ingestion`; roll count matches · coverage SQL ≥ 99% · per-jurisdiction counts"
 skills: [county-seed-data, county-appraisal-onboarding, build-county-transform, county-ingest-run, use-oracle, query-db-loading-matching, county-permit-adapter, durable-workflow-builder, apply-engineering-guidelines]
 ui: false
-status: Ready
-gate: G4
-qc_testability_signoff: false
+status: Done
+gate: G7
+qc_testability_signoff: true
 created: 2026-10-19
 ---
 

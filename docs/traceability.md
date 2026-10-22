@@ -122,6 +122,6 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G4 | stories/A-04-property-backbone.md | rev 1 + Round 1 changes | FAIL (C-06, C-08, C-11 meaning changes) → fixed in Round 1, `docs/gates/G4-A-04-precheck.md`; C-04 justified exception (pipeline-only story) | Ready (HebaGaber, Round 1 D-3) | 2026-10-21 22:30 |
 | G5 | specs/004-property-backbone (spec, plan, tasks) | 2026-10-21 | FAIL (C-03 format) → PASS 0 FAIL (run 2), `docs/gates/G5-A-04-precheck.md`; TZ02–TZ04 N/A (accepted exception); analyze 0 CRITICAL, 4 HIGH fixed | Approved (HebaGaber, Round 1 D-10 conditional approval) | 2026-10-21 22:45 |
 | G6 | testplans/A-04-test-cases.md | v0.3 | PASS 0 FAIL, `docs/gates/G6-A-04-precheck.md`; C-05/C-09 justified exceptions (pipeline-only story) | Approved (HebaGaber, QC Lead, Round 1 D-11 conditional approval) | 2026-10-21 22:50 |
-| G7 | A-04 (branch `004-property-backbone`) | pending | pending (`docs/gates/G7-A-04-precheck.md` not yet run) | pending | |
+| G7 | A-04 (branch `004-property-backbone`) | PASS (10/10; exceptions: pipeline-only C-04/C-07, G6 C-05/C-09, Phase Z TZ02–TZ04, and the two PO exceptions DEC-A-04-permit-match-rate and DEC-A-04-coverage-exception) | `docs/gates/G7-A-04-precheck.md` (run 2, 2026-10-22) | Approved by the PO (HebaGaber) 2026-10-22, D-20 | merge commit: see `docs/evidence/A-04.md` front matter |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
