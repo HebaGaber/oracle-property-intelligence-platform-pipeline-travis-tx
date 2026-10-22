@@ -17,7 +17,7 @@ export const RESTAMP_LIMITATION = "source bulk re-stamp; delta by content digest
 export const RESTAMP_LIMITATION_CODE = "source_bulk_restamp";
 
 export interface HourCount {
-  /** Bucket start (`YYYY-MM-DDTHH:00:00…`, as Socrata's date_trunc_ymdh prints it). */
+  /** Bucket start (`YYYY-MM-DDTHH:00:00…`, built from the (day, hour) group of the histogram query). */
   hour: string;
   n: number;
 }

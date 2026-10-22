@@ -74,6 +74,48 @@ export interface FakeSocrataOptions {
   clock: () => number;
 }
 
+/** The SoQL functions the live Austin dataset knows (date_trunc_ymdh does NOT exist there). */
+const KNOWN_FUNCTIONS = new Set([
+  "count",
+  "date_trunc_ymd",
+  "date_extract_hh",
+  "to_floating_timestamp",
+]);
+const FLOATING_ONLY = new Set(["date_trunc_ymd", "date_extract_hh"]);
+
+/** The live 400 body for an unknown function (captured 2026-10-22, trimmed to its stable parts). */
+export const NO_SUCH_FUNCTION_BODY = (fn: string, arity: number): string =>
+  JSON.stringify({
+    message: `Query coordinator error: query.soql.no-such-function; No such function '${fn}'; arity=${arity}`,
+    errorCode: "query.soql.no-such-function",
+    data: { function: fn, arity, dataset: "foxtrot.36379" },
+  });
+
+export const TYPE_MISMATCH_BODY = (fn: string): string =>
+  JSON.stringify({
+    message: `Query coordinator error: query.soql.type-mismatch; Type mismatch for ${fn}; is fixed_timestamp`,
+    errorCode: "query.soql.type-mismatch",
+    data: { function: fn },
+  });
+
+/** Strict SoQL check of select/group/order: null = fine, else a 400 body like the live server's. */
+export function soqlRejection(expressions: readonly string[]): string | null {
+  for (const expr of expressions) {
+    const re = /([a-z_]+)\(((?:[^()]|\([^()]*\))*)\)/g;
+    for (let m = re.exec(expr); m !== null; m = re.exec(expr)) {
+      const fn = m[1] as string;
+      const arg = m[2] as string;
+      if (!KNOWN_FUNCTIONS.has(fn)) {
+        return NO_SUCH_FUNCTION_BODY(fn, arg.split(",").length);
+      }
+      if (FLOATING_ONLY.has(fn) && !arg.trim().startsWith("to_floating_timestamp(")) {
+        return TYPE_MISMATCH_BODY(fn);
+      }
+    }
+  }
+  return null;
+}
+
 const CLAUSE = /^(:id|:updated_at) (>|<=) '((?:[^']|'')+)'$/;
 
 /** `rows` is already in server order; `:id > x` means "after x in that order". */
@@ -126,17 +168,30 @@ export function fakeSocrata(options: FakeSocrataOptions): { fetch: FetchLike; ca
     }
     const p = url.searchParams;
     const select = p.get("$select") ?? "";
+    const rejected = soqlRejection([select, p.get("$group") ?? "", p.get("$order") ?? ""]);
+    if (rejected !== null) {
+      return new Response(rejected, {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
     const matched = filterRows(options.rows(), p.get("$where"));
     let body: unknown;
     if (select === "count(*) AS n") {
       body = [{ n: String(matched.length) }];
-    } else if (select.startsWith("date_trunc_ymdh(:updated_at) AS h")) {
+    } else if (
+      /^date_trunc_ymd\(.*\) AS d, date_extract_hh\(.*\) AS hh, count\(\*\) AS n$/.test(select)
+    ) {
       const by = new Map<string, number>();
       for (const r of matched) {
-        const h = `${(r[":updated_at"] ?? "").slice(0, 13)}:00:00.000`;
-        by.set(h, (by.get(h) ?? 0) + 1);
+        const u = r[":updated_at"] ?? "";
+        const key = `${u.slice(0, 10)}|${u.slice(11, 13)}`;
+        by.set(key, (by.get(key) ?? 0) + 1);
       }
-      body = [...by.entries()].sort().map(([h, c]) => ({ h, n: String(c) }));
+      body = [...by.entries()].sort().map(([k, c]) => {
+        const [d, hh] = k.split("|") as [string, string];
+        return { d: `${d}T00:00:00.000`, hh: String(Number(hh)), n: String(c) };
+      });
     } else {
       const limit = Number(p.get("$limit") ?? "1000");
       body = matched.slice(0, limit);

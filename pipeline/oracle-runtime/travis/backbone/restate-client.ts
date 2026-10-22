@@ -1,8 +1,23 @@
 // A-04 T010: the CLI's only channel to the pipeline: the Restate ingress
 // (RESTATE_INGRESS_URL, default http://localhost:8080). The CLI never opens the Query DB.
+import { randomUUID } from "node:crypto";
+
 export const DEFAULT_INGRESS_URL = "http://localhost:8080";
 
 export interface RestateIngressClient {
+  /**
+   * A long shared handler (minutes): submits it asynchronously (POST …/<handler>/send with an
+   * `idempotency-key`) and polls GET /<service>/<key>/<handler>/<idempotency-key>/output (HTTP 470
+   * while it runs) with short requests, so no single HTTP call outlives a client timeout and the
+   * result stays readable if the client goes away. A handler failure rejects with its message.
+   */
+  callLong<T = unknown>(
+    service: string,
+    handler: string,
+    body: unknown,
+    key: string,
+    options?: GetOptions,
+  ): Promise<T>;
   /** Request/response call: POST /<service>[/<key>]/<handler>. */
   call<T = unknown>(service: string, handler: string, body: unknown, key?: string): Promise<T>;
   /** One-way start: POST /<service>/<key>/<handler>/send. */
@@ -74,10 +89,19 @@ export function createRestateIngressClient(
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const seg = (s: string): string => encodeURIComponent(s);
 
-  async function request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  async function request<T>(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+    extraHeaders: Record<string, string> = {},
+  ): Promise<T> {
     const response = await doFetch(`${base}${path}`, {
       method,
-      headers: { "content-type": "application/json", accept: "application/json" },
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        ...extraHeaders,
+      },
       ...(method === "POST" ? { body: JSON.stringify(body ?? null) } : {}),
     });
     const text = await response.text();
@@ -91,6 +115,26 @@ export function createRestateIngressClient(
     return (text.trim() === "" ? null : JSON.parse(text)) as T;
   }
 
+  async function pollOutput<T>(path: string, label: string, opts: GetOptions): Promise<T> {
+    let waited = 0;
+    let interval = POLL_START_MS;
+    for (;;) {
+      if (opts.signal?.aborted === true) throw new Error(`waiting for ${label} aborted`);
+      try {
+        return await request<T>("GET", path);
+      } catch (error) {
+        if (!(error instanceof IngressError)) throw error;
+        if (error.status !== NOT_COMPLETED_STATUS) throw workflowFailure(error);
+      }
+      if (opts.timeoutMs !== undefined && waited + interval > opts.timeoutMs) {
+        throw new Error(`waiting for ${label} timed out after ${waited} ms`);
+      }
+      await sleep(interval);
+      waited += interval;
+      interval = Math.min(POLL_MAX_MS, interval * 2);
+    }
+  }
+
   return {
     call: (service, handler, body, key) =>
       request(
@@ -100,25 +144,19 @@ export function createRestateIngressClient(
       ),
     send: (service, key, handler, body) =>
       request("POST", `/${seg(service)}/${seg(key)}/${seg(handler)}/send`, body),
-    get: async <T>(service: string, key: string, opts: GetOptions = {}): Promise<T> => {
-      const path = `/restate/workflow/${seg(service)}/${seg(key)}/output`;
-      let waited = 0;
-      let interval = POLL_START_MS;
-      for (;;) {
-        if (opts.signal?.aborted === true) throw new Error(`waiting for ${service}/${key} aborted`);
-        try {
-          return await request<T>("GET", path);
-        } catch (error) {
-          if (!(error instanceof IngressError)) throw error;
-          if (error.status !== NOT_COMPLETED_STATUS) throw workflowFailure(error);
-        }
-        if (opts.timeoutMs !== undefined && waited + interval > opts.timeoutMs) {
-          throw new Error(`waiting for ${service}/${key} timed out after ${waited} ms`);
-        }
-        await sleep(interval);
-        waited += interval;
-        interval = Math.min(POLL_MAX_MS, interval * 2);
-      }
+    get: (service, key, opts = {}) =>
+      pollOutput(`/restate/workflow/${seg(service)}/${seg(key)}/output`, `${service}/${key}`, opts),
+    callLong: async <T>(
+      service: string,
+      handler: string,
+      body: unknown,
+      key: string,
+      opts: GetOptions = {},
+    ): Promise<T> => {
+      const idem = `${handler}-${randomUUID()}`;
+      const base_ = `/${seg(service)}/${seg(key)}/${seg(handler)}`;
+      await request("POST", `${base_}/send`, body, { "idempotency-key": idem });
+      return pollOutput(`${base_}/${seg(idem)}/output`, `${service}/${key}/${handler}`, opts);
     },
   };
 }

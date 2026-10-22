@@ -27,6 +27,9 @@ function harness() {
     async send() {
       throw new Error("report is read-only");
     },
+    async callLong<T>(): Promise<T> {
+      return null as T;
+    },
     async get() {
       throw new Error("report is read-only");
     },
@@ -44,13 +47,13 @@ function harness() {
 }
 
 describe("A-04 backbone report verb", () => {
-  it("--json prints the BackboneReportV1 JSON, then job_id= last, via BackboneReport/get only", async () => {
+  it("--json prints only the BackboneReportV1 JSON on stdout (pipe-safe), job_id= on stderr", async () => {
     const h = harness();
     expect(await runCli(["report", "--job", JOB, "--json"], h.deps)).toBe(0);
     expect(h.calls).toEqual([{ service: "BackboneReport", handler: "get", body: { jobId: JOB } }]);
-    const lines = h.out.join("").trimEnd().split("\n");
-    expect(lines[lines.length - 1]).toBe(`job_id=${JOB}`);
-    const parsed = JSON.parse(lines.slice(0, -1).join("\n")) as { job_id: string; roll: unknown };
+    expect(h.err.join("").trimEnd()).toBe(`job_id=${JOB}`);
+    expect(h.out.join("")).not.toContain("job_id=travis");
+    const parsed = JSON.parse(h.out.join("")) as { job_id: string; roll: unknown };
     expect(parsed.job_id).toBe(JOB);
     expect(parsed.roll).toEqual({ parcels: 12, source_jobs: [JOB] });
   });

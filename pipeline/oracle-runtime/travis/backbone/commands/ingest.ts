@@ -150,7 +150,7 @@ export const command: BackboneCommand<IngestArgs> = {
   async run(ctx, args) {
     if (args.writeGroup === true && args.job !== undefined) {
       const out = GroupOut.parse(
-        await ctx.ingress.call(
+        await ctx.ingress.callLong(
           "TcadBackbone",
           "writeGroup",
           {
@@ -172,7 +172,12 @@ export const command: BackboneCommand<IngestArgs> = {
     if (args.joinProof === true && args.job !== undefined) {
       const seed = Number(args.seed);
       const out = ProofOut.parse(
-        await ctx.ingress.call("TcadBackbone", "joinProof", { jobId: args.job, seed }, args.job),
+        await ctx.ingress.callLong(
+          "TcadBackbone",
+          "joinProof",
+          { jobId: args.job, seed },
+          args.job,
+        ),
       );
       ctx.print(
         `join_proof: no_tcad_geoid=${out.no_tcad_geoid} ambiguous_geoid=${out.ambiguous_geoid} reverse_checked=${out.reverse_checked} reverse_disagreements=${out.reverse_disagreements} seed=${seed}`,

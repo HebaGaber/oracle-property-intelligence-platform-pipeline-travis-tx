@@ -104,13 +104,19 @@ export function buildCountQuery(source: SocrataSource, where: string | null = nu
   return { url: `${datasetUrl(source)}?${new URLSearchParams(params)}`, params };
 }
 
-/** Rows per hour of `:updated_at` after `after` (the re-stamp detector's input). */
+/**
+ * Rows per hour of `:updated_at` after `after` (the re-stamp detector's input).
+ * Socrata has no `date_trunc_ymdh`, and `date_trunc_ymd` / `date_extract_hh` take FLOATING
+ * timestamps, so the hour is grouped as (UTC day, hour of day) over `to_floating_timestamp`.
+ * Verified live against 3syk-w9eu on 2026-10-22 (HTTP 200).
+ */
 export function buildUpdatedHistogramQuery(source: SocrataSource, after: string): PageQuery {
+  const floating = `to_floating_timestamp(${UPDATED_FIELD},'UTC')`;
   const params: Record<string, string> = {
-    $select: `date_trunc_ymdh(${UPDATED_FIELD}) AS h, count(*) AS n`,
+    $select: `date_trunc_ymd(${floating}) AS d, date_extract_hh(${floating}) AS hh, count(*) AS n`,
     $where: updatedAfter(after),
-    $group: `date_trunc_ymdh(${UPDATED_FIELD})`,
-    $order: `date_trunc_ymdh(${UPDATED_FIELD})`,
+    $group: "d,hh",
+    $order: "d,hh",
     $limit: String(MAX_PAGE_SIZE),
   };
   return { url: `${datasetUrl(source)}?${new URLSearchParams(params)}`, params };
@@ -187,7 +193,11 @@ export type PageRow = z.infer<typeof PageRow>;
 
 const CountRows = z.array(z.looseObject({ n: z.union([z.string(), z.number()]) })).length(1);
 const HistogramRows = z.array(
-  z.looseObject({ h: z.string().min(1), n: z.union([z.string(), z.number()]) }),
+  z.looseObject({
+    d: z.string().min(1),
+    hh: z.union([z.string(), z.number()]),
+    n: z.union([z.string(), z.number()]),
+  }),
 );
 
 export const pageFileName = (pageIndex: number): string =>
@@ -336,6 +346,13 @@ export type HistogramFetch =
   | { kind: "ok"; hours: { hour: string; n: number }[]; receipt: PageReceipt }
   | { kind: "stop"; stop: Exclude<StopClass, "ok">; receipt: PageReceipt };
 
+/** `d` (a floating UTC day, `YYYY-MM-DDT00:00:00.000`) plus `hh` hours, as an ISO-8601 UTC instant. */
+export function hourStart(d: string, hh: string | number): string {
+  const hour = Number(hh);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new Error(`bad hour ${hh}`);
+  return `${d.slice(0, 10)}T${String(hour).padStart(2, "0")}:00:00.000Z`;
+}
+
 /** Rows per `:updated_at` hour after `after` (one request). */
 export async function fetchUpdatedHistogram(
   client: SourceClient,
@@ -354,7 +371,11 @@ export async function fetchUpdatedHistogram(
   if (receipt.outcome !== "ok" || result.data === null) {
     return { kind: "stop", stop: receipt.outcome === "blocked" ? "blocked" : "error", receipt };
   }
-  return { kind: "ok", hours: result.data.map((r) => ({ hour: r.h, n: Number(r.n) })), receipt };
+  return {
+    kind: "ok",
+    hours: result.data.map((r) => ({ hour: hourStart(r.d, r.hh), n: Number(r.n) })),
+    receipt,
+  };
 }
 
 /** Reads a page artifact back, verifying the decoded bytes against `expectedSha256`. */

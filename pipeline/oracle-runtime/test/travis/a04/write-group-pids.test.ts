@@ -37,7 +37,7 @@ describe("ingest --write-group flags", () => {
     const lines: string[] = [];
     const ctx = {
       ingress: {
-        call: async (_s: string, handler: string, payload: unknown) => {
+        callLong: async (_s: string, handler: string, payload: unknown) => {
           calls.push([handler, payload]);
           return {
             zips: 2,
@@ -64,7 +64,7 @@ describe("ingest --write-group flags", () => {
     const calls: unknown[] = [];
     const ctx = {
       ingress: {
-        call: async (_s: string, _h: string, payload: unknown) => {
+        callLong: async (_s: string, _h: string, payload: unknown) => {
           calls.push(payload);
           return { zips: 0, out_of_scope: 0, dir: "x", geometry: {} };
         },

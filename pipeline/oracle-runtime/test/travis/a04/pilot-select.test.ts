@@ -131,6 +131,7 @@ describe("T027 backbone pilot verb", () => {
           sent.push(body);
           return { invocationId: "inv_synthetic" };
         },
+        callLong: async <T>() => null as T,
         get: async <T>() => null as T,
       },
       now: () => new Date("2026-10-22T05:06:00Z"),

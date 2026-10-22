@@ -55,6 +55,9 @@ function harness(
       calls.push(`${service}/${key}/${handler}/send`);
       return { invocationId: "inv_synthetic" };
     },
+    async callLong<T>(): Promise<T> {
+      return null as T;
+    },
     async get<T>(service: string, key: string): Promise<T> {
       calls.push(`${service}/${key}/output`);
       return null as T;
@@ -233,8 +236,8 @@ describe("A-04 backbone CLI ingest --join-proof output contract", () => {
     };
     const ingress: RestateIngressClient = {
       ...h.deps.ingress,
-      async call<T>(service: string, handler: string): Promise<T> {
-        return (service === "TcadBackbone" && handler === "joinProof" ? proof : null) as T;
+      async callLong<T>(): Promise<T> {
+        return proof as T;
       },
     };
     const code = await runCli(

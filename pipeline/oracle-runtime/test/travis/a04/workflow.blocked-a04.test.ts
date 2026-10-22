@@ -143,6 +143,7 @@ describe("A-04-TC-016 export mismatch / injected 403 → waiting_human, nothing 
       call: async <T>(_s: string, handler: string) =>
         (handler === "status" ? { status: "waiting_human" } : null) as T,
       send: async () => ({ invocationId: "inv_synthetic" }),
+      callLong: async <T>() => null as T,
       get: async <T>() => null as T,
     };
     const ctx = createRunContext({

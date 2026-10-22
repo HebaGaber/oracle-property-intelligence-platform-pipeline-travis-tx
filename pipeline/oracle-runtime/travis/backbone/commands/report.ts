@@ -1,7 +1,7 @@
 // A-04 (G-FIX): `backbone report --job <jobId> [--json]` (contracts/cli.md, report.md).
 // Read-only: one call to the Restate `BackboneReport/get` handler through the ingress (the CLI
 // holds no Query DB client). The service already refuses private keys; this verb drops any such
-// key again before printing, so an owner name can never reach stdout. Last line: job_id=<id>.
+// key again before printing, so an owner name can never reach stdout. Last stdout line: job_id=<id> (with --json it goes to stderr).
 import { z } from "zod";
 import type { BackboneCommand } from "../cli.js";
 
@@ -59,6 +59,6 @@ export const command: BackboneCommand<Args> = {
     const report = redact(raw) as ReportShape;
     if (a.json === true) ctx.print(JSON.stringify(report, null, 2));
     else for (const line of summary(report)) ctx.print(line);
-    return { jobId: a.job, exitCode: 0 };
+    return { jobId: a.job, exitCode: 0, ...(a.json === true ? { jobIdToStderr: true } : {}) };
   },
 };

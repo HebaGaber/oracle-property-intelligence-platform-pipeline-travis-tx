@@ -24,7 +24,13 @@ export interface BackboneCommand<A> {
   run(
     ctx: RunContext,
     args: A,
-  ): Promise<{ jobId: string; exitCode: ExitCode; jobIdPrinted?: boolean }>;
+  ): Promise<{
+    jobId: string;
+    exitCode: ExitCode;
+    jobIdPrinted?: boolean;
+    /** Machine-readable stdout (`report --json`): `job_id=` goes to stderr so pipes stay valid. */
+    jobIdToStderr?: boolean;
+  }>;
 }
 
 export const COMMANDS_DIR = fileURLToPath(new URL("./commands/", import.meta.url));
@@ -147,7 +153,10 @@ export async function runCli(argv: readonly string[], deps: CliDeps): Promise<nu
       }
     }
     const result = await command.run(ctx, parsed.data);
-    if (result.jobIdPrinted !== true) out(`job_id=${result.jobId}`);
+    if (result.jobIdPrinted !== true) {
+      if (result.jobIdToStderr === true) err(`job_id=${result.jobId}`);
+      else out(`job_id=${result.jobId}`);
+    }
     return result.exitCode;
   } catch (error) {
     if (error instanceof DiskGuardError) {

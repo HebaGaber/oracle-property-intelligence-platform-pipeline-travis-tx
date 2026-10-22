@@ -245,6 +245,7 @@ describe("A-04-TC-053 429 / 5xx back off on the same cursor; a 403 stops at once
         sent.push(args);
         return { invocationId: "inv_1" };
       },
+      callLong: async <T>() => null as T,
       get: async () => ({ status: "waiting_human", exitCode: 2, pages: 1, rows: 10 }) as never,
     };
     const printed: string[] = [];

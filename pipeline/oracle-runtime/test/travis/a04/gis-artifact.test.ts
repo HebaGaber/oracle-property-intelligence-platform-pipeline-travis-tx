@@ -423,6 +423,7 @@ function cli(gisResult: unknown) {
       return gisResult as T;
     },
     send: async () => ({ invocationId: "inv" }),
+    callLong: async <T>() => null as T,
     get: async <T>() => null as T,
   };
   const deps: CliDeps = {

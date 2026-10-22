@@ -45,6 +45,7 @@ const ingressFor = (body: unknown, calls: unknown[] = []): RestateIngressClient 
     return body as T;
   },
   send: async () => ({ invocationId: "x" }),
+  callLong: async <T>() => null as T,
   get: async <T>() => null as T,
 });
 
