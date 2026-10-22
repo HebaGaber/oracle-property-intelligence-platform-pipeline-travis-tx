@@ -177,6 +177,12 @@ export async function auditOne(sql: postgres.Sql, property: PropertyRow, asOfDat
     },
   ]).rows[0] as RoofAgeComparisonRowResult;
 
+  // The known, accepted gap is specific: property_improvements carries no improvement_action,
+  // so newMatch is always forced false above, and the view side can never derive
+  // new_construction. Any OTHER disagreement (e.g. a chronology or built-year mismatch) is a
+  // real divergence the D-21 reviewer must see as such, not as this known, dismissible gap.
+  const isKnownGap = !comparison.agree && simpleBasisOf(estimated) === "new_construction";
+
   return {
     tcadId: property.request_identifier,
     builtYear: property.property_structure_built_year,
@@ -189,7 +195,7 @@ export async function auditOne(sql: postgres.Sql, property: PropertyRow, asOfDat
     viewSide: comparison.viewSide,
     agree: comparison.agree,
     mismatchFields: comparison.mismatchFields,
-    viewSideCaveat: comparison.agree ? null : "no_improvement_action_column",
+    viewSideCaveat: isKnownGap ? "no_improvement_action_column" : null,
   };
 }
 
