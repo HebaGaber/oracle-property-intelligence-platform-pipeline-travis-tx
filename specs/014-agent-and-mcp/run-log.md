@@ -1,0 +1,21 @@
+# A-14 run log
+
+One line per step: time (UTC+3, from commit/tool timestamps), stage, step, result. User answers are quoted word for word.
+
+**Session note:** running in `REPO-u` (the Product chain worktree), parallel to a Pipeline-chain session in `REPO-p` (on `007-enrich-reconcile`), per `PARALLEL-RUN.md`. Overrides applied: §4.1 (detached `feature/oracle-pipeline` checkout before `/speckit-specify`), §4.2 (dependency check against `feature/oracle-pipeline`'s first-parent log).
+
+| Time | Stage | Step | Result |
+| --- | --- | --- | --- |
+| 19:05 | 0 | S0.1 Dependency check | A-02 merged (`e98c12e`, `status: Done`); A-03 merged (`8ae1870`, `status: Done`); A-11 **NOT MERGED** (`status: Draft`, depends on A-07 which is in progress on `007-enrich-reconcile` in the pipeline-chain session); A-13 **NOT MERGED** (`status: Done`, G7 approved 2026-10-22, merge waits for A-11 per its own story file and `PARALLEL-RUN.md` wave 5) |
+| 19:06 | 0 | S0.2 Read dependency evidence | A-02: `packages/query-core/views.sql`, `packages/contract/`, gazetteer `travis-places@1.0.0` (source URL + SHA-256 in `DIGEST`), `docs/decisions/0002-lexicon-carriers.md` all present on `feature/oracle-pipeline`. A-13's evidence/code (Explore shell, Help · MCP page, demo area) is **not present on this branch** — it only exists on the still-unmerged `013-explorer-and-pages` branch, read there directly without switching (git show) |
+| 19:10 | 0 | S0.3 Environment table | AWS identity ✅ (after re-auth, see 19:08 below); freetier ✅ FREE/ACTIVE, $136.22 remaining, expires 2027-04-16; Bedrock ✅ `eu.anthropic.claude-sonnet-4-6` ACTIVE in `eu-north-1`; SSM ✅ describe-parameters works, no MCP token parameter yet (expected, created at ✋ A-2); Lambda account settings ✅ `ConcurrentExecutions: 10`, `UnreservedConcurrentExecutions: 10` (whole-account limit — flag for AD-11 reserved-concurrency discussion in Stage 3); Gateway key file ✅ exists at `~/.config/assessment/ai-gateway.env` (existence only, never read); hosted URL ✅ `https://countylens.aldarraj.com` returns 200; pnpm ✅ 10.34.7; CI ✅ green on `013-explorer-and-pages` (run 39835352646) |
+| 19:08 | 0 | S0.6 ✋ A-1 AWS re-auth | AWS session for profile `assess` had expired. Asked user; answer: "Done — I've re-authenticated." Re-ran checks: all green |
+| 19:12 | 0 | S0.7 Started | `Started:` filled in walkthrough checklist (2026-10-22, this run) |
+| 19:15 | 1 | S1.1 G4 pre-check | Ran `/developmentsupport-g4-precheck stories/A-14-agent-and-mcp.md`. 10/10 criteria PASS; one finding (G4-8, implicit dependencies A-11/A-13 not in `depends_on`). Report: `docs/gates/G4-A-14-precheck.md` |
+| 19:16 | 1 | S1.3 🛑 D-1 | Asked: add A-11, A-13 to `depends_on`? Answer: "Add them (Recommended)." Updated `depends_on: [A-02, A-03, A-11, A-13]` |
+| 19:16 | 1 | S1.4 🛑 D-2 | Asked: approve G4 as Ready? Answer: "Ready (Recommended)." |
+| 19:17 | 1 | S1.5 | Ticked the ten G4 boxes, `qc_testability_signoff: true`, `status: Ready`, decision recorded 2026-10-22. Committed `A-14: story ready (G4)` (`36c7182`) |
+| 19:18 | 2 | S2.1 Branch + specify | Parallel-run override §4.1: `git fetch` + `git switch --detach feature/oracle-pipeline`, then git extension hook `speckit.git.feature` created branch `014-agent-and-mcp` (FEATURE_NUM `014`). Ran `/speckit-specify`: wrote `specs/014-agent-and-mcp/spec.md` (2 user stories tagged [A-14]/[A-15], FR-001–FR-012 mapped to AC-1–AC-12, 8 edge cases, SC-001–SC-007, assumptions) and `checklists/requirements.md` (16/16 passing on first pass) |
+| 19:19 | 2 | S2.2 Verify | `git branch --show-current` → `014-agent-and-mcp`; `specs/014-agent-and-mcp/spec.md` exists |
+| 19:20 | 2 | S2.3 Clarify | Ran `/speckit-clarify`. No critical ambiguities needed a user question — the story and ARD already answer every category. The one open item flagged in the walkthrough's own Stage 0 step 4 (whether A-13 wired the Help page's "Try a tool" proxy) was resolved by reading A-13's actual code on `013-explorer-and-pages` (`apps/web/src/routes/HelpMcp.tsx`): the button only shows a static "not available" status; wiring it is confirmed in scope for A-14. Recorded under spec.md's new Clarifications section, no 🛑 D-3 needed |
+| 19:21 | 2 | S2.4 Commit | Committed `A-14: spec and clarifications` (`7226703`) |
