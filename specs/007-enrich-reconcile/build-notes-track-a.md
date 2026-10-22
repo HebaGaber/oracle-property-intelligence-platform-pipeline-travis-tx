@@ -1,4 +1,37 @@
-# Build notes: Track A (contractor identity), Wave 1
+# Build notes: Track A (contractor identity)
+
+## Wave 2 (this update)
+
+- **T018**: `travis/identity/totals.ts` (`computeFiveStateTotals`) implemented against the
+  already-red T013 test; now green. Pure aggregation, `derivation: "aggregate_match"`,
+  `limitation: null`.
+- **T019 [RUN], Wave 2 DB writer**: new CLI verb
+  `pipeline/oracle-runtime/travis/backbone/commands/identity:load-registry.ts`
+  (`backbone identity:load-registry --source tx-comptroller --scope travis`). OR-B1 egress
+  check first (first-ever run of this track, no recorded reference, so
+  `requireReference: false`, same as `discover`'s own first-run case) — observed country
+  recorded with the run. Talks to the live Comptroller source through the T010 shared
+  adapter, then `Loader.merge` on the `comptroller` track through the Restate ingress only
+  (never Postgres directly from the CLI, matching T056's reconcile:merge redo; the
+  contract's `--database-url-env` flag is dropped for the same reason).
+  Executed live end to end: Restate deployment re-registered at revision 17 (picked up the
+  `comptroller` track and `identity` report section), migrations confirmed already applied
+  (14/14, 0 new), then a real run against `data.texas.gov/9cir-efmm`:
+  - **job_id**: `travis-a07-identity-registry-20261022182314`
+  - **rows loaded**: **342,333** (7 pages, Travis county code 227 scope) — matches the
+    342,334 reference within normal day-to-day drift (docs/sources.md's own figure is from
+    2026-10-19; this run is 2026-10-22)
+  - **watermark** (max `:updated_at`): `2026-10-17T10:35:22.788Z`
+  - **snapshot digest**: `d327b29fdad4f655258a63dfc94099276b298a71c74e999dab1d09a07f19fbba`
+  - **egress**: EG (operator network, recorded with the run; no VPN)
+  - rowsWritten via the Loader: 342,333; verified directly against Postgres
+    (`comptroller_registry` count = 342,333; `comptroller_registry_loads` row matches the
+    report exactly)
+  - report: `pipeline/data/identity/travis/travis-a07-identity-registry-20261022182314/registry-load-report.json`
+
+  Not written to run-log.md myself, per instruction.
+
+## Wave 1
 
 Builder: `soofi-xyz-team-kit:oracle`, story A-07, branch `007-enrich-reconcile`.
 
@@ -29,9 +62,9 @@ Matches Stage 0's measured toolchain (run-log.md S0.3: node 22.23.3, pnpm 10.34.
   watermark, order-independent sha256 snapshot digest (`registrySnapshotDigest`), staged
   artifact written to `<jobDir>/registry-rows.json`. Column names
   (`taxpayer_number`/`taxpayer_name`/`taxpayer_county_code`/`right_to_transact_business`/
-  `sos_file_number`) are flagged in a code comment as this story's best reading, to confirm
-  at the live load (T019, out of this wave's scope) — matching the existing codebase's own
-  humility pattern in `discovery/probes/socrata.ts`.
+  `sos_file_number`) were flagged in a code comment as this story's best reading, to confirm
+  at the live load — **confirmed live at T019** (Wave 2): the real run against
+  `data.texas.gov/9cir-efmm` parsed all of them without a schema error over 342,333 rows.
 - **T011–T015**: resolver tests (`resolver.test.ts`), crosswalk negative-finding test
   (`crosswalk.test.ts`) written red, then `travis/identity/resolver.ts` and
   `travis/identity/crosswalk.ts` implemented green. Decision order matches
@@ -46,7 +79,8 @@ Matches Stage 0's measured toolchain (run-log.md S0.3: node 22.23.3, pnpm 10.34.
 - **T013** (totals test only, **no implementation** per instruction — T018 is Wave 2):
   `test/travis/a07/identity/totals.test.ts` written against the intended
   `travis/identity/totals.ts` API (`computeFiveStateTotals`); confirmed red
-  (module-not-found) and left red on purpose.
+  (module-not-found) and left red on purpose in Wave 1. **Implemented in Wave 2 (T018)**: now
+  green — pure aggregation, `derivation: "aggregate_match"`.
 - **T016 / T017**: Loader track test (`pipeline/local-stack/test/tracks/comptroller.test.ts`)
   written red, then `services/tracks/comptroller.ts` (track name `"comptroller"`, one input
   kind `load_registry`: reads the staged artifact, verifies its sha256, batch-upserts into
@@ -71,10 +105,10 @@ Matches Stage 0's measured toolchain (run-log.md S0.3: node 22.23.3, pnpm 10.34.
   `tx-comptroller.ts` (verified it contains no `roof`/profile-term text, so the
   no-classification-term assertion in the same describe block still passes unchanged).
 
-## Test results
+## Test results (updated after Wave 2)
 
-- `pipeline/oracle-runtime`: `npx vitest run` → **995 passed**, 2 skipped, **3 failed test
-  files** — all expected and out of this wave's scope:
+- `pipeline/oracle-runtime`: `npx vitest run` → **997 passed**, 2 skipped, **2 failed test
+  files** — both expected and out of this wave's scope (T013/totals is now green):
   - `test/travis/a07/identity/sampler.test.ts` (T021, red by design; T022 is Wave 3)
   - `test/travis/a07/identity/totals.test.ts` (T013, red by design; T018 is Wave 2)
   - `test/travis/a07/runs/a07-coverage.test.ts` (Track D's T052, not this builder's file)
