@@ -6,12 +6,36 @@
 // `build.manifest` writes dist/.vite/manifest.json, which scripts/bundle-size.ts reads to
 // measure the Hub's initial graph (key `src/routes/Hub.tsx`).
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 
-export default defineConfig({
-  plugins: [react()],
+/** ERR-44: index.html preconnects to %VITE_CID_COPY_HOST%; with no value that tag must vanish. */
+function cidCopyPreconnect(host: string | undefined): Plugin {
+  return {
+    name: "countylens-cid-copy-preconnect",
+    transformIndexHtml: {
+      order: "pre",
+      handler: (html) =>
+        host !== undefined && /^[A-Za-z0-9.-]+$/.test(host)
+          ? html
+          : html.replace(
+              /[ \t]*<link rel="preconnect" href="https:\/\/%VITE_CID_COPY_HOST%"[^>]*>\n?/,
+              "",
+            ),
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    react(),
+    cidCopyPreconnect(
+      process.env["VITE_CID_COPY_HOST"] ||
+        loadEnv(mode, process.cwd(), "VITE_")["VITE_CID_COPY_HOST"] ||
+        undefined,
+    ),
+  ],
   build: {
     sourcemap: false,
     manifest: true,
   },
-});
+}));
