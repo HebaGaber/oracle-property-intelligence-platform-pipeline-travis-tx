@@ -153,7 +153,9 @@ function insertSql(
     const cells = cols.map((c) => {
       const v = row[c];
       params.push(v === undefined ? null : types[c] === "jsonb" && v !== null ? JSON.stringify(v) : v);
-      return `$${params.length}::${types[c]}`;
+      // jsonb: bind JSON text as text and cast server-side. Binding a JSON string to a parameter
+      // the server types as jsonb makes the driver encode it again (a jsonb string, not an object).
+      return `$${params.length}::${types[c] === "jsonb" ? "text::jsonb" : types[c]}`;
     });
     return `(${cells.join(", ")})`;
   });

@@ -150,7 +150,14 @@ describe("T025 Loader track tcad", () => {
     await track.merge(db.tx, track.input.parse(chunkInput(chunk(["103"]))));
     const row = db.parcels.get("103") as Record<string, unknown>;
     expect(row.record_sha256).toBe("b".repeat(64));
-    expect(typeof row.payload_redacted).toBe("string");
+    // The jsonb parameter is JSON text bound as text and cast server-side (`$n::text::jsonb`); a
+    // JSON string bound straight to a jsonb parameter is encoded a second time by the driver and
+    // lands as a jsonb string (the live double-encoding bug).
+    expect(JSON.parse(row.payload_redacted as string)).toEqual({ pID: 103 });
+    expect(JSON.parse(row.situs_address as string)).toEqual({ text: "1 SYNTHETIC ST, AUSTIN, TX 78701" });
+    const insert = db.statements.find((s) => s.startsWith("INSERT INTO parcels")) ?? "";
+    expect(insert).toMatch(/\$\d+::text::jsonb/);
+    expect(insert).not.toMatch(/\$\d+::jsonb/);
     expect(Object.keys(row)).not.toContain("payload");
     expect(PARCEL_COLUMNS).not.toContain("payload");
   });

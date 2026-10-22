@@ -52,3 +52,24 @@ Set `"mode": "pilot"` in `pipeline/oracle-runtime/travis/gis/runner-config.json`
 | Austin | captured = source count at the watermark; ≥ 97% of reroof candidates linked; status split vs baseline; 1982-012866 BP `Suspended` / `open` / `no_tcad_geoid`, `open_days = as_of − 1982-06-23` |
 | Jurisdictions | Austin captured with total + timestamp; 22 records-request rows in `limitations` with evidence URLs |
 | Honesty | no confidential name in any output (TC-015 grep); no GIS request from the laptop (TC-NF-03); no Query DB export (TC-NF-02) |
+
+
+## Real-Postgres integration test (throwaway database)
+
+The unit tests use a fake `sql`; this test runs the TCAD, permits and GIS tracks plus migration
+`0104_fix_double_encoded_json.sql` against a real server. It creates `a04_test_<random>`, applies
+every migration through `services/migrate.ts`, asserts `jsonb_typeof(...) = 'object'` for
+`parcels.situs_address`, `parcels.payload_redacted`, `permit_source_rows.payload` and every
+watermark value, links an address-only permit to a synthetic parcel, and drops the database in
+`finally`. It is skipped when `QDB_ADMIN_URL` is unset and never touches the `elephant` database.
+
+```bash
+cd pipeline/local-stack
+QDB_ADMIN_URL='postgres://postgres:<password>@localhost:5432/postgres' \
+  npx vitest run test/real-postgres.integration.test.ts
+```
+
+The role needs CREATEDB. The URL is read from the environment only and never printed.
+After applying `0104` to the live database, check the result with
+`SELECT jsonb_typeof(situs_address), count(*) FROM parcels GROUP BY 1;` (expect `object` and
+`null` only).

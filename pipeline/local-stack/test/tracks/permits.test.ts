@@ -374,6 +374,17 @@ describe("report sections permits + jurisdictions (T056, contracts/report.md)", 
   });
 });
 
+describe("situsOf tolerates both stored shapes", () => {
+  const obj = { street_number: "100", street_name: "ALPHA", street_suffix: "ST", zip: "78701" };
+  it("reads an object and a (legacy double-encoded) JSON string alike", () => {
+    expect(situsOf(JSON.stringify(obj))).toEqual(situsOf(obj));
+    expect(situsOf(obj)?.streetName).toBe("ALPHA");
+    expect(situsOf("not json")).toBeNull();
+    expect(situsOf('"x"')).toBeNull();
+    expect(situsOf(null)).toBeNull();
+  });
+});
+
 describe("parcels.situs_address as G-TCAD stores it (snake_case SitusAddress)", () => {
   it("reads the stored shape to the same address signature as the printed TCAD situs", () => {
     const stored = { text: "100 ALPHA ST, AUSTIN, TX 78701", street_number: "100", street_prefix: null, street_name: "ALPHA", street_suffix: "ST", street_secondary: null, city: "AUSTIN", state: "TX", zip: "78701" };

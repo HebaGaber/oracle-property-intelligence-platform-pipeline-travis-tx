@@ -292,7 +292,16 @@ async function mergeFinalize(
  * `parcels.situs_address` as G-TCAD stores it is snake_case (street_number, street_name, ...);
  * the printed TCAD situs is camelCase (streetNum, streetName, ...). Read either.
  */
-export const situsOf = (v: unknown): SitusLike | null => {
+export const situsOf = (input: unknown): SitusLike | null => {
+  let v = input;
+  if (typeof v === "string") {
+    // A jsonb string (the JSON text stored as a string) is read as the object it encodes.
+    try {
+      v = JSON.parse(v) as unknown;
+    } catch {
+      return null;
+    }
+  }
   if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
   const o = v as Record<string, unknown>;
   const pick = (camel: string, snake: string): string | null => text(o[camel]) ?? text(o[snake]);
