@@ -38,7 +38,7 @@ Save as `docs/reports/A-07-test-report.md`. This is a pipeline-only story: nothi
 | Code review log | `docs/reviews/CR-A-07.md` (90/100, 92/100) |
 | Playwright run | N/A: pipeline-only story |
 
-**Headline finding (revised):** the code is correct. All 42 Vitest tests under `pipeline/oracle-runtime/test/travis/a07/`, all 36 under the related `pipeline/local-stack/test/{tracks,workflows}/` files, and all 89 under `packages/query-core/test/derive.test.ts` pass. Every live Query DB query cited below was re-run against the real Postgres container during this pass and matches the expected result. The previous FAIL verdicts were an artifact of a stale test plan, now corrected.
+**Headline finding (revised):** the code is correct. All 52 Vitest tests under `pipeline/oracle-runtime/test/travis/a07/`, all 42 under the related `pipeline/local-stack/test/{tracks,workflows}/` files, and all 89 under `packages/query-core/test/derive.test.ts` pass. Every live Query DB query cited below was re-run against the real Postgres container during this pass and matches the expected result. The previous FAIL verdicts were an artifact of a stale test plan, now corrected.
 
 ## Results
 
