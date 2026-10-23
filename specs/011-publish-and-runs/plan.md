@@ -4,6 +4,13 @@
 
 **Input**: Feature specification from `/specs/011-publish-and-runs/spec.md`
 
+> **Correction (2026-10-23, during Stage 5):** this plan was written for a 5-group design
+> (`county`, `property_improvement`, `owner`, `contractor`, `parcels`). That was wrong — the real
+> lexicon manifest only defines `county` and `property_improvement`; see `research.md`'s
+> "Correction" section. The Technical Context, Kit Agent Ownership and Project Structure sections
+> below still describe the 5-group version in places; the actual, corrected scope is 2 groups
+> plus wiring A-07's contractor identity into `property_improvement`'s permit records.
+
 ## Summary
 
 Extend A-03's 2-group, pilot-scale publication pipeline to the full 5-group Travis County dataset, verify it independently on two public gateways, keep three durable copies (Filebase, Pinata, GitHub Release), then run two later incremental refreshes that publish only what changed as new linked manifests — plus a CDK-defined, disabled-by-default scheduler so this can run unattended in the future. No new product surface; this is a batch/publication story (`ui: false`).

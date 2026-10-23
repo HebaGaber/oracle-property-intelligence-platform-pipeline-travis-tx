@@ -1,5 +1,13 @@
 # A-11 agent design consult (Stage 3, read-only)
 
+> **Correction (2026-10-23):** this file's design treats `owner`, `contractor` and `parcels` as
+> 3 new separate publish groups. That was wrong — see `research.md`'s "Correction" section.
+> The real work is 2 groups (`county`, `property_improvement`); the only genuinely new piece is
+> wiring A-07's contractor identity into `property_improvement`'s permit records, not 3 new
+> lexicon-record exports. Everything below about manifest scaling, coverage keys and track
+> ownership for `owner`/`contractor`/`parcels` groups should be read with that correction in mind.
+
+
 Both agents read specs/011-publish-and-runs/spec.md, stories/A-11-publish-and-runs.md, docs/architecture-constitution.md, docs/decisions/0001-read-path.md, runs/index.json, and docs/evidence/A-03.md/A-04.md/A-07.md. Answers below are each agent's own words, lightly reformatted for headings only.
 
 ## oracle (publication, runs)

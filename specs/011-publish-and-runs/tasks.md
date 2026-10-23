@@ -4,6 +4,12 @@ description: "Task list: A-11 Publish the full county by CID and keep it current
 
 # Tasks: Publish the full county by CID and keep it current with incremental runs
 
+> **Correction (2026-10-23, mid-build):** T003/T004/T009/T010/T015 below describe widening
+> `DataGroup` to 5 groups and adding `owner`/`contractor`/`parcels` coverage keys. That was
+> wrong — see `research.md`'s "Correction" section — and was reverted in commit `dd884fd`.
+> The real fix, done as an added task **T031**, wires A-07's contractor identity into
+> `property_improvement`'s existing permit records instead of creating 3 new groups.
+
 **Input**: Design documents from `/specs/011-publish-and-runs/`
 
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/publish-sequence.md, agent-design.md
@@ -104,6 +110,7 @@ description: "Task list: A-11 Publish the full county by CID and keep it current
 - [ ] T028 [US3] [machamp] (G-SCHED) Add a DLQ and one CloudWatch alarm for the Fargate task's failure path, in `infra/src/stacks/scheduler-stack.ts`.
 - [ ] T029 [US3] [oracle] (G-RUN, wave 2, after T018-T022) Expose a non-interactive `publishRun`-equivalent entrypoint (gated by the six-step sequence's own readback, not a human D-8 approval — per research.md's disagreement resolution) for the Fargate task to call, in `pipeline/publish/src/batch-entrypoint.ts` (new).
 - [ ] T030 [US2] [oracle] (G-RUN, wave 2) FR-008 unit test: building a later run's manifest must never alter an earlier run's already-written manifest file or its artifact CIDs — assert Run 1's manifest bytes/CIDs are byte-identical before and after building Run 2's manifest, in `pipeline/publish/test/manifest.test.ts` (closes analyze finding F1; runs alongside T018-T023, numbered last only because it was added after the initial draft).
+- [ ] T031 [US1] [oracle] Added 2026-10-23 (the design correction): wire A-07's contractor-identity resolution (AD-05's five states) into `pipeline/oracle-runtime/travis/transforms/austin-property-improvement.ts`'s emitted-permit records (`contractor_company_cid`, `contractor_resolution`, null when no DBPR match exists at all), roll up `contractor_resolved`/`contractor_candidate`/`contractor_unresolved` counts into `run-month.ts`'s summary coverage, and add those 3 keys to `property_improvement`'s entry in `pipeline/publish/src/manifest.ts`'s `GROUP_COVERAGE_KEYS` in the same change (never the coverage key alone, ahead of its producer — that's what broke Wave 1).
 
 **Checkpoint**: all three user stories independently buildable; `cdk synth` green; the scheduler is never deployed as a build task — deployment (still DISABLED) is Stage 6's D-8 stop.
 

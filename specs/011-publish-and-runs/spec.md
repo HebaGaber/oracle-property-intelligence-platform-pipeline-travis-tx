@@ -98,7 +98,7 @@ The Oracle operator wants an automated way to run future refreshes, but it must 
 
 - **Run manifest**: One published snapshot's record — every artifact's CID, size, codec and digest; which run (if any) it supersedes; and the coverage counts for that snapshot.
 - **Run history entry**: One line in the overall run index — which run, when, and which manifest CID — used to show the chain of snapshots over time.
-- **Data group**: A named, independently publishable slice of Travis County data (for example the county roll, property improvements, or the contractor ledger), each with its own artifacts and its own per-run delta.
+- **Data group**: A named, independently publishable slice of Travis County data — the real two groups are the county roll (`county`, which already embeds owner and parcel-geometry fields per record) and permit/improvement records (`property_improvement`, which carries the contractor-identity fields per permit) — each with its own artifacts and its own per-run delta. (Corrected 2026-10-23: an earlier draft of this spec implied owner, contractor and parcels might be separate groups; they are not — see `research.md`.)
 - **Source watermark**: The per-source marker (a timestamp, export date, or content digest set) that determines what a run's window covers and what counts as changed since the last run.
 
 ## Success Criteria *(mandatory)*

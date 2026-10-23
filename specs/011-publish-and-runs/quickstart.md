@@ -1,5 +1,9 @@
 # Quickstart validation: A-11 Publish and runs
 
+> **Correction (2026-10-23):** the real publish groups are `county` and `property_improvement`
+> only — see `research.md`'s "Correction" section. Any mention below of 5 groups is stale.
+
+
 Prerequisites: on branch `011-publish-and-runs`, local Restate + Postgres stack up, `~/.config/assessment/filebase.env` and `~/.config/assessment/pinata.env` present (chmod 600), elephant-cli at `~/.local/share/elephant-cli-main/node_modules/.bin/elephant-cli` (commit `44bb182`).
 
 ## Run 1 (User Story 1 — P1)

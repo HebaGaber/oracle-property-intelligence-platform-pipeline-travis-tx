@@ -1,5 +1,27 @@
 # Phase 0 research: A-11 Publish and runs
 
+## Correction (2026-10-23, during Stage 5 build)
+
+Everything below describing a 5-group design (`county`, `property_improvement`, `owner`,
+`contractor`, `parcels`) was wrong, discovered while checking what the Run 1 dry run would
+actually process. The real lexicon manifest this pipeline fetches (confirmed from a captured
+`capture/lexicon/receipt.json`) only defines **`seed`, `county`, `propertyImprovement`** — no
+separate owner/contractor/parcels groups exist. Checking the existing transform code confirmed
+owner fields and parcel geometry are already embedded inside `county`'s per-record export (a
+`geometry.json` file per record; `ownerOutcomes` computed straight from county records in
+`run-month.ts`'s summary). The one real gap is that A-07's contractor-identity resolution
+(22,084 rows, AD-05's five states) was never wired into `property_improvement`'s permit records
+— that is new, scoped work (adding `contractor_company_cid`/`contractor_resolution` fields to
+each emitted permit, plus 3 coverage-count keys), not a new publish group.
+
+`DataGroup` is back to `"county" | "property_improvement"` in `sequence.ts`/`manifest.ts`. The
+sections below are kept for their still-valid reasoning (second pin, Filebase sizing, AC-10's
+"same CIDs" meaning, the approval-gate disagreement) — ignore every mention of 5 groups or of
+`owner`/`contractor`/`parcels` as separate publish groups in what follows.
+
+---
+
+
 All items below were resolved by the Stage 3 design consult (`agent-design.md`) and decision round R2 (D-2, D-3); none reach Phase 1 as open `NEEDS CLARIFICATION`.
 
 ## Second independent pin (AD-22)

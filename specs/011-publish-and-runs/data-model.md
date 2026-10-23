@@ -1,5 +1,12 @@
 # Data model: A-11 Publish and runs
 
+> **Correction (2026-10-23):** `GroupArtifacts.group` below is widened to 5 groups; that was
+> wrong (see `research.md`'s "Correction"). The real type is `"county" | "property_improvement"`.
+> Owner and parcel-geometry fields are already part of `county`'s export; contractor identity is
+> fields on `property_improvement`'s permit records (`contractor_company_cid`,
+> `contractor_resolution`, plus 3 `aggregate_match` coverage keys), not a separate group.
+
+
 No new persistent entity is introduced in the Query DB — this story only publishes what A-04/A-07 already reconciled. The entities below are the publication-layer shapes (`packages/contract` / `RunManifestV1`), extended for full-county scale.
 
 ## RunManifest (`oracle-travis-run-manifest.v1`)
