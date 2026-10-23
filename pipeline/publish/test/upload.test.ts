@@ -11,6 +11,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,9 +34,14 @@ import {
   type DataGroup,
 } from "../src/sequence.js";
 import {
+  PINATA_CLIENT,
+  PINATA_GATEWAY,
   PreflightError,
   RunSummaryFile,
+  addSecondPin,
+  addToPin,
   bindBuild,
+  inMemoryPinRegistry,
   loadRunSummary,
   publicFiles,
   publishRun,
@@ -1193,5 +1199,147 @@ describe("readback against the approved digests (CR-A-03 F-5)", () => {
     expect(readParts.map((p) => [p.cid, p.sha256]).sort()).toEqual(
       approvedParts.map((f) => [f.cid, f.sha256]).sort(),
     );
+  });
+});
+
+// T008: the second-pin client (Pinata, sibling to the Filebase client above). No network: a fake
+// Kubo RPC `add` plus the gateway it would serve from. Readback is required before success, and
+// an artifact already recorded under a name with different bytes is never silently overwritten.
+describe("the second pin (Pinata, Kubo-RPC-compatible; T008, AD-22)", () => {
+  interface PinataNet {
+    fetch: FetchLike;
+    store: Map<string, Uint8Array>;
+    posts: { authorization: string | null; name: string; cid: string }[];
+    gets: string[];
+  }
+
+  function fakePinataNetwork(opts: { serveOther?: boolean } = {}): PinataNet {
+    const store = new Map<string, Uint8Array>();
+    const posts: PinataNet["posts"] = [];
+    const gets: string[] = [];
+    const fetch: FetchLike = async (input, init) => {
+      const url = new URL(input);
+      if ((init?.method ?? "GET") === "POST") {
+        const form = init?.body;
+        if (!(form instanceof FormData)) throw new Error("expected a FormData body");
+        const file = form.get("file");
+        if (!(file instanceof File)) throw new Error("expected a `file` field");
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const cid = await cidOfBytes(bytes);
+        store.set(cid, bytes);
+        posts.push({
+          authorization: new Headers(init?.headers ?? {}).get("authorization"),
+          name: file.name,
+          cid,
+        });
+        const line = JSON.stringify({ Name: file.name, Hash: cid, Size: String(bytes.length) });
+        return new Response(`${line}\n`, { status: 200 });
+      }
+      gets.push(url.href);
+      const cid = url.pathname.replace(/^\/ipfs\//, "");
+      const bytes = store.get(cid);
+      if (opts.serveOther && bytes) return new Response(text("tampered bytes from the gateway"), { status: 200 });
+      return bytes ? new Response(bytes, { status: 200 }) : new Response("", { status: 404 });
+    };
+    return { fetch, store, posts, gets };
+  }
+
+  const PINATA_ENV = { PINATA_JWT: "fake-pinata-jwt-value" };
+
+  it("refuses up front when PINATA_JWT is missing, naming the variable only", async () => {
+    const net = fakePinataNetwork();
+    const file = join(mkdtempSync(join(tmpdir(), "pin-")), "a.car");
+    write(file, "car bytes");
+    await expect(
+      addToPin(PINATA_CLIENT, { path: file }, await cidOfFile(file), { env: {}, fetch: net.fetch }),
+    ).rejects.toThrow(/pinata add refused: missing PINATA_JWT/);
+    expect(net.posts).toHaveLength(0);
+  });
+
+  it("adds through Kubo RPC with a Bearer PINATA_JWT, then requires a gateway readback match before success", async () => {
+    const net = fakePinataNetwork();
+    const file = join(mkdtempSync(join(tmpdir(), "pin-")), "travis-county.car");
+    write(file, "county car bytes");
+    const cid = await cidOfFile(file);
+    const result = await addToPin(PINATA_CLIENT, { path: file }, cid, { env: PINATA_ENV, fetch: net.fetch });
+    expect(result).toMatchObject({ client: "pinata", name: "travis-county.car", cid });
+    expect(result.readback.ok).toBe(true);
+    expect(net.posts[0]?.authorization).toBe(`Bearer ${PINATA_ENV.PINATA_JWT}`);
+    expect(net.gets).toContain(`${PINATA_GATEWAY}/ipfs/${cid}`);
+  });
+
+  it("never reports success when the gateway readback does not match the added bytes", async () => {
+    const net = fakePinataNetwork({ serveOther: true });
+    const file = join(mkdtempSync(join(tmpdir(), "pin-")), "tables.car");
+    write(file, "tables car bytes");
+    const cid = await cidOfFile(file);
+    await expect(
+      addToPin(PINATA_CLIENT, { path: file }, cid, { env: PINATA_ENV, fetch: net.fetch }),
+    ).rejects.toThrow(/readback failed after add/);
+  });
+
+  it("refuses to overwrite an already-pinned name with different bytes; compares instead of replacing", async () => {
+    const net = fakePinataNetwork();
+    const registry = inMemoryPinRegistry();
+    await registry.set("pinata", "travis-county.car", {
+      cid: "bafkreiexampleOTHERcidxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      size: 999,
+      sha256: "f".repeat(64),
+    });
+    const file = join(mkdtempSync(join(tmpdir(), "pin-")), "travis-county.car");
+    write(file, "new county car bytes");
+    const cid = await cidOfFile(file);
+    await expect(
+      addToPin(PINATA_CLIENT, { path: file }, cid, { env: PINATA_ENV, fetch: net.fetch, registry }),
+    ).rejects.toThrow(/refusing to overwrite it.*pins are immutable by name/s);
+    expect(net.posts).toHaveLength(0);
+  });
+
+  it("is idempotent: the same name/cid already recorded skips the add, but still readback-gates success", async () => {
+    const net = fakePinataNetwork();
+    const registry = inMemoryPinRegistry();
+    const file = join(mkdtempSync(join(tmpdir(), "pin-")), "travis-county.car");
+    write(file, "stable county car bytes");
+    const cid = await cidOfFile(file);
+    const sha256 = sha(readFileSync(file));
+    net.store.set(cid, readFileSync(file));
+    await registry.set("pinata", "travis-county.car", { cid, size: statSync(file).size, sha256 });
+    const result = await addToPin(PINATA_CLIENT, { path: file }, cid, {
+      env: PINATA_ENV,
+      fetch: net.fetch,
+      registry,
+    });
+    expect(net.posts).toHaveLength(0);
+    expect(result.readback.ok).toBe(true);
+  });
+
+  it("adds the manifest's own bytes the same way, by name and expected CID", async () => {
+    const net = fakePinataNetwork();
+    const bytes = text("manifest bytes for the second pin");
+    const cid = await cidOfBytes(bytes);
+    const result = await addToPin(PINATA_CLIENT, { bytes, name: "manifest.json" }, cid, {
+      env: PINATA_ENV,
+      fetch: net.fetch,
+    });
+    expect(result.cid).toBe(cid);
+    expect(result.readback.ok).toBe(true);
+  });
+
+  it("addSecondPin adds every carAdd then the manifest, in order, to the default (Pinata) client", async () => {
+    const net = fakePinataNetwork();
+    const s = setup();
+    const carPath = "car/travis-county.car";
+    write(join(s.runDir, carPath), "county car for second pin");
+    const carCid = await cidOfFile(join(s.runDir, carPath));
+    write(join(s.runsDir, RUN_ID, "manifest.json"), "manifest bytes for second pin");
+    const manifestPath = join(s.runsDir, RUN_ID, "manifest.json");
+    const added = await addSecondPin(
+      { carAdds: [{ group: "county", name: carPath, cid: carCid, size: 0 }], manifestPath },
+      s.runDir,
+      { env: PINATA_ENV, fetch: net.fetch },
+    );
+    expect(added.map((a) => a.name)).toEqual([basename(carPath), "manifest.json"]);
+    expect(added.every((a) => a.readback.ok)).toBe(true);
+    expect(net.posts.map((p) => p.name)).toEqual(["travis-county.car", "manifest.json"]);
   });
 });

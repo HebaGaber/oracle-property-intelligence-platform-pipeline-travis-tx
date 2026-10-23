@@ -19,7 +19,13 @@ import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import { describe, expect, it } from "vitest";
 import { PILOT_LIMITATION, RunManifestV1, RunsIndexV1, isCidV1 } from "@countylens/contract";
-import { SOURCE_ORDER, buildManifest, type BuildManifestInput } from "../src/manifest.js";
+import {
+  GROUP_COVERAGE_KEYS,
+  SOURCE_ORDER,
+  buildManifest,
+  requiredCoverageKeys,
+  type BuildManifestInput,
+} from "../src/manifest.js";
 import {
   addRun,
   appendRun,
@@ -31,7 +37,7 @@ import {
 import * as runsIndexModule from "../src/runs-index.js";
 import { cidOfBytes, cidOfFile } from "../src/cid.js";
 import { jcsBytes } from "../src/jcs.js";
-import { PART_SIZE_BYTES } from "../src/sequence.js";
+import { PART_SIZE_BYTES, type DataGroup } from "../src/sequence.js";
 
 const SHA = "c".repeat(64);
 const RUN_ID = "travis-202609-reroof-20261021t1530z";
@@ -71,19 +77,28 @@ interface FixtureOptions {
   partSizeBytes?: number;
   /** Declare one county part larger than the 48m bound. */
   oversizedPart?: boolean;
+  /** The groups to build (T005/T009/T010: defaults to the 2-group walking skeleton). */
+  groups?: readonly DataGroup[];
 }
+
+/** One table per group, by default (county keeps its own 2-table fixture for T005's part tests). */
+const DEFAULT_TABLES: Record<DataGroup, string[]> = {
+  county: ["property", "structure"],
+  property_improvement: ["property", "property_improvement"],
+  owner: ["owner"],
+  contractor: ["contractor"],
+  parcels: ["parcels"],
+};
 
 async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
   const p = mkdtempSync(join(tmpdir(), "run-"));
   const groups: BuildManifestInput["groups"] = [];
-  for (const group of ["county", "property_improvement"] as const) {
+  for (const group of opts.groups ?? (["county", "property_improvement"] as const)) {
     const carPath = join(p, `car/travis-${group}.car`);
     const countyRoot = await writeCar(carPath, { label: "CountyIndex", group });
     const tablesDir = join(p, `tables/${group}`);
     const tableNames =
-      group === "county"
-        ? (opts.countyTables ?? ["property", "structure"])
-        : ["property", "property_improvement"];
+      group === "county" ? (opts.countyTables ?? DEFAULT_TABLES.county) : DEFAULT_TABLES[group];
     const tables: Record<
       string,
       { rows: number; parts: Array<{ cid: CID; rows: number; bytes: number }> }
@@ -201,11 +216,20 @@ async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
       },
     ],
     // The property_improvement table of the property_improvement group has 2 rows (fixture);
-    // 3 permits were captured, so 1 had no tcad_id.
-    coverage: {
-      permits_emitted: { count: 2, derivation: "published_rows" },
-      permits_no_tcad_geoid: { count: 1, derivation: "aggregate_match" },
-    },
+    // 3 permits were captured, so 1 had no tcad_id. Other groups' tables have 1 row each
+    // (DEFAULT_TABLES): their required coverage keys count that same 1 row.
+    coverage: Object.fromEntries(
+      requiredCoverageKeys((opts.groups ?? ["county", "property_improvement"]) as DataGroup[]).map(
+        ([key, derivation]) => [
+          key,
+          {
+            count:
+              key === "permits_emitted" ? 2 : key === "permits_no_tcad_geoid" ? 1 : 1,
+            derivation,
+          },
+        ],
+      ),
+    ),
     // The run summary's `owners_redacted` (T082): no confidential owner in this fixture.
     ownersRedacted: 0,
     limitations: [],
@@ -421,6 +445,107 @@ describe("buildManifest (A-03)", () => {
   it("imports no database client (reads CLI outputs and receipts only)", () => {
     const src = readFileSync(new URL("../src/manifest.ts", import.meta.url), "utf8");
     expect(src).not.toMatch(/from\s+["'](pg|postgres|@duckdb\/[^"']+)["']/);
+  });
+});
+
+// T005/T010: the manifest builder scales to all 5 full-county groups, each artifact (car,
+// directory) carrying carCid, previousManifestCid staying null for Run 1 — with no code change
+// to groupArtifacts itself (it was already group-agnostic; only DataGroup needed widening).
+describe("buildManifest at full-county scale: all 5 groups (T005, T010)", () => {
+  const ALL_GROUPS: readonly DataGroup[] = [
+    "county",
+    "property_improvement",
+    "owner",
+    "contractor",
+    "parcels",
+  ];
+
+  it("builds a manifest for county, property_improvement, owner, contractor and parcels together", async () => {
+    const { input, runDir } = await fixture({ groups: ALL_GROUPS });
+    const { manifest } = await buildManifest(input);
+    expect(manifest.previousManifestCid).toBeNull();
+    const cars = manifest.artifacts.filter((a) => a.kind === "car");
+    const dirs = manifest.artifacts.filter((a) => a.kind === "directory");
+    expect(cars).toHaveLength(5);
+    expect(dirs).toHaveLength(5);
+    // Every car and directory artifact carries carCid (AM-05); confirmed group by group.
+    for (const group of ALL_GROUPS) {
+      const car = cars.find((a) => a.name === `car/travis-${group}.car`);
+      const dir = dirs.find((a) => a.name === `tables/${group}`);
+      expect(car, `car for ${group}`).toBeDefined();
+      expect(dir, `directory for ${group}`).toBeDefined();
+      expect(car?.carCid).toBeDefined();
+      expect(dir?.carCid).toBeDefined();
+      expect(isCidV1(car?.carCid as string)).toBe(true);
+      expect(isCidV1(dir?.carCid as string)).toBe(true);
+      expect(dir?.carCid).toBe(await cidOfFile(join(runDir, dir?.name as string, "tables.car")));
+    }
+  });
+
+  it("requires owner_published, the contractor 3-state coverage and parcels_published once those groups are in the run", async () => {
+    const { input } = await fixture({ groups: ALL_GROUPS });
+    const { manifest } = await buildManifest(input);
+    expect(manifest.coverage).toMatchObject({
+      owners_published: { count: 1, derivation: "published_rows" },
+      contractor_resolved: { count: 1, derivation: "aggregate_match" },
+      contractor_candidate: { count: 1, derivation: "aggregate_match" },
+      contractor_unresolved: { count: 1, derivation: "aggregate_match" },
+      parcels_published: { count: 1, derivation: "published_rows" },
+    });
+  });
+});
+
+// T004/T006/T009: checkInput's per-run coverage-key profile, extended from the hardcoded
+// 2-item tuple to one key set per group actually in this run — still fail-closed in both
+// directions (missing throws; an extra, undeclared key throws too), never "anything goes".
+describe("checkInput: the widened coverage-key profile (T004, T006, T009)", () => {
+  it("requiredCoverageKeys is exactly the union of the present groups' own keys, order-independent", () => {
+    expect(requiredCoverageKeys(["county"])).toEqual([]);
+    expect(requiredCoverageKeys(["property_improvement"])).toEqual(
+      GROUP_COVERAGE_KEYS.property_improvement,
+    );
+    expect(requiredCoverageKeys(["owner", "parcels"])).toEqual([
+      ...GROUP_COVERAGE_KEYS.owner,
+      ...GROUP_COVERAGE_KEYS.parcels,
+    ]);
+  });
+
+  it("throws when a present group's coverage key is missing (owner in groups, no owners_published)", async () => {
+    const { input } = await fixture({ groups: ["county", "property_improvement", "owner"] });
+    const { owners_published, ...withoutOwner } = input.coverage;
+    void owners_published;
+    await expect(buildManifest({ ...input, coverage: withoutOwner })).rejects.toThrow(
+      /owners_published/,
+    );
+  });
+
+  it("throws when a present group's coverage key has the wrong derivation", async () => {
+    const { input } = await fixture({ groups: ["county", "property_improvement", "parcels"] });
+    await expect(
+      buildManifest({
+        ...input,
+        coverage: { ...input.coverage, parcels_published: { count: 1, derivation: "capture_receipt" } },
+      }),
+    ).rejects.toThrow(/parcels_published.*published_rows/);
+  });
+
+  it("throws on an extra undeclared source, not only a missing or swapped one", async () => {
+    const { input } = await fixture();
+    await expect(
+      buildManifest({
+        ...input,
+        sources: [
+          ...input.sources,
+          {
+            name: "bbb-harvest",
+            url: "https://www.bbb.org/search",
+            watermark: null,
+            receipts: input.sources[1]?.receipts as string,
+            limitations: [],
+          },
+        ],
+      }),
+    ).rejects.toThrow(/sources/);
   });
 });
 

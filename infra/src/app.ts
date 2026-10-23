@@ -9,6 +9,7 @@ import { CertStack } from "./cert-stack.js";
 import { PROJECT_TAG_KEY, type InfraConfig } from "./config.js";
 import { DataStack } from "./data-stack.js";
 import { OpsStack } from "./ops-stack.js";
+import { SchedulerStack } from "./stacks/scheduler-stack.js";
 import { WebStack } from "./web-stack.js";
 
 export interface CountyLensStacks {
@@ -17,6 +18,8 @@ export interface CountyLensStacks {
   readonly web: WebStack;
   readonly ops: OpsStack;
   readonly cert: CertStack;
+  /** A-11 G-SCHED: DISABLED-by-default scheduler, no dependents (never blocks AM-02 order). */
+  readonly scheduler: SchedulerStack;
 }
 
 /** The Ops stack needs the alarm and budget recipient; it is never in git (CI variable, PO shell). */
@@ -71,17 +74,39 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
     web: { appId: web.appId, branchName: web.productionBranchName },
     description: "CountyLens domain: the Amplify custom-domain association only (AD-13, AM-02).",
   });
+  // A-11 G-SCHED: added after Data (it reads the CID-copy bucket/CloudFront names DataStack
+  // mirrors to SSM, CID_COPY_SSM_PREFIX) but with no dependents, so it never sits in the
+  // Data→Api→Web→Ops→Cert chain (plan.md, tasks.md T026). Region only, never a concrete account:
+  // with a concrete account, CDK's ec2.Vpc construct validates its explicit `availabilityZones`
+  // against a real EC2 DescribeAvailabilityZones context-provider call (needs AWS credentials at
+  // synth time, undesirable for `cdk synth`/CI/unit tests); with no account, Stack.availabilityZones
+  // short-circuits to dummy AZ names. The stack's own resources use account-agnostic pseudo
+  // parameters (Aws.ACCOUNT_ID) exactly like every IAM ARN elsewhere in this app, and it reads
+  // DataStack's bucket/host through its published SSM parameters rather than a direct TS
+  // cross-stack object reference (which would force matching account pinning).
+  const scheduler = new SchedulerStack(app, "CountyLensScheduler", {
+    ...base,
+    env: { region: config.region },
+    ...(config.operatorEmail === undefined ? {} : { operatorEmail: config.operatorEmail }),
+    description:
+      "CountyLens scheduler: DISABLED-by-default EventBridge Scheduler → Fargate RunTask " +
+      "(no FargateService), $0 while disabled (NFR-003, P0-19).",
+  });
 
   // Deploy order (ARD § 16 AM-02): Cert last because the domain association needs the Web app.
   api.addStackDependency(data, "AM-02: Api reads the Data bucket");
   web.addStackDependency(api, "AM-02: Web rewrites /api to the HTTP API");
   ops.addStackDependency(web, "AM-02: Ops alarms reference Api and Web");
   cert.addStackDependency(ops, "AM-02: the domain association needs the Web app and branch");
+  // G-SCHED: explicit ordering only (no CDK object/export reference) — the Fargate task reads
+  // DataStack's SSM parameters at its own deploy/run time, so this is documentation of intended
+  // operator deploy order, not a resource dependency CDK itself needs to resolve.
+  scheduler.addStackDependency(data, "G-SCHED: reads the CID-copy bucket/CloudFront SSM parameters");
 
   Tags.of(app).add(PROJECT_TAG_KEY, config.projectName);
   Validations.of(app).addPlugins(
     new AwsSolutionsChecks(app, { verbose: true, writeSuppressionsToCloudFormation: true }),
   );
 
-  return { data, api, web, ops, cert };
+  return { data, api, web, ops, cert, scheduler };
 }

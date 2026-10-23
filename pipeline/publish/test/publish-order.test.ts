@@ -47,6 +47,16 @@ const TABLES_ROOT = "baguqeeraa5xaitdmh4ngbzsxbkfnjk5k6t2xd5v4wpxbs6vfzy2t3wnzqq
 const SEED = "bafkreibhurphpjdq33ysit57jtzmdldgngepsdbsw4vm7esawth2ezgaxu";
 const COUNTY = "bafkreia6tjziby3upxmidymud5iusd32urrztslgrudkwysc7ydmxoekuq";
 const GROUPS: readonly DataGroup[] = ["county", "property_improvement"];
+// T005/T003: the 5 full-county groups (county, property_improvement, owner, contractor,
+// parcels) — DataGroup widened from the 2-group walking skeleton; groupPlan/planBuild/planUpload
+// generalize over `groups: readonly DataGroup[]` already, so no planning code changed.
+const GROUPS5: readonly DataGroup[] = [
+  "county",
+  "property_improvement",
+  "owner",
+  "contractor",
+  "parcels",
+];
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
 /** The 12 publish steps in their fixed order: phase 1 for every group, then phase 2. */
@@ -133,6 +143,13 @@ function setup(): string {
   const p = mkdtempSync(join(tmpdir(), "run-"));
   mkdirSync(join(p, "groups/county"), { recursive: true });
   mkdirSync(join(p, "groups/property_improvement"), { recursive: true });
+  return p;
+}
+
+/** Same as `setup`, with a groups/<group> directory for all 5 full-county groups (T005). */
+function setup5(): string {
+  const p = mkdtempSync(join(tmpdir(), "run-"));
+  for (const group of GROUPS5) mkdirSync(join(p, "groups", group), { recursive: true });
   return p;
 }
 
@@ -689,5 +706,84 @@ describe("redaction of the composed Filebase bearer (OR-7)", () => {
     expect(report.failed?.stderr).not.toContain(token);
     expect(report.failed?.stderr).toContain("[redacted]");
     expect(readFileSync(join(p, "reports/sequence-publish.json"), "utf8")).not.toContain(token);
+  });
+});
+
+// T005: the fixed order generalizes to all 5 full-county groups (30 steps: 5×4 build, then
+// 5×2 upload) with no step skipped, and an upload-readback failure (a phase-2 upload call
+// failing) stops the sequence — report.ok is false, and the failing group's `uploads` stays
+// undefined — before any manifest-building code could run. buildManifest only ever reads the
+// `GroupResult`s a *successful* sequence report hands it, so a report with ok:false is where the
+// manifest step never starts; this is that boundary, proven at the sequence layer.
+describe("runPublish at full-county scale: all 5 groups (T005)", () => {
+  /** The 30 publish steps in their fixed order: phase 1 for every group, then phase 2. */
+  const ORDER5: ReadonlyArray<readonly [DataGroup, StepName]> = [
+    ...GROUPS5.flatMap(
+      (g) =>
+        [
+          [g, "validate"],
+          [g, "hash"],
+          [g, "validate-car"],
+          [g, "export-tables"],
+        ] as const,
+    ),
+    ...GROUPS5.flatMap((g) => [[g, "upload-car"], [g, "upload-tables"]] as const),
+  ];
+
+  it("records 5×4 build steps for every group, then 5×2 uploads, with no step skipped", async () => {
+    const p = setup5();
+    const cli = fakeCli();
+    const report = await runPublish({
+      county: "travis",
+      runDir: p,
+      groups: GROUPS5,
+      run: cli.run,
+    });
+    expect(report.ok).toBe(true);
+    expect(report.steps).toHaveLength(30);
+    expect(report.steps.map((s) => [s.group, s.step])).toEqual(ORDER5);
+    expect(report.steps.map((s) => s.phase)).toEqual([
+      ...Array(20).fill(1),
+      ...Array(10).fill(2),
+    ]);
+    expect(cli.calls).toEqual(planPublish("travis", p, GROUPS5).map((s) => s.argv));
+    // Every group reached both uploads: no step silently dropped (P0-2).
+    expect(report.groups).toHaveLength(5);
+    expect(report.groups.map((g) => g.group)).toEqual(GROUPS5);
+    expect(report.groups.every((g) => g.uploads !== undefined)).toBe(true);
+    expect(() => assertOrdered(planPublish("travis", p, GROUPS5))).not.toThrow();
+  });
+
+  it("an upload-readback failure (upload-tables of a late group) stops before any later step, uploads left undefined", async () => {
+    const p = setup5();
+    // 5 groups × 4 build steps = 20; "contractor" is group index 3, so its upload-tables call
+    // (the second of its two phase-2 uploads) is global step index 20 + 3*2 + 1 = 27.
+    const failAt = 20 + 3 * 2 + 1;
+    const cli = fakeCli({ failAt, stderr: "readback: CID not found on either gateway" });
+    const report = await runPublish({
+      county: "travis",
+      runDir: p,
+      groups: GROUPS5,
+      run: cli.run,
+    });
+    expect(report.ok).toBe(false);
+    expect(report.failed).toMatchObject({
+      group: "contractor",
+      step: "upload-tables",
+      reason: "exit code 1",
+    });
+    expect(cli.calls).toHaveLength(failAt + 1);
+    // "parcels" (the last group) built in phase 1 like every group, but never reaches phase 2:
+    // its two uploads never ran, because every group's phase-1 build precedes any phase-2 upload.
+    expect(report.steps.some((s) => s.group === "parcels" && s.phase === 2)).toBe(false);
+    expect(
+      report.steps.some((s) => s.group === "parcels" && s.step === "upload-car"),
+    ).toBe(false);
+    // The failing group's uploads stay undefined: nothing downstream can treat it as published.
+    const contractor = report.groups.find((g) => g.group === "contractor");
+    expect(contractor?.uploads).toBeUndefined();
+    // report.ok === false is the boundary a caller must check before ever building a manifest
+    // (buildManifest is never invoked from a failed sequence report in this codebase).
+    expect(report.ok).toBe(false);
   });
 });

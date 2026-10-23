@@ -28,7 +28,8 @@
 // the first CLI call or network write. Credentials live in `env` (the child env) only; reports/*.json carry CIDs,
 // paths, sizes and digests, with every secret value redacted.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { z } from "zod";
 import { CoverageCount, type ManifestProfile, type RunsIndexV1 } from "@countylens/contract";
@@ -46,11 +47,13 @@ import {
 } from "./readback.js";
 import { appendRun, emptyRunsIndex, parseRunsIndex, runsIndexBytes } from "./runs-index.js";
 import {
+  FILEBASE_GATEWAY,
   FILEBASE_RPC_API,
   filebaseEnvProblem,
   redact,
   runUpload,
   secretValues,
+  sha256File,
   type CliRunner,
   type DataGroup,
   type GroupResult,
@@ -588,4 +591,215 @@ export async function publishRun(options: PublishOptions): Promise<PublishResult
     manifestPath,
     indexPath,
   });
+}
+
+// --- Second independent pin (Pinata, Kubo-RPC-compatible; AD-22, T012) -------------------------
+// A sibling to the Filebase client `publishRun` already drives: same mechanism (Kubo RPC
+// `/api/v0/add`, pinned, CIDv1 raw-leaves — kubo-add.ts's kuboAddFile/kuboAddBytes, unchanged),
+// a second independent provider and credential (`PINATA_JWT`, never the Filebase keys), so a CAR
+// surviving on Filebase alone is never the whole durability story (research.md "Second
+// independent pin"; three copies total with the GitHub Release, release.ts). kuboAdd already
+// reaches a non-Filebase `--api` through IPFS_API_TOKEN (sequence.ts's kuboToken), so no new
+// low-level transport is needed — only Pinata's endpoint, its own env check, and the env rewrite
+// that puts PINATA_JWT where kuboToken looks for it. This is deliberately NOT wired into
+// publishRun's existing car-add step (which is pinned by A-03's walking-skeleton tests and the
+// D-8 approval flow): it is a separate, additive call the batch/Fargate runner (T029) or a
+// Stage-6 operator makes once the Filebase copy has already succeeded.
+export const PINATA_RPC_API = "https://uploads.pinata.cloud";
+export const PINATA_GATEWAY = "https://gateway.pinata.cloud";
+export const PINATA_VARS = ["PINATA_JWT"] as const;
+
+/** Why `env` cannot add to Pinata, or undefined when it can (fail closed, mirrors OR-8). */
+export function pinataEnvProblem(env: NodeJS.ProcessEnv): string | undefined {
+  const missing = PINATA_VARS.filter((v) => !env[v]);
+  return missing.length > 0 ? `missing ${missing.join(", ")}` : undefined;
+}
+
+/** The second pin's own interface: same shape kuboAdd needs, nothing Filebase-specific baked in. */
+export interface PinClient {
+  name: string;
+  api: string;
+  gateway: string;
+  /** Why `env` cannot use this client, or undefined when it can. */
+  envProblem: (env: NodeJS.ProcessEnv) => string | undefined;
+  /** The child env kuboAdd should see: Filebase's own token composition, or Pinata's JWT put
+   *  where kuboToken reads it (IPFS_API_TOKEN), since `api` is not FILEBASE_RPC_API either way. */
+  childEnv: (env: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
+}
+
+export const FILEBASE_CLIENT: PinClient = {
+  name: "filebase",
+  api: FILEBASE_RPC_API,
+  gateway: FILEBASE_GATEWAY,
+  envProblem: filebaseEnvProblem,
+  childEnv: (env) => env,
+};
+
+export const PINATA_CLIENT: PinClient = {
+  name: "pinata",
+  api: PINATA_RPC_API,
+  gateway: PINATA_GATEWAY,
+  envProblem: pinataEnvProblem,
+  childEnv: (env) => ({ ...env, IPFS_API_TOKEN: env.PINATA_JWT }),
+};
+
+/** The two durable pins AD-22 requires beyond the GitHub Release copy. */
+export const PIN_CLIENTS: readonly PinClient[] = [FILEBASE_CLIENT, PINATA_CLIENT];
+
+export interface PinnedRecord {
+  cid: string;
+  size: number;
+  sha256: string;
+}
+
+/**
+ * What a client already holds for an artifact name, so a later call never silently replaces
+ * different bytes under the same name — the same immutability guarantee cid-copy.ts gives the
+ * S3 CID copy (HeadObject: same digest -> skip, different digest -> refuse), applied here to the
+ * second pin. Not needed for correctness against IPFS itself (a CID is the content; two
+ * different byte strings never share one), but it catches the real failure mode: an operator or
+ * a later run re-adding a file at the same path with different bytes without noticing.
+ */
+export interface PinRegistry {
+  get(client: string, name: string): Promise<PinnedRecord | undefined> | PinnedRecord | undefined;
+  set(client: string, name: string, record: PinnedRecord): Promise<void> | void;
+}
+
+/** A per-process registry; a caller that wants the guarantee across process runs injects its
+ *  own (e.g. backed by the run's reports/ directory or an operator-chosen durable store). */
+export function inMemoryPinRegistry(): PinRegistry {
+  const store = new Map<string, PinnedRecord>();
+  return {
+    get: (client, name) => store.get(`${client}:${name}`),
+    set: (client, name, record) => void store.set(`${client}:${name}`, record),
+  };
+}
+
+export interface SecondPinOptions {
+  env: NodeJS.ProcessEnv;
+  fetch?: FetchLike;
+  registry?: PinRegistry;
+  /** Per-request timeout for the readback GET (default: kuboAdd's own 300s). */
+  readbackTimeoutMs?: number;
+}
+
+export interface PinAdd {
+  client: string;
+  name: string;
+  cid: string;
+  size: number;
+  sha256: string;
+  /** The gateway's own bytes for `cid`, compared with the expected size/sha256 (OR-4-equivalent).
+   *  Never present on success without this check: readback is required before success (T008). */
+  readback: { size: number; sha256: string; ok: boolean; reason?: string };
+}
+
+async function gatewayReadback(
+  gateway: string,
+  cid: string,
+  expectedSize: number,
+  expectedSha256: string,
+  options: SecondPinOptions,
+): Promise<PinAdd["readback"]> {
+  const fetchImpl = options.fetch ?? fetch;
+  let response: Response;
+  try {
+    response = await fetchImpl(`${gateway}/ipfs/${cid}`, {
+      signal: AbortSignal.timeout(options.readbackTimeoutMs ?? 300_000),
+    });
+  } catch (err) {
+    return { size: 0, sha256: "", ok: false, reason: message(err) };
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    return { size: 0, sha256: "", ok: false, reason: `HTTP ${response.status}` };
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const ok = bytes.length === expectedSize && sha256 === expectedSha256;
+  return {
+    size: bytes.length,
+    sha256,
+    ok,
+    ...(ok ? {} : { reason: `size ${bytes.length} (want ${expectedSize}) sha256 ${sha256} (want ${expectedSha256})` }),
+  };
+}
+
+/**
+ * Adds one artifact (a file on disk, or the manifest's exact bytes) to `client`: refuses up
+ * front on missing credentials, refuses — comparing recorded bytes instead of overwriting — when
+ * the registry already holds this name under a different digest, otherwise adds through Kubo RPC
+ * (kuboAddFile/kuboAddBytes already require the node's returned Hash to equal the local CID) and
+ * then requires a gateway readback match before returning. A failed readback throws: this
+ * function never reports success without it (T008).
+ */
+export async function addToPin(
+  client: PinClient,
+  content: { path: string } | { bytes: Uint8Array; name: string },
+  expectedCid: string,
+  options: SecondPinOptions,
+): Promise<PinAdd> {
+  const problem = client.envProblem(options.env);
+  if (problem !== undefined) throw new Error(`${client.name} add refused: ${problem}`);
+  const name = "path" in content ? basename(content.path) : content.name;
+  const size = "path" in content ? statSync(content.path).size : content.bytes.length;
+  const sha256 =
+    "path" in content
+      ? await sha256File(content.path)
+      : createHash("sha256").update(content.bytes).digest("hex");
+
+  const registry = options.registry ?? inMemoryPinRegistry();
+  const existing = await registry.get(client.name, name);
+  if (existing !== undefined) {
+    if (existing.cid === expectedCid && existing.sha256 === sha256 && existing.size === size) {
+      const readback = await gatewayReadback(client.gateway, expectedCid, size, sha256, options);
+      if (!readback.ok)
+        throw new Error(`${client.name}: ${name} readback failed: ${readback.reason ?? "mismatch"}`);
+      return { client: client.name, name, cid: expectedCid, size, sha256, readback };
+    }
+    throw new Error(
+      `${client.name}: ${name} was already pinned as ${existing.cid} (sha256 ${existing.sha256}, size ${existing.size}); ` +
+        `refusing to overwrite it with ${expectedCid} (sha256 ${sha256}, size ${size}) — pins are immutable by name`,
+    );
+  }
+
+  const addOptions: KuboAddOptions = {
+    env: client.childEnv(options.env),
+    api: client.api,
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+  };
+  const added =
+    "path" in content
+      ? await kuboAddFile(content.path, expectedCid, addOptions)
+      : await kuboAddBytes(content.bytes, content.name, expectedCid, addOptions);
+
+  const readback = await gatewayReadback(client.gateway, added.cid, size, sha256, options);
+  if (!readback.ok)
+    throw new Error(`${client.name}: ${name} readback failed after add: ${readback.reason ?? "mismatch"}`);
+  await registry.set(client.name, name, { cid: added.cid, size, sha256 });
+  return { client: client.name, name, cid: added.cid, size, sha256, readback };
+}
+
+/**
+ * Adds every CAR/tables.car this run already pinned to Filebase (`result.carAdds`) plus the
+ * manifest's own bytes to `client` (default: Pinata), in the same order `publishRun` added them.
+ * Stops at the first failure (fail-closed): a second pin that silently drops an artifact is worse
+ * than one that never started.
+ */
+export async function addSecondPin(
+  result: Pick<PublishResult, "carAdds" | "manifestPath">,
+  runDir: string,
+  options: SecondPinOptions & { client?: PinClient },
+): Promise<PinAdd[]> {
+  const client = options.client ?? PINATA_CLIENT;
+  const added: PinAdd[] = [];
+  for (const a of result.carAdds) {
+    added.push(await addToPin(client, { path: join(runDir, a.name) }, a.cid, options));
+  }
+  if (result.manifestPath !== undefined) {
+    const bytes = readFileSync(result.manifestPath);
+    const cid = await cidOfBytes(bytes);
+    added.push(await addToPin(client, { bytes, name: "manifest.json" }, cid, options));
+  }
+  return added;
 }

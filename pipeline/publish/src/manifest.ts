@@ -33,8 +33,49 @@ import { cidOfBytes, cidOfFile, codecName, sameDigest } from "./cid.js";
 import { jcsBytes } from "./jcs.js";
 import { PART_SIZE, PART_SIZE_BYTES, sha256File, type DataGroup } from "./sequence.js";
 
-/** The display order of `sources[]` (data-model.md): Austin permits first, then TCAD. */
+/** The display order of `sources[]` (data-model.md): Austin permits first, then TCAD. This is
+ *  the known-real source profile for Run 1; it is a plain constant, not a group count, because
+ *  sources and groups are independent axes (one source can feed several groups). A future source
+ *  (BBB/places) is added here, to SOURCE_ORDER, once it is actually captured — never fabricated
+ *  ahead of real provenance (research.md "Manifest builder scaling to 5 data groups"). */
 export const SOURCE_ORDER = ["austin-3syk-w9eu", "tcad-2026-certified-json"] as const;
+
+/**
+ * The required coverage keys per data group (AD-05's five contractor states; data-model.md's
+ * three derivations: `published_rows`, `capture_receipt`, `aggregate_match`). `checkInput`
+ * requires exactly the union of these for the groups actually present in `input.groups` — never
+ * "anything goes": a present group's key missing, or an absent group's key supplied, both throw.
+ * This is the per-run profile T004/T009 widen from the old hardcoded 2-item tuple.
+ */
+export const GROUP_COVERAGE_KEYS: Record<
+  DataGroup,
+  ReadonlyArray<readonly [string, CoverageCount["derivation"]]>
+> = {
+  // No coverage key of its own: the county group is the parcel backbone, not a counted metric
+  // (A-03 status quo, kept unchanged so the walking-skeleton fixtures keep passing).
+  county: [],
+  property_improvement: [
+    ["permits_emitted", "published_rows"],
+    ["permits_no_tcad_geoid", "aggregate_match"],
+  ],
+  owner: [["owners_published", "published_rows"]],
+  // AD-05's five states collapse to three persisted coverage counts here: a permit with no DBPR
+  // match is resolved to no contractor at all, so it is not its own coverage bucket (use-oracle
+  // §4: "no DBPR match means write no contractor").
+  contractor: [
+    ["contractor_resolved", "aggregate_match"],
+    ["contractor_candidate", "aggregate_match"],
+    ["contractor_unresolved", "aggregate_match"],
+  ],
+  parcels: [["parcels_published", "published_rows"]],
+};
+
+/** The coverage keys required for exactly `groups` (order-independent; T004/T009 profile). */
+export function requiredCoverageKeys(
+  groups: readonly DataGroup[],
+): ReadonlyArray<readonly [string, CoverageCount["derivation"]]> {
+  return groups.flatMap((g) => GROUP_COVERAGE_KEYS[g]);
+}
 
 /** The Austin source's fixed limitation note (addendum A5; plan § "Fixed texts"). */
 export const COMPTROLLER_LIMITATION = "Comptroller baseline not loaded (A-07)";
@@ -336,13 +377,10 @@ function checkInput(input: BuildManifestInput): void {
       `sources must be exactly, in order: ${SOURCE_ORDER.join(", ")}; got ${names.join(", ") || "none"}`,
     );
   }
-  const required: ReadonlyArray<[string, CoverageCount["derivation"]]> = [
-    ["permits_emitted", "published_rows"],
-    ["permits_no_tcad_geoid", "aggregate_match"],
-  ];
+  const required = requiredCoverageKeys(input.groups.map((g) => g.group));
   for (const [key, derivation] of required) {
     const count = input.coverage[key];
-    if (!count) throw new Error(`coverage.${key} is required`);
+    if (!count) throw new Error(`coverage.${key} is required for group(s) in this run`);
     if (count.derivation !== derivation)
       throw new Error(
         `coverage.${key}.derivation must be "${derivation}", not "${count.derivation}"`,
@@ -364,14 +402,18 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
     rows.set(g.group, built.rows);
   }
   // `published_rows`: the count is literally the number of published property_improvement rows.
-  const published = rows.get("property_improvement")?.property_improvement;
-  const emitted = input.coverage.permits_emitted as CoverageCount;
-  if (published === undefined)
-    throw new Error("coverage.permits_emitted needs the property_improvement group's table");
-  if (emitted.count !== published) {
-    throw new Error(
-      `coverage.permits_emitted.count ${emitted.count} is not the number of published property_improvement rows (${published})`,
-    );
+  // Only checked when this run actually includes the property_improvement group (T004/T009's
+  // per-group profile: a run of, say, county+owner alone never needs permits_emitted).
+  if (input.groups.some((g) => g.group === "property_improvement")) {
+    const published = rows.get("property_improvement")?.property_improvement;
+    const emitted = input.coverage.permits_emitted as CoverageCount;
+    if (published === undefined)
+      throw new Error("coverage.permits_emitted needs the property_improvement group's table");
+    if (emitted.count !== published) {
+      throw new Error(
+        `coverage.permits_emitted.count ${emitted.count} is not the number of published property_improvement rows (${published})`,
+      );
+    }
   }
   const manifest = RunManifestV1.parse({
     schema: "oracle-travis-run-manifest.v1",
@@ -390,4 +432,21 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
   });
   const bytes = jcsBytes(manifest);
   return { manifest, bytes, cid: await cidOfBytes(bytes) };
+}
+
+/**
+ * T013 stub: drafts Run 1's `BuildManifestInput` from the dry run's actual outputs (the five
+ * groups' `ManifestGroupInput`s under `dryRunDir`, their capture receipts, and the real
+ * `owners_redacted`/coverage counts the dry run reports). Not implemented in this wave: the dry
+ * run has not produced any output yet (Stage 5 overlaps the build, per tasks.md's critical
+ * path), and this function must never fabricate a group, a source, or a coverage count to fill
+ * that gap. The shape below is ready for G-RUN's wave-2 wiring (T017-T019): once the dry run
+ * exists, this reads its reports/ directory the same way `fixture()` in manifest.test.ts
+ * synthesizes one, then calls `buildManifest` unchanged.
+ */
+export function draftRun1ManifestInput(_dryRunDir: string): never {
+  throw new Error(
+    "draftRun1ManifestInput: not implemented — Run 1's dry run has not produced output yet; " +
+      "see tasks.md T013/T017-T019. This function intentionally does not fabricate dry-run data.",
+  );
 }

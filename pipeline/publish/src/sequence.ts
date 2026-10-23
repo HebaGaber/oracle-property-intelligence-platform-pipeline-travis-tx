@@ -27,7 +27,13 @@ import {
 } from "node:fs";
 import { join, sep } from "node:path";
 
-export type DataGroup = "county" | "property_improvement";
+/**
+ * The 5 full-county publish groups (A-11, widened from A-03's 2-group walking skeleton).
+ * `groupPlan`/`planBuild`/`planUpload`/`planPublish` already generalize over
+ * `groups: readonly DataGroup[]`, so widening this union is the only change the six-step fan-out
+ * needs to scale to full-county publication.
+ */
+export type DataGroup = "county" | "property_improvement" | "owner" | "contractor" | "parcels";
 export type StepName =
   "validate" | "hash" | "validate-car" | "export-tables" | "upload-car" | "upload-tables";
 /** 1 = build (local), 2 = upload. */
