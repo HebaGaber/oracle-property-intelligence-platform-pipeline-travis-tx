@@ -3,8 +3,8 @@ id: UT-A-07
 type: unit-test-report
 story: A-07
 branch: 007-enrich-reconcile
-commit: 0ceffa1
-ci_run: "https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39869733358 (commit 0ceffa1, the current HEAD: gitleaks, oracle-runtime, workspace, e2e-hosted all success, confirmed via the GitHub API). Coverage numbers below are local runs on the operator machine on 2026-10-23 (V8 provider, offline Vitest — the no-network setup file makes any real fetch fail)."
+commit: 3920c30
+ci_run: "https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39873803604 (commit 3920c30, the current HEAD: gitleaks, oracle-runtime, workspace success on the first pass; e2e-hosted hit its own 30-minute timeout, reported cancelled, and completed success on a re-run of just that job -- confirmed via the GitHub API). Coverage numbers below are local runs on the operator machine on 2026-10-23 (V8 provider, offline Vitest — the no-network setup file makes any real fetch fail)."
 created: 2026-10-23
 ---
 
