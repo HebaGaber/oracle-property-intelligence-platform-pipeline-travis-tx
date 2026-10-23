@@ -3,7 +3,7 @@ id: CR-A-07
 type: code-review-log
 story: A-07
 branch: 007-enrich-reconcile
-reviewed_commit: 450c8ef
+reviewed_commit: 450c8ef (the review round itself; later commits are CI/doc-staleness fixes with no code the review's substance depends on)
 tools: [general-purpose (Track A), soofi-xyz-team-kit:porygon (cross-track), /code-review low]
 created: 2026-10-23
 ---

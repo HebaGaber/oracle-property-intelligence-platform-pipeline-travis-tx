@@ -102,7 +102,7 @@ Save as `docs/reports/A-07-test-report.md`. This is a pipeline-only story: nothi
 
 None open. The previous draft's ERR-01 through ERR-07 were all doc-staleness in the test plan's Automation column (stale file paths, a never-wired `EN`/`RA` CLI shorthand, and DB relation names from an earlier planning draft), not code defects — all seven are closed by correcting `testplans/A-07-test-cases.md` and re-running the corrected handles, not by changing `pipeline/oracle-runtime` or `pipeline/local-stack` code. No `docs/defects/ERR-*.md` file was created for A-07 in the prior pass (checked: every existing `docs/defects/ERR-*.md` belongs to A-01 through A-06), so there is nothing to delete.
 
-No real defect was found during this re-verification pass. This is consistent with the two independent reviews (`docs/reviews/CR-A-07.md`, 90/100 and 92/100, each re-querying live Postgres directly) and the unit test suite (`docs/reports/A-07-unit-test-report.md`, 1007+194+241 passing), which both found the underlying logic correct.
+No real defect was found during this re-verification pass. This is consistent with the two independent reviews (`docs/reviews/CR-A-07.md`, 90/100 and 92/100, each re-querying live Postgres directly) and the unit test suite (`docs/reports/A-07-unit-test-report.md`, 1019+196+241 passing), which both found the underlying logic correct.
 
 Note for the record (not a defect): the identity resolution report has `registrySnapshotMatches: false` (registry snapshot digest differs from the planned `--registry-snapshot`); the report itself records this as a limitation and resolves against the live registry at run time instead. Not scored as a failure.
 
@@ -110,4 +110,4 @@ Note for the record (not a defect): the identity resolution report has `registry
 
 **Decision:** ☑ Validated (counts toward G7)
 
-23 of 24 executed cases PASS outright; TC-002 passes on its documented fixture branch (D-10: no live crosswalk exists this run, by design). 0 Critical defects open. 20 cases remain correctly N/A (Tracks B/C not built this pass, PO cost-mode scope decision). `testplans/A-07-test-cases.md`'s Automation column has been corrected to match the real Stage 5 file layout and DB schema, and every corrected case was re-run against live code and the live Query DB during this pass — QC lead sign-off pending PO/G7 review (2026-10-23).
+24 of 24 executed cases PASS; TC-002 passes on its documented fixture branch (D-10: no live crosswalk exists this run, by design). 0 Critical defects open. 20 cases remain correctly N/A (Tracks B/C not built this pass, PO cost-mode scope decision). `testplans/A-07-test-cases.md`'s Automation column has been corrected to match the real Stage 5 file layout and DB schema, and every corrected case was re-run against live code and the live Query DB during this pass — QC lead sign-off pending PO/G7 review (2026-10-23).
