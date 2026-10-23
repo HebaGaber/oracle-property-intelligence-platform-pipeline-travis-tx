@@ -1,0 +1,278 @@
+// A-11, AD-22: unit tests for the Pinata-own-API second-pin utility. Every HTTP call is a fake
+// FetchLike; nothing here makes a real network call or reads a real JWT. Request/response shapes
+// match the legacy `/pinning/*` and `/data/pinList` endpoints a real smoke test (2026-10-23)
+// confirmed the saved PINATA_JWT can actually use (the newer v3 Files API 401s for that key).
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  PINATA_API,
+  PINATA_PIN_BY_HASH_PATH,
+  PINATA_PIN_LIST_PATH,
+  PINATA_UPLOAD_PATH,
+  isPinned,
+  pinByCid,
+  pinataPin,
+  pollUntilPinned,
+  uploadFile,
+  type FetchLike,
+} from "../src/pinata-pin.js";
+
+const JWT = "fake.jwt.value-should-never-appear-in-output";
+const CID = "QmaGsUdioAd8YxCT1PP7AZcz8vFeTTMH6nTFAud1SqJhhV";
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status });
+}
+
+describe("pinByCid", () => {
+  it("POSTs { hashToPin, pinataMetadata } with a bearer header and parses id/status", async () => {
+    let seen: { url: string; method: string; headers: Record<string, string>; body: unknown } | undefined;
+    const fetch: FetchLike = async (input, init) => {
+      seen = {
+        url: String(input),
+        method: init?.method ?? "GET",
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        body: JSON.parse(String(init?.body)),
+      };
+      return jsonResponse(200, { id: "file-1", ipfsHash: CID, status: "searching" });
+    };
+    const result = await pinByCid(CID, "my-name", { jwt: JWT, fetch });
+    expect(seen?.url).toBe(`${PINATA_API}${PINATA_PIN_BY_HASH_PATH}`);
+    expect(seen?.method).toBe("POST");
+    expect(seen?.headers.authorization).toBe(`Bearer ${JWT}`);
+    expect(seen?.body).toEqual({ hashToPin: CID, pinataMetadata: { name: "my-name" } });
+    expect(result).toEqual({ id: "file-1", status: "searching" });
+  });
+
+  it("omits pinataMetadata from the body when no name is given", async () => {
+    let body: unknown;
+    const fetch: FetchLike = async (_input, init) => {
+      body = JSON.parse(String(init?.body));
+      return jsonResponse(200, { id: "file-2" });
+    };
+    await pinByCid(CID, undefined, { jwt: JWT, fetch });
+    expect(body).toEqual({ hashToPin: CID });
+  });
+
+  it("throws on a non-OK response (e.g. a 403 NO_SCOPES_FOUND) and redacts the JWT", async () => {
+    const fetch: FetchLike = async () =>
+      new Response(
+        JSON.stringify({ error: { reason: "NO_SCOPES_FOUND", details: `rejected for ${JWT}` } }),
+        { status: 403, statusText: "Forbidden" },
+      );
+    await expect(pinByCid(CID, undefined, { jwt: JWT, fetch })).rejects.toThrow(
+      /pinByHash of .* failed: 403 Forbidden/,
+    );
+    try {
+      await pinByCid(CID, undefined, { jwt: JWT, fetch });
+      expect.fail("expected a throw");
+    } catch (err) {
+      expect(String(err)).not.toContain(JWT);
+      expect(String(err)).toContain("[redacted]");
+      expect(String(err)).toContain("NO_SCOPES_FOUND");
+    }
+  });
+
+  it("throws when the response body is not JSON, without leaking the JWT", async () => {
+    const fetch: FetchLike = async () => new Response(`<html>${JWT}</html>`, { status: 200 });
+    await expect(pinByCid(CID, undefined, { jwt: JWT, fetch })).rejects.toThrow(/non-JSON/);
+  });
+});
+
+describe("uploadFile", () => {
+  it("uploads the file as multipart/form-data and parses IpfsHash into cid", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pinata-pin-"));
+    const filePath = join(dir, "throwaway.txt");
+    writeFileSync(filePath, "A-11 pinata-pin smoke test fixture, not real data");
+    let seen: { url: string; headers: Record<string, string>; file: File } | undefined;
+    const fetch: FetchLike = async (input, init) => {
+      const form = init?.body;
+      if (!(form instanceof FormData)) throw new Error("expected a FormData body");
+      const file = form.get("file");
+      if (!(file instanceof File)) throw new Error("expected a file field");
+      seen = {
+        url: String(input),
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        file,
+      };
+      return jsonResponse(200, {
+        IpfsHash: CID,
+        PinSize: 50,
+        Timestamp: "2026-10-23T18:31:52.672Z",
+        ID: "file-3",
+        Name: "throwaway.txt",
+      });
+    };
+    const result = await uploadFile(filePath, undefined, { jwt: JWT, fetch });
+    expect(seen?.url).toBe(`${PINATA_API}${PINATA_UPLOAD_PATH}`);
+    expect(seen?.headers.authorization).toBe(`Bearer ${JWT}`);
+    expect(seen?.file.name).toBe("throwaway.txt");
+    expect(result).toEqual({ id: "file-3", cid: CID });
+  });
+
+  it("includes pinataMetadata as a JSON string field when a name is given", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pinata-pin-"));
+    const filePath = join(dir, "throwaway.txt");
+    writeFileSync(filePath, "x");
+    let metadata: string | undefined;
+    const fetch: FetchLike = async (_input, init) => {
+      const form = init?.body as FormData;
+      metadata = form.get("pinataMetadata") as string;
+      return jsonResponse(200, { IpfsHash: CID, ID: "file-5" });
+    };
+    await uploadFile(filePath, "a-11-smoke-throwaway", { jwt: JWT, fetch });
+    expect(JSON.parse(metadata ?? "")).toEqual({ name: "a-11-smoke-throwaway" });
+  });
+
+  it("throws when the upload response carries no IpfsHash", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pinata-pin-"));
+    const filePath = join(dir, "throwaway.txt");
+    writeFileSync(filePath, "x");
+    const fetch: FetchLike = async () => jsonResponse(200, { ID: "file-4" });
+    await expect(uploadFile(filePath, undefined, { jwt: JWT, fetch })).rejects.toThrow(/returned no IpfsHash/);
+  });
+});
+
+describe("isPinned", () => {
+  it("is true when pinList?status=pinned returns a non-empty rows array for the cid", async () => {
+    let url: string | undefined;
+    const fetch: FetchLike = async (input) => {
+      url = String(input);
+      return jsonResponse(200, { count: 1, rows: [{ id: "file-1", ipfs_pin_hash: CID }] });
+    };
+    expect(await isPinned(CID, { jwt: JWT, fetch })).toBe(true);
+    expect(url).toBe(`${PINATA_API}${PINATA_PIN_LIST_PATH}?hashContains=${encodeURIComponent(CID)}&status=pinned`);
+  });
+
+  it("is false when rows is empty", async () => {
+    const fetch: FetchLike = async () => jsonResponse(200, { count: 0, rows: [] });
+    expect(await isPinned(CID, { jwt: JWT, fetch })).toBe(false);
+  });
+
+  it("is false when the response has no rows field", async () => {
+    const fetch: FetchLike = async () => jsonResponse(200, { count: 0 });
+    expect(await isPinned(CID, { jwt: JWT, fetch })).toBe(false);
+  });
+});
+
+describe("pollUntilPinned", () => {
+  it("polls on a fake clock until isPinned turns true, without a real sleep", async () => {
+    let call = 0;
+    const fetch: FetchLike = async () => {
+      call += 1;
+      return jsonResponse(200, { rows: call >= 3 ? [{ id: "f", ipfs_pin_hash: CID }] : [] });
+    };
+    let clock = 0;
+    const sleeps: number[] = [];
+    const result = await pollUntilPinned(CID, {
+      jwt: JWT,
+      fetch,
+      pollIntervalMs: 1000,
+      pollTimeoutMs: 10_000,
+      now: () => clock,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+    });
+    expect(call).toBe(3);
+    expect(sleeps).toEqual([1000, 1000]);
+    expect(result).toBe(clock);
+  });
+
+  it("throws once the timeout elapses without ever seeing the cid pinned", async () => {
+    const fetch: FetchLike = async () => jsonResponse(200, { rows: [] });
+    let clock = 0;
+    await expect(
+      pollUntilPinned(CID, {
+        jwt: JWT,
+        fetch,
+        pollIntervalMs: 1000,
+        pollTimeoutMs: 2500,
+        now: () => clock,
+        sleep: async (ms) => {
+          clock += ms;
+        },
+      }),
+    ).rejects.toThrow(/did not confirm as pinned within 2500ms/);
+  });
+});
+
+describe("pinataPin", () => {
+  it("rejects a missing jwt before any fetch", async () => {
+    const fetch: FetchLike = async () => {
+      throw new Error("must not be called");
+    };
+    await expect(pinataPin({ cid: CID }, { jwt: "", fetch })).rejects.toThrow(/PINATA_JWT is required/);
+  });
+
+  it("rejects when neither cid nor filePath is given", async () => {
+    const fetch: FetchLike = async () => {
+      throw new Error("must not be called");
+    };
+    await expect(pinataPin({}, { jwt: JWT, fetch })).rejects.toThrow(/requires a cid or a filePath/);
+  });
+
+  it("pins by cid and polls pinList to confirm, reporting method pin_by_cid", async () => {
+    const calls: string[] = [];
+    const fetch: FetchLike = async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes(PINATA_PIN_BY_HASH_PATH)) {
+        return jsonResponse(200, { id: "file-1", status: "searching" });
+      }
+      return jsonResponse(200, { rows: [{ id: "file-1", ipfs_pin_hash: CID }] });
+    };
+    const result = await pinataPin(
+      { cid: CID, name: "run1-car" },
+      { jwt: JWT, fetch, pollIntervalMs: 0, now: () => 0, sleep: async () => {} },
+    );
+    expect(result).toEqual({ cid: CID, id: "file-1", method: "pin_by_cid", pinned: true, polledMs: 0 });
+    expect(calls[0]).toContain(PINATA_PIN_BY_HASH_PATH);
+  });
+
+  it("falls back to uploadFile when pin_by_cid fails (e.g. 403 NO_SCOPES_FOUND) and a filePath is given", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pinata-pin-"));
+    const filePath = join(dir, "throwaway.txt");
+    writeFileSync(filePath, "fallback fixture");
+    const fetch: FetchLike = async (input) => {
+      const url = String(input);
+      if (url.includes(PINATA_PIN_BY_HASH_PATH)) {
+        return jsonResponse(403, { error: { reason: "NO_SCOPES_FOUND" } });
+      }
+      if (url.includes(PINATA_UPLOAD_PATH)) return jsonResponse(200, { ID: "file-9", IpfsHash: CID });
+      return jsonResponse(200, { rows: [{ id: "file-9", ipfs_pin_hash: CID }] });
+    };
+    const result = await pinataPin(
+      { cid: "QmDOESNOTEXISTXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", filePath },
+      { jwt: JWT, fetch, now: () => 0, sleep: async () => {} },
+    );
+    expect(result.method).toBe("upload");
+    expect(result.cid).toBe(CID);
+    expect(result.pinned).toBe(true);
+  });
+
+  it("rethrows the pin_by_cid error when it fails and no filePath fallback is given", async () => {
+    const fetch: FetchLike = async (input) => {
+      if (String(input).includes(PINATA_PIN_BY_HASH_PATH)) return jsonResponse(403, { error: "nope" });
+      throw new Error("must not poll after a failed pin with no fallback");
+    };
+    await expect(pinataPin({ cid: CID }, { jwt: JWT, fetch })).rejects.toThrow(/failed: 403/);
+  });
+
+  it("uploads directly when only a filePath is given (no cid)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pinata-pin-"));
+    const filePath = join(dir, "throwaway.txt");
+    writeFileSync(filePath, "no cid fixture");
+    const fetch: FetchLike = async (input) => {
+      const url = String(input);
+      if (url.includes(PINATA_UPLOAD_PATH)) return jsonResponse(200, { ID: "file-7", IpfsHash: CID });
+      return jsonResponse(200, { rows: [{ id: "file-7", ipfs_pin_hash: CID }] });
+    };
+    const result = await pinataPin({ filePath }, { jwt: JWT, fetch, now: () => 0, sleep: async () => {} });
+    expect(result.method).toBe("upload");
+    expect(result.cid).toBe(CID);
+  });
+});
