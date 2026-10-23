@@ -85,6 +85,15 @@ export interface ComputeSourceDeltaInput {
    * means "outside this window," not "removed" — removal detection needs a full keyset read.
    */
   currentKeys?: ReadonlySet<string>;
+  /**
+   * T020: keys the reconciliation layer already marked `source_removed` (use-oracle's "consume
+   * dead/invalid tombstones") — an explicit, caller-asserted fact, counted into `removed` even
+   * on a narrow window where `currentKeys` was never supplied (a normal incremental window never
+   * reads the full keyset). A tombstoned key not present in `previousDigests` (never published
+   * before) counts for nothing: there is nothing to remove. Deduplicated with any key
+   * `currentKeys` already found absent, so a key caught both ways is counted once.
+   */
+  tombstones?: ReadonlySet<string>;
   /** The watermark value to record if this run commits (Socrata `:updated_at`, export date, or harvest date). */
   newWatermark: string | null;
 }
@@ -121,12 +130,21 @@ export function computeSourceDelta(input: ComputeSourceDeltaInput): SourceDeltaR
     else if (previous !== row.digest) changed += 1;
   }
 
-  let removed = 0;
+  // T020: a key is removed either because a full keyset read (currentKeys) no longer has it, or
+  // because the reconciliation layer explicitly tombstoned it (source_removed) — a Set dedupes a
+  // key caught both ways. A tombstone for a key never seen in previousDigests removes nothing.
+  const removedKeys = new Set<string>();
   if (input.currentKeys) {
     for (const key of input.previousDigests.keys()) {
-      if (!input.currentKeys.has(key)) removed += 1;
+      if (!input.currentKeys.has(key)) removedKeys.add(key);
     }
   }
+  if (input.tombstones) {
+    for (const key of input.tombstones) {
+      if (input.previousDigests.has(key)) removedKeys.add(key);
+    }
+  }
+  const removed = removedKeys.size;
 
   const limitations: string[] = [];
   if (restamp.detected) limitations.push(RESTAMP_LIMITATION);
@@ -140,6 +158,41 @@ export function computeSourceDelta(input: ComputeSourceDeltaInput): SourceDeltaR
     limitations,
     restamp,
   };
+}
+
+// --- T022: failed-mid-publish watermark semantics ------------------------------------------
+// This module is pure (no file, network or DB I/O): it never writes a manifest or a
+// runs/index.json entry, so "no manifest written on a failed run" is already true of every
+// function above by construction. What a failed mid-publish run must NOT do is let its computed
+// `newWatermark` become the next run's starting point — upload.ts's `publishRun` (out of this
+// file's ownership this wave) already enforces that structurally: the manifest and the
+// runs/index.json entry are written only after every upload, readback and bind-guard check pass
+// (its `fail()` path returns before either write), so a failed attempt is logged in
+// reports/publish.json but never listed in runs/index.json, and the next run's `preflight` reads
+// the SAME previous watermark/index again. `PendingSourceDelta` makes that "not yet true" state
+// explicit in the type a caller threads between computing a delta and the run actually
+// committing, so a caller in this module's own tests (or a future wiring) cannot accidentally
+// treat a computed `SourceDeltaResult.watermark` as committed before the run that produced it
+// succeeded end to end.
+export interface PendingSourceDelta {
+  result: SourceDeltaResult;
+  /** True only once the enclosing run's manifest is written AND listed in runs/index.json. */
+  committed: boolean;
+}
+
+/** A freshly computed delta: never committed yet. */
+export function pendingDelta(result: SourceDeltaResult): PendingSourceDelta {
+  return { result, committed: false };
+}
+
+/**
+ * Marks a pending delta committed. Call this ONLY after the run's manifest.json and its
+ * runs/index.json entry are both written and read back from disk (upload.ts's publishRun step
+ * 6) — never speculatively, and never before every readback/bind-guard check in that run passed.
+ * Returns a new object; the input is never mutated.
+ */
+export function commitDelta(pending: PendingSourceDelta): PendingSourceDelta {
+  return { ...pending, committed: true };
 }
 
 /** Build one `SourceRecord` from a raw row using A-04's `contentDigest` (never reimplemented here). */

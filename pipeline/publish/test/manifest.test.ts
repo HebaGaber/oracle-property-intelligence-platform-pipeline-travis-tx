@@ -24,8 +24,10 @@ import {
   SOURCE_ORDER,
   buildManifest,
   requiredCoverageKeys,
+  sourceInputFromDelta,
   type BuildManifestInput,
 } from "../src/manifest.js";
+import { NO_NEWER_EXPORT, RESTAMP_LIMITATION } from "../src/incremental/delta.js";
 import {
   addRun,
   appendRun,
@@ -85,9 +87,6 @@ interface FixtureOptions {
 const DEFAULT_TABLES: Record<DataGroup, string[]> = {
   county: ["property", "structure"],
   property_improvement: ["property", "property_improvement"],
-  owner: ["owner"],
-  contractor: ["contractor"],
-  parcels: ["parcels"],
 };
 
 async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
@@ -448,85 +447,39 @@ describe("buildManifest (A-03)", () => {
   });
 });
 
-// T005/T010: the manifest builder scales to all 5 full-county groups, each artifact (car,
-// directory) carrying carCid, previousManifestCid staying null for Run 1 — with no code change
-// to groupArtifacts itself (it was already group-agnostic; only DataGroup needed widening).
-describe("buildManifest at full-county scale: all 5 groups (T005, T010)", () => {
-  const ALL_GROUPS: readonly DataGroup[] = [
-    "county",
-    "property_improvement",
-    "owner",
-    "contractor",
-    "parcels",
-  ];
-
-  it("builds a manifest for county, property_improvement, owner, contractor and parcels together", async () => {
-    const { input, runDir } = await fixture({ groups: ALL_GROUPS });
-    const { manifest } = await buildManifest(input);
-    expect(manifest.previousManifestCid).toBeNull();
-    const cars = manifest.artifacts.filter((a) => a.kind === "car");
-    const dirs = manifest.artifacts.filter((a) => a.kind === "directory");
-    expect(cars).toHaveLength(5);
-    expect(dirs).toHaveLength(5);
-    // Every car and directory artifact carries carCid (AM-05); confirmed group by group.
-    for (const group of ALL_GROUPS) {
-      const car = cars.find((a) => a.name === `car/travis-${group}.car`);
-      const dir = dirs.find((a) => a.name === `tables/${group}`);
-      expect(car, `car for ${group}`).toBeDefined();
-      expect(dir, `directory for ${group}`).toBeDefined();
-      expect(car?.carCid).toBeDefined();
-      expect(dir?.carCid).toBeDefined();
-      expect(isCidV1(car?.carCid as string)).toBe(true);
-      expect(isCidV1(dir?.carCid as string)).toBe(true);
-      expect(dir?.carCid).toBe(await cidOfFile(join(runDir, dir?.name as string, "tables.car")));
-    }
-  });
-
-  it("requires owner_published, the contractor 3-state coverage and parcels_published once those groups are in the run", async () => {
-    const { input } = await fixture({ groups: ALL_GROUPS });
-    const { manifest } = await buildManifest(input);
-    expect(manifest.coverage).toMatchObject({
-      owners_published: { count: 1, derivation: "published_rows" },
-      contractor_resolved: { count: 1, derivation: "aggregate_match" },
-      contractor_candidate: { count: 1, derivation: "aggregate_match" },
-      contractor_unresolved: { count: 1, derivation: "aggregate_match" },
-      parcels_published: { count: 1, derivation: "published_rows" },
-    });
-  });
-});
-
-// T004/T006/T009: checkInput's per-run coverage-key profile, extended from the hardcoded
-// 2-item tuple to one key set per group actually in this run — still fail-closed in both
-// directions (missing throws; an extra, undeclared key throws too), never "anything goes".
-describe("checkInput: the widened coverage-key profile (T004, T006, T009)", () => {
+// T004/T006/T009 corrected 2026-10-23: checkInput's per-run coverage-key profile stays the real
+// 2 groups (county, property_improvement) — matching the actual lexicon manifest. Owner/parcel
+// geometry are already embedded fields in county's export; contractor identity's AD-05 states are
+// published as fields on property_improvement's permit records, so their coverage keys live
+// there, not under a separate group.
+describe("checkInput: the coverage-key profile (T004, T006, T009, corrected)", () => {
   it("requiredCoverageKeys is exactly the union of the present groups' own keys, order-independent", () => {
     expect(requiredCoverageKeys(["county"])).toEqual([]);
     expect(requiredCoverageKeys(["property_improvement"])).toEqual(
       GROUP_COVERAGE_KEYS.property_improvement,
     );
-    expect(requiredCoverageKeys(["owner", "parcels"])).toEqual([
-      ...GROUP_COVERAGE_KEYS.owner,
-      ...GROUP_COVERAGE_KEYS.parcels,
-    ]);
   });
 
-  it("throws when a present group's coverage key is missing (owner in groups, no owners_published)", async () => {
-    const { input } = await fixture({ groups: ["county", "property_improvement", "owner"] });
-    const { owners_published, ...withoutOwner } = input.coverage;
-    void owners_published;
-    await expect(buildManifest({ ...input, coverage: withoutOwner })).rejects.toThrow(
-      /owners_published/,
+  it("throws when property_improvement's permits_emitted coverage key is missing", async () => {
+    const { input } = await fixture();
+    const { permits_emitted, ...withoutEmitted } = input.coverage;
+    void permits_emitted;
+    await expect(buildManifest({ ...input, coverage: withoutEmitted })).rejects.toThrow(
+      /permits_emitted/,
     );
   });
 
   it("throws when a present group's coverage key has the wrong derivation", async () => {
-    const { input } = await fixture({ groups: ["county", "property_improvement", "parcels"] });
+    const { input } = await fixture();
     await expect(
       buildManifest({
         ...input,
-        coverage: { ...input.coverage, parcels_published: { count: 1, derivation: "capture_receipt" } },
+        coverage: {
+          ...input.coverage,
+          permits_emitted: { count: 1, derivation: "capture_receipt" },
+        },
       }),
-    ).rejects.toThrow(/parcels_published.*published_rows/);
+    ).rejects.toThrow(/permits_emitted.*published_rows/);
   });
 
   it("throws on an extra undeclared source, not only a missing or swapped one", async () => {
@@ -784,5 +737,171 @@ describe("appendRun: the run index is append-only (T083, FR-001, ARD § 11)", ()
     const names = Object.keys(runsIndexModule);
     expect(names).toContain("appendRun");
     expect(names.filter((k) => /remove|withdraw|delete|drop|prune/i.test(k))).toEqual([]);
+  });
+});
+
+// T018/T019 (US2, G-RUN wave 2): source() takes explicit added/changed/removed from the caller
+// (delta.ts's computeSourceDelta, via sourceInputFromDelta) instead of always hardcoding "first
+// run: everything added". Omitted keeps A-03's walking-skeleton default unchanged.
+describe("ManifestSourceInput.delta: explicit added/changed/removed (T018)", () => {
+  it("defaults to added = records, changed = 0, removed = 0 when delta is omitted (Run 1, unchanged)", async () => {
+    const { input } = await fixture();
+    const { manifest } = await buildManifest(input);
+    expect(manifest.sources[0]).toMatchObject({ records: 3, added: 3, changed: 0, removed: 0 });
+  });
+
+  it("uses the supplied delta verbatim, never recomputing it from records", async () => {
+    const { input } = await fixture();
+    const withDelta = {
+      ...input,
+      sources: [
+        { ...at(input.sources, 0), delta: { added: 1, changed: 2, removed: 5 } },
+        at(input.sources, 1),
+      ],
+    };
+    const { manifest } = await buildManifest(withDelta);
+    expect(manifest.sources[0]).toMatchObject({ records: 3, added: 1, changed: 2, removed: 5 });
+  });
+
+  it("sourceInputFromDelta carries the delta's watermark and appends its limitations after the caller's own notes", () => {
+    const result = {
+      name: "austin_permits" as const,
+      watermark: "2026-10-19T12:43:00.000Z",
+      records: 0,
+      delta: { added: 0, changed: 0, removed: 0 },
+      limitations: [NO_NEWER_EXPORT],
+      restamp: { detected: false, reasons: [], windowShare: 0, concentratedShare: 0 },
+    };
+    const input = sourceInputFromDelta(result, {
+      name: "austin-3syk-w9eu",
+      url: "https://data.austintexas.gov/resource/3syk-w9eu.json",
+      receipts: "/tmp/receipts.jsonl",
+      limitations: ["caller note"],
+    });
+    expect(input).toMatchObject({
+      name: "austin-3syk-w9eu",
+      watermark: "2026-10-19T12:43:00.000Z",
+      limitations: ["caller note", NO_NEWER_EXPORT],
+      delta: { added: 0, changed: 0, removed: 0 },
+    });
+  });
+
+  it("a zero delta with a restamp carries both RESTAMP_LIMITATION and NO_NEWER_EXPORT through to the manifest", async () => {
+    const { input } = await fixture();
+    const result = {
+      name: "austin_permits" as const,
+      watermark: "2026-10-19T12:43:00.000Z",
+      records: 3,
+      delta: { added: 0, changed: 0, removed: 0 },
+      limitations: [RESTAMP_LIMITATION, NO_NEWER_EXPORT],
+      restamp: { detected: true, reasons: ["window_share"], windowShare: 1, concentratedShare: 1 },
+    };
+    const patched = sourceInputFromDelta(result, {
+      name: "austin-3syk-w9eu",
+      url: at(input.sources, 0).url,
+      receipts: at(input.sources, 0).receipts,
+    });
+    const { manifest } = await buildManifest({
+      ...input,
+      sources: [patched, at(input.sources, 1)],
+    });
+    expect(manifest.sources[0]?.limitations).toEqual(
+      expect.arrayContaining([RESTAMP_LIMITATION, NO_NEWER_EXPORT]),
+    );
+    expect(manifest.sources[0]).toMatchObject({ added: 0, changed: 0, removed: 0 });
+  });
+});
+
+// T019 (US2, AD-03): a run with no change for a group omits that group's artifact entries
+// entirely — never repeats the previous run's entries. The manifest builder already iterates
+// only `input.groups`, so the caller simply not including an unchanged group is sufficient; this
+// test pins that behaviour so it is never accidentally "fixed" into re-pointing.
+describe("unchanged groups are omitted from this run's manifest (T019, AD-03)", () => {
+  it("a run of only `property_improvement` (Austin changed) carries no county artifacts or coverage keys (TCAD unchanged)", async () => {
+    const { input } = await fixture({ groups: ["property_improvement"] });
+    const { manifest } = await buildManifest(input);
+    const groupsPresent = new Set(
+      manifest.artifacts
+        .filter((a) => a.kind === "car")
+        .map((a) => a.name.replace(/^car\/travis-/, "").replace(/\.car$/, "")),
+    );
+    expect(groupsPresent).toEqual(new Set(["property_improvement"]));
+    expect(Object.keys(manifest.coverage).sort()).toEqual(
+      GROUP_COVERAGE_KEYS.property_improvement.map(([k]) => k).sort(),
+    );
+  });
+
+  it("the omitted group's previously published artifacts are found only by following previousManifestCid, never repeated here", async () => {
+    const { input: input1 } = await fixture({ groups: ["county", "property_improvement"] });
+    const built1 = await buildManifest(input1);
+    const { input: input2 } = await fixture({ groups: ["property_improvement"] });
+    const built2 = await buildManifest({
+      ...input2,
+      runId: "travis-202610-reroof-20261121t1000z",
+      previousManifestCid: built1.cid,
+    });
+    expect(built2.manifest.previousManifestCid).toBe(built1.cid);
+    expect(built2.manifest.artifacts.some((a) => a.name.includes("county"))).toBe(false);
+  });
+});
+
+// T021 (US2, AC-10/research.md): "same inputs -> same CIDs" means the data-group CAR/table CIDs
+// (pure functions of the bytes on disk), never the manifest CID itself, which legitimately
+// differs run to run because the manifest records startedAt/finishedAt.
+describe("idempotency (T021, AC-10)", () => {
+  it("a re-run at a different time reproduces identical group CAR/directory/table CIDs, though the manifest CID differs", async () => {
+    const { input } = await fixture({ groups: ["county", "property_improvement"] });
+    const a = await buildManifest(input);
+    const b = await buildManifest({
+      ...input,
+      startedAt: "2026-10-22T14:00:00.000Z",
+      finishedAt: "2026-10-22T15:00:00.000Z",
+    });
+    const byKind = (m: RunManifestV1, kind: "car" | "directory" | "table") =>
+      m.artifacts
+        .filter((x) => x.kind === kind)
+        .map((x) => [x.name, x.cid] as const)
+        .sort();
+    expect(byKind(b.manifest, "car")).toEqual(byKind(a.manifest, "car"));
+    expect(byKind(b.manifest, "directory")).toEqual(byKind(a.manifest, "directory"));
+    expect(byKind(b.manifest, "table")).toEqual(byKind(a.manifest, "table"));
+    // the manifest's own CID legitimately differs: startedAt/finishedAt are part of its bytes
+    expect(b.cid).not.toBe(a.cid);
+  });
+
+  it("identical inputs, including identical timestamps, reproduce the identical manifest CID too", async () => {
+    const { input } = await fixture();
+    const a = await buildManifest(input);
+    const b = await buildManifest(input);
+    expect(b.cid).toBe(a.cid);
+  });
+});
+
+// T030 (FR-008, closes analyze finding F1): building a later run's manifest must never alter an
+// earlier run's already-written manifest file or its artifact CIDs.
+describe("FR-008: a later run's manifest never alters an earlier run's written manifest (T030)", () => {
+  it("Run 1's written manifest.json bytes and CID are untouched after Run 2's manifest is built", async () => {
+    const { input: input1 } = await fixture();
+    const built1 = await buildManifest(input1);
+    const runsDir = mkdtempSync(join(tmpdir(), "runs-"));
+    const manifestPath1 = join(runsDir, input1.runId, "manifest.json");
+    write(manifestPath1, built1.bytes);
+    const before = readFileSync(manifestPath1);
+    const beforeCid = await cidOfBytes(before);
+    expect(beforeCid).toBe(built1.cid);
+
+    const { input: input2 } = await fixture();
+    const built2 = await buildManifest({
+      ...input2,
+      runId: "travis-202610-reroof-20261121t1000z",
+      previousManifestCid: built1.cid,
+      startedAt: "2026-11-21T09:00:00.000Z",
+      finishedAt: "2026-11-21T10:00:00.000Z",
+    });
+    expect(built2.manifest.previousManifestCid).toBe(built1.cid);
+
+    const after = readFileSync(manifestPath1);
+    expect(Buffer.from(after).equals(Buffer.from(before))).toBe(true);
+    expect(await cidOfBytes(after)).toBe(beforeCid);
   });
 });

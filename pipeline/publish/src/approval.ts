@@ -72,7 +72,7 @@ export const PublicFilesListing = z.object({
   buildReport: z.object({ path: z.literal(BUILD_REPORT), sha256: Sha256 }),
   groups: z.array(
     z.object({
-      group: z.enum(["county", "property_improvement", "owner", "contractor", "parcels"]),
+      group: z.enum(["county", "property_improvement"]),
       carRoot: z.string().min(1),
       blocks: z.number().int().nonnegative(),
       tablesRoot: z.string().min(1),
@@ -180,7 +180,7 @@ const BuildReportFile = z
     groups: z.array(
       z
         .object({
-          group: z.enum(["county", "property_improvement", "owner", "contractor", "parcels"]),
+          group: z.enum(["county", "property_improvement"]),
           groupDir: z.string(),
           carPath: z.string(),
           carRoot: z.string(),

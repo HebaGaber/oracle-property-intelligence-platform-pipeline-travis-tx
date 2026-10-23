@@ -28,12 +28,13 @@ import {
 import { join, sep } from "node:path";
 
 /**
- * The 5 full-county publish groups (A-11, widened from A-03's 2-group walking skeleton).
- * `groupPlan`/`planBuild`/`planUpload`/`planPublish` already generalize over
- * `groups: readonly DataGroup[]`, so widening this union is the only change the six-step fan-out
- * needs to scale to full-county publication.
+ * The 2 full-county publish groups, matching the real lexicon manifest this pipeline fetches
+ * (`seed`, `county`, `propertyImprovement` — no separate owner/contractor/parcels groups exist).
+ * An earlier A-11 draft widened this to 5 groups; corrected 2026-10-23: owner and parcel geometry
+ * are already embedded fields inside `county`'s existing per-record export, and contractor
+ * identity (AD-05) is wired as fields on `property_improvement`'s permit records, not a new group.
  */
-export type DataGroup = "county" | "property_improvement" | "owner" | "contractor" | "parcels";
+export type DataGroup = "county" | "property_improvement";
 export type StepName =
   "validate" | "hash" | "validate-car" | "export-tables" | "upload-car" | "upload-tables";
 /** 1 = build (local), 2 = upload. */

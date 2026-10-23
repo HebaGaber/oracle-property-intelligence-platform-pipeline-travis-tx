@@ -10,10 +10,12 @@
 // total, OR >= 90% of the window within one 6h span.
 import { describe, expect, it } from "vitest";
 import {
+  commitDelta,
   computeSourceDelta,
   contentDigest,
   INCREMENTAL_SOURCES,
   NO_NEWER_EXPORT,
+  pendingDelta,
   RESTAMP_LIMITATION,
   toSourceRecord,
   type HourCount,
@@ -204,5 +206,103 @@ describe("computeSourceDelta (FR-006: digest, never the timestamp field)", () =>
     expect(result.records).toBe(0);
     expect(result.watermark).toBeNull();
     expect(result.limitations).toContain(NO_NEWER_EXPORT);
+  });
+
+  // T020: source_removed tombstones (a reconciliation-layer fact) count into `removed` even on a
+  // narrow incremental window, where currentKeys (a full keyset read) was never supplied.
+  describe("tombstones (T020): source_removed keys count into removed without a full keyset read", () => {
+    it("a tombstoned key previously published counts as removed, with no currentKeys at all", () => {
+      const previousDigests = new Map([
+        ["kept", "digest-a"],
+        ["gone", "digest-b"],
+      ]);
+      const result = computeSourceDelta({
+        source: "bbb_harvest",
+        total: 2,
+        windowRows: [{ key: "kept", digest: "digest-a", updatedAt: null }],
+        hours: [],
+        previousDigests,
+        tombstones: new Set(["gone"]),
+        newWatermark: "2026-10-19",
+      });
+      expect(result.delta.removed).toBe(1);
+    });
+
+    it("a tombstoned key never previously published removes nothing", () => {
+      const result = computeSourceDelta({
+        source: "bbb_harvest",
+        total: 1,
+        windowRows: [],
+        hours: [],
+        previousDigests: new Map([["kept", "digest-a"]]),
+        tombstones: new Set(["never-seen"]),
+        newWatermark: "2026-10-19",
+      });
+      expect(result.delta.removed).toBe(0);
+    });
+
+    it("a key found removed by both currentKeys and an explicit tombstone counts once, not twice", () => {
+      const previousDigests = new Map([
+        ["kept", "digest-a"],
+        ["gone", "digest-b"],
+      ]);
+      const result = computeSourceDelta({
+        source: "bbb_harvest",
+        total: 2,
+        windowRows: [{ key: "kept", digest: "digest-a", updatedAt: null }],
+        hours: [],
+        previousDigests,
+        currentKeys: new Set(["kept"]),
+        tombstones: new Set(["gone"]),
+        newWatermark: "2026-10-19",
+      });
+      expect(result.delta.removed).toBe(1);
+    });
+
+    it("currentKeys and tombstones can each find a different removed key, both counted", () => {
+      const previousDigests = new Map([
+        ["kept", "digest-a"],
+        ["gone-by-keyset", "digest-b"],
+        ["gone-by-tombstone", "digest-c"],
+      ]);
+      const result = computeSourceDelta({
+        source: "austin_permits",
+        total: 3,
+        windowRows: [{ key: "kept", digest: "digest-a", updatedAt: null }],
+        hours: [],
+        previousDigests,
+        currentKeys: new Set(["kept", "gone-by-tombstone"]),
+        tombstones: new Set(["gone-by-tombstone"]),
+        newWatermark: "2026-10-19",
+      });
+      expect(result.delta.removed).toBe(2);
+    });
+  });
+
+  // T022: delta.ts is pure (no I/O), so no function here ever writes a manifest or an index
+  // entry. pendingDelta/commitDelta make the "not yet committed" state explicit in the type a
+  // caller threads between computing a delta and the enclosing run actually succeeding — the
+  // run's own manifest/index write (upload.ts's publishRun, out of this module's scope) is the
+  // only thing allowed to call commitDelta, and only after that write is read back from disk.
+  describe("pendingDelta/commitDelta (T022): a computed delta starts uncommitted", () => {
+    it("pendingDelta starts committed: false and never mutates in place", () => {
+      const result = computeSourceDelta({
+        source: "tcad_supplemental",
+        total: 0,
+        windowRows: [],
+        hours: [],
+        previousDigests: new Map(),
+        newWatermark: "2026-10-19",
+      });
+      const pending = pendingDelta(result);
+      expect(pending.committed).toBe(false);
+      expect(pending.result).toBe(result);
+      const committed = commitDelta(pending);
+      expect(committed.committed).toBe(true);
+      // the original pending value is untouched (a failed run's "attempt" never silently
+      // becomes committed just because a later call happened to commit a *different* object)
+      expect(pending.committed).toBe(false);
+      expect(committed).not.toBe(pending);
+    });
   });
 });

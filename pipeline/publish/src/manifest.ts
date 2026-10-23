@@ -30,6 +30,7 @@ import {
   type ManifestSource,
 } from "@countylens/contract";
 import { cidOfBytes, cidOfFile, codecName, sameDigest } from "./cid.js";
+import type { SourceDeltaResult } from "./incremental/delta.js";
 import { jcsBytes } from "./jcs.js";
 import { PART_SIZE, PART_SIZE_BYTES, sha256File, type DataGroup } from "./sequence.js";
 
@@ -52,22 +53,19 @@ export const GROUP_COVERAGE_KEYS: Record<
   ReadonlyArray<readonly [string, CoverageCount["derivation"]]>
 > = {
   // No coverage key of its own: the county group is the parcel backbone, not a counted metric
-  // (A-03 status quo, kept unchanged so the walking-skeleton fixtures keep passing).
+  // (A-03 status quo, kept unchanged so the walking-skeleton fixtures keep passing). Owner and
+  // parcel geometry are already embedded fields inside county's per-record export — not a
+  // separately counted coverage key (corrected 2026-10-23; see sequence.ts's DataGroup comment).
   county: [],
   property_improvement: [
     ["permits_emitted", "published_rows"],
     ["permits_no_tcad_geoid", "aggregate_match"],
+    // AD-05's five contractor-identity states belong here once a real producer wires
+    // contractor_company_cid/contractor_resolution onto the permit record (tracked as new work,
+    // not yet built — see agent-design.md's 2026-10-23 correction). Adding the coverage key
+    // before anything produces the data would make every existing build fail checkInput, so the
+    // key and its producer land together in one change, not here ahead of it.
   ],
-  owner: [["owners_published", "published_rows"]],
-  // AD-05's five states collapse to three persisted coverage counts here: a permit with no DBPR
-  // match is resolved to no contractor at all, so it is not its own coverage bucket (use-oracle
-  // §4: "no DBPR match means write no contractor").
-  contractor: [
-    ["contractor_resolved", "aggregate_match"],
-    ["contractor_candidate", "aggregate_match"],
-    ["contractor_unresolved", "aggregate_match"],
-  ],
-  parcels: [["parcels_published", "published_rows"]],
 };
 
 /** The coverage keys required for exactly `groups` (order-independent; T004/T009 profile). */
@@ -117,6 +115,37 @@ export interface ManifestSourceInput {
   /** A `.jsonl` of capture receipts, or a `.json` receipt with `captured_at` and `records`. */
   receipts: string;
   limitations: string[];
+  /**
+   * The source's added/changed/removed counts (data-model.md's `SourceDelta.delta`), supplied by
+   * `incremental/delta.ts`'s `computeSourceDelta` for an incremental run (T017/T018). Omitted for
+   * Run 1 — or any caller not yet wired to the delta computation (e.g. upload.ts's `manifestInput`,
+   * out of this wave's file ownership) — which keeps A-03's walking-skeleton default: everything
+   * this capture reports is new (`added: records, changed: 0, removed: 0`). Never invented by
+   * `source()`: when supplied, its three counts are used verbatim.
+   */
+  delta?: { added: number; changed: number; removed: number };
+}
+
+/**
+ * Builds the `delta` (and merges the limitations) a `ManifestSourceInput` needs from T017's
+ * `SourceDeltaResult` (T018/T019 wiring): the delta's own `added`/`changed`/`removed` verbatim,
+ * and its own limitations (e.g. `NO_NEWER_EXPORT`, `RESTAMP_LIMITATION`) appended after any
+ * caller-supplied notes — the same "add once, after the source's own notes" rule `source()`
+ * already applies to the fixed Austin/TCAD notes. Never invents a count or a reason: everything
+ * here comes from the delta result the caller already computed.
+ */
+export function sourceInputFromDelta(
+  result: Pick<SourceDeltaResult, "watermark" | "delta" | "limitations">,
+  base: { name: string; url: string; receipts: string; limitations?: string[] },
+): ManifestSourceInput {
+  return {
+    name: base.name,
+    url: base.url,
+    watermark: result.watermark,
+    receipts: base.receipts,
+    limitations: [...(base.limitations ?? []), ...result.limitations],
+    delta: { ...result.delta },
+  };
 }
 
 export interface BuildManifestInput {
@@ -334,16 +363,19 @@ function source(input: ManifestSourceInput, fixedNote: string): ManifestSource {
     records = typeof receipt.records === "number" ? receipt.records : receipt.records.length;
     capturedAt = receipt.captured_at;
   }
+  // T018: explicit added/changed/removed when the caller supplies a delta (incremental runs,
+  // via sourceInputFromDelta/computeSourceDelta); otherwise A-03's walking-skeleton default —
+  // the first run of this contract, where everything this capture reports is new.
+  const delta = input.delta ?? { added: records, changed: 0, removed: 0 };
   return {
     name: input.name,
     url: input.url,
     watermark: input.watermark,
     captured_at: capturedAt,
     records,
-    // First run of this contract: everything is new.
-    added: records,
-    changed: 0,
-    removed: 0,
+    added: delta.added,
+    changed: delta.changed,
+    removed: delta.removed,
     limitations: input.limitations.includes(fixedNote)
       ? [...input.limitations]
       : [...input.limitations, fixedNote],
