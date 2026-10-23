@@ -38,8 +38,11 @@ PYTHON="${PYTHON:-python3}"
 mkdir -p "$OUT_DIR/batches" "$OUT_DIR/hashed" "$OUT_DIR/cars" "$OUT_DIR/tables" "$OUT_DIR/logs"
 
 echo "[split] $GROUP_DIR -> $OUT_DIR/batches ($N_BATCHES batches)"
-"$PYTHON" "$SCRIPT_DIR/split-into-batches.py" "$GROUP_DIR" "$OUT_DIR" "$N_BATCHES" \
-  >"$OUT_DIR/logs/split.log" 2>&1
+if ! "$PYTHON" "$SCRIPT_DIR/split-into-batches.py" "$GROUP_DIR" "$OUT_DIR" "$N_BATCHES" \
+  >"$OUT_DIR/logs/split.log" 2>&1; then
+  echo "[split] FAILED, see $OUT_DIR/logs/split.log" >&2
+  exit 1
+fi
 echo "[split] done, see $OUT_DIR/logs/split.log"
 
 run_batch() {

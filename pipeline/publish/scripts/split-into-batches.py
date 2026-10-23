@@ -75,8 +75,11 @@ def main() -> int:
         marker = os.path.join(batches_root, f"{bname}.done")
         if os.path.exists(marker):
             existing = len(os.listdir(bdir)) if os.path.isdir(bdir) else 0
-            print(f"{bname}: already linked ({existing} items), skipping")
-            continue
+            if existing == len(batch_items):
+                print(f"{bname}: already linked ({existing} items), skipping")
+                continue
+            print(f"{bname}: stale marker (expected {len(batch_items)} items, found {existing}) — re-splitting")
+            os.remove(marker)
         os.makedirs(bdir, exist_ok=True)
         done = 0
         for item in batch_items:
