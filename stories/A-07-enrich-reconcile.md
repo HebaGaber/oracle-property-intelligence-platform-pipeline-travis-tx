@@ -20,8 +20,8 @@ agents:
   verify: "five-state contractor counts (AD-05); BBB coverage % and 403 evidence; business and places counts + licence recorded; roof-age worked example with lineage"
 skills: [query-db-loading-matching, use-neutral-lexicon, bbb-harvest, overture-places-ingest, use-oracle, unify-metrics, apply-engineering-guidelines]
 ui: false
-status: Ready
-gate: G4
+status: Done
+gate: G7
 qc_testability_signoff: true
 created: 2026-10-19
 merged: 2026-10-21

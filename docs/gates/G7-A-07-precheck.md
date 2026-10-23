@@ -104,4 +104,8 @@ A-07 per-file coverage (oracle-runtime): `resolver.ts` 97.22 / 90.9 / 100 / 100;
 
 ## Verdict
 
-**PASS.** All ten checks pass (C-01, C-04 and C-07's URL/screenshot/trace-id sub-requirement as accepted, documented exceptions). The CI run on HEAD (`39892674458`, commit `a566b84`) is real and green on all four jobs, confirmed via the GitHub API. Every numeric claim checked in this round — headline test counts, per-file coverage, live Query DB counts including TC-039 — reproduces exactly. No approval is recorded here; the PO decides.
+**PASS.** All ten checks pass (C-01, C-04 and C-07's URL/screenshot/trace-id sub-requirement as accepted, documented exceptions). The CI run on HEAD (`39892674458`, commit `a566b84`) is real and green on all four jobs, confirmed via the GitHub API. Every numeric claim checked in this round — headline test counts, per-file coverage, live Query DB counts including TC-039 — reproduces exactly. The two small front-matter/CR-log fixes from this same session landed in commit `daf8111`, confirmed green on CI run `39898855484` (one `e2e-hosted` retry for the same slow-Playwright-install infra flakiness, then success — the code/test substance is identical to `a566b84`).
+
+## Approval
+
+**Approved** (HebaGaber), 2026-10-23, round R8 (D-25). Merging into `feature/oracle-pipeline` proceeds.
