@@ -106,7 +106,9 @@ export async function runMergeOrTerminal(
   }
 }
 
-export type TrackName = "tcad" | "gis" | "permits";
+// A-07 T017 (Track A) adds "comptroller": the shared Comptroller registry load.
+// A-07 T056 (Track D) adds "reconcile": the property/owner/contractor merge (travis/reconcile/merge.ts).
+export type TrackName = "tcad" | "gis" | "permits" | "comptroller" | "reconcile";
 
 export interface MergeOutcome {
   rowsWritten: number;

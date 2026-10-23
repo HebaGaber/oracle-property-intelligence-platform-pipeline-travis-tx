@@ -55,6 +55,7 @@ The design agents were consulted read-only before Gate G3, first on 2026-10-18 a
 | Kit runtime files are `.mjs` | Kept as provided; all new code is TypeScript | ARD D-03 |
 | CDK in top-level `infra/` instead of `apps/api/cdk/` | Five stacks in `infra/` | ARD D-02 |
 | Texas `company` has no lexicon ID field; no lexicon carrier yet for BBB, raw permit status or printed contractor name | Lexicon extension requests filed in A-02; missing fields show their reason | ARD AD-06, AD-25 |
+| `soofi-xyz-team-kit:donphan` is scoped to read-only Atlas MCP queries on *published* county data only ("never bypass MCP with shell, direct HTTP, AWS or database access") | A-07's own identity-reviewer role (live-DB recompute, WebFetch spot-checks against the Comptroller registry) was run by a `general-purpose` Sonnet subagent instead, per donphan's own recommendation when it correctly declined | `docs/reviews/CR-A-07.md`, run-log 00:19 |
 
 ## Reviewer scores before submission
 
@@ -63,3 +64,5 @@ The design agents were consulted read-only before Gate G3, first on 2026-10-18 a
 | oracle (A-01) | 83 | Stale-run guard and terminal errors; honest deviation record (DEC-A-01-source-access D-1, D-3); WAF detection and no re-probe of 403/challenge sources (T056); parcel exception bound to its values; download robustness; amendments trail (`docs/reviews/CR-A-01.md`) |
 | oracle (A-04) | 80 | Deterministic Loader failures end in a failed run, not endless retries; failed completeness check no longer advances the watermark; tombstone guard; generic `property_type` fallback published as a limitation; per-chunk disk guard (`docs/reviews/CR-A-04.md`) |
 | donphan (A-04) | 80 | Fallback blast radius and A4/F4 published as limitations; coverage SQL prints `count(*)`, distinct `property_cid` and the Query DB count and gates on them; rule-set version per row (`docs/reviews/CR-A-04.md`) |
+| general-purpose, Track A identity reviewer (A-07) | 90 | `viewSideCaveat`-adjacent normalization gap recorded as a limitation (no "&"→"AND" expansion rule); idempotency-skip report clarity noted, confirmed benign (`docs/reviews/CR-A-07.md`) |
+| porygon, cross-track arithmetic reviewer (A-07) | 92 | `mergeCountsRow`/`roofAgeCoverageRow` hardcoded `limitation: null` fixed to flag a real refused-merge or basis/total mismatch; Track B/C degrade-path test coverage added (`docs/reviews/CR-A-07.md`) |

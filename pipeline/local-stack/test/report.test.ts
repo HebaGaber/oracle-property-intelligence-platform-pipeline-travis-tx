@@ -55,10 +55,10 @@ describe("A-04 BackboneReport", () => {
     expect([...loaded.keys()].sort()).toEqual(["coordinates", "gis", "jurisdictions"]);
   });
 
-  it("the bundled report-sections load all six keys (TCAD, GIS, permits)", async () => {
+  it("the bundled report-sections load all seven keys (TCAD, GIS, permits, A-07 identity)", async () => {
     const loaded = await loadSections(SECTIONS_DIR);
     expect([...loaded.keys()].sort()).toEqual(
-      ["confidentiality", "coordinates", "gis", "jurisdictions", "permits", "roll"],
+      ["confidentiality", "coordinates", "gis", "identity", "jurisdictions", "permits", "roll"],
     );
   });
 

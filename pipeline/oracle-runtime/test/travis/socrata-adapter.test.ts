@@ -608,8 +608,13 @@ describe("adapter files carry no classification term", () => {
   const dir = new URL("../../travis/adapters/socrata/", import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
 
-  it("has the adapter files (A-04 T050 adds the keyset-page module)", () => {
-    expect(files.sort()).toEqual(["austin-3syk-w9eu.ts", "socrata-pages.ts", "socrata.ts"]);
+  it("has the adapter files (A-04 T050 adds the keyset-page module; A-07 T010 adds tx-comptroller)", () => {
+    expect(files.sort()).toEqual([
+      "austin-3syk-w9eu.ts",
+      "socrata-pages.ts",
+      "socrata.ts",
+      "tx-comptroller.ts",
+    ]);
   });
 
   it("mentions neither the profile's include terms nor the word they share", () => {
