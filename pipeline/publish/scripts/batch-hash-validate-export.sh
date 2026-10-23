@@ -81,6 +81,7 @@ run_batch() {
     t0=$(date +%s)
     "$ELEPHANT_CLI" export-tables "$car" \
       --output "$tables" \
+      --part-size 48m \
       --output-json "$OUT_DIR/tables/${bname}-export.json"
     rc=$?
     t1=$(date +%s)

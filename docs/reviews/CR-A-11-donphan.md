@@ -2,7 +2,18 @@
 
 **Scope**: Run 1 dry run exported tables only — `elephant-cli export-tables` JSON per batch, cross-checked against `docs/evidence/A-04.md` and `A-07.md`'s stated denominators (county 493,246; permits linked 2,007,514/2,381,226; roofing 19,031/linked 16,816). No manifest exists yet (steps 5-6 were intentionally skipped for this dry run), so AC-4's `coverage` section (`published_rows` + `capture_receipt` + `derivation`) is **not yet produced or testable** — that proof is still ahead of G7, not reviewed here.
 
-## Score: 68/100
+## Re-review (2026-10-23, after commit 4254044): Score 88/100
+
+Checked against `specs/011-publish-and-runs/run-log.md`'s 14:46 entry, `pipeline/publish/src/manifest.ts`'s `GROUP_COVERAGE_KEYS`, and `pipeline/local-stack/scripts/run-permits-full.ts`'s logging — code, not just claims.
+
+- **Finding 2 (coverage-key gap) resolved in code.** `GROUP_COVERAGE_KEYS['property_improvement']` (manifest.ts:60-81) now lists all 5 of `travis/permits/link.ts`'s `UnmatchedReason`s (`permits_no_tcad_geoid`, `permits_no_tcad_id`, `permits_ambiguous_geoid`, `permits_address_unmatched`, `permits_ambiguous_address`), each `aggregate_match`, plus `permits_emitted` and the 3 contractor-coverage buckets. Previously only 1 of 5 was labeled. `run-month.ts` is confirmed to supply all 4 added keys (3 as genuine zero-counts with a documented reason for that one-month flow).
+- **Finding 1 (mislabeled counter) resolved in code**, and the PO's roofing-only scope decision supersedes my original "risks a confusing mismatch" framing — that denominator gap is now a settled, intended business rule, not a defect. `run-permits-full.ts` lines 54-60 and 70 now log `linked_db_rows_read=<N>` and `permits_written=<N>` as two distinct, clearly-named values (previously conflated under one `permits=` label). `plan.md`'s scale estimate was corrected to ~2.3GB total to match.
+- **Finding 3 (county R-only scope) confirmed as already real**, not newly fixed: `GROUP_COVERAGE_KEYS.county = []` plus `tcad-backbone.ts`'s own `out_of_scope` tally is an enforced code path, not just a comment — my original concern that this was undocumented is addressed by the existing mechanism, which this re-review re-verified rather than took on faith.
+- Nothing new looks wrong in the diffed sections. Remaining gap (not a regression, carried over from the original review): the real manifest for county/property_improvement at full batch scale, with `coverage.derivation` text rendering these keys in plain language, still hasn't been produced and reviewed end-to-end — that's test coverage ahead of G7, not a code defect, so it caps the score below 90 rather than failing it.
+
+**New score: 88/100** (bar is 75; both original findings resolved).
+
+## Original score: 68/100
 
 ## What I checked
 
