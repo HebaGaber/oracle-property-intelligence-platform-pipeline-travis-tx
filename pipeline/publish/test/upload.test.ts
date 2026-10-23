@@ -360,6 +360,12 @@ function setup(opts: SetupOptions = {}): Setup {
       permits_captured: { count: 3, derivation: "capture_receipt" },
       permits_emitted: { count: 2, derivation: "published_rows" },
       permits_no_tcad_geoid: { count: 1, derivation: "aggregate_match" },
+      // AD-05/AD-24 (A-11 fix): the three manifest-coverage buckets for contractor identity
+      // (no lexicon carrier, ADR-0002 #6). This fixture's registry is unwired, so every
+      // emitted permit is genuinely `unresolved` (resolver.ts step 2).
+      contractor_resolved: { count: 0, derivation: "aggregate_match" },
+      contractor_candidate: { count: 0, derivation: "aggregate_match" },
+      contractor_unresolved: { count: 2, derivation: "aggregate_match" },
     },
     ...(ownersRedacted === null ? {} : { owners_redacted: ownersRedacted }),
     sources: [

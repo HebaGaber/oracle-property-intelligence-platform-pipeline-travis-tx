@@ -410,6 +410,7 @@ describe("buildManifest (A-03)", () => {
       buildManifest({
         ...input,
         coverage: {
+          ...input.coverage,
           permits_emitted: { count: 37, derivation: "published_rows" },
           permits_no_tcad_geoid: { count: 1, derivation: "aggregate_match" },
         },
@@ -449,9 +450,12 @@ describe("buildManifest (A-03)", () => {
 
 // T004/T006/T009 corrected 2026-10-23: checkInput's per-run coverage-key profile stays the real
 // 2 groups (county, property_improvement) — matching the actual lexicon manifest. Owner/parcel
-// geometry are already embedded fields in county's export; contractor identity's AD-05 states are
-// published as fields on property_improvement's permit records, so their coverage keys live
-// there, not under a separate group.
+// geometry are already embedded fields in county's export. Contractor identity's AD-05 states
+// have no lexicon carrier at all (ADR-0002 #6: property_improvement and company are
+// additionalProperties:false with no such field, and AD-06's property_improvement_has_contractor
+// edge is confined to a `resolved` match that D-10's empty crosswalk never produces live) — so
+// the three states land only as this group's manifest-coverage keys (AD-24's fallback), never
+// as record fields.
 describe("checkInput: the coverage-key profile (T004, T006, T009, corrected)", () => {
   it("requiredCoverageKeys is exactly the union of the present groups' own keys, order-independent", () => {
     expect(requiredCoverageKeys(["county"])).toEqual([]);

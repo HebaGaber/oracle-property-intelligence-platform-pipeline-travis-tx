@@ -18,6 +18,21 @@
 // and contractor name have no carrier (ADR-0002) and are never written.
 // `contractor_type` is required by the class and written null: the permit's category
 // of contractor is not established here.
+//
+// Contractor identity (A-07/AD-05, wired here): ADR-0002 verdict #6 ("per-permit contractor
+// state: no carrier confirmed") means the five-state result has NO lexicon carrier on this
+// class or on `company` for anything short of `resolved` -- AD-06 allows a
+// `property_improvement_has_contractor` edge only for a `resolved` match, and the live
+// crosswalk is empty (D-10), so that edge is never written live. The per-permit state
+// therefore stays on `ClassificationLedgerRow.contractor_resolution` (internal; never
+// published, same as every other ledger field) and rolls up into the run summary's
+// `coverage` (AD-24's fallback), never onto the emitted JSON record.
+import {
+  resolveContractor,
+  type RegistryRecord,
+  type ResolverState,
+} from "../identity/resolver.js";
+import { LIVE_CROSSWALK, type CrosswalkIndex } from "../identity/crosswalk.js";
 import {
   buildSharedFiles,
   jsonFile,
@@ -27,6 +42,31 @@ import {
   type TcadRecord,
 } from "./shared-seed.js";
 import type { DataGroupCids } from "./lexicon-manifest.js";
+
+/**
+ * The Comptroller registry snapshot a run resolves permits against (A-07's
+ * `comptroller_registry`/`identity:resolve`, reused here as a pure call per permit -- the
+ * resolver's own contract says it may be called "per permit inside a transaction" or "in a
+ * batch"; this is a third, DB-free caller). Omitted entirely (`registryLoaded: false`) is the
+ * correct state before A-07's baseline is wired for a given run: every permit resolves to the
+ * real `unresolved` state with `reasonCode: "registry_unavailable"` (resolver.ts step 2), not a
+ * fabricated placeholder.
+ */
+export interface ContractorIdentityInput {
+  registry: readonly RegistryRecord[];
+  registryLoaded: boolean;
+  registrySnapshotDigest: string;
+  /** Default `LIVE_CROSSWALK` (empty, D-10) when omitted. */
+  crosswalk?: CrosswalkIndex;
+  /** ISO-8601; defaults to now (tests pin this for determinism). */
+  effectiveOn?: string;
+}
+
+const NO_REGISTRY: ContractorIdentityInput = {
+  registry: [],
+  registryLoaded: false,
+  registrySnapshotDigest: "none",
+};
 
 export const AUSTIN_DATASET_URL = "https://data.austintexas.gov/resource/3syk-w9eu.json";
 
@@ -87,6 +127,13 @@ export interface ClassificationLedgerRow {
   source_sha256: string;
   profile_version: string;
   profile_sha256: string;
+  /**
+   * A-07/AD-05's five-state verdict for this permit's printed contractor name against the
+   * Comptroller registry (resolver.ts's `resolveContractor`, real production logic, not
+   * re-implemented here). Internal only -- no lexicon carrier (ADR-0002 #6) -- and rolls up
+   * into the run summary's `coverage`, never onto the emitted record.
+   */
+  contractor_resolution: ResolverState;
 }
 
 export const EMITTABLE_CLASSES: readonly StatusClass[] = ["open", "stalled", "closed"];
@@ -111,11 +158,36 @@ function isoDate(value: string | null | undefined): string | null {
   return m ? (m[1] as string) : null;
 }
 
+/**
+ * This permit's printed contractor name resolved against the Comptroller registry (A-07's
+ * `resolveContractor`, unmodified). `identity` omitted means the baseline is not wired for
+ * this run: every permit genuinely resolves `unresolved`/`registry_unavailable`, the real
+ * verdict resolver.ts step 2 gives for an unloaded registry -- not a fabricated default.
+ */
+function resolvePermitContractor(
+  row: AustinRow,
+  permitNumber: string,
+  identity: ContractorIdentityInput,
+): ResolverState {
+  const raw = row.contractor_company_name;
+  const rawContractorName = raw !== undefined && raw !== null && raw.trim() !== "" ? raw : null;
+  return resolveContractor({
+    permitKey: permitNumber,
+    rawContractorName,
+    registryLoaded: identity.registryLoaded,
+    registry: identity.registry,
+    registrySnapshotDigest: identity.registrySnapshotDigest,
+    crosswalk: identity.crosswalk ?? LIVE_CROSSWALK,
+    ...(identity.effectiveOn === undefined ? {} : { effectiveOn: identity.effectiveOn }),
+  }).state;
+}
+
 /** One permit through the profile: the ledger row (internal; never published). */
 export function classifyCapture(
   capture: AustinPermitCapture,
   profile: ProfileApi,
   pID: string | null,
+  contractorIdentity: ContractorIdentityInput = NO_REGISTRY,
 ): ClassificationLedgerRow {
   const row = capture.row;
   const permit = profile.classifyPermit(row);
@@ -147,6 +219,7 @@ export function classifyCapture(
     source_sha256: capture.receipt.sha256,
     profile_version: `${profile.PROFILE.name}@${profile.PROFILE.version}`,
     profile_sha256: profile.PROFILE.sha256,
+    contractor_resolution: resolvePermitContractor(row, row.permit_number, contractorIdentity),
   };
 }
 
@@ -157,6 +230,8 @@ export interface PropertyImprovementInput {
   /** The property's captured permits, in the order they are numbered. */
   permits: AustinPermitCapture[];
   profile: ProfileApi;
+  /** Omitted means the Comptroller baseline is not wired for this run (pre-A-07 default). */
+  contractorIdentity?: ContractorIdentityInput;
 }
 
 export interface PropertyImprovementCounts {
@@ -165,6 +240,8 @@ export interface PropertyImprovementCounts {
   needs_review: number;
   by_class: Partial<Record<StatusClass, number>>;
   by_skip: Partial<Record<SkipReason, number>>;
+  /** Emitted permits only, by A-07's five-state verdict (AD-24's manifest-coverage rollup). */
+  by_contractor_state: Partial<Record<ResolverState, number>>;
 }
 
 export interface PropertyImprovementOutput {
@@ -180,7 +257,10 @@ export function transformAustinPropertyImprovement(
   input: PropertyImprovementInput,
 ): PropertyImprovementOutput {
   const pID = pidOf(input.record);
-  const ledger = input.permits.map((p) => classifyCapture(p, input.profile, pID));
+  const contractorIdentity = input.contractorIdentity ?? NO_REGISTRY;
+  const ledger = input.permits.map((p) =>
+    classifyCapture(p, input.profile, pID, contractorIdentity),
+  );
   assertEmittedClasses(ledger);
 
   const counts: PropertyImprovementCounts = {
@@ -189,6 +269,7 @@ export function transformAustinPropertyImprovement(
     needs_review: 0,
     by_class: {},
     by_skip: {},
+    by_contractor_state: {},
   };
   const permitFiles: Record<string, string> = {};
   const links: { "/": string }[] = [];
@@ -203,6 +284,8 @@ export function transformAustinPropertyImprovement(
     }
     counts.emitted += 1;
     counts.by_class[l.status_class] = (counts.by_class[l.status_class] ?? 0) + 1;
+    counts.by_contractor_state[l.contractor_resolution] =
+      (counts.by_contractor_state[l.contractor_resolution] ?? 0) + 1;
     const n = counts.emitted;
     const name = `property_improvement_${n}.json`;
     const multi = capture.receipt.multiValueQueryString;

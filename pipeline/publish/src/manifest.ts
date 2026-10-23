@@ -60,11 +60,15 @@ export const GROUP_COVERAGE_KEYS: Record<
   property_improvement: [
     ["permits_emitted", "published_rows"],
     ["permits_no_tcad_geoid", "aggregate_match"],
-    // AD-05's five contractor-identity states belong here once a real producer wires
-    // contractor_company_cid/contractor_resolution onto the permit record (tracked as new work,
-    // not yet built — see agent-design.md's 2026-10-23 correction). Adding the coverage key
-    // before anything produces the data would make every existing build fail checkInput, so the
-    // key and its producer land together in one change, not here ahead of it.
+    // AD-05's five contractor-identity states (A-07), collapsed to three manifest-coverage
+    // buckets per ADR-0002 #6: there is no lexicon carrier on property_improvement or company
+    // for anything short of a `resolved` match (AD-06), so ambiguous/conflicting/unresolved
+    // are not distinguished in the published coverage either. The producer is
+    // run-month.ts's `contractorCoverage` (oracle-runtime), fed by
+    // transformAustinPropertyImprovement's `PropertyImprovementCounts.by_contractor_state`.
+    ["contractor_resolved", "aggregate_match"],
+    ["contractor_candidate", "aggregate_match"],
+    ["contractor_unresolved", "aggregate_match"],
   ],
 };
 

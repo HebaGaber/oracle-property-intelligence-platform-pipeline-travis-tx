@@ -9,6 +9,8 @@
 // `profile` is injected (the run passes the real profile module); here a stub with the
 // profile contract's shape (contracts/profile.md) keeps the test about the transform.
 import { describe, expect, it } from "vitest";
+import { buildCrosswalkIndex } from "../../travis/identity/crosswalk.js";
+import type { RegistryRecord } from "../../travis/identity/resolver.js";
 import { buildSeedRow } from "../../travis/pilot/build-seed.js";
 import { buildSharedFiles, parseTcadRecord } from "../../travis/transforms/shared-seed.js";
 import { transformTcadCounty } from "../../travis/transforms/tcad-county.js";
@@ -17,6 +19,7 @@ import {
   assertEmittedClasses,
   transformAustinPropertyImprovement,
   type AustinPermitCapture,
+  type ContractorIdentityInput,
   type ProfileApi,
 } from "../../travis/transforms/austin-property-improvement.js";
 import { tcadRecord } from "../fixtures/tcad-records.js";
@@ -260,6 +263,113 @@ describe("transformAustinPropertyImprovement", () => {
     expect(out.ledger).toHaveLength(2);
     for (const row of out.ledger)
       expect(row).toMatchObject({ profile_version: "travis-austin@1.0.0", profile_sha256: SHA });
+  });
+});
+
+// A-11 fix: wires A-07's real resolver (resolver.ts's resolveContractor, unmodified) into the
+// ledger per permit. Per ADR-0002 #6 the five-state verdict has no lexicon carrier, so it stays
+// off the emitted JSON record; these tests prove each real state reaches `ledger[i]
+// .contractor_resolution` and that `counts.by_contractor_state` rolls it up, never silently
+// dropping a non-resolved state or defaulting one to `resolved`.
+describe("contractor identity resolution (A-07/AD-05, wired via ClassificationLedgerRow)", () => {
+  const REGISTRY: RegistryRecord[] = [
+    { taxpayerNumber: "100", legalName: "ACME ROOFING LLC", sosStatusCode: "active" },
+    { taxpayerNumber: "200", legalName: "ACME ROOFING LLC", sosStatusCode: "active" },
+    { taxpayerNumber: "300", legalName: "STALE ROOFING INC", sosStatusCode: "terminated" },
+  ];
+
+  function identity(over: Partial<ContractorIdentityInput> = {}): ContractorIdentityInput {
+    return {
+      registry: REGISTRY,
+      registryLoaded: true,
+      registrySnapshotDigest: "d".repeat(64),
+      effectiveOn: "2026-10-23T00:00:00.000Z",
+      ...over,
+    };
+  }
+
+  it("without a wired registry every emitted permit genuinely resolves unresolved (registry_unavailable), never null or resolved", () => {
+    const out = transformAustinPropertyImprovement(setup([capture("2026-200001 BP")]));
+    expect(out.ledger[0]?.contractor_resolution).toBe("unresolved");
+    expect(out.counts.by_contractor_state).toEqual({ unresolved: 1 });
+  });
+
+  it("a legal-name match whose only registry hit is not active resolves conflicting, never candidate or resolved", () => {
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200002 BP", { contractor_company_name: "STALE ROOFING INC" })]),
+      contractorIdentity: identity(),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("conflicting");
+    expect(out.counts.by_contractor_state).toEqual({ conflicting: 1 });
+  });
+
+  it("an identifier crosswalk match resolves resolved (AC-2's fixture-fallback path, D-10)", () => {
+    const crosswalk = buildCrosswalkIndex([{ permitKey: "2026-200003 BP", taxpayerNumber: "100" }]);
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200003 BP", { contractor_company_name: "ANYTHING" })]),
+      contractorIdentity: identity({ crosswalk }),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("resolved");
+    expect(out.counts.by_contractor_state).toEqual({ resolved: 1 });
+  });
+
+  it("a single active legal-name match (no crosswalk) resolves candidate", () => {
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200004 BP", { contractor_company_name: "Lone Star Roofing Co" })]),
+      contractorIdentity: identity({
+        registry: [{ taxpayerNumber: "400", legalName: "LONE STAR ROOFING CO", sosStatusCode: "active" }],
+      }),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("candidate");
+    expect(out.counts.by_contractor_state).toEqual({ candidate: 1 });
+  });
+
+  it("two active legal-name matches resolve ambiguous (all kept by the resolver, not dropped)", () => {
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200005 BP", { contractor_company_name: "ACME ROOFING LLC" })]),
+      contractorIdentity: identity(),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("ambiguous");
+  });
+
+  it("no printed contractor name resolves unresolved with contractor_not_printed, never null", () => {
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200006 BP", { contractor_company_name: null })]),
+      contractorIdentity: identity(),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("unresolved");
+  });
+
+  it("no match at all against a loaded registry resolves unresolved, never defaulted to resolved", () => {
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200007 BP", { contractor_company_name: "NOBODY MATCHES THIS LLC" })]),
+      contractorIdentity: identity(),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("unresolved");
+  });
+
+  it("no contractor-identity field ever reaches the emitted JSON record, in any state (ADR-0002 #6: no lexicon carrier)", () => {
+    const crosswalk = buildCrosswalkIndex([{ permitKey: "2026-200008 BP", taxpayerNumber: "100" }]);
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200008 BP")]),
+      contractorIdentity: identity({ crosswalk }),
+    });
+    const record = parse(out.files, "property_improvement_1.json");
+    expect(record).not.toHaveProperty("contractor_company_cid");
+    expect(record).not.toHaveProperty("contractor_resolution");
+    expect(Object.keys(record).sort()).toEqual(
+      [
+        "completion_date",
+        "contractor_type",
+        "improvement_action",
+        "improvement_status",
+        "improvement_type",
+        "permit_issue_date",
+        "permit_number",
+        "request_identifier",
+        "source_http_request",
+      ].sort(),
+    );
   });
 });
 
