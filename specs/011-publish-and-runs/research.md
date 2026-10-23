@@ -19,6 +19,13 @@ sections below are kept for their still-valid reasoning (second pin, Filebase si
 "same CIDs" meaning, the approval-gate disagreement) — ignore every mention of 5 groups or of
 `owner`/`contractor`/`parcels` as separate publish groups in what follows.
 
+**Second correction, same day, found during T031's build:** contractor identity also cannot be
+*scalar fields on the published record* — ADR-0002 (`docs/decisions/0002-lexicon-carriers.md`,
+binding) already ruled this out: the live lexicon schema cache is `additionalProperties:false`
+with no contractor property, and ADR-0002's own verdict names the sanctioned path as a manifest
+`coverage` rollup (AD-24), never a record field. T031 implements that: the five AD-05 states
+reach an internal classification-ledger field and the coverage rollup only.
+
 ---
 
 
