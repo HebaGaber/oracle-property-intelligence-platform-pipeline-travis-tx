@@ -51,14 +51,22 @@ export interface PermitsWriteGroupDeps {
   defaultDir: string;
   /** pIDs read per DB round trip (default 500); tests pass a small value. */
   batchSize?: number;
-  /** Optional progress hook, called once per page written (monitoring only, never behavior). */
-  onPage?: (progress: { pids: number; groups: number; empty: number; permits: number }) => void;
+  /**
+   * Optional progress hook, called once per page written (monitoring only, never behavior).
+   * `permits` is linked DB rows READ this page (pre-classification); `emitted` is the
+   * roofing-classified, decided-status `property_improvement` rows actually WRITTEN this page
+   * (CR-A-11-porygon finding 1: the two are different numbers and must never share one label).
+   */
+  onPage?: (progress: { pids: number; groups: number; empty: number; permits: number; emitted: number }) => void;
 }
 
 export interface PageResult {
   groups: number;
   empty: number;
+  /** Linked DB rows read this page, before roofing/status classification. */
   permits: number;
+  /** `property_improvement` rows actually written this page (roofing-classified, decided only). */
+  emitted: number;
   seen: string[];
 }
 
@@ -157,7 +165,8 @@ async function writePage(
   }
   const plan = planPropertyImprovementGroup(inputs, deps.cids, deps.profile);
   writePropertyImprovementGroupFiles(dir, plan.groups);
-  return { groups: plan.groups.length, empty: plan.empty.length, permits, seen };
+  const emitted = plan.groups.reduce((sum, g) => sum + g.counts.emitted, 0);
+  return { groups: plan.groups.length, empty: plan.empty.length, permits, emitted, seen };
 }
 
 /** Property Improvement group for one job (or just `opts.pids`), paged over the Query DB. */
@@ -172,20 +181,28 @@ export async function writeGroupWith(
   let groups = 0;
   let empty = 0;
   let permits = 0;
+  let emitted = 0;
   const seen = new Set<string>();
   for await (const page of linkedPidPages(deps.sql, batchSize, wanted)) {
     const r = await writePage(deps, dir, page);
     groups += r.groups;
     empty += r.empty;
     permits += r.permits;
+    emitted += r.emitted;
     for (const pid of r.seen) seen.add(pid);
-    deps.onPage?.({ pids: page.length, groups: r.groups, empty: r.empty, permits: r.permits });
+    deps.onPage?.({ pids: page.length, groups: r.groups, empty: r.empty, permits: r.permits, emitted: r.emitted });
   }
   return {
     jobId,
     groups,
     empty,
+    // Linked DB rows read (pre-classification), kept distinct from `emitted` (CR-A-11-porygon
+    // finding 1): this is NOT the published row count.
     permits,
+    // The actual `property_improvement` rows written this run: roofing-classified, decided-
+    // status permits only (PO scope decision, specs/011-publish-and-runs/run-log.md). This is
+    // the published count, not `permits`.
+    emitted,
     dir: dir.replace(/^.*\/pipeline\//, "pipeline/"),
     ...(wanted === null ? {} : { missing_pids: wanted.filter((p) => !seen.has(p)) }),
   };

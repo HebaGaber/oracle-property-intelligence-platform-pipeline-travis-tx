@@ -59,7 +59,16 @@ export const GROUP_COVERAGE_KEYS: Record<
   county: [],
   property_improvement: [
     ["permits_emitted", "published_rows"],
+    // CR-A-11-porygon finding 2: `permits_no_tcad_geoid` alone left 4 of A-04's 5
+    // permit-to-parcel-link `UnmatchedReason`s (travis/permits/link.ts) with no coverage key at
+    // all, so captured - emitted could legitimately differ by hundreds of thousands of rows with
+    // the manifest naming only part of why. All 5 reasons are now labeled, same convention
+    // (`permits_<reason>`, `aggregate_match`).
     ["permits_no_tcad_geoid", "aggregate_match"],
+    ["permits_no_tcad_id", "aggregate_match"],
+    ["permits_ambiguous_geoid", "aggregate_match"],
+    ["permits_address_unmatched", "aggregate_match"],
+    ["permits_ambiguous_address", "aggregate_match"],
     // AD-05's five contractor-identity states (A-07), collapsed to three manifest-coverage
     // buckets per ADR-0002 #6: there is no lexicon carrier on property_improvement or company
     // for anything short of a `resolved` match (AD-06), so ambiguous/conflicting/unresolved

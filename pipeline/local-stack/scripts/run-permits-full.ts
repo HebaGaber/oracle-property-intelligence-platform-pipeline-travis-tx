@@ -36,6 +36,7 @@ async function main() {
   let pages = 0;
   let totalGroups = 0;
   let totalPermits = 0;
+  let totalEmitted = 0;
   const out = await writeGroupWith(
     {
       sql,
@@ -47,10 +48,16 @@ async function main() {
         pages += 1;
         totalGroups += p.groups;
         totalPermits += p.permits;
+        totalEmitted += p.emitted;
         if (pages % 20 === 0) {
           const elapsed = ((Date.now() - started) / 1000).toFixed(0);
+          // `linked_db_rows_read`: linked permits read from the Query DB this page, before
+          // roofing/status classification. `permits_written`: the property_improvement rows
+          // actually emitted (roofing-classified, decided status only) -- the published count.
+          // These are NOT the same number (CR-A-11-porygon finding 1); never collapse them
+          // under one `permits=` label again.
           console.log(
-            `[permits-full] progress pages=${pages} pids_seen=${pages * 500} groups=${totalGroups} permits=${totalPermits} elapsed_s=${elapsed}`,
+            `[permits-full] progress pages=${pages} pids_seen=${pages * 500} groups=${totalGroups} linked_db_rows_read=${totalPermits} permits_written=${totalEmitted} elapsed_s=${elapsed}`,
           );
         }
       },
@@ -60,7 +67,7 @@ async function main() {
   );
   const elapsedS = ((Date.now() - started) / 1000).toFixed(1);
   console.log(
-    `[permits-full] done job_id=${jobId} groups=${out.groups} empty=${out.empty} permits=${out.permits} dir=${out.dir} elapsed_s=${elapsedS}`,
+    `[permits-full] done job_id=${jobId} groups=${out.groups} empty=${out.empty} linked_db_rows_read=${out.permits} permits_written=${out.emitted} dir=${out.dir} elapsed_s=${elapsedS}`,
   );
   await sql.end();
 }

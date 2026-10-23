@@ -33,7 +33,7 @@ Extend A-03's 2-group, pilot-scale publication pipeline to the full 5-group Trav
 
 **Constraints**: No step of the 6-step sequence is ever skipped (P0-2); published CIDs never change (P0-3); Query DB never published or reachable from AWS (P0-1); no IPNS field anywhere (AD-03); scheduler $0 while disabled (NFR-003); region from config, never hard-coded, locked to `eu-north-1`.
 
-**Scale/Scope**: ~2.95-3.73 GB projected full-county publication (county 493,246 parcels, property_improvement 2,381,226 captured rows, owner 493,246 canonical, contractor 22,084 ledger rows, parcels 373,683 GIS features); ≥ 3 runs on ≥ 3 distinct UTC dates.
+**Scale/Scope (corrected 2026-10-23, CR-A-11-porygon finding 1):** the 2.95-3.73 GB / 2,381,226-row figure above was computed for the stale 5-group design and, separately, conflated `property_improvement`'s linked-permit-rows-read count with its published row count — both wrong. The actual 2-group scope, measured directly from Run 1's dry-run CARs: `county` is R-only (441,961 of the 493,246-parcel roll; P/MH/MN out of scope, unchanged since A-04) — 10 batched CARs totalling ≈2.25 GB. `property_improvement`'s published scope is roofing-classified, decided-status permits only (PO decision, 2026-10-23; NOT all 2,007,514 linked permits) — 17,387 rows, 2 batched CARs totalling ≈31 MB. Table-export CARs are KB-scale and negligible. **Realistic total ≈2.3 GB**, not 2.95-3.73 GB. ≥ 3 runs on ≥ 3 distinct UTC dates.
 
 ## Kit Agent Ownership *(mandatory, constitution XIII–XVII)*
 

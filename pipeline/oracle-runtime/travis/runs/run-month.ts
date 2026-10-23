@@ -724,6 +724,28 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
         note: "tcad_id printed but no residential account carries that geoID",
       },
       permits_ambiguous_geoid: { count: byMatch("ambiguous_geoid"), derivation: "aggregate_match" },
+      // CR-A-11-porygon finding 2: `link.ts`'s other 2 full-scale, link-stage `UnmatchedReason`s
+      // (`no_tcad_id`, `address_unmatched`/`ambiguous_address` — a permit with no usable tcad_id
+      // that falls through to the geoID+address matcher). This one-month flow never runs that
+      // matcher: every permit here already carries a seed-assigned pID before TCAD lookup
+      // starts (D-5), so these counts are genuinely, structurally zero here, not omitted or
+      // assumed. The full Query-DB-driven run (A-11 T031) is the producer that can see a
+      // nonzero count for these reasons.
+      permits_no_tcad_id: {
+        count: 0,
+        derivation: "aggregate_match",
+        note: "this one-month capture pre-assigns pID by seed; link.ts's address-fallback matcher never runs here",
+      },
+      permits_address_unmatched: {
+        count: 0,
+        derivation: "aggregate_match",
+        note: "this one-month capture pre-assigns pID by seed; link.ts's address-fallback matcher never runs here",
+      },
+      permits_ambiguous_address: {
+        count: 0,
+        derivation: "aggregate_match",
+        note: "this one-month capture pre-assigns pID by seed; link.ts's address-fallback matcher never runs here",
+      },
       permits_matched_parcel: { count: byMatch("matched"), derivation: "aggregate_match" },
       parcels_matched: { count: allParcels.length, derivation: "aggregate_match" },
       parcels_published: { count: countyCounts.length, derivation: "published_rows" },
