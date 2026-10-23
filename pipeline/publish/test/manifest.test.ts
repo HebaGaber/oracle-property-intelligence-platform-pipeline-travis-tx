@@ -23,6 +23,7 @@ import {
   GROUP_COVERAGE_KEYS,
   SOURCE_ORDER,
   buildManifest,
+  manifestGroupInputsFromBatches,
   requiredCoverageKeys,
   sourceInputFromDelta,
   type BuildManifestInput,
@@ -503,6 +504,239 @@ describe("checkInput: the coverage-key profile (T004, T006, T009, corrected)", (
         ],
       }),
     ).rejects.toThrow(/sources/);
+  });
+});
+
+// S6a.2: at full-county scale a data group is N CARs (AD-0001's batching — 10 for Run 1's
+// `county`, 2 for its `property_improvement`), not the A-03 pilot's one-CAR assumption.
+// `ManifestGroupInput[]` already supports repeated `group` entries (an array); these tests pin
+// that `buildManifest` actually sums each group's table rows across its batches (not just the
+// last one written) and keeps every batch's artifacts, before any real multi-batch run existed.
+describe("buildManifest: multiple CARs (batches) per data group (S6a.2)", () => {
+  async function batchedFixture(
+    piRowsPerBatch: readonly number[],
+  ): Promise<{ input: BuildManifestInput; runDir: string }> {
+    const p = mkdtempSync(join(tmpdir(), "run-batched-"));
+    const groups: BuildManifestInput["groups"] = [];
+    for (const [idx, piRows] of piRowsPerBatch.entries()) {
+      const b = idx + 1;
+      const carPath = join(p, `car/travis-property_improvement-b${b}.car`);
+      const countyRoot = await writeCar(carPath, {
+        label: "CountyIndex",
+        group: "property_improvement",
+        batch: b,
+      });
+      const tablesDir = join(p, `tables/property_improvement-b${b}`);
+      const bytes = new TextEncoder().encode(`PAR1 pi b${b}`);
+      write(join(tablesDir, "property_improvement", "part-00000.parquet"), bytes);
+      const tables = {
+        property_improvement: {
+          rows: piRows,
+          parts: [{ cid: CID.parse(await cidOfBytes(bytes)), rows: piRows, bytes: bytes.length }],
+        },
+      };
+      const tablesRoot = await writeCar(join(tablesDir, "tables.car"), {
+        label: "CountyTables",
+        version: 1,
+        county_root: countyRoot,
+        part_size_bytes: PART_SIZE_BYTES,
+        codec: "zstd",
+        tables,
+      });
+      const exportJson = join(p, `reports/property_improvement-b${b}-tables-export.json`);
+      write(
+        exportJson,
+        JSON.stringify({
+          output: tablesDir,
+          car: join(tablesDir, "tables.car"),
+          root: tablesRoot.toString(),
+          countyRoot: countyRoot.toString(),
+          partSizeBytes: PART_SIZE_BYTES,
+          codec: "zstd",
+          tables: { property_improvement: { rows: piRows, parts: 1 } },
+          parts: 1,
+          exportedAt: "2026-10-21T15:00:00.000Z",
+        }),
+      );
+      groups.push({
+        group: "property_improvement",
+        carPath,
+        carRoot: countyRoot.toString(),
+        tablesDir,
+        tablesRoot: tablesRoot.toString(),
+        tablesExportJson: exportJson,
+      });
+    }
+    write(
+      join(p, "capture/austin/receipts.jsonl"),
+      [
+        {
+          url: "https://data.austintexas.gov/resource/3syk-w9eu.json?permit_number=A",
+          captured_at: "2026-10-21T14:00:01.000Z",
+          outcome: "ok",
+        },
+      ]
+        .map((r) => JSON.stringify(r))
+        .join("\n") + "\n",
+    );
+    write(
+      join(p, "capture/tcad/receipt.json"),
+      JSON.stringify({ captured_at: "2026-10-21T14:30:00.000Z", records: [{}] }),
+    );
+    const totalPiRows = piRowsPerBatch.reduce((a, c) => a + c, 0);
+    const input: BuildManifestInput = {
+      runId: RUN_ID,
+      county: "travis",
+      state: "TX",
+      fips: "48453",
+      startedAt: "2026-10-21T14:00:00.000Z",
+      finishedAt: "2026-10-21T15:00:00.000Z",
+      previousManifestCid: null,
+      runDir: p,
+      groups,
+      sources: [
+        {
+          name: "austin-3syk-w9eu",
+          url: "https://data.austintexas.gov/resource/3syk-w9eu.json",
+          watermark: "2026-10-20T12:36:38.000Z",
+          receipts: join(p, "capture/austin/receipts.jsonl"),
+          limitations: [],
+        },
+        {
+          name: "tcad-2026-certified-json",
+          url: "https://traviscad.org/publicinformation",
+          watermark: "entry@sha256:" + "d".repeat(64),
+          receipts: join(p, "capture/tcad/receipt.json"),
+          limitations: [],
+        },
+      ],
+      profiles: [
+        {
+          name: "travis-austin",
+          version: "1.0.0",
+          sha256: SHA,
+          path: "profiles/travis-austin@1.0.0/rules.json",
+          gitCommit: "17c6cd8",
+        },
+      ],
+      coverage: Object.fromEntries(
+        requiredCoverageKeys(["property_improvement"]).map(([key, derivation]) => [
+          key,
+          { count: key === "permits_emitted" ? totalPiRows : 1, derivation },
+        ]),
+      ),
+      ownersRedacted: 0,
+      limitations: [],
+      workTreeStatus: () => "",
+    };
+    return { input, runDir: p };
+  }
+
+  it("sums a group's table rows across every batch for the permits_emitted check, not just the last batch's", async () => {
+    const { input } = await batchedFixture([2, 3]);
+    const { manifest } = await buildManifest(input);
+    expect(manifest.coverage.permits_emitted).toEqual({ count: 5, derivation: "published_rows" });
+  });
+
+  it("keeps every batch's car/directory/table artifacts, never overwriting an earlier batch's", async () => {
+    const { input } = await batchedFixture([2, 3, 4]);
+    const { manifest } = await buildManifest(input);
+    const carNames = manifest.artifacts
+      .filter((a) => a.kind === "car")
+      .map((a) => a.name)
+      .sort();
+    expect(carNames).toEqual([
+      "car/travis-property_improvement-b1.car",
+      "car/travis-property_improvement-b2.car",
+      "car/travis-property_improvement-b3.car",
+    ]);
+    expect(manifest.artifacts.filter((a) => a.kind === "directory")).toHaveLength(3);
+    expect(manifest.artifacts.filter((a) => a.kind === "table")).toHaveLength(3);
+  });
+
+  it("fails permits_emitted when the declared count does not match the batches' summed rows", async () => {
+    const { input } = await batchedFixture([2, 3]);
+    await expect(
+      buildManifest({
+        ...input,
+        coverage: {
+          ...input.coverage,
+          permits_emitted: { count: 999, derivation: "published_rows" },
+        },
+      }),
+    ).rejects.toThrow(/permits_emitted/);
+  });
+
+  it("requiredCoverageKeys dedupes repeated groups so an N-batch group's keys are listed once", () => {
+    const keys = requiredCoverageKeys([
+      "property_improvement",
+      "property_improvement",
+      "property_improvement",
+    ]);
+    expect(keys).toEqual(GROUP_COVERAGE_KEYS.property_improvement);
+  });
+});
+
+// S6a.2: the glue from a batched group's on-disk layout (`batch-hash-validate-export.sh`'s
+// `cars/<prefix>-bNN.car` + `tables/bNN/` + `tables/bNN-export.json`) to the `ManifestGroupInput[]`
+// buildManifest expects, reading each batch's own printed root/countyRoot verbatim.
+describe("manifestGroupInputsFromBatches (S6a.2)", () => {
+  it("builds one ManifestGroupInput per batch from export-tables JSON's own root/countyRoot", async () => {
+    const p = mkdtempSync(join(tmpdir(), "run-glue-"));
+    const roots: { countyRoot: string; tablesRoot: string }[] = [];
+    for (const n of [1, 2]) {
+      const b = String(n).padStart(2, "0");
+      const carPath = join(p, "cars", `travis-county-b${b}.car`);
+      const countyRoot = await writeCar(carPath, { label: "CountyIndex", batch: n });
+      const tablesDir = join(p, "tables", `b${b}`);
+      const tablesRoot = await writeCar(join(tablesDir, "tables.car"), {
+        label: "CountyTables",
+        version: 1,
+        county_root: countyRoot,
+        part_size_bytes: PART_SIZE_BYTES,
+        codec: "zstd",
+        tables: {},
+      });
+      write(
+        join(p, "tables", `b${b}-export.json`),
+        JSON.stringify({
+          output: tablesDir,
+          car: join(tablesDir, "tables.car"),
+          root: tablesRoot.toString(),
+          countyRoot: countyRoot.toString(),
+          partSizeBytes: PART_SIZE_BYTES,
+          codec: "zstd",
+          tables: {},
+          parts: 0,
+          exportedAt: "2026-10-21T15:00:00.000Z",
+        }),
+      );
+      roots.push({ countyRoot: countyRoot.toString(), tablesRoot: tablesRoot.toString() });
+    }
+    const inputs = manifestGroupInputsFromBatches({
+      group: "county",
+      dir: p,
+      carPrefix: "travis-county",
+      batches: [1, 2],
+    });
+    expect(inputs).toEqual([
+      {
+        group: "county",
+        carPath: join(p, "cars", "travis-county-b01.car"),
+        carRoot: at(roots, 0).countyRoot,
+        tablesDir: join(p, "tables", "b01"),
+        tablesRoot: at(roots, 0).tablesRoot,
+        tablesExportJson: join(p, "tables", "b01-export.json"),
+      },
+      {
+        group: "county",
+        carPath: join(p, "cars", "travis-county-b02.car"),
+        carRoot: at(roots, 1).countyRoot,
+        tablesDir: join(p, "tables", "b02"),
+        tablesRoot: at(roots, 1).tablesRoot,
+        tablesExportJson: join(p, "tables", "b02-export.json"),
+      },
+    ]);
   });
 });
 

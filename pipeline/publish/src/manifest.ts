@@ -81,11 +81,16 @@ export const GROUP_COVERAGE_KEYS: Record<
   ],
 };
 
-/** The coverage keys required for exactly `groups` (order-independent; T004/T009 profile). */
+/**
+ * The coverage keys required for exactly `groups` (order-independent; T004/T009 profile). Groups
+ * are deduped first: a group split into N batches (full-county scale, S6a.2) still names its own
+ * keys once, never once per batch — the per-run profile is about which groups are present, not
+ * how many CARs carry each one.
+ */
 export function requiredCoverageKeys(
   groups: readonly DataGroup[],
 ): ReadonlyArray<readonly [string, CoverageCount["derivation"]]> {
-  return groups.flatMap((g) => GROUP_COVERAGE_KEYS[g]);
+  return [...new Set(groups)].flatMap((g) => GROUP_COVERAGE_KEYS[g]);
 }
 
 /** The Austin source's fixed limitation note (addendum A5; plan § "Fixed texts"). */
@@ -440,11 +445,20 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
   if (!runDir) throw new Error("runDir is required");
   checkInput(input);
   const artifacts: ManifestArtifact[] = [];
+  // S6a.2: `input.groups` is N CARs per data group at full-county scale (AD-0001's batching —
+  // 10 for `county`, 2 for `property_improvement` in Run 1), not the A-03 pilot's one-CAR
+  // assumption. Every batch's artifacts are kept (never overwritten); each table's rows are
+  // summed across every batch of the same group, so a published-rows coverage check (e.g.
+  // `permits_emitted`) sees the group's true total, not just its last batch's.
   const rows = new Map<DataGroup, Record<string, number>>();
   for (const g of input.groups) {
     const built = await groupArtifacts(runDir, g);
     artifacts.push(...built.artifacts);
-    rows.set(g.group, built.rows);
+    const existing = rows.get(g.group) ?? {};
+    for (const [table, count] of Object.entries(built.rows)) {
+      existing[table] = (existing[table] ?? 0) + count;
+    }
+    rows.set(g.group, existing);
   }
   // `published_rows`: the count is literally the number of published property_improvement rows.
   // Only checked when this run actually includes the property_improvement group (T004/T009's
@@ -480,18 +494,49 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
 }
 
 /**
- * T013 stub: drafts Run 1's `BuildManifestInput` from the dry run's actual outputs (the five
- * groups' `ManifestGroupInput`s under `dryRunDir`, their capture receipts, and the real
- * `owners_redacted`/coverage counts the dry run reports). Not implemented in this wave: the dry
- * run has not produced any output yet (Stage 5 overlaps the build, per tasks.md's critical
- * path), and this function must never fabricate a group, a source, or a coverage count to fill
- * that gap. The shape below is ready for G-RUN's wave-2 wiring (T017-T019): once the dry run
- * exists, this reads its reports/ directory the same way `fixture()` in manifest.test.ts
- * synthesizes one, then calls `buildManifest` unchanged.
+ * A data group split into N batches at full-county scale (AD-0001's batching:
+ * `pipeline/publish/scripts/split-into-batches.py` + `batch-hash-validate-export.sh` — 10 for
+ * Run 1's `county`, 2 for its `property_improvement`). Their fixed layout under `dir`:
+ * `cars/<carPrefix>-bNN.car` and `tables/bNN/` + `tables/bNN-export.json`, `NN` zero-padded to 2
+ * digits. T013's original stub assumed a single dry run directory for every group; corrected at
+ * S6a.2, now that the real batched output exists and spans more than one run directory per group
+ * (`dir` is passed per group, not assumed shared).
  */
-export function draftRun1ManifestInput(_dryRunDir: string): never {
-  throw new Error(
-    "draftRun1ManifestInput: not implemented — Run 1's dry run has not produced output yet; " +
-      "see tasks.md T013/T017-T019. This function intentionally does not fabricate dry-run data.",
-  );
+export interface BatchedGroupDirs {
+  group: DataGroup;
+  /** Directory containing this group's `cars/` and `tables/` batch subdirectories. */
+  dir: string;
+  /** The CAR file prefix before `-bNN`, e.g. `travis-county`. */
+  carPrefix: string;
+  /** Batch numbers to include, in the order they should appear (e.g. `[1, 2, ..., 10]`). */
+  batches: readonly number[];
+}
+
+/**
+ * Builds one `ManifestGroupInput` per batch from `BatchedGroupDirs`'s fixed layout (T013/T017
+ * wave-2 wiring, closed at S6a.2: `buildManifest()` itself now sums rows across batches of the
+ * same group; this is the glue that turns N on-disk batch directories into the
+ * `ManifestGroupInput[]` it expects). The CAR root and tables root are read verbatim from each
+ * batch's own `export-tables --output-json` summary (its `countyRoot`/`root` fields) — never
+ * recomputed, guessed, or taken from a differently-named file — so this is pure path/JSON
+ * plumbing over `elephant-cli`'s own printed output, not a new source of truth. `buildManifest`'s
+ * own checks (CAR root vs `CountyTables.county_root`, tables root vs the block's own hash, every
+ * part's CID and size) still re-verify every one of these batches against the real files.
+ */
+export function manifestGroupInputsFromBatches(spec: BatchedGroupDirs): ManifestGroupInput[] {
+  return spec.batches.map((n) => {
+    const b = String(n).padStart(2, "0");
+    const tablesExportJson = join(spec.dir, "tables", `b${b}-export.json`);
+    const summary = TablesExportSummary.parse(
+      JSON.parse(readFileSync(tablesExportJson, "utf8")),
+    );
+    return {
+      group: spec.group,
+      carPath: join(spec.dir, "cars", `${spec.carPrefix}-b${b}.car`),
+      carRoot: summary.countyRoot,
+      tablesDir: join(spec.dir, "tables", `b${b}`),
+      tablesRoot: summary.root,
+      tablesExportJson,
+    };
+  });
 }
