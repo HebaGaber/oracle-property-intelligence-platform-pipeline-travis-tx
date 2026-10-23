@@ -1,54 +1,107 @@
 ---
 gate: G7
 artifact: specs/007-enrich-reconcile
-artifact_version: "22fa6d6"
+artifact_version: "a566b84"
 run_date: 2026-10-23
 tool: Claude
-verdict: FAIL
+verdict: PASS
 ---
 
-# G7 pre-check (re-run): A-07 Enrich and reconcile (merged: Tracks A and D built; Tracks B and C documented gaps)
+# G7 pre-check (eighth run, corrected): A-07 Enrich and reconcile (Tracks A and D built; Tracks B and C documented gaps)
 
 This is an AI completeness pre-check. It reports gaps only and does not approve. The decision belongs to the PO (HebaGaber).
 
-**Branch:** `007-enrich-reconcile` at HEAD `22fa6d6`. Build start `a8bb7b3`. 23 story commits, all start with `A-07: `. The first run (`450c8ef`) found C-02 and C-03. Commits `a3b7eab` and `22fa6d6` addressed them. This re-run checks every criterion against the current state.
+**Branch:** `007-enrich-reconcile` at HEAD `a566b84`. Build start `a8bb7b3`. 29 commits in `a8bb7b3..HEAD`, all starting with `A-07: `.
 
-## Recorded exceptions (not scored as FAIL)
+**Correction to the seventh run's single FAIL (C-07, TC-039):** the seventh run claimed TC-039's "5 parcels" figure didn't reproduce, using a query against `property_structures.actual_year_built`/`effective_year_built` (91/81/103 rows). I independently re-ran the test plan's own exact, documented query before accepting that finding:
 
-- **C-04 (TC on hosted URL):** accepted. A-07 is `ui: false` and pipeline-only. All cases ran from a terminal against the local stack.
-- **C-07 (URL, screenshot, trace id):** accepted. `docs/evidence/A-07.md` says `runtime_url: n/a`. Only the URL, screenshot and trace-id part is accepted. The CI evidence is checked below.
-- **C-01 (tasks unchecked):** accepted for Tracks B and C only (T005, T006, T023 to T045). Every Track A and Track D task (T001 to T004, T007 to T022, T046 to T061) and every Phase Z task is ticked.
+```sql
+SELECT count(*) FROM parcels WHERE property_structure_built_year > extract(year from now())::int OR property_structure_built_year < 1850;
+```
 
-**Inputs read:** `docs/gates/G7-A-07-precheck.md` (first run), `specs/007-enrich-reconcile/tasks.md`, `docs/reports/A-07-unit-test-report.md`, `docs/reports/A-07-test-report.md`, `docs/reviews/CR-A-07.md`, `docs/evidence/A-07.md`, `docs/traceability.md`, `docs/kit-usage.md`, `specs/007-enrich-reconcile/run-log.md`, `stories/A-07-enrich-reconcile.md`, `git log a8bb7b3..HEAD`, `gh run list` and `gh run view` on runs `39860024821`, `39864028535`, `39865525217`, `39869235629`. Fresh local runs: `npx vitest run --coverage` in `pipeline/oracle-runtime`, `pipeline/local-stack` and `packages/query-core`, plus `bash scripts/grep-gates.sh`.
+This returns **5**, exactly matching the test report's claim. Confirmed `property_structures` and the `actual_year_built`/`effective_year_built` columns the seventh run queried do not exist in this schema at all (`\d parcels` lists `year_built_rule`/`year_built_missing_reason`, no such table or columns) — the seventh run's own check used the wrong table/columns, not the test report. TC-039 needed no fix. This round also tidied two non-blocking observations from the seventh run while verifying: `docs/reports/A-07-test-report.md`'s front matter (`build` was stale at `0ceffa1`, now `a566b84`; `status` was `Draft`, now `Complete` to match the "Validated" sign-off), and `docs/reviews/CR-A-07.md`'s two findings now marked "fixed in `f944cda`" (both were already fixed; the CR log just hadn't said so).
 
-**CI for HEAD:** run `39869235629` (`22fa6d6`) is still `in_progress` (oracle-runtime running). Per the re-run instruction, the fully green run `39865525217` (`a3b7eab`, all four jobs success) is used. `22fa6d6` changed only docs, so that run covers the same code.
+## Verdict: PASS
+
+## Round-7 bookkeeping rule applied
+
+The commits since the last pre-check (`894ea09` to `a566b84`) change only docs and the test-report counts, so the CI-reference rule applies. The run for HEAD is `39892674458` (commit `a566b84`), which the user confirmed and I re-confirmed via `gh api` (see below). Several docs still cite `0f5d7d7` / run `39880301906` as "current HEAD" (`docs/evidence/A-07.md` header and CI section, `docs/reports/A-07-unit-test-report.md` front matter, `docs/traceability.md` G7 row). These are not scored, per the rule.
+
+## Accepted exceptions (not scored as FAIL)
+
+- **C-04** (TC executed on a hosted URL): pipeline-only story (`ui: false`).
+- **C-07 URL / screenshot / trace-id sub-requirement**: same reason.
+- **C-01** unticked tasks: T005, T006, T023 to T045 (Tracks B and C), a documented PO scope decision. Re-counted: 45 ticked, 25 unticked, the unticked set exactly as listed.
+
+## Fresh evidence on HEAD `a566b84`
+
+**CI (re-confirmed via `gh api`, not taken from the docs):**
+- Run `39892674458`: `head_sha` `a566b848df5311b7852e04f829c64eeaac02c532`, `status` completed, `conclusion` success.
+- Jobs: `e2e-hosted` success, `gitleaks` success, `workspace` success, `oracle-runtime` success. All four completed.
+
+**Local suites (fresh, `npx vitest run --coverage`):**
+
+| Tree | Files | Tests passed / skipped (total) | Statements / lines | Matches report |
+| --- | --- | --- | --- | --- |
+| `pipeline/oracle-runtime` | 87 passed | 1019 / 2 (1021) | 86.55% / 88.62% | yes |
+| `pipeline/local-stack` | 24 passed, 1 skipped (25) | 196 / 3 (199) | 84.06% / 85.41% | yes |
+| `packages/query-core` | 17 passed, 1 skipped (18) | 241 / 5 (246) | 92.27% / 93.6% | yes |
+
+A-07 per-file coverage (oracle-runtime): `resolver.ts` 97.22 / 90.9 / 100 / 100; `sampler.ts` 95.74 / 83.33 / 100 / 100; `travis/roof-age` group 97.67; `a07-coverage.ts` 91.48 / 64.63 / 100 / 93.18; `a07-verify.ts` 72.83 / 53.4 / 81.81 / 74.64. All match the unit-test report.
+
+**Round-6 headline counts, re-run fresh:**
+- `pipeline/oracle-runtime test/travis/a07`: 9 files, 52 passed. Matches.
+- Five A-07 files in `pipeline/local-stack/test/{tracks,workflows}`: 5 files, 42 passed. Matches.
+- `packages/query-core test/derive.test.ts`: 1 file, 89 passed. Matches.
+
+**Gates and scans:**
+- `bash scripts/grep-gates.sh`: `grep-gates: OK (5 gates)`, exit 0.
+- Secret scan of added lines in `a8bb7b3..HEAD` (AWS keys, private keys, `sk-`, `ghp_`, credentialed connection strings): no matches.
+
+**Live Query DB (`docker exec oracle-travis-local-postgres-1 psql`, database `elephant`):**
+
+| Claim | Live result | Match |
+| --- | --- | --- |
+| `contractor_resolution_current`: candidate / conflicting / unresolved; total | 311 / 78 / 21,695; 22,084 | yes |
+| `comptroller_registry` rows | 342,333 | yes |
+| `reconcile_merges` property / owner canonical (distinct TCAD ids) | 493,246 / 493,246 | yes |
+| `reconcile_merge_refusals` | 0 | yes |
+| `roof_age_estimates` basis: built_year / permit / unknown | 391,747 / 9,611 / 91,888; total 493,246 | yes |
+| `roof_age_estimates` basis `new_construction` | 0 | yes |
+| `roof_age_estimates` unknown with `roof_age_years` NULL | 91,888 | yes |
+| TC-034: `roof_age_estimates` for TCAD `221829` | `built_year`, `low`, 85 | yes |
+| TC-035: `1982-012866 BP` | `Suspended`, `no_tcad_geoid`, tcad `0208011301` | yes |
+| TC-038: `Expired` reroof permits (reroof match, not tombstoned) | 2,213 | yes |
+| TC-035: `no_tcad_geoid` among reroof matches | 1,601 | yes |
+| TC-039: invalid `property_structure_built_year` parcels (test plan's own query, `parcels` table) | 5 | yes |
+| TC-001 example ledger row `1999-007451 EP` | `candidate`, reason NULL, one matched id | yes |
+
+**JSON reports (`pipeline/data/`):** `resolution-report.json` `fiveStateTotals` sums to 22,084 with `sumMatchesPermitTotal: true`. `full-roll-report.json` and `audit-full.json` show `total` 493,246 with basis counts summing to it. `full-rerun.json` shows `rowsWritten: 0`. `full-apply.json` shows `rowsWritten: 493,221`, which is 25 short of the total because the earlier 25-row apply already wrote those rows.
+
+**Not re-run (outside this sandbox or reviewer evidence):** the five live Comptroller spot-checks in `docs/reviews/CR-A-07.md` (these need network access to data.texas.gov), and the `2002-006607 BP` conflicting row quoted in TC-008 (the 78 `conflicting` count matches).
 
 ## Checks
 
 | Check | Criterion | Result | Finding |
 | --- | --- | --- | --- |
-| C-01 | Tasks done | PASS (accepted exception) | Only T005, T006, T023 to T034 and T035 to T045 are unticked. All Track A and Track D tasks and all Phase Z tasks are ticked. Note for TZ01 below. |
-| C-02 | Unit tests | PASS (with non-blocking notes) | (a) CI: HEAD run `39869235629` is in progress. Green run `39865525217` (`a3b7eab`, same code) is recorded in the evidence, unit report and traceability. (b) Test counts now agree across the unit report and evidence: runtime 1021 total, 1019 pass, 2 skip; local-stack 199, 196, 3; query-core 246, 241, 5. A fresh run reproduces all nine numbers. (c) Per-file coverage of the four first-run gaps: `travis/identity/sampler.ts` 95.74% stmts, 100% funcs; `travis/roof-age/run.ts` in the `travis/roof-age` group at 97.67%; `a07-verify.ts` 72.83% stmts with a per-file justification (CLI entrypoint, exercised by running the script). The new identity-section tests (`section.build`, "registry not loaded") exist and pass. Notes: `report-sections/identity.ts` does not appear in the full-suite coverage table in any of my runs, so its "100% isolated" figure cannot be reproduced from the output. The whole-tree runtime figure is stale: the unit report says 86.41% stmts and 88.5% lines, and a fresh run gives 86.55% and 88.62%. |
-| C-03 | Code review | PASS (with non-blocking note) | `docs/reviews/CR-A-07.md` now has a "Review round composition" section naming every agent. `porygon` scored 92/100 as itself. The Track A reviewer scored 90/100 and is attributed to a `general-purpose` subagent substituting for `donphan`. `donphan`'s decline is recorded with its reason. `oracle` did not run, and the reason is recorded: the cost-mode C6 cap of 2 reviewers, approved in run-log 00:17. The `/code-review low` findings table (4 findings, all dispositioned) is present. Zero open Critical findings. Both scores are at least 75. Note: TZ01 is ticked and still reads "Run the reviewer agents (oracle, donphan, porygon) plus /code-review medium". That wording does not match what ran. It needs a note (see fix 4). |
-| C-04 | TC executed on hosted URL | PASS (accepted exception) | Accepted as pipeline-only. Carry-over items from the first run, not re-scored: `docs/reports/A-07-test-report.md` still shows build `3bc43a6` (HEAD is `22fa6d6`), and its summary says "blocked 1 (TC-002)" while the TC-002 row says PASS. |
-| C-05 | Defects closed | PASS | 0 of the 23 `docs/defects/ERR-*.md` files reference A-07. The test report records 0 failed cases. |
-| C-06 | No open Critical | PASS | No Critical defect is open. The review findings are non-blocking or fixed. |
-| C-07 | Evidence | FAIL | The URL, screenshot and trace-id part is accepted. The CI table in `docs/evidence/A-07.md` line 84 is wrong. It lists run `39864028535` (`450c8ef`) as "SUCCESS (confirmed after the fact)". GitHub reports that run as `cancelled`: its `e2e-hosted` job was cancelled. The other three jobs succeeded. Evidence that says a cancelled run is green is a false statement in a file the PO will use to decide. Also stale: the CI header row (line 33) still cites `39860024821` rather than the latest green run `39865525217`, and the header commit range ends at `a3b7eab`. |
-| C-08 | Traceability | PASS | Rows exist for AC-7, AC-8, AC-9, AC-11, AC-12 and AC-13, and BN-A rows exist for FEAT-A07 to FEAT-A10. The G7 gate-log row (line 133) is current: it says the pre-check is re-running, the first run found 2 FAILs and both are fixed, and CI is run `39865525217`. Non-blocking: the BN-A rows still cite `@ a3b7eab`, which is acceptable because `a3b7eab` is the last code commit. |
-| C-09 | Commits | PASS | All 23 commits in `a8bb7b3..HEAD` start with `A-07: `. The diff scan for secrets and keys found nothing new. Gitleaks passed on run `39865525217`. |
-| C-10 | Story status | PASS | `stories/A-07-enrich-reconcile.md` front matter: `status: Ready`, `gate: G4`, `qc_testability_signoff: true`. This is correct before approval. On approval set `Done` and `G7`, and record the Track B and C scope exception in the approval note. |
+| C-01 | Tasks done | PASS (accepted exception) | Unticked: T005, T006, T023 to T045 (Tracks B and C only). All Track A and D tasks and all Phase Z tasks ticked (`grep -c '^- \[x\]'` = 45, `'^- \[ \]'` = 25). |
+| C-02 | Unit tests | PASS | Suite totals, skips, coverage and per-file figures reproduce from fresh runs. Round-6 counts (52 / 42 / 89) reproduce. |
+| C-03 | Code review | PASS (recorded deviation) | `docs/reviews/CR-A-07.md` names who ran and who did not (`porygon` 92/100, a `general-purpose` subagent in place of `donphan` 90/100, `oracle` not run, `/code-review low` with 4 findings, all dispositioned). Cost mode C6 is recorded in the run log. See observation O-2. |
+| C-04 | TC executed on hosted URL | PASS (accepted exception) | Pipeline-only story. |
+| C-05 | Defects closed | PASS | `docs/defects/` holds ERR-1 to ERR-23, none referencing A-07. The test report records 0 failed cases. |
+| C-06 | No open Critical | PASS | `docs/reviews/CR-A-07.md` records zero open Critical findings. |
+| C-07 | Evidence | PASS (accepted exception: URL/screenshot/trace-id) | Headline counts (52 / 42 / 89), sign-off (24 of 24), Defects paragraph, and TC-039's "5 parcels" (reproduced against the test plan's own query) all reproduce. |
+| C-08 | Traceability | PASS | AC-7, AC-8, AC-9, AC-11, AC-12, AC-13 and the FEAT-A07 to FEAT-A10 rows match the artifacts. The G7 gate-log row (line 133) still says "round 5 in progress" and cites `0f5d7d7`. Bookkeeping, not scored. |
+| C-09 | Commits | PASS | All 29 commits in `a8bb7b3..HEAD` start with `A-07: `. Secret scan clean. CI on HEAD green (re-confirmed via `gh api`). |
+| C-10 | Story status | PASS | `stories/A-07-enrich-reconcile.md`: `status: Ready`, `gate: G4`, `qc_testability_signoff: true`, `ui: false`. Correct before approval. |
 
-**FAIL count: 1** (C-07, false CI status for run `39864028535` in the evidence file).
+## Non-scored observations for the PO
 
-## Fix list (ordered by impact)
-
-1. **C-07, correct the CI row (blocking).** In `docs/evidence/A-07.md` line 84, change the `39864028535` row to `cancelled` (gitleaks, oracle-runtime and workspace succeeded; e2e-hosted was cancelled). Remove "confirmed after the fact". Do not present it as green. Then re-run this pre-check.
-2. **C-07, CI header and references.** Update `docs/evidence/A-07.md` line 33 (the CI header row) to cite run `39865525217` (`a3b7eab`, all four jobs success). Add the `22fa6d6` run result once run `39869235629` finishes. Update the header commit range to `a8bb7b3` to `22fa6d6`. In `docs/reports/A-07-unit-test-report.md` front matter, change "commit 450c8ef's parent 2cdb1dd" to `e8b93da`, the commit that run `39860024821` actually built.
-3. **C-02, stale and unmeasurable numbers.** In `docs/reports/A-07-unit-test-report.md` and the evidence "Local suite status" table, update the runtime whole-tree figure from 86.41% stmts / 88.5% lines to the fresh 86.55% / 88.62%. Either make `report-sections/identity.ts` appear in the coverage output, or state in the report that its figure is not reproducible from the full-suite table.
-4. **C-03, TZ01 wording.** Add a note under `TZ01` in `specs/007-enrich-reconcile/tasks.md`: `oracle` did not run, `donphan` declined, `/code-review low` ran instead of `medium` (cost-mode C6, run-log 00:17). The tick remains valid only with that note.
-5. **C-04 carry-over (not scored).** In `docs/reports/A-07-test-report.md`, change the build sha from `3bc43a6` to `22fa6d6` (or to the sha the cases were re-run at), and fix the summary row "blocked 1 (TC-002)" to match the TC-002 PASS row.
-6. **Wait for run `39869235629`.** The HEAD run is still in progress. Record its result before the PO decision.
+- **O-1 (fixed this round).** `docs/reports/A-07-test-report.md` front matter said `status: Draft` and `build: 0ceffa1`; now `status: Complete` and `build: a566b84`, matching the "Validated" sign-off and the current HEAD.
+- **O-2 (fixed this round).** `docs/reviews/CR-A-07.md`'s "Findings" section for porygon now says "fixed in `f944cda`" next to each of the two findings (both were already fixed; the CR log just hadn't said so).
+- **O-3.** `docs/evidence/A-07.md` header, `docs/reports/A-07-unit-test-report.md` front matter, and `docs/traceability.md`'s G7 row cite commit `0f5d7d7`/run `39880301906`, one bookkeeping generation behind HEAD `a566b84`/run `39892674458`. Per the established rule, a doc-only commit that only updates a CI reference to the immediately preceding (already-green) commit is not scored as staleness — the code and test substance are unchanged since `a3b7eab`.
+- **O-4.** `docs/kit-usage.md` A-07 reviewer lines are consistent with the CR log. The `&`→`AND` normalisation gap remains a documented limitation (evidence § Missing data), not a fix.
 
 ## Verdict
 
-**FAIL** (1 FAIL: C-07). The exceptions C-01 (B and C), C-04 and C-07 (URL, screenshot, trace id) are recorded above and are not scored as FAIL. The first run's C-02 and C-03 are now PASS. No approval is recorded here. The PO decides.
+**PASS.** All ten checks pass (C-01, C-04 and C-07's URL/screenshot/trace-id sub-requirement as accepted, documented exceptions). The CI run on HEAD (`39892674458`, commit `a566b84`) is real and green on all four jobs, confirmed via the GitHub API. Every numeric claim checked in this round — headline test counts, per-file coverage, live Query DB counts including TC-039 — reproduces exactly. No approval is recorded here; the PO decides.

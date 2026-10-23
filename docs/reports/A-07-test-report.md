@@ -5,10 +5,10 @@ feature: FEAT-A07
 story: A-07
 test_cases: testplans/A-07-test-cases.md
 runtime_url: "N/A: pipeline-only story"
-build: 0ceffa1
+build: a566b84
 data_snapshot: "N/A: no manifest CID this run; local registry job travis-a07-identity-resolve-20261022185017 (digest d1d0a5a2…)"
 owner: HebaGaber             # QC Lead
-status: Draft                # Draft → Complete → Signed Off
+status: Complete             # Draft → Complete → Signed Off
 gate: G7
 created: 2026-10-23
 signed_off_date:

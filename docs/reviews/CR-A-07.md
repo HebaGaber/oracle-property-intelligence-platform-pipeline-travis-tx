@@ -281,15 +281,16 @@ the `contractor_resolution_ledger_check` constraint's "`reason_code IS NULL` whe
 - The candidate-state match logic is sound on a 5-row sample against the live registry, and
   correctly withholds `resolved` for name-only matches.
 
-## Findings (both non-blocking)
+## Findings (both non-blocking, both fixed)
 
-1. `mergeCountsRow()`/`roofAgeCoverageRow()` in `pipeline/oracle-runtime/travis/runs/a07-coverage.ts`
+1. **Fixed in `f944cda`.** `mergeCountsRow()`/`roofAgeCoverageRow()` in `pipeline/oracle-runtime/travis/runs/a07-coverage.ts`
    (lines 125–134, 136–152) never compute a `limitation` — they hardcode `null`. Not wrong for this
-   run's data, but it means a future refused-merge or basis/roll mismatch would go unreported. Add a
+   run's data, but it means a future refused-merge or basis/roll mismatch would go unreported. Added a
    computed check mirroring `fiveStateTotalsRow()`'s pattern.
-2. `pipeline/oracle-runtime/test/travis/a07/runs/a07-coverage.test.ts` has no test case for
+2. **Fixed in `f944cda`.** `pipeline/oracle-runtime/test/travis/a07/runs/a07-coverage.test.ts` had no test case for
    Track B/C `undefined` report paths — the exact scenario this story's docs describe as "the PO's
-   cost-mode scope decision" for this pass. Add one before G7.
+   cost-mode scope decision" for this pass. Added one (`a07-coverage.test.ts` lines 100–147), plus two
+   more for the fixes in finding 1 (a refused-merge flag, a basis/total-mismatch flag).
 
 ## Confidence note
 
