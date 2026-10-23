@@ -170,21 +170,28 @@ describe("the fixed gateway allowlist (P0-14)", () => {
 });
 
 describe("retry with backoff on 429/504/timeout", () => {
-  it("retries 429 up to MAX_ATTEMPTS, honouring Retry-After, then succeeds", async () => {
-    const f = await fixture();
-    const { fetchImpl, attempts } = fakeGateways(f.published, {
-      statuses: (host) => (host === "ipfs.io" ? [429, 429] : []),
-      retryAfter: "0",
-    });
-    const report = await verifyManifest({
-      manifestPath: f.manifestPath,
-      fetch: fetchImpl,
-      sleep: noSleep,
-      random: noJitter,
-    });
-    expect(report.ok).toBe(true);
-    expect(attempts.get(`ipfs.io:${f.manifestCid}`)).toBe(3);
-  });
+  it(
+    "retries 429 up to MAX_ATTEMPTS, honouring Retry-After, then succeeds",
+    async () => {
+      const f = await fixture();
+      const { fetchImpl, attempts } = fakeGateways(f.published, {
+        statuses: (host) => (host === "ipfs.io" ? [429, 429] : []),
+        retryAfter: "0",
+      });
+      const report = await verifyManifest({
+        manifestPath: f.manifestPath,
+        fetch: fetchImpl,
+        sleep: noSleep,
+        random: noJitter,
+      });
+      expect(report.ok).toBe(true);
+      expect(attempts.get(`ipfs.io:${f.manifestCid}`)).toBe(3);
+    },
+    // sleep/jitter are injected no-ops (no real backoff delay); the margin above the
+    // default 5000ms covers CPU contention from fixture()'s real sha256 hashing of the
+    // ~50MB mock CAR/parquet bytes when this suite runs alongside the full turbo graph.
+    20000,
+  );
 
   it("retries 504 up to MAX_ATTEMPTS; exhausting them marks the check unverified, non-zero result", async () => {
     const f = await fixture();
