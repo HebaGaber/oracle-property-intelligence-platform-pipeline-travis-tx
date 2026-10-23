@@ -1,0 +1,218 @@
+// A-11 T031: travis/permits/write-group.ts reshapes stored Query DB rows into
+// transformAustinPropertyImprovement's real input (never a new shape) and writes plain files.
+// Small fixture only (3 parcels, not the 2,381,226-row full roll -- that is the next task).
+import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { buildSeedRow } from "../../../travis/pilot/build-seed.js";
+import {
+  AUSTIN_DATASET_URL,
+  type ProfileApi,
+} from "../../../travis/transforms/austin-property-improvement.js";
+import { parseTcadRecord } from "../../../travis/transforms/shared-seed.js";
+import {
+  captureOf,
+  planPropertyImprovementGroup,
+  recordAndSeedOf,
+  writePropertyImprovementGroupFiles,
+  type ParcelDbRow,
+  type PermitDbRow,
+} from "../../../travis/permits/write-group.js";
+import { tcadRecord } from "../../fixtures/tcad-records.js";
+
+const CIDS = {
+  seed: "bafkreibhurphpjdq33ysit57jtzmdldgngepsdbsw4vm7esawth2ezgaxu",
+  county: "bafkreia6tjziby3upxmidymud5iusd32urrztslgrudkwysc7ydmxoekuq",
+  propertyImprovement: "bafkreicyzywzwhmguojpi2otgrwsyi37le3u4lnavljbxu76cnrudxaxfu",
+};
+const SHA = "e".repeat(64);
+
+/** Same stub shape as test/transforms/austin-property-improvement.test.ts: the transform's
+ *  classification is out of scope here, only the DB → input reshaping is under test. */
+const STUB: ProfileApi = {
+  PROFILE: { name: "travis-austin", version: "1.0.0", sha256: SHA },
+  classifyPermit: (row) => ({
+    roofing: row.permittype === "BP" ? "roofing" : "not_roofing",
+    reason: row.permittype === "BP" ? "include" : "trade_permit",
+    improvement_type: row.permittype === "BP" ? "Roofing" : null,
+    improvement_action: row.permittype === "BP" ? "Replacement" : null,
+    sha256: SHA,
+  }),
+  classifyStatus: (word) => {
+    const table: Record<
+      string,
+      {
+        class: "open" | "stalled" | "closed" | "exclude" | "needs_review";
+        improvement_status: string | null;
+      }
+    > = {
+      Active: { class: "open", improvement_status: "Permitted" },
+      Final: { class: "closed", improvement_status: "Completed" },
+      VOID: { class: "exclude", improvement_status: null },
+    };
+    return {
+      ...(table[word ?? ""] ?? { class: "needs_review", improvement_status: null }),
+      sha256: SHA,
+    };
+  },
+};
+
+function parcelRow(pID: number, geoId: string): ParcelDbRow {
+  return {
+    request_identifier: String(pID),
+    geo_id: geoId,
+    payload_redacted: tcadRecord({ pID, geoID: geoId }),
+  };
+}
+
+function permitRow(
+  pID: number,
+  permitNumber: string,
+  over: Partial<PermitDbRow["payload"]> = {},
+): PermitDbRow {
+  return {
+    request_identifier: String(pID),
+    permit_number: permitNumber,
+    content_sha256: SHA,
+    captured_at: "2026-10-21T22:32:10.129Z",
+    payload: {
+      permit_number: permitNumber,
+      permittype: "BP",
+      work_class: "Remodel",
+      status_current: "Active",
+      description: "REROOF SFR",
+      issue_date: "2026-09-02T00:00:00.000",
+      completed_date: null,
+      // the link match already happened upstream (0301_permits.sql); this field is carried
+      // through unread by the transform, so a fixed value is fine across every parcel here
+      tcad_id: "0100030105",
+      ...over,
+    },
+  };
+}
+
+describe("recordAndSeedOf", () => {
+  it("rebuilds the TcadRecord and seed row from parcels.payload_redacted", () => {
+    const { record, seed } = recordAndSeedOf(parcelRow(100008, "0100030105"));
+    expect(String(record.pID)).toBe("100008");
+    expect(seed.parcel_id).toBe("100008");
+  });
+
+  it("throws when the stored pID does not match the DB key (data-integrity guard)", () => {
+    const row = parcelRow(100008, "0100030105");
+    row.request_identifier = "999999";
+    expect(() => recordAndSeedOf(row)).toThrow(/prints pID 100008/);
+  });
+});
+
+describe("captureOf", () => {
+  it("rebuilds the per-permit GET receipt from the stored raw payload, never re-requesting it", () => {
+    const capture = captureOf(permitRow(100008, "2026-100001 BP"));
+    expect(capture.receipt).toMatchObject({
+      url: AUSTIN_DATASET_URL,
+      method: "GET",
+      multiValueQueryString: { permit_number: ["2026-100001 BP"] },
+      sha256: SHA,
+    });
+    expect(capture.row.permit_number).toBe("2026-100001 BP");
+  });
+
+  it("throws when the stored payload's permit_number disagrees with the DB key", () => {
+    const row = permitRow(100008, "2026-100001 BP");
+    row.payload.permit_number = "2026-999999 BP";
+    expect(() => captureOf(row)).toThrow(/prints permit_number/);
+  });
+});
+
+describe("planPropertyImprovementGroup", () => {
+  it("emits a group per parcel with at least one emittable permit", () => {
+    const plan = planPropertyImprovementGroup(
+      [
+        { parcel: parcelRow(100008, "0100030105"), permits: [permitRow(100008, "2026-100001 BP")] },
+        {
+          parcel: parcelRow(100009, "0100030106"),
+          permits: [
+            permitRow(100009, "2026-100002 BP", {
+              status_current: "Final",
+              completed_date: "2026-09-10T00:00:00.000",
+            }),
+          ],
+        },
+      ],
+      CIDS,
+      STUB,
+    );
+    expect(plan.groups).toHaveLength(2);
+    expect(plan.empty).toEqual([]);
+    const pi1 = JSON.parse(plan.groups[0]?.files["property_improvement_1.json"] as string);
+    expect(pi1).toMatchObject({ permit_number: "2026-100001 BP", improvement_type: "Roofing" });
+    expect(plan.groups[0]?.counts.emitted).toBe(1);
+  });
+
+  it("leaves a parcel out of the group (and names it `empty`) when every permit is excluded", () => {
+    const plan = planPropertyImprovementGroup(
+      [
+        {
+          parcel: parcelRow(100010, "0100030107"),
+          permits: [permitRow(100010, "2019-000001 BP", { status_current: "VOID" })],
+        },
+      ],
+      CIDS,
+      STUB,
+    );
+    expect(plan.groups).toEqual([]);
+    expect(plan.empty).toEqual(["100010"]);
+  });
+
+  it("sorts multiple permits of one parcel by permit_number before numbering them", () => {
+    const plan = planPropertyImprovementGroup(
+      [
+        {
+          parcel: parcelRow(100011, "0100030108"),
+          permits: [permitRow(100011, "2026-200002 BP"), permitRow(100011, "2026-100001 BP")],
+        },
+      ],
+      CIDS,
+      STUB,
+    );
+    const files = plan.groups[0]?.files ?? {};
+    expect(JSON.parse(files["property_improvement_1.json"] as string)).toMatchObject({
+      permit_number: "2026-100001 BP",
+    });
+    expect(JSON.parse(files["property_improvement_2.json"] as string)).toMatchObject({
+      permit_number: "2026-200002 BP",
+    });
+  });
+});
+
+describe("writePropertyImprovementGroupFiles", () => {
+  it("writes each group's files as plain files under <dir>/<pID>/data/<file>, no zip", () => {
+    const plan = planPropertyImprovementGroup(
+      [{ parcel: parcelRow(100008, "0100030105"), permits: [permitRow(100008, "2026-100001 BP")] }],
+      CIDS,
+      STUB,
+    );
+    const dir = mkdtempSync(join(tmpdir(), "pi-write-group-"));
+    const written = writePropertyImprovementGroupFiles(dir, plan.groups);
+    expect(written.length).toBeGreaterThan(0);
+    expect(readdirSync(join(dir, "100008"))).toEqual(["data"]);
+    const dataFiles = readdirSync(join(dir, "100008", "data")).sort();
+    expect(dataFiles).toContain("property_improvement_1.json");
+    expect(dataFiles).toContain("property.json");
+    const pi = JSON.parse(
+      readFileSync(join(dir, "100008", "data", "property_improvement_1.json"), "utf8"),
+    );
+    expect(pi.permit_number).toBe("2026-100001 BP");
+  });
+});
+
+// sanity: recordAndSeedOf + buildSeedRow agree on the same parcel (no divergent shaping)
+describe("cross-check against buildSeedRow directly", () => {
+  it("produces the same seed row buildSeedRow would for the same record", () => {
+    const record = parseTcadRecord(tcadRecord({ pID: 100012, geoID: "0100030109" }));
+    const direct = buildSeedRow(record, "0100030109");
+    const { seed } = recordAndSeedOf(parcelRow(100012, "0100030109"));
+    expect(seed).toEqual(direct);
+  });
+});
