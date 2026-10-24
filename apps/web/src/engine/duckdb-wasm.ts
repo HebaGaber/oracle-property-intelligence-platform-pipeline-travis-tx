@@ -17,11 +17,15 @@
 // (`registerFile`), so the engine itself makes no network request for them.
 import {
   bindManifest,
+  boundPartNames,
   listRoofingPermitsSql,
+  viewsReadBy,
   type BoundRun,
+  type ContractView,
   type QueryEngine,
   type Row,
 } from "@countylens/query-core";
+import type { RunManifestV1 } from "@countylens/contract";
 import { EngineStartError } from "./errors";
 import { parsePermitRows, type PermitListRow } from "./permit-list";
 import { PERF_MARKS, PERF_MEASURES, timed } from "./timing";
@@ -450,13 +454,32 @@ export async function openEngine(
   };
 }
 
-/** Binds the contract views to the manifest; `partUrl` is the read path the manifest came from (no mixed hosts). */
+/** The page's own COUNT: one row per v_roofing_permit row, as the listing selects them. */
+export const COUNT_PERMITS_SQL = "SELECT count(*)::INTEGER AS n FROM v_roofing_permit";
+
+/**
+ * The contract views the Permits page reads: what its COUNT and its listing select from
+ * (v_roofing_permit). bindRun binds only the export tables these read (ERR-19), so the page
+ * range-reads or prefetches a few parts of a full run instead of every part.
+ */
+export const PERMITS_VIEWS: readonly ContractView[] = Object.freeze([
+  ...new Set([...viewsReadBy(COUNT_PERMITS_SQL), ...viewsReadBy(listRoofingPermitsSql())]),
+]);
+
+/** The table part artifacts `bindRun` reads (names), so the loader can prefetch only those. */
+export function permitsPartNames(manifest: {
+  readonly artifacts: RunManifestV1["artifacts"];
+}): string[] {
+  return boundPartNames(manifest.artifacts, PERMITS_VIEWS);
+}
+
+/** Binds the Permits page's views to the manifest; `partUrl` is the read path the manifest came from (no mixed hosts). */
 export function bindRun(
   engine: QueryEngine,
   manifestBytes: Uint8Array,
   partUrl: (artifact: { name: string; cid: string }) => string,
 ): Promise<BoundRun> {
-  return bindManifest(manifestBytes, "", engine, { partUrl });
+  return bindManifest(manifestBytes, "", engine, { partUrl, views: PERMITS_VIEWS });
 }
 
 /** The single page of permits, ordered by permit_number (listRoofingPermitsSql), validated; measured as `countylens:query:list`. */
@@ -464,9 +487,6 @@ export async function listPermits(engine: QueryEngine): Promise<PermitListRow[]>
   const rows = await timed(PERF_MEASURES.list, () => engine.all(listRoofingPermitsSql()));
   return parsePermitRows(rows);
 }
-
-/** The page's own COUNT: one row per v_roofing_permit row, as the listing selects them. */
-export const COUNT_PERMITS_SQL = "SELECT count(*)::INTEGER AS n FROM v_roofing_permit";
 
 /** COUNT over v_roofing_permit, measured as `countylens:query:count`. */
 export async function countPermits(engine: QueryEngine): Promise<number> {

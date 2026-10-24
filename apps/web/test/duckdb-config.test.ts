@@ -269,6 +269,7 @@ describe("createPermitsLoader: index → manifest → engine → bind → list (
     const rows: Row[] = [{ permit_number: "TEST-0001" }];
     const engineModule: EngineModule = {
       openEngine: vi.fn(async () => engine),
+      permitsPartNames: (m) => m.artifacts.filter((a) => a.kind === "table").map((a) => a.name),
       bindRun: vi.fn(async () => ({
         runId: "test-run",
         manifestCid,
@@ -325,7 +326,12 @@ describe("createPermitsLoader: index → manifest → engine → bind → list (
     expect(d.fetchParts).toHaveBeenCalledTimes(1);
     const [partsArg, readArg] = d.fetchParts.mock.calls[0] as unknown as [PartToFetch[], unknown];
     expect(partsArg).toEqual([
-      { name: "tables/county/property/part-00000.parquet", cid: partCid, size: 2 },
+      {
+        name: "tables/county/property/part-00000.parquet",
+        cid: partCid,
+        size: 2,
+        sha256: "0".repeat(64),
+      },
     ]);
     expect(readArg).toMatchObject({ source: { kind: "fallback", host: "gateway.test" }, partUrl });
     expect(d.registered).toEqual([[registeredPartName({ cid: partCid }), d.partBytes]]);

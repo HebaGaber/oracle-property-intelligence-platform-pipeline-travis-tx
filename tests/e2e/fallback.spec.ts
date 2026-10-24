@@ -152,23 +152,11 @@ function expectGatewayReads(
   ).toBe(true);
 }
 
-/**
- * Known failure parked as A-16 carried-forward item #7 (stories/A-16-cost-and-admin.md): rawCid()
- * cannot verify table parts above 256 KiB. Remove the three test.fixme markers (and this const)
- * when item #7 is fixed, so any other hosted failure keeps turning the job red.
- */
-const A16_ITEM_7 = {
-  annotation: {
-    type: "fixme",
-    description: "known failure, A-16 item #7: rawCid() cannot verify parts above 256 KiB",
-  },
-};
-
 test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", () => {
   test.describe.configure({ timeout: 10 * 60_000 });
 
   test.describe("A-03-TC-032 CID copy request aborted → Filebase fallback (error)", () => {
-    test.fixme("@scenario:A-03-TC-032", A16_ITEM_7, async ({ page, context, run }, testInfo) => {
+    test("@scenario:A-03-TC-032", async ({ page, context, run }, testInfo) => {
       const copyHost = requireCidCopyHost();
       const gatewayHost = harnessConfig().FILEBASE_GATEWAY_HOST;
       const { manifest, manifestCid } = run;
@@ -204,7 +192,7 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
   });
 
   test.describe("A-03-TC-033 CID copy returns 500 → Filebase fallback (error)", () => {
-    test.fixme("@scenario:A-03-TC-033", A16_ITEM_7, async ({ page, context, run }, testInfo) => {
+    test("@scenario:A-03-TC-033", async ({ page, context, run }, testInfo) => {
       const copyHost = requireCidCopyHost();
       const gatewayHost = harnessConfig().FILEBASE_GATEWAY_HOST;
       const { manifest, manifestCid } = run;
@@ -241,7 +229,7 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
   });
 
   test.describe("A-03-TC-034 CID copy slower than 4 s → Filebase fallback (edge)", () => {
-    test.fixme("@scenario:A-03-TC-034", A16_ITEM_7, async ({ page, context, run }, testInfo) => {
+    test("@scenario:A-03-TC-034", async ({ page, context, run }, testInfo) => {
       const copyHost = requireCidCopyHost();
       const gatewayHost = harnessConfig().FILEBASE_GATEWAY_HOST;
       const { manifest, manifestCid } = run;

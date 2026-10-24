@@ -280,6 +280,7 @@ async function part(i: number): Promise<{ part: PartToFetch; bytes: Uint8Array }
       name: `tables/county/t${i}/part-00000.parquet`,
       cid: await rawCid(bytes),
       size: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
     },
     bytes,
   };
@@ -386,15 +387,51 @@ describe("ERR-15: Filebase fallback reads survive the gateway's CORS-less 429 (T
     expect(host.maxInFlight).toBe(PART_CONCURRENCY.fallback);
   });
 
-  it("rejects bytes that do not hash to the manifest CID, without retrying", async () => {
+  it("rejects bytes whose SHA-256 differs from the manifest's, naming both hashes, without retrying", async () => {
     const { part: p } = await part(4);
-    const host = fakeHost(new Map([[p.cid, new TextEncoder().encode("PAR1 test part 9")]]));
+    const wrong = new TextEncoder().encode("PAR1 test part 9");
+    const host = fakeHost(new Map([[p.cid, wrong]]));
     const failure = fetchParts([{ ...p, size: 16 }], readFrom("copy"), {
       fetch: host.fetch,
       sleep: noSleep,
     });
-    await expect(failure).rejects.toThrow(/bytes hash to/);
+    await expect(failure).rejects.toBeInstanceOf(PartReadError);
+    await expect(failure).rejects.toThrow(
+      `bytes hash to sha256 ${createHash("sha256").update(wrong).digest("hex")}, the manifest says ${p.sha256}`,
+    );
     expect(host.requests).toHaveLength(1);
+  });
+
+  it("accepts bytes whose SHA-256 equals the manifest's, whatever the part's CID looks like", async () => {
+    const { part: p, bytes } = await part(5);
+    // A dag-pb (bafybei…) CID, as the manifest records for a part above one 256 KiB chunk.
+    const dagPb = { ...p, cid: "bafybei".padEnd(59, "a") };
+    const host = fakeHost(new Map([[dagPb.cid, bytes]]));
+    const [got] = await fetchParts([dagPb], readFrom("copy"), {
+      fetch: host.fetch,
+      sleep: noSleep,
+    });
+    expect(Array.from(got?.bytes ?? [])).toEqual(Array.from(bytes));
+  });
+
+  it("accepts a part above 256 KiB (a real run's parts: rawCid cannot hash it) and rejects one flipped byte of it", async () => {
+    const bytes = new Uint8Array(3_158_845).map((_, i) => (i * 31) % 251);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const big: PartToFetch = {
+      name: "tables/b01/address/part-00000.parquet",
+      cid: "bafybeicfyesy527ylqbv775pocfvxak7z7rgxleh5s5jaw277w5mxd4y2m",
+      size: bytes.length,
+      sha256,
+    };
+    const ok = fakeHost(new Map([[big.cid, bytes]]));
+    const [got] = await fetchParts([big], readFrom("copy"), { fetch: ok.fetch, sleep: noSleep });
+    expect(got?.bytes.length).toBe(3_158_845);
+    const flipped = bytes.slice();
+    flipped[1_000_000] = (flipped[1_000_000] ?? 0) ^ 1;
+    const bad = fakeHost(new Map([[big.cid, flipped]]));
+    await expect(
+      fetchParts([big], readFrom("copy"), { fetch: bad.fetch, sleep: noSleep }),
+    ).rejects.toThrow(/bytes hash to sha256 .*the manifest says/);
   });
 });
 
@@ -427,12 +464,18 @@ describe("ERR-16: a slow but working CID copy still finishes (TC-024, 2 s per re
 
   it("prefetches only the table parts, and nothing when they exceed PART_PREFETCH_MAX_BYTES (DuckDB range-reads them)", () => {
     const artifacts = [
-      { kind: "table", name: "tables/a/b/part-0.parquet", cid: "c1", size: 10 },
+      {
+        kind: "table",
+        name: "tables/a/b/part-0.parquet",
+        cid: "c1",
+        size: 10,
+        sha256: "a".repeat(64),
+      },
       { kind: "car", name: "car/x.car", cid: "c2", size: 99 },
       { kind: "directory", name: "tables/a", cid: "c3", size: 5 },
     ] as unknown as RunManifestV1["artifacts"];
     expect(partsToPrefetch({ artifacts })).toEqual([
-      { name: "tables/a/b/part-0.parquet", cid: "c1", size: 10 },
+      { name: "tables/a/b/part-0.parquet", cid: "c1", size: 10, sha256: "a".repeat(64) },
     ]);
     expect(partsToPrefetch({ artifacts }, 9)).toBeNull();
     expect(PART_PREFETCH_MAX_BYTES).toBe(16 * 1024 * 1024);
@@ -466,6 +509,7 @@ describe("ERR-16: a slow but working CID copy still finishes (TC-024, 2 s per re
     };
     const engineModule: EngineModule = {
       openEngine: async () => engine,
+      permitsPartNames: (m) => m.artifacts.filter((a) => a.kind === "table").map((a) => a.name),
       bindRun: async () => ({ runId: "test-run", manifestCid, asOf: "x", tables: [], views: [] }),
       countPermits: async () => 0,
       listPermits: async () => [],
@@ -552,6 +596,7 @@ describe("ERR-17: the engine starts with the first data read, not before it (TC-
         if (options.engineFails) throw new EngineStartError(new Error("fake"));
         return engine;
       }),
+      permitsPartNames: (m) => m.artifacts.filter((a) => a.kind === "table").map((a) => a.name),
       bindRun: vi.fn(async () => ({
         runId: "test-run",
         manifestCid,

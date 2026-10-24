@@ -215,6 +215,47 @@ function resolveBatchGroups(
   return resolved;
 }
 
+/** The emitted export tables `wanted` admits, each with its part artifact names (manifest order). */
+function emittedTables(
+  parts: readonly { name: string }[],
+  batchGroups: ReadonlyMap<string, RequiredTable["group"] | null>,
+  wanted: (key: string) => boolean,
+): Map<string, BoundTable> {
+  const emitted = new Map<string, BoundTable>();
+  for (const a of parts) {
+    const loc = tableLocOf(a.name);
+    if (!loc) continue;
+    const group = batchGroups.get(loc.batchRoot);
+    if (!group) continue; // the batch's group could not be resolved: never bind it into a guess
+    const key = `${group}.${loc.table}`;
+    if (!wanted(key)) continue;
+    const t = emitted.get(key) ?? { group, table: loc.table, emitted: true, parts: [] };
+    t.parts.push(a.name);
+    emitted.set(key, t);
+  }
+  return emitted;
+}
+
+/**
+ * The names of the table part artifacts `bindManifest` reads for `views` (every emitted table's
+ * parts when `views` is omitted): the same selection, so a caller can prefetch exactly those
+ * parts instead of every part of the run. Takes the manifest's `artifacts` only.
+ */
+export function boundPartNames(
+  artifacts: readonly { readonly kind: string; readonly name: string }[],
+  views?: readonly ContractView[],
+): string[] {
+  const parts = artifacts.filter((a) => a.kind === "table");
+  const tables = views === undefined ? undefined : planViews(views).tables;
+  const batchGroups = resolveBatchGroups(parts.map((a) => a.name));
+  const emitted = emittedTables(
+    parts,
+    batchGroups,
+    (key) => tables === undefined || tables.has(key),
+  );
+  return [...emitted.values()].flatMap((t) => t.parts);
+}
+
 /**
  * Creates schema `meta` (run, sources, parts, lookups), one relation per export table under the
  * schema of its data group (`county.property`, `property_improvement.property_improvement`, …,
@@ -352,19 +393,8 @@ export async function bindManifest(
   await engine.run(sql.join(";\n"));
 
   // One relation per emitted table, then empty typed relations for the required absent ones.
-  const emitted = new Map<string, BoundTable>();
+  const emitted = emittedTables(parts, batchGroups, wanted);
   const cidOf = new Map(parts.map((a) => [a.name, a.cid]));
-  for (const a of parts) {
-    const loc = tableLocOf(a.name);
-    if (!loc) continue;
-    const group = batchGroups.get(loc.batchRoot);
-    if (!group) continue; // the batch's group could not be resolved: never bind it into a guess
-    const key = `${group}.${loc.table}`;
-    if (!wanted(key)) continue;
-    const t = emitted.get(key) ?? { group, table: loc.table, emitted: true, parts: [] };
-    t.parts.push(a.name);
-    emitted.set(key, t);
-  }
   const partUrl =
     options.partUrl ??
     (({ name }: { name: string; cid: string }): string => {

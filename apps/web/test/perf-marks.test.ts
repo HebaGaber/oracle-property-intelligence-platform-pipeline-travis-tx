@@ -170,6 +170,7 @@ describe("createPermitsLoader runs the COUNT and checks it against the manifest 
     };
     const engineModule: EngineModule = {
       openEngine: vi.fn(async () => engine),
+      permitsPartNames: (m) => m.artifacts.filter((a) => a.kind === "table").map((a) => a.name),
       bindRun: vi.fn(async () => ({
         runId: "test-run",
         manifestCid,

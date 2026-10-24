@@ -29,9 +29,21 @@ import {
   loadRunsIndex as defaultLoadRunsIndex,
   type RunsIndexEntry,
 } from "../data/runs-index";
-import type { bindRun, countPermits, listPermits, openEngine } from "./duckdb-wasm";
+import type {
+  bindRun,
+  countPermits,
+  listPermits,
+  openEngine,
+  permitsPartNames,
+} from "./duckdb-wasm";
 import type { PermitListRow } from "./permit-list";
 import { STAGE_TEXTS } from "./stages";
+
+/**
+ * The Permits path's own prefetch cap for the bound subset (the default PART_PREFETCH_MAX_BYTES,
+ * 16 MiB, is unchanged for every other path). The subset of a full run is ~37 MB.
+ */
+export const PERMITS_PREFETCH_MAX_BYTES = 64 * 1024 * 1024;
 
 /** What the page renders from: manifest facts plus the listed rows. */
 export interface PermitsLoaded {
@@ -53,6 +65,8 @@ export type PermitsLoader = (
 export interface EngineModule {
   readonly openEngine: typeof openEngine;
   readonly bindRun: typeof bindRun;
+  /** The part names bindRun reads: the Permits views' tables only (ERR-19). */
+  readonly permitsPartNames: typeof permitsPartNames;
   readonly countPermits: typeof countPermits;
   readonly listPermits: typeof listPermits;
 }
@@ -115,9 +129,11 @@ export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}):
     };
     report(STAGE_TEXTS.engine);
     // ERR-17: started now, awaited only once the manifest and the parts are in hand.
-    const starting: Promise<{ module: EngineModule; engine: OpenedEngine }> = deps
-      .engine()
-      .then(async (module) => ({ module, engine: await module.openEngine() }));
+    const loadingModule = deps.engine();
+    const starting: Promise<{ module: EngineModule; engine: OpenedEngine }> = loadingModule.then(
+      async (module) => ({ module, engine: await module.openEngine() }),
+    );
+    loadingModule.catch(() => undefined);
     starting.catch(() => undefined);
     try {
       report(STAGE_TEXTS.manifest);
@@ -133,8 +149,15 @@ export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}):
       // fallback is exempted from the size cap: whenever Filebase served the manifest, every part
       // goes through fetchParts's throttled, retried path instead of DuckDB's unprotected one.
       const prefetchMaxBytes =
-        loaded.read.source.kind === "fallback" ? Number.POSITIVE_INFINITY : undefined;
-      const wanted = partsToPrefetch(loaded.manifest, prefetchMaxBytes);
+        loaded.read.source.kind === "fallback"
+          ? Number.POSITIVE_INFINITY
+          : PERMITS_PREFETCH_MAX_BYTES;
+      // The Permits page binds only the tables its views read, so only those parts are prefetched
+      // (or, above the cap, range-read): not the ~225 parts of a full run. The module is the
+      // chunk fetch already under way since the top of this load, not the engine start.
+      const wantedNames = new Set((await loadingModule).permitsPartNames(loaded.manifest));
+      signal.throwIfAborted();
+      const wanted = partsToPrefetch(loaded.manifest, prefetchMaxBytes, wantedNames);
       const parts = wanted === null ? null : await deps.fetchParts(wanted, loaded.read, { signal });
       signal.throwIfAborted();
       const { module: engineModule, engine } = await starting;

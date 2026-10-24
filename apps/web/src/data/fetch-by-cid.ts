@@ -4,9 +4,10 @@
 // no first byte within FIRST_BYTE_TIMEOUT_MS, judged per request; a 429 on the fallback is a
 // non-200 (Error state). The host that served the manifest is the host `partUrl` binds for the
 // table parts, so one load never mixes hosts. Bytes are accepted only when their raw-leaves CID
-// equals the requested one (constitution A3); A-03 reads only the manifest this way (one chunk),
-// the table parts are range-read by the engine through `partUrl`. Browser-safe: hosts come in
-// through `urls`; nothing here reads the environment.
+// equals the requested one (constitution A3); only the manifest is read this way (one chunk, so
+// a manifest above 256 KiB would not verify). Table parts are verified by the SHA-256 the
+// manifest records (./fetch-parts) or range-read by the engine through `partUrl`. Browser-safe:
+// hosts come in through `urls`; nothing here reads the environment.
 import { rawCid } from "@countylens/query-core";
 import type { ReadPathUrls } from "@countylens/shared";
 import { browserFetch, throwIfAborted } from "./http";
