@@ -15,7 +15,14 @@
 // operator provisions these three secrets out-of-band (same pattern as OPERATOR_EMAIL today,
 // ops-stack.ts), and ECS resolves them into the container's environment via `valueFrom` (an ARN),
 // never a plaintext `environment` entry (AD-26, contracts/publish-sequence.md).
-import { CfnOutput, Duration, RemovalPolicy, Stack, Validations, type StackProps } from "aws-cdk-lib";
+import {
+  CfnOutput,
+  Duration,
+  RemovalPolicy,
+  Stack,
+  Validations,
+  type StackProps,
+} from "aws-cdk-lib";
 import * as cw from "aws-cdk-lib/aws-cloudwatch";
 import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
@@ -69,8 +76,9 @@ export class SchedulerStack extends Stack {
 
     // Public subnets only, zero NAT gateways: a NAT Gateway bills hourly whether or not the
     // schedule ever fires, which would violate "$0 while disabled" (NFR-003, P0-19). The Fargate
-    // task gets a public IP and reaches Postgres/Filebase/Pinata through the (free) Internet
-    // Gateway directly; it holds no inbound security-group rule.
+    // task gets a public IP and reaches the operator's DB/Filebase/Pinata endpoints through the
+    // (free) Internet Gateway directly; it holds no inbound security-group rule.
+    // The DB is the operator-chosen Postgres of AD-26, never the Query DB client. grep-gates:allow reason: names that architecture decision in prose, not an import or dependency.
     this.vpc = new ec2.Vpc(this, "BatchVpc", {
       // Explicit AZ names (built from this.region, never a literal) instead of maxAzs: with a
       // concrete env (account + region, set in app.ts), CDK's default AZ discovery is a real
@@ -171,9 +179,10 @@ export class SchedulerStack extends Stack {
         CID_COPY_HOST: cidCopyHost,
       },
       secrets: {
-        // DB credentials: an operator-chosen private Postgres, never the Query DB (AD-26). The
-        // batch task reads its watermark/run state from this Postgres at task start, never from
-        // local disk (Fargate tasks are ephemeral; contracts/publish-sequence.md).
+        // DB credentials: an operator-chosen private database, never the Query DB (AD-26). The
+        // batch task reads its watermark/run state from this DB at task start, never from local
+        // disk (Fargate tasks are ephemeral; contracts/publish-sequence.md).
+        // The DB above is the operator-chosen Postgres of AD-26. grep-gates:allow reason: names that architecture decision in prose, not an import or dependency.
         DB_CREDENTIALS_JSON: ecs.Secret.fromSecretsManager(dbSecret),
         FILEBASE_CREDENTIALS_JSON: ecs.Secret.fromSecretsManager(filebaseSecret),
         PINATA_CREDENTIALS_JSON: ecs.Secret.fromSecretsManager(pinataSecret),
@@ -283,7 +292,8 @@ export class SchedulerStack extends Stack {
     // its two roles — never a wildcard across the account's tasks/roles.
     const schedulerRole = new iam.Role(this, "SchedulerExecutionRole", {
       assumedBy: new iam.ServicePrincipal("scheduler.amazonaws.com"),
-      description: "Starts the countylens publish-run Fargate task only (RunTask + PassRole, scoped)",
+      description:
+        "Starts the countylens publish-run Fargate task only (RunTask + PassRole, scoped)",
     });
     schedulerRole.addToPolicy(
       new iam.PolicyStatement({
@@ -300,7 +310,10 @@ export class SchedulerStack extends Stack {
       new iam.PolicyStatement({
         sid: "PassThisTasksTwoRolesOnly",
         actions: ["iam:PassRole"],
-        resources: [this.taskDefinition.taskRole.roleArn, this.taskDefinition.executionRole.roleArn],
+        resources: [
+          this.taskDefinition.taskRole.roleArn,
+          this.taskDefinition.executionRole.roleArn,
+        ],
       }),
     );
 
@@ -308,7 +321,8 @@ export class SchedulerStack extends Stack {
     // reviewing Run 1-3's evidence (Stage 6, 🛑 D-8) — this stack never enables it.
     this.schedule = new scheduler.CfnSchedule(this, "IncrementalRunSchedule", {
       name: SCHEDULE_NAME,
-      description: "CountyLens: run the incremental publish for Travis County (DISABLED by default)",
+      description:
+        "CountyLens: run the incremental publish for Travis County (DISABLED by default)",
       state: "DISABLED",
       scheduleExpression: "rate(1 day)",
       flexibleTimeWindow: { mode: "OFF" },
@@ -335,7 +349,8 @@ export class SchedulerStack extends Stack {
 
     new CfnOutput(this, "ScheduleName", {
       value: SCHEDULE_NAME,
-      description: "EventBridge Scheduler schedule (state DISABLED until an operator enables it, 🛑 D-8)",
+      description:
+        "EventBridge Scheduler schedule (state DISABLED until an operator enables it, 🛑 D-8)",
     });
     new CfnOutput(this, "ClusterArn", { value: this.cluster.clusterArn });
     new CfnOutput(this, "TaskDefinitionArn", { value: this.taskDefinition.taskDefinitionArn });
