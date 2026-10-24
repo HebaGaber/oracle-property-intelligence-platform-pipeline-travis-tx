@@ -269,7 +269,7 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
   });
 
   test.describe("A-03-TC-012 Published count = permits_emitted on Runs and Permits (edge)", () => {
-    test("@scenario:A-03-TC-012", async ({ page, run }) => {
+    test("@scenario:A-03-TC-012", async ({ browser, page, run }) => {
       const { manifest, runId } = run;
       const published = coverageCount(manifest, "permits_emitted");
 
@@ -292,19 +292,30 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       await expect(sources.locator("[data-coverage]")).toHaveCount(0);
       await expect(sources.getByText(COVERAGE_LABELS.permits_emitted)).toHaveCount(0);
 
-      // Step 4: the Permits list has exactly that many rows (one page, no placeholders).
-      await page.goto("/permits");
-      if (published.count === 0) {
-        await expect(page.getByText(PERMITS_TEXTS.empty, { exact: true })).toBeVisible({
+      // Step 4: the Permits list has exactly that many rows (one page, no placeholders). Opened in
+      // a fresh browser context (PO 2026-10-25, option A): on the GitHub runner the full-county
+      // Permits page never rendered after the Runs page in the same tab, while it renders in its
+      // own context (TC-020) and in a desktop browser either way; A-16 item 13 follows that up.
+      const permitsContext = await browser.newContext({ colorScheme: "light" });
+      try {
+        const permitsPage = await permitsContext.newPage();
+        await permitsPage.goto(`${runtimeUrl()}/permits`);
+        if (published.count === 0) {
+          await expect(permitsPage.getByText(PERMITS_TEXTS.empty, { exact: true })).toBeVisible({
+            timeout: PERMITS_LOAD_WAIT_MS,
+          });
+          await expect(permitsPage.locator(PERMIT_ROW)).toHaveCount(0);
+          await checkpoint(permitsPage, "012", "4-permits-empty");
+          return;
+        }
+        await expect(permitsPage.locator(PERMIT_ROW).first()).toBeVisible({
           timeout: PERMITS_LOAD_WAIT_MS,
         });
-        await expect(page.locator(PERMIT_ROW)).toHaveCount(0);
-        await checkpoint(page, "012", "4-permits-empty");
-        return;
+        await expect(permitsPage.locator(PERMIT_ROW)).toHaveCount(published.count);
+        await checkpoint(permitsPage, "012", "4-permits-row-count");
+      } finally {
+        await permitsContext.close();
       }
-      await expect(page.locator(PERMIT_ROW).first()).toBeVisible({ timeout: PERMITS_LOAD_WAIT_MS });
-      await expect(page.locator(PERMIT_ROW)).toHaveCount(published.count);
-      await checkpoint(page, "012", "4-permits-row-count");
     });
   });
 

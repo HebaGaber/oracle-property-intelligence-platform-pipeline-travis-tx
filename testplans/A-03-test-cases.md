@@ -700,6 +700,7 @@ These cases were written for A-03's pilot (~38 permits, all issued September 202
 | --- | --- | --- |
 | A-03-TC-020 | every row issued in 2026-09 | every row's `issue_date` is a valid ISO date not after the run's `as_of` (manifest `finishedAt`); row count still exactly `permits_emitted` |
 | A-03-TC-020, 021, 022, 025 | full per-row assertions on every row | cheap invariants on every row in one in-page pass (`auditAllRows`); full per-row assertions on a deterministic sample (first 200 rows, every 97th row, named permit `2003-012717 BP`) |
+| A-03-TC-012 | step 4 navigates the same tab from Runs to Permits | step 4 opens Permits in a fresh browser context (PO 2026-10-25, option A); same check (rows = `permits_emitted`); A-16 item 13 investigates the same-tab stall on Linux Chrome |
 | A-03-TC-030 | `NO_TCAD_PERMIT_NUMBERS` lists every unlinked permit (1) | it lists a sample (≥ 1, never more than `permits_no_tcad_geoid`, Run 2: 275,764); each listed permit is absent from the list and the page |
 | A-03-TC-NF-03 | Atlas audit of every element at 390/768/1440 | skipped (`test.fixme`) in A-11 by PO decision; restored in A-16 item 12 by auditing the chrome plus the first 50 rows/cards |
 | A-03-TC-NF-01 | each cold first load ≤ 8 s | ≤ 60 s at full-county scale (Run 2: 24–28 s home, ~45 s GitHub runner); optimization is A-16 item 11 |
