@@ -28,6 +28,11 @@
 // - The `Provenance` cell holds `a[href="{source_url}"]`, `<time datetime="{captured_at}">`,
 //   `[data-cid="{table_cid}"][title="{table_cid}"]` with the middle-truncated text, and the
 //   text `run {run_id}`.
+// Full-county adaptation 2026-10-24 (A-11 Run 2, PO approved: "Yes, adapt them"): the page lists
+// all ~15,000 permits across decades, so (a) nothing pins the pilot's issue month, (b) every row
+// is checked once, in one in-page pass, for the cheap invariants (`auditAllRows`), and (c) the
+// full per-row assertions run on a deterministic sample (`snapshotRows`: the first
+// SAMPLE_HEAD rows, every SAMPLE_STRIDE-th row and the NAMED_PERMITS). Row counts stay exact.
 // - TC-030 reads `NO_TCAD_PERMIT_NUMBERS` (comma-separated, from the run's capture receipt; the
 //   receipt is internal, so the operator exports it) and checks it against the manifest count.
 import type { Locator, Page, TestInfo } from "@playwright/test";
@@ -44,7 +49,7 @@ import { z } from "zod";
 import { expect, test } from "./lib/fixtures.js";
 import { checkpoint } from "./lib/evidence.js";
 import { artifactsOf, publicCid } from "./lib/manifest.js";
-import { harnessConfig, requireCidCopyHost, runtimeUrl } from "./lib/runtime.js";
+import { harnessConfig, requireCidCopyHost, runtimeUrl, type PublishedRun } from "./lib/runtime.js";
 
 /** plan § "Fixed texts": `apps/web/src/components/EngineLine.tsx` ENGINE_LINE_TEXT (TC-023). */
 const ENGINE_LINE_TEXT = "DuckDB-WASM in your browser · read-only";
@@ -52,8 +57,15 @@ const ENGINE_LINE_TEXT = "DuckDB-WASM in your browser · read-only";
 /** plan § "Fixed texts": the word `fallback`, ` · `, the gateway host (`apps/web/src/components/FallbackChip.tsx`). */
 const FALLBACK_LABEL = /^fallback · /;
 
-/** TC-020 step 4: the A-03 slice is the permits issued in September 2026. */
-const ISSUE_MONTH = "2026-09";
+/**
+ * Deterministic row sample for the full per-row assertions (full-county adaptation): the first
+ * SAMPLE_HEAD rows, every SAMPLE_STRIDE-th row (a prime, so it does not align with page or
+ * ordering boundaries) and the named permits. Every row still gets the cheap invariants.
+ */
+const SAMPLE_HEAD = 200;
+const SAMPLE_STRIDE = 97;
+/** A permit from a different decade than the pilot's, fixed in the Run 2 data (A-11). */
+const NAMED_PERMITS = ["2003-012717 BP"];
 
 /** The column headers, in order (apps/web/test/permits-state.test.ts "renders the Atlas data table"). */
 const HEADERS = [
@@ -92,6 +104,27 @@ function statusClassValues(): readonly string[] {
   const column = VIEWS.v_roofing_permit.find((candidate) => candidate.name === "status_class");
   if (!column?.enum) throw new Error("contract: v_roofing_permit.status_class has no enum");
   return column.enum;
+}
+
+/** The all-rows audit's inputs, all from the manifest the `run` fixture fetched. */
+function auditParamsOf(run: PublishedRun): AuditParams {
+  const [austin] = run.manifest.sources;
+  if (!austin) throw new Error("manifest has no sources[0]");
+  return {
+    // as_of is the manifest's finishedAt (columns.ts: "manifest finishedAt (= as_of)").
+    asOfDate: run.manifest.finishedAt.slice(0, 10),
+    statusClasses: statusClassValues(),
+    needsReviewLabel: MISSING_REASON_LABELS.needs_review,
+    sourceHost: new URL(austin.url).hostname,
+    capturedAtMs: Date.parse(austin.captured_at),
+    tableCids: artifactsOf(run.manifest, "table").map((artifact) => artifact.cid),
+    runId: run.runId,
+    columns: HEADERS.length,
+    provenanceColumn: COL.provenance,
+    contractorColumn: COL.contractor,
+    blankTexts: [...BLANK_TEXTS],
+    rawCodes: [...MISSING_REASONS],
+  };
 }
 
 function truncateCid(cid: string): string {
@@ -272,6 +305,8 @@ interface PillSnapshot {
 }
 
 interface RowSnapshot {
+  /** Position of the row in the full list (the sample keeps the original index). */
+  index: number;
   missingAttr: string | null;
   /** Visible text per `td`, in column order. */
   cells: string[];
@@ -288,7 +323,10 @@ interface RowSnapshot {
   };
 }
 
-/** One structured read of every row: visible texts (outside `aria-hidden`), hooks and attributes. */
+/**
+ * One structured read of the sampled rows (SAMPLE_HEAD, SAMPLE_STRIDE, NAMED_PERMITS): visible
+ * texts (outside `aria-hidden`), hooks and attributes.
+ */
 function readRows(
   page: Page,
   contractorColumn: number,
@@ -296,12 +334,19 @@ function readRows(
 ): Promise<RowSnapshot[]> {
   return page.locator(ROW).evaluateAll(
     (rows, columns) => {
+      const normalize = (text: string): string => text.replace(/\s+/g, " ").trim();
+      const picked = rows.flatMap((row, index) =>
+        index < columns.head ||
+        index % columns.stride === 0 ||
+        columns.named.includes(normalize(row.querySelector("td")?.textContent ?? ""))
+          ? [{ row, index }]
+          : [],
+      );
       const visible = (node: Node): string => {
         if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
         if (!(node instanceof Element) || node.getAttribute("aria-hidden") === "true") return "";
         return Array.from(node.childNodes).map(visible).join("");
       };
-      const normalize = (text: string): string => text.replace(/\s+/g, " ").trim();
       const leavesOf = (root: Element): string[] => {
         const out: string[] = [];
         const walk = (element: Element): void => {
@@ -325,7 +370,7 @@ function readRows(
         leaves: leavesOf(element),
         visible: element.getClientRects().length > 0,
       });
-      return rows.map((row) => {
+      return picked.map(({ row, index }) => {
         const tds = Array.from(row.querySelectorAll("td"));
         const pills: Record<string, PillSnapshot> = {};
         for (const element of Array.from(row.querySelectorAll("[data-reason]"))) {
@@ -334,6 +379,7 @@ function readRows(
         const contractor = tds[columns.contractor];
         const provenance = tds[columns.provenance];
         return {
+          index,
           missingAttr: row.getAttribute("data-missing"),
           cells: tds.map((td) => normalize(visible(td))),
           leaves: tds.map(leavesOf),
@@ -363,17 +409,188 @@ function readRows(
         };
       });
     },
-    { contractor: contractorColumn, provenance: provenanceColumn },
+    {
+      contractor: contractorColumn,
+      provenance: provenanceColumn,
+      head: SAMPLE_HEAD,
+      stride: SAMPLE_STRIDE,
+      named: NAMED_PERMITS,
+    },
   );
 }
 
+/** The deterministic sample of rows that get the full per-row assertions. */
 function snapshotRows(page: Page): Promise<RowSnapshot[]> {
   return readRows(page, COL.contractor, COL.provenance);
 }
 
-function parseMissing(row: RowSnapshot, index: number): z.infer<typeof MissingList> {
-  expect(row.missingAttr, `row ${index}: carries data-missing`).not.toBeNull();
+function parseMissing(row: RowSnapshot): z.infer<typeof MissingList> {
+  expect(row.missingAttr, `row ${row.index}: carries data-missing`).not.toBeNull();
   return MissingList.parse(JSON.parse(row.missingAttr ?? "[]"));
+}
+
+/** Asserts the named permits are in the sample, so the sample always covers them. */
+function expectNamedPermitsSampled(snapshots: RowSnapshot[]): void {
+  const sampled = snapshots.map((row) => row.cells[COL.permit_number] ?? "");
+  for (const permit of NAMED_PERMITS) {
+    expect(sampled, `named permit ${permit} is in the row sample`).toContain(permit);
+  }
+}
+
+interface AuditParams {
+  asOfDate: string;
+  statusClasses: readonly string[];
+  needsReviewLabel: string;
+  sourceHost: string;
+  capturedAtMs: number;
+  tableCids: string[];
+  runId: string;
+  columns: number;
+  provenanceColumn: number;
+  contractorColumn: number;
+  blankTexts: string[];
+  rawCodes: string[];
+}
+
+interface RowAudit {
+  rows: number;
+  /** Violations per invariant (each entry names the row index), capped per invariant. */
+  violations: Record<
+    "dates" | "columns" | "statusClass" | "provenance" | "blankCells" | "missing" | "contractor",
+    string[]
+  >;
+}
+
+/**
+ * The cheap invariants of every row, checked once for ALL rows in one in-page pass (a per-row
+ * Playwright round trip does not scale to ~15,000 rows). Each invariant lists the offending
+ * rows (first 20), so a failure still names the row. Full-county adaptation 2026-10-24.
+ */
+function auditAllRows(page: Page, params: AuditParams): Promise<RowAudit> {
+  return page.locator(ROW).evaluateAll((rows, p) => {
+    const CAP = 20;
+    const violations: RowAudit["violations"] = {
+      dates: [],
+      columns: [],
+      statusClass: [],
+      provenance: [],
+      blankCells: [],
+      missing: [],
+      contractor: [],
+    };
+    const flag = (key: keyof RowAudit["violations"], index: number, why: string): void => {
+      if (violations[key].length < CAP) violations[key].push(`row ${index}: ${why}`);
+    };
+    const normalize = (text: string): string => text.replace(/\s+/g, " ").trim();
+    const visible = (node: Node): string => {
+      if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+      if (!(node instanceof Element) || node.getAttribute("aria-hidden") === "true") return "";
+      return Array.from(node.childNodes).map(visible).join("");
+    };
+    const truncate = (cid: string): string => `${cid.slice(0, 4)}…${cid.slice(-4)}`;
+    const tableCids = new Set(p.tableCids);
+    const statusClasses = new Set(p.statusClasses);
+    const blank = new Set(p.blankTexts);
+    const raw = new Set(p.rawCodes);
+
+    rows.forEach((row, index) => {
+      const tds = Array.from(row.querySelectorAll("td"));
+      const cells = tds.map((td) => normalize(visible(td)));
+      if (tds.length !== p.columns) flag("columns", index, `${tds.length} cells`);
+
+      // Issue date: a real calendar date in YYYY-MM-DD that is not after the run's as_of.
+      const issue = cells[3] ?? "";
+      const parsed = /^\d{4}-\d{2}-\d{2}$/.test(issue) ? new Date(`${issue}T00:00:00Z`) : null;
+      if (
+        !parsed ||
+        Number.isNaN(parsed.getTime()) ||
+        parsed.toISOString().slice(0, 10) !== issue
+      ) {
+        flag("dates", index, `issue_date "${issue}" is not a valid YYYY-MM-DD date`);
+      } else if (issue > p.asOfDate) {
+        flag("dates", index, `issue_date ${issue} is after as_of ${p.asOfDate}`);
+      }
+
+      // Status class: open / stalled / closed, or the needs_review label.
+      const statusClass = cells[2] ?? "";
+      if (!statusClasses.has(statusClass) && !statusClass.includes(p.needsReviewLabel)) {
+        flag("statusClass", index, `status class "${statusClass}"`);
+      }
+
+      // Provenance: one source link on the source host, one capture time, one manifest table CID.
+      const prov = tds[p.provenanceColumn];
+      if (!prov) {
+        flag("provenance", index, "no provenance cell");
+      } else {
+        const links = Array.from(prov.querySelectorAll("a[href]")).filter(
+          (a) => new URL((a as HTMLAnchorElement).href).hostname === p.sourceHost,
+        );
+        const times = Array.from(prov.querySelectorAll("time[datetime]"));
+        const cids = Array.from(prov.querySelectorAll("[data-cid]"));
+        if (links.length !== 1) flag("provenance", index, `${links.length} source links`);
+        if (times.length !== 1) flag("provenance", index, `${times.length} capture times`);
+        else if (Date.parse(times[0]?.getAttribute("datetime") ?? "") !== p.capturedAtMs) {
+          flag("provenance", index, "capture time differs from sources[0].captured_at");
+        }
+        if (cids.length !== 1) flag("provenance", index, `${cids.length} table CIDs`);
+        else {
+          const cid = cids[0]?.getAttribute("data-cid") ?? "";
+          if (!tableCids.has(cid)) flag("provenance", index, `CID ${cid} is not a manifest table`);
+          if (cids[0]?.getAttribute("title") !== cid) flag("provenance", index, "CID title");
+          if (normalize(visible(cids[0] as Element)) !== truncate(cid)) {
+            flag("provenance", index, "CID text is not the truncated CID");
+          }
+        }
+        if (!(cells[p.provenanceColumn] ?? "").includes(`run ${p.runId}`)) {
+          flag("provenance", index, `no "run ${p.runId}"`);
+        }
+      }
+
+      // No blank, null-ish, dash-only or raw-code cell.
+      cells.forEach((text, column) => {
+        if (blank.has(text)) flag("blankCells", index, `column ${column} is "${text}"`);
+        if (raw.has(text)) flag("blankCells", index, `column ${column} shows raw code "${text}"`);
+      });
+
+      // Every missing entry renders its pill (data-field + data-reason).
+      let missing: { field: string; reason: string }[] = [];
+      try {
+        missing = JSON.parse(row.getAttribute("data-missing") ?? "null") as typeof missing;
+        if (!Array.isArray(missing)) throw new Error("not a list");
+      } catch {
+        flag("missing", index, "data-missing is absent or not a JSON list");
+        missing = [];
+      }
+      for (const { field, reason } of missing) {
+        const pill = row.querySelector(
+          `[data-field="${CSS.escape(field)}"][data-reason="${CSS.escape(reason)}"]`,
+        );
+        if (!pill) flag("missing", index, `no pill for ${field} (${reason})`);
+        else if (pill.getClientRects().length === 0) flag("missing", index, `${field} hidden`);
+        else if (normalize(visible(pill)) === "") flag("missing", index, `${field} label blank`);
+      }
+
+      // Exactly one resolution pill, reading resolved or unresolved.
+      const contractor = tds[p.contractorColumn];
+      const resolution = contractor
+        ? Array.from(contractor.querySelectorAll("[data-status]")).filter(
+            (el) => !el.hasAttribute("data-reason"),
+          )
+        : [];
+      const state = resolution.length === 1 ? normalize(visible(resolution[0] as Element)) : "";
+      if (state !== "resolved" && state !== "unresolved") {
+        flag("contractor", index, `${resolution.length} resolution pill(s), text "${state}"`);
+      } else if (
+        state === "unresolved" &&
+        !missing.some(
+          (m) => m.field === "contractor_company_cid" && m.reason === "contractor_unresolved",
+        )
+      ) {
+        flag("contractor", index, "unresolved without contractor_unresolved in missing");
+      }
+    });
+    return { rows: rows.length, violations };
+  }, params);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -421,15 +638,13 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       // Step 3: one row per published permit.
       const count = coverageCount(manifest, "permits_emitted");
       await expect(rows).toHaveCount(count);
-      await checkpoint(page, "020", "3-one-row-per-permit", { fullPage: true });
+      await checkpoint(page, "020", "3-one-row-per-permit");
 
-      // Step 4: every issue_date is in the published month.
-      const snapshots = await snapshotRows(page);
-      for (const [index, row] of snapshots.entries()) {
-        const issueDate = row.cells[COL.issue_date] ?? "";
-        expect(issueDate, `row ${index}: issue_date as YYYY-MM-DD`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-        expect(issueDate.slice(0, 7), `row ${index}: issue_date month`).toBe(ISSUE_MONTH);
-      }
+      // Step 4 (full-county adaptation 2026-10-24): every row's issue_date is a valid
+      // YYYY-MM-DD date not after the run's as_of (manifest finishedAt). One in-page pass.
+      const audit = await auditAllRows(page, auditParamsOf(run));
+      expect(audit.rows, "the audit saw every row").toBe(count);
+      expect(audit.violations.dates, "issue_date is a valid date not after as_of").toEqual([]);
 
       // Expected result: read from the copy, so no fallback label.
       await expect(page.getByText(FALLBACK_LABEL)).toHaveCount(0);
@@ -459,10 +674,18 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       expect(headers, "column headers").toEqual([...HEADERS]);
       await checkpoint(page, "021", "2-headers");
 
-      // Steps 3–4: every row's status class and its four provenance fields.
-      expect(await rows.count()).toBeGreaterThan(0);
+      // Steps 3–4 (full-county adaptation 2026-10-24): the cheap invariants of every row in one
+      // in-page pass, then the full per-row assertions on the deterministic sample.
+      expect(await rows.count()).toBe(coverageCount(manifest, "permits_emitted"));
+      const audit = await auditAllRows(page, auditParamsOf(run));
+      expect(audit.violations.columns, "one cell per column on every row").toEqual([]);
+      expect(audit.violations.statusClass, "status class on every row").toEqual([]);
+      expect(audit.violations.provenance, "four provenance fields on every row").toEqual([]);
+
       const snapshots = await snapshotRows(page);
-      for (const [index, row] of snapshots.entries()) {
+      expectNamedPermitsSampled(snapshots);
+      for (const row of snapshots) {
+        const index = row.index;
         expect(row.cells.length, `row ${index}: one cell per column`).toBe(HEADERS.length);
         const statusClass = row.cells[COL.status_class] ?? "";
         expect(
@@ -491,23 +714,34 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
         );
         expect(row.cells[COL.provenance], `row ${index}: run ID`).toContain(`run ${runId}`);
       }
-      await checkpoint(page, "021", "3-4-status-and-provenance", { fullPage: true });
+      await checkpoint(page, "021", "3-4-status-and-provenance");
     });
   });
 
   test.describe("A-03-TC-022 Every missing reason shows its approved label (missing data)", () => {
-    test("@scenario:A-03-TC-022", async ({ page }, testInfo) => {
+    test("@scenario:A-03-TC-022", async ({ page, run }, testInfo) => {
       await page.goto("/permits");
       await waitForPermitRows(page);
+
+      // Full-county adaptation 2026-10-24: every row gets the cheap invariants in one in-page
+      // pass (a pill with the right reason and a visible, non-blank label for each missing
+      // entry; no blank or raw-code cell); the exact-label assertions run on the sample.
+      const audit = await auditAllRows(page, auditParamsOf(run));
+      expect(audit.rows).toBe(coverageCount(run.manifest, "permits_emitted"));
+      expect(audit.violations.missing, "every missing entry renders its pill").toEqual([]);
+      expect(audit.violations.blankCells, "no blank, null-ish or raw-code cell").toEqual([]);
+
       const snapshots = await snapshotRows(page);
       expect(snapshots.length).toBeGreaterThan(0);
+      expectNamedPermitsSampled(snapshots);
       await testInfo.attach("rows.json", {
         body: JSON.stringify(snapshots, null, 2),
         contentType: "application/json",
       });
 
-      for (const [index, row] of snapshots.entries()) {
-        const missing = parseMissing(row, index);
+      for (const row of snapshots) {
+        const index = row.index;
+        const missing = parseMissing(row);
 
         // Steps 2–3: each {field, reason} renders exactly its approved label as visible text.
         for (const { field, reason } of missing) {
@@ -560,7 +794,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
           ).toBe(false);
         }
       }
-      await checkpoint(page, "022", "2-5-missing-reason-labels", { fullPage: true });
+      await checkpoint(page, "022", "2-5-missing-reason-labels");
     });
   });
 
@@ -682,14 +916,24 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
   });
 
   test.describe("A-03-TC-025 Contractor via contractor_resolution with its label", () => {
-    test("@scenario:A-03-TC-025", async ({ page }) => {
+    test("@scenario:A-03-TC-025", async ({ page, run }) => {
       await page.goto("/permits");
       await waitForPermitRows(page);
+
+      // Full-county adaptation 2026-10-24: every row has exactly one resolved / unresolved pill
+      // (and unresolved lists contractor_unresolved) in one in-page pass; the label-by-label
+      // assertions run on the sample.
+      const audit = await auditAllRows(page, auditParamsOf(run));
+      expect(audit.rows).toBe(coverageCount(run.manifest, "permits_emitted"));
+      expect(audit.violations.contractor, "a resolution pill on every row").toEqual([]);
+
       const snapshots = await snapshotRows(page);
       expect(snapshots.length).toBeGreaterThan(0);
+      expectNamedPermitsSampled(snapshots);
 
-      for (const [index, row] of snapshots.entries()) {
-        const missing = parseMissing(row, index);
+      for (const row of snapshots) {
+        const index = row.index;
+        const missing = parseMissing(row);
         const leaves = row.leaves[COL.contractor] ?? [];
 
         // Step 2: the resolution pill (`data-status`, no `data-reason`) reads resolved / unresolved.
@@ -748,7 +992,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
           }
         }
       }
-      await checkpoint(page, "025", "2-5-contractor-resolution", { fullPage: true });
+      await checkpoint(page, "025", "2-5-contractor-resolution");
     });
   });
 
@@ -835,10 +1079,18 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
     test("@scenario:A-03-TC-030", async ({ page, run }, testInfo) => {
       const expected = coverageCount(run.manifest, "permits_no_tcad_geoid");
       const numbers = noTcadPermitNumbers(expected);
+      // Full-county adaptation 2026-10-24 (A-11 Run 2, PO approved): the pilot exported every
+      // unlinked permit (1); at full scale there are hundreds of thousands (Run 2: 275,764), so
+      // the env var carries a sample of them, never more than the manifest counts.
+      if (expected > 0) {
+        expect(numbers.length, `${NO_TCAD_ENV} lists at least one unlinked permit`).toBeGreaterThan(
+          0,
+        );
+      }
       expect(
         numbers.length,
-        `${NO_TCAD_ENV} lists one permit number per permits_no_tcad_geoid (${expected})`,
-      ).toBe(expected);
+        `${NO_TCAD_ENV} lists no more permits than permits_no_tcad_geoid (${expected})`,
+      ).toBeLessThanOrEqual(expected);
       await testInfo.attach("no-tcad-permit-numbers.txt", {
         body: numbers.join("\n"),
         contentType: "text/plain",
@@ -846,14 +1098,29 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
 
       await page.goto("/permits");
       await waitForPermitRows(page);
-      const listed = (await snapshotRows(page)).map((row) => row.cells[COL.permit_number] ?? "");
-      expect(listed.length).toBeGreaterThan(0);
-      const pageText = await page.locator("body").innerText();
-      for (const number of numbers) {
-        expect(listed, `permit ${number} is not listed`).not.toContain(number);
-        expect(pageText, `permit ${number} appears nowhere on the page`).not.toContain(number);
+      // Full-county adaptation 2026-10-24: the permit-number column of all rows and a text scan
+      // of the whole page, both read in the page (no per-row round trip, no 15,000-row innerText).
+      const listed = await page
+        .locator(ROW)
+        .evaluateAll((rows) =>
+          rows.map((row) =>
+            (row.querySelector("td")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+          ),
+        );
+      expect(listed.length, "the whole list is read").toBe(
+        coverageCount(run.manifest, "permits_emitted"),
+      );
+      const onPage = await page.evaluate(
+        (candidates) =>
+          candidates.map((candidate) => (document.body.textContent ?? "").includes(candidate)),
+        numbers,
+      );
+      const listedSet = new Set(listed);
+      for (const [position, number] of numbers.entries()) {
+        expect(listedSet.has(number), `permit ${number} is not listed`).toBe(false);
+        expect(onPage[position], `permit ${number} appears nowhere on the page`).toBe(false);
       }
-      await checkpoint(page, "030", "no-tcad-permits-absent", { fullPage: true });
+      await checkpoint(page, "030", "no-tcad-permits-absent");
     });
   });
 });

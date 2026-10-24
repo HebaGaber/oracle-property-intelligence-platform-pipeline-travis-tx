@@ -180,7 +180,7 @@ const GROUP_OF_REQUIRED_TABLE: ReadonlyMap<string, RequiredTable["group"]> = (()
  * back to the pilot's own literal `tables/<group>` layout only when no table name resolves the
  * batch at all.
  */
-function resolveBatchGroups(
+export function resolveBatchGroups(
   tableNames: Iterable<string>,
 ): ReadonlyMap<string, RequiredTable["group"] | null> {
   const byBatch = new Map<string, string[]>();

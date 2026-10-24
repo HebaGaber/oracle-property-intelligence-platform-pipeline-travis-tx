@@ -691,3 +691,17 @@ Resolved 2026-10-21: A-1 (labels: spec table approved), A-2 (`permits_emitted`),
 Also resolved 2026-10-21 (v1.0): A-6 (TC-011 asserts the text contains "TCAD 2026 certified export" and `tcad-2026-certified-json`, the spec's wording); A-7 (exact rejection texts fixed in § 3); A-8 (config key names are harness names, § 3).
 
 None open.
+
+## Full-county adaptation (2026-10-24, A-11 Run 2, PO approved: "Yes, adapt them (Recommended)")
+
+These cases were written for A-03's pilot (~38 permits, all issued September 2026). From Run 2 the hosted page lists the full county (15,025 roofing permits across decades). Each case keeps its intent; only pilot-specific facts and checks that do not scale changed (`tests/e2e/permits.spec.ts`, `tests/e2e/perf.spec.ts`, `tests/e2e/lib/perf.ts`):
+
+| Case | Pilot expectation | Full-county expectation |
+| --- | --- | --- |
+| A-03-TC-020 | every row issued in 2026-09 | every row's `issue_date` is a valid ISO date not after the run's `as_of` (manifest `finishedAt`); row count still exactly `permits_emitted` |
+| A-03-TC-020, 021, 022, 025 | full per-row assertions on every row | cheap invariants on every row in one in-page pass (`auditAllRows`); full per-row assertions on a deterministic sample (first 200 rows, every 97th row, named permit `2003-012717 BP`) |
+| A-03-TC-030 | `NO_TCAD_PERMIT_NUMBERS` lists every unlinked permit (1) | it lists a sample (≥ 1, never more than `permits_no_tcad_geoid`, Run 2: 275,764); each listed permit is absent from the list and the page |
+| A-03-TC-NF-03 | Atlas audit of every element at 390/768/1440 | skipped (`test.fixme`) in A-11 by PO decision; restored in A-16 item 12 by auditing the chrome plus the first 50 rows/cards |
+| A-03-TC-NF-01 | each cold first load ≤ 8 s | ≤ 60 s at full-county scale (Run 2: 24–28 s home, ~45 s GitHub runner); optimization is A-16 item 11 |
+
+Result against the hosted preview (Run 2, one worker): all 9 Permits cases pass in ~11 min (before: TC-020 failed on the month filter; TC-021 alone took 7.6 min in CI).

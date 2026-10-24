@@ -51,7 +51,7 @@ import {
 } from "@countylens/shared";
 import { expect, test } from "./lib/fixtures.js";
 import { checkpoint } from "./lib/evidence.js";
-import { artifactsOf, groupOf } from "./lib/manifest.js";
+import { artifactsOf, groupOfDirectory, resolveDataGroups } from "./lib/manifest.js";
 import { fetchBuildInfo, repoRoot, requireCidCopyHost, runtimeUrl } from "./lib/runtime.js";
 
 /** P0-4: this phrase never appears on the page (checked case-insensitively, stricter than the grep gate). */
@@ -311,7 +311,16 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
     test("@scenario:A-03-TC-013", async ({ page, run }) => {
       const { manifest, runId } = run;
       const directories = artifactsOf(manifest, "directory");
-      expect(directories.map(groupOf).sort()).toEqual(["county", "property_improvement"]);
+      // Full-county adaptation 2026-10-24 (A-11 Run 2): a group is published as several export
+      // batches (Run 2: 10 county + 5 property_improvement), so groups are resolved from the
+      // manifest's batch structure (lib/manifest.ts), not from the pilot's `tables/<group>` names.
+      const groups = resolveDataGroups(manifest);
+      const groupOf = (directory: (typeof directories)[number]): string =>
+        groupOfDirectory(groups, directory) ?? `unresolved:${directory.name}`;
+      expect([...new Set(directories.map(groupOf))].sort()).toEqual([
+        "county",
+        "property_improvement",
+      ]);
 
       await page.goto("/runs");
       await expect(runCard(page, runId)).toBeVisible({ timeout: 60_000 });

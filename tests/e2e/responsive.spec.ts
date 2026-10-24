@@ -57,7 +57,11 @@ async function open(page: Page, path: string, ready: string): Promise<void> {
 test.describe("A-03-TC-NF-03 responsive 390 / 768 / 1440, Atlas tokens only", () => {
   test.describe.configure({ timeout: 10 * 60_000 });
 
-  test("@scenario:A-03-TC-NF-03", async ({ browser, run }, testInfo) => {
+  // Known skip (PO 2026-10-24, "skip the responsive test and delegate to a16"): at full-county
+  // scale the Atlas audit below reads the computed style of every element of a ~15,000-row page,
+  // three widths over. A-16 item 12 restores it (audit only the first 50 rows/cards); remove
+  // this fixme then.
+  test.fixme("@scenario:A-03-TC-NF-03", async ({ browser, run }, testInfo) => {
     const report: Record<string, unknown> = {
       runtimeUrl: runtimeUrl(),
       manifestCid: run.manifestCid,
