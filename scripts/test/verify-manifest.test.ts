@@ -265,6 +265,13 @@ describe("retryDelayMs", () => {
     expect(retryDelayMs(3, null, () => 1)).toBeLessThanOrEqual(60_000);
     expect(retryDelayMs(3, null, () => 1)).toBeGreaterThan(0);
   });
+
+  it("caps an excessive Retry-After instead of waiting the server's full stated delay", () => {
+    // Pinata has been observed (2026-10-24) returning retry-after values over 2800s under
+    // sustained load; honouring that literally would make one artifact check wait ~47 minutes.
+    expect(retryDelayMs(1, "2806")).toBe(60_000);
+    expect(retryDelayMs(1, new Date(Date.now() + 3_600_000).toUTCString())).toBeLessThanOrEqual(60_000);
+  });
 });
 
 describe("Filebase redirects", () => {

@@ -95,9 +95,13 @@ export function retryDelayMs(
 ): number {
   if (retryAfter !== null) {
     const trimmed = retryAfter.trim();
-    if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
+    // Honor the server's Retry-After, but capped: Pinata has been observed (2026-10-24) to
+    // return values over 2800s under sustained load, which would make a single artifact check
+    // wait most of an hour per attempt. Capping at BACKOFF_CAP_MS keeps us a good citizen
+    // (still waiting, never hammering immediately) without making the tool impractical.
+    if (/^\d+$/.test(trimmed)) return Math.min(BACKOFF_CAP_MS, Number(trimmed) * 1000);
     const at = Date.parse(trimmed);
-    if (!Number.isNaN(at)) return Math.max(0, at - now());
+    if (!Number.isNaN(at)) return Math.min(BACKOFF_CAP_MS, Math.max(0, at - now()));
   }
   const ceiling = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** (attempt - 1));
   return Math.max(1, Math.round(random() * ceiling));
@@ -106,6 +110,17 @@ export function retryDelayMs(
 function sameGatewayHost(gateway: string, host: string): boolean {
   const gw = new URL(gateway).host;
   return host === gw || host.endsWith(`.${gw}`);
+}
+
+// Pinata's public gateway rate-limits sustained sequential traffic tighter than the per-request
+// 429 backoff alone can clear during a full-manifest run (observed 2026-10-24: ~30% of requests
+// hit HTTP 429 after 5 retries). A small fixed pause between requests to that gateway keeps us
+// under its limit instead of relying on retries to recover from it. Filebase's gateway has not
+// shown this behavior, so the pause is scoped to Pinata only.
+const PINATA_THROTTLE_MS = 4000;
+
+function isPinataGateway(gateway: string): boolean {
+  return new URL(gateway).host === "gateway.pinata.cloud";
 }
 
 export interface FetchedBytes {
@@ -288,6 +303,7 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
 
   const manifestChecks: VerifyCheck[] = [];
   for (const gateway of gateways) {
+    if (isPinataGateway(gateway)) await t.sleep(PINATA_THROTTLE_MS);
     const fetched = await fetchArtifact(t, gateway, manifestCid);
     const ok = fetched.ok && fetched.size === bytes.length && fetched.sha256 === manifestSha;
     const check: VerifyCheck = {
@@ -335,6 +351,7 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
           reason: `${artifact.kind} artifact has no carCid (AM-05); its cid is a DAG root, not a file`,
         };
       } else {
+        if (isPinataGateway(gateway)) await t.sleep(PINATA_THROTTLE_MS);
         const fetched = await fetchArtifact(t, gateway, cid);
         const ok = fetched.ok && fetched.size === artifact.size && fetched.sha256 === artifact.sha256;
         check = {
