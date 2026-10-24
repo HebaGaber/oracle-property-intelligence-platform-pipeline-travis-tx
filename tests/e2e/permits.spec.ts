@@ -49,6 +49,7 @@ import { z } from "zod";
 import { expect, test } from "./lib/fixtures.js";
 import { checkpoint } from "./lib/evidence.js";
 import { artifactsOf, publicCid } from "./lib/manifest.js";
+import { PERMITS_LOAD_WAIT_MS } from "./lib/perf.js";
 import { harnessConfig, requireCidCopyHost, runtimeUrl, type PublishedRun } from "./lib/runtime.js";
 
 /** plan § "Fixed texts": `apps/web/src/components/EngineLine.tsx` ENGINE_LINE_TEXT (TC-023). */
@@ -272,7 +273,7 @@ function readStates(page: Page): Promise<DomState[]> {
  * Waits until the list rendered rows, or fails naming the error banner or the empty state the
  * page showed instead. Returns the rows locator.
  */
-async function waitForPermitRows(page: Page, timeoutMs = 120_000): Promise<Locator> {
+async function waitForPermitRows(page: Page, timeoutMs = PERMITS_LOAD_WAIT_MS): Promise<Locator> {
   const rows = page.locator(ROW);
   const alert = page.getByRole("alert");
   const empty = page.getByText(PERMITS_TEXTS.empty, { exact: true });

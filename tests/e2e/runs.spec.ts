@@ -52,6 +52,7 @@ import {
 import { expect, test } from "./lib/fixtures.js";
 import { checkpoint } from "./lib/evidence.js";
 import { artifactsOf, groupOfDirectory, resolveDataGroups } from "./lib/manifest.js";
+import { PERMITS_LOAD_WAIT_MS } from "./lib/perf.js";
 import { fetchBuildInfo, repoRoot, requireCidCopyHost, runtimeUrl } from "./lib/runtime.js";
 
 /** P0-4: this phrase never appears on the page (checked case-insensitively, stricter than the grep gate). */
@@ -295,13 +296,13 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       await page.goto("/permits");
       if (published.count === 0) {
         await expect(page.getByText(PERMITS_TEXTS.empty, { exact: true })).toBeVisible({
-          timeout: 120_000,
+          timeout: PERMITS_LOAD_WAIT_MS,
         });
         await expect(page.locator(PERMIT_ROW)).toHaveCount(0);
         await checkpoint(page, "012", "4-permits-empty");
         return;
       }
-      await expect(page.locator(PERMIT_ROW).first()).toBeVisible({ timeout: 120_000 });
+      await expect(page.locator(PERMIT_ROW).first()).toBeVisible({ timeout: PERMITS_LOAD_WAIT_MS });
       await expect(page.locator(PERMIT_ROW)).toHaveCount(published.count);
       await checkpoint(page, "012", "4-permits-row-count");
     });

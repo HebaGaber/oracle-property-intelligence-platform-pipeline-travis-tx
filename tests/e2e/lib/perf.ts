@@ -52,6 +52,12 @@ export const LIMITS = {
 
 /** Timed runs per query (warm-up rule, test plan § 3: one untimed warm-up precedes them). */
 export const TIMED_RUNS = 20;
+
+/**
+ * How long a non-perf case waits for the full-county Permits page to show rows: 3 × the
+ * first-load limit. Run 2 on GitHub runners loads in ~60–90 s, so 120 s left no margin (A-11).
+ */
+export const PERMITS_LOAD_WAIT_MS = LIMITS.firstLoadMs * 3;
 export const WARM_API_CALLS = 30;
 
 // ---------------------------------------------------------------------------------------
