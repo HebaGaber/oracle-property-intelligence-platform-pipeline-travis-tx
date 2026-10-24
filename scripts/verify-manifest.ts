@@ -453,7 +453,7 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   // (97 failures) under sustained load over time, not instantly. Settled on 3 as the value that
   // held up for the longest sustained run today; revisit if Pinata's limit is ever documented.
   const FILEBASE_CONCURRENCY = 10;
-  const PINATA_CONCURRENCY = 2;
+  const PINATA_CONCURRENCY = 1;
   function concurrencyFor(gateway: string): number {
     return isPinataGateway(gateway) ? PINATA_CONCURRENCY : FILEBASE_CONCURRENCY;
   }
