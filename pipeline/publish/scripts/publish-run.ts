@@ -6,7 +6,10 @@
 //   npx tsx pipeline/publish/scripts/publish-run.ts --manifest runs/<runId>/manifest.json --run-id <runId> --dry-run
 //   npx tsx pipeline/publish/scripts/publish-run.ts --manifest runs/<runId>/manifest.json --run-id <runId>
 //
-// Steps, in this fixed order: filebase, car-files, manifest, cid-copy, release, index.
+// Steps, in this fixed order: gate, filebase, car-files, manifest, cid-copy, gate-remote, release,
+// index. The two gate steps (the identity gate; see src/identity-gate.ts) are mandatory: there is
+// no flag to skip or force them. A dry run runs the gate for real (read-only) and says whether a
+// real run would be refused.
 // Receipts: specs/011-publish-and-runs/upload-receipts/<runId>/ (Run 1's top-level receipts also
 // count as "already uploaded" for any artifact whose CID they record).
 //
@@ -23,6 +26,7 @@
 //   --release-reuse-tag <tag>    repeatable: an earlier release whose identical assets are not re-uploaded
 //   --release-target <ref>       ref the tag points at (default: the current branch)
 //   --repo <owner/repo>          gh repository (default: gh's own default for this checkout)
+//   --copy-host <host>           host of the CID copy the gate reads (or CID_COPY_HOST); required
 //
 // Credentials: ~/.config/assessment/filebase.env (Filebase) and the assess-cid-writer AWS
 // profile (CID copy). Neither is ever printed.
@@ -30,7 +34,6 @@ import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
@@ -39,15 +42,16 @@ import {
   resolveCidCopyBucket,
 } from "../src/cid-copy.js";
 import { FILEBASE_ENV_FILE, parseEnvFile } from "../src/cli.js";
+import { runIdentityGate } from "../src/identity-gate.js";
 import {
-  PUBLISH_STEPS,
   createPublishSteps,
   formatReport,
   loadPublishContext,
+  parsePublishArgs,
   runPublish,
   type GhClient,
   type GhRelease,
-  type PublishStepName,
+  type PublishArgs,
 } from "../src/publish-run.js";
 import { filebaseEnvProblem, spawnRunner } from "../src/sequence.js";
 
@@ -107,42 +111,19 @@ function loadFilebaseEnv(): NodeJS.ProcessEnv {
 }
 
 async function main(): Promise<number> {
-  const { values } = parseArgs({
-    options: {
-      manifest: { type: "string" },
-      "run-id": { type: "string" },
-      step: { type: "string" },
-      "dry-run": { type: "boolean", default: false },
-      probe: { type: "boolean", default: false },
-      pilot: { type: "boolean", default: false },
-      cli: { type: "string" },
-      "release-tag": { type: "string" },
-      "release-reuse-tag": { type: "string", multiple: true },
-      "release-target": { type: "string" },
-      repo: { type: "string" },
-    },
-    strict: true,
-  });
-  if (values.manifest === undefined || values["run-id"] === undefined) {
-    console.error(
-      "usage: publish-run.ts --manifest <path> --run-id <id> [--step <name>] [--dry-run [--probe]] [--pilot]",
-    );
+  let args: PublishArgs;
+  try {
+    args = parsePublishArgs(process.argv.slice(2), process.env);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
     return 2;
   }
-  if (values.step !== undefined && !PUBLISH_STEPS.includes(values.step as PublishStepName)) {
-    console.error(`--step must be one of: ${PUBLISH_STEPS.join(", ")}`);
-    return 2;
-  }
-  if (values.probe && !values["dry-run"]) {
-    console.error("--probe only applies to --dry-run (a real run always checks before it uploads)");
-    return 2;
-  }
-  const cliPath = values.cli ?? DEFAULT_CLI;
+  const cliPath = args.cli ?? DEFAULT_CLI;
   const ctx = await loadPublishContext({
     repoRoot: REPO_ROOT,
-    manifestPath: values.manifest,
-    runId: values["run-id"],
-    pilot: values.pilot,
+    manifestPath: args.manifest,
+    runId: args.runId,
+    pilot: args.pilot,
   });
 
   let env: NodeJS.ProcessEnv | undefined;
@@ -150,6 +131,20 @@ async function main(): Promise<number> {
   const log = (line: string): void => console.log(line);
   const now = (): Date => new Date();
   const impls = createPublishSteps({
+    gate: {
+      // Read-only. Local parts count only when their SHA-256 matches the manifest; remote-only
+      // (gate-remote) binds every part from the CID copy, the bytes the app reads.
+      run: (c, { remoteOnly }) =>
+        runIdentityGate({
+          manifestBytes: c.manifestBytes,
+          manifestPath: c.manifestPath,
+          copyHost: args.copyHost,
+          root: c.repoRoot,
+          remoteOnly,
+        }),
+      now,
+      log,
+    },
     filebase: {
       loadEnv,
       runCli: (argv, childEnv) => {
@@ -177,13 +172,11 @@ async function main(): Promise<number> {
       },
     },
     release: {
-      gh: ghClient(values.repo),
+      gh: ghClient(args.repo),
       options: {
-        ...(values["release-tag"] === undefined ? {} : { tag: values["release-tag"] }),
-        ...(values["release-reuse-tag"] === undefined
-          ? {}
-          : { reuseTags: values["release-reuse-tag"] }),
-        ...(values["release-target"] === undefined ? {} : { target: values["release-target"] }),
+        ...(args.releaseTag === undefined ? {} : { tag: args.releaseTag }),
+        ...(args.releaseReuseTags === undefined ? {} : { reuseTags: args.releaseReuseTags }),
+        ...(args.releaseTarget === undefined ? {} : { target: args.releaseTarget }),
       },
       currentBranch: () =>
         execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
@@ -199,9 +192,9 @@ async function main(): Promise<number> {
   const report = await runPublish({
     ctx,
     impls,
-    dryRun: values["dry-run"],
-    probe: values.probe,
-    ...(values.step === undefined ? {} : { step: values.step as PublishStepName }),
+    dryRun: args.dryRun,
+    probe: args.probe,
+    ...(args.step === undefined ? {} : { step: args.step }),
   });
   for (const line of formatReport(report)) console.log(line);
   return report.ok ? 0 : 1;

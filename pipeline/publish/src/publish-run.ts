@@ -2,14 +2,20 @@
 // hand). Six steps in a fixed order, each recording receipts under
 // specs/011-publish-and-runs/upload-receipts/<runId>/ so a rerun skips finished work and resumes
 // at the first unfinished item:
+//   0 gate       the identity gate on the manifest (local-or-remote parts), BEFORE any upload
 //   1 filebase   elephant-cli upload of every CAR and tables directory (Filebase Kubo RPC)
 //   2 car-files  the AM-05 carCid plain files (Kubo add + two-gateway readback)
 //   3 manifest   the manifest's own JCS bytes (Kubo add + two-gateway readback)
 //   4 cid-copy   the S3 CID copy (copyManifestObjects; already idempotent)
+//   4b gate-remote the identity gate again, remote-only: the bytes the app reads, before release/index
 //   5 release    the GitHub Release holding the CARs (AD-22 durable backup)
 //   6 index      the runs/index.json entry (append-only), written last
 // A pilot runs steps 1-4 only: it has no Release and no index entry, and its manifest may not
 // live under runs/.
+//
+// The two gate steps are mandatory: no flag skips them, `--step X` runs `gate` first (and
+// `gate-remote` before release/index), and their receipts are keyed by the manifest CID, so a
+// receipt for another manifest never counts. A dry run runs the gate for real (it is read-only).
 //
 // Every effect (CLI, gateways, S3, gh, clock, sleep) is injected through PublishDeps, so the tests
 // run with no network. Nothing here prints a credential: the Filebase keys are read into a child
@@ -25,6 +31,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
+import { parseArgs } from "node:util";
 import { RunManifestV1, type ManifestArtifact } from "@countylens/contract";
 import {
   carFileTargets,
@@ -33,6 +40,7 @@ import {
   type UploadCarFileOptions,
 } from "./car-files.js";
 import { cidOfBytes, sameDigest } from "./cid.js";
+import type { IdentityGateSummary } from "./identity-gate.js";
 import {
   gatewaysAgree,
   probeBothGateways,
@@ -53,10 +61,12 @@ import {
 import { FILEBASE_RPC_API, redact, secretValues, type CliResult } from "./sequence.js";
 
 export const PUBLISH_STEPS = [
+  "gate",
   "filebase",
   "car-files",
   "manifest",
   "cid-copy",
+  "gate-remote",
   "release",
   "index",
 ] as const;
@@ -94,6 +104,16 @@ export interface StepImpl {
   plan(ctx: PublishContext, options: { probe: boolean }): Promise<PlanItem[]>;
   /** Performs the `run` items; throws on the first failure. Records receipts as it goes. */
   execute(ctx: PublishContext, pending: readonly PlanItem[]): Promise<void>;
+  /**
+   * Read-only check a dry run performs for real (the gate steps). `deferred` says why it cannot
+   * run yet (e.g. the CID copy is not written), which is not a failure.
+   */
+  dryRunCheck?(ctx: PublishContext): Promise<GateCheck>;
+}
+export interface GateCheck {
+  result: "PASS" | "FAIL";
+  failures: string[];
+  summary?: IdentityGateSummary;
 }
 export type StepImpls = Record<PublishStepName, StepImpl>;
 
@@ -204,6 +224,85 @@ export function uploadUnits(manifest: RunManifestV1): UploadUnit[] {
     }
   }
   return units;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Steps 0 and 4b: the identity gate (mandatory; no flag skips it)
+
+export interface GateStepDeps {
+  /**
+   * Runs the identity gate on `ctx.manifestBytes`. `remoteOnly` binds every table part from the
+   * CID copy (the bytes the app will read). May throw: a throw is a FAIL.
+   */
+  run: (ctx: PublishContext, options: { remoteOnly: boolean }) => Promise<IdentityGateSummary>;
+  now: () => Date;
+  log: (line: string) => void;
+}
+
+/** The file recording that the gate passed for exactly this manifest CID. */
+export function gateReceiptPath(ctx: PublishContext, remote: boolean): string {
+  return join(ctx.receiptsDir, remote ? "gate-remote.json" : "gate.json");
+}
+
+/** True only for a PASS receipt of this step recorded for this exact manifest CID. */
+export function hasGateReceipt(ctx: PublishContext, remote: boolean): boolean {
+  const receipt = readJson(gateReceiptPath(ctx, remote));
+  return (
+    receipt !== undefined &&
+    receipt.manifestCid === ctx.manifestCid &&
+    receipt.result === "PASS" &&
+    receipt.remoteOnly === remote
+  );
+}
+
+async function checkGate(
+  deps: GateStepDeps,
+  ctx: PublishContext,
+  remote: boolean,
+): Promise<GateCheck> {
+  try {
+    const summary = await deps.run(ctx, { remoteOnly: remote });
+    return { result: summary.result, failures: summary.failures, summary };
+  } catch (error) {
+    return { result: "FAIL", failures: [`gate could not run: ${message(error)}`] };
+  }
+}
+
+function gateStep(deps: GateStepDeps, remote: boolean): StepImpl {
+  const id = remote ? "gate-remote" : "gate";
+  const what = remote ? "remote-only (CID copy) identity gate" : "identity gate";
+  return {
+    async plan(ctx) {
+      return hasGateReceipt(ctx, remote)
+        ? [{ id, action: "skip", reason: `PASS receipt ${rel(ctx, gateReceiptPath(ctx, remote))}` }]
+        : [
+            {
+              id,
+              action: "run",
+              reason: `no ${what} PASS receipt for manifest ${ctx.manifestCid}`,
+            },
+          ];
+    },
+    async execute(ctx) {
+      const check = await checkGate(deps, ctx, remote);
+      if (check.result !== "PASS" || check.summary === undefined)
+        throw new Error(
+          `${what} FAILED for manifest ${ctx.manifestCid}: ${check.failures.join("; ")}. Publishing is refused.`,
+        );
+      writeJson(gateReceiptPath(ctx, remote), {
+        step: id,
+        manifestCid: ctx.manifestCid,
+        remoteOnly: remote,
+        result: "PASS",
+        summary: check.summary,
+        recordedAt: deps.now().toISOString(),
+      });
+      deps.log(
+        `${id} PASS: v_roofing_permit ${check.summary.v_roofing_permit}, ${check.summary.permit_side_properties} permit-side properties all county properties`,
+      );
+    },
+    dryRunCheck: (ctx) => checkGate(deps, ctx, remote),
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -845,6 +944,8 @@ function indexStep(deps: IndexStepDeps): StepImpl {
 // The driver
 
 export interface PublishDeps {
+  /** Used for both gate steps. There is no way to leave it out. */
+  gate: GateStepDeps;
   filebase: FilebaseStepDeps;
   carFiles: CarFilesStepDeps;
   manifest: ManifestStepDeps;
@@ -856,10 +957,12 @@ export interface PublishDeps {
 /** The real step implementations over `deps` (tests pass fakes for every effect). */
 export function createPublishSteps(deps: PublishDeps): StepImpls {
   return {
+    gate: gateStep(deps.gate, false),
     filebase: filebaseStep(deps.filebase),
     "car-files": carFilesStep(deps.carFiles),
     manifest: manifestStep(deps.manifest),
     "cid-copy": cidCopyStep(deps.cidCopy),
+    "gate-remote": gateStep(deps.gate, true),
     release: releaseStep(deps.release),
     index: indexStep(deps.index),
   };
@@ -867,9 +970,13 @@ export function createPublishSteps(deps: PublishDeps): StepImpls {
 
 export interface StepReport {
   step: PublishStepName;
-  status: "already-done" | "done" | "would-run" | "not-applicable" | "failed";
+  status: "already-done" | "done" | "would-run" | "not-applicable" | "failed" | "checked";
   items: { id: string; action: "skip" | "run"; reason: string }[];
   error?: string;
+  /** Dry run only, gate steps: what the real (read-only) gate said. */
+  gate?: GateCheck;
+  /** Dry run, gate-remote only: not run yet because the CID copy is still to be written. */
+  deferred?: string;
 }
 export interface PublishReport {
   runId: string;
@@ -878,6 +985,8 @@ export interface PublishReport {
   pilot: boolean;
   steps: StepReport[];
   ok: boolean;
+  /** Dry run: true when a real run would be refused by a gate (ok is false too). */
+  refused?: boolean;
 }
 
 export interface RunPublishOptions {
@@ -899,7 +1008,17 @@ function stepsToRun(options: RunPublishOptions): {
     throw new Error(
       `a pilot has no ${step} step: it is never released or added to runs/index.json`,
     );
-  if (step !== undefined) return { run: [step], notApplicable: [] };
+  // The gates are mandatory: any single step still runs behind `gate`, and release/index behind
+  // `gate-remote` as well. Nothing can select a step without them.
+  if (step !== undefined) {
+    const behind: PublishStepName[] = [];
+    if (step !== "gate") behind.push("gate");
+    if (step === "release" || step === "index") behind.push("gate-remote");
+    return {
+      run: PUBLISH_STEPS.filter((s) => s === step || behind.includes(s)),
+      notApplicable: [],
+    };
+  }
   const notApplicable = ctx.pilot ? [...PILOT_SKIPPED_STEPS] : [];
   return { run: PUBLISH_STEPS.filter((s) => !notApplicable.includes(s)), notApplicable };
 }
@@ -945,6 +1064,36 @@ export async function runPublish(options: RunPublishOptions): Promise<PublishRep
       const summary = items.map(({ id, action, reason }) => ({ id, action, reason }));
       const pending = items.filter((i) => i.action === "run");
       if (dryRun) {
+        if (impl.dryRunCheck !== undefined) {
+          // The gate is read-only, so a dry run runs it for real. gate-remote reads the CID copy,
+          // which cid-copy writes: while that is still to be done it cannot be checked yet.
+          const copyPending =
+            report.steps.find((s) => s.step === "cid-copy")?.status === "would-run";
+          if (name === "gate-remote" && copyPending) {
+            report.steps.push({
+              step: name,
+              status: "would-run",
+              items: summary,
+              deferred: "runs after cid-copy writes the CID copy",
+            });
+            continue;
+          }
+          const gate = await impl.dryRunCheck(ctx);
+          if (gate.result === "FAIL") {
+            report.steps.push({
+              step: name,
+              status: "failed",
+              items: summary,
+              gate,
+              error: `${name} FAILED: ${gate.failures.join("; ")}`,
+            });
+            report.ok = false;
+            report.refused = true;
+            break;
+          }
+          report.steps.push({ step: name, status: "checked", items: summary, gate });
+          continue;
+        }
         report.steps.push({
           step: name,
           status: pending.length === 0 ? "already-done" : "would-run",
@@ -969,10 +1118,88 @@ export async function runPublish(options: RunPublishOptions): Promise<PublishRep
     } catch (error) {
       report.steps.push({ step: name, status: "failed", items: [], error: message(error) });
       report.ok = false;
+      if (dryRun && (name === "gate" || name === "gate-remote")) report.refused = true;
       break;
     }
   }
   return report;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Command line
+
+export interface PublishArgs {
+  manifest: string;
+  runId: string;
+  step?: PublishStepName;
+  dryRun: boolean;
+  probe: boolean;
+  pilot: boolean;
+  cli?: string;
+  releaseTag?: string;
+  releaseReuseTags?: string[];
+  releaseTarget?: string;
+  repo?: string;
+  copyHost: string;
+}
+
+/**
+ * The accepted flags. There is deliberately no flag that skips or forces a gate (no --force, no
+ * --skip-gate): parsing is strict, so an unknown flag is an error, not a bypass.
+ */
+export function parsePublishArgs(
+  argv: readonly string[],
+  env: Record<string, string | undefined> = {},
+): PublishArgs {
+  const { values } = parseArgs({
+    args: [...argv],
+    options: {
+      manifest: { type: "string" },
+      "run-id": { type: "string" },
+      step: { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      probe: { type: "boolean", default: false },
+      pilot: { type: "boolean", default: false },
+      cli: { type: "string" },
+      "release-tag": { type: "string" },
+      "release-reuse-tag": { type: "string", multiple: true },
+      "release-target": { type: "string" },
+      repo: { type: "string" },
+      "copy-host": { type: "string" },
+    },
+    strict: true,
+  });
+  if (values.manifest === undefined || values["run-id"] === undefined)
+    throw new Error(
+      "usage: publish-run.ts --manifest <path> --run-id <id> [--step <name>] [--dry-run [--probe]] [--pilot] [--copy-host <host>]",
+    );
+  if (values.step !== undefined && !PUBLISH_STEPS.includes(values.step as PublishStepName))
+    throw new Error(`--step must be one of: ${PUBLISH_STEPS.join(", ")}`);
+  if (values.probe && !values["dry-run"])
+    throw new Error(
+      "--probe only applies to --dry-run (a real run always checks before it uploads)",
+    );
+  const copyHost = values["copy-host"] ?? env["CID_COPY_HOST"];
+  if (copyHost === undefined || copyHost === "")
+    throw new Error(
+      "--copy-host or CID_COPY_HOST is required: the identity gate reads the CID copy",
+    );
+  return {
+    manifest: values.manifest,
+    runId: values["run-id"],
+    ...(values.step === undefined ? {} : { step: values.step as PublishStepName }),
+    dryRun: values["dry-run"],
+    probe: values.probe,
+    pilot: values.pilot,
+    ...(values.cli === undefined ? {} : { cli: values.cli }),
+    ...(values["release-tag"] === undefined ? {} : { releaseTag: values["release-tag"] }),
+    ...(values["release-reuse-tag"] === undefined
+      ? {}
+      : { releaseReuseTags: values["release-reuse-tag"] }),
+    ...(values["release-target"] === undefined ? {} : { releaseTarget: values["release-target"] }),
+    ...(values.repo === undefined ? {} : { repo: values.repo }),
+    copyHost,
+  };
 }
 
 /** The report as plain lines for the terminal. */
@@ -988,8 +1215,24 @@ export function formatReport(report: PublishReport): string[] {
     );
     for (const i of s.items)
       lines.push(`  ${i.action === "skip" ? "skip" : "RUN "} ${i.id}  (${i.reason})`);
+    if (s.gate !== undefined) {
+      const g = s.gate.summary;
+      lines.push(
+        `  gate ${s.gate.result}${
+          g === undefined
+            ? ""
+            : ` (v_roofing_permit ${g.v_roofing_permit}, meta.permit ${g.meta_permit}, permits_emitted ${g.permits_emitted ?? "none"}, ${g.unmatched_properties} of ${g.permit_side_properties} permit-side properties are not county properties)`
+        }`,
+      );
+      for (const f of s.gate.failures) lines.push(`    FAIL ${f}`);
+    }
+    if (s.deferred !== undefined) lines.push(`  gate not run yet: ${s.deferred}`);
     if (s.error !== undefined) lines.push(`  ERROR ${s.error}`);
   }
+  if (report.refused === true)
+    lines.push(
+      "REFUSED: an identity gate failed, so a real run of this manifest would stop here and publish nothing",
+    );
   lines.push(
     report.ok ? "ok" : "FAILED: fix the error above and rerun; finished items are skipped",
   );

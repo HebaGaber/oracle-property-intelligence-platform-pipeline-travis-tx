@@ -2,17 +2,20 @@
 // resume skips finished work, a receipt whose root differs from the manifest fails, the index
 // never gets a duplicate entry, a pilot has no Release or index, a dry run makes no call, and
 // the step implementations behave as documented against fakes.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { cidOfBytes } from "../src/cid.js";
+import type { IdentityGateSummary } from "../src/identity-gate.js";
 import { jcsBytes } from "../src/jcs.js";
 import type { FetchLike } from "../src/kubo-add.js";
 import {
   PUBLISH_STEPS,
   createPublishSteps,
   formatReport,
+  gateReceiptPath,
   loadPublishContext,
+  parsePublishArgs,
   releaseAssets,
   runPublish,
   uploadUnits,
@@ -108,6 +111,22 @@ function fakeImpls(state: Record<PublishStepName, { done: boolean; fail?: boolea
   return { impls, executed, planned, skipped };
 }
 
+function passingSummary(overrides: Partial<IdentityGateSummary> = {}): IdentityGateSummary {
+  return {
+    manifest: "m.json",
+    v_roofing_permit: 307,
+    meta_permit: 307,
+    permits_emitted: 307,
+    permit_side_properties: 300,
+    unmatched_properties: 0,
+    pids_checked: 0,
+    pids_unmatched: 0,
+    result: "PASS",
+    failures: [],
+    ...overrides,
+  };
+}
+
 const fresh = () =>
   Object.fromEntries(PUBLISH_STEPS.map((s) => [s, { done: false }])) as Record<
     PublishStepName,
@@ -115,7 +134,7 @@ const fresh = () =>
   >;
 
 describe("runPublish: order, resume, dry run, pilot", () => {
-  it("runs the six steps in the fixed order", async () => {
+  it("runs the eight steps in the fixed order, both gates included", async () => {
     const { ctx } = await realContext();
     const { impls, executed } = fakeImpls(fresh());
     const report = await runPublish({ ctx, impls, dryRun: false });
@@ -131,7 +150,7 @@ describe("runPublish: order, resume, dry run, pilot", () => {
     const first = fakeImpls(state);
     const r1 = await runPublish({ ctx, impls: first.impls, dryRun: false });
     expect(r1.ok).toBe(false);
-    expect(first.executed).toEqual(["filebase", "car-files", "manifest", "cid-copy"]);
+    expect(first.executed).toEqual(["gate", "filebase", "car-files", "manifest", "cid-copy"]);
     expect(r1.steps.at(-1)).toMatchObject({
       step: "cid-copy",
       status: "failed",
@@ -143,25 +162,27 @@ describe("runPublish: order, resume, dry run, pilot", () => {
     const second = fakeImpls(state);
     const r2 = await runPublish({ ctx, impls: second.impls, dryRun: false });
     expect(r2.ok).toBe(true);
-    expect(second.executed).toEqual(["cid-copy", "release", "index"]);
-    expect(r2.steps.slice(0, 3).map((s) => s.status)).toEqual([
+    expect(second.executed).toEqual(["cid-copy", "gate-remote", "release", "index"]);
+    expect(r2.steps.slice(0, 4).map((s) => s.status)).toEqual([
+      "already-done",
       "already-done",
       "already-done",
       "already-done",
     ]);
   });
 
-  it("--step runs that step only", async () => {
+  it("--step runs that step behind the mandatory gate", async () => {
     const { ctx } = await realContext();
     const { impls, executed } = fakeImpls(fresh());
     const report = await runPublish({ ctx, impls, dryRun: false, step: "manifest" });
-    expect(executed).toEqual(["manifest"]);
-    expect(report.steps).toHaveLength(1);
+    expect(executed).toEqual(["gate", "manifest"]);
+    expect(report.steps).toHaveLength(2);
   });
 
   it("--step index refuses while an earlier step has no receipts", async () => {
     const { ctx } = await realContext();
     const state = fresh();
+    state.gate.done = true;
     state.filebase.done = true;
     const { impls, executed } = fakeImpls(state);
     await expect(runPublish({ ctx, impls, dryRun: false, step: "index" })).rejects.toThrow(
@@ -180,8 +201,8 @@ describe("runPublish: order, resume, dry run, pilot", () => {
     expect(skipped).toEqual([]); // onSkip (receipt writes) never runs in a dry run
     expect(planned.every((p) => p.probe === false)).toBe(true);
     expect(report.mode).toBe("dry-run");
-    expect(report.steps[0]).toMatchObject({ step: "filebase", status: "already-done" });
-    expect(report.steps[1]).toMatchObject({ step: "car-files", status: "would-run" });
+    expect(report.steps[1]).toMatchObject({ step: "filebase", status: "already-done" });
+    expect(report.steps[2]).toMatchObject({ step: "car-files", status: "would-run" });
     expect(report.ok).toBe(true);
   });
 
@@ -212,7 +233,7 @@ describe("runPublish: order, resume, dry run, pilot", () => {
     };
     const report = await runPublish({ ctx, impls, dryRun: false });
     expect(report.ok).toBe(false);
-    expect(report.steps[0]?.error).toMatch(/still have no receipt/);
+    expect(report.steps.at(-1)?.error).toMatch(/still have no receipt/);
   });
 
   it("a pilot has no release or index step, and --step release/index is refused", async () => {
@@ -225,7 +246,14 @@ describe("runPublish: order, resume, dry run, pilot", () => {
       /no index step/,
     );
     const report = await runPublish({ ctx, impls, dryRun: false });
-    expect(executed).toEqual(["filebase", "car-files", "manifest", "cid-copy"]);
+    expect(executed).toEqual([
+      "gate",
+      "filebase",
+      "car-files",
+      "manifest",
+      "cid-copy",
+      "gate-remote",
+    ]);
     expect(report.steps.filter((s) => s.status === "not-applicable").map((s) => s.step)).toEqual([
       "release",
       "index",
@@ -349,6 +377,11 @@ function harness(
     deleteAsset: async () => undefined,
   };
   const deps: PublishDeps = {
+    gate: {
+      run: async () => passingSummary(),
+      now: () => new Date("2026-10-24T10:00:00.000Z"),
+      log: (l) => logs.push(l),
+    },
     filebase: {
       loadEnv: () => ENV,
       runCli: cli,
@@ -400,7 +433,7 @@ describe("filebase step", () => {
     expect(argv.join(" ")).not.toContain("sk-test-secret");
 
     const r2 = await runPublish({ ctx, impls, dryRun: false, step: "filebase" });
-    expect(r2.steps[0]?.status).toBe("already-done");
+    expect(r2.steps.at(-1)?.status).toBe("already-done");
     expect(h.cli).toHaveBeenCalledTimes(units.length);
   });
 
@@ -419,7 +452,7 @@ describe("filebase step", () => {
       dryRun: true,
       step: "filebase",
     });
-    const items = report.steps[0]?.items ?? [];
+    const items = report.steps.at(-1)?.items ?? [];
     expect(items[0]).toMatchObject({ id: first.id, action: "skip" });
     expect(items[0]?.reason).toMatch(/county-b01-car\.json records this CID/);
     expect(items.slice(1).every((i) => i.action === "run")).toBe(true);
@@ -437,7 +470,7 @@ describe("filebase step", () => {
       step: "filebase",
     });
     expect(report.ok).toBe(false);
-    expect(report.steps[0]?.error).toMatch(/records root .* but the manifest says/);
+    expect(report.steps.at(-1)?.error).toMatch(/records root .* but the manifest says/);
     const [first] = uploadUnits(ctx.manifest);
     expect(existsSync(join(ctx.receiptsDir, `${first?.id}.json`))).toBe(false);
     expect(existsSync(join(ctx.receiptsDir, `${first?.id}.json.partial`))).toBe(false);
@@ -472,7 +505,7 @@ describe("filebase step", () => {
       step: "filebase",
     });
     expect(report.ok).toBe(false);
-    expect(report.steps[0]?.error).toMatch(/countyRoot/);
+    expect(report.steps.at(-1)?.error).toMatch(/countyRoot/);
   });
 
   it("fails an existing per-run receipt whose root is wrong, even in a dry run", async () => {
@@ -487,7 +520,7 @@ describe("filebase step", () => {
       step: "filebase",
     });
     expect(report.ok).toBe(false);
-    expect(report.steps[0]?.error).toMatch(/but the manifest says/);
+    expect(report.steps.at(-1)?.error).toMatch(/but the manifest says/);
   });
 
   it("retries with exponential backoff, redacts credentials from the log, and gives up after the attempt limit", async () => {
@@ -514,7 +547,7 @@ describe("filebase step", () => {
       step: "filebase",
     });
     expect(failed.ok).toBe(false);
-    expect(failed.steps[0]?.error).toMatch(/failed after 3 attempts/);
+    expect(failed.steps.at(-1)?.error).toMatch(/failed after 3 attempts/);
     expect(bad.cli).toHaveBeenCalledTimes(3);
   });
 });
@@ -540,8 +573,8 @@ describe("car-files and manifest steps (probe / adopt)", () => {
       step: "car-files",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(report.steps[0]?.items.every((i) => i.action === "run")).toBe(true);
-    expect(report.steps[0]?.items.length).toBe(
+    expect(report.steps.at(-1)?.items.every((i) => i.action === "run")).toBe(true);
+    expect(report.steps.at(-1)?.items.length).toBe(
       ctx.manifest.artifacts.filter((a) => a.carCid !== undefined).length,
     );
   });
@@ -559,7 +592,7 @@ describe("car-files and manifest steps (probe / adopt)", () => {
       probe: true,
       step: "car-files",
     });
-    expect(report.steps[0]?.status).toBe("already-done");
+    expect(report.steps.at(-1)?.status).toBe("already-done");
     expect(existsSync(join(ctx.receiptsDir, "carfiles"))).toBe(false); // a dry run writes nothing
   });
 
@@ -573,7 +606,7 @@ describe("car-files and manifest steps (probe / adopt)", () => {
     h.deps.carFiles.add = add;
     const impls = createPublishSteps(h.deps);
     const r1 = await runPublish({ ctx, impls, dryRun: false, step: "car-files" });
-    expect(r1.steps[0]?.status).toBe("already-done");
+    expect(r1.steps.at(-1)?.status).toBe("already-done");
     expect(add).not.toHaveBeenCalled();
     const [first] = uploadUnits(ctx.manifest);
     const receipt = JSON.parse(
@@ -593,7 +626,7 @@ describe("car-files and manifest steps (probe / adopt)", () => {
       dryRun: true,
       step: "car-files",
     });
-    expect(r2.steps[0]?.status).toBe("already-done");
+    expect(r2.steps.at(-1)?.status).toBe("already-done");
   });
 
   it("uploads only the files a gateway does not serve, via Kubo add, and records receipts", async () => {
@@ -643,7 +676,7 @@ describe("car-files and manifest steps (probe / adopt)", () => {
       dryRun: false,
       step: "manifest",
     });
-    expect(report.steps[0]?.status).toBe("already-done");
+    expect(report.steps.at(-1)?.status).toBe("already-done");
     expect(
       JSON.parse(readFileSync(join(ctx.receiptsDir, "manifest-upload.json"), "utf8")),
     ).toMatchObject({
@@ -663,7 +696,7 @@ describe("cid-copy step", () => {
     await runPublish({ ctx, impls, dryRun: false, step: "cid-copy" });
     const again = await runPublish({ ctx, impls, dryRun: false, step: "cid-copy" });
     expect(copy).toHaveBeenCalledTimes(1);
-    expect(again.steps[0]?.status).toBe("already-done");
+    expect(again.steps.at(-1)?.status).toBe("already-done");
     expect(JSON.parse(readFileSync(join(ctx.receiptsDir, "cid-copy.json"), "utf8"))).toMatchObject({
       manifestCid: ctx.manifestCid,
       total: 7,
@@ -726,7 +759,7 @@ describe("release step", () => {
       `create run-${RUN2} ${releaseAssets(ctx).length} 011-publish-and-runs`,
     ]);
     const r2 = await runPublish({ ctx, impls, dryRun: false, step: "release" });
-    expect(r2.steps[0]?.status).toBe("already-done");
+    expect(r2.steps.at(-1)?.status).toBe("already-done");
     expect(g.calls).toHaveLength(1);
   });
 
@@ -778,7 +811,7 @@ describe("release step", () => {
       step: "release",
     });
     expect(failed.ok).toBe(false);
-    expect(failed.steps[0]?.error).toMatch(/different SHA-256/);
+    expect(failed.steps.at(-1)?.error).toMatch(/different SHA-256/);
   });
 
   it("deletes and re-uploads an asset left in a non-uploaded state", async () => {
@@ -850,7 +883,7 @@ describe("release step", () => {
       step: "release",
     });
     expect(view).not.toHaveBeenCalled();
-    expect(report.steps[0]?.status).toBe("would-run");
+    expect(report.steps.at(-1)?.status).toBe("would-run");
   });
 });
 
@@ -936,6 +969,237 @@ describe("index step", () => {
       step: "index",
     });
     expect(report.ok).toBe(false);
-    expect(report.steps[0]?.error).toMatch(/never altered/);
+    expect(report.steps.at(-1)?.error).toMatch(/never altered/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The mandatory identity gates (gate before any upload, gate-remote before release and index)
+
+const failingSummary = (): IdentityGateSummary =>
+  passingSummary({
+    v_roofing_permit: 0,
+    unmatched_properties: 17387,
+    permit_side_properties: 17387,
+    result: "FAIL",
+    failures: ["17387 permit-side properties are not county properties", "meta.permit is empty"],
+  });
+
+/** Real step implementations whose gate is a spy returning `outcome(remoteOnly)`. */
+function gated(ctx: PublishContext, outcome: (remoteOnly: boolean) => IdentityGateSummary | Error) {
+  const h = harness(ctx);
+  const calls: boolean[] = [];
+  h.deps.gate.run = async (_ctx, { remoteOnly }) => {
+    calls.push(remoteOnly);
+    const result = outcome(remoteOnly);
+    if (result instanceof Error) throw result;
+    return result;
+  };
+  const create = vi.fn(async () => undefined);
+  h.deps.release.gh = {
+    view: async () => null,
+    create,
+    upload: async () => undefined,
+    deleteAsset: async () => undefined,
+  };
+  return { h, calls, create, impls: createPublishSteps(h.deps) };
+}
+
+describe("identity gate: mandatory and keyed by manifest CID", () => {
+  it("a FAIL at gate stops the run before any upload step", async () => {
+    const { ctx } = await realContext();
+    const g = gated(ctx, () => failingSummary());
+    const report = await runPublish({ ctx, impls: g.impls, dryRun: false });
+    expect(report.ok).toBe(false);
+    expect(report.steps.map((s) => s.step)).toEqual(["gate"]);
+    expect(report.steps[0]?.error).toMatch(/identity gate FAILED.*meta\.permit is empty.*refused/);
+    expect(g.h.cli).not.toHaveBeenCalled();
+    expect(existsSync(gateReceiptPath(ctx, false))).toBe(false);
+    expect(existsSync(ctx.receiptsDir)).toBe(false);
+  });
+
+  it("a gate that cannot run (throws) is a FAIL, not a pass", async () => {
+    const { ctx } = await realContext();
+    const g = gated(ctx, () => new Error("403 from the CID copy"));
+    const report = await runPublish({ ctx, impls: g.impls, dryRun: false });
+    expect(report.ok).toBe(false);
+    expect(report.steps[0]?.error).toMatch(/gate could not run: 403 from the CID copy/);
+    expect(g.h.cli).not.toHaveBeenCalled();
+  });
+
+  it("--step filebase still runs the gate first and uploads nothing on FAIL", async () => {
+    const { ctx } = await realContext();
+    const g = gated(ctx, () => failingSummary());
+    const report = await runPublish({ ctx, impls: g.impls, dryRun: false, step: "filebase" });
+    expect(report.ok).toBe(false);
+    expect(g.calls).toEqual([false]);
+    expect(g.h.cli).not.toHaveBeenCalled();
+  });
+
+  it("a PASS writes a receipt with the manifest CID; the gate runs local-or-remote first", async () => {
+    const { ctx } = await realContext();
+    const g = gated(ctx, () => passingSummary());
+    const report = await runPublish({ ctx, impls: g.impls, dryRun: false, step: "gate" });
+    expect(report.ok).toBe(true);
+    expect(g.calls).toEqual([false]);
+    const receipt = JSON.parse(readFileSync(gateReceiptPath(ctx, false), "utf8"));
+    expect(receipt).toMatchObject({
+      manifestCid: ctx.manifestCid,
+      result: "PASS",
+      remoteOnly: false,
+    });
+    expect(receipt.summary.v_roofing_permit).toBe(307);
+  });
+
+  it("a gate receipt for another manifest CID is ignored and the gate runs again", async () => {
+    const { ctx } = await realContext();
+    const other = (await runFixture()).baseCid;
+    expect(other).not.toBe(ctx.manifestCid);
+    put(
+      gateReceiptPath(ctx, false),
+      JSON.stringify({ manifestCid: other, result: "PASS", remoteOnly: false }),
+    );
+    const g = gated(ctx, () => passingSummary());
+    const report = await runPublish({ ctx, impls: g.impls, dryRun: false, step: "gate" });
+    expect(report.steps[0]?.status).toBe("done");
+    expect(g.calls).toEqual([false]);
+    // and a stale PASS for another CID cannot rescue a FAIL
+    put(
+      gateReceiptPath(ctx, false),
+      JSON.stringify({ manifestCid: other, result: "PASS", remoteOnly: false }),
+    );
+    const failing = gated(ctx, () => failingSummary());
+    const refused = await runPublish({ ctx, impls: failing.impls, dryRun: false });
+    expect(refused.ok).toBe(false);
+    expect(failing.h.cli).not.toHaveBeenCalled();
+  });
+
+  it("a receipt for this CID is honored: the gate is not run twice", async () => {
+    const { ctx } = await realContext();
+    const g = gated(ctx, () => passingSummary());
+    await runPublish({ ctx, impls: g.impls, dryRun: false, step: "gate" });
+    const again = await runPublish({ ctx, impls: g.impls, dryRun: false, step: "gate" });
+    expect(again.steps[0]?.status).toBe("already-done");
+    expect(g.calls).toEqual([false]);
+  });
+
+  it("a FAIL at gate-remote stops before release and index (fake steps)", async () => {
+    const { ctx } = await realContext();
+    const state = fresh();
+    state["gate-remote"].fail = true;
+    const { impls, executed } = fakeImpls(state);
+    const report = await runPublish({ ctx, impls, dryRun: false });
+    expect(report.ok).toBe(false);
+    expect(executed).toEqual([
+      "gate",
+      "filebase",
+      "car-files",
+      "manifest",
+      "cid-copy",
+      "gate-remote",
+    ]);
+    expect(executed).not.toContain("release");
+    expect(executed).not.toContain("index");
+  });
+
+  it("gate-remote binds remote-only and a FAIL there creates no release (real steps)", async () => {
+    const { ctx } = await realContext();
+    const g = gated(ctx, (remote) => (remote ? failingSummary() : passingSummary()));
+    const report = await runPublish({ ctx, impls: g.impls, dryRun: false, step: "release" });
+    expect(g.calls).toEqual([false, true]);
+    expect(report.ok).toBe(false);
+    expect(report.steps.at(-1)).toMatchObject({ step: "gate-remote", status: "failed" });
+    expect(g.create).not.toHaveBeenCalled();
+    expect(existsSync(join(ctx.repoRoot, "runs/index.json"))).toBe(true);
+    expect(readFileSync(join(ctx.repoRoot, "runs/index.json"), "utf8")).not.toContain(ctx.runId);
+  });
+
+  it("a pilot still runs both gates", async () => {
+    const { ctx } = await realContext({ pilot: true, runId: "travis-full-run2-trial-20261024" });
+    const g = gated(ctx, () => passingSummary());
+    const report = await runPublish({ ctx, impls: g.impls, dryRun: false, step: "gate-remote" });
+    expect(report.ok).toBe(true);
+    expect(g.calls).toEqual([false, true]);
+    rmSync(ctx.receiptsDir, { recursive: true, force: true });
+    const pilotFail = gated(ctx, (remote) => (remote ? failingSummary() : passingSummary()));
+    const failed = await runPublish({
+      ctx,
+      impls: pilotFail.impls,
+      dryRun: false,
+      step: "gate-remote",
+    });
+    expect(failed.ok).toBe(false);
+    expect(failed.steps.at(-1)).toMatchObject({ step: "gate-remote", status: "failed" });
+  });
+
+  it("a dry run on FAIL runs the gate for real, reports refusal, uploads and writes nothing", async () => {
+    const { ctx } = await realContext();
+    const g = gated(ctx, () => failingSummary());
+    const report = await runPublish({ ctx, impls: g.impls, dryRun: true });
+    expect(g.calls).toEqual([false]);
+    expect(report.ok).toBe(false);
+    expect(report.refused).toBe(true);
+    const text = formatReport(report).join("\n");
+    expect(text).toContain("gate FAIL");
+    expect(text).toContain("REFUSED");
+    expect(g.h.cli).not.toHaveBeenCalled();
+    expect(existsSync(ctx.receiptsDir)).toBe(false);
+  });
+
+  it("a dry run on PASS reports PASS, even with a receipt already on disk, and defers gate-remote until the copy exists", async () => {
+    const { ctx } = await realContext();
+    const g = gated(ctx, () => passingSummary());
+    const report = await runPublish({ ctx, impls: g.impls, dryRun: true });
+    expect(g.calls).toEqual([false]);
+    expect(report.ok).toBe(true);
+    expect(report.refused).toBeUndefined();
+    expect(report.steps[0]).toMatchObject({ step: "gate", status: "checked" });
+    expect(report.steps[0]?.gate?.result).toBe("PASS");
+    const remote = report.steps.find((s) => s.step === "gate-remote");
+    expect(remote?.deferred).toMatch(/after cid-copy/);
+    expect(formatReport(report).join("\n")).toContain("gate PASS (v_roofing_permit 307");
+  });
+});
+
+describe("publish-run arguments: no flag skips a gate", () => {
+  const base = ["--manifest", "m.json", "--run-id", "r", "--copy-host", "h.example"];
+
+  it.each([["--force"], ["--skip-gate"], ["--no-gate"], ["--skip", "gate"], ["--gate=off"]])(
+    "rejects %s",
+    (...flag) => {
+      expect(() => parsePublishArgs([...base, ...flag])).toThrow();
+    },
+  );
+
+  it("accepts the documented flags, takes the copy host from the flag or CID_COPY_HOST", () => {
+    expect(parsePublishArgs([...base, "--dry-run", "--probe", "--pilot"])).toMatchObject({
+      dryRun: true,
+      probe: true,
+      pilot: true,
+      copyHost: "h.example",
+    });
+    expect(
+      parsePublishArgs(["--manifest", "m.json", "--run-id", "r"], { CID_COPY_HOST: "env.example" })
+        .copyHost,
+    ).toBe("env.example");
+  });
+
+  it("requires a copy host (the gate reads the CID copy) and keeps the --step validation", () => {
+    expect(() => parsePublishArgs(["--manifest", "m.json", "--run-id", "r"])).toThrow(/copy-host/);
+    expect(() => parsePublishArgs([...base, "--step", "nope"])).toThrow(/--step must be one of/);
+    expect(() => parsePublishArgs([...base, "--probe"])).toThrow(/only applies to --dry-run/);
+  });
+
+  it("lists both gate steps in the fixed order", () => {
+    expect(PUBLISH_STEPS).toEqual([
+      "gate",
+      "filebase",
+      "car-files",
+      "manifest",
+      "cid-copy",
+      "gate-remote",
+      "release",
+      "index",
+    ]);
   });
 });
