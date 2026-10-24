@@ -294,15 +294,15 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       # The Playwright config refuses localhost (TC-060); RUNTIME_URL is the hosted branch URL.
-      # Two phases (playwright.config.ts): `parallel` with 2 workers, then `isolated` alone (perf
-      # timings, rate-limited public gateways). Both always run; the step fails if either fails.
-      # 2, not 4: at full-county scale each Permits page holds ~0.9 GB, and 4 workers got the step
-      # killed by the runner's memory guard (exit 143).
+      # Two phases (playwright.config.ts): `parallel`, then `isolated` alone (perf timings,
+      # rate-limited public gateways). Both always run; the step fails if either fails. One
+      # worker for now: with 2 or 4 workers the job was cancelled ~2 min into the full-county
+      # Permits cases (cause not yet confirmed; A-16 #11), while 1 worker runs to completion.
       - name: Playwright on the hosted URL
         working-directory: tests/e2e
         run: |
           status=0
-          PW_PHASE=parallel pnpm exec playwright test --project parallel --workers 2 || status=1
+          PW_PHASE=parallel pnpm exec playwright test --project parallel --workers 1 || status=1
           PW_PHASE=isolated pnpm exec playwright test --project isolated --workers 1 || status=1
           exit "$status"
 
