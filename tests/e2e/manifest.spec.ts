@@ -10,9 +10,11 @@ import {
   CID_V0_PATTERN,
   PART_SIZE_48M,
   artifactsOf,
-  groupOf,
+  groupOfDirectory,
   publicCid,
   readTablesRoot,
+  resolveDataGroups,
+  tableInDirectory,
   type ReadTablesRoot,
 } from "./lib/manifest.js";
 import { fetchByCid, readCommittedManifest, sha256Hex, type FetchedByCid } from "./lib/runtime.js";
@@ -75,26 +77,47 @@ test.describe("A-03 run manifest (FR-001)", () => {
       expect(manifestText, "no CIDv0 anywhere in the manifest").not.toMatch(CID_V0_PATTERN);
 
       // Step 3: the artifact list equals the export-tables output, read from the published
-      // tables CAR of each group (its CountyTables root lists every table part by CID and size).
+      // tables CAR of each batch (its CountyTables root lists every table part by CID and size).
+      // A group may span several batch CARs (A-04/A-11, e.g. Run 1's 10 county + 2
+      // property_improvement batches), so this checks "at least one directory/CAR per group",
+      // never "exactly one" — groups are resolved from the manifest's own structure (the same
+      // majority vote over REQUIRED_TABLES bind-manifest.ts's resolveBatchGroups performs), never
+      // guessed from a fixed `tables/<group>` or `car/travis-<group>.car` name.
       const directories = artifactsOf(manifest, "directory");
       const cars = artifactsOf(manifest, "car");
       const tables = artifactsOf(manifest, "table");
-      expect(directories.map((d) => d.name).sort()).toEqual(DATA_GROUPS.map((g) => `tables/${g}`));
-      expect(cars.map((c) => c.name).sort()).toEqual(DATA_GROUPS.map((g) => `car/travis-${g}.car`));
+      const groups = resolveDataGroups(manifest);
+
+      const groupsOfDirectories = new Map<string, string>();
+      for (const directory of directories) {
+        const group = groupOfDirectory(groups, directory);
+        expect.soft(group, `${directory.name}: resolves to a known data group`).not.toBeNull();
+        if (group) groupsOfDirectories.set(directory.name, group);
+      }
+      expect(
+        new Set(groupsOfDirectories.values()),
+        "at least one tables directory per data group",
+      ).toEqual(new Set(DATA_GROUPS));
 
       let exportedParts = 0;
+      const groupsOfCars = new Map<string, string>();
       for (const directory of directories) {
-        const group = groupOf(directory);
+        const group = groupsOfDirectories.get(directory.name);
+        if (!group) continue;
         const { rootCid, root, blockCount } = await tablesRootOnce(publicCid(directory));
         expect(rootCid, `${directory.name}: tables.car root is the directory cid`).toBe(
           directory.cid,
         );
         expect(blockCount, `${directory.name}: tables.car holds only its root block`).toBe(1);
-        const car = cars.find((c) => groupOf(c) === group);
+        // The archive CAR for this batch is whichever car artifact the tables.car itself names
+        // (county_root), not one picked by matching names — car filenames are not guaranteed to
+        // spell the group (Run 1's property_improvement batches are named "travis-permits-*").
+        const car = cars.find((c) => c.cid === root.county_root);
         expect(
-          root.county_root,
-          `${directory.name}: county_root is the group's archive CAR cid`,
-        ).toBe(car?.cid);
+          car,
+          `${directory.name}: county_root (${root.county_root}) names a published car artifact`,
+        ).toBeDefined();
+        if (car) groupsOfCars.set(car.name, group);
 
         const exported = new Map<string, { table: string; index: number; bytes: number }>();
         for (const [table, entry] of Object.entries(root.tables)) {
@@ -102,14 +125,14 @@ test.describe("A-03 run manifest (FR-001)", () => {
             exported.set(part.cid, { table, index, bytes: part.bytes }),
           );
         }
-        const published = tables.filter((t) => groupOf(t) === group);
+        const published = tables.filter((t) => tableInDirectory(t, directory));
         expect(
           published.map((t) => t.cid).sort(),
           `${directory.name}: exactly one artifact per exported file, none from elsewhere`,
         ).toEqual([...exported.keys()].sort());
         for (const artifact of published) {
           const file = exported.get(artifact.cid);
-          const match = new RegExp(`^tables/${group}/${file?.table}/part-(\\d+)\\.parquet$`).exec(
+          const match = new RegExp(`^${directory.name}/${file?.table}/part-(\\d+)\\.parquet$`).exec(
             artifact.name,
           );
           expect.soft(match, `${artifact.name}: named after its table and part`).not.toBeNull();
@@ -120,9 +143,15 @@ test.describe("A-03 run manifest (FR-001)", () => {
         }
         exportedParts += exported.size;
       }
+      expect(new Set(groupsOfCars.values()), "at least one archive CAR per data group").toEqual(
+        new Set(DATA_GROUPS),
+      );
+      expect(groupsOfCars.size, "every archive CAR is named by some batch's tables.car").toBe(
+        cars.length,
+      );
       expect(
         manifest.artifacts.length,
-        "artifacts are the two archive CARs, the two tables directories and the exported parts",
+        "artifacts are the archive CARs, the tables directories and the exported parts",
       ).toBe(cars.length + directories.length + exportedParts);
 
       // Step 4: the two limitation notes, verbatim (FR-001, P0-15).
@@ -139,8 +168,37 @@ test.describe("A-03 run manifest (FR-001)", () => {
       const { manifest } = run;
       const directories = artifactsOf(manifest, "directory");
       const cars = artifactsOf(manifest, "car");
-      expect(directories, "two directory entries").toHaveLength(2);
-      expect(cars, "two car entries (AM-05)").toHaveLength(2);
+      const groups = resolveDataGroups(manifest);
+
+      // AM-05 requires at least one directory and one archive CAR per data group — never
+      // "exactly one": a group can span several batch CARs (Run 1's 10 county + 2
+      // property_improvement batches).
+      expect(directories.length, "at least one tables directory").toBeGreaterThan(0);
+      expect(cars.length, "at least one archive CAR").toBeGreaterThan(0);
+
+      const groupsOfDirectories = new Map<string, string>();
+      for (const directory of directories) {
+        const group = groupOfDirectory(groups, directory);
+        expect.soft(group, `${directory.name}: resolves to a known data group`).not.toBeNull();
+        if (group) groupsOfDirectories.set(directory.name, group);
+      }
+      expect(
+        new Set(groupsOfDirectories.values()),
+        "at least one tables directory per data group",
+      ).toEqual(new Set(DATA_GROUPS));
+
+      const groupsOfCars = new Map<string, string>();
+      for (const directory of directories) {
+        const group = groupsOfDirectories.get(directory.name);
+        if (!group) continue;
+        const { root } = await tablesRootOnce(publicCid(directory));
+        const car = cars.find((c) => c.cid === root.county_root);
+        if (car) groupsOfCars.set(car.name, group);
+      }
+      expect(new Set(groupsOfCars.values()), "at least one archive CAR per data group").toEqual(
+        new Set(DATA_GROUPS),
+      );
+
       await checkpointText(
         "004",
         "carcids",
