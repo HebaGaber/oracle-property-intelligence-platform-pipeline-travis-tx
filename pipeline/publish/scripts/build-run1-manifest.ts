@@ -153,9 +153,14 @@ async function main(): Promise<void> {
   };
 
   const built = await buildManifest(input);
-  const checked = RunManifestV1.parse(built.manifest);
+  RunManifestV1.parse(built.manifest);
   const outPath = join(REPO_ROOT, "specs/011-publish-and-runs/draft-run1-manifest.json");
-  writeFileSync(outPath, JSON.stringify(checked, null, 2) + "\n");
+  // buildManifest() already returns the exact RFC 8785 JCS bytes its own manifest CID
+  // (built.cid) is computed from (pipeline/publish/test/manifest.test.ts "returns exact JCS
+  // bytes..."). Writing JSON.stringify(..., null, 2) here instead (pretty-printed, as this
+  // script originally did) would silently diverge the on-disk file from the bytes the CID
+  // actually names -- write built.bytes verbatim, never re-serialize.
+  writeFileSync(outPath, built.bytes);
 
   const byKind = new Map<string, number>();
   let totalBytes = 0;
