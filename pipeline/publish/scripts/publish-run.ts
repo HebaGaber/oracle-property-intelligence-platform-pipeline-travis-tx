@@ -43,6 +43,7 @@ import {
 } from "../src/cid-copy.js";
 import { FILEBASE_ENV_FILE, parseEnvFile } from "../src/cli.js";
 import { runIdentityGate } from "../src/identity-gate.js";
+import { openDuckDbEngine } from "./duckdb-engine.js";
 import {
   createPublishSteps,
   formatReport,
@@ -136,6 +137,7 @@ async function main(): Promise<number> {
       // (gate-remote) binds every part from the CID copy, the bytes the app reads.
       run: (c, { remoteOnly }) =>
         runIdentityGate({
+          openEngine: openDuckDbEngine,
           manifestBytes: c.manifestBytes,
           manifestPath: c.manifestPath,
           copyHost: args.copyHost,

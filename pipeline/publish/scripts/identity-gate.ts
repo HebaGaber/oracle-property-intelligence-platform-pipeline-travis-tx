@@ -10,6 +10,7 @@
 // otherwise from the CID copy. --remote-only never reads a local part.
 import { readFileSync } from "node:fs";
 import { runIdentityGate } from "../src/identity-gate.js";
+import { openDuckDbEngine } from "./duckdb-engine.js";
 
 function parseArgs(argv: readonly string[]) {
   const value = (flag: string): string | undefined => {
@@ -40,7 +41,10 @@ function parseArgs(argv: readonly string[]) {
 }
 
 async function main(): Promise<void> {
-  const summary = await runIdentityGate(parseArgs(process.argv.slice(2)));
+  const summary = await runIdentityGate({
+    ...parseArgs(process.argv.slice(2)),
+    openEngine: openDuckDbEngine,
+  });
   console.log(JSON.stringify(summary, null, 2));
   if (summary.result !== "PASS") process.exitCode = 1;
 }

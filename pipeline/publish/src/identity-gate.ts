@@ -11,7 +11,6 @@ import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { bindManifest, type QueryEngine, type Row } from "@countylens/query-core";
-import { DuckDBInstance } from "@duckdb/node-api";
 
 export interface IdentityGateOptions {
   /** Path of the manifest; read when `manifestBytes` is not given. */
@@ -26,6 +25,13 @@ export interface IdentityGateOptions {
   pids?: readonly string[] | null;
   /** Never read a local part: bind every table part from the CID copy. */
   remoteOnly?: boolean;
+  /** Opens the query engine (AD-19: DuckDB is wired by the caller, scripts/duckdb-engine.ts). */
+  openEngine: () => Promise<OpenedEngine>;
+}
+
+export interface OpenedEngine {
+  engine: QueryEngine;
+  close: () => void;
 }
 
 export interface IdentityGateSummary {
@@ -71,16 +77,9 @@ export async function runIdentityGate(options: IdentityGateOptions): Promise<Ide
   };
   const emitted = manifest.coverage["permits_emitted"]?.count ?? null;
 
-  const db = await DuckDBInstance.create(":memory:");
-  const conn = await db.connect();
+  const opened = await options.openEngine();
+  const { engine } = opened;
   try {
-    await conn.run("LOAD parquet; LOAD httpfs; LOAD json; LOAD icu; SET TimeZone = 'UTC'");
-    const engine: QueryEngine = {
-      run: async (sql) => {
-        await conn.run(sql);
-      },
-      all: async (sql) => (await conn.runAndReadAll(sql)).getRowObjectsJson() as Row[],
-    };
     // A local part is read only after its bytes hash to the manifest's SHA-256 (a file changed
     // after the manifest was built must not pass the gate).
     const failures: string[] = [];
@@ -152,6 +151,6 @@ export async function runIdentityGate(options: IdentityGateOptions): Promise<Ide
       failures,
     };
   } finally {
-    conn.closeSync();
+    opened.close();
   }
 }

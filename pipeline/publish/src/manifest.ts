@@ -466,7 +466,12 @@ export function assertPermitLinkReconciliation(args: {
 }): void {
   const { coverage, linkedPermits, austinRecords } = args;
   if (linkedPermits === undefined) return;
-  if (!PERMIT_EXCLUSION_KEYS.every((k) => coverage[k] !== undefined)) return;
+  // Given a linked total, the check must run: a missing key is a failure, never a silent skip.
+  const missing = PERMIT_EXCLUSION_KEYS.filter((k) => coverage[k] === undefined);
+  if (missing.length > 0)
+    throw new Error(
+      `permit link reconciliation cannot run: coverage lacks ${missing.join(", ")} (linkedPermits ${linkedPermits} was given)`,
+    );
   if (!Number.isInteger(linkedPermits) || linkedPermits < 0)
     throw new Error(`linkedPermits must be a non-negative integer, got ${String(linkedPermits)}`);
   const excluded = PERMIT_EXCLUSION_KEYS.reduce(
@@ -530,6 +535,10 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
     limitations: input.limitations,
   });
   const austin = manifest.sources.find((s) => s.name === SOURCE_ORDER[0]);
+  if (!austin && input.linkedPermits !== undefined)
+    throw new Error(
+      `permit link reconciliation cannot run: no ${SOURCE_ORDER[0]} source in the manifest`,
+    );
   if (austin)
     assertPermitLinkReconciliation({
       coverage: input.coverage,

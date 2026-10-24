@@ -302,7 +302,7 @@ describe("permit link reconciliation (A-16 #6)", () => {
     ).toThrow(/reconciliation failed: excluded 373712 .* \+ linked 2007513 = 2381225.*2381226/);
   });
 
-  it("is skipped without a linked total or without all five keys", () => {
+  it("is skipped only without a linked total; with one, a missing key fails", () => {
     expect(() =>
       assertPermitLinkReconciliation({
         coverage: run1,
@@ -316,7 +316,7 @@ describe("permit link reconciliation (A-16 #6)", () => {
         linkedPermits: 5,
         austinRecords: 1,
       }),
-    ).not.toThrow();
+    ).toThrow(/cannot run: coverage lacks permits_no_tcad_id/);
   });
 
   it("fails the build through buildRunManifest when linkedPermits is wrong, passes when right", async () => {
