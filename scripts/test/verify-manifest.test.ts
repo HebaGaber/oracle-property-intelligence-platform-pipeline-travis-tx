@@ -432,7 +432,8 @@ describe("resume (--resume-from)", () => {
 
     const resumeSkip = parseResumeLog(lines.join("\n"));
     expect(resumeSkip.size).toBeGreaterThanOrEqual(firstReport.artifacts.length);
-    for (const c of firstReport.artifacts) expect(resumeSkip.has(resumeKey(c.gateway, c.name))).toBe(true);
+    for (const c of firstReport.artifacts)
+      expect(resumeSkip.has(resumeKey(c.gateway, c.name))).toBe(true);
 
     // The manifest self-check is deliberately never skipped (cheap, correctness-critical), so
     // the fetch here must still work for it -- only the artifact CIDs should go unrequested.

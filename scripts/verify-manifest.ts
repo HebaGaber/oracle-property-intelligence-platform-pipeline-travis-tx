@@ -482,7 +482,9 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
           ok: true,
         };
         artifactChecks[idx] = check;
-        log(`ok   ${gateway} ${artifact.name} ${field === "manifest" ? "cid" : field}=${check.cid} resumed from a prior run, not re-fetched`);
+        log(
+          `ok   ${gateway} ${artifact.name} ${field === "manifest" ? "cid" : field}=${check.cid} resumed from a prior run, not re-fetched`,
+        );
         idx += 1;
         continue;
       }
@@ -639,7 +641,9 @@ if (process.argv[1] !== undefined && import.meta.url === new URL(process.argv[1]
   if (args.resumeFrom !== undefined) {
     const priorText = readFileSync(args.resumeFrom, "utf8");
     resumeSkip = parseResumeLog(priorText);
-    console.error(`--resume-from ${args.resumeFrom}: skipping ${resumeSkip.size} already-ok checks`);
+    console.error(
+      `--resume-from ${args.resumeFrom}: skipping ${resumeSkip.size} already-ok checks`,
+    );
   }
   try {
     const report = await verifyManifest({
