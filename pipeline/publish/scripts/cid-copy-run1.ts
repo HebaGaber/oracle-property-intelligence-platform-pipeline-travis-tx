@@ -10,7 +10,11 @@
 // Run from the repo root:
 //   pnpm --filter @countylens/publish exec tsx scripts/cid-copy-run1.ts
 import { resolve } from "node:path";
-import { copyManifestObjects, createCidCopyClients, resolveCidCopyBucket } from "../src/cid-copy.js";
+import {
+  copyManifestObjects,
+  createCidCopyClients,
+  resolveCidCopyBucket,
+} from "../src/cid-copy.js";
 
 const repoRoot = resolve(new URL("../../..", import.meta.url).pathname);
 const manifestPath = resolve(repoRoot, "runs/travis-full-run1-20261023/manifest.json");
