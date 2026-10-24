@@ -1,0 +1,20 @@
+{
+  "purpose": "Resume journal for the permits identity fix and Run 2 (correction) publish. A step is done only when its marker is set after its work is committed.",
+  "decisions": {
+    "publish": "Correction run today (Recommended)",
+    "dbRepair": "Targeted backfill (Recommended)"
+  },
+  "steps": {
+    "P0-preflight": { "status": "done", "at": "2026-10-24" },
+    "P1a-code-fix": { "status": "pending" },
+    "P1b-identity-test": { "status": "pending" },
+    "P1c-backfill-script": { "status": "pending" },
+    "P1d-reexport-driver": { "status": "pending" },
+    "P1e-run2-manifest-and-publish-driver": { "status": "pending" },
+    "P2-backfill-run": { "status": "pending" },
+    "P3-reexport-and-identity-gate": { "status": "pending" },
+    "P4-publish-run2": { "status": "pending" },
+    "P5-prove-live": { "status": "pending" },
+    "P6-close": { "status": "pending" }
+  }
+}
