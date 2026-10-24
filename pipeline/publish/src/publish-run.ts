@@ -22,6 +22,7 @@
 // env only and every logged line is redact()ed.
 import { createHash } from "node:crypto";
 import {
+  createReadStream,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -121,10 +122,26 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function writeJson(path: string, value: unknown): void {
+/** Temp file + rename: a crash never leaves a truncated receipt or index behind. */
+function writeAtomic(path: string, data: string | Uint8Array): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, data);
+  renameSync(tmp, path);
 }
+
+function writeJson(path: string, value: unknown): void {
+  writeAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+const sha256OfFile = (path: string): Promise<string> =>
+  new Promise((done, fail) => {
+    const hash = createHash("sha256");
+    createReadStream(path)
+      .on("data", (chunk) => hash.update(chunk))
+      .on("error", fail)
+      .on("end", () => done(hash.digest("hex")));
+  });
 
 function readJson(path: string): Record<string, unknown> | undefined {
   try {
@@ -870,6 +887,12 @@ function releaseStep(deps: ReleaseStepDeps): StepImpl {
         for (const i of pending) {
           if (!existsSync(i.want.path))
             throw new Error(`${i.want.name}: ${rel(ctx, i.want.path)} does not exist`);
+          // A published asset is never replaced later, so a wrong local CAR must not go out.
+          const got = await sha256OfFile(i.want.path);
+          if (got !== i.want.sha256)
+            throw new Error(
+              `${i.want.name}: ${rel(ctx, i.want.path)} hashes to ${got}, the manifest says ${i.want.sha256}`,
+            );
           if (i.replace) await deps.gh.deleteAsset(tag, i.want.name);
         }
         const files = pending.map((i) => i.want.path);
@@ -926,15 +949,20 @@ function indexStep(deps: IndexStepDeps): StepImpl {
         manifestCid: ctx.manifestCid,
         finishedAt: ctx.manifest.finishedAt,
       });
-      writeFileSync(indexPath(ctx), runsIndexBytes(next));
+      const before = existsSync(indexPath(ctx)) ? readFileSync(indexPath(ctx)) : null;
+      writeAtomic(indexPath(ctx), runsIndexBytes(next));
       const check = await verifyCommittedRuns(join(ctx.repoRoot, "runs"));
-      if (!check.ok)
+      if (!check.ok) {
+        // Put the previous index back, so a rerun attempts (and verifies) the append again.
+        if (before === null) rmSync(indexPath(ctx), { force: true });
+        else writeAtomic(indexPath(ctx), before);
         throw new Error(
           `runs/ failed verification after the index write: ${check.checks
             .filter((c) => !c.ok)
             .map((c) => `${c.runId}: ${c.reason}`)
             .join("; ")}`,
         );
+      }
       deps.log(`runs/index.json now lists ${ctx.runId}`);
     },
   };

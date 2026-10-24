@@ -763,6 +763,24 @@ describe("release step", () => {
     expect(g.calls).toHaveLength(1);
   });
 
+  it("refuses to attach a local CAR whose bytes no longer hash to the manifest", async () => {
+    const { ctx } = await realContext();
+    const g = fakeGh();
+    g.bind(ctx);
+    const car = releaseAssets(ctx)[0]?.path as string;
+    writeFileSync(car, Buffer.concat([readFileSync(car), Buffer.from("x")]));
+    const h = harness(ctx, { gh: g.gh });
+    const r = await runPublish({
+      ctx,
+      impls: createPublishSteps(h.deps),
+      dryRun: false,
+      step: "release",
+    });
+    expect(r.ok).toBe(false);
+    expect(JSON.stringify(r.steps.at(-1))).toMatch(/hashes to/);
+    expect(g.calls).toEqual([]);
+  });
+
   it("uploads only missing assets to an existing release, and never replaces an asset with a different SHA-256", async () => {
     const { ctx } = await realContext();
     const assets = releaseAssets(ctx);
