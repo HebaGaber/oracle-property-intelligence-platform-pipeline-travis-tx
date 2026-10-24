@@ -79,6 +79,9 @@ export const RUN_INDEX_TEXTS = Object.freeze({
   empty: "No runs published yet",
 });
 
+/** Permit rows rendered per page: all rows stay in memory, one page is in the DOM. */
+export const PERMITS_PAGE_SIZE = 200;
+
 /** Permits-page empty state and error banners (TC-029; engine failure; unreadable rows). */
 export const PERMITS_TEXTS = Object.freeze({
   /** Only when `coverage.permits_emitted.count` is 0 and the query returns 0 rows. */
@@ -89,6 +92,12 @@ export const PERMITS_TEXTS = Object.freeze({
   engineFailure: "Query engine could not start",
   /** A listed row does not match contract/v1 `v_roofing_permit` (ERR-11); the detail goes to the console. */
   rowsUnreadable: "Permit rows could not be read from this run",
+  /** The pager range line; `first`/`last` are 1-based and inclusive. */
+  showing: (first: number, last: number, total: number): string =>
+    `Showing ${first}\u2013${last} of ${total.toLocaleString("en-US")}`,
+  previousPage: "Previous page",
+  nextPage: "Next page",
+  pagesLabel: "Permits pages",
 });
 
 /** Accessible names of the two progress bars (TC-024); `aria-valuetext` carries the stage text. */

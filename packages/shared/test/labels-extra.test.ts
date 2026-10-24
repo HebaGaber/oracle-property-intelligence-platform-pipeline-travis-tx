@@ -125,12 +125,16 @@ describe("A-03-TC-027: fixed UI texts of packages/shared (plan § Fixed texts an
       );
     });
 
-    it("has exactly the keys empty, countMismatch, engineFailure and rowsUnreadable", () => {
+    it("has exactly the state/error keys plus the A-11 pager keys", () => {
       expect(Object.keys(PERMITS_TEXTS).sort()).toEqual([
         "countMismatch",
         "empty",
         "engineFailure",
+        "nextPage",
+        "pagesLabel",
+        "previousPage",
         "rowsUnreadable",
+        "showing",
       ]);
     });
   });

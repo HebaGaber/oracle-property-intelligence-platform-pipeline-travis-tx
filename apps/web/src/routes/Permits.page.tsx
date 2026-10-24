@@ -4,8 +4,11 @@
 // aria-busy container; the table (≥ 600 px) or cards (< 600 px) mount only in `ready`, so no
 // empty table ever flashes (FR-008); `empty` only when the manifest count and the row count are
 // both 0 (TC-029); any other difference is the count-mismatch error (FR-009); an engine failure
-// is the fixed engine text. One page ordered by permit_number: no pagination, sorting, sticky
-// header or column controls (A-13). Every absent value shows its Missing-reason label; every row
+// is the fixed engine text. Rows are ordered by permit_number and ALL stay in memory (the count
+// check above needs every row), but only one client-side page of PERMITS_PAGE_SIZE is rendered
+// with a Previous/Next pager: at full-county scale (about 15,000 rows) rendering every row is
+// roughly 950,000 DOM elements and freezes slow browsers. No sorting, sticky header or column
+// controls (A-13). Every absent value shows its Missing-reason label; every row
 // ends with the § 8 provenance line. Texts come from @countylens/shared, never retyped here.
 import {
   useCallback,
@@ -17,6 +20,7 @@ import {
 } from "react";
 import type { Missing } from "@countylens/contract";
 import {
+  PERMITS_PAGE_SIZE,
   PERMITS_TEXTS,
   PROGRESS_LABELS,
   RUN_INDEX_TEXTS,
@@ -268,6 +272,51 @@ function PermitCards({ rows }: { readonly rows: readonly PermitListRow[] }): Rea
   );
 }
 
+/** The pager: range text plus Previous/Next; `page` is 0-based. */
+function PermitsPager({
+  page,
+  total,
+  onPage,
+}: {
+  readonly page: number;
+  readonly total: number;
+  readonly onPage: (page: number) => void;
+}): ReactElement {
+  const first = page * PERMITS_PAGE_SIZE + 1;
+  const last = Math.min(total, first + PERMITS_PAGE_SIZE - 1);
+  const pages = Math.max(1, Math.ceil(total / PERMITS_PAGE_SIZE));
+  return (
+    <nav className={styles.pager} aria-label={PERMITS_TEXTS.pagesLabel}>
+      <p
+        className={styles.range}
+        data-testid="permits-range"
+        data-first={first}
+        data-last={last}
+        data-total={total}
+        aria-live="polite"
+      >
+        {PERMITS_TEXTS.showing(first, last, total)}
+      </p>
+      <button
+        type="button"
+        className={styles.pagerButton}
+        disabled={page <= 0}
+        onClick={() => onPage(page - 1)}
+      >
+        {PERMITS_TEXTS.previousPage}
+      </button>
+      <button
+        type="button"
+        className={styles.pagerButton}
+        disabled={page >= pages - 1}
+        onClick={() => onPage(page + 1)}
+      >
+        {PERMITS_TEXTS.nextPage}
+      </button>
+    </nav>
+  );
+}
+
 export interface PermitsPageProps {
   readonly load: PermitsLoader;
 }
@@ -275,10 +324,12 @@ export interface PermitsPageProps {
 export function PermitsPage({ load }: PermitsPageProps): ReactElement {
   const [state, setState] = useState<PermitsState>({ kind: "loading", stage: STAGE_TEXTS.engine });
   const [attempt, setAttempt] = useState(0);
+  const [page, setPage] = useState(0);
   const table = useMediaQuery(TABLE_MEDIA_QUERY);
 
   const retry = useCallback(() => {
     setState({ kind: "loading", stage: STAGE_TEXTS.engine });
+    setPage(0);
     setAttempt((n) => n + 1);
   }, []);
 
@@ -305,6 +356,11 @@ export function PermitsPage({ load }: PermitsPageProps): ReactElement {
     );
     return () => controller.abort();
   }, [load, attempt]);
+
+  const visible =
+    state.kind === "ready"
+      ? state.data.rows.slice(page * PERMITS_PAGE_SIZE, (page + 1) * PERMITS_PAGE_SIZE)
+      : [];
 
   return (
     <section
@@ -333,7 +389,8 @@ export function PermitsPage({ load }: PermitsPageProps): ReactElement {
               <StatusPill status="warning" text={state.data.fallbackLabel} />
             )}
           </EngineLine>
-          {table ? <PermitsTable rows={state.data.rows} /> : <PermitCards rows={state.data.rows} />}
+          <PermitsPager page={page} total={state.data.rows.length} onPage={setPage} />
+          {table ? <PermitsTable rows={visible} /> : <PermitCards rows={visible} />}
         </>
       ) : null}
     </section>

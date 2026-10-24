@@ -7,15 +7,16 @@
 // and config keys" and emitted by apps/web (FallbackChip.tsx, data/fetch-by-cid.ts); they are
 // not exported by @countylens/shared, so they are carried here verbatim.
 //
-// DOM contract (G-C4): the list is `table tbody tr` at desktop (one row per permit); the
+// DOM contract (G-C4): the list is `table tbody tr` at desktop (one row per permit on the current
+// page, 200 per page, with the total in the range line: lib/permits-pages.ts); the
 // fallback label is its own text element; the error banner is `role="alert"` with the fixed text
 // as its own text element; no `table` renders in the error state.
-import type { Locator, Page, TestInfo } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 import type { RunManifestV1 } from "@countylens/contract";
-import { PERMITS_TEXTS } from "@countylens/shared";
 import { expect, test } from "./lib/fixtures.js";
 import { checkpoint } from "./lib/evidence.js";
 import { artifactsOf, publicCid } from "./lib/manifest.js";
+import { ROW, expectFirstPage, waitForPermitRows } from "./lib/permits-pages.js";
 import { harnessConfig, requireCidCopyHost } from "./lib/runtime.js";
 
 /** plan § "Fixed texts": `apps/web/src/data/fetch-by-cid.ts` BOTH_HOSTS_DOWN_TEXT (TC-032 step 5). */
@@ -31,8 +32,6 @@ const FALLBACK_AFTER_MS = 4_000;
 const DELAY_MS = 5_000;
 /** CDP event delivery sits between the page's timer and the harness clock. */
 const TIMING_SLACK_MS = 100;
-
-const ROW = "table tbody tr";
 
 function cidOfUrl(url: URL): string {
   return url.pathname.split("/").filter(Boolean).at(-1) ?? "";
@@ -102,31 +101,6 @@ async function attachNetwork(testInfo: TestInfo, name: string, log: NetworkLog):
   });
 }
 
-/** Waits for rows, failing with the banner or empty-state text the page showed instead. */
-async function waitForPermitRows(page: Page, timeoutMs = 180_000): Promise<Locator> {
-  const rows = page.locator(ROW);
-  const alert = page.getByRole("alert");
-  const empty = page.getByText(PERMITS_TEXTS.empty, { exact: true });
-  await expect
-    .poll(
-      async () => {
-        if ((await rows.count()) > 0) return "rows";
-        if ((await alert.count()) > 0) return "alert";
-        if ((await empty.count()) > 0) return "empty";
-        return "pending";
-      },
-      { timeout: timeoutMs, message: "the Permits list, an error banner or the empty state" },
-    )
-    .not.toBe("pending");
-  if ((await alert.count()) > 0) {
-    throw new Error(`the Permits page shows an error banner: ${await alert.first().innerText()}`);
-  }
-  if ((await empty.count()) > 0) {
-    throw new Error(`the Permits page shows the empty state: ${PERMITS_TEXTS.empty}`);
-  }
-  return rows;
-}
-
 /** The gateway reads: `/ipfs/{cid}` on FILEBASE_GATEWAY_HOST, every CID listed by the manifest. */
 function expectGatewayReads(
   log: NetworkLog,
@@ -167,14 +141,14 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
 
       // Steps 2–4: the list still renders, read from the gateway, labelled.
       await page.goto("/permits");
-      const rows = await waitForPermitRows(page);
+      await waitForPermitRows(page);
       await attachNetwork(testInfo, "network-copy-aborted.json", network);
       expect(
         network.requests.some((request) => request.url.hostname === copyHost),
         "the copy was tried first",
       ).toBe(true);
       expectGatewayReads(network, gatewayHost, manifest, manifestCid);
-      await expect(rows).toHaveCount(permitsPublished(manifest));
+      await expectFirstPage(page, permitsPublished(manifest));
       await expect(page.getByText(fallbackLabel(gatewayHost), { exact: true })).toBeVisible();
       await checkpoint(page, "032", "2-4-gateway-fallback-labelled");
 
@@ -203,7 +177,7 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
 
       // Steps 2–3: the same CIDs are then read from the gateway and answer 200/206.
       await page.goto("/permits");
-      const rows = await waitForPermitRows(page);
+      await waitForPermitRows(page);
       await attachNetwork(testInfo, "network-copy-500.json", network);
       expect(
         network.responses.some(
@@ -222,7 +196,7 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
 
       // Expected result: the 500 is never shown as data; the rows are labelled.
       await expect(page.getByRole("alert")).toHaveCount(0);
-      await expect(rows).toHaveCount(permitsPublished(manifest));
+      await expectFirstPage(page, permitsPublished(manifest));
       await expect(page.getByText(fallbackLabel(gatewayHost), { exact: true })).toBeVisible();
       await checkpoint(page, "033", "expected-rows-labelled-no-500");
     });
@@ -247,7 +221,7 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
 
       // Steps 2–3: the gateway request starts between 4.0 s and 5.0 s after the copy request.
       await page.goto("/permits");
-      const rows = await waitForPermitRows(page);
+      await waitForPermitRows(page);
       await attachNetwork(testInfo, "network-copy-delayed.json", network);
       const firstCopy = network.requests.find((request) => request.url.hostname === copyHost);
       const firstGateway = network.requests.find((request) => request.url.hostname === gatewayHost);
@@ -271,7 +245,7 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
       expectGatewayReads(network, gatewayHost, manifest, manifestCid);
 
       // Expected result: rows from the gateway, labelled.
-      await expect(rows).toHaveCount(permitsPublished(manifest));
+      await expectFirstPage(page, permitsPublished(manifest));
       await expect(page.getByText(fallbackLabel(gatewayHost), { exact: true })).toBeVisible();
       await checkpoint(page, "034", "expected-rows-labelled-after-timeout");
     });

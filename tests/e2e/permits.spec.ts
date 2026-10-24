@@ -14,7 +14,7 @@
 // - The engine line text is its own text element (its `memory` icon is `aria-hidden="true"`).
 // - At ≥ 600 px the list is a `<table>` whose column headers read, in order: Permit number,
 //   Improvement status, Status class, Issue date, Contractor, Missing data, Provenance; one
-//   `tbody tr` per permit, each with `data-missing` = the JSON of the row's `missing` list
+//   `tbody tr` per permit on the current page, each with `data-missing` = the JSON of the row's `missing` list
 //   (`[{"field","reason"}, …]`) and one `td` per column. Cards below 600 px (`article` with an
 //   `h3` permit number) carry the same `data-missing`; these cases run at desktop.
 // - `Issue date` is the plain text `YYYY-MM-DD`; `Status class` is `open` / `stalled` /
@@ -28,14 +28,19 @@
 // - The `Provenance` cell holds `a[href="{source_url}"]`, `<time datetime="{captured_at}">`,
 //   `[data-cid="{table_cid}"][title="{table_cid}"]` with the middle-truncated text, and the
 //   text `run {run_id}`.
-// Full-county adaptation 2026-10-24 (A-11 Run 2, PO approved: "Yes, adapt them"): the page lists
+// Full-county adaptation 2026-10-24 (A-11 Run 2, PO approved: "Yes, adapt them"): the list holds
 // all ~15,000 permits across decades, so (a) nothing pins the pilot's issue month, (b) every row
-// is checked once, in one in-page pass, for the cheap invariants (`auditAllRows`), and (c) the
-// full per-row assertions run on a deterministic sample (`snapshotRows`: the first
-// SAMPLE_HEAD rows, every SAMPLE_STRIDE-th row and the NAMED_PERMITS). Row counts stay exact.
+// is checked for the cheap invariants (`auditPageRows`, one in-page pass per page), and (c) the
+// full per-row assertions run on a deterministic sample (`readRows`: the first SAMPLE_HEAD rows,
+// every SAMPLE_STRIDE-th row and the NAMED_PERMITS). Totals stay exact.
+// Paging 2026-10-25 (A-11, PO approved): the page shows 200 rows at a time with a range line
+// `Showing 1–200 of N` and Previous / Next buttons (lib/permits-pages.ts), because one page of
+// every row built ~950,000 DOM elements and froze slower browsers. The total is read from the
+// range line and must equal `permits_emitted`; page 1 and the last page are checked for their
+// row counts and button states; `walkPermits` visits every page, so every row is still audited.
 // - TC-030 reads `NO_TCAD_PERMIT_NUMBERS` (comma-separated, from the run's capture receipt; the
 //   receipt is internal, so the operator exports it) and checks it against the manifest count.
-import type { Locator, Page, TestInfo } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 import { MISSING_REASONS, Missing, VIEWS, type RunManifestV1 } from "@countylens/contract";
 import {
   CONTRACTOR_NOT_PRINTED_LABEL,
@@ -49,7 +54,7 @@ import { z } from "zod";
 import { expect, test } from "./lib/fixtures.js";
 import { checkpoint } from "./lib/evidence.js";
 import { artifactsOf, publicCid } from "./lib/manifest.js";
-import { PERMITS_LOAD_WAIT_MS } from "./lib/perf.js";
+import { ROW, expectFirstPage, waitForPermitRows, walkAllPages } from "./lib/permits-pages.js";
 import { harnessConfig, requireCidCopyHost, runtimeUrl, type PublishedRun } from "./lib/runtime.js";
 
 /** plan § "Fixed texts": `apps/web/src/components/EngineLine.tsx` ENGINE_LINE_TEXT (TC-023). */
@@ -90,8 +95,6 @@ const COL = {
   provenance: 6,
 } as const;
 
-const ROW = "table tbody tr";
-
 const FONT_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];
 
 const NO_TCAD_ENV = "NO_TCAD_PERMIT_NUMBERS";
@@ -125,6 +128,7 @@ function auditParamsOf(run: PublishedRun): AuditParams {
     contractorColumn: COL.contractor,
     blankTexts: [...BLANK_TEXTS],
     rawCodes: [...MISSING_REASONS],
+    offset: 0,
   };
 }
 
@@ -269,34 +273,6 @@ function readStates(page: Page): Promise<DomState[]> {
   return page.evaluate(() => (window as unknown as { __a03States?: DomState[] }).__a03States ?? []);
 }
 
-/**
- * Waits until the list rendered rows, or fails naming the error banner or the empty state the
- * page showed instead. Returns the rows locator.
- */
-async function waitForPermitRows(page: Page, timeoutMs = PERMITS_LOAD_WAIT_MS): Promise<Locator> {
-  const rows = page.locator(ROW);
-  const alert = page.getByRole("alert");
-  const empty = page.getByText(PERMITS_TEXTS.empty, { exact: true });
-  await expect
-    .poll(
-      async () => {
-        if ((await rows.count()) > 0) return "rows";
-        if ((await alert.count()) > 0) return "alert";
-        if ((await empty.count()) > 0) return "empty";
-        return "pending";
-      },
-      { timeout: timeoutMs, message: "the Permits list, an error banner or the empty state" },
-    )
-    .not.toBe("pending");
-  if ((await alert.count()) > 0) {
-    throw new Error(`the Permits page shows an error banner: ${await alert.first().innerText()}`);
-  }
-  if ((await empty.count()) > 0) {
-    throw new Error(`the Permits page shows the empty state: ${PERMITS_TEXTS.empty}`);
-  }
-  return rows;
-}
-
 interface PillSnapshot {
   reason: string | null;
   status: string | null;
@@ -325,24 +301,27 @@ interface RowSnapshot {
 }
 
 /**
- * One structured read of the sampled rows (SAMPLE_HEAD, SAMPLE_STRIDE, NAMED_PERMITS): visible
- * texts (outside `aria-hidden`), hooks and attributes.
+ * One structured read of the sampled rows of the current page (SAMPLE_HEAD, SAMPLE_STRIDE,
+ * NAMED_PERMITS, by global row index = `offset` + position): visible texts (outside
+ * `aria-hidden`), hooks and attributes.
  */
 function readRows(
   page: Page,
   contractorColumn: number,
   provenanceColumn: number,
+  offset: number,
 ): Promise<RowSnapshot[]> {
   return page.locator(ROW).evaluateAll(
     (rows, columns) => {
       const normalize = (text: string): string => text.replace(/\s+/g, " ").trim();
-      const picked = rows.flatMap((row, index) =>
-        index < columns.head ||
-        index % columns.stride === 0 ||
-        columns.named.includes(normalize(row.querySelector("td")?.textContent ?? ""))
+      const picked = rows.flatMap((row, position) => {
+        const index = columns.offset + position;
+        return index < columns.head ||
+          index % columns.stride === 0 ||
+          columns.named.includes(normalize(row.querySelector("td")?.textContent ?? ""))
           ? [{ row, index }]
-          : [],
-      );
+          : [];
+      });
       const visible = (node: Node): string => {
         if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
         if (!(node instanceof Element) || node.getAttribute("aria-hidden") === "true") return "";
@@ -413,16 +392,12 @@ function readRows(
     {
       contractor: contractorColumn,
       provenance: provenanceColumn,
+      offset,
       head: SAMPLE_HEAD,
       stride: SAMPLE_STRIDE,
       named: NAMED_PERMITS,
     },
   );
-}
-
-/** The deterministic sample of rows that get the full per-row assertions. */
-function snapshotRows(page: Page): Promise<RowSnapshot[]> {
-  return readRows(page, COL.contractor, COL.provenance);
 }
 
 function parseMissing(row: RowSnapshot): z.infer<typeof MissingList> {
@@ -451,26 +426,47 @@ interface AuditParams {
   contractorColumn: number;
   blankTexts: string[];
   rawCodes: string[];
+  /** Global index of the current page's first row (0-based), so a failure names the real row. */
+  offset: number;
 }
+
+type Violations = Record<
+  "dates" | "columns" | "statusClass" | "provenance" | "blankCells" | "missing" | "contractor",
+  string[]
+>;
 
 interface RowAudit {
   rows: number;
   /** Violations per invariant (each entry names the row index), capped per invariant. */
-  violations: Record<
-    "dates" | "columns" | "statusClass" | "provenance" | "blankCells" | "missing" | "contractor",
-    string[]
-  >;
+  violations: Violations;
+  /** The permit number (first cell) of every row of the page, in order. */
+  permitNumbers: string[];
+}
+
+const VIOLATION_CAP = 20;
+
+function emptyViolations(): Violations {
+  return {
+    dates: [],
+    columns: [],
+    statusClass: [],
+    provenance: [],
+    blankCells: [],
+    missing: [],
+    contractor: [],
+  };
 }
 
 /**
- * The cheap invariants of every row, checked once for ALL rows in one in-page pass (a per-row
+ * The cheap invariants of every row of the current page, checked in one in-page pass (a per-row
  * Playwright round trip does not scale to ~15,000 rows). Each invariant lists the offending
- * rows (first 20), so a failure still names the row. Full-county adaptation 2026-10-24.
+ * rows (first 20), so a failure still names the row (by global index). `walkPermits` runs it on
+ * every page. Full-county adaptation 2026-10-24, paged 2026-10-25.
  */
-function auditAllRows(page: Page, params: AuditParams): Promise<RowAudit> {
+function auditPageRows(page: Page, params: AuditParams): Promise<RowAudit> {
   return page.locator(ROW).evaluateAll((rows, p) => {
     const CAP = 20;
-    const violations: RowAudit["violations"] = {
+    const violations: Violations = {
       dates: [],
       columns: [],
       statusClass: [],
@@ -479,7 +475,7 @@ function auditAllRows(page: Page, params: AuditParams): Promise<RowAudit> {
       missing: [],
       contractor: [],
     };
-    const flag = (key: keyof RowAudit["violations"], index: number, why: string): void => {
+    const flag = (key: keyof Violations, index: number, why: string): void => {
       if (violations[key].length < CAP) violations[key].push(`row ${index}: ${why}`);
     };
     const normalize = (text: string): string => text.replace(/\s+/g, " ").trim();
@@ -494,7 +490,8 @@ function auditAllRows(page: Page, params: AuditParams): Promise<RowAudit> {
     const blank = new Set(p.blankTexts);
     const raw = new Set(p.rawCodes);
 
-    rows.forEach((row, index) => {
+    rows.forEach((row, position) => {
+      const index = p.offset + position;
       const tds = Array.from(row.querySelectorAll("td"));
       const cells = tds.map((td) => normalize(visible(td)));
       if (tds.length !== p.columns) flag("columns", index, `${tds.length} cells`);
@@ -590,8 +587,69 @@ function auditAllRows(page: Page, params: AuditParams): Promise<RowAudit> {
         flag("contractor", index, "unresolved without contractor_unresolved in missing");
       }
     });
-    return { rows: rows.length, violations };
+    const permitNumbers = rows.map((row) => normalize(row.querySelector("td")?.textContent ?? ""));
+    return { rows: rows.length, violations, permitNumbers };
   }, params);
+}
+
+interface PermitsWalk {
+  pages: number;
+  /** Rows audited over all pages. */
+  rows: number;
+  violations: Violations;
+  /** The permit number of every row, in list order. */
+  permitNumbers: string[];
+  /** The sampled rows with their full per-row snapshot (only when requested). */
+  snapshots: RowSnapshot[];
+  /** Per `scanTexts` entry: whether it appeared in the text of any page. */
+  textHits: boolean[];
+}
+
+/**
+ * Visits every page of the list (from page 1) and audits every row: the cheap invariants on all
+ * rows, the full snapshot on the sample (`snapshots: true`), and an optional text scan of each
+ * page. Also asserts each page's range line, row count and the button states at the ends
+ * (lib/permits-pages.ts `walkAllPages`).
+ */
+async function walkPermits(
+  page: Page,
+  run: PublishedRun,
+  options: { snapshots: boolean; scanTexts?: string[] },
+): Promise<PermitsWalk> {
+  const total = coverageCount(run.manifest, "permits_emitted");
+  const params = auditParamsOf(run);
+  const scanTexts = options.scanTexts ?? [];
+  const walk: PermitsWalk = {
+    pages: 0,
+    rows: 0,
+    violations: emptyViolations(),
+    permitNumbers: [],
+    snapshots: [],
+    textHits: scanTexts.map(() => false),
+  };
+  walk.pages = await walkAllPages(page, total, async ({ offset }) => {
+    const audit = await auditPageRows(page, { ...params, offset });
+    walk.rows += audit.rows;
+    walk.permitNumbers.push(...audit.permitNumbers);
+    for (const key of Object.keys(walk.violations) as (keyof Violations)[]) {
+      walk.violations[key].push(...audit.violations[key]);
+      walk.violations[key].splice(VIOLATION_CAP);
+    }
+    if (options.snapshots) {
+      walk.snapshots.push(...(await readRows(page, COL.contractor, COL.provenance, offset)));
+    }
+    if (scanTexts.length > 0) {
+      const hits = await page.evaluate(
+        (candidates) =>
+          candidates.map((candidate) => (document.body.textContent ?? "").includes(candidate)),
+        scanTexts,
+      );
+      hits.forEach((hit, position) => {
+        if (hit) walk.textHits[position] = true;
+      });
+    }
+  });
+  return walk;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -613,7 +671,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       // Step 1: progress bar, then the table; public, no sign-in.
       await page.goto("/permits");
       await expect(page.locator('[data-route="permits"]')).toBeVisible();
-      const rows = await waitForPermitRows(page);
+      await waitForPermitRows(page);
       await attachNetwork(testInfo, network);
       const states = await readStates(page);
       expect(
@@ -636,16 +694,17 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
         "at least one table part was read from the copy",
       ).toBe(true);
 
-      // Step 3: one row per published permit.
+      // Step 3: one row per published permit. The page reports permits_emitted as its total,
+      // page 1 shows the first 200 rows, and the pages together hold every row (step 4 walks them).
       const count = coverageCount(manifest, "permits_emitted");
-      await expect(rows).toHaveCount(count);
+      await expectFirstPage(page, count);
       await checkpoint(page, "020", "3-one-row-per-permit");
 
-      // Step 4 (full-county adaptation 2026-10-24): every row's issue_date is a valid
-      // YYYY-MM-DD date not after the run's as_of (manifest finishedAt). One in-page pass.
-      const audit = await auditAllRows(page, auditParamsOf(run));
-      expect(audit.rows, "the audit saw every row").toBe(count);
-      expect(audit.violations.dates, "issue_date is a valid date not after as_of").toEqual([]);
+      // Step 4 (full-county adaptation 2026-10-24, paged 2026-10-25): on every page, every row's
+      // issue_date is a valid YYYY-MM-DD date not after the run's as_of (manifest finishedAt).
+      const walk = await walkPermits(page, run, { snapshots: false });
+      expect(walk.rows, "the audit saw every row on every page").toBe(count);
+      expect(walk.violations.dates, "issue_date is a valid date not after as_of").toEqual([]);
 
       // Expected result: read from the copy, so no fallback label.
       await expect(page.getByText(FALLBACK_LABEL)).toHaveCount(0);
@@ -663,7 +722,7 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       const statusClasses = statusClassValues();
 
       await page.goto("/permits");
-      const rows = await waitForPermitRows(page);
+      await waitForPermitRows(page);
 
       // Step 2: the headers, in order.
       const headers = await page
@@ -675,15 +734,18 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       expect(headers, "column headers").toEqual([...HEADERS]);
       await checkpoint(page, "021", "2-headers");
 
-      // Steps 3–4 (full-county adaptation 2026-10-24): the cheap invariants of every row in one
-      // in-page pass, then the full per-row assertions on the deterministic sample.
-      expect(await rows.count()).toBe(coverageCount(manifest, "permits_emitted"));
-      const audit = await auditAllRows(page, auditParamsOf(run));
+      // Steps 3–4 (full-county adaptation 2026-10-24, paged 2026-10-25): the cheap invariants of
+      // every row on every page, then the full per-row assertions on the deterministic sample.
+      const total = coverageCount(manifest, "permits_emitted");
+      await expectFirstPage(page, total);
+      const walk = await walkPermits(page, run, { snapshots: true });
+      expect(walk.rows, "every row on every page was audited").toBe(total);
+      const audit = walk;
       expect(audit.violations.columns, "one cell per column on every row").toEqual([]);
       expect(audit.violations.statusClass, "status class on every row").toEqual([]);
       expect(audit.violations.provenance, "four provenance fields on every row").toEqual([]);
 
-      const snapshots = await snapshotRows(page);
+      const snapshots = walk.snapshots;
       expectNamedPermitsSampled(snapshots);
       for (const row of snapshots) {
         const index = row.index;
@@ -724,15 +786,16 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       await page.goto("/permits");
       await waitForPermitRows(page);
 
-      // Full-county adaptation 2026-10-24: every row gets the cheap invariants in one in-page
-      // pass (a pill with the right reason and a visible, non-blank label for each missing
-      // entry; no blank or raw-code cell); the exact-label assertions run on the sample.
-      const audit = await auditAllRows(page, auditParamsOf(run));
-      expect(audit.rows).toBe(coverageCount(run.manifest, "permits_emitted"));
+      // Full-county adaptation 2026-10-24, paged 2026-10-25: every row on every page gets the
+      // cheap invariants (a pill with the right reason and a visible, non-blank label for each
+      // missing entry; no blank or raw-code cell); the exact-label assertions run on the sample.
+      const walk = await walkPermits(page, run, { snapshots: true });
+      const audit = walk;
+      expect(walk.rows).toBe(coverageCount(run.manifest, "permits_emitted"));
       expect(audit.violations.missing, "every missing entry renders its pill").toEqual([]);
       expect(audit.violations.blankCells, "no blank, null-ish or raw-code cell").toEqual([]);
 
-      const snapshots = await snapshotRows(page);
+      const snapshots = walk.snapshots;
       expect(snapshots.length).toBeGreaterThan(0);
       expectNamedPermitsSampled(snapshots);
       await testInfo.attach("rows.json", {
@@ -884,8 +947,8 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       await checkpoint(page, "024", "2-3-progress-bar");
 
       // Step 4: every DOM state until rows appeared.
-      const rows = await waitForPermitRows(page);
-      await expect(rows).toHaveCount(count);
+      await waitForPermitRows(page);
+      await expectFirstPage(page, count);
       const states = await readStates(page);
       await testInfo.attach("dom-states.json", {
         body: JSON.stringify(states, null, 2),
@@ -921,14 +984,15 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       await page.goto("/permits");
       await waitForPermitRows(page);
 
-      // Full-county adaptation 2026-10-24: every row has exactly one resolved / unresolved pill
-      // (and unresolved lists contractor_unresolved) in one in-page pass; the label-by-label
-      // assertions run on the sample.
-      const audit = await auditAllRows(page, auditParamsOf(run));
-      expect(audit.rows).toBe(coverageCount(run.manifest, "permits_emitted"));
+      // Full-county adaptation 2026-10-24, paged 2026-10-25: every row on every page has exactly
+      // one resolved / unresolved pill (and unresolved lists contractor_unresolved); the
+      // label-by-label assertions run on the sample.
+      const walk = await walkPermits(page, run, { snapshots: true });
+      const audit = walk;
+      expect(walk.rows).toBe(coverageCount(run.manifest, "permits_emitted"));
       expect(audit.violations.contractor, "a resolution pill on every row").toEqual([]);
 
-      const snapshots = await snapshotRows(page);
+      const snapshots = walk.snapshots;
       expect(snapshots.length).toBeGreaterThan(0);
       expectNamedPermitsSampled(snapshots);
 
@@ -1099,27 +1163,16 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
 
       await page.goto("/permits");
       await waitForPermitRows(page);
-      // Full-county adaptation 2026-10-24: the permit-number column of all rows and a text scan
-      // of the whole page, both read in the page (no per-row round trip, no 15,000-row innerText).
-      const listed = await page
-        .locator(ROW)
-        .evaluateAll((rows) =>
-          rows.map((row) =>
-            (row.querySelector("td")?.textContent ?? "").replace(/\s+/g, " ").trim(),
-          ),
-        );
-      expect(listed.length, "the whole list is read").toBe(
-        coverageCount(run.manifest, "permits_emitted"),
-      );
-      const onPage = await page.evaluate(
-        (candidates) =>
-          candidates.map((candidate) => (document.body.textContent ?? "").includes(candidate)),
-        numbers,
-      );
-      const listedSet = new Set(listed);
+      // Full-county adaptation 2026-10-24, paged 2026-10-25: the permit-number column of every
+      // page and a text scan of every page, both read in the page (no per-row round trip).
+      const total = coverageCount(run.manifest, "permits_emitted");
+      await expectFirstPage(page, total);
+      const walk = await walkPermits(page, run, { snapshots: false, scanTexts: numbers });
+      expect(walk.permitNumbers.length, "the whole list is read, page by page").toBe(total);
+      const listedSet = new Set(walk.permitNumbers);
       for (const [position, number] of numbers.entries()) {
         expect(listedSet.has(number), `permit ${number} is not listed`).toBe(false);
-        expect(onPage[position], `permit ${number} appears nowhere on the page`).toBe(false);
+        expect(walk.textHits[position], `permit ${number} appears nowhere on any page`).toBe(false);
       }
       await checkpoint(page, "030", "no-tcad-permits-absent");
     });

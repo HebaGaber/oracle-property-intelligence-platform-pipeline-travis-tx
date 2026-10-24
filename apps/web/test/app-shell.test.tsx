@@ -139,11 +139,16 @@ describe("ERR-12: every <button> sets its font from the tokens (a UA button font
     }));
   });
 
-  it("finds the app's buttons (Copy CID, Retry)", () => {
-    expect(buttons.map((b) => b.cls).sort()).toEqual(["copy", "retry"]);
+  it("finds the app's buttons (Copy CID, Retry, the two Permits pager buttons)", () => {
+    expect(buttons.map((b) => b.cls).sort()).toEqual([
+      "copy",
+      "pagerButton",
+      "pagerButton",
+      "retry",
+    ]);
   });
 
-  for (const name of ["copy", "retry"]) {
+  for (const name of ["copy", "retry", "pagerButton"]) {
     it(`.${name}: declares font: inherit, or a token font-family and font-size`, () => {
       const button = buttons.find((b) => b.cls === name);
       expect(button?.css, `${name}: CSS Module found`).toBeDefined();

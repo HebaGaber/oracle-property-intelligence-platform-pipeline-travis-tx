@@ -81,7 +81,7 @@ A-03 is the walking skeleton: one real month (September 2026) of Austin reroof p
 - Region: never a literal in a case or in the harness; `tests/e2e/lib/aws.ts` reads it from the `assess` profile configuration (P0-18).
 - Identities: AWS reads and the bench use profile `assess`; the TC-044 overwrite attempt uses the uploader's own profile `assess-cid-writer`, which holds no Delete or ACL rights (contracts/storage.md), so the attempt cannot damage the copy.
 - Warm-up rule (TC-NF-05; also TC-NF-02 and the warm calls of TC-NF-04): one untimed warm-up invocation per query precedes the 20 timed runs, so all 20 are warm; timings are `queryDurationMs` (engine init `initMs` excluded); the cold start is TC-NF-04's own measurement.
-- Theme and breakpoints: light theme only (`colorScheme: 'light'`); cards below 600 px, the data table from 600 px; no pagination, sorting or sticky header in A-03 (single page).
+- Theme and breakpoints: light theme only (`colorScheme: 'light'`); cards below 600 px, the data table from 600 px; paged at 200 rows per page since A-11 (PO 2026-10-25), no sorting or sticky header in A-03; tests read the total from the range line (`permits-range`, `data-total`) and walk pages for audits.
 - `verify-manifest` (D-4) fetches only from the Pinata public gateway and the Filebase gateway, through a host allowlist; ipfs.io and dweb.link were retired on 2026-09-21 (429 + `Sunset` header).
 
 ## 4. Scope
@@ -261,7 +261,7 @@ A-03 is the walking skeleton: one real month (September 2026) of Austin reroof p
   1. **Open** `{RUNTIME_URL}/runs` in a private window.
   2. **Read** the published row count on the run card: the coverage row labelled exactly `Permits published` (its helper text reads `Counted from published rows`, derivation `published_rows`).
   3. **Verify** it equals `manifest.coverage.permits_emitted.count`.
-  4. **Open** `{RUNTIME_URL}/permits`, wait for the list and **count** the rows (one page: A-03 has no pagination). → equals the same manifest value.
+  4. **Open** `{RUNTIME_URL}/permits`, wait for the list and read the **total** from the range line (`permits-range`, `data-total`; the page shows 200 rows at a time, the DOM holds only the current page). → equals the same manifest value, and the first page shows `min(200, total)` rows.
 - **Expected result:** both counts equal `coverage.permits_emitted.count` (37 expected on the 2026-10-20 snapshot: 42 matched, 38 accepted, 1 without `tcad_id`); the published count is never shown as 42 or 38 or as a source `records` value and is never confused with a source `records` line (different label, different element); no placeholder rows.
 
 #### A-03-TC-013: Run publishes the county and property_improvement groups
@@ -594,7 +594,7 @@ A-03 is the walking skeleton: one real month (September 2026) of Austin reroof p
 - **Maps to:** AC-4, FR-004, NFR-001
 - **Steps:**
   1. **Open** `{RUNTIME_URL}/permits` in a private window; wait for DuckDB ready.
-  2. **Run** one untimed warm-up of each query, then 20 times each through the page's query hook: the COUNT query and the listing query (the single page, sorted by permit number). Time each with `performance.now()`.
+  2. **Run** one untimed warm-up of each query, then 20 times each through the page's query hook: the COUNT query and the listing query (all rows, sorted by permit number; the page then shows 200 at a time). Time each with `performance.now()`.
   3. **Compute** p50 and p95 per query.
 - **Expected result:** each p95 < 3,000 ms; the 40 timings saved to evidence and to `docs/decisions/0001-read-path.md`.
 
@@ -692,17 +692,19 @@ Also resolved 2026-10-21 (v1.0): A-6 (TC-011 asserts the text contains "TCAD 202
 
 None open.
 
-## Full-county adaptation (2026-10-24, A-11 Run 2, PO approved: "Yes, adapt them (Recommended)")
+## Full-county adaptation (2026-10-24, A-11 Run 2, PO approved: "Yes, adapt them (Recommended)"; paging added 2026-10-25)
 
 These cases were written for A-03's pilot (~38 permits, all issued September 2026). From Run 2 the hosted page lists the full county (15,025 roofing permits across decades). Each case keeps its intent; only pilot-specific facts and checks that do not scale changed (`tests/e2e/permits.spec.ts`, `tests/e2e/perf.spec.ts`, `tests/e2e/lib/perf.ts`):
 
 | Case | Pilot expectation | Full-county expectation |
 | --- | --- | --- |
 | A-03-TC-020 | every row issued in 2026-09 | every row's `issue_date` is a valid ISO date not after the run's `as_of` (manifest `finishedAt`); row count still exactly `permits_emitted` |
-| A-03-TC-020, 021, 022, 025 | full per-row assertions on every row | cheap invariants on every row in one in-page pass (`auditAllRows`); full per-row assertions on a deterministic sample (first 200 rows, every 97th row, named permit `2003-012717 BP`) |
-| A-03-TC-012 | step 4 navigates the same tab from Runs to Permits | step 4 opens Permits in a fresh browser context (PO 2026-10-25, option A); same check (rows = `permits_emitted`); A-16 item 13 investigates the same-tab stall on Linux Chrome |
+| A-03-TC-020, 021, 022, 025 | full per-row assertions on every row | after paging (PO 2026-10-25) the DOM holds one page of 200 rows: the row count is the range line's total (`data-total`) and the first page has `min(200, total)` rows; per-row assertions run on the current page, and the audits walk pages (first page, every 97th row's page, the page of named permit `2003-012717 BP`) instead of one in-page pass over every row |
+| A-03-TC-012 | step 4 navigates the same tab from Runs to Permits and counts the rows | step 4 navigates the same tab again (the fresh-context variant of 2026-10-25 is reverted: the stall was DOM size, not the tab) and reads the total from the range line (`data-total` = `permits_emitted`) |
 | A-03-TC-030 | `NO_TCAD_PERMIT_NUMBERS` lists every unlinked permit (1) | it lists a sample (≥ 1, never more than `permits_no_tcad_geoid`, Run 2: 275,764); each listed permit is absent from the list and the page |
-| A-03-TC-NF-03 | Atlas audit of every element at 390/768/1440 | skipped (`test.fixme`) in A-11 by PO decision; restored in A-16 item 12 by auditing the chrome plus the first 50 rows/cards |
-| A-03-TC-NF-01 | each cold first load ≤ 8 s | ≤ 60 s at full-county scale (Run 2: 24–28 s home, ~45 s GitHub runner); optimization is A-16 item 11 |
+| A-03-TC-NF-03 | Atlas audit of every element at 390/768/1440 | the `test.fixme` is removed by the paging change (the page holds at most 200 rows, so the audit is fast again); `smeargle` on Permits and Runs stays in A-16 item 12 |
+| A-03-TC-NF-01 | each cold first load ≤ 8 s | ≤ 60 s at full-county scale (Run 2: 24–28 s home, ~45 s GitHub runner) for now; measure again after paging, then tighten (A-16 item 11) |
 
-Result against the hosted preview (Run 2, one worker): all 9 Permits cases pass in ~11 min (before: TC-020 failed on the month filter; TC-021 alone took 7.6 min in CI).
+**Root cause and paging (PO 2026-10-25).** Measured on the live Run 2 page: 15,025 table rows were about 947,000 DOM elements and about 390 MB; on slow CI browsers the page froze after the "Listing permits" stage (the screen recording stops, no console error). That explained the full-county symptoms of TC-012, TC-020 and TC-NF-01, the TC-NF-03 audit that ran for minutes, the parallel-worker cancellations and the trace-snapshot starvation. The Permits page is now paged (200 rows per page, range line, Previous / Next page), and the tests read the total from the range line and walk pages.
+
+Result against the hosted preview (Run 2, one worker, before paging): all 9 Permits cases pass in ~11 min (before: TC-020 failed on the month filter; TC-021 alone took 7.6 min in CI).

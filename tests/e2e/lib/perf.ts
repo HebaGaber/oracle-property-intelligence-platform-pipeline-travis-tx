@@ -73,6 +73,8 @@ export const SELECTORS = {
   permitsCards: 'ul[aria-label="Permits"]',
   /** A rendered permit row: a data-table body row or a card. */
   permitRow: 'table[aria-label="Permits"] tbody tr, ul[aria-label="Permits"] > li',
+  /** The range line `Showing a–b of N` under the pager (data-first, data-last, data-total). */
+  permitsRange: '[data-testid="permits-range"]',
   /** The full CID of a provenance line (never the truncated text). */
   cid: "[data-cid]",
 } as const;
