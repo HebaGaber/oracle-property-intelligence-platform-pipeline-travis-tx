@@ -60,7 +60,10 @@ export default defineConfig({
   use: {
     baseURL,
     colorScheme: "light",
-    trace: "retain-on-failure",
+    // No DOM snapshots: on the full-county Permits page (~15,000 rows) recording them starved the
+    // page and A-03-TC-012 never rendered rows; with snapshots off it passes (A-11). Network,
+    // screenshots and sources are still in the trace.
+    trace: { mode: "retain-on-failure", snapshots: false, screenshots: true, sources: true },
     screenshot: "only-on-failure",
     video: "off",
     permissions: ["clipboard-read", "clipboard-write"],
