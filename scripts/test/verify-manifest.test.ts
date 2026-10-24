@@ -323,6 +323,31 @@ describe("Filebase redirects", () => {
     expect(failed?.ok).toBe(false);
     expect(failed?.reason).toContain("redirect to evil.example refused");
   });
+
+  it("fails the check, not the whole process, when the redirect target itself times out", async () => {
+    // Regression for a real crash (2026-10-24): the follow-redirect fetch had no try/catch,
+    // unlike the main fetch above it, so a timeout there threw uncaught and killed the run
+    // instead of being recorded as a failed check.
+    const f = await fixture();
+    const subdomain = `${f.manifestCid}.ipfs.filebase.io`;
+    const { fetchImpl } = fakeGateways(f.published, {
+      redirectTo: (host, cid) =>
+        host === "ipfs.filebase.io" && cid === f.manifestCid
+          ? `https://${subdomain}/ipfs/${cid}`
+          : undefined,
+      timeoutsFor: (host) => (host === subdomain ? Infinity : 0),
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+    });
+    expect(report.ok).toBe(false);
+    const failed = report.manifest.find((c) => c.gateway === FILEBASE);
+    expect(failed?.ok).toBe(false);
+    expect(failed?.reason).toContain("after redirect");
+  });
 });
 
 describe("streaming hash for large artifacts (NFR-06)", () => {

@@ -226,11 +226,26 @@ export async function fetchArtifact(
       await res.body?.cancel();
       if (target !== null && sameGatewayHost(gateway, target.host)) {
         if (t.verbose) t.log(`redirect ${url} -> ${target.href} (same gateway, followed)`);
-        const followed = await t.fetch(target.href, {
-          method: "GET",
-          redirect: "manual",
-          signal: AbortSignal.timeout(t.timeoutMs),
-        });
+        // This fetch previously had no try/catch, unlike the main one above: a timeout or
+        // network error here crashed the whole process instead of failing just this check
+        // (observed 2026-10-24 under concurrent load — higher concurrency simply made a slow
+        // redirect target more likely to occur, not a new failure mode).
+        let followed: Response;
+        try {
+          followed = await t.fetch(target.href, {
+            method: "GET",
+            redirect: "manual",
+            signal: AbortSignal.timeout(t.timeoutMs),
+          });
+        } catch (err) {
+          return {
+            ok: false,
+            status: null,
+            size: null,
+            sha256: null,
+            reason: `${errorText(err)} (after redirect)`,
+          };
+        }
         if (followed.status !== 200) {
           await followed.body?.cancel();
           return {
@@ -375,45 +390,90 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
     return report;
   }
 
-  const artifactChecks: VerifyCheck[] = [];
-  for (const artifact of manifest.artifacts) {
-    const { field, cid } = target(artifact);
-    for (const gateway of gateways) {
-      let check: VerifyCheck;
-      if (cid === null) {
-        check = {
-          name: artifact.name,
-          cid: artifact.cid,
-          field,
-          gateway,
-          status: null,
-          size: null,
-          sha256: null,
-          ok: false,
-          reason: `${artifact.kind} artifact has no carCid (AM-05); its cid is a DAG root, not a file`,
-        };
-      } else {
-        if (isPinataGateway(gateway)) await t.sleep(PINATA_THROTTLE_MS);
-        const fetched = await fetchArtifact(t, gateway, cid);
-        const ok =
-          fetched.ok && fetched.size === artifact.size && fetched.sha256 === artifact.sha256;
-        check = {
-          name: artifact.name,
-          cid,
-          field,
-          gateway,
-          status: fetched.status,
-          size: fetched.size,
-          sha256: fetched.sha256,
-          ok,
-          ...(ok ? {} : { reason: fetched.reason ?? "size or sha256 mismatch" }),
-        };
-      }
-      artifactChecks.push(check);
-      log(formatLine(check));
-    }
+  // Concurrency is asymmetric per gateway, not uniform: Filebase's gateway has shown no rate
+  // limiting all day, so it runs with real concurrency; Pinata's gateway gave a ~47-minute
+  // retry-after penalty under sustained load earlier (2026-10-24), so it stays near-sequential
+  // even when parallelized, to avoid re-triggering that penalty.
+  const FILEBASE_CONCURRENCY = 10;
+  const PINATA_CONCURRENCY = 5;
+  function concurrencyFor(gateway: string): number {
+    return isPinataGateway(gateway) ? PINATA_CONCURRENCY : FILEBASE_CONCURRENCY;
   }
-  report.artifacts = artifactChecks;
+
+  interface Task {
+    index: number;
+    artifact: (typeof manifest.artifacts)[number];
+    gateway: string;
+  }
+  const tasks: Task[] = [];
+  let idx = 0;
+  for (const artifact of manifest.artifacts) {
+    for (const gateway of gateways) tasks.push({ index: idx++, artifact, gateway });
+  }
+  const artifactChecks: (VerifyCheck | undefined)[] = new Array(tasks.length);
+
+  async function runOne(task: Task): Promise<void> {
+    const { artifact, gateway } = task;
+    const { field, cid } = target(artifact);
+    let check: VerifyCheck;
+    if (cid === null) {
+      check = {
+        name: artifact.name,
+        cid: artifact.cid,
+        field,
+        gateway,
+        status: null,
+        size: null,
+        sha256: null,
+        ok: false,
+        reason: `${artifact.kind} artifact has no carCid (AM-05); its cid is a DAG root, not a file`,
+      };
+    } else {
+      if (isPinataGateway(gateway)) await t.sleep(PINATA_THROTTLE_MS);
+      const fetched = await fetchArtifact(t, gateway, cid);
+      const ok = fetched.ok && fetched.size === artifact.size && fetched.sha256 === artifact.sha256;
+      check = {
+        name: artifact.name,
+        cid,
+        field,
+        gateway,
+        status: fetched.status,
+        size: fetched.size,
+        sha256: fetched.sha256,
+        ok,
+        ...(ok ? {} : { reason: fetched.reason ?? "size or sha256 mismatch" }),
+      };
+    }
+    artifactChecks[task.index] = check;
+    log(formatLine(check));
+  }
+
+  async function runPool(poolTasks: Task[], concurrency: number): Promise<void> {
+    let next = 0;
+    async function worker(): Promise<void> {
+      for (;;) {
+        const i = next++;
+        if (i >= poolTasks.length) return;
+        const task = poolTasks[i];
+        if (task === undefined) return;
+        await runOne(task);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(concurrency, poolTasks.length) }, worker));
+  }
+
+  const tasksByGateway = new Map<string, Task[]>();
+  for (const task of tasks) {
+    const list = tasksByGateway.get(task.gateway) ?? [];
+    list.push(task);
+    tasksByGateway.set(task.gateway, list);
+  }
+  await Promise.all(
+    [...tasksByGateway.entries()].map(([gateway, poolTasks]) =>
+      runPool(poolTasks, concurrencyFor(gateway)),
+    ),
+  );
+  report.artifacts = artifactChecks.filter((c): c is VerifyCheck => c !== undefined);
 
   const missing = GATEWAYS.filter((g) => !gateways.includes(g));
   for (const g of missing) log(`FAIL ${g} not checked: ${ALL_VERIFIED_TEXT} needs both gateways`);
