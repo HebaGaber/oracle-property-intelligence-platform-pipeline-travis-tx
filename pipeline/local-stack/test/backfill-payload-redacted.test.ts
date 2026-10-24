@@ -31,6 +31,7 @@ import {
   readCheckpoint,
   runBackfill,
   scopeKey,
+  uncoveredPids,
   type BackfillOptions,
 } from "../scripts/backfill-payload-redacted/core.js";
 
@@ -51,6 +52,14 @@ describe("backfill helpers (no database)", () => {
     const resumed = createLowWater(7, 6);
     resumed.complete(8, 9, 0);
     expect([resumed.mark, resumed.rows]).toEqual([9, 6]);
+  });
+
+  it("lists as missing only pIDs covered by no run, not those done below the checkpoint", () => {
+    const listed = ["1", "2", "3", "4"];
+    // resumed: 1 and 2 were done earlier (rows exist), 3 seen now, 4 is nowhere
+    expect(uncoveredPids(listed, new Set(["3"]), new Set(["1", "2", "3"]))).toEqual(["4"]);
+    expect(uncoveredPids(listed, new Set(listed), new Set())).toEqual([]);
+    expect(uncoveredPids(listed, new Set(), new Set())).toEqual(listed);
   });
 
   it("parses pIDs and keeps a separate checkpoint per scope", () => {

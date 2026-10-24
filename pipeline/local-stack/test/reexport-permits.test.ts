@@ -1,6 +1,8 @@
 // A-11: the resumable permits re-export (scripts/reexport-permits.ts). No DB, no network: the
 // writer and the DB digests are injected.
+import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -88,6 +90,45 @@ describe("parsePids", () => {
   it("dedupes, sorts numerically and rejects non-pIDs", () => {
     expect(parsePids("12\n3\n\n12\n")).toEqual(["3", "12"]);
     expect(() => parsePids("../x")).toThrow(/invalid pID/);
+  });
+});
+
+describe("runReexport run lock", () => {
+  const lockOf = (run: string) => `${layoutFor(run).stateDir}.lock`;
+
+  it("refuses to start while a live process holds the lock, and touches nothing", async () => {
+    const run = tmpRun();
+    mkdirSync(run, { recursive: true });
+    writeFileSync(lockOf(run), `${process.pid}\n`); // this test process is alive
+    const { deps, calls } = makeDeps();
+    await expect(runReexport(opts(run), deps)).rejects.toThrow(/held by running pid/);
+    expect(calls).toEqual([]);
+    expect(readdirSync(run)).toEqual(["reexport-state.lock"]);
+    expect(readFileSync(lockOf(run), "utf8").trim()).toBe(String(process.pid));
+  });
+
+  it("takes over a stale lock whose pid is gone, and releases its own lock after the run", async () => {
+    const run = tmpRun();
+    mkdirSync(run, { recursive: true });
+    const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], {
+      encoding: "utf8",
+    }).stdout;
+    writeFileSync(lockOf(run), `${dead}\n`);
+    const { deps } = makeDeps();
+    const s = await runReexport(opts(run), deps);
+    expect(s.failed).toBeNull();
+    expect(existsSync(lockOf(run))).toBe(false);
+  });
+
+  it("releases the lock when the run throws", async () => {
+    const run = tmpRun();
+    const { deps } = makeDeps();
+    deps.dbDigests = async () => {
+      throw new Error("db down");
+    };
+    const s = await runReexport(opts(run), deps);
+    expect(s.failed).toMatch(/db down/);
+    expect(existsSync(lockOf(run))).toBe(false);
   });
 });
 

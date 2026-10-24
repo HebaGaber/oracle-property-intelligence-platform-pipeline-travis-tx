@@ -188,6 +188,12 @@ export interface BuildManifestInput {
    */
   ownersRedacted: number;
   limitations: string[];
+  /**
+   * A-16 #6: how many captured Austin permits linked to a TCAD property (Query DB). It is not
+   * published (no manifest field carries it). When given and the five permit-link exclusion keys
+   * are present, `exclusions + linkedPermits` must equal the Austin source's `records`.
+   */
+  linkedPermits?: number;
   /** Where `git status` runs (default: the current directory). */
   repoRoot?: string;
   /** `git status --porcelain --untracked-files=no` output; injectable for tests. */
@@ -440,6 +446,40 @@ function checkInput(input: BuildManifestInput): void {
   if (status !== "") throw new Error(`working tree is dirty; commit before publishing:\n${status}`);
 }
 
+export const PERMIT_EXCLUSION_KEYS = [
+  "permits_no_tcad_geoid",
+  "permits_no_tcad_id",
+  "permits_ambiguous_geoid",
+  "permits_address_unmatched",
+  "permits_ambiguous_address",
+] as const;
+
+/**
+ * A-16 #6: every captured Austin permit is either linked or excluded for exactly one of the five
+ * reasons. Checked only when all five exclusion keys and a linked total are available; throws
+ * with the numbers otherwise-wrong.
+ */
+export function assertPermitLinkReconciliation(args: {
+  coverage: Record<string, CoverageCount>;
+  linkedPermits: number | undefined;
+  austinRecords: number;
+}): void {
+  const { coverage, linkedPermits, austinRecords } = args;
+  if (linkedPermits === undefined) return;
+  if (!PERMIT_EXCLUSION_KEYS.every((k) => coverage[k] !== undefined)) return;
+  if (!Number.isInteger(linkedPermits) || linkedPermits < 0)
+    throw new Error(`linkedPermits must be a non-negative integer, got ${String(linkedPermits)}`);
+  const excluded = PERMIT_EXCLUSION_KEYS.reduce(
+    (n, k) => n + (coverage[k] as CoverageCount).count,
+    0,
+  );
+  if (excluded + linkedPermits !== austinRecords) {
+    throw new Error(
+      `permit link reconciliation failed: excluded ${excluded} (${PERMIT_EXCLUSION_KEYS.map((k) => `${k} ${(coverage[k] as CoverageCount).count}`).join(", ")}) + linked ${linkedPermits} = ${excluded + linkedPermits}, but the Austin source records ${austinRecords}`,
+    );
+  }
+}
+
 export async function buildManifest(input: BuildManifestInput): Promise<BuiltManifest> {
   const runDir = input.runDir ?? input.pilotDir;
   if (!runDir) throw new Error("runDir is required");
@@ -489,6 +529,13 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
     coverage: input.coverage,
     limitations: input.limitations,
   });
+  const austin = manifest.sources.find((s) => s.name === SOURCE_ORDER[0]);
+  if (austin)
+    assertPermitLinkReconciliation({
+      coverage: input.coverage,
+      linkedPermits: input.linkedPermits,
+      austinRecords: austin.records,
+    });
   const bytes = jcsBytes(manifest);
   return { manifest, bytes, cid: await cidOfBytes(bytes) };
 }

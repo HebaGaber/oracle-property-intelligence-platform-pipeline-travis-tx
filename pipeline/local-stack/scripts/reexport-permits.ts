@@ -36,6 +36,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type postgres from "postgres";
+import { acquireRunLock } from "./run-lock.js";
 
 export const DEFAULT_JOB = "travis-a11-permits-fix-20261024";
 const PID_RE = /^[1-9][0-9]*$/;
@@ -217,6 +218,22 @@ export async function runReexport(
   deps: ReexportDeps,
 ): Promise<ReexportSummary> {
   const log = deps.log ?? (() => {});
+  // One run per job: the start wipes tmpRoot and state temp files are fixed names. The lock sits
+  // next to the state dir, never inside the (hashed) group dir.
+  mkdirSync(dirname(opts.stateDir), { recursive: true });
+  const release = acquireRunLock(`${opts.stateDir}.lock`);
+  try {
+    return await runLocked(opts, deps, log);
+  } finally {
+    release();
+  }
+}
+
+async function runLocked(
+  opts: ReexportOptions,
+  deps: ReexportDeps,
+  log: (line: string) => void,
+): Promise<ReexportSummary> {
   mkdirSync(opts.groupDir, { recursive: true });
   mkdirSync(opts.stateDir, { recursive: true });
   // Leftovers of a killed run: temp dirs are never trusted.

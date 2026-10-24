@@ -67,6 +67,8 @@ export const RunManifestConfig = z
         }),
       )
       .optional(),
+    /** Linked-permit total for the A-16 #6 reconciliation (unpublished; see buildManifest). */
+    linkedPermits: z.number().int().nonnegative().optional(),
     correctionNote: z.string().min(1).default(CORRECTION_NOTE),
   })
   .strict();
@@ -238,6 +240,7 @@ export async function buildRunManifest(
       config.correctionNote,
     ],
     repoRoot,
+    ...(config.linkedPermits === undefined ? {} : { linkedPermits: config.linkedPermits }),
     ...(deps.workTreeStatus === undefined ? {} : { workTreeStatus: deps.workTreeStatus }),
   };
 

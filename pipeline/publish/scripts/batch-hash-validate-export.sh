@@ -35,6 +35,28 @@ ELEPHANT_CLI="${ELEPHANT_CLI:-$HOME/.local/share/elephant-cli-main/node_modules/
 [ -x "$ELEPHANT_CLI" ] || ELEPHANT_CLI="elephant-cli"
 PYTHON="${PYTHON:-python3}"
 
+# Run lock: one instance per output dir. The lock file sits NEXT TO the output dir (never inside
+# it or inside any hashed directory) and holds the owner's PID. A lock whose PID is gone is stale
+# and is taken over; a live owner makes this run refuse to start.
+LOCK="${OUT_DIR%/}.lock"
+acquire_lock() {
+  local owner
+  if (set -C; echo "$$" >"$LOCK") 2>/dev/null; then return 0; fi
+  owner="$(cat "$LOCK" 2>/dev/null || true)"
+  if [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null; then
+    echo "[lock] $OUT_DIR is in use by pid $owner ($LOCK); refusing to start" >&2
+    return 1
+  fi
+  echo "[lock] taking over stale lock $LOCK (pid ${owner:-unknown} is gone)" >&2
+  rm -f "$LOCK"
+  (set -C; echo "$$" >"$LOCK") 2>/dev/null || {
+    echo "[lock] lost the race for $LOCK; refusing to start" >&2
+    return 1
+  }
+}
+acquire_lock || exit 1
+trap 'rm -f "$LOCK"' EXIT
+
 mkdir -p "$OUT_DIR/batches" "$OUT_DIR/hashed" "$OUT_DIR/cars" "$OUT_DIR/tables" "$OUT_DIR/logs"
 
 # Resume (A-11): markers live in logs/, never inside batches/<b>/ (that tree is hashed).
@@ -84,7 +106,9 @@ run_batch() {
     return 0
   fi
   rm -f "$donef"
+  # A failed earlier attempt leaves partial outputs; none of them may be reused.
   rm -rf "$hashed" "$tables"
+  rm -f "$car" "$csv" "$OUT_DIR/cars/${PREFIX}-${bname}-validate-errors.csv" "$OUT_DIR/tables/${bname}-export.json"
   mkdir -p "$tables"
 
   {

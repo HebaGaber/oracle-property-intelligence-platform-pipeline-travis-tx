@@ -16,6 +16,7 @@
 //
 // Other flags: --county-batches 1-10, --permits-batches 1-2 (default: every batch found),
 // --base <manifest> (default Run 1's), --austin-receipt, --tcad-receipt, --out (pilot only),
+// --linked-permits N (Run 1: 2007514; A-16 #6 check: five exclusions + N must equal the Austin records),
 // --overwrite (replace an existing manifest with different bytes; refused once indexed).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -58,6 +59,7 @@ async function main(): Promise<number> {
       base: { type: "string" },
       "austin-receipt": { type: "string" },
       "tcad-receipt": { type: "string" },
+      "linked-permits": { type: "string" },
       out: { type: "string" },
       pilot: { type: "boolean", default: false },
       overwrite: { type: "boolean", default: false },
@@ -80,6 +82,8 @@ async function main(): Promise<number> {
     baseManifest: values.base,
     austinReceipt: values["austin-receipt"],
     tcadReceipt: values["tcad-receipt"],
+    linkedPermits:
+      values["linked-permits"] === undefined ? undefined : Number(values["linked-permits"]),
   };
   const config = { ...fromFile };
   for (const [k, v] of Object.entries(flags)) if (v !== undefined) config[k] = v;

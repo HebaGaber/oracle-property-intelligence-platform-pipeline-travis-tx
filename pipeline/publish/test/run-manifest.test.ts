@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { RunManifestV1 } from "@countylens/contract";
 import { cidOfBytes, cidOfFile } from "../src/cid.js";
 import { jcsBytes } from "../src/jcs.js";
+import { assertPermitLinkReconciliation } from "../src/manifest.js";
 import {
   CORRECTION_NOTE,
   buildRunManifest,
@@ -256,5 +257,63 @@ describe("manifestOutputPath / writeManifestBytes", () => {
     expect(() => writeManifestBytes(path, built)).toThrow(/different bytes/);
     expect(writeManifestBytes(path, built, true)).toBe("written");
     expect(existsSync(path)).toBe(true);
+  });
+});
+
+describe("permit link reconciliation (A-16 #6)", () => {
+  const key = (count: number) => ({ count, derivation: "aggregate_match" as const });
+  const run1 = {
+    permits_no_tcad_geoid: key(275764),
+    permits_no_tcad_id: key(31824),
+    permits_ambiguous_geoid: key(36560),
+    permits_address_unmatched: key(29475),
+    permits_ambiguous_address: key(89),
+  };
+
+  it("accepts Run 1's real numbers: 373,712 excluded + 2,007,514 linked = 2,381,226", () => {
+    expect(() =>
+      assertPermitLinkReconciliation({
+        coverage: run1,
+        linkedPermits: 2007514,
+        austinRecords: 2381226,
+      }),
+    ).not.toThrow();
+  });
+
+  it("fails with the numbers when they do not add up", () => {
+    expect(() =>
+      assertPermitLinkReconciliation({
+        coverage: run1,
+        linkedPermits: 2007513,
+        austinRecords: 2381226,
+      }),
+    ).toThrow(/reconciliation failed: excluded 373712 .* \+ linked 2007513 = 2381225.*2381226/);
+  });
+
+  it("is skipped without a linked total or without all five keys", () => {
+    expect(() =>
+      assertPermitLinkReconciliation({
+        coverage: run1,
+        linkedPermits: undefined,
+        austinRecords: 1,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertPermitLinkReconciliation({
+        coverage: { permits_no_tcad_geoid: key(1) },
+        linkedPermits: 5,
+        austinRecords: 1,
+      }),
+    ).not.toThrow();
+  });
+
+  it("fails the build through buildRunManifest when linkedPermits is wrong, passes when right", async () => {
+    const f = await runFixture();
+    // fixture exclusions: 100 + 20 + 30 + 40 + 5 = 195; Austin source records 2,381,226
+    const ok = await buildRunManifest(config(f, { linkedPermits: 2381226 - 195 }), deps(f));
+    expect(ok.manifest.runId).toBe("travis-full-run2-20261024");
+    await expect(buildRunManifest(config(f, { linkedPermits: 2000000 }), deps(f))).rejects.toThrow(
+      /permit link reconciliation failed/,
+    );
   });
 });

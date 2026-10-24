@@ -143,6 +143,21 @@ export function createLowWater(start: number, startRows = 0) {
   };
 }
 
+/**
+ * pIDs of the `--pids` list that no run has covered. A resumed run skips (does not parse) the
+ * records below the checkpoint, so their pIDs were not "seen" in this run although they were done
+ * earlier; those are the listed pIDs with a parcels row (the end-of-run `rows_covered ===
+ * db_rows_in_scope` check proves every such row is covered). Only a pID that is neither seen
+ * now nor present in the database is genuinely uncovered.
+ */
+export function uncoveredPids(
+  listed: readonly string[],
+  seenNow: ReadonlySet<string>,
+  inDatabase: ReadonlySet<string>,
+): string[] {
+  return listed.filter((p) => !seenNow.has(p) && !inDatabase.has(p));
+}
+
 // ---------- SQL ----------
 
 /** md5 over every parcels column except payload_redacted for the job, ordered by request_identifier. */
@@ -276,6 +291,7 @@ export interface BackfillResult {
   computed_with_legal_key: number;
   db_rows_in_scope: number;
   db_rows_with_legal_key: number;
+  /** Listed pIDs covered by no run (not seen now and not in the database); [] for a full run. */
   missing_pids: string[];
   fingerprint_before: string;
   fingerprint_after: string;
@@ -569,6 +585,17 @@ export async function runBackfill(o: BackfillOptions): Promise<BackfillResult> {
       : await sql<Array<{ n: number; legal: number }>>`
           SELECT count(*)::int AS n, count(*) FILTER (WHERE payload_redacted ? 'propertyLegalDescription')::int AS legal
           FROM parcels WHERE job_id = ${jobId} AND request_identifier IN ${sql(o.pids)}`;
+  let missingPids: string[] = [];
+  if (o.pids !== null) {
+    const unseen = o.pids.filter((p) => !(seenPids as Set<string>).has(p));
+    const present =
+      unseen.length === 0
+        ? []
+        : await sql<Array<{ id: string }>>`
+            SELECT request_identifier AS id FROM parcels
+            WHERE job_id = ${jobId} AND request_identifier IN ${sql(unseen)}`;
+    missingPids = uncoveredPids(o.pids, seenPids as Set<string>, new Set(present.map((x) => x.id)));
+  }
   const result: BackfillResult = {
     job_id: jobId,
     scope,
@@ -578,7 +605,7 @@ export async function runBackfill(o: BackfillOptions): Promise<BackfillResult> {
     checkpoint_low_water: mark.mark,
     db_rows_in_scope: scoped[0]?.n ?? 0,
     db_rows_with_legal_key: scoped[0]?.legal ?? 0,
-    missing_pids: o.pids === null ? [] : o.pids.filter((p) => !(seenPids as Set<string>).has(p)),
+    missing_pids: missingPids,
     fingerprint_before: fingerprintBefore,
     fingerprint_after: fingerprintAfter,
     fingerprint_equal: fingerprintBefore === fingerprintAfter,
