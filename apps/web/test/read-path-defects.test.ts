@@ -438,6 +438,66 @@ describe("ERR-16: a slow but working CID copy still finishes (TC-024, 2 s per re
     expect(PART_PREFETCH_MAX_BYTES).toBe(16 * 1024 * 1024);
   });
 
+  it("a run read from the Filebase fallback is always prefetched, even above PART_PREFETCH_MAX_BYTES (ERR-15 resurfaces otherwise)", async () => {
+    // A run this large (> PART_PREFETCH_MAX_BYTES) would normally be left to DuckDB's own
+    // uncontrolled range reads (ERR-16/17's intended path for the copy). Read from the fallback,
+    // that path has no concurrency cap and no 429/CORS-tolerant retry, so it must not be used.
+    const bigPart = {
+      kind: "table",
+      name: "tables/a/big.parquet",
+      cid: "c-big",
+      size: PART_PREFETCH_MAX_BYTES + 1,
+    };
+    const manifest = {
+      runId: "test-run",
+      coverage: { permits_emitted: { count: 0, derivation: "published_rows" } },
+      artifacts: [bigPart],
+    } as unknown as RunManifestV1;
+    const manifestCid = "bafkreimanifest".padEnd(59, "a");
+    const index: RunsIndexV1 = {
+      schema: "oracle-travis-runs-index.v1",
+      runs: [{ runId: "test-run", manifestCid, finishedAt: "2026-10-01T00:00:00Z" }],
+    };
+    const engine: QueryEngine & { registerFile(): Promise<void>; close(): Promise<void> } = {
+      registerFile: async () => undefined,
+      run: async () => undefined,
+      all: async () => [],
+      close: async () => undefined,
+    };
+    const engineModule: EngineModule = {
+      openEngine: async () => engine,
+      bindRun: async () => ({ runId: "test-run", manifestCid, asOf: "x", tables: [], views: [] }),
+      countPermits: async () => 0,
+      listPermits: async () => [],
+    };
+    const captured: { parts: readonly PartToFetch[] | null } = { parts: null };
+    const load = createPermitsLoader({
+      loadRunsIndex: async () => index,
+      latestRun: (i) => i.runs[0] as RunsIndexV1["runs"][number],
+      loadManifest: async () => ({
+        manifest,
+        manifestCid,
+        read: {
+          cid: manifestCid,
+          bytes: new Uint8Array(),
+          source: { kind: "fallback" as const, host: "ipfs.filebase.io" },
+          partUrl: () => "https://ipfs.filebase.io/ipfs/c-big",
+        },
+      }),
+      fetchParts: async (parts: readonly PartToFetch[]) => {
+        captured.parts = parts;
+        return parts.map((p) => ({ ...p, bytes: new Uint8Array(p.size) }));
+      },
+      fallbackLabel: () => "fallback · ipfs.filebase.io",
+      urls: URLS,
+      engine: async () => engineModule,
+    });
+    await load(() => undefined, new AbortController().signal);
+    // null would mean DuckDB range-reads it itself (unprotected); it must go through fetchParts.
+    expect(captured.parts).not.toBeNull();
+    expect(captured.parts?.map((p) => p.cid)).toEqual(["c-big"]);
+  });
+
   it("registers a part under a host-free name", () => {
     expect(registeredPartName({ cid: "bafkreiabc" })).toBe("countylens-part-bafkreiabc.parquet");
   });

@@ -125,7 +125,16 @@ export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}):
       const entry = deps.latestRun(index);
       const loaded = await deps.loadManifest(entry.manifestCid, { urls: deps.urls, signal });
       signal.throwIfAborted();
-      const wanted = partsToPrefetch(loaded.manifest);
+      // ERR-15 resurfaces above PART_PREFETCH_MAX_BYTES: DuckDB-WASM's own httpfs then range-reads
+      // every part itself, with none of fetchParts's concurrency cap or 429/CORS-tolerant retry
+      // (measured 2026-10-21: Filebase answers an excess request 429 with no CORS header, which
+      // the browser reports as a network error, not a retryable status). The copy (CloudFront)
+      // was measured to take that volume at full concurrency (ADR-0001 decision 4), so only the
+      // fallback is exempted from the size cap: whenever Filebase served the manifest, every part
+      // goes through fetchParts's throttled, retried path instead of DuckDB's unprotected one.
+      const prefetchMaxBytes =
+        loaded.read.source.kind === "fallback" ? Number.POSITIVE_INFINITY : undefined;
+      const wanted = partsToPrefetch(loaded.manifest, prefetchMaxBytes);
       const parts = wanted === null ? null : await deps.fetchParts(wanted, loaded.read, { signal });
       signal.throwIfAborted();
       const { module: engineModule, engine } = await starting;
