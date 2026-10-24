@@ -19,8 +19,8 @@ const baseURL = runtimeUrl();
 
 // Specs that must run alone: perf timings would be skewed by concurrent pages, and the public
 // gateways rate-limit per client IP (a burst answers 429 without CORS headers). CI runs projects
-// `permits`, `site` and `isolated` as three jobs on separate runners; a plain local run runs all
-// three with one worker.
+// `permits`, `manifest`, `site` and `isolated` as four jobs on separate runners; a plain local
+// run runs all four with one worker.
 const ISOLATED = [
   "perf.spec.ts",
   "lambda-fallback.perf.spec.ts",
@@ -29,6 +29,9 @@ const ISOLATED = [
 ];
 // The full-county Permits cases (each loads the whole page) form their own CI job.
 const PERMITS = "permits.spec.ts";
+// The manifest cases download every published CAR (~2.8 GB for Run 2); a page case run after
+// them in the same worker stalled (A-03-TC-012), so they form their own CI job too.
+const MANIFEST = "manifest.spec.ts";
 // One report and output folder per CI phase, so the second invocation never clears the first.
 const phase = process.env.PW_PHASE ?? "all";
 
@@ -70,8 +73,13 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
+      name: "manifest",
+      testMatch: `**/${MANIFEST}`,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
       name: "site",
-      testIgnore: [...ISOLATED, PERMITS].map((f) => `**/${f}`),
+      testIgnore: [...ISOLATED, PERMITS, MANIFEST].map((f) => `**/${f}`),
       use: { ...devices["Desktop Chrome"] },
     },
     {

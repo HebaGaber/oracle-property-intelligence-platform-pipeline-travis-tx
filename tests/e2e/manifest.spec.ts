@@ -23,12 +23,22 @@ const AUSTIN_LIMITATION = "Comptroller baseline not loaded (A-07)";
 const TCAD_LIMITATION = /^Confidential owner records redacted \(Texas Tax Code §25\.025\): \d+$/;
 const DATA_GROUPS = ["county", "property_improvement"];
 
+// Full-county adaptation 2026-10-24 (A-11 Run 2): only small artifacts (each batch's tables.car)
+// stay cached. Run 2's 15 batch CARs total ~2.8 GB; caching them for the whole worker starved the
+// browser of later cases in the same job (TC-012 stalled after its parts had downloaded).
+const CACHE_MAX_BYTES = 8 * 1024 * 1024;
 const bytesByCid = new Map<string, Promise<FetchedByCid>>();
 function fetchOnce(cid: string): Promise<FetchedByCid> {
   let pending = bytesByCid.get(cid);
   if (!pending) {
     pending = fetchByCid(cid);
     bytesByCid.set(cid, pending);
+    pending.then(
+      (got) => {
+        if (got.bytes.length > CACHE_MAX_BYTES) bytesByCid.delete(cid);
+      },
+      () => bytesByCid.delete(cid),
+    );
   }
   return pending;
 }
