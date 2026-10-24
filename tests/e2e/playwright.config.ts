@@ -17,6 +17,19 @@ import { runtimeUrl } from "./lib/runtime-url.js";
 
 const baseURL = runtimeUrl();
 
+// Specs that must run alone: perf timings would be skewed by concurrent pages, and the public
+// gateways rate-limit per client IP (a burst answers 429 without CORS headers). CI runs project
+// `parallel` with several workers, then project `isolated` with one; a plain local run keeps
+// workers 1 for both.
+const ISOLATED = [
+  "perf.spec.ts",
+  "lambda-fallback.perf.spec.ts",
+  "fallback.spec.ts",
+  "verify-manifest.spec.ts",
+];
+// One report and output folder per CI phase, so the second invocation never clears the first.
+const phase = process.env.PW_PHASE ?? "all";
+
 const excludeNeedsAws = needsAwsExcluded();
 if (excludeNeedsAws && process.env.TEST_WORKER_INDEX === undefined) {
   process.stderr.write(`${NEEDS_AWS_EXCLUDED_NOTICE}\n`);
@@ -26,7 +39,7 @@ export default defineConfig({
   testDir: ".",
   testMatch: /.*\.spec\.ts$/,
   testIgnore: ["**/node_modules/**", "**/test-results/**", "**/playwright-report/**"],
-  outputDir: "test-results",
+  outputDir: `test-results/${phase}`,
   ...(excludeNeedsAws ? { grepInvert: NEEDS_AWS_PATTERN } : {}),
   fullyParallel: false,
   workers: 1,
@@ -36,8 +49,8 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   reporter: [
     ["list"],
-    ["html", { outputFolder: "playwright-report", open: "never" }],
-    ["json", { outputFile: "test-results/results.json" }],
+    ["html", { outputFolder: `playwright-report/${phase}`, open: "never" }],
+    ["json", { outputFile: `test-results/${phase}/results.json` }],
   ],
   use: {
     baseURL,
@@ -47,5 +60,17 @@ export default defineConfig({
     video: "off",
     permissions: ["clipboard-read", "clipboard-write"],
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "parallel",
+      testIgnore: ISOLATED.map((f) => `**/${f}`),
+      fullyParallel: true,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "isolated",
+      testMatch: ISOLATED.map((f) => `**/${f}`),
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
 });
