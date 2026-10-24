@@ -138,3 +138,12 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G7 | A-11 (branch `011-publish-and-runs` @ `5e4f080`+) | build (Run 1 publication + scheduler DISABLED; Runs 2/3 deferred), review (donphan 88/100, porygon 86/100, both re-review), CI fixed this pass (commits `ef6aded`, `9f68969`, `8e70fd6`, `5e4f080`) | round 1: FAIL 7/10 (`docs/gates/G7-A-11-precheck.md`); C-01/C-07/C-08 bookkeeping and C-02 CI root cause fixed this pass; re-run pending per the user's explicit go-ahead (two other agents still fixing apps/web and query-core issues in parallel) | not yet approved | not yet merged |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
+
+## Run 2 correction (A-11, 2026-10-24)
+
+| Decision (PO, word for word) | Defect or step | Commits | Evidence |
+| --- | --- | --- | --- |
+| "Correction run today (Recommended)" | Run 2 as a labelled correction of Run 1; permits joined county (10,867 unmatched in Run 1, 0 of 10,792 in Run 2) | `75a0eaf`, `3fcb665`, `5bb47d8`, `1fc994a`, `c85b4c8` | `docs/evidence/A-11.md` § Run 2; `CR-A-11-oracle-identity-fix.md` (82) |
+| "Targeted backfill (Recommended)" | Rewrite only `parcels.payload_redacted` (493,246 rows, fingerprint equal) | `ca384d9`, `a5e0556`, `9d1e46d` | `specs/011-publish-and-runs/backfill-full.log`; `CR-A-11-machamp-fix.md` (80) |
+| "Publish roofing only (Recommended)" | 2,362 trade sub-permits dropped, 15,025 Roofing kept, 0 lost | `0cd4fe5` | `reexport-full-compare.log`; `CR-A-11-donphan-fix.md` (92) |
+| "go" | Mandatory identity gate (Run 1 refused, Run 2 PASS 15,025); manifest `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`; limitation fix; atomic index | `e2c682f`, `03a6f29`, `e42000e` | `publish-run2-dryrun.log`; `CR-A-11-porygon-fix.md` (80); published `1ff21aa` (`publish-run2*.log`); hosted live proof TBD (running) |

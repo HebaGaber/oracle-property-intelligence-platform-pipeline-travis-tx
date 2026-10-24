@@ -80,3 +80,27 @@ This pass (G7 CI fix, 2026-10-24) found and fixed four CI-blocking issues, none 
 **Decision:** ☑ Validated, with recorded exceptions (counts toward G7)
 
 8 of 11 testable cases PASS, 3 correctly scored IN PROGRESS (live gateway verification not yet complete, per the PO's recorded decision to merge before it finishes), 0 FAIL. 9 cases remain correctly N/A, deferred to A-16 (Runs 2/3 need later UTC dates). 0 Critical defects open. QC lead sign-off pending PO/G7 review (2026-10-24).
+
+## Run 2 correction (2026-10-24)
+
+New tests added with the correction (source: commits), and per-package totals at the latest run:
+
+| Area | Test | Count | Commit |
+| --- | --- | --- | --- |
+| pipeline/oracle-runtime/travis | byte-identity of county vs permits shared files (8 real TCAD records; failed 8/8 before the fix, passes after) | 8 | `3fcb665` |
+| pipeline/publish | identity gate, Run 2 manifest builder, publish driver, atomic receipts/index rollback, CAR hash check, limitation restatement | in total below | `c85b4c8`, `e2c682f`, `03a6f29`, `e42000e` |
+| pipeline/oracle-runtime/travis | trade sub-permit skip; `--compare-run` by permit number | in total below | `0cd4fe5`, `5bb47d8` |
+
+| Package | Result at the latest run |
+| --- | --- |
+| pipeline/oracle-runtime | 1,053 passed / 2 skipped |
+| pipeline/local-stack | 219 passed / 9 skipped |
+| pipeline/publish | 345 passed |
+| apps/web | 175 passed |
+| packages/query-core | 247 passed / 5 skipped |
+
+Permits page load time (`vite preview`, dev measurement): 1,234 requests / 76.7 s originally, 185 / 15.0 s after the bind subset, 15 / about 8.0-8.6 s after the prefetch subset and SHA-256 verification (PO decision "SHA-256 from manifest", constitution A3 amended), commit `502bfe6`.
+
+Hosted cases TC-032, TC-033 and TC-034 (`fallback.spec.ts`, A-03 cases) are marked `test.fixme` (A-16 item #7: client-side CID check cannot verify table parts over 256 KiB), so any other hosted failure turns CI red. They are not counted as passing.
+
+Live checks for Run 2 (Permits page on the hosted URL, Playwright) and CI: TBD (running).
