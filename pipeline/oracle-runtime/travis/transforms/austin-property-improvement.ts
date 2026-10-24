@@ -10,8 +10,10 @@
 // ProfileApi): improvement_type / improvement_action from classifyPermit(),
 // improvement_status from classifyStatus(). Expired is emitted with improvement_status
 // null (D-4a). Status classes exclude and needs_review, and needs_review permits, are
-// never emitted; they are counted and kept in the ledger. Trade sub-permits (non-BP)
-// keep their trade type and are never Roofing (D-4b).
+// never emitted; they are counted and kept in the ledger. Trade sub-permits (non-BP, the
+// profile's `trade_permit` reason, D-4b) are never Roofing and, by the PO decision of
+// 2026-10-24 ("publish roofing only"), are never emitted either: the ledger keeps their
+// trade type and a `trade_sub_permit` skip reason, and they count as excluded.
 //
 // Written fields are only lexicon properties of the live `property_improvement` class
 // (additionalProperties false). The source description, work class, status word, expiry
@@ -109,7 +111,14 @@ export interface ProfileApi {
 }
 
 export type SkipReason =
-  "status_exclude" | "status_needs_review" | "roofing_needs_review" | "no_improvement_type";
+  | "status_exclude"
+  | "status_needs_review"
+  | "roofing_needs_review"
+  | "no_improvement_type"
+  | "trade_sub_permit";
+
+/** The profile's own D-4b verdict reason for a non-BP (trade) sub-permit (rules.json `trade_permit`). */
+export const TRADE_PERMIT_REASON = "trade_permit";
 
 export interface ClassificationLedgerRow {
   pID: string | null;
@@ -196,7 +205,9 @@ export function classifyCapture(
     throw new Error(`profile digest mismatch on ${row.permit_number}`);
   }
   let skip: SkipReason | null = null;
-  if (status.class === "exclude") skip = "status_exclude";
+  // D-4b: a trade sub-permit is never published, whatever its status word says.
+  if (permit.reason === TRADE_PERMIT_REASON) skip = "trade_sub_permit";
+  else if (status.class === "exclude") skip = "status_exclude";
   else if (status.class === "needs_review") skip = "status_needs_review";
   else if (permit.roofing === "needs_review") skip = "roofing_needs_review";
   else if (permit.improvement_type === null) skip = "no_improvement_type";
@@ -283,7 +294,12 @@ export function transformAustinPropertyImprovement(
     if (!l.emitted) {
       const skip = l.skip_reason as SkipReason;
       counts.by_skip[skip] = (counts.by_skip[skip] ?? 0) + 1;
-      if (skip === "status_exclude" || skip === "no_improvement_type") counts.excluded += 1;
+      if (
+        skip === "status_exclude" ||
+        skip === "no_improvement_type" ||
+        skip === "trade_sub_permit"
+      )
+        counts.excluded += 1;
       else counts.needs_review += 1;
       return;
     }

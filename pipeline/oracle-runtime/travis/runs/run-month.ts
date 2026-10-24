@@ -333,7 +333,9 @@ function statusState(l: LedgerRow): string {
 }
 
 const exclusionKind = (l: ClassificationLedgerRow): "excluded" | "needs_review" =>
-  l.skip_reason === "status_exclude" || l.skip_reason === "no_improvement_type"
+  l.skip_reason === "status_exclude" ||
+  l.skip_reason === "no_improvement_type" ||
+  l.skip_reason === "trade_sub_permit"
     ? "excluded"
     : "needs_review";
 

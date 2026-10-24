@@ -19,7 +19,9 @@
 //   npx tsx scripts/reexport-permits.ts --pids <file> [--job <id>] [--chunk 500] [--concurrency 4]
 //   npx tsx scripts/reexport-permits.ts --pids <file> --compare-run <run1 group dir> [--job <id>]
 //
-// `--compare-run <dir>` is read-only: it compares this job's folders with Run 1's `<dir>/<pID>/data/`.
+// `--compare-run <dir>` is read-only: it compares this job's folders with Run 1's `<dir>/<pID>/data/`
+// by permit content (key `permit_number`), not by file number: trade sub-permits are no longer
+// published, so `property_improvement_N.json` renumbers and some folders disappear.
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -327,12 +329,32 @@ function countPermitFiles(groupDir: string, pids: readonly string[]): number {
 // ---------------------------------------------------------------- --compare-run
 
 export interface CompareResult {
+  /** pIDs whose folder exists on both sides. */
   pidsCompared: number;
-  folderSetDiffs: string[];
-  permitOnlyDiffs: string[];
+  /** Permits (by `permit_number`) found in this job's folders / in Run 1's, over the compared list. */
+  permitsHere: number;
+  permitsRun1: number;
+  /** Permits present on both sides with byte-identical JSON content. */
+  permitsIdentical: number;
+  /** Violation: same permit_number on both sides, different JSON bytes. */
+  permitContentDiffs: string[];
+  /** Violation: a permit here that Run 1 did not publish. */
+  permitsNotInRun1: string[];
+  /** Run 1 permits absent here, by their `improvement_type` ("(none)" when missing). */
+  droppedByType: Record<string, number>;
+  /** Violation: a dropped Run 1 permit whose type is Roofing. */
+  roofingLost: string[];
+  /** pIDs with a folder in Run 1 and none here (allowed only when Run 1 had no Roofing permit). */
+  pidsDropped: number;
+  /** Violation: a dropped pID that had a Roofing permit in Run 1. */
+  pidsDroppedWithRoofing: string[];
+  /** Violation: a pID with a folder here and none in Run 1. */
+  pidsNotInRun1: string[];
+  /** Violation: unreadable permit file or a permit_number printed twice in one folder. */
+  unreadable: string[];
+  /** Shared files (informational; the shared-files fix makes them differ). */
   sharedDiffs: string[];
   sharedSame: number;
-  permitOnlySame: number;
   ok: boolean;
 }
 
@@ -342,26 +364,65 @@ const SHARED_NAMES = new Set([
   "address_has_parcel.json",
   "property.json",
 ]);
+const PERMIT_FILE_RE = /^property_improvement_\d+\.json$/;
 
-/** Permit-only files must be byte-identical to Run 1; shared files are expected to differ. */
+/** `permit_number -> { raw bytes, improvement_type }` of one `<pID>/data` folder. */
+function readPermits(
+  dir: string,
+  label: string,
+  unreadable: string[],
+): Map<string, { raw: Buffer; type: string }> {
+  const out = new Map<string, { raw: Buffer; type: string }>();
+  for (const f of readdirSync(dir).filter((n) => PERMIT_FILE_RE.test(n))) {
+    const raw = readFileSync(join(dir, f));
+    try {
+      const j = JSON.parse(raw.toString("utf8")) as {
+        permit_number?: unknown;
+        improvement_type?: unknown;
+      };
+      if (typeof j.permit_number !== "string" || j.permit_number === "")
+        throw new Error("no permit_number");
+      if (out.has(j.permit_number)) throw new Error(`permit_number ${j.permit_number} twice`);
+      out.set(j.permit_number, {
+        raw,
+        type: typeof j.improvement_type === "string" ? j.improvement_type : "(none)",
+      });
+    } catch (e) {
+      unreadable.push(`${label}/${f}: ${(e as Error).message}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * Compares this job's folders with Run 1's by permit content (not by file number): since
+ * the PO decision to publish roofing only, trade sub-permits are gone and
+ * `property_improvement_N.json` renumbers. Holds when every permit here exists in Run 1 with
+ * byte-identical JSON, every Run 1 permit missing here is non-Roofing, and a pID dropped
+ * entirely had no Roofing permit. Shared files are reported, never judged.
+ */
 export function compareRun(
   groupDir: string,
   run1Dir: string,
   pids: readonly string[],
   cids: { seed: string; propertyImprovement: string },
 ): CompareResult {
-  const isPermitOnly = (f: string) =>
-    /^property_improvement_\d+\.json$/.test(f) ||
-    /^relationship_property_has_property_improvement_\d+\.json$/.test(f) ||
-    f === `${cids.propertyImprovement}.json`;
   const isShared = (f: string) => SHARED_NAMES.has(f) || f === `${cids.seed}.json`;
   const r: CompareResult = {
     pidsCompared: 0,
-    folderSetDiffs: [],
-    permitOnlyDiffs: [],
+    permitsHere: 0,
+    permitsRun1: 0,
+    permitsIdentical: 0,
+    permitContentDiffs: [],
+    permitsNotInRun1: [],
+    droppedByType: {},
+    roofingLost: [],
+    pidsDropped: 0,
+    pidsDroppedWithRoofing: [],
+    pidsNotInRun1: [],
+    unreadable: [],
     sharedDiffs: [],
     sharedSame: 0,
-    permitOnlySame: 0,
     ok: true,
   };
   for (const pid of pids) {
@@ -369,32 +430,47 @@ export function compareRun(
     const b = join(run1Dir, pid, "data");
     const ea = existsSync(a);
     const eb = existsSync(b);
-    if (ea !== eb) {
-      r.folderSetDiffs.push(
-        `${pid}: ${ea ? "present" : "missing"} here, ${eb ? "present" : "missing"} in Run 1`,
-      );
-      continue;
+    if (!ea && !eb) continue;
+    const here = ea ? readPermits(a, pid, r.unreadable) : new Map();
+    const run1 = eb ? readPermits(b, pid, r.unreadable) : new Map();
+    r.permitsHere += here.size;
+    r.permitsRun1 += run1.size;
+    if (ea && !eb) r.pidsNotInRun1.push(pid);
+    if (eb && !ea) {
+      r.pidsDropped += 1;
+      if ([...run1.values()].some((p) => p.type === "Roofing")) r.pidsDroppedWithRoofing.push(pid);
     }
-    if (!ea) continue;
-    r.pidsCompared += 1;
-    const fa = new Set(readdirSync(a));
-    const fb = new Set(readdirSync(b));
-    for (const f of new Set([...fa, ...fb])) {
-      const same =
-        fa.has(f) && fb.has(f) && readFileSync(join(a, f)).equals(readFileSync(join(b, f)));
-      if (isPermitOnly(f)) {
-        if (same) r.permitOnlySame += 1;
-        else
-          r.permitOnlyDiffs.push(
-            `${pid}/${f}${fa.has(f) && fb.has(f) ? "" : fa.has(f) ? " (not in Run 1)" : " (missing here)"}`,
-          );
-      } else if (isShared(f) || !same) {
+    if (ea && eb) {
+      r.pidsCompared += 1;
+      for (const f of new Set([...readdirSync(a), ...readdirSync(b)])) {
+        if (!isShared(f)) continue;
+        const same =
+          existsSync(join(a, f)) &&
+          existsSync(join(b, f)) &&
+          readFileSync(join(a, f)).equals(readFileSync(join(b, f)));
         if (same) r.sharedSame += 1;
         else r.sharedDiffs.push(`${pid}/${f}`);
       }
     }
+    for (const [num, p] of here) {
+      const old = run1.get(num);
+      if (old === undefined) r.permitsNotInRun1.push(`${pid}: ${num}`);
+      else if (old.raw.equals(p.raw)) r.permitsIdentical += 1;
+      else r.permitContentDiffs.push(`${pid}: ${num}`);
+    }
+    for (const [num, old] of run1) {
+      if (here.has(num)) continue;
+      r.droppedByType[old.type] = (r.droppedByType[old.type] ?? 0) + 1;
+      if (old.type === "Roofing") r.roofingLost.push(`${pid}: ${num}`);
+    }
   }
-  r.ok = r.permitOnlyDiffs.length === 0 && r.folderSetDiffs.length === 0;
+  r.ok =
+    r.permitContentDiffs.length === 0 &&
+    r.permitsNotInRun1.length === 0 &&
+    r.roofingLost.length === 0 &&
+    r.pidsDroppedWithRoofing.length === 0 &&
+    r.pidsNotInRun1.length === 0 &&
+    r.unreadable.length === 0;
   return r;
 }
 
@@ -441,16 +517,30 @@ async function main() {
     const r = compareRun(layout.groupDir, resolve(args.compareRun), pids, cids);
     console.log(`[compare] pIDs with folders in both=${r.pidsCompared} of ${pids.length}`);
     console.log(
-      `[compare] permit-only files: identical=${r.permitOnlySame} DIFFERENT=${r.permitOnlyDiffs.length}`,
+      `[compare] permits here=${r.permitsHere} Run 1=${r.permitsRun1} identical=${r.permitsIdentical} DIFFERENT=${r.permitContentDiffs.length} not in Run 1=${r.permitsNotInRun1.length}`,
+    );
+    const dropped = Object.entries(r.droppedByType).sort(([x], [y]) => x.localeCompare(y));
+    console.log(
+      `[compare] Run 1 permits not republished=${dropped.reduce((n, [, c]) => n + c, 0)} by type: ${
+        dropped.map(([t, c]) => `${t}=${c}`).join(" ") || "none"
+      }; Roofing lost=${r.roofingLost.length}`,
+    );
+    console.log(
+      `[compare] pIDs dropped (in Run 1, none now)=${r.pidsDropped} with a Roofing permit=${r.pidsDroppedWithRoofing.length}; pIDs new vs Run 1=${r.pidsNotInRun1.length}; unreadable=${r.unreadable.length}`,
     );
     console.log(
       `[compare] shared files: identical=${r.sharedSame} differ=${r.sharedDiffs.length} (expected to differ)`,
     );
-    for (const d of r.folderSetDiffs.slice(0, 20)) console.log(`[compare] FOLDER SET: ${d}`);
-    for (const d of r.permitOnlyDiffs.slice(0, 20)) console.log(`[compare] PERMIT-ONLY DIFF: ${d}`);
-    console.log(
-      `[compare] ${r.ok ? "PASS" : "FAIL"} (folder-set diffs=${r.folderSetDiffs.length})`,
-    );
+    for (const [label, list] of [
+      ["PERMIT CONTENT DIFF", r.permitContentDiffs],
+      ["PERMIT NOT IN RUN 1", r.permitsNotInRun1],
+      ["ROOFING LOST", r.roofingLost],
+      ["PID DROPPED WITH ROOFING", r.pidsDroppedWithRoofing],
+      ["PID NOT IN RUN 1", r.pidsNotInRun1],
+      ["UNREADABLE", r.unreadable],
+    ] as const)
+      for (const d of list.slice(0, 20)) console.log(`[compare] ${label}: ${d}`);
+    console.log(`[compare] ${r.ok ? "PASS" : "FAIL"}`);
     process.exitCode = r.ok ? 0 : 1;
     return;
   }

@@ -1,11 +1,12 @@
 // The run's ProfileApi: profiles/travis-austin@1.0.0 as the Property Improvement transform
 // consumes it (contracts/profile.md). Every roofing and status decision is the profile's.
 //
-// The one addition is D-4b's publication rule for trade sub-permits: the profile marks a
-// non-BP permit `trade_permit` (never Roofing) and leaves its type null; it is published
-// with its own trade type (plan.md D-4b; agent-design oracle § B). The type is read from
-// the Austin permit-type code, a source code → lexicon enum mapping, not a classification
-// term. Any other non-roofing permit has no type and is not emitted.
+// The one addition is D-4b's trade-type mapping for trade sub-permits: the profile marks a
+// non-BP permit `trade_permit` (never Roofing) and leaves its type null; this adapter gives
+// the ledger its own trade type (plan.md D-4b; agent-design oracle § B). The type is read
+// from the Austin permit-type code, a source code → lexicon enum mapping, not a
+// classification term. Since the PO decision of 2026-10-24 ("publish roofing only") the
+// transform never emits a `trade_permit`: the type is internal ledger evidence only.
 import type { AustinRow, ProfileApi } from "../transforms/austin-property-improvement.js";
 
 /** Austin `permittype` code → lexicon `improvement_type` for trade sub-permits. */

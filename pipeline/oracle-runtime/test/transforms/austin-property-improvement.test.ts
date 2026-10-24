@@ -160,13 +160,68 @@ describe("transformAustinPropertyImprovement", () => {
     });
   });
 
-  it("a trade sub-permit is published with its trade type, never Roofing (D-4b)", () => {
+  it("a BP + EP + PP + MP project emits only the BP; the trade sub-permits stay in the ledger (D-4b, PO 2026-10-24)", () => {
+    const out = transformAustinPropertyImprovement(
+      setup([
+        capture("2003-012717 BP"),
+        capture("2003-012717 EP", { permittype: "EP" }),
+        capture("2003-012717 MP", { permittype: "MP" }),
+        capture("2003-012717 PP", { permittype: "PP" }),
+      ]),
+    );
+    const permitFiles = Object.keys(out.files).filter((n) =>
+      /^property_improvement_\d+\.json$/.test(n),
+    );
+    expect(permitFiles).toEqual(["property_improvement_1.json"]);
+    expect(parse(out.files, "property_improvement_1.json")).toMatchObject({
+      permit_number: "2003-012717 BP",
+      improvement_type: "Roofing",
+    });
+    expect(
+      Object.keys(out.files).filter((n) =>
+        /^relationship_property_has_property_improvement_/.test(n),
+      ),
+    ).toEqual(["relationship_property_has_property_improvement_1.json"]);
+    expect(Object.values(out.files).join("")).not.toContain("2003-012717 EP");
+    expect(out.counts).toMatchObject({
+      emitted: 1,
+      excluded: 3,
+      needs_review: 0,
+      by_skip: { trade_sub_permit: 3 },
+    });
+    expect(out.ledger.map((l) => [l.permit_number, l.emitted, l.skip_reason])).toEqual([
+      ["2003-012717 BP", true, null],
+      ["2003-012717 EP", false, "trade_sub_permit"],
+      ["2003-012717 MP", false, "trade_sub_permit"],
+      ["2003-012717 PP", false, "trade_sub_permit"],
+    ]);
+    // the internal ledger keeps the trade type the profile adapter assigned
+    expect(out.ledger[1]).toMatchObject({ improvement_type: "Electrical", reason: "trade_permit" });
+  });
+
+  it("a property whose only permit is a trade sub-permit emits nothing (counted as excluded)", () => {
     const out = transformAustinPropertyImprovement(
       setup([capture("2026-100002 EP", { permittype: "EP" })]),
     );
-    expect(parse(out.files, "property_improvement_1.json")).toMatchObject({
-      improvement_type: "Electrical",
+    expect(out.files).toEqual({});
+    expect(out.counts).toMatchObject({
+      emitted: 0,
+      excluded: 1,
+      needs_review: 0,
+      by_skip: { trade_sub_permit: 1 },
     });
+    expect(out.ledger[0]).toMatchObject({ emitted: false, skip_reason: "trade_sub_permit" });
+  });
+
+  it("a trade sub-permit is skipped as trade_sub_permit whatever its status word", () => {
+    const out = transformAustinPropertyImprovement(
+      setup([
+        capture("2026-100007 EP", { permittype: "EP", status_current: "VOID" }),
+        capture("2026-100008 PP", { permittype: "PP", status_current: "Archived" }),
+      ]),
+    );
+    expect(out.counts).toMatchObject({ emitted: 0, excluded: 2, needs_review: 0 });
+    expect(out.counts.by_skip).toEqual({ trade_sub_permit: 2 });
   });
 
   it("excluded and needs_review permits are not emitted and are counted", () => {

@@ -157,7 +157,7 @@ export interface PropertyImprovementGroupPlan {
   groups: PlannedPropertyImprovementGroup[];
   /**
    * Reconciled parcels whose permits all skip emission (status_exclude, needs_review, or
-   * a profile-undecided trade verdict -- SkipReason) and are therefore left out of the group, same semantics
+   * a profile trade sub-permit verdict -- SkipReason) and are therefore left out of the group, same semantics
    * as the County group's `out_of_scope` list (write-group.ts): a non-emitted pID still has its
    * permits in the internal ledger, never a public file.
    */
