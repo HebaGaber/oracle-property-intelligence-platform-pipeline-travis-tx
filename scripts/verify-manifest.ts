@@ -1,10 +1,15 @@
 #!/usr/bin/env -S npx tsx
 // verify-manifest (A-11 T007/T011, contracts/publish-sequence.md "verify-manifest contract",
-// P0-14): independent proof that every published artifact is what the committed manifest says,
-// read from the two public gateways this environment does not operate — ipfs.io and dweb.link —
-// and ONLY those two. Filebase, Pinata and the S3 CID copy are pin/serve infrastructure we run;
-// they are refused as verify targets before the first request, because they would prove nothing
-// a stranger couldn't fake by trusting us.
+// AM-01 2026-10-21 — amends P0-14): independent proof that every published artifact is what the
+// committed manifest says, read from the two public gateways this environment does not operate
+// for storage — Pinata's public gateway (gateway.pinata.cloud, the independent one) and the
+// Filebase gateway (ipfs.filebase.io) — and ONLY those two. ipfs.io and dweb.link retired on
+// 2026-09-21 (every request now answers 429 with a Sunset header; docs/decisions/0001-read-path.md
+// Finding 3) and are no longer valid verify targets. Our CloudFront CID copy and w3s.link are
+// pin/serve infrastructure we run; they are refused as verify targets before the first request,
+// because they would prove nothing a stranger couldn't fake by trusting us. Filebase is also the
+// pin host, so Pinata — not Filebase — is the independent half of the pair (AM-01); both are still
+// required for a verified run.
 //
 //   npx tsx scripts/verify-manifest.ts runs/<runId>/manifest.json [--gateway <url>]... [--verbose]
 //
@@ -14,11 +19,14 @@
 // by `carCid` (never the dag-json root as a file). Every GET retries 429/504/timeout up to
 // MAX_ATTEMPTS (5) with backoff honouring `Retry-After`; TIMEOUT_MS (default 300000 ms) bounds
 // each attempt. A redirect is followed only when its target stays on the same gateway's domain
-// (dweb.link's `<cid>.ipfs.dweb.link` pattern) — any redirect elsewhere is a failed check, never
-// followed. A miss of any kind marks that check `unverified` and the run exits non-zero; printing
-// `ALL ARTIFACTS VERIFIED` (exit 0) requires every check to match on BOTH gateways. The body is
-// hashed while streaming (never buffered whole), so an artifact over 50 MB is checked the same
-// way as a small one (NFR-06).
+// (host-generic: covers a CID-subdomain redirect such as dweb.link's old `<cid>.ipfs.dweb.link`
+// pattern, should any future gateway do the same) — any redirect elsewhere is a failed check,
+// never followed. Pinata and Filebase both serve `/ipfs/<cid>` directly with a plain 200 and no
+// redirect (confirmed empirically 2026-10-24), so this path is not exercised against them today;
+// it stays in place as a safety net rather than being removed. A miss of any kind marks that check
+// `unverified` and the run exits non-zero; printing `ALL ARTIFACTS VERIFIED` (exit 0) requires
+// every check to match on BOTH gateways. The body is hashed while streaming (never buffered
+// whole), so an artifact over 50 MB is checked the same way as a small one (NFR-06).
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { cidOfBytes } from "../pipeline/publish/src/cid.js";
@@ -54,8 +62,10 @@ function isManifestLike(value: unknown): value is ManifestLike {
   );
 }
 
-/** The complete, fixed allowlist (P0-14): never Filebase, Pinata, or the S3 CID copy. */
-export const GATEWAYS: readonly string[] = ["https://ipfs.io", "https://dweb.link"];
+/** The complete, fixed allowlist (AM-01, 2026-10-21, amends P0-14): Pinata's public gateway (the
+ *  independent one) and the Filebase gateway. Never ipfs.io/dweb.link (retired 2026-09-21), our
+ *  CloudFront CID copy, or w3s.link. */
+export const GATEWAYS: readonly string[] = ["https://gateway.pinata.cloud", "https://ipfs.filebase.io"];
 export const TIMEOUT_MS_DEFAULT = 300_000;
 export const MAX_ATTEMPTS = 5;
 export const ALL_VERIFIED_TEXT = "ALL ARTIFACTS VERIFIED";

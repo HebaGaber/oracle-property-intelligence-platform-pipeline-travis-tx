@@ -1,11 +1,12 @@
-// T007 (A-11, contracts/publish-sequence.md "verify-manifest contract", P0-14): gateway-hardening
-// tests for scripts/verify-manifest.ts over an injected fetch. No network: a fake pair of
-// gateways (ipfs.io, dweb.link — the only allowed pair) serves bytes by CID; every other host is
+// T007 (A-11, contracts/publish-sequence.md "verify-manifest contract", AM-01 2026-10-21 amends
+// P0-14): gateway-hardening tests for scripts/verify-manifest.ts over an injected fetch. No
+// network: a fake pair of gateways (gateway.pinata.cloud, ipfs.filebase.io — the only allowed
+// pair) serves bytes by CID; every other host, including the retired ipfs.io/dweb.link pair, is
 // refused before any request. Checks: 429/504/timeout retried with backoff then marked
 // `unverified` with the gateway's response recorded, non-zero exit; `ALL ARTIFACTS VERIFIED`
-// never prints unless both gateways match every check; a dweb.link redirect to the same gateway's
-// CID-subdomain is followed; a redirect to any other host is refused; an artifact over 50 MB is
-// hashed correctly by the streaming path (NFR-06).
+// never prints unless both gateways match every check; a same-domain CID-subdomain redirect is
+// followed; a redirect to any other host is refused; an artifact over 50 MB is hashed correctly
+// by the streaming path (NFR-06).
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,8 +27,8 @@ import {
 } from "../verify-manifest.js";
 
 const RUN_ID = "travis-202609-reroof-20261021t1530z";
-const IPFS_IO = "https://ipfs.io";
-const DWEB = "https://dweb.link";
+const PINATA = "https://gateway.pinata.cloud";
+const FILEBASE = "https://ipfs.filebase.io";
 
 /** Deterministic pseudo-random bytes from a seed (sha256 chain) — no large literal in the file. */
 function bytesOf(seed: string, length: number): Uint8Array {
@@ -114,7 +115,7 @@ interface FakeOptions {
   /** Simulate a transport-level timeout for the first N attempts of (host, cid). */
   timeoutsFor?: (host: string, cid: string) => number;
   retryAfter?: string;
-  /** dweb.link only: redirect once to this target before serving 200. */
+  /** Filebase only: redirect once to this target before serving 200. */
   redirectTo?: (host: string, cid: string) => string | undefined;
   /** Override what a host serves for a cid (undefined -> 404). */
   serve?: (host: string, cid: string, bytes: Uint8Array | undefined) => Uint8Array | undefined;
@@ -157,13 +158,13 @@ const noSleep = async (): Promise<void> => {};
 const noJitter = (): number => 1;
 
 describe("the fixed gateway allowlist (P0-14)", () => {
-  it("accepts only ipfs.io and dweb.link", () => {
-    expect([...GATEWAYS]).toEqual([IPFS_IO, DWEB]);
-    expect(() => assertAllowedGateways([IPFS_IO, DWEB])).not.toThrow();
+  it("accepts only gateway.pinata.cloud and ipfs.filebase.io", () => {
+    expect([...GATEWAYS]).toEqual([PINATA, FILEBASE]);
+    expect(() => assertAllowedGateways([PINATA, FILEBASE])).not.toThrow();
   });
 
-  it("refuses Filebase, Pinata and the S3 CID copy before any request", () => {
-    for (const other of ["https://ipfs.filebase.io", "https://gateway.pinata.cloud", "https://d111111abcdef8.cloudfront.net"]) {
+  it("refuses ipfs.io, dweb.link and the S3 CID copy before any request", () => {
+    for (const other of ["https://ipfs.io", "https://dweb.link", "https://d111111abcdef8.cloudfront.net"]) {
       expect(() => assertAllowedGateways([other])).toThrow(refusedGatewayText(other));
     }
   });
@@ -175,7 +176,7 @@ describe("retry with backoff on 429/504/timeout", () => {
     async () => {
       const f = await fixture();
       const { fetchImpl, attempts } = fakeGateways(f.published, {
-        statuses: (host) => (host === "ipfs.io" ? [429, 429] : []),
+        statuses: (host) => (host === "gateway.pinata.cloud" ? [429, 429] : []),
         retryAfter: "0",
       });
       const report = await verifyManifest({
@@ -185,7 +186,7 @@ describe("retry with backoff on 429/504/timeout", () => {
         random: noJitter,
       });
       expect(report.ok).toBe(true);
-      expect(attempts.get(`ipfs.io:${f.manifestCid}`)).toBe(3);
+      expect(attempts.get(`gateway.pinata.cloud:${f.manifestCid}`)).toBe(3);
     },
     // sleep/jitter are injected no-ops (no real backoff delay); the margin above the
     // default 5000ms covers CPU contention from fixture()'s real sha256 hashing of the
@@ -196,7 +197,7 @@ describe("retry with backoff on 429/504/timeout", () => {
   it("retries 504 up to MAX_ATTEMPTS; exhausting them marks the check unverified, non-zero result", async () => {
     const f = await fixture();
     const { fetchImpl, attempts } = fakeGateways(f.published, {
-      statuses: (host, cid) => (host === "dweb.link" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : []),
+      statuses: (host, cid) => (host === "ipfs.filebase.io" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : []),
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -205,8 +206,8 @@ describe("retry with backoff on 429/504/timeout", () => {
       random: noJitter,
     });
     expect(report.ok).toBe(false);
-    expect(attempts.get(`dweb.link:${f.manifestCid}`)).toBe(MAX_ATTEMPTS);
-    const failed = report.manifest.find((c) => c.gateway === DWEB);
+    expect(attempts.get(`ipfs.filebase.io:${f.manifestCid}`)).toBe(MAX_ATTEMPTS);
+    const failed = report.manifest.find((c) => c.gateway === FILEBASE);
     expect(failed?.ok).toBe(false);
     expect(failed?.reason).toMatch(/HTTP 504 after 5 attempts/);
   });
@@ -214,7 +215,7 @@ describe("retry with backoff on 429/504/timeout", () => {
   it("retries a timeout the same way as 429/504, then recovers", async () => {
     const f = await fixture();
     const { fetchImpl, attempts } = fakeGateways(f.published, {
-      timeoutsFor: (host) => (host === "ipfs.io" ? 2 : 0),
+      timeoutsFor: (host) => (host === "gateway.pinata.cloud" ? 2 : 0),
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -223,14 +224,14 @@ describe("retry with backoff on 429/504/timeout", () => {
       random: noJitter,
     });
     expect(report.ok).toBe(true);
-    expect(attempts.get(`ipfs.io:${f.manifestCid}`)).toBeGreaterThanOrEqual(3);
+    expect(attempts.get(`gateway.pinata.cloud:${f.manifestCid}`)).toBeGreaterThanOrEqual(3);
   });
 
   it("never prints ALL ARTIFACTS VERIFIED when only one gateway matches", async () => {
     const f = await fixture();
     const lines: string[] = [];
     const { fetchImpl } = fakeGateways(f.published, {
-      statuses: (host, cid) => (host === "dweb.link" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : []),
+      statuses: (host, cid) => (host === "ipfs.filebase.io" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : []),
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -266,13 +267,13 @@ describe("retryDelayMs", () => {
   });
 });
 
-describe("dweb.link redirects", () => {
+describe("Filebase redirects", () => {
   it("follows a redirect to the same gateway's CID-subdomain host", async () => {
     const f = await fixture();
-    const subdomain = `${f.manifestCid}.ipfs.dweb.link`;
+    const subdomain = `${f.manifestCid}.ipfs.filebase.io`;
     const { fetchImpl, requests } = fakeGateways(f.published, {
       redirectTo: (host, cid) =>
-        host === "dweb.link" && cid === f.manifestCid ? `https://${subdomain}/ipfs/${cid}` : undefined,
+        host === "ipfs.filebase.io" && cid === f.manifestCid ? `https://${subdomain}/ipfs/${cid}` : undefined,
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -287,7 +288,7 @@ describe("dweb.link redirects", () => {
   it("refuses a redirect to a host outside the gateway's own domain, never following it", async () => {
     const f = await fixture();
     const { fetchImpl } = fakeGateways(f.published, {
-      redirectTo: (host, cid) => (host === "dweb.link" && cid === f.manifestCid ? "https://evil.example/x" : undefined),
+      redirectTo: (host, cid) => (host === "ipfs.filebase.io" && cid === f.manifestCid ? "https://evil.example/x" : undefined),
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -296,7 +297,7 @@ describe("dweb.link redirects", () => {
       random: noJitter,
     });
     expect(report.ok).toBe(false);
-    const failed = report.manifest.find((c) => c.gateway === DWEB);
+    const failed = report.manifest.find((c) => c.gateway === FILEBASE);
     expect(failed?.ok).toBe(false);
     expect(failed?.reason).toContain("redirect to evil.example refused");
   });
@@ -326,7 +327,7 @@ describe("streaming hash for large artifacts (NFR-06)", () => {
   it("marks a size/sha256 mismatch on a large artifact unverified, not a silent pass", async () => {
     const f = await fixture();
     const { fetchImpl } = fakeGateways(f.published, {
-      serve: (host, cid, bytes) => (cid === f.largeArtifact.cid && host === "ipfs.io" ? bytes?.slice(0, -1) : bytes),
+      serve: (host, cid, bytes) => (cid === f.largeArtifact.cid && host === "gateway.pinata.cloud" ? bytes?.slice(0, -1) : bytes),
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -335,7 +336,7 @@ describe("streaming hash for large artifacts (NFR-06)", () => {
       random: noJitter,
     });
     expect(report.ok).toBe(false);
-    const mismatched = report.artifacts.find((c) => c.name === f.largeArtifact.name && c.gateway === IPFS_IO);
+    const mismatched = report.artifacts.find((c) => c.name === f.largeArtifact.name && c.gateway === PINATA);
     expect(mismatched?.ok).toBe(false);
   });
 });
