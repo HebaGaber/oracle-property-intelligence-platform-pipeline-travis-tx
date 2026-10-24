@@ -18,15 +18,17 @@ import { runtimeUrl } from "./lib/runtime-url.js";
 const baseURL = runtimeUrl();
 
 // Specs that must run alone: perf timings would be skewed by concurrent pages, and the public
-// gateways rate-limit per client IP (a burst answers 429 without CORS headers). CI runs project
-// `parallel` with several workers, then project `isolated` with one; a plain local run keeps
-// workers 1 for both.
+// gateways rate-limit per client IP (a burst answers 429 without CORS headers). CI runs projects
+// `permits`, `site` and `isolated` as three jobs on separate runners; a plain local run runs all
+// three with one worker.
 const ISOLATED = [
   "perf.spec.ts",
   "lambda-fallback.perf.spec.ts",
   "fallback.spec.ts",
   "verify-manifest.spec.ts",
 ];
+// The full-county Permits cases (each loads the whole page) form their own CI job.
+const PERMITS = "permits.spec.ts";
 // One report and output folder per CI phase, so the second invocation never clears the first.
 const phase = process.env.PW_PHASE ?? "all";
 
@@ -60,11 +62,16 @@ export default defineConfig({
     video: "off",
     permissions: ["clipboard-read", "clipboard-write"],
   },
+  // CI runs each project as its own job on its own runner (ci.yml e2e-hosted matrix).
   projects: [
     {
-      name: "parallel",
-      testIgnore: ISOLATED.map((f) => `**/${f}`),
-      fullyParallel: true,
+      name: "permits",
+      testMatch: `**/${PERMITS}`,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "site",
+      testIgnore: [...ISOLATED, PERMITS].map((f) => `**/${f}`),
       use: { ...devices["Desktop Chrome"] },
     },
     {

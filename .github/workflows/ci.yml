@@ -236,9 +236,17 @@ jobs:
     # commit, then Playwright on the hosted URL (plan Complexity Tracking). 60 since A-11 Run 2:
     # at full-county scale TC-NF-01's 20 cold loads alone take ~15 min from a GitHub runner.
     timeout-minutes: 60
-    # A newer push makes this commit's hosted run stale; cancel it.
+    # Three jobs on three runners (playwright.config.ts projects), each with its own memory: the
+    # full-county Permits cases, the rest of the site, and the cases that must run alone (perf
+    # timings, rate-limited public gateways). One worker each (A-16 item 11 for the reason).
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [permits, site, isolated]
+    # A newer push makes this commit's hosted run stale; cancel it (per shard, so the three jobs
+    # of one run never cancel each other).
     concurrency:
-      group: e2e-hosted-${{ github.ref }}
+      group: e2e-hosted-${{ github.ref }}-${{ matrix.shard }}
       cancel-in-progress: true
     # Credential-free on purpose (no AWS step, no OIDC token; AM-08): @needs-aws cases stay excluded and
     # announced. build-checks.spec.ts (TC-052/053) runs the infra suites, which need the region
@@ -307,23 +315,20 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       # The Playwright config refuses localhost (TC-060); RUNTIME_URL is the hosted branch URL.
-      # Two phases (playwright.config.ts): `parallel`, then `isolated` alone (perf timings,
-      # rate-limited public gateways). Both always run; the step fails if either fails. One
-      # worker for now: with 2 or 4 workers the job was cancelled ~2 min into the full-county
-      # Permits cases (cause not yet confirmed; A-16 #11), while 1 worker runs to completion.
+      # One project per matrix shard, one worker: with 2 or 4 workers on one runner the job was
+      # cancelled ~2 min into the full-county Permits cases (cause not yet confirmed; A-16
+      # item 11), while 1 worker runs to completion.
       - name: Playwright on the hosted URL
         working-directory: tests/e2e
-        run: |
-          status=0
-          PW_PHASE=parallel pnpm exec playwright test --project parallel --workers 1 || status=1
-          PW_PHASE=isolated pnpm exec playwright test --project isolated --workers 1 || status=1
-          exit "$status"
+        env:
+          PW_PHASE: ${{ matrix.shard }}
+        run: pnpm exec playwright test --project ${{ matrix.shard }} --workers 1
 
       - name: Upload the Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ github.sha }}
+          name: playwright-report-${{ github.sha }}-${{ matrix.shard }}
           path: tests/e2e/playwright-report
           if-no-files-found: ignore
           retention-days: 14
