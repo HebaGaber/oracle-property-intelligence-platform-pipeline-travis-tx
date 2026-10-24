@@ -447,11 +447,13 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   }
 
   // Concurrency is asymmetric per gateway, not uniform: Filebase's gateway has shown no rate
-  // limiting all day, so it runs with real concurrency; Pinata's gateway gave a ~47-minute
-  // retry-after penalty under sustained load earlier (2026-10-24), so it stays near-sequential
-  // even when parallelized, to avoid re-triggering that penalty.
+  // limiting all day at concurrency 10. Pinata's gateway is the real constraint -- it gave a
+  // ~47-minute retry-after penalty under sustained sequential load earlier (2026-10-24), then
+  // empirically tolerated 3 and 5 cleanly for a while, but 5 eventually produced a burst of 429s
+  // (97 failures) under sustained load over time, not instantly. Settled on 3 as the value that
+  // held up for the longest sustained run today; revisit if Pinata's limit is ever documented.
   const FILEBASE_CONCURRENCY = 10;
-  const PINATA_CONCURRENCY = 5;
+  const PINATA_CONCURRENCY = 3;
   function concurrencyFor(gateway: string): number {
     return isPinataGateway(gateway) ? PINATA_CONCURRENCY : FILEBASE_CONCURRENCY;
   }
