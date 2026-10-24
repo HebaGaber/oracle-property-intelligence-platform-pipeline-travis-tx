@@ -1,0 +1,217 @@
+// A-11: the resumable publish driver for one built run manifest. The logic and the six steps
+// live in src/publish-run.ts; this file wires the real effects (pinned elephant-cli, Filebase
+// credentials, AWS CID copy, gh) and parses argv. Rerun it after any failure: finished items are
+// skipped, it resumes at the first unfinished one.
+//
+//   npx tsx pipeline/publish/scripts/publish-run.ts --manifest runs/<runId>/manifest.json --run-id <runId> --dry-run
+//   npx tsx pipeline/publish/scripts/publish-run.ts --manifest runs/<runId>/manifest.json --run-id <runId>
+//
+// Steps, in this fixed order: filebase, car-files, manifest, cid-copy, release, index.
+// Receipts: specs/011-publish-and-runs/upload-receipts/<runId>/ (Run 1's top-level receipts also
+// count as "already uploaded" for any artifact whose CID they record).
+//
+// Flags
+//   --manifest <path>            the built manifest (required)
+//   --run-id <id>                must equal the manifest's runId (required)
+//   --step <name>                run one step only (index refuses unless every earlier step has receipts)
+//   --dry-run                    print the plan and what would be skipped; writes nothing, no network
+//   --probe                      with --dry-run: allow read-only network checks (gateway range
+//                                requests, `gh release view`) so already-published work shows as skip
+//   --pilot                      no release, no index; the manifest may not be under runs/
+//   --cli <path>                 elephant-cli (default ~/.local/share/elephant-cli-main/node_modules/.bin/elephant-cli)
+//   --release-tag <tag>          release tag (default run-<runId>)
+//   --release-reuse-tag <tag>    repeatable: an earlier release whose identical assets are not re-uploaded
+//   --release-target <ref>       ref the tag points at (default: the current branch)
+//   --repo <owner/repo>          gh repository (default: gh's own default for this checkout)
+//
+// Credentials: ~/.config/assessment/filebase.env (Filebase) and the assess-cid-writer AWS
+// profile (CID copy). Neither is ever printed.
+import { execFile, execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { parseArgs } from "node:util";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import {
+  copyManifestObjects,
+  createCidCopyClients,
+  resolveCidCopyBucket,
+} from "../src/cid-copy.js";
+import { FILEBASE_ENV_FILE, parseEnvFile } from "../src/cli.js";
+import {
+  PUBLISH_STEPS,
+  createPublishSteps,
+  formatReport,
+  loadPublishContext,
+  runPublish,
+  type GhClient,
+  type GhRelease,
+  type PublishStepName,
+} from "../src/publish-run.js";
+import { filebaseEnvProblem, spawnRunner } from "../src/sequence.js";
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const DEFAULT_CLI = join(
+  homedir(),
+  ".local/share/elephant-cli-main/node_modules/.bin/elephant-cli",
+);
+const execFileAsync = promisify(execFile);
+
+function ghClient(repo: string | undefined): GhClient {
+  const repoArgs = repo === undefined ? [] : ["--repo", repo];
+  const gh = (args: string[]): Promise<{ stdout: string; stderr: string }> =>
+    execFileAsync("gh", [...args, ...repoArgs], { cwd: REPO_ROOT, maxBuffer: 64 * 1024 * 1024 });
+  return {
+    async view(tag) {
+      try {
+        const { stdout } = await gh(["release", "view", tag, "--json", "tagName,assets"]);
+        return JSON.parse(stdout) as GhRelease;
+      } catch (error) {
+        const text = `${(error as { stderr?: string }).stderr ?? ""}${(error as Error).message}`;
+        if (/release not found|not found/i.test(text)) return null;
+        throw error;
+      }
+    },
+    async create({ tag, title, notes, target, files }) {
+      await gh([
+        "release",
+        "create",
+        tag,
+        "--title",
+        title,
+        "--notes",
+        notes,
+        "--target",
+        target,
+        ...files,
+      ]);
+    },
+    async upload(tag, files) {
+      await gh(["release", "upload", tag, ...files]);
+    },
+    async deleteAsset(tag, name) {
+      await gh(["release", "delete-asset", tag, name, "--yes"]);
+    },
+  };
+}
+
+function loadFilebaseEnv(): NodeJS.ProcessEnv {
+  const fromFile = existsSync(FILEBASE_ENV_FILE)
+    ? parseEnvFile(readFileSync(FILEBASE_ENV_FILE, "utf8"))
+    : {};
+  const env: NodeJS.ProcessEnv = { ...process.env, ...fromFile };
+  const problem = filebaseEnvProblem(env);
+  if (problem !== undefined) throw new Error(`Filebase credentials unusable: ${problem}`);
+  return env;
+}
+
+async function main(): Promise<number> {
+  const { values } = parseArgs({
+    options: {
+      manifest: { type: "string" },
+      "run-id": { type: "string" },
+      step: { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      probe: { type: "boolean", default: false },
+      pilot: { type: "boolean", default: false },
+      cli: { type: "string" },
+      "release-tag": { type: "string" },
+      "release-reuse-tag": { type: "string", multiple: true },
+      "release-target": { type: "string" },
+      repo: { type: "string" },
+    },
+    strict: true,
+  });
+  if (values.manifest === undefined || values["run-id"] === undefined) {
+    console.error(
+      "usage: publish-run.ts --manifest <path> --run-id <id> [--step <name>] [--dry-run [--probe]] [--pilot]",
+    );
+    return 2;
+  }
+  if (values.step !== undefined && !PUBLISH_STEPS.includes(values.step as PublishStepName)) {
+    console.error(`--step must be one of: ${PUBLISH_STEPS.join(", ")}`);
+    return 2;
+  }
+  if (values.probe && !values["dry-run"]) {
+    console.error("--probe only applies to --dry-run (a real run always checks before it uploads)");
+    return 2;
+  }
+  const cliPath = values.cli ?? DEFAULT_CLI;
+  const ctx = await loadPublishContext({
+    repoRoot: REPO_ROOT,
+    manifestPath: values.manifest,
+    runId: values["run-id"],
+    pilot: values.pilot,
+  });
+
+  let env: NodeJS.ProcessEnv | undefined;
+  const loadEnv = (): NodeJS.ProcessEnv => (env ??= loadFilebaseEnv());
+  const log = (line: string): void => console.log(line);
+  const now = (): Date => new Date();
+  const impls = createPublishSteps({
+    filebase: {
+      loadEnv,
+      runCli: (argv, childEnv) => {
+        if (!existsSync(cliPath)) throw new Error(`elephant-cli not found at ${cliPath}`);
+        return spawnRunner(cliPath, { cwd: REPO_ROOT, env: childEnv })(argv);
+      },
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      log,
+    },
+    carFiles: { loadEnv, now, log },
+    manifest: { loadEnv, now, log },
+    cidCopy: {
+      now,
+      copy: async (c) => {
+        const { s3, ssm } = createCidCopyClients();
+        const bucket = await resolveCidCopyBucket({ env: process.env, ssm });
+        const report = await copyManifestObjects({
+          manifestPath: c.manifestPath,
+          runDir: c.repoRoot,
+          bucket,
+          s3,
+          log,
+        });
+        return { written: report.written, skipped: report.skipped, total: report.objects.length };
+      },
+    },
+    release: {
+      gh: ghClient(values.repo),
+      options: {
+        ...(values["release-tag"] === undefined ? {} : { tag: values["release-tag"] }),
+        ...(values["release-reuse-tag"] === undefined
+          ? {}
+          : { reuseTags: values["release-reuse-tag"] }),
+        ...(values["release-target"] === undefined ? {} : { target: values["release-target"] }),
+      },
+      currentBranch: () =>
+        execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+          cwd: REPO_ROOT,
+          encoding: "utf8",
+        }).trim(),
+      now,
+      log,
+    },
+    index: { log },
+  });
+
+  const report = await runPublish({
+    ctx,
+    impls,
+    dryRun: values["dry-run"],
+    probe: values.probe,
+    ...(values.step === undefined ? {} : { step: values.step as PublishStepName }),
+  });
+  for (const line of formatReport(report)) console.log(line);
+  return report.ok ? 0 : 1;
+}
+
+main()
+  .then((code) => {
+    process.exitCode = code;
+  })
+  .catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
