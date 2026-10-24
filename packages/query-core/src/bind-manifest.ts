@@ -137,11 +137,82 @@ const str = (s: string | null | undefined): string =>
   s === null || s === undefined ? "NULL" : `'${s.replace(/'/g, "''")}'`;
 const ident = (s: string): string => `"${s.replace(/"/g, '""')}"`;
 
-/** "tables/<group>/<table>/<part>" → its pieces, or null for any other artifact name. */
-function partOf(name: string): { group: string; table: string; part: string } | null {
-  const [root, group, table, part, ...rest] = name.split("/");
-  if (root !== "tables" || !group || !table || !part || rest.length > 0) return null;
-  return { group, table, part };
+/** A table artifact's name split into the export batch it came from (every sibling table/part
+ *  under the same prefix) and its own table/part. Works for A-03's pilot layout
+ *  (`tables/<group>/<table>/<part>`, batchRoot `tables/<group>`) and A-04/A-11's full-county
+ *  batching (AD-0001: `<run-dir>/…/tables/<bNN>/<table>/<part>`, batchRoot
+ *  `<run-dir>/…/tables/<bNN>`) alike — the batch is just "everything before the last two path
+ *  segments", at any depth. */
+function tableLocOf(name: string): { batchRoot: string; table: string; part: string } | null {
+  const segs = name.split("/");
+  if (segs.length < 3) return null;
+  const part = segs[segs.length - 1];
+  const table = segs[segs.length - 2];
+  if (!part || !table) return null;
+  return { batchRoot: segs.slice(0, -2).join("/"), table, part };
+}
+
+/** REQUIRED_TABLES table names that name exactly one group — the anchors `resolveBatchGroups`
+ *  trusts. "company" (the one name REQUIRED_TABLES lists for both groups) is deliberately never
+ *  an anchor. */
+const GROUP_OF_REQUIRED_TABLE: ReadonlyMap<string, RequiredTable["group"]> = (() => {
+  const byTable = new Map<string, Set<RequiredTable["group"]>>();
+  for (const r of REQUIRED_TABLES) {
+    const groups = byTable.get(r.table) ?? new Set<RequiredTable["group"]>();
+    groups.add(r.group);
+    byTable.set(r.table, groups);
+  }
+  const out = new Map<string, RequiredTable["group"]>();
+  for (const [table, groups] of byTable) {
+    if (groups.size === 1) out.set(table, [...groups][0] as RequiredTable["group"]);
+  }
+  return out;
+})();
+
+/**
+ * The data group of every export batch (one `tableLocOf` batchRoot), from the manifest's own
+ * structure — never guessed from a fixed path string, so this works for any number of batches
+ * per group (1 in A-03's pilot, 10+2 in Run 1, however many later). A batch's group is the one
+ * most of its table names agree on via GROUP_OF_REQUIRED_TABLE (a majority vote, not any single
+ * name): a batch can legitimately carry a table name that REQUIRED_TABLES assigns to the *other*
+ * group (e.g. A-11's property_improvement batches also export an unused "property" table, whose
+ * only REQUIRED_TABLES owner is county) without that one name mis-grouping the whole batch. Falls
+ * back to the pilot's own literal `tables/<group>` layout only when no table name resolves the
+ * batch at all.
+ */
+function resolveBatchGroups(
+  tableNames: Iterable<string>,
+): ReadonlyMap<string, RequiredTable["group"] | null> {
+  const byBatch = new Map<string, string[]>();
+  for (const name of tableNames) {
+    const loc = tableLocOf(name);
+    if (!loc) continue;
+    const tables = byBatch.get(loc.batchRoot) ?? [];
+    tables.push(loc.table);
+    byBatch.set(loc.batchRoot, tables);
+  }
+  const resolved = new Map<string, RequiredTable["group"] | null>();
+  for (const [batchRoot, tables] of byBatch) {
+    const votes = new Map<RequiredTable["group"], number>();
+    for (const table of tables) {
+      const group = GROUP_OF_REQUIRED_TABLE.get(table);
+      if (group) votes.set(group, (votes.get(group) ?? 0) + 1);
+    }
+    let winner: RequiredTable["group"] | null = null;
+    let max = 0;
+    for (const [group, count] of votes) {
+      if (count > max) {
+        winner = group;
+        max = count;
+      }
+    }
+    if (winner === null) {
+      const last = batchRoot.split("/").at(-1);
+      if (last === "county" || last === "property_improvement") winner = last;
+    }
+    resolved.set(batchRoot, winner);
+  }
+  return resolved;
 }
 
 /**
@@ -168,14 +239,20 @@ export async function bindManifest(
       `bindManifest: manifest ${RULES.name}@${profile.version} sha256 ${profile.sha256} is not the in-repo profile DIGEST ${PROFILE.version} ${PROFILE.sha256}`,
     );
   // area_list_sha256 comes from the manifest only (code-review #8); the ZCTA lookup is the
-  // in-repo gazetteer, so its digest must be the one the run recorded.
+  // in-repo gazetteer, so its digest must be the one the run recorded. A run that never captured
+  // places/business (A-07 Track C out of scope, e.g. Run 1) carries no travis-places profile at
+  // all: that is missing data, not a binding failure (constitution "missing data says why"), so
+  // area_list_sha256 stays NULL and meta.zcta_area stays empty — v_property's own
+  // `owner_area_class = coalesce(zcta_class, 'unknown')` and its "not_in_export" missing-reason
+  // already carry that forward; nothing downstream needs to know why the table is empty. A
+  // present profile whose digest disagrees with the in-repo gazetteer is still a hard failure:
+  // that is not missing data, it is a run classified by a lookup this build cannot reproduce.
   const places = manifest.profiles.find((p) => p.name === PLACES_PROFILE);
-  if (!places) throw new Error(`bindManifest: manifest has no ${PLACES_PROFILE} profile`);
-  if (places.sha256 !== GAZETTEER.sha256)
+  if (places && places.sha256 !== GAZETTEER.sha256)
     throw new Error(
       `bindManifest: manifest ${PLACES_PROFILE} sha256 ${places.sha256} is not the in-repo gazetteer DIGEST ${GAZETTEER.sha256}`,
     );
-  const areaList = places.sha256;
+  const areaList = places?.sha256 ?? null;
   const groupSources = options.groupSources ?? TRAVIS_GROUP_SOURCES;
   const plan: ViewPlan | undefined =
     options.views === undefined ? undefined : planViews(options.views);
@@ -197,9 +274,15 @@ export async function bindManifest(
     "CREATE SCHEMA IF NOT EXISTS property_improvement",
   ];
 
+  const batchGroups = resolveBatchGroups(
+    manifest.artifacts.filter((a) => a.kind === "table").map((a) => a.name),
+  );
   const roots = manifest.artifacts
     .filter((a) => a.kind === "directory")
-    .map((a) => ({ data_group: a.name.replace(/^tables\//, ""), cid: a.cid }));
+    .map((a) => ({
+      data_group: batchGroups.get(a.name) ?? a.name.replace(/^tables\//, ""),
+      cid: a.cid,
+    }));
   sql.push(`CREATE OR REPLACE TABLE meta.run AS SELECT
     ${str(manifest.runId)} AS run_id,
     ${str(manifest.fips)} AS county_fips,
@@ -244,40 +327,50 @@ export async function bindManifest(
   sql.push("CREATE OR REPLACE TABLE meta.jurisdiction_host (host VARCHAR, jurisdiction VARCHAR)");
   if (hosts.length > 0) sql.push(`INSERT INTO meta.jurisdiction_host VALUES ${hosts.join(", ")}`);
 
-  const byClass = new Map<string, string[]>();
-  // Push, never re-spread: ~33k ZCTAs made the copy-per-row form O(n²) (≈1.9 s CPU per bind).
-  for (const r of zctaAreaRows()) {
-    const codes = byClass.get(r.area_class);
-    if (codes === undefined) byClass.set(r.area_class, [r.zcta]);
-    else codes.push(r.zcta);
+  // No travis-places profile (places/business out of scope for this run): meta.zcta_area stays
+  // an empty typed relation, never silently filled from the in-repo gazetteer a run that never
+  // declared using it did not ask for (see the `places` comment above).
+  if (places) {
+    const byClass = new Map<string, string[]>();
+    // Push, never re-spread: ~33k ZCTAs made the copy-per-row form O(n²) (≈1.9 s CPU per bind).
+    for (const r of zctaAreaRows()) {
+      const codes = byClass.get(r.area_class);
+      if (codes === undefined) byClass.set(r.area_class, [r.zcta]);
+      else codes.push(r.zcta);
+    }
+    sql.push(
+      `CREATE OR REPLACE TABLE meta.zcta_area AS ${[...byClass.entries()]
+        .map(
+          ([cls, codes]) =>
+            `SELECT unnest(string_split(${str(codes.join(","))}, ',')) AS zcta, ${str(cls)} AS area_class`,
+        )
+        .join(" UNION ALL ")}`,
+    );
+  } else {
+    sql.push("CREATE OR REPLACE TABLE meta.zcta_area (zcta VARCHAR, area_class VARCHAR)");
   }
-  sql.push(
-    `CREATE OR REPLACE TABLE meta.zcta_area AS ${[...byClass.entries()]
-      .map(
-        ([cls, codes]) =>
-          `SELECT unnest(string_split(${str(codes.join(","))}, ',')) AS zcta, ${str(cls)} AS area_class`,
-      )
-      .join(" UNION ALL ")}`,
-  );
   await engine.run(sql.join(";\n"));
 
   // One relation per emitted table, then empty typed relations for the required absent ones.
   const emitted = new Map<string, BoundTable>();
   const cidOf = new Map(parts.map((a) => [a.name, a.cid]));
   for (const a of parts) {
-    const p = partOf(a.name);
-    if (!p) continue;
-    const key = `${p.group}.${p.table}`;
+    const loc = tableLocOf(a.name);
+    if (!loc) continue;
+    const group = batchGroups.get(loc.batchRoot);
+    if (!group) continue; // the batch's group could not be resolved: never bind it into a guess
+    const key = `${group}.${loc.table}`;
     if (!wanted(key)) continue;
-    const t = emitted.get(key) ?? { group: p.group, table: p.table, emitted: true, parts: [] };
+    const t = emitted.get(key) ?? { group, table: loc.table, emitted: true, parts: [] };
     t.parts.push(a.name);
     emitted.set(key, t);
   }
   const partUrl =
     options.partUrl ??
     (({ name }: { name: string; cid: string }): string => {
-      const p = partOf(name);
-      return `${tablesDir}/${p?.group}/${p?.table}/${p?.part}`;
+      const loc = tableLocOf(name);
+      const group = loc ? batchGroups.get(loc.batchRoot) : null;
+      return `${tablesDir}/${group}/${loc?.table}/${loc?.part}`;
     });
   for (const t of emitted.values()) {
     const selects = t.parts.map((name) => {
