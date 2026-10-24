@@ -122,6 +122,8 @@ export interface CidCopyOptions {
   bucket: string;
   s3: CidCopyS3;
   log?: (line: string) => void;
+  /** Max simultaneous object copies (default 8); our own bucket, no third-party rate limit. */
+  concurrency?: number;
 }
 
 interface Planned {
@@ -287,8 +289,22 @@ export async function copyManifestObjects(options: CidCopyOptions): Promise<CidC
     options.runDir ??
     join(options.repoRoot ?? process.cwd(), "pipeline", "data", "runs", manifest.runId);
   const planned = await plan(runDir, manifest, bytes, manifestCid);
-  const objects: CidCopyObject[] = [];
-  for (const p of planned) objects.push(await copyOne(options.s3, options.bucket, p, log));
+  // S3 has no meaningful rate limit for our own bucket (unlike the public IPFS gateways this
+  // module never touches), so copies run with bounded concurrency rather than one at a time.
+  // copyOne is already idempotent (HeadObject check) and order-independent.
+  const concurrency = options.concurrency ?? 8;
+  const objects: CidCopyObject[] = new Array(planned.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    for (;;) {
+      const i = next++;
+      if (i >= planned.length) return;
+      const p = planned[i];
+      if (p === undefined) return;
+      objects[i] = await copyOne(options.s3, options.bucket, p, log);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, planned.length) }, worker));
   const written = objects.filter((o) => o.state === "written").length;
   return {
     bucket: options.bucket,
