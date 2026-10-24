@@ -317,7 +317,9 @@ describe("contractor identity resolution (A-07/AD-05, wired via ClassificationLe
     const out = transformAustinPropertyImprovement({
       ...setup([capture("2026-200004 BP", { contractor_company_name: "Lone Star Roofing Co" })]),
       contractorIdentity: identity({
-        registry: [{ taxpayerNumber: "400", legalName: "LONE STAR ROOFING CO", sosStatusCode: "active" }],
+        registry: [
+          { taxpayerNumber: "400", legalName: "LONE STAR ROOFING CO", sosStatusCode: "active" },
+        ],
       }),
     });
     expect(out.ledger[0]?.contractor_resolution).toBe("candidate");

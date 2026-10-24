@@ -31,7 +31,8 @@ const Args = z
   })
   .strict()
   .refine(
-    (a) => [a.mode !== undefined, a.link === true, a.writeGroup === true].filter(Boolean).length === 1,
+    (a) =>
+      [a.mode !== undefined, a.link === true, a.writeGroup === true].filter(Boolean).length === 1,
     { message: "give exactly one of --mode backfill|incremental|pilot, --link or --write-group" },
   )
   .refine((a) => a.fresh === undefined || a.mode === "backfill", {
@@ -40,9 +41,13 @@ const Args = z
   .refine((a) => a.writeGroup !== true || a.job !== undefined, {
     message: "--write-group needs --job <jobId>",
   })
-  .refine((a) => a.writeGroup === true || (a.pids === undefined && a.out === undefined && a.job === undefined), {
-    message: "--job, --pids and --out belong to --write-group",
-  });
+  .refine(
+    (a) =>
+      a.writeGroup === true || (a.pids === undefined && a.out === undefined && a.job === undefined),
+    {
+      message: "--job, --pids and --out belong to --write-group",
+    },
+  );
 type Args = z.infer<typeof Args>;
 
 const GroupOut = z.looseObject({
