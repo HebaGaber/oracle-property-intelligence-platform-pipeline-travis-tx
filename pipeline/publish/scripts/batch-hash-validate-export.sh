@@ -37,13 +37,28 @@ PYTHON="${PYTHON:-python3}"
 
 mkdir -p "$OUT_DIR/batches" "$OUT_DIR/hashed" "$OUT_DIR/cars" "$OUT_DIR/tables" "$OUT_DIR/logs"
 
-echo "[split] $GROUP_DIR -> $OUT_DIR/batches ($N_BATCHES batches)"
-if ! "$PYTHON" "$SCRIPT_DIR/split-into-batches.py" "$GROUP_DIR" "$OUT_DIR" "$N_BATCHES" \
-  >"$OUT_DIR/logs/split.log" 2>&1; then
-  echo "[split] FAILED, see $OUT_DIR/logs/split.log" >&2
-  exit 1
+# Resume (A-11): markers live in logs/, never inside batches/<b>/ (that tree is hashed).
+# The split is skipped only when logs/split.done holds the hash of the group dir's listing
+# (and N); otherwise batches/ is wiped and re-split, and per-batch .done markers are invalidated.
+listing_hash() {
+  { echo "n=$N_BATCHES"; (cd "$GROUP_DIR" && find . -mindepth 1 | LC_ALL=C sort); } | shasum -a 256 | cut -d' ' -f1
+}
+LISTING_HASH="$(listing_hash)"
+if [ -f "$OUT_DIR/logs/split.done" ] && [ "$(cat "$OUT_DIR/logs/split.done")" = "$LISTING_HASH" ]; then
+  echo "[split] unchanged group dir, reusing $OUT_DIR/batches"
+else
+  echo "[split] $GROUP_DIR -> $OUT_DIR/batches ($N_BATCHES batches)"
+  rm -f "$OUT_DIR/logs/split.done" "$OUT_DIR"/logs/b*.done
+  rm -rf "$OUT_DIR/batches"
+  mkdir -p "$OUT_DIR/batches"
+  if ! "$PYTHON" "$SCRIPT_DIR/split-into-batches.py" "$GROUP_DIR" "$OUT_DIR" "$N_BATCHES" \
+    >"$OUT_DIR/logs/split.log" 2>&1; then
+    echo "[split] FAILED, see $OUT_DIR/logs/split.log" >&2
+    exit 1
+  fi
+  echo "$LISTING_HASH" >"$OUT_DIR/logs/split.done"
+  echo "[split] done, see $OUT_DIR/logs/split.log"
 fi
-echo "[split] done, see $OUT_DIR/logs/split.log"
 
 run_batch() {
   local bname="$1"
@@ -53,6 +68,13 @@ run_batch() {
   local csv="$OUT_DIR/cars/${PREFIX}-${bname}-hash.csv"
   local tables="$OUT_DIR/tables/$bname"
   local log="$OUT_DIR/logs/${bname}.log"
+  local donef="$OUT_DIR/logs/${bname}.done"
+  if [ -f "$donef" ] && [ -f "$car" ] && [ -f "$OUT_DIR/tables/${bname}-export.json" ]; then
+    echo "[batch] $bname already done, skipping"
+    return 0
+  fi
+  rm -f "$donef"
+  rm -rf "$hashed" "$tables"
   mkdir -p "$tables"
 
   {
@@ -90,21 +112,31 @@ run_batch() {
 
     echo "=== $bname done $(date -u +%FT%TZ) ==="
   } >"$log" 2>&1
+  local brc=$?
+  # The .done marker is written only after export-tables succeeded (the group above exits non-zero otherwise).
+  [ "$brc" -eq 0 ] && date -u +%FT%TZ >"$donef"
+  return "$brc"
 }
 
-running=0
-declare -a pids=()
+# Bounded parallelism; every batch's exit status is collected (bash 3.2-safe: no wait -n).
+declare -a pids=() names=()
+failed=()
+reap() {
+  if ! wait "${pids[0]}"; then failed+=("${names[0]}"); fi
+  pids=("${pids[@]:1}")
+  names=("${names[@]:1}")
+}
 for i in $(seq 1 "$N_BATCHES"); do
   bname="$(printf 'b%02d' "$i")"
   run_batch "$bname" &
   pids+=("$!")
-  running=$((running + 1))
-  if [ "$running" -ge "$WORKERS" ]; then
-    wait "${pids[0]}"
-    pids=("${pids[@]:1}")
-    running=$((running - 1))
-  fi
+  names+=("$bname")
+  if [ "${#pids[@]}" -ge "$WORKERS" ]; then reap; fi
 done
-wait
+while [ "${#pids[@]}" -gt 0 ]; do reap; done
 
-echo "[batch-hash-validate-export] all $N_BATCHES batches launched/finished for $PREFIX; logs in $OUT_DIR/logs"
+if [ "${#failed[@]}" -gt 0 ]; then
+  echo "[batch-hash-validate-export] FAILED batches for $PREFIX: ${failed[*]} (see $OUT_DIR/logs/<batch>.log); rerun to resume" >&2
+  exit 1
+fi
+echo "[batch-hash-validate-export] all $N_BATCHES batches finished for $PREFIX; logs in $OUT_DIR/logs"
