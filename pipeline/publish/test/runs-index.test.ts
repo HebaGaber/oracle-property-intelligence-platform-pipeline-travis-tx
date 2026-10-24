@@ -31,7 +31,8 @@ describe("appendRun: the A-03 walking-skeleton entry is preserved, Run 1 starts 
 
   it("an index entry carries no previousManifestCid field: the run chain lives in the manifest, never in the index", () => {
     const after = appendRun(appendRun(emptyRunsIndex(), skeleton), run1);
-    for (const r of after.runs) expect(Object.keys(r).sort()).toEqual(["finishedAt", "manifestCid", "runId"]);
+    for (const r of after.runs)
+      expect(Object.keys(r).sort()).toEqual(["finishedAt", "manifestCid", "runId"]);
   });
 
   it("appending Run 1 after an unrelated earlier entry needs no special-casing: it is just another append", () => {

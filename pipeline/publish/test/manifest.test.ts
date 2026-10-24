@@ -223,8 +223,7 @@ async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
         ([key, derivation]) => [
           key,
           {
-            count:
-              key === "permits_emitted" ? 2 : key === "permits_no_tcad_geoid" ? 1 : 1,
+            count: key === "permits_emitted" ? 2 : key === "permits_no_tcad_geoid" ? 1 : 1,
             derivation,
           },
         ],

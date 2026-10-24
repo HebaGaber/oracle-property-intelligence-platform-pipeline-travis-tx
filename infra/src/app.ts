@@ -101,7 +101,10 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
   // G-SCHED: explicit ordering only (no CDK object/export reference) — the Fargate task reads
   // DataStack's SSM parameters at its own deploy/run time, so this is documentation of intended
   // operator deploy order, not a resource dependency CDK itself needs to resolve.
-  scheduler.addStackDependency(data, "G-SCHED: reads the CID-copy bucket/CloudFront SSM parameters");
+  scheduler.addStackDependency(
+    data,
+    "G-SCHED: reads the CID-copy bucket/CloudFront SSM parameters",
+  );
 
   Tags.of(app).add(PROJECT_TAG_KEY, config.projectName);
   Validations.of(app).addPlugins(

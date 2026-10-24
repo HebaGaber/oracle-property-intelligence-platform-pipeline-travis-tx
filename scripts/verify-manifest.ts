@@ -65,7 +65,10 @@ function isManifestLike(value: unknown): value is ManifestLike {
 /** The complete, fixed allowlist (AM-01, 2026-10-21, amends P0-14): Pinata's public gateway (the
  *  independent one) and the Filebase gateway. Never ipfs.io/dweb.link (retired 2026-09-21), our
  *  CloudFront CID copy, or w3s.link. */
-export const GATEWAYS: readonly string[] = ["https://gateway.pinata.cloud", "https://ipfs.filebase.io"];
+export const GATEWAYS: readonly string[] = [
+  "https://gateway.pinata.cloud",
+  "https://ipfs.filebase.io",
+];
 export const TIMEOUT_MS_DEFAULT = 300_000;
 export const MAX_ATTEMPTS = 5;
 export const ALL_VERIFIED_TEXT = "ALL ARTIFACTS VERIFIED";
@@ -141,12 +144,15 @@ export interface Transport {
 }
 
 function errorText(err: unknown): string {
-  if (err instanceof Error) return err.name === "Error" ? err.message : `${err.name}: ${err.message}`;
+  if (err instanceof Error)
+    return err.name === "Error" ? err.message : `${err.name}: ${err.message}`;
   return String(err);
 }
 
 /** Streams the body while hashing (NFR-06): never `response.arrayBuffer()`, whatever the size. */
-async function streamHash(body: ReadableStream<Uint8Array> | null): Promise<{ size: number; sha256: string }> {
+async function streamHash(
+  body: ReadableStream<Uint8Array> | null,
+): Promise<{ size: number; sha256: string }> {
   const hash = createHash("sha256");
   let size = 0;
   if (body) {
@@ -167,7 +173,11 @@ async function streamHash(body: ReadableStream<Uint8Array> | null): Promise<{ si
  * its target is the same gateway's domain (never a cross-domain redirect, which would make the
  * "we verified from a gateway we don't operate" guarantee meaningless).
  */
-export async function fetchArtifact(t: Transport, gateway: string, cid: string): Promise<FetchedBytes> {
+export async function fetchArtifact(
+  t: Transport,
+  gateway: string,
+  cid: string,
+): Promise<FetchedBytes> {
   const url = `${gateway}/ipfs/${cid}`;
   let lastReason = "no response";
   let lastStatus: number | null = null;
@@ -186,7 +196,13 @@ export async function fetchArtifact(t: Transport, gateway: string, cid: string):
         await t.sleep(retryDelayMs(attempt, null, t.random));
         continue;
       }
-      return { ok: false, status: null, size: null, sha256: null, reason: `${lastReason} after ${MAX_ATTEMPTS} attempts` };
+      return {
+        ok: false,
+        status: null,
+        size: null,
+        sha256: null,
+        reason: `${lastReason} after ${MAX_ATTEMPTS} attempts`,
+      };
     }
     if (RETRYABLE_STATUS.has(res.status)) {
       await res.body?.cancel();
@@ -196,7 +212,13 @@ export async function fetchArtifact(t: Transport, gateway: string, cid: string):
         await t.sleep(retryDelayMs(attempt, res.headers.get("retry-after"), t.random));
         continue;
       }
-      return { ok: false, status: res.status, size: null, sha256: null, reason: `${lastReason} after ${MAX_ATTEMPTS} attempts` };
+      return {
+        ok: false,
+        status: res.status,
+        size: null,
+        sha256: null,
+        reason: `${lastReason} after ${MAX_ATTEMPTS} attempts`,
+      };
     }
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get("location");
@@ -211,7 +233,13 @@ export async function fetchArtifact(t: Transport, gateway: string, cid: string):
         });
         if (followed.status !== 200) {
           await followed.body?.cancel();
-          return { ok: false, status: followed.status, size: null, sha256: null, reason: `HTTP ${followed.status} after redirect` };
+          return {
+            ok: false,
+            status: followed.status,
+            size: null,
+            sha256: null,
+            reason: `HTTP ${followed.status} after redirect`,
+          };
         }
         const got = await streamHash(followed.body);
         return { ok: true, status: 200, ...got };
@@ -226,12 +254,24 @@ export async function fetchArtifact(t: Transport, gateway: string, cid: string):
     }
     if (res.status !== 200) {
       await res.body?.cancel();
-      return { ok: false, status: res.status, size: null, sha256: null, reason: `HTTP ${res.status}` };
+      return {
+        ok: false,
+        status: res.status,
+        size: null,
+        sha256: null,
+        reason: `HTTP ${res.status}`,
+      };
     }
     const got = await streamHash(res.body);
     return { ok: true, status: 200, ...got };
   }
-  return { ok: false, status: lastStatus, size: null, sha256: null, reason: `${lastReason} after ${MAX_ATTEMPTS} attempts` };
+  return {
+    ok: false,
+    status: lastStatus,
+    size: null,
+    sha256: null,
+    reason: `${lastReason} after ${MAX_ATTEMPTS} attempts`,
+  };
 }
 
 export type VerifyField = "cid" | "carCid" | "manifest";
@@ -296,7 +336,9 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   if (!isManifestLike(parsed))
     throw new Error(`${options.manifestPath} does not look like a run manifest (no artifacts[])`);
   if (!bytes.equals(Buffer.from(jcsBytes(parsed))))
-    throw new Error(`${options.manifestPath} is not the exact JCS (canonical JSON) bytes of its own content`);
+    throw new Error(
+      `${options.manifestPath} is not the exact JCS (canonical JSON) bytes of its own content`,
+    );
   const manifest = parsed;
   const manifestCid = await cidOfBytes(bytes);
   const manifestSha = createHash("sha256").update(bytes).digest("hex");
@@ -353,7 +395,8 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
       } else {
         if (isPinataGateway(gateway)) await t.sleep(PINATA_THROTTLE_MS);
         const fetched = await fetchArtifact(t, gateway, cid);
-        const ok = fetched.ok && fetched.size === artifact.size && fetched.sha256 === artifact.sha256;
+        const ok =
+          fetched.ok && fetched.size === artifact.size && fetched.sha256 === artifact.sha256;
         check = {
           name: artifact.name,
           cid,

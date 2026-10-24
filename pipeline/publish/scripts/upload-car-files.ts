@@ -35,7 +35,13 @@ import { readFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { kuboAddFile, KUBO_ADD_TIMEOUT_MS } from "../src/kubo-add.js";
-import { FILEBASE_RPC_API, FILEBASE_GATEWAY, filebaseEnvProblem, redact, secretValues } from "../src/sequence.js";
+import {
+  FILEBASE_RPC_API,
+  FILEBASE_GATEWAY,
+  filebaseEnvProblem,
+  redact,
+  secretValues,
+} from "../src/sequence.js";
 import { FILEBASE_ENV_FILE, parseEnvFile } from "../src/cli.js";
 
 /** Independent of the pin host (AM-01): Pinata's public gateway and the Filebase gateway. */
@@ -58,7 +64,9 @@ function message(error: unknown): string {
 function carFilePath(artifact: ManifestArtifact): string {
   if (artifact.kind === "car") return artifact.name;
   if (artifact.kind === "directory") return join(artifact.name, "tables.car");
-  throw new Error(`artifact ${artifact.name} has carCid but is kind ${artifact.kind}, not car/directory`);
+  throw new Error(
+    `artifact ${artifact.name} has carCid but is kind ${artifact.kind}, not car/directory`,
+  );
 }
 
 async function readbackOne(
@@ -77,7 +85,12 @@ async function readbackOne(
     const ok = bytes.length === expectedSize;
     return ok
       ? { gateway, ok: true, status: res.status }
-      : { gateway, ok: false, status: res.status, reason: `size ${bytes.length} (want ${expectedSize}), sha256 ${sha256}` };
+      : {
+          gateway,
+          ok: false,
+          status: res.status,
+          reason: `size ${bytes.length} (want ${expectedSize}), sha256 ${sha256}`,
+        };
   } catch (error) {
     return { gateway, ok: false, reason: message(error) };
   }
@@ -86,7 +99,9 @@ async function readbackOne(
 async function main(): Promise<number> {
   const manifestPath = process.argv[2];
   if (manifestPath === undefined || manifestPath.startsWith("-")) {
-    console.error("usage: npx tsx pipeline/publish/scripts/upload-car-files.ts runs/<runId>/manifest.json");
+    console.error(
+      "usage: npx tsx pipeline/publish/scripts/upload-car-files.ts runs/<runId>/manifest.json",
+    );
     return 2;
   }
   if (!existsSync(manifestPath)) {
@@ -94,7 +109,9 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const fromFile = existsSync(FILEBASE_ENV_FILE) ? parseEnvFile(readFileSync(FILEBASE_ENV_FILE, "utf8")) : {};
+  const fromFile = existsSync(FILEBASE_ENV_FILE)
+    ? parseEnvFile(readFileSync(FILEBASE_ENV_FILE, "utf8"))
+    : {};
   const env: NodeJS.ProcessEnv = { ...process.env, ...fromFile };
   const problem = filebaseEnvProblem(env);
   const safe = (text: string): string => redact(text, secretValues(env));
@@ -128,7 +145,9 @@ async function main(): Promise<number> {
     const timeoutMs = Math.max(KUBO_ADD_TIMEOUT_MS, fileSize);
     try {
       const added = await kuboAddFile(path, expectedCid, { env, api: FILEBASE_RPC_API, timeoutMs });
-      console.log(`ok    kubo add: Hash ${added.cid} matches manifest carCid, size=${added.size}, pinned on Filebase`);
+      console.log(
+        `ok    kubo add: Hash ${added.cid} matches manifest carCid, size=${added.size}, pinned on Filebase`,
+      );
     } catch (error) {
       console.log(`FAIL  ${safe(`kubo add: ${message(error)}`)}`);
       failures += 1;
@@ -145,7 +164,9 @@ async function main(): Promise<number> {
     }
   }
 
-  console.log(`\n${failures === 0 ? "ALL CARCID ARTIFACTS UPLOADED AND VERIFIED" : `${failures} check(s) failed`}`);
+  console.log(
+    `\n${failures === 0 ? "ALL CARCID ARTIFACTS UPLOADED AND VERIFIED" : `${failures} check(s) failed`}`,
+  );
   return failures === 0 ? 0 : 1;
 }
 
@@ -154,6 +175,6 @@ main()
     process.exitCode = code;
   })
   .catch((error: unknown) => {
-    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
     process.exitCode = 1;
   });

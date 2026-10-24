@@ -721,7 +721,11 @@ async function gatewayReadback(
     size: bytes.length,
     sha256,
     ok,
-    ...(ok ? {} : { reason: `size ${bytes.length} (want ${expectedSize}) sha256 ${sha256} (want ${expectedSha256})` }),
+    ...(ok
+      ? {}
+      : {
+          reason: `size ${bytes.length} (want ${expectedSize}) sha256 ${sha256} (want ${expectedSha256})`,
+        }),
   };
 }
 
@@ -754,7 +758,9 @@ export async function addToPin(
     if (existing.cid === expectedCid && existing.sha256 === sha256 && existing.size === size) {
       const readback = await gatewayReadback(client.gateway, expectedCid, size, sha256, options);
       if (!readback.ok)
-        throw new Error(`${client.name}: ${name} readback failed: ${readback.reason ?? "mismatch"}`);
+        throw new Error(
+          `${client.name}: ${name} readback failed: ${readback.reason ?? "mismatch"}`,
+        );
       return { client: client.name, name, cid: expectedCid, size, sha256, readback };
     }
     throw new Error(
@@ -775,7 +781,9 @@ export async function addToPin(
 
   const readback = await gatewayReadback(client.gateway, added.cid, size, sha256, options);
   if (!readback.ok)
-    throw new Error(`${client.name}: ${name} readback failed after add: ${readback.reason ?? "mismatch"}`);
+    throw new Error(
+      `${client.name}: ${name} readback failed after add: ${readback.reason ?? "mismatch"}`,
+    );
   await registry.set(client.name, name, { cid: added.cid, size, sha256 });
   return { client: client.name, name, cid: added.cid, size, sha256, readback };
 }

@@ -527,9 +527,7 @@ export function manifestGroupInputsFromBatches(spec: BatchedGroupDirs): Manifest
   return spec.batches.map((n) => {
     const b = String(n).padStart(2, "0");
     const tablesExportJson = join(spec.dir, "tables", `b${b}-export.json`);
-    const summary = TablesExportSummary.parse(
-      JSON.parse(readFileSync(tablesExportJson, "utf8")),
-    );
+    const summary = TablesExportSummary.parse(JSON.parse(readFileSync(tablesExportJson, "utf8")));
     return {
       group: spec.group,
       carPath: join(spec.dir, "cars", `${spec.carPrefix}-b${b}.car`),

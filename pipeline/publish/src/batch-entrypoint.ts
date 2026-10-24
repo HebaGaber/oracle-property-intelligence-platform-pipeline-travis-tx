@@ -37,12 +37,7 @@ import {
   type ReadbackResult,
 } from "./readback.js";
 import { appendRun, emptyRunsIndex, parseRunsIndex, runsIndexBytes } from "./runs-index.js";
-import {
-  runPublish,
-  type CliRunner,
-  type DataGroup,
-  type SequenceReport,
-} from "./sequence.js";
+import { runPublish, type CliRunner, type DataGroup, type SequenceReport } from "./sequence.js";
 import { loadRunSummary, runGroups, type RunSummaryFile } from "./upload.js";
 
 export { DATA_GROUPS, loadRunSummary, runGroups } from "./upload.js";
@@ -88,13 +83,7 @@ export interface BatchPublishOptions {
 }
 
 export type BatchPublishStage =
-  | "sequence"
-  | "readback"
-  | "car-add"
-  | "car-readback"
-  | "manifest"
-  | "manifest-add"
-  | "index";
+  "sequence" | "readback" | "car-add" | "car-readback" | "manifest" | "manifest-add" | "index";
 
 export interface BatchPublishFailure {
   stage: BatchPublishStage;
@@ -141,7 +130,11 @@ export async function runBatchPublish(options: BatchPublishOptions): Promise<Bat
 
   const readback: ReadbackResult[] = [];
   const carAdds: BatchCarAdd[] = [];
-  const fail = (sequence: SequenceReport, stage: BatchPublishStage, reason: string): BatchPublishResult => ({
+  const fail = (
+    sequence: SequenceReport,
+    stage: BatchPublishStage,
+    reason: string,
+  ): BatchPublishResult => ({
     ok: false,
     runId: summary.runId,
     sequence,

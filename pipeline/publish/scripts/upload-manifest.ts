@@ -25,7 +25,13 @@ import { readFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { cidOfBytes } from "../src/cid.js";
 import { kuboAddBytes } from "../src/kubo-add.js";
-import { FILEBASE_RPC_API, FILEBASE_GATEWAY, filebaseEnvProblem, redact, secretValues } from "../src/sequence.js";
+import {
+  FILEBASE_RPC_API,
+  FILEBASE_GATEWAY,
+  filebaseEnvProblem,
+  redact,
+  secretValues,
+} from "../src/sequence.js";
 import { FILEBASE_ENV_FILE, parseEnvFile } from "../src/cli.js";
 
 /** Independent of the pin host (AM-01): Pinata's public gateway and the Filebase gateway. */
@@ -66,7 +72,9 @@ async function readbackOne(
 async function main(): Promise<number> {
   const manifestPath = process.argv[2];
   if (manifestPath === undefined || manifestPath.startsWith("-")) {
-    console.error("usage: npx tsx pipeline/publish/scripts/upload-manifest.ts runs/<runId>/manifest.json");
+    console.error(
+      "usage: npx tsx pipeline/publish/scripts/upload-manifest.ts runs/<runId>/manifest.json",
+    );
     return 2;
   }
   if (!existsSync(manifestPath)) {
@@ -127,6 +135,6 @@ main()
     process.exitCode = code;
   })
   .catch((error: unknown) => {
-    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
     process.exitCode = 1;
   });

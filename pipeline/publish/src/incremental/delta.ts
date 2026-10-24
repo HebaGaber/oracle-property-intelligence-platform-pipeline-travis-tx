@@ -48,7 +48,14 @@ import {
   type RestampVerdict,
 } from "../../../oracle-runtime/travis/permits/restamp.js";
 
-export { contentDigest, isSystemField, jcs, detectRestamp, RESTAMP_LIMITATION, RESTAMP_LIMITATION_CODE };
+export {
+  contentDigest,
+  isSystemField,
+  jcs,
+  detectRestamp,
+  RESTAMP_LIMITATION,
+  RESTAMP_LIMITATION_CODE,
+};
 export type { HourCount, RestampVerdict };
 
 /** The only three sources an incremental run re-checks (D-2(c), data-model.md's SourceDelta.name). */

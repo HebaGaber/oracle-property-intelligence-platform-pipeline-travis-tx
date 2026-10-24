@@ -1249,7 +1249,8 @@ describe("the second pin (Pinata, Kubo-RPC-compatible; T008, AD-22)", () => {
       gets.push(url.href);
       const cid = url.pathname.replace(/^\/ipfs\//, "");
       const bytes = store.get(cid);
-      if (opts.serveOther && bytes) return new Response(text("tampered bytes from the gateway"), { status: 200 });
+      if (opts.serveOther && bytes)
+        return new Response(text("tampered bytes from the gateway"), { status: 200 });
       return bytes ? new Response(bytes, { status: 200 }) : new Response("", { status: 404 });
     };
     return { fetch, store, posts, gets };
@@ -1272,7 +1273,10 @@ describe("the second pin (Pinata, Kubo-RPC-compatible; T008, AD-22)", () => {
     const file = join(mkdtempSync(join(tmpdir(), "pin-")), "travis-county.car");
     write(file, "county car bytes");
     const cid = await cidOfFile(file);
-    const result = await addToPin(PINATA_CLIENT, { path: file }, cid, { env: PINATA_ENV, fetch: net.fetch });
+    const result = await addToPin(PINATA_CLIENT, { path: file }, cid, {
+      env: PINATA_ENV,
+      fetch: net.fetch,
+    });
     expect(result).toMatchObject({ client: "pinata", name: "travis-county.car", cid });
     expect(result.readback.ok).toBe(true);
     expect(net.posts[0]?.authorization).toBe(`Bearer ${PINATA_ENV.PINATA_JWT}`);

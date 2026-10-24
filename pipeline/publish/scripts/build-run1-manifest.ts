@@ -74,8 +74,7 @@ async function main(): Promise<void> {
       {
         name: "tcad-2026-certified-json",
         url: "https://traviscad.org/publicinformation",
-        watermark:
-          "entry@sha256:6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346",
+        watermark: "entry@sha256:6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346",
         receipts: join(REPO_ROOT, "specs/011-publish-and-runs/receipts/tcad-run1.json"),
         limitations: [],
       },
@@ -84,10 +83,7 @@ async function main(): Promise<void> {
       {
         name: "travis-austin",
         version: "1.0.0",
-        sha256: readFileSync(
-          join(REPO_ROOT, "profiles/travis-austin@1.0.0/DIGEST"),
-          "utf8",
-        ).trim(),
+        sha256: readFileSync(join(REPO_ROOT, "profiles/travis-austin@1.0.0/DIGEST"), "utf8").trim(),
         path: "profiles/travis-austin@1.0.0/rules.json",
         gitCommit: "0421ac2",
       },
@@ -101,8 +97,7 @@ async function main(): Promise<void> {
       permits_no_tcad_geoid: {
         count: 275764,
         derivation: "aggregate_match",
-        note:
-          "Query DB property_improvements.unmatched_reason='no_tcad_geoid', request_identifier IS NULL, all captured Austin permits",
+        note: "Query DB property_improvements.unmatched_reason='no_tcad_geoid', request_identifier IS NULL, all captured Austin permits",
       },
       permits_no_tcad_id: {
         count: 31824,
@@ -127,8 +122,7 @@ async function main(): Promise<void> {
       contractor_resolved: {
         count: 0,
         derivation: "aggregate_match",
-        note:
-          "Comptroller registry not wired for this run (NO_REGISTRY default); every emitted permit resolves unresolved",
+        note: "Comptroller registry not wired for this run (NO_REGISTRY default); every emitted permit resolves unresolved",
       },
       contractor_candidate: {
         count: 0,
@@ -138,8 +132,7 @@ async function main(): Promise<void> {
       contractor_unresolved: {
         count: 17387,
         derivation: "aggregate_match",
-        note:
-          "all 17387 emitted permits: registry_unavailable (NO_REGISTRY default, A-07 Comptroller baseline not loaded)",
+        note: "all 17387 emitted permits: registry_unavailable (NO_REGISTRY default, A-07 Comptroller baseline not loaded)",
       },
     },
     ownersRedacted: 15410,
@@ -175,7 +168,9 @@ async function main(): Promise<void> {
       .map(([k, n]) => `${n} ${k}`)
       .join(", ")}), ${totalBytes} bytes`,
   );
-  console.log(`coverage.permits_emitted: ${JSON.stringify(built.manifest.coverage.permits_emitted)}`);
+  console.log(
+    `coverage.permits_emitted: ${JSON.stringify(built.manifest.coverage.permits_emitted)}`,
+  );
 }
 
 main().catch((error: unknown) => {

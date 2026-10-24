@@ -147,7 +147,9 @@ export async function uploadFile(
   const parsed = await parseJson(text, options.jwt, `pinFileToIPFS of ${filePath}`);
   const data = parsed as { ID?: unknown; IpfsHash?: unknown };
   if (typeof data.IpfsHash !== "string") {
-    throw new Error(`pinFileToIPFS of ${filePath} returned no IpfsHash: ${redactJwt(text.slice(0, 200), options.jwt)}`);
+    throw new Error(
+      `pinFileToIPFS of ${filePath} returned no IpfsHash: ${redactJwt(text.slice(0, 200), options.jwt)}`,
+    );
   }
   return { id: typeof data.ID === "string" ? data.ID : undefined, cid: data.IpfsHash };
 }
@@ -177,7 +179,8 @@ export async function pollUntilPinned(cid: string, options: PinataPinOptions): P
   const interval = options.pollIntervalMs ?? 3000;
   const timeout = options.pollTimeoutMs ?? 120_000;
   const now = options.now ?? Date.now;
-  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const sleep =
+    options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const start = now();
   for (;;) {
     if (await isPinned(cid, options)) return now() - start;

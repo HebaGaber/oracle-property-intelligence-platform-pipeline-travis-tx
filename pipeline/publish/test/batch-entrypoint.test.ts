@@ -199,7 +199,16 @@ function fakeCli(net: Net, opts: FakeCliOptions = {}): { run: CliRunner; calls: 
       const uploadedAt = "2026-10-21T16:10:00.000Z";
       if (input.endsWith(".car")) {
         const root = roots.get(input) as string;
-        write(summary, JSON.stringify({ api, root, blocks: 1, gatewayUrl: `${gateway}/ipfs/${root}`, uploadedAt }));
+        write(
+          summary,
+          JSON.stringify({
+            api,
+            root,
+            blocks: 1,
+            gatewayUrl: `${gateway}/ipfs/${root}`,
+            uploadedAt,
+          }),
+        );
         return { ...ok, stdout: `Uploaded ${input} (root ${root})\n` };
       }
       const parts = (readdirSync(input, { recursive: true }) as string[])
@@ -217,7 +226,14 @@ function fakeCli(net: Net, opts: FakeCliOptions = {}): { run: CliRunner; calls: 
       const countyRoot = roots.get(join(runDir, "car", `travis-${basename(input)}.car`)) as string;
       write(
         summary,
-        JSON.stringify({ api, root, countyRoot, parts: parts.length, gatewayUrl: `${gateway}/ipfs/${root}`, uploadedAt }),
+        JSON.stringify({
+          api,
+          root,
+          countyRoot,
+          parts: parts.length,
+          gatewayUrl: `${gateway}/ipfs/${root}`,
+          uploadedAt,
+        }),
       );
       return { ...ok, stdout: `Uploaded ${input} (root ${root})\n` };
     }
@@ -335,7 +351,11 @@ describe("runBatchPublish: the non-interactive Fargate entrypoint (T029)", () =>
     expect(result.sequence.phase).toBe("publish");
 
     expect(result.readback.map((r) => [r.group, r.ok])).toEqual([["county", true]]);
-    expect(net.adds.map((a) => a.name)).toEqual(["travis-county.car", "tables.car", "manifest.json"]);
+    expect(net.adds.map((a) => a.name)).toEqual([
+      "travis-county.car",
+      "tables.car",
+      "manifest.json",
+    ]);
     for (const a of result.carAdds) expect(a.cid).toBe(await cidOfFile(join(s.runDir, a.name)));
 
     const manifestPath = join(s.runsDir, RUN_ID, "manifest.json");

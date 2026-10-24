@@ -44,7 +44,10 @@ const PLACEHOLDER_ALLOWLIST = /example\.invalid|localhost|127\.0\.0\.1/i;
 
 describe("A-11 T025: no Postgres connection string or hardcoded DB host in apps/ or infra/", () => {
   const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
-  const files = [...listSourceFiles(join(repoRoot, "apps")), ...listSourceFiles(join(repoRoot, "infra"))];
+  const files = [
+    ...listSourceFiles(join(repoRoot, "apps")),
+    ...listSourceFiles(join(repoRoot, "infra")),
+  ];
 
   it("scans a non-empty set of source files", () => {
     expect(files.length).toBeGreaterThan(0);
@@ -85,7 +88,9 @@ describe("A-11 T025: no Postgres connection string or hardcoded DB host in apps/
       }
     ).ContainerDefinitions;
     expect(containers).toHaveLength(1);
-    const [container] = containers as [{ Environment?: unknown[]; Secrets?: { Name: string; ValueFrom: unknown }[] }];
+    const [container] = containers as [
+      { Environment?: unknown[]; Secrets?: { Name: string; ValueFrom: unknown }[] },
+    ];
 
     const secretNames = (container.Secrets ?? []).map((s) => s.Name);
     expect(secretNames.sort()).toEqual(

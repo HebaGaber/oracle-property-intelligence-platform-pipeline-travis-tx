@@ -28,7 +28,8 @@ function jsonResponse(status: number, body: unknown): Response {
 
 describe("pinByCid", () => {
   it("POSTs { hashToPin, pinataMetadata } with a bearer header and parses id/status", async () => {
-    let seen: { url: string; method: string; headers: Record<string, string>; body: unknown } | undefined;
+    let seen:
+      { url: string; method: string; headers: Record<string, string>; body: unknown } | undefined;
     const fetch: FetchLike = async (input, init) => {
       seen = {
         url: String(input),
@@ -131,7 +132,9 @@ describe("uploadFile", () => {
     const filePath = join(dir, "throwaway.txt");
     writeFileSync(filePath, "x");
     const fetch: FetchLike = async () => jsonResponse(200, { ID: "file-4" });
-    await expect(uploadFile(filePath, undefined, { jwt: JWT, fetch })).rejects.toThrow(/returned no IpfsHash/);
+    await expect(uploadFile(filePath, undefined, { jwt: JWT, fetch })).rejects.toThrow(
+      /returned no IpfsHash/,
+    );
   });
 });
 
@@ -143,7 +146,9 @@ describe("isPinned", () => {
       return jsonResponse(200, { count: 1, rows: [{ id: "file-1", ipfs_pin_hash: CID }] });
     };
     expect(await isPinned(CID, { jwt: JWT, fetch })).toBe(true);
-    expect(url).toBe(`${PINATA_API}${PINATA_PIN_LIST_PATH}?hashContains=${encodeURIComponent(CID)}&status=pinned`);
+    expect(url).toBe(
+      `${PINATA_API}${PINATA_PIN_LIST_PATH}?hashContains=${encodeURIComponent(CID)}&status=pinned`,
+    );
   });
 
   it("is false when rows is empty", async () => {
@@ -205,14 +210,18 @@ describe("pinataPin", () => {
     const fetch: FetchLike = async () => {
       throw new Error("must not be called");
     };
-    await expect(pinataPin({ cid: CID }, { jwt: "", fetch })).rejects.toThrow(/PINATA_JWT is required/);
+    await expect(pinataPin({ cid: CID }, { jwt: "", fetch })).rejects.toThrow(
+      /PINATA_JWT is required/,
+    );
   });
 
   it("rejects when neither cid nor filePath is given", async () => {
     const fetch: FetchLike = async () => {
       throw new Error("must not be called");
     };
-    await expect(pinataPin({}, { jwt: JWT, fetch })).rejects.toThrow(/requires a cid or a filePath/);
+    await expect(pinataPin({}, { jwt: JWT, fetch })).rejects.toThrow(
+      /requires a cid or a filePath/,
+    );
   });
 
   it("pins by cid and polls pinList to confirm, reporting method pin_by_cid", async () => {
@@ -229,7 +238,13 @@ describe("pinataPin", () => {
       { cid: CID, name: "run1-car" },
       { jwt: JWT, fetch, pollIntervalMs: 0, now: () => 0, sleep: async () => {} },
     );
-    expect(result).toEqual({ cid: CID, id: "file-1", method: "pin_by_cid", pinned: true, polledMs: 0 });
+    expect(result).toEqual({
+      cid: CID,
+      id: "file-1",
+      method: "pin_by_cid",
+      pinned: true,
+      polledMs: 0,
+    });
     expect(calls[0]).toContain(PINATA_PIN_BY_HASH_PATH);
   });
 
@@ -242,7 +257,8 @@ describe("pinataPin", () => {
       if (url.includes(PINATA_PIN_BY_HASH_PATH)) {
         return jsonResponse(403, { error: { reason: "NO_SCOPES_FOUND" } });
       }
-      if (url.includes(PINATA_UPLOAD_PATH)) return jsonResponse(200, { ID: "file-9", IpfsHash: CID });
+      if (url.includes(PINATA_UPLOAD_PATH))
+        return jsonResponse(200, { ID: "file-9", IpfsHash: CID });
       return jsonResponse(200, { rows: [{ id: "file-9", ipfs_pin_hash: CID }] });
     };
     const result = await pinataPin(
@@ -256,7 +272,8 @@ describe("pinataPin", () => {
 
   it("rethrows the pin_by_cid error when it fails and no filePath fallback is given", async () => {
     const fetch: FetchLike = async (input) => {
-      if (String(input).includes(PINATA_PIN_BY_HASH_PATH)) return jsonResponse(403, { error: "nope" });
+      if (String(input).includes(PINATA_PIN_BY_HASH_PATH))
+        return jsonResponse(403, { error: "nope" });
       throw new Error("must not poll after a failed pin with no fallback");
     };
     await expect(pinataPin({ cid: CID }, { jwt: JWT, fetch })).rejects.toThrow(/failed: 403/);
@@ -268,10 +285,14 @@ describe("pinataPin", () => {
     writeFileSync(filePath, "no cid fixture");
     const fetch: FetchLike = async (input) => {
       const url = String(input);
-      if (url.includes(PINATA_UPLOAD_PATH)) return jsonResponse(200, { ID: "file-7", IpfsHash: CID });
+      if (url.includes(PINATA_UPLOAD_PATH))
+        return jsonResponse(200, { ID: "file-7", IpfsHash: CID });
       return jsonResponse(200, { rows: [{ id: "file-7", ipfs_pin_hash: CID }] });
     };
-    const result = await pinataPin({ filePath }, { jwt: JWT, fetch, now: () => 0, sleep: async () => {} });
+    const result = await pinataPin(
+      { filePath },
+      { jwt: JWT, fetch, now: () => 0, sleep: async () => {} },
+    );
     expect(result.method).toBe("upload");
     expect(result.cid).toBe(CID);
   });

@@ -7,13 +7,7 @@
 // of CAR header + varint-length-prefixed blocks (no block boundary realigns on reassembly), so a
 // byte-range split and a plain `cat` to rejoin is safe; this module never re-encodes the CAR.
 import { createHash } from "node:crypto";
-import {
-  createReadStream,
-  createWriteStream,
-  mkdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { createReadStream, createWriteStream, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 
@@ -102,10 +96,7 @@ export async function splitFile(
     const end = Math.min(offset + maxBytes, total) - 1;
     const name = `${basename(path)}.part${String(index).padStart(3, "0")}`;
     const partPath = join(splitDir, name);
-    await pipeline(
-      createReadStream(path, { start: offset, end }),
-      createWriteStream(partPath),
-    );
+    await pipeline(createReadStream(path, { start: offset, end }), createWriteStream(partPath));
     const size = statSync(partPath).size;
     const sha256 = await sha256Stream(partPath);
     parts.push({ path: partPath, name, size, sha256 });
