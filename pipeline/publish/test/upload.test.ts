@@ -46,8 +46,7 @@ import {
   publicFiles,
   publishRun,
 } from "../src/upload.js";
-import { BindGuardError, type LocalBinder } from "../src/bind-guard.js";
-import { localBind } from "../scripts/local-bind.js";
+import type { LocalBinder } from "../src/bind-guard.js";
 import { PROFILE } from "../../../profiles/travis-austin@1.0.0/index.js";
 import { PublicFilesListing, writePublicFiles } from "../src/approval.js";
 import type { FetchLike } from "../src/kubo-add.js";
@@ -1118,17 +1117,22 @@ describe("the bind guard before the manifest add (CR-A-03 F-1)", () => {
     expect(result.bind).toMatchObject({ permitRows: 2, manifestCid: result.manifestCid });
   });
 
-  it("refuses a manifest without travis-places (real local bind): stage bind, 0 manifest adds, no runs/ files", async () => {
+  // bind-manifest.ts (packages/query-core) now degrades gracefully on a missing travis-places
+  // profile (places/business out of scope, e.g. A-07 Track C / Run 1): that is missing data, not
+  // a binding failure, so bind-guard must not refuse it either. The real binder's row-level
+  // behavior for this case (meta.zcta_area stays empty, permit rows unaffected) is proven against
+  // genuine parquet in bind-guard.test.ts; here (fakeCli's table parts are stub text, never real
+  // parquet) the orchestration is proven with the fake bind: a missing-but-otherwise-valid
+  // manifest builds and publishes like any other.
+  it("publishes a manifest without travis-places (places/business out of scope): no BindGuardError", async () => {
     const s = setup({ profiles: WITHOUT_PLACES });
     const net = fakeNetwork();
     const cli = fakeCli(net);
-    const result = await publish(s, net, cli, { bind: localBind });
-    expect(result.ok).toBe(false);
-    expect(result.failed?.stage).toBe("bind");
-    expect(result.failed?.reason).toMatch(/BindGuardError.*no travis-places profile/s);
-    expect(net.adds.filter((a) => a.name === "manifest.json")).toHaveLength(0);
-    expect(existsSync(join(s.runsDir, RUN_ID, "manifest.json"))).toBe(false);
-    expect(existsSync(join(s.runsDir, "index.json"))).toBe(false);
+    const result = await publish(s, net, cli, { bind: fakeBind(net) });
+    expect(result.ok).toBe(true);
+    expect(net.adds.filter((a) => a.name === "manifest.json")).toHaveLength(1);
+    expect(existsSync(join(s.runsDir, RUN_ID, "manifest.json"))).toBe(true);
+    expect(existsSync(join(s.runsDir, "index.json"))).toBe(true);
   });
 
   it("refuses a bound row count that is not permits_emitted: no manifest add", async () => {
@@ -1163,19 +1167,18 @@ describe("bindBuild: the bind step at the end of `build` (CR-A-03 F-1)", () => {
     expect(bound).toMatchObject({ runId: RUN_ID, permitRows: 2, roofingPermitRows: 2 });
   });
 
-  it("fails a build whose manifest would lack travis-places (real local bind), before any approval", async () => {
+  it("binds a build whose manifest lacks travis-places (places/business out of scope): no BindGuardError", async () => {
     const s = setup({ profiles: WITHOUT_PLACES });
     const net = fakeNetwork();
     const cli = fakeCli(net);
     await build(s, cli);
-    const error = await bindBuild({
+    const bound = await bindBuild({
       runDir: s.runDir,
       runsDir: s.runsDir,
       repoRoot: s.repoRoot,
-      bind: localBind,
-    }).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(BindGuardError);
-    expect((error as Error).message).toMatch(/no travis-places profile/);
+      bind: fakeBind(),
+    });
+    expect(bound).toMatchObject({ runId: RUN_ID, permitRows: 2, roofingPermitRows: 2 });
     expect(net.adds).toHaveLength(0);
   });
 });

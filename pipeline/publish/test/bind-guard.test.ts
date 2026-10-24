@@ -147,13 +147,18 @@ describe("the bind guard over the real query-core bindManifest and a local DuckD
     expect(bound.tables).toBeGreaterThan(3);
   });
 
-  it("refuses a manifest without the travis-places profile with BindGuardError", async () => {
+  it("binds a manifest without the travis-places profile (A-07 Track C out of scope, e.g. Run 1): same row counts, graceful degrade not BindGuardError", async () => {
     const b = await built((m) => {
       m.profiles = m.profiles.filter((p) => p.name !== "travis-places");
     });
-    const error = await assertBindable(b, runDir, localBind).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(BindGuardError);
-    expect((error as Error).message).toMatch(/no travis-places profile/);
+    const bound = await assertBindable(b, runDir, localBind);
+    expect(bound).toMatchObject({
+      runId: RUN_ID,
+      manifestCid: b.cid,
+      permitRows: 2,
+      roofingPermitRows: 2,
+    });
+    expect(bound.tables).toBeGreaterThan(3);
   });
 
   it("refuses a bound row count that is not coverage.permits_emitted", async () => {
