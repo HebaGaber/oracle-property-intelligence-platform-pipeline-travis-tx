@@ -20,7 +20,9 @@ import {
   MAX_ATTEMPTS,
   STREAM_THRESHOLD_BYTES,
   assertAllowedGateways,
+  parseResumeLog,
   refusedGatewayText,
+  resumeKey,
   retryDelayMs,
   verifyManifest,
   type ManifestArtifactLike,
@@ -408,5 +410,82 @@ describe("TIMEOUT_MS default", () => {
       timeoutMs: 1234,
     });
     expect(seen.every((x) => x === 1)).toBe(true);
+  });
+});
+
+describe("resume (--resume-from)", () => {
+  // A crash, a concurrency change, or any other restart otherwise re-checks all 458 real-run
+  // checks from zero -- this script has no other persisted state between runs. Fixed 2026-10-24
+  // after restarting the real Run 1 verification three times in one day.
+  it("skips already-ok checks from a prior log, without re-fetching them", async () => {
+    const f = await fixture();
+    const { fetchImpl: firstRun } = fakeGateways(f.published);
+    const lines: string[] = [];
+    const firstReport = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: firstRun,
+      sleep: noSleep,
+      random: noJitter,
+      log: (line) => lines.push(line),
+    });
+    expect(firstReport.ok).toBe(true);
+
+    const resumeSkip = parseResumeLog(lines.join("\n"));
+    expect(resumeSkip.size).toBeGreaterThanOrEqual(firstReport.artifacts.length);
+    for (const c of firstReport.artifacts) expect(resumeSkip.has(resumeKey(c.gateway, c.name))).toBe(true);
+
+    // The manifest self-check is deliberately never skipped (cheap, correctness-critical), so
+    // the fetch here must still work for it -- only the artifact CIDs should go unrequested.
+    const { fetchImpl, requests } = fakeGateways(f.published);
+    const secondReport = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      resumeSkip,
+    });
+    expect(secondReport.ok).toBe(true);
+    expect(secondReport.artifacts.every((c) => c.ok)).toBe(true);
+    for (const c of firstReport.artifacts) {
+      expect(requests.some((u) => u.includes(c.cid ?? "\u0000"))).toBe(false);
+    }
+    expect(secondReport.artifacts.length).toBe(firstReport.artifacts.length);
+  });
+
+  it("still fetches checks not present in the resume set", async () => {
+    const f = await fixture();
+    const baseline = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fakeGateways(f.published).fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+    });
+    const carOnFilebase = baseline.artifacts.find(
+      (c) => c.name === "car/travis-county.car" && c.gateway === FILEBASE,
+    );
+    const tableOnFilebase = baseline.artifacts.find(
+      (c) => c.name === f.largeArtifact.name && c.gateway === FILEBASE,
+    );
+    expect(carOnFilebase?.cid).toBeTruthy();
+    expect(tableOnFilebase?.cid).toBeTruthy();
+
+    const resumeSkip = new Set<string>([resumeKey(FILEBASE, "car/travis-county.car")]);
+    const { fetchImpl, requests } = fakeGateways(f.published);
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      resumeSkip,
+    });
+    expect(report.ok).toBe(true);
+    // The skipped check's CID is never requested on Filebase; the non-skipped one still is.
+    const filebaseRequests = requests.filter((u) => u.startsWith(FILEBASE));
+    expect(filebaseRequests.some((u) => u.includes(carOnFilebase?.cid ?? "\u0000"))).toBe(false);
+    expect(filebaseRequests.some((u) => u.includes(tableOnFilebase?.cid ?? "\u0000"))).toBe(true);
+    const skipped = report.artifacts.find(
+      (c) => c.name === "car/travis-county.car" && c.gateway === FILEBASE,
+    );
+    expect(skipped?.ok).toBe(true);
   });
 });

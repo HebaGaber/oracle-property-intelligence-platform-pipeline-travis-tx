@@ -256,8 +256,21 @@ export async function fetchArtifact(
             reason: `HTTP ${followed.status} after redirect`,
           };
         }
-        const got = await streamHash(followed.body);
-        return { ok: true, status: 200, ...got };
+        // Same gap as the fetch above: the signal can abort mid-stream, after headers already
+        // arrived, surfacing here instead of at the fetch call. Uncaught, this crashed the
+        // whole run (observed 2026-10-24) instead of failing just this one check.
+        try {
+          const got = await streamHash(followed.body);
+          return { ok: true, status: 200, ...got };
+        } catch (err) {
+          return {
+            ok: false,
+            status: 200,
+            size: null,
+            sha256: null,
+            reason: `${errorText(err)} (reading body after redirect)`,
+          };
+        }
       }
       return {
         ok: false,
@@ -277,8 +290,29 @@ export async function fetchArtifact(
         reason: `HTTP ${res.status}`,
       };
     }
-    const got = await streamHash(res.body);
-    return { ok: true, status: 200, ...got };
+    // Same gap as the initial fetch's try/catch above: the abort signal can fire mid-stream,
+    // after headers already arrived with status 200, surfacing here instead of at the fetch
+    // call. Uncaught, this crashed the whole run (observed 2026-10-24, twice, under load on
+    // large ~230MB artifacts) instead of failing just this one check. Retried like any other
+    // transport error, since a mid-stream abort on one attempt says nothing about the next.
+    try {
+      const got = await streamHash(res.body);
+      return { ok: true, status: 200, ...got };
+    } catch (err) {
+      lastReason = errorText(err);
+      lastStatus = res.status;
+      if (attempt < MAX_ATTEMPTS) {
+        await t.sleep(retryDelayMs(attempt, null, t.random));
+        continue;
+      }
+      return {
+        ok: false,
+        status: res.status,
+        size: null,
+        sha256: null,
+        reason: `${lastReason} after ${MAX_ATTEMPTS} attempts`,
+      };
+    }
   }
   return {
     ok: false,
@@ -321,6 +355,28 @@ export interface VerifyManifestOptions {
   timeoutMs?: number;
   verbose?: boolean;
   log?: (line: string) => void;
+  /**
+   * Artifact checks to skip, already known-good from a prior run (key: `${gateway}\u0000${name}`).
+   * This script has no other persisted state between runs -- a crash, a concurrency change, or
+   * any other restart otherwise re-checks all 458 checks from zero. Does not skip the manifest
+   * self-check (cheap, and correctness-critical to re-verify every run).
+   */
+  resumeSkip?: ReadonlySet<string>;
+}
+
+export function resumeKey(gateway: string, name: string): string {
+  return `${gateway}\u0000${name}`;
+}
+
+/** Parses a prior run's log output for `ok` artifact-check lines, for --resume-from. */
+export function parseResumeLog(text: string): Set<string> {
+  const skip = new Set<string>();
+  const re = /^ok\s+(\S+)\s+(\S+)\s+(?:cid|carCid)=/;
+  for (const line of text.split("\n")) {
+    const m = re.exec(line);
+    if (m) skip.add(resumeKey(m[1] as string, m[2] as string));
+  }
+  return skip;
 }
 
 function target(a: ManifestArtifactLike): { field: VerifyField; cid: string | null } {
@@ -405,12 +461,33 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
     artifact: (typeof manifest.artifacts)[number];
     gateway: string;
   }
+  const resumeSkip = options.resumeSkip;
   const tasks: Task[] = [];
+  const artifactChecks: (VerifyCheck | undefined)[] = [];
   let idx = 0;
   for (const artifact of manifest.artifacts) {
-    for (const gateway of gateways) tasks.push({ index: idx++, artifact, gateway });
+    for (const gateway of gateways) {
+      const { field, cid } = target(artifact);
+      if (resumeSkip?.has(resumeKey(gateway, artifact.name))) {
+        const check: VerifyCheck = {
+          name: artifact.name,
+          cid: cid ?? artifact.cid,
+          field,
+          gateway,
+          status: 200,
+          size: artifact.size,
+          sha256: artifact.sha256,
+          ok: true,
+        };
+        artifactChecks[idx] = check;
+        log(`ok   ${gateway} ${artifact.name} ${field === "manifest" ? "cid" : field}=${check.cid} resumed from a prior run, not re-fetched`);
+        idx += 1;
+        continue;
+      }
+      tasks.push({ index: idx++, artifact, gateway });
+    }
   }
-  const artifactChecks: (VerifyCheck | undefined)[] = new Array(tasks.length);
+  artifactChecks.length = idx;
 
   async function runOne(task: Task): Promise<void> {
     const { artifact, gateway } = task;
@@ -492,11 +569,12 @@ interface Args {
   manifestPath: string;
   gateways: string[];
   verbose: boolean;
+  resumeFrom?: string;
 }
 
 function usage(): never {
   console.error(
-    "usage: npx tsx scripts/verify-manifest.ts runs/<runId>/manifest.json [--gateway <url>]... [--verbose]",
+    "usage: npx tsx scripts/verify-manifest.ts runs/<runId>/manifest.json [--gateway <url>]... [--verbose] [--resume-from <prior-log-file>]",
   );
   process.exit(2);
 }
@@ -505,6 +583,7 @@ function parseArgs(argv: string[]): Args {
   let manifestPath: string | undefined;
   const gateways: string[] = [];
   let verbose = false;
+  let resumeFrom: string | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
     if (arg === "--gateway") {
@@ -516,6 +595,13 @@ function parseArgs(argv: string[]): Args {
       gateways.push(arg.slice("--gateway=".length));
     } else if (arg === "--verbose" || arg === "-v") {
       verbose = true;
+    } else if (arg === "--resume-from") {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith("--")) usage();
+      resumeFrom = value;
+      i += 1;
+    } else if (arg.startsWith("--resume-from=")) {
+      resumeFrom = arg.slice("--resume-from=".length);
     } else if (arg.startsWith("-")) {
       usage();
     } else if (manifestPath === undefined) {
@@ -525,7 +611,12 @@ function parseArgs(argv: string[]): Args {
     }
   }
   if (manifestPath === undefined) usage();
-  return { manifestPath, gateways: gateways.length > 0 ? gateways : [...GATEWAYS], verbose };
+  return {
+    manifestPath,
+    gateways: gateways.length > 0 ? gateways : [...GATEWAYS],
+    verbose,
+    resumeFrom,
+  };
 }
 
 function timeoutMsFromEnv(): number {
@@ -542,12 +633,19 @@ function timeoutMsFromEnv(): number {
 // Only run the CLI when invoked directly (not when imported by the test suite).
 if (process.argv[1] !== undefined && import.meta.url === new URL(process.argv[1], "file:").href) {
   const args = parseArgs(process.argv.slice(2));
+  let resumeSkip: Set<string> | undefined;
+  if (args.resumeFrom !== undefined) {
+    const priorText = readFileSync(args.resumeFrom, "utf8");
+    resumeSkip = parseResumeLog(priorText);
+    console.error(`--resume-from ${args.resumeFrom}: skipping ${resumeSkip.size} already-ok checks`);
+  }
   try {
     const report = await verifyManifest({
       manifestPath: args.manifestPath,
       gateways: args.gateways,
       timeoutMs: timeoutMsFromEnv(),
       verbose: args.verbose,
+      resumeSkip,
     });
     process.exit(report.ok ? 0 : 1);
   } catch (err) {
