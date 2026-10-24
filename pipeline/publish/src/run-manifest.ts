@@ -276,6 +276,20 @@ function isUnder(parent: string, child: string): boolean {
 }
 
 /**
+ * A real run must give the linked-permit total, so buildManifest's permit-link reconciliation
+ * (five exclusions + linked = the Austin source's records) always runs; only a trial may omit it.
+ */
+export function requireLinkedPermits(
+  config: Pick<RunManifestConfig, "linkedPermits">,
+  pilot: boolean,
+): void {
+  if (!pilot && config.linkedPermits === undefined)
+    throw new Error(
+      "a real run needs --linked-permits <n> (linkedPermits in --config): the permit-link reconciliation must run before publishing",
+    );
+}
+
+/**
  * Where the manifest goes. A real run: `runs/<runId>/manifest.json`, never overridable, and
  * refused when `runs/index.json` already lists the runId. A pilot: the pilot path, and any path
  * under `runs/` is refused.

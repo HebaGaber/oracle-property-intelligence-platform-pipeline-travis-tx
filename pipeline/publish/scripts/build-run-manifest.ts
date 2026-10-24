@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildRunManifest,
   manifestOutputPath,
+  requireLinkedPermits,
   writeManifestBytes,
   type RunManifestConfig,
 } from "../src/run-manifest.js";
@@ -99,6 +100,7 @@ async function main(): Promise<number> {
     pilot: values.pilot,
     ...(values.out === undefined ? {} : { out: values.out }),
   });
+  requireLinkedPermits(config as RunManifestConfig, values.pilot);
   const built = await buildRunManifest(config as RunManifestConfig, { repoRoot: REPO_ROOT });
   // built.bytes are the exact JCS bytes the manifest CID names; never re-serialize them.
   const outcome = writeManifestBytes(outPath, built, values.overwrite);

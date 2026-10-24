@@ -13,6 +13,7 @@ import {
   buildRunManifest,
   discoverBatches,
   manifestOutputPath,
+  requireLinkedPermits,
   restatePermitRows,
   writeManifestBytes,
   type RunManifestConfig,
@@ -152,6 +153,17 @@ describe("buildRunManifest", () => {
       deps(f),
     );
     expect(built.manifest.coverage.permits_emitted?.count).toBe(2);
+  });
+});
+
+describe("requireLinkedPermits", () => {
+  it("refuses a real run without the linked-permit total", () => {
+    expect(() => requireLinkedPermits({}, false)).toThrow(/--linked-permits/);
+  });
+
+  it("accepts a real run with it, and a trial without it", () => {
+    expect(() => requireLinkedPermits({ linkedPermits: 2007514 }, false)).not.toThrow();
+    expect(() => requireLinkedPermits({}, true)).not.toThrow();
   });
 });
 
