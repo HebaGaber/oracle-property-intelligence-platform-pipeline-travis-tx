@@ -60,6 +60,20 @@
     },
     "//#test:root": {
       "cache": false
+    },
+    "@countylens/infra#test": {
+      "dependsOn": ["^build", "//#test:root"],
+      "outputs": ["coverage/**"],
+      "env": [
+        "CI",
+        "RUNTIME_URL",
+        "CDK_DEFAULT_REGION",
+        "CDK_DEFAULT_ACCOUNT",
+        "OPERATOR_EMAIL",
+        "AWS_REGION",
+        "COUNTYLENS_BUNDLE"
+      ],
+      "cache": false
     }
   }
 }

@@ -34,7 +34,9 @@ permissions:
 
 jobs:
   workspace:
-    runs-on: ubuntu-latest
+    # GitHub's native arm64 runner (free for public repos): the Lambdas are ARM_64, so they bundle
+    # natively, with no emulation.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     env:
       # synth reads the region from configuration (infra/src/config.ts throws without
@@ -58,8 +60,17 @@ jobs:
       - name: pnpm install
         run: pnpm install --frozen-lockfile
 
+      # Turborepo's local cache, kept between runs: unchanged packages skip their tasks. Infra
+      # tests are never cached (turbo.json), because they build app code turbo can't see.
+      - name: Restore the Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Typecheck, lint, test, synth (Turborepo)
-        run: pnpm turbo run typecheck lint test synth
+        run: pnpm turbo run typecheck lint test synth --cache-dir=.turbo/cache
 
       # NFR-09: ≥ 80 % lines and branches on packages/contract and packages/query-core. The
       # thresholds are passed on the command line so the gate lives in this file; Vitest exits
@@ -217,7 +228,9 @@ jobs:
 
   e2e-hosted:
     if: github.event_name == 'push' && (github.ref_name == 'feature/oracle-pipeline' || startsWith(github.ref_name, '0'))
-    needs: [workspace, oracle-runtime, gitleaks]
+    # Runs alongside the unit-test jobs; only the secret scan must pass first. It still tests its
+    # own commit: the wait step below blocks until /build.json reports this GITHUB_SHA.
+    needs: [gitleaks]
     runs-on: ubuntu-latest
     # The one job outside the 15-minute budget: ≤ 12 min waiting for the Amplify build of this
     # commit, then Playwright on the hosted URL (plan Complexity Tracking). 60 since A-11 Run 2:
