@@ -77,6 +77,10 @@ export const CODE_FILES = [
   "pipeline/oracle-runtime/travis/tcad/write-group.ts",
   "pipeline/oracle-runtime/travis/pilot/build-seed.ts",
   "pipeline/oracle-runtime/travis/tcad/year-built.ts",
+  "pipeline/oracle-runtime/travis/pilot/profile-api.ts",
+  "pipeline/oracle-runtime/travis/identity/resolver.ts",
+  "pipeline/oracle-runtime/travis/identity/crosswalk.ts",
+  "pipeline/oracle-runtime/travis/transforms/lexicon-manifest.ts",
   "pipeline/local-stack/services/workflows/permits-backbone.ts",
 ];
 export const PROFILE_DIR = "profiles/travis-austin@1.0.0";

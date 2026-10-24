@@ -64,7 +64,7 @@ function parcelRow(pID: number, geoId: string): ParcelDbRow {
   return {
     request_identifier: String(pID),
     geo_id: geoId,
-    payload_redacted: tcadRecord({ pID, geoID: geoId }),
+    payload_redacted: slimPayload(tcadRecord({ pID, geoID: geoId }), false),
     // the fixture's own export point, assembled as a GIS centroid (0201_gis.sql columns)
     property_structure_built_year: 1985,
     export_point_lat: 30.2545186553,
@@ -150,6 +150,15 @@ describe("recordAndSeedOf", () => {
     const row = parcelRow(100008, "0100030105");
     row.request_identifier = "999999";
     expect(() => recordAndSeedOf(row)).toThrow(/prints pID 100008/);
+  });
+
+  it("refuses a copy stored before the shared-files fix (no legal description / valuations)", () => {
+    const row = parcelRow(100008, "0100030105");
+    const old = { ...(row.payload_redacted as Record<string, unknown>) };
+    delete old.propertyLegalDescription;
+    delete old.valuations;
+    row.payload_redacted = old;
+    expect(() => recordAndSeedOf(row)).toThrow(/backfill-payload-redacted/);
   });
 });
 

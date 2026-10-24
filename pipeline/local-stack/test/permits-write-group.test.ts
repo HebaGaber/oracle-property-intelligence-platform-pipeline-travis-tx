@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type postgres from "postgres";
 import { linkedPidPages, writeGroupWith, type PermitsWriteGroupDeps } from "../services/workflows/permits-backbone.js";
 import { tcadRecord } from "../../oracle-runtime/test/fixtures/tcad-records.js";
+import { slimPayload } from "../../oracle-runtime/travis/tcad/fields.js";
 import type { ProfileApi } from "../../oracle-runtime/travis/transforms/austin-property-improvement.js";
 
 const CIDS = {
@@ -45,7 +46,7 @@ function fake(answer: (text: string, values: unknown[]) => unknown) {
   return { sql, queries };
 }
 
-const parcelPayload = (pID: number, geoID: string) => tcadRecord({ pID, geoID });
+const parcelPayload = (pID: number, geoID: string) => slimPayload(tcadRecord({ pID, geoID }), false);
 /** The parcels columns parcelsFor selects beside payload_redacted (0101_tcad.sql, 0201_gis.sql). */
 const ASSEMBLED = {
   property_structure_built_year: 1985,

@@ -7,7 +7,8 @@
 //
 // Usage: npx tsx scripts/identity-gate.ts --manifest <path> [--copy-host <host>]
 //          [--expect-permits <n>] [--pids <file>] [--root <dir>]
-import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { bindManifest, type QueryEngine, type Row } from "@countylens/query-core";
 import { DuckDBInstance } from "@duckdb/node-api";
@@ -49,11 +50,21 @@ function parseArgs(argv: readonly string[]): Args {
 
 const count = (rows: Row[]): number => Number(rows[0]?.["n"] ?? -1);
 
+const sha256File = (path: string): Promise<string> =>
+  new Promise((done, fail) => {
+    const hash = createHash("sha256");
+    createReadStream(path)
+      .on("data", (chunk) => hash.update(chunk))
+      .on("error", fail)
+      .on("end", () => done(hash.digest("hex")));
+  });
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const bytes = readFileSync(args.manifest);
   const manifest = JSON.parse(bytes.toString("utf8")) as {
     coverage: Record<string, { count: number }>;
+    artifacts: { name: string; kind: string; sha256: string }[];
   };
   const emitted = manifest.coverage["permits_emitted"]?.count ?? null;
 
@@ -66,10 +77,19 @@ async function main(): Promise<void> {
     },
     all: async (sql) => (await conn.runAndReadAll(sql)).getRowObjectsJson() as Row[],
   };
-  const partUrl = ({ name, cid }: { name: string; cid: string }): string => {
-    const local = resolve(args.root, name);
-    return existsSync(local) ? local : `https://${args.copyHost}/${cid}`;
-  };
+  // A local part is read only after its bytes hash to the manifest's SHA-256 (a file changed
+  // after the manifest was built must not pass the gate).
+  const failures: string[] = [];
+  const localOk = new Set<string>();
+  for (const a of manifest.artifacts.filter((x) => x.kind === "table")) {
+    const local = resolve(args.root, a.name);
+    if (!existsSync(local)) continue;
+    const digest = await sha256File(local);
+    if (digest === a.sha256) localOk.add(a.name);
+    else failures.push(`local part ${a.name} hashes to ${digest}, manifest says ${a.sha256}`);
+  }
+  const partUrl = ({ name, cid }: { name: string; cid: string }): string =>
+    localOk.has(name) ? resolve(args.root, name) : `https://${args.copyHost}/${cid}`;
   await bindManifest(bytes, "", engine, { partUrl });
 
   const permits = count(await engine.all("SELECT count(*) AS n FROM v_roofing_permit"));
@@ -77,22 +97,31 @@ async function main(): Promise<void> {
   const piProperties = count(
     await engine.all("SELECT count(DISTINCT cid) AS n FROM property_improvement.property"),
   );
+  // NOT EXISTS, never NOT IN: one NULL county cid would make NOT IN match nothing.
+  const notCounty = `NOT EXISTS (SELECT 1 FROM county.property c WHERE c.cid = p.cid)`;
   const unmatched = count(
     await engine.all(`SELECT count(DISTINCT p.cid) AS n FROM property_improvement.property p
-      WHERE p.cid NOT IN (SELECT cid FROM county.property)`),
+      WHERE p.cid IS NULL OR ${notCounty}`),
+  );
+  const nullCids = count(
+    await engine.all("SELECT count(*) AS n FROM property_improvement.property WHERE cid IS NULL"),
   );
   let pidUnmatched: string[] = [];
   if (args.pids !== null) {
     const list = args.pids.map((p) => `'${p.replace(/'/g, "''")}'`).join(",");
     const rows = await engine.all(`SELECT p.request_identifier AS pid
       FROM property_improvement.property p
-      WHERE p.request_identifier IN (${list})
-        AND p.cid NOT IN (SELECT cid FROM county.property)`);
+      WHERE p.request_identifier IN (${list}) AND (p.cid IS NULL OR ${notCounty})`);
     pidUnmatched = rows.map((r) => String(r["pid"]));
   }
   conn.closeSync();
 
-  const failures: string[] = [];
+  if (nullCids !== 0) failures.push(`${nullCids} permit-side properties have a NULL cid`);
+  if (emitted === null && args.expectPermits === null) {
+    failures.push(
+      "no permit count to check: manifest lacks permits_emitted and no --expect-permits",
+    );
+  }
   if (unmatched !== 0)
     failures.push(`${unmatched} permit-side properties are not county properties`);
   if (joined <= 0) failures.push("meta.permit is empty");

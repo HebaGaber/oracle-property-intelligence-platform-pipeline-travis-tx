@@ -110,6 +110,12 @@ export function recordAndSeedOf(parcel: ParcelDbRow): {
       `write-group: parcel ${parcel.request_identifier} payload_redacted is not an object`,
     );
   }
+  // A copy stored before slimPayload kept these two would silently give another property.json.
+  if (!("propertyLegalDescription" in stored) || !("valuations" in stored)) {
+    throw new Error(
+      `write-group: parcel ${parcel.request_identifier} payload_redacted lacks propertyLegalDescription/valuations (stored before the shared-files fix): run scripts/backfill-payload-redacted.ts`,
+    );
+  }
   const { record, seed, yearBuilt } = sharedFilesInputOf({
     record: stored as Record<string, unknown>,
     geoId: parcel.geo_id,

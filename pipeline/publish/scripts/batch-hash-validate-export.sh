@@ -40,8 +40,18 @@ mkdir -p "$OUT_DIR/batches" "$OUT_DIR/hashed" "$OUT_DIR/cars" "$OUT_DIR/tables" 
 # Resume (A-11): markers live in logs/, never inside batches/<b>/ (that tree is hashed).
 # The split is skipped only when logs/split.done holds the hash of the group dir's listing
 # (and N); otherwise batches/ is wiped and re-split, and per-batch .done markers are invalidated.
+# Batches are hard links: a file replaced under the same name gets a new inode, so the listing
+# carries each file's inode, size and mtime, never names alone (else old bytes would be reused).
+file_stats() {
+  if stat -f '%N %i %z %m' / >/dev/null 2>&1; then
+    find . -type f -exec stat -f '%N %i %z %m' {} +
+  else
+    find . -type f -exec stat -c '%n %i %s %Y' {} +
+  fi
+}
 listing_hash() {
-  { echo "n=$N_BATCHES"; (cd "$GROUP_DIR" && find . -mindepth 1 | LC_ALL=C sort); } | shasum -a 256 | cut -d' ' -f1
+  { echo "n=$N_BATCHES"; (cd "$GROUP_DIR" && find . -mindepth 1 -type d | LC_ALL=C sort && file_stats | LC_ALL=C sort); } |
+    shasum -a 256 | cut -d' ' -f1
 }
 LISTING_HASH="$(listing_hash)"
 if [ -f "$OUT_DIR/logs/split.done" ] && [ "$(cat "$OUT_DIR/logs/split.done")" = "$LISTING_HASH" ]; then
