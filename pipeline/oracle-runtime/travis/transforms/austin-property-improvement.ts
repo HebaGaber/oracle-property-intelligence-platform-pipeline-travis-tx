@@ -232,6 +232,11 @@ export interface PropertyImprovementInput {
   profile: ProfileApi;
   /** Omitted means the Comptroller baseline is not wired for this run (pre-A-07 default). */
   contractorIdentity?: ContractorIdentityInput;
+  /**
+   * Year built by the recorded rule (shared-seed.ts propertyFields), passed exactly as the
+   * County transform passes it so property.json is byte-identical in both groups.
+   */
+  yearBuilt?: number | null;
 }
 
 export interface PropertyImprovementCounts {
@@ -316,7 +321,12 @@ export function transformAustinPropertyImprovement(
     counts.emitted === 0
       ? {}
       : {
-          ...buildSharedFiles({ record: input.record, seed: input.seed, seedCid: input.cids.seed }),
+          ...buildSharedFiles({
+            record: input.record,
+            seed: input.seed,
+            seedCid: input.cids.seed,
+            ...(input.yearBuilt !== undefined ? { yearBuilt: input.yearBuilt } : {}),
+          }),
           ...permitFiles,
           [`${input.cids.propertyImprovement}.json`]: jsonFile({
             label: "Property Improvement",

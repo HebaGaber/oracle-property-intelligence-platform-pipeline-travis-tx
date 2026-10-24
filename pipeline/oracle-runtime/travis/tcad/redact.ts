@@ -98,7 +98,12 @@ const IMPROVEMENT_KEEP = new Set([
 ]);
 const DETAIL_KEEP = new Set(["imprvDetailType", "area", "sequence"]);
 
-function slimValuations(v: unknown): Record<string, unknown>[] {
+/**
+ * Valuations reduced to what the year-built rule and the improvement count read
+ * (year-built.ts `improvementsOf`): `pYear` and the `cost-local` improvements' identifiers,
+ * types, state codes, years and floor-detail areas. No value, price, comment or party.
+ */
+export function slimValuations(v: unknown): Record<string, unknown>[] {
   return items(v).map((val) => {
     const details = val.details as Record<string, unknown> | null | undefined;
     const cost = (details?.["cost-local"] ?? null) as Record<string, unknown> | null;

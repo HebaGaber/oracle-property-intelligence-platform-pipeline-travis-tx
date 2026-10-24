@@ -46,6 +46,16 @@ function fake(answer: (text: string, values: unknown[]) => unknown) {
 }
 
 const parcelPayload = (pID: number, geoID: string) => tcadRecord({ pID, geoID });
+/** The parcels columns parcelsFor selects beside payload_redacted (0101_tcad.sql, 0201_gis.sql). */
+const ASSEMBLED = {
+  property_structure_built_year: 1985,
+  export_point_lat: 30.2545186553,
+  export_point_lon: -97.7620645363,
+  export_point_kind: "real",
+  latitude: 30.2545186553,
+  longitude: -97.7620645363,
+  coordinate_source: "gis_centroid",
+} as const;
 const permitPayload = (permitNumber: string) => ({
   permit_number: permitNumber,
   permittype: "BP",
@@ -63,8 +73,8 @@ function store() {
   return fake((text) => {
     if (text.includes("FROM parcels")) {
       return [
-        { request_identifier: "7001", geo_id: "0700000001", payload_redacted: parcelPayload(7001, "0700000001") },
-        { request_identifier: "7002", geo_id: "0700000002", payload_redacted: parcelPayload(7002, "0700000002") },
+        { request_identifier: "7001", geo_id: "0700000001", payload_redacted: parcelPayload(7001, "0700000001"), ...ASSEMBLED },
+        { request_identifier: "7002", geo_id: "0700000002", payload_redacted: parcelPayload(7002, "0700000002"), ...ASSEMBLED },
       ];
     }
     if (text.includes("JOIN permit_source_rows")) {

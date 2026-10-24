@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
 import { buildSeedRow } from "../pilot/build-seed.js";
 import type { DataGroupCids } from "../transforms/lexicon-manifest.js";
-import { parseTcadRecord } from "../transforms/shared-seed.js";
+import { parseTcadRecord, type SeedRow, type TcadRecord } from "../transforms/shared-seed.js";
 import { transformTcadCounty } from "../transforms/tcad-county.js";
 import type { PropType } from "./account-class.js";
 import type { ExportPointKind } from "./export-point.js";
@@ -70,7 +70,7 @@ export function parsePidList(
   return pids;
 }
 
-function geometryFor(input: GroupInput): {
+function geometryFor(input: Pick<GroupInput, "exportPoint" | "coordinate">): {
   point: { lat: number; lon: number } | null;
   rule: GeometryRule;
 } {
@@ -90,6 +90,38 @@ function geometryFor(input: GroupInput): {
   return { point: null, rule: "none" };
 }
 
+/** What the shared-file inputs are built from: a GroupInput without its group bookkeeping. */
+export type SharedSource = Pick<
+  GroupInput,
+  "record" | "geoId" | "yearBuilt" | "exportPoint" | "coordinate"
+>;
+
+export interface SharedFilesSource {
+  /** The record with `geometry` replaced by the chosen point (geometryFor). */
+  record: TcadRecord;
+  seed: SeedRow;
+  yearBuilt: number | null;
+  geometry_rule: GeometryRule;
+}
+
+/**
+ * The one way to turn a stored/streamed TCAD record into buildSharedFiles' inputs (geometry
+ * override → parse → seed row → year built). The County group (planCountyGroup) and the
+ * Property Improvement group (permits/write-group.ts) both call it, so address.json,
+ * parcel.json, the seed root and property.json come out byte-identical and `hash` derives the
+ * same property CID in both archives.
+ */
+export function sharedFilesInputOf(input: SharedSource): SharedFilesSource {
+  const { point, rule } = geometryFor(input);
+  const raw = {
+    ...input.record,
+    geometry: point === null ? null : `[${point.lat}, ${point.lon}]`,
+  };
+  const record = parseTcadRecord(raw);
+  const seed = buildSeedRow(record, input.geoId ?? "");
+  return { record, seed, yearBuilt: input.yearBuilt, geometry_rule: rule };
+}
+
 /** County files for every R input; non-R inputs are listed out_of_scope. */
 export function planCountyGroup(inputs: readonly GroupInput[], cids: DataGroupCids): GroupPlan {
   const groups: CountyGroup[] = [];
@@ -99,19 +131,13 @@ export function planCountyGroup(inputs: readonly GroupInput[], cids: DataGroupCi
       out.push({ pID: input.pID, prop_type: input.propType });
       continue;
     }
-    const { point, rule } = geometryFor(input);
-    const raw = {
-      ...input.record,
-      geometry: point === null ? null : `[${point.lat}, ${point.lon}]`,
-    };
-    const record = parseTcadRecord(raw);
-    const seed = buildSeedRow(record, input.geoId ?? "");
+    const { record, seed, yearBuilt, geometry_rule: rule } = sharedFilesInputOf(input);
     const t = transformTcadCounty({
       record,
       seed,
       cids,
       roofAge: null,
-      yearBuilt: input.yearBuilt,
+      yearBuilt,
     });
     groups.push({
       pID: t.pID,

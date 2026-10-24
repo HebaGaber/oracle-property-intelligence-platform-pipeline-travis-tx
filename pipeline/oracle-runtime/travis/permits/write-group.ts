@@ -18,9 +18,10 @@
 // coverage is a run-summary rollup, never a record field (specs/011-publish-and-runs/run-log.md).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { buildSeedRow } from "../pilot/build-seed.js";
+import type { ExportPointKind } from "../tcad/export-point.js";
+import { sharedFilesInputOf } from "../tcad/write-group.js";
 import type { DataGroupCids } from "../transforms/lexicon-manifest.js";
-import { parseTcadRecord, type SeedRow, type TcadRecord } from "../transforms/shared-seed.js";
+import type { SeedRow, TcadRecord } from "../transforms/shared-seed.js";
 import {
   AUSTIN_DATASET_URL,
   transformAustinPropertyImprovement,
@@ -40,6 +41,15 @@ export interface ParcelDbRow {
   request_identifier: string;
   geo_id: string | null;
   payload_redacted: unknown;
+  /** The recorded year-built rule's year (0101_tcad.sql), the County group's `yearBuilt`. */
+  property_structure_built_year: number | null;
+  export_point_lat: number | null;
+  export_point_lon: number | null;
+  export_point_kind: ExportPointKind | null;
+  /** The assembled coordinate (0201_gis.sql); the County group overrides geometry from it. */
+  latitude: number | null;
+  longitude: number | null;
+  coordinate_source: "gis_centroid" | "permit_point" | "none" | null;
 }
 
 /**
@@ -82,16 +92,51 @@ export function captureOf(row: PermitDbRow): AustinPermitCapture {
   };
 }
 
-/** The TcadRecord + SeedRow pair the County group builds from, reconstructed from the DB row. */
-export function recordAndSeedOf(parcel: ParcelDbRow): { record: TcadRecord; seed: SeedRow } {
-  const record = parseTcadRecord(parcel.payload_redacted);
+/**
+ * The TcadRecord + SeedRow + yearBuilt the County group builds its shared files from,
+ * reconstructed from the DB row through the County group's own builder (tcad/write-group.ts
+ * `sharedFilesInputOf`): same geometry override (the assembled coordinate), same parse, same
+ * seed row, same year built. The County writer always passes the assembled coordinate, so it is
+ * always passed here too.
+ */
+export function recordAndSeedOf(parcel: ParcelDbRow): {
+  record: TcadRecord;
+  seed: SeedRow;
+  yearBuilt: number | null;
+} {
+  const stored: unknown = parcel.payload_redacted;
+  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) {
+    throw new Error(
+      `write-group: parcel ${parcel.request_identifier} payload_redacted is not an object`,
+    );
+  }
+  const { record, seed, yearBuilt } = sharedFilesInputOf({
+    record: stored as Record<string, unknown>,
+    geoId: parcel.geo_id,
+    yearBuilt: parcel.property_structure_built_year,
+    exportPoint:
+      parcel.export_point_lat === null ||
+      parcel.export_point_lon === null ||
+      parcel.export_point_kind === null
+        ? null
+        : {
+            lat: parcel.export_point_lat,
+            lon: parcel.export_point_lon,
+            kind: parcel.export_point_kind,
+          },
+    coordinate: {
+      latitude: parcel.latitude,
+      longitude: parcel.longitude,
+      source: parcel.coordinate_source ?? "none",
+    },
+  });
   const pID = String(record.pID);
   if (pID !== parcel.request_identifier) {
     throw new Error(
       `write-group: parcel ${parcel.request_identifier} payload_redacted prints pID ${pID}`,
     );
   }
-  return { record, seed: buildSeedRow(record, parcel.geo_id ?? "") };
+  return { record, seed, yearBuilt };
 }
 
 export interface PlannedPropertyImprovementGroup {
@@ -127,11 +172,18 @@ export function planPropertyImprovementGroup(
   const groups: PlannedPropertyImprovementGroup[] = [];
   const empty: string[] = [];
   for (const input of inputs) {
-    const { record, seed } = recordAndSeedOf(input.parcel);
+    const { record, seed, yearBuilt } = recordAndSeedOf(input.parcel);
     const permits = [...input.permits]
       .sort((a, b) => a.permit_number.localeCompare(b.permit_number))
       .map(captureOf);
-    const out = transformAustinPropertyImprovement({ record, seed, cids, permits, profile });
+    const out = transformAustinPropertyImprovement({
+      record,
+      seed,
+      cids,
+      permits,
+      profile,
+      yearBuilt,
+    });
     if (out.counts.emitted === 0) {
       empty.push(out.pID);
       continue;

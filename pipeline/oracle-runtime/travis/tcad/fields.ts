@@ -17,7 +17,7 @@ import { ENTITY_NAME } from "../transforms/tcad-county.js";
 import { countyEmit, isPropType, type PropType } from "./account-class.js";
 import { exportPointKind, parseExportPoint, type ExportPointKind } from "./export-point.js";
 import { ownerAreaOf, type OwnerAreaFields } from "./owner-area.js";
-import { OWNER_REDACTION_RULE, type Redaction } from "./redact.js";
+import { OWNER_REDACTION_RULE, slimValuations, type Redaction } from "./redact.js";
 import { tenureOf, type TenureFields } from "./tenure.js";
 import { improvementsOf, yearBuiltOf, type YearBuiltFields } from "./year-built.js";
 
@@ -241,7 +241,13 @@ const SALE_KEEP = [
 const pick = (o: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> =>
   Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
 
-/** The slim stored payload: the source fields the mapping read, never a street, price or party. */
+/**
+ * The slim stored payload: the source fields the mapping and the shared files read
+ * (shared-seed.ts `buildSharedFiles`: legal description, improvement count), never a mailing
+ * street, a price or a party. `propertyLegalDescription` keeps only `legalDescription` (the
+ * lot/block text, no owner); `valuations` is redact.ts's `slimValuations` (improvement
+ * identifiers, types, state codes, years and floor areas; no value or price).
+ */
 export function slimPayload(
   record: Record<string, unknown>,
   redacted: boolean,
@@ -255,12 +261,16 @@ export function slimPayload(
     propType: record.propType,
     geometry: record.geometry ?? null,
     propertyIdentification: arr(record.propertyIdentification).map((p) => pick(p, ["geoID"])),
+    propertyLegalDescription: arr(record.propertyLegalDescription).map((p) =>
+      pick(p, ["legalDescription"]),
+    ),
     propertyProfile: arr(record.propertyProfile)
       .slice(0, 1)
       .map((p) => pick(p, ["stateCd", "imprvActualYearBuilt"])),
     situses: arr(record.situses).map((s) => pick(s, SITUS_KEEP)),
     owners: redacted ? [] : arr(record.owners).map((o) => pick(o, OWNER_KEEP)),
     sales: arr(record.sales).map((s) => pick(s, SALE_KEEP)),
+    valuations: slimValuations(record.valuations),
   };
 }
 

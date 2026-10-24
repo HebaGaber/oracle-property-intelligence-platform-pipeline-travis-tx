@@ -10,6 +10,8 @@ import {
   AUSTIN_DATASET_URL,
   type ProfileApi,
 } from "../../../travis/transforms/austin-property-improvement.js";
+import { slimPayload } from "../../../travis/tcad/fields.js";
+import { planCountyGroup } from "../../../travis/tcad/write-group.js";
 import { parseTcadRecord } from "../../../travis/transforms/shared-seed.js";
 import {
   captureOf,
@@ -63,6 +65,14 @@ function parcelRow(pID: number, geoId: string): ParcelDbRow {
     request_identifier: String(pID),
     geo_id: geoId,
     payload_redacted: tcadRecord({ pID, geoID: geoId }),
+    // the fixture's own export point, assembled as a GIS centroid (0201_gis.sql columns)
+    property_structure_built_year: 1985,
+    export_point_lat: 30.2545186553,
+    export_point_lon: -97.7620645363,
+    export_point_kind: "real",
+    latitude: 30.2545186553,
+    longitude: -97.7620645363,
+    coordinate_source: "gis_centroid",
   };
 }
 
@@ -97,6 +107,43 @@ describe("recordAndSeedOf", () => {
     const { record, seed } = recordAndSeedOf(parcelRow(100008, "0100030105"));
     expect(String(record.pID)).toBe("100008");
     expect(seed.parcel_id).toBe("100008");
+  });
+
+  it("overrides geometry from the assembled coordinate, as the County group does", () => {
+    const moved = {
+      ...parcelRow(100008, "0100030105"),
+      latitude: 30.3,
+      longitude: -97.8,
+    };
+    expect(recordAndSeedOf(moved).record.geometry).toBe("[30.3, -97.8]");
+    const none = {
+      ...parcelRow(100008, "0100030105"),
+      latitude: null,
+      longitude: null,
+      coordinate_source: "none" as const,
+    };
+    const out = recordAndSeedOf(none);
+    expect(out.record.geometry).toBeNull();
+    expect(out.seed.latitude).toBe("");
+    // a permit point is never written as geometry (County rule CT-8)
+    const permitPoint = {
+      ...parcelRow(100008, "0100030105"),
+      coordinate_source: "permit_point" as const,
+    };
+    expect(recordAndSeedOf(permitPoint).record.geometry).toBeNull();
+  });
+
+  it("carries the recorded year built into property.json, not the profile year", () => {
+    const row = { ...parcelRow(100008, "0100030105"), property_structure_built_year: 1962 };
+    expect(recordAndSeedOf(row).yearBuilt).toBe(1962);
+    const plan = planPropertyImprovementGroup(
+      [{ parcel: row, permits: [permitRow(100008, "2026-100001 BP")] }],
+      CIDS,
+      STUB,
+    );
+    const property = JSON.parse(plan.groups[0]?.files["property.json"] as string);
+    expect(property.property_structure_built_year).toBe(1962);
+    expect(property.property_legal_description_text).toBe("LOT 1 BLK A TEST ADDN 100008");
   });
 
   it("throws when the stored pID does not match the DB key (data-integrity guard)", () => {
@@ -204,6 +251,90 @@ describe("writePropertyImprovementGroupFiles", () => {
       readFileSync(join(dir, "100008", "data", "property_improvement_1.json"), "utf8"),
     );
     expect(pi.permit_number).toBe("2026-100001 BP");
+  });
+});
+
+// Run 1 defect: the stored slim payload lost the legal description and valuations, so the
+// shared files (and the property CID) differed between the County and Property Improvement groups.
+const reverseKeys = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(reverseKeys)
+    : typeof v === "object" && v !== null
+      ? Object.fromEntries(
+          Object.entries(v)
+            .reverse()
+            .map(([k, x]) => [k, reverseKeys(x)]),
+        )
+      : v;
+
+describe("shared files: County path vs stored-payload path", () => {
+  it("are byte-identical for a record with an unmapped state code and one improvement", () => {
+    const full = {
+      ...tcadRecord({ pID: 100027, geoID: "0100030127", stateCd: "XX", yearBuilt: 0 }),
+      valuations: [
+        {
+          pYear: 2026,
+          marketValue: 500000,
+          details: {
+            "cost-local": {
+              improvements: [
+                {
+                  pImprovementID: 1,
+                  imprvType: "R",
+                  stateCd: "A1",
+                  actualYearBuilt: 1948,
+                  effYearBuilt: 1990,
+                  comment: "dropped",
+                  details: [{ imprvDetailType: "1ST", area: 1200, value: 1 }],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+    const coordinate = { latitude: 30.25, longitude: -97.76, source: "gis_centroid" as const };
+    const county = planCountyGroup(
+      [
+        {
+          pID: "100027",
+          geoId: "0100030127",
+          propType: "R",
+          record: full,
+          yearBuilt: 1948,
+          exportPoint: { lat: 30.2545186553, lon: -97.7620645363, kind: "real" },
+          coordinate,
+        },
+      ],
+      CIDS,
+    ).groups[0]?.files as Record<string, string>;
+    const parcel: ParcelDbRow = {
+      ...parcelRow(100027, "0100030127"),
+      // jsonb does not keep key order (it sorts keys): stored with every object's keys reversed
+      payload_redacted: reverseKeys(slimPayload(full, false)),
+      property_structure_built_year: 1948,
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+    };
+    const permits = planPropertyImprovementGroup(
+      [{ parcel, permits: [permitRow(100027, "2026-100001 BP")] }],
+      CIDS,
+      STUB,
+    ).groups[0]?.files as Record<string, string>;
+    for (const name of [
+      "address.json",
+      "parcel.json",
+      "address_has_parcel.json",
+      `${CIDS.seed}.json`,
+      "property.json",
+    ]) {
+      expect(permits[name], name).toBe(county[name]);
+    }
+    expect(JSON.parse(county["property.json"] as string)).toMatchObject({
+      property_type: "Building",
+      property_structure_built_year: 1948,
+      property_legal_description_text: "LOT 1 BLK A TEST ADDN 100027",
+    });
   });
 });
 
