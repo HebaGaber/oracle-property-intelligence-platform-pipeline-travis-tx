@@ -72,6 +72,20 @@ export const RunManifestConfig = z
   .strict();
 export type RunManifestConfig = z.input<typeof RunManifestConfig>;
 
+/**
+ * A limitation carried from the base run that states the base's published permit rows
+ * ("(17387 rows)") restated with this run's count; any other text is carried unchanged. A
+ * published manifest is immutable, so a stale count would stay wrong forever.
+ */
+export function restatePermitRows(
+  limitation: string,
+  baseRows: number | undefined,
+  rows: number,
+): string {
+  if (baseRows === undefined || baseRows === rows) return limitation;
+  return limitation.split(`(${baseRows} rows)`).join(`(${rows} rows)`);
+}
+
 function resolvePath(repoRoot: string, path: string): string {
   return isAbsolute(path) ? path : join(repoRoot, path);
 }
@@ -218,7 +232,9 @@ export async function buildRunManifest(
     coverage,
     ownersRedacted: ownersRedactedOf(base),
     limitations: [
-      ...base.limitations.filter((l) => !l.startsWith(DRAFT_LIMITATION_PREFIX)),
+      ...base.limitations
+        .filter((l) => !l.startsWith(DRAFT_LIMITATION_PREFIX))
+        .map((l) => restatePermitRows(l, baseEmitted, emitted.total)),
       config.correctionNote,
     ],
     repoRoot,

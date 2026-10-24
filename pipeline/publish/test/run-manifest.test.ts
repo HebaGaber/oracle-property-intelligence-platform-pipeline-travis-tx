@@ -12,6 +12,7 @@ import {
   buildRunManifest,
   discoverBatches,
   manifestOutputPath,
+  restatePermitRows,
   writeManifestBytes,
   type RunManifestConfig,
 } from "../src/run-manifest.js";
@@ -150,6 +151,24 @@ describe("buildRunManifest", () => {
       deps(f),
     );
     expect(built.manifest.coverage.permits_emitted?.count).toBe(2);
+  });
+});
+
+describe("restatePermitRows", () => {
+  const run1 =
+    "property_improvement published scope is roofing-classified, decided-status permits only (17387 rows), not all 2007514 linked permits";
+
+  it("restates a carried permit-row count with this run's count, nothing else", () => {
+    expect(restatePermitRows(run1, 17387, 15025)).toBe(
+      "property_improvement published scope is roofing-classified, decided-status permits only (15025 rows), not all 2007514 linked permits",
+    );
+  });
+
+  it("leaves other limitations and an unchanged count as they are", () => {
+    const other = "county published_rows is R-only (441961 of the 493246-parcel roll)";
+    expect(restatePermitRows(other, 17387, 15025)).toBe(other);
+    expect(restatePermitRows(run1, 17387, 17387)).toBe(run1);
+    expect(restatePermitRows(run1, undefined, 15025)).toBe(run1);
   });
 });
 
