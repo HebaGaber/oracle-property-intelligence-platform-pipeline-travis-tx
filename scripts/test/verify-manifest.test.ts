@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { cidOfBytes } from "../../pipeline/publish/src/cid.js";
 import { jcsBytes } from "../../pipeline/publish/src/jcs.js";
 import {
@@ -29,6 +29,14 @@ import {
 const RUN_ID = "travis-202609-reroof-20261021t1530z";
 const PINATA = "https://gateway.pinata.cloud";
 const FILEBASE = "https://ipfs.filebase.io";
+
+// G7 fix (2026-10-24): every test in this file calls fixture(), which does real sha256 hashing
+// of two ~50 MB mock artifacts — CPU-heavy enough under full-turbo-graph contention in CI to
+// exceed Vitest's default 5000ms test timeout (observed: CI run 40035234426 timed out the
+// "retries 504" test at the default, while only the first test had been given a per-test
+// override). Raise the timeout for the whole file instead of per-test so every fixture()-using
+// test gets the same margin.
+vi.setConfig({ testTimeout: 20000 });
 
 /** Deterministic pseudo-random bytes from a seed (sha256 chain) — no large literal in the file. */
 function bytesOf(seed: string, length: number): Uint8Array {
@@ -142,7 +150,10 @@ function fakeGateways(published: Map<string, Uint8Array>, opts: FakeOptions = {}
     const statuses = opts.statuses?.(host, cid) ?? [];
     if (n <= statuses.length) {
       const status = statuses[n - 1] as number;
-      return new Response("", { status, headers: opts.retryAfter ? { "retry-after": opts.retryAfter } : {} });
+      return new Response("", {
+        status,
+        headers: opts.retryAfter ? { "retry-after": opts.retryAfter } : {},
+      });
     }
     const redirect = opts.redirectTo?.(host, cid);
     if (redirect !== undefined && n === statuses.length + 1) {
@@ -164,40 +175,38 @@ describe("the fixed gateway allowlist (P0-14)", () => {
   });
 
   it("refuses ipfs.io, dweb.link and the S3 CID copy before any request", () => {
-    for (const other of ["https://ipfs.io", "https://dweb.link", "https://d111111abcdef8.cloudfront.net"]) {
+    for (const other of [
+      "https://ipfs.io",
+      "https://dweb.link",
+      "https://d111111abcdef8.cloudfront.net",
+    ]) {
       expect(() => assertAllowedGateways([other])).toThrow(refusedGatewayText(other));
     }
   });
 });
 
 describe("retry with backoff on 429/504/timeout", () => {
-  it(
-    "retries 429 up to MAX_ATTEMPTS, honouring Retry-After, then succeeds",
-    async () => {
-      const f = await fixture();
-      const { fetchImpl, attempts } = fakeGateways(f.published, {
-        statuses: (host) => (host === "gateway.pinata.cloud" ? [429, 429] : []),
-        retryAfter: "0",
-      });
-      const report = await verifyManifest({
-        manifestPath: f.manifestPath,
-        fetch: fetchImpl,
-        sleep: noSleep,
-        random: noJitter,
-      });
-      expect(report.ok).toBe(true);
-      expect(attempts.get(`gateway.pinata.cloud:${f.manifestCid}`)).toBe(3);
-    },
-    // sleep/jitter are injected no-ops (no real backoff delay); the margin above the
-    // default 5000ms covers CPU contention from fixture()'s real sha256 hashing of the
-    // ~50MB mock CAR/parquet bytes when this suite runs alongside the full turbo graph.
-    20000,
-  );
+  it("retries 429 up to MAX_ATTEMPTS, honouring Retry-After, then succeeds", async () => {
+    const f = await fixture();
+    const { fetchImpl, attempts } = fakeGateways(f.published, {
+      statuses: (host) => (host === "gateway.pinata.cloud" ? [429, 429] : []),
+      retryAfter: "0",
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+    });
+    expect(report.ok).toBe(true);
+    expect(attempts.get(`gateway.pinata.cloud:${f.manifestCid}`)).toBe(3);
+  });
 
   it("retries 504 up to MAX_ATTEMPTS; exhausting them marks the check unverified, non-zero result", async () => {
     const f = await fixture();
     const { fetchImpl, attempts } = fakeGateways(f.published, {
-      statuses: (host, cid) => (host === "ipfs.filebase.io" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : []),
+      statuses: (host, cid) =>
+        host === "ipfs.filebase.io" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : [],
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -231,7 +240,8 @@ describe("retry with backoff on 429/504/timeout", () => {
     const f = await fixture();
     const lines: string[] = [];
     const { fetchImpl } = fakeGateways(f.published, {
-      statuses: (host, cid) => (host === "ipfs.filebase.io" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : []),
+      statuses: (host, cid) =>
+        host === "ipfs.filebase.io" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : [],
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -270,7 +280,9 @@ describe("retryDelayMs", () => {
     // Pinata has been observed (2026-10-24) returning retry-after values over 2800s under
     // sustained load; honouring that literally would make one artifact check wait ~47 minutes.
     expect(retryDelayMs(1, "2806")).toBe(60_000);
-    expect(retryDelayMs(1, new Date(Date.now() + 3_600_000).toUTCString())).toBeLessThanOrEqual(60_000);
+    expect(retryDelayMs(1, new Date(Date.now() + 3_600_000).toUTCString())).toBeLessThanOrEqual(
+      60_000,
+    );
   });
 });
 
@@ -280,7 +292,9 @@ describe("Filebase redirects", () => {
     const subdomain = `${f.manifestCid}.ipfs.filebase.io`;
     const { fetchImpl, requests } = fakeGateways(f.published, {
       redirectTo: (host, cid) =>
-        host === "ipfs.filebase.io" && cid === f.manifestCid ? `https://${subdomain}/ipfs/${cid}` : undefined,
+        host === "ipfs.filebase.io" && cid === f.manifestCid
+          ? `https://${subdomain}/ipfs/${cid}`
+          : undefined,
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -295,7 +309,8 @@ describe("Filebase redirects", () => {
   it("refuses a redirect to a host outside the gateway's own domain, never following it", async () => {
     const f = await fixture();
     const { fetchImpl } = fakeGateways(f.published, {
-      redirectTo: (host, cid) => (host === "ipfs.filebase.io" && cid === f.manifestCid ? "https://evil.example/x" : undefined),
+      redirectTo: (host, cid) =>
+        host === "ipfs.filebase.io" && cid === f.manifestCid ? "https://evil.example/x" : undefined,
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -334,7 +349,10 @@ describe("streaming hash for large artifacts (NFR-06)", () => {
   it("marks a size/sha256 mismatch on a large artifact unverified, not a silent pass", async () => {
     const f = await fixture();
     const { fetchImpl } = fakeGateways(f.published, {
-      serve: (host, cid, bytes) => (cid === f.largeArtifact.cid && host === "gateway.pinata.cloud" ? bytes?.slice(0, -1) : bytes),
+      serve: (host, cid, bytes) =>
+        cid === f.largeArtifact.cid && host === "gateway.pinata.cloud"
+          ? bytes?.slice(0, -1)
+          : bytes,
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -343,7 +361,9 @@ describe("streaming hash for large artifacts (NFR-06)", () => {
       random: noJitter,
     });
     expect(report.ok).toBe(false);
-    const mismatched = report.artifacts.find((c) => c.name === f.largeArtifact.name && c.gateway === PINATA);
+    const mismatched = report.artifacts.find(
+      (c) => c.name === f.largeArtifact.name && c.gateway === PINATA,
+    );
     expect(mismatched?.ok).toBe(false);
   });
 });
@@ -356,7 +376,12 @@ describe("TIMEOUT_MS default", () => {
       seen.push((init?.signal as AbortSignal | undefined) ? 1 : 0);
       return new Response(f.manifestBytes, { status: 200 });
     };
-    await verifyManifest({ manifestPath: f.manifestPath, fetch: fetchImpl, sleep: noSleep, timeoutMs: 1234 });
+    await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      timeoutMs: 1234,
+    });
     expect(seen.every((x) => x === 1)).toBe(true);
   });
 });
