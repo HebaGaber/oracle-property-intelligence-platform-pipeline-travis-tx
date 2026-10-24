@@ -220,8 +220,9 @@ jobs:
     needs: [workspace, oracle-runtime, gitleaks]
     runs-on: ubuntu-latest
     # The one job outside the 15-minute budget: ≤ 12 min waiting for the Amplify build of this
-    # commit, then Playwright on the hosted URL (plan Complexity Tracking).
-    timeout-minutes: 30
+    # commit, then Playwright on the hosted URL (plan Complexity Tracking). 60 since A-11 Run 2:
+    # at full-county scale TC-NF-01's 20 cold loads alone take ~15 min from a GitHub runner.
+    timeout-minutes: 60
     # A newer push makes this commit's hosted run stale; cancel it.
     concurrency:
       group: e2e-hosted-${{ github.ref }}

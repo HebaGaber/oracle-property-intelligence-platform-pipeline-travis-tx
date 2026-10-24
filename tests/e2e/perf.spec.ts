@@ -8,7 +8,7 @@
 //
 // - TC-NF-01: 20 cold first loads (a fresh browser context each, so nothing is cached), each
 //   timed from navigation start to the first rendered permit row, with the `Loading permits`
-//   progress bar seen in between; every load ≤ 8,000 ms. The DuckDB init measure of each load is
+//   progress bar seen in between; every load ≤ LIMITS.firstLoadMs (60 s at full-county scale; 8 s on the pilot). The DuckDB init measure of each load is
 //   recorded beside it.
 // - TC-NF-02: in one context, one untimed warm-up load, then 20 reloads (the page re-runs its
 //   COUNT and listing on each); the `countylens:query:count` and `countylens:query:list`
@@ -74,8 +74,8 @@ async function readMeasures(
   return out;
 }
 
-test.describe("A-03-TC-NF-01 browser first load ≤ 8 s with a progress bar", () => {
-  test.describe.configure({ timeout: 15 * 60_000 });
+test.describe("A-03-TC-NF-01 browser first load ≤ 60 s (full county) with a progress bar", () => {
+  test.describe.configure({ timeout: 30 * 60_000 });
 
   test("@scenario:A-03-TC-NF-01", async ({ browser, run }, testInfo) => {
     const permitsEmitted = permitsEmittedOf(run.manifest);
@@ -109,7 +109,7 @@ test.describe("A-03-TC-NF-01 browser first load ≤ 8 s with a progress bar", ()
         await page
           .locator(SELECTORS.permitRow)
           .first()
-          .waitFor({ state: "visible", timeout: 60_000 });
+          .waitFor({ state: "visible", timeout: LIMITS.firstLoadMs + 30_000 });
         if (load === 1) await checkpoint(page, "NF-01", "load-1-first-row");
         const probe = await page.evaluate(() => window.__nf01 ?? null);
         expect(probe, `load ${load}: the first-load probe ran`).not.toBeNull();

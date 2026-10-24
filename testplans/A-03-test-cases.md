@@ -145,7 +145,7 @@ A-03 is the walking skeleton: one real month (September 2026) of Austin reroof p
 | A-03-TC-053 | No reserved concurrency (account limit 10); stage throttle 10 rps / burst 20 | P2 | @infra @edge | CLI | AC-7, FR-007, edge 3 | `tests/e2e/build-checks.spec.ts @scenario:A-03-TC-053` (runs `infra/test/api.test.ts` at the deployed SHA) |
 | A-03-TC-060 | Playwright config refuses localhost | P1 | @harness @negative | CLI | FR-010 | `tests/e2e/config-guard.spec.ts @scenario:A-03-TC-060` |
 | A-03-TC-061 | Evidence names the hosted URL used | P2 | @edge | UI | FR-010, edge 2 | `runs.spec.ts @scenario:A-03-TC-061` |
-| A-03-TC-NF-01 | Browser first load ≤ 8 s with a progress bar | P1 | @perf | UI | AC-4, FR-004, NFR-001 | `perf.spec.ts @scenario:A-03-TC-NF-01` |
+| A-03-TC-NF-01 | Browser first load ≤ 60 s with a progress bar (full county; 8 s on the pilot — PO revision 2026-10-24, A-11 Run 2: 24–28 s home, ~45 s GitHub runner; optimization carried to A-16 #11) | P1 | @perf | UI | AC-4, FR-004, NFR-001 | `perf.spec.ts @scenario:A-03-TC-NF-01` |
 | A-03-TC-NF-02 | COUNT and listing p95 < 3 s in the browser (20 runs) | P1 | @perf | UI | AC-4, FR-004, NFR-001 | `perf.spec.ts @scenario:A-03-TC-NF-02` |
 | A-03-TC-NF-03 | Runs and Permits at 390/768/1440 with Atlas tokens only | P1 | @responsive | UI | AC-2, AC-3, NFR-003 | `responsive.spec.ts @scenario:A-03-TC-NF-03` (smeargle) |
 | A-03-TC-NF-04 | API warm p95 < 1 s (30 calls); cold start incl. DuckDB init < 3 s | P1 | @perf @observability | UI + AWS | AC-7, FR-007, NFR-004 | `observability.spec.ts @scenario:A-03-TC-NF-04` |

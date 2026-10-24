@@ -35,8 +35,13 @@ export function summarize(timingsMs: readonly number[]): TimingSummary {
 
 /** NFR thresholds of the test plan (§ 8, NFR cases). */
 export const LIMITS = {
-  /** TC-NF-01: each cold first load. */
-  firstLoadMs: 8_000,
+  /**
+   * TC-NF-01: each cold first load. 8 s was set on A-03's pilot data; at full-county scale the
+   * page downloads ~95 MB (engine + the county property parts the join needs). Run 2 measured
+   * 24–28 s from a home connection and ~45 s from GitHub-hosted runners, so the PO revised the
+   * limit to 60 s (2026-10-24, "Revise target, optimize later"); optimization is carried to A-16 #11.
+   */
+  firstLoadMs: 60_000,
   /** TC-NF-02 and TC-NF-05: p95 of 20 warm runs. */
   queryP95Ms: 3_000,
   /** TC-NF-04: warm API p95 over 30 calls. */
