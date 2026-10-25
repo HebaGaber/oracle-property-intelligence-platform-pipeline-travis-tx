@@ -4,7 +4,7 @@ artifact: stories/A-11-publish-and-runs.md
 artifact_version: merged 2026-10-21 (parts A-11, A-12)
 run_date: 2026-10-23
 tool: Claude
-verdict: FAIL
+verdict: PASS
 ---
 
 # G4 pre-check: A-11 Publish the full county by CID and keep it current with incremental runs
@@ -31,3 +31,9 @@ verdict: FAIL
 3. **C-04 (recommend recording):** record the "observable on hosted runtime" exception once, per the walkthrough's own gate-exception table, since `ui: false` and the real evidence is public-IPFS + AWS + PR instead.
 
 Both C-11 and C-04 are walkthrough-anticipated exceptions, not gaps to argue away silently — they should be written into the gate decision line, not just filed here.
+
+## Update 2026-10-25 (before the A-11 merge)
+
+- **C-01 fixed:** `depends_on` is now `[A-02, A-03, A-04, A-07]`.
+- **C-04 exception accepted by the PO (HebaGaber, 2026-10-25):** `ui: false`; observable on the public IPFS network, in AWS and in the PR, per the walkthrough's gate-exception table.
+- **C-11 exception accepted by the PO (2026-10-25):** `size_days: 2.5` is calendar waiting between UTC dates, not work; re-slicing would break AC-9's run chain.
