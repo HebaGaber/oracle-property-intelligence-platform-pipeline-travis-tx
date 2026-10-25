@@ -22,7 +22,7 @@ import {
   publishedTexts,
   withoutPublished,
 } from "./lib/a13.js";
-import { PARKED_GAPS, checkpoint, expect, parkGap, parkedRoute, test } from "./lib/a13-fixtures.js";
+import { checkpoint, expect, parkedRoute, test } from "./lib/a13-fixtures.js";
 import { writeEvidenceSection } from "./lib/a13-evidence.js";
 import {
   AXE_VERSION,
