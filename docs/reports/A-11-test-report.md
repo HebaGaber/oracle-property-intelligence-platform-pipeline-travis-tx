@@ -109,4 +109,4 @@ Live checks for Run 2 (Permits page on the hosted URL, Playwright) and CI: TBD (
 
 - **Build and URL:** commit b1de02c on `011-publish-and-runs`, CI run 40150597123 (gitleaks, workspace, oracle-runtime and the four e2e-hosted jobs green) against `https://011-publish-and-runs.d2lx0utip89u18.amplifyapp.com`.
 - **Run 2:** published as `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute` (15,025 permit rows, 0 of 10,792 unmatched by the identity gate). ERR-24, ERR-25 and ERR-26 are Closed on this run.
-- **Run 3 and the immutability check:** not run. PO decision 2026-10-25: known gap, carried to A-16 items 2 and 4.
+- **Run 3 and the immutability check (AC-7 to AC-11 parts that need three runs):** not run. PO decision 2026-10-25: known gap, carried to A-16 items 2, 4, 15 and 16.

@@ -57,3 +57,23 @@ Scope: code only. `runs/`, logs, receipts and fixture JSON were excluded; the lo
 ## 3. Summary
 
 All six reviewer-agent scores pass the bar (latest: 88, 86, 82, 80, 80, 92). The `/code-review medium` pass found no defect in the published Run 2 data: the identity gate passed before upload and again from the CID copy. Findings #1 and #2 weaken checks that are meant to be hard guarantees, and #9 affects the first-load target. Each needs a fix in A-11 or an explicit carry decision before G7.
+
+
+## 4. Run 3 correction commits, `/code-review medium` (2026-10-25)
+
+Range `60b60f8..HEAD` (roof date from the ledger, owner-name parsing for ERR-28, owner-area view, identity gate against the previous run, finished-permit open_days for ERR-29, plus the committed work files). No Critical finding. Ten findings, triaged by the PO's close decision (A-11 closes without Run 3, so none of this code has published data yet):
+
+| # | Severity | Where | Finding | Disposition |
+| --- | --- | --- | --- | --- |
+| 1 | Medium | `owner-name.ts:379` | The entity-word test runs before the structured firstName/lastName check, so a person with a surname such as Co, Bank or Church can be written as a company. | Open, carried to A-16 item 16. The code comment states the order as intended (ERR-28); it needs a check against real TCAD owners before Run 3 changes it. |
+| 2 | Medium | `write-group.ts:415` | County roof_date reads the mutable `roof_age_estimates` table, so the County CIDs depend on DB state, and a malformed ledger row aborts a flush. | Open, A-16 item 16. Resolve before Run 3 publishes the County group. |
+| 3 | Low | `bind-manifest.ts:112` | `meta.address_zip` coverage could be mislabelled if only some batches carry postal_code. | Open, A-16 item 16. Not reachable with the current export. |
+| 4 | Low | `tcad-county.ts:660` | `mailing_address_fallback` is counted once per person, not once per printed address. | Open, A-16 item 16. |
+| 5 | Low | `owner-name.ts:432` | A trailing "&" with no second party counts as a skipped co-owner. | Open, A-16 item 16. |
+| 6 | Medium | `identity-gate.ts:972` | The previous run is bound with the current table list and falls back to remote part downloads with no timeout. | Open, A-16 item 16. Fix before Run 3. |
+| 7 | Medium | `verify-manifest.ts:1244` | `--sample` exits 0 like a full verification. | Open, A-16 item 16. Not used for any claim in A-11 (Run 1 evidence names its gateways and counts). |
+| 8 | Low | `.claude/settings.json` | Shared settings now allow-list commands with stale process IDs. | PO chose "commit everything" on 2026-10-25. Recorded; clean up in A-16. |
+| 9 | Low | `elephant-cli5/6/7.log` | About 32 MB of debug logs committed at the repo root. | Same PO choice. Recorded; they stay in history. |
+| 10 | Low | `derive.ts:156` | `openDaysReason` without `asOf` can disagree with the SQL macro. | Open, A-16 item 16. |
+
+Reviewer-agent scores are unchanged (88, 86, 82, 80, 80, 92). The correction commits themselves were not scored by a reviewer agent; this `/code-review` pass is the one review round (light lane L1).
