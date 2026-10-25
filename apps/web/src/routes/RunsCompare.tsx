@@ -11,6 +11,7 @@ import type { RunManifestV1 } from "@countylens/contract";
 import { PROGRESS_LABELS, ROUTES, RUNS_TEXTS, verifyPath } from "@countylens/shared";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
+import { Icon } from "../components/Icon";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
@@ -18,7 +19,7 @@ import { LinearProgress } from "../components/LinearProgress";
 import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
 import type { ReadSource } from "../data/fetch-by-cid";
-import { utcTimestamp } from "../data/format";
+import { formatCount, utcTimestamp } from "../data/format";
 import {
   checkManifestResolves,
   oldManifestResolvesText,
@@ -30,6 +31,7 @@ import { verifyUrlsFromEnv } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
   runErrorNode,
+  runLabel,
   SourceDeltas,
   loadManifestByCid,
   toRunLoadError,
@@ -68,7 +70,7 @@ export function Component(): ReactElement {
       data-state={state.kind}
       className={styles.page}
     >
-      <h2 className={styles.title}>Runs · Compare</h2>
+      {state.kind === "ready" ? null : <h2 className={styles.pageTitle}>Runs · Compare</h2>}
       {state.kind === "loading" ? (
         <>
           <LinearProgress label={PROGRESS_LABELS.runs} stageText={RUN_STAGE_TEXTS[state.stage]} />
@@ -111,32 +113,107 @@ function ComparePair({
   const valid = count >= 2 && an >= 1 && bn <= count && an < bn;
   const ea = valid ? entries[an - 1] : undefined;
   const eb = valid ? entries[bn - 1] : undefined;
+  const header = (
+    <CompareHeader
+      entries={entries}
+      a={ea === undefined ? null : an}
+      b={eb === undefined ? null : bn}
+    />
+  );
 
   if (ea === undefined || eb === undefined) {
     const only = entries[count - 1];
     return (
-      <article
-        className={styles.card}
-        data-compare-single=""
-        data-cid={only?.manifestCid}
-        aria-label="Single run"
-      >
-        <p className={styles.times}>{RUNS_TEXTS.firstRun}</p>
-        {only === undefined ? null : (
-          <p className={styles.itemBody}>
-            <Link className={styles.link} to={ROUTES.runs}>
-              {only.runId}
-            </Link>{" "}
-            · <CidDisplay cid={only.manifestCid} /> ·{" "}
-            <Link className={styles.link} to={verifyPath(only.manifestCid)} data-manifest-link="">
-              Open manifest
-            </Link>
-          </p>
-        )}
-      </article>
+      <>
+        {header}
+        <article
+          className={styles.card}
+          data-compare-single=""
+          data-cid={only?.manifestCid}
+          aria-label="Single run"
+        >
+          <p className={styles.times}>{RUNS_TEXTS.firstRun}</p>
+          {only === undefined ? null : (
+            <p className={styles.itemBody}>
+              <Link className={styles.link} to={ROUTES.runs}>
+                {only.runId}
+              </Link>{" "}
+              · <CidDisplay cid={only.manifestCid} /> ·{" "}
+              <Link className={styles.link} to={verifyPath(only.manifestCid)} data-manifest-link="">
+                Open manifest
+              </Link>
+            </p>
+          )}
+        </article>
+      </>
     );
   }
-  return <TwoRuns key={`${an}-${bn}`} a={{ n: an, entry: ea }} b={{ n: bn, entry: eb }} />;
+  return (
+    <>
+      {header}
+      <TwoRuns key={`${an}-${bn}`} a={{ n: an, entry: ea }} b={{ n: bn, entry: eb }} />
+    </>
+  );
+}
+
+/** Back link, "Run b vs Run a" and the two run pickers (board RunsCompare1440). */
+function CompareHeader({
+  entries,
+  a,
+  b,
+}: {
+  readonly entries: readonly RunsIndexEntry[];
+  readonly a: number | null;
+  readonly b: number | null;
+}): ReactElement {
+  const [params, setParams] = useSearchParams();
+  const choose = (key: "a" | "b", value: string): void => {
+    const next = new URLSearchParams(params);
+    next.set(key, value);
+    setParams(next);
+  };
+  const options = entries.map((entry, i) => (
+    <option key={entry.manifestCid} value={i + 1}>
+      {runLabel(i + 1, entry.finishedAt)}
+    </option>
+  ));
+  return (
+    <div className={styles.compareHead}>
+      <Link className={styles.textLink} to={ROUTES.runs} aria-label="Back to runs">
+        <Icon name="arrow_back" size="medium" />
+      </Link>
+      <h2 className={styles.pageTitle}>
+        {a === null || b === null ? "Runs · Compare" : `Run ${b} vs Run ${a}`}
+      </h2>
+      {entries.length >= 2 ? (
+        <span className={styles.chips}>
+          <label className={styles.selectLabel}>
+            <span>Run</span>
+            <select
+              className={styles.select}
+              value={b ?? entries.length}
+              onChange={(e) => choose("b", e.target.value)}
+              aria-label="Newer run"
+            >
+              {options}
+            </select>
+          </label>
+          <span>vs</span>
+          <label className={styles.selectLabel}>
+            <span>Run</span>
+            <select
+              className={styles.select}
+              value={a ?? entries.length - 1}
+              onChange={(e) => choose("a", e.target.value)}
+              aria-label="Older run"
+            >
+              {options}
+            </select>
+          </label>
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 type PairState =
@@ -183,6 +260,8 @@ function TwoRuns({
         <RunColumn run={state.a} />
         <RunColumn run={state.b} />
       </div>
+      <ChangeTable a={state.a} b={state.b} />
+      <ImmutabilityChecks a={state.a} b={state.b} />
       <OldManifestCheck cid={state.a.entry.manifestCid} />
     </>
   );
@@ -255,6 +334,122 @@ function RunColumn({ run }: { readonly run: ComparedRun }): ReactElement {
         ))}
       </ul>
     </article>
+  );
+}
+
+/** Per-source records and deltas, then how many files kept, changed or gained a CID. */
+function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRun }): ReactElement {
+  const before = new Map(a.manifest.artifacts.map((x) => [x.name, x.cid]));
+  let same = 0;
+  let changed = 0;
+  let added = 0;
+  for (const artifact of b.manifest.artifacts) {
+    const old = before.get(artifact.name);
+    if (old === undefined) added += 1;
+    else if (old === artifact.cid) same += 1;
+    else changed += 1;
+  }
+  const removed = a.manifest.artifacts.filter(
+    (x) => !b.manifest.artifacts.some((y) => y.name === x.name),
+  ).length;
+  return (
+    <section className={styles.card} aria-labelledby="changed-table-heading" data-change-table="">
+      <h3 id="changed-table-heading" className={styles.sectionTitle}>
+        What changed, per source and artifact
+      </h3>
+      <div className={styles.tableWrap}>
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th className={styles.num}>Run {a.n}</th>
+              <th className={styles.num}>Run {b.n}</th>
+              <th className={styles.num}>Added</th>
+              <th className={styles.num}>Changed</th>
+              <th className={styles.num}>Removed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {b.manifest.sources.map((source) => {
+              const prev = a.manifest.sources.find((s) => s.name === source.name);
+              return (
+                <tr key={source.name} data-change-source={source.name}>
+                  <td>
+                    <code className={styles.mono}>{source.name}</code>
+                  </td>
+                  <td className={styles.num}>
+                    {prev === undefined ? "not in this run" : formatCount(prev.records)}
+                  </td>
+                  <td className={styles.num}>{formatCount(source.records)}</td>
+                  <td className={styles.num}>+{source.added}</td>
+                  <td className={styles.num}>~{source.changed}</td>
+                  <td className={styles.num}>−{source.removed}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className={styles.itemBody} data-artifact-cids="">
+        Files by name: {same} kept the same CID, {changed} changed CID, {added} are new in Run {b.n}
+        , {removed} are not in Run {b.n}. An unchanged file keeps the same CID, so a changed CID
+        always means changed bytes.
+      </p>
+    </section>
+  );
+}
+
+/** The immutability checks that need only the two manifests and the index (no network). */
+function ImmutabilityChecks({
+  a,
+  b,
+}: {
+  readonly a: ComparedRun;
+  readonly b: ComparedRun;
+}): ReactElement {
+  const car = b.manifest.artifacts.find((x) => x.kind === "car");
+  const checks: readonly { ok: boolean; icon: string; text: string }[] = [
+    {
+      ok: a.entry.manifestCid !== b.entry.manifestCid,
+      icon: "check",
+      text: "New run has a distinct CID",
+    },
+    {
+      ok: b.manifest.previousManifestCid === a.entry.manifestCid,
+      icon: "check",
+      text: "New manifest links to the old one (previousManifestCid)",
+    },
+    { ok: true, icon: "check", text: "Both runs listed in runs/index.json" },
+    { ok: car !== undefined, icon: "inventory_2", text: "CAR available" },
+  ];
+  return (
+    <section className={styles.card} aria-labelledby="checks-heading" data-immutability="">
+      <h3 id="checks-heading" className={styles.sectionTitle}>
+        Immutability checks
+      </h3>
+      <div className={styles.chips}>
+        {checks.map((check) => (
+          <StatusPill
+            key={check.text}
+            status={check.ok ? "verified" : "warning"}
+            icon={check.ok ? check.icon : "warning"}
+            text={check.ok ? check.text : `Not true here: ${check.text}`}
+          />
+        ))}
+      </div>
+      <div className={styles.chips}>
+        {car === undefined ? null : (
+          <Link className={styles.textLink} to={verifyPath(car.cid)}>
+            <Icon name="download" size="medium" />
+            Directory CAR, Run {b.n}
+          </Link>
+        )}
+        <Link className={styles.textLink} to={verifyPath(b.entry.manifestCid)}>
+          <Icon name="verified" size="medium" />
+          Verify both on gateways
+        </Link>
+      </div>
+    </section>
   );
 }
 

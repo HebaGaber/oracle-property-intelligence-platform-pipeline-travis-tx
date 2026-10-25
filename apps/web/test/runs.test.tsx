@@ -727,3 +727,62 @@ describe("Runs page: exact error texts (contracts/ui-routes.md, FR-021)", () => 
     expect(screen.queryByRole("article")).toBeNull();
   });
 });
+
+describe("A-16 Runs page: board sections, LCP and the signed-out view", () => {
+  it("paints the run list and Sync status from the index while the manifest is still loading (A13-3)", async () => {
+    installFetch({
+      index: () => json(fixture.indexJson),
+      copy: () => new Response(fixture.manifestBytes),
+    });
+    // The manifest never answers: only the index is available.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (input) => {
+        const url = urlOf(input);
+        if (url === "/runs/index.json") return json(fixture.indexJson);
+        return new Promise<Response>(() => undefined);
+      }),
+    );
+    await renderRuns();
+    const list = await screen.findByRole("list", { name: "Runs, newest first" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    const section = document.querySelector('[data-route="runs"]');
+    expect(section?.getAttribute("data-state")).toBe("loading");
+    expect(document.querySelector("[data-sync-status]")).not.toBeNull();
+    expect(document.querySelector("[data-last-sync]")?.textContent).toContain("2026-10-21");
+    expect(screen.queryByRole("article")).toBeNull();
+  });
+
+  it("shows the board sections once the manifest is read, in the board order", async () => {
+    await renderRuns();
+    await findCard();
+    expect(screen.getByRole("heading", { level: 2, name: "Pipeline runs" })).toBeDefined();
+    const order = [
+      "[data-run-list]",
+      "[data-sync-status]",
+      "[data-pipeline-steps]",
+      "[data-latest-events]",
+      "[data-what-changed]",
+      "article",
+    ].map((selector) => document.querySelector(selector));
+    for (const el of order) expect(el).not.toBeNull();
+    for (let i = 1; i < order.length; i += 1) {
+      const before = order[i - 1] as Element;
+      const after = order[i] as Element;
+      expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(screen.getByText("What Run 1 changed")).toBeDefined();
+  });
+
+  it("gives a signed-out visitor an Admin sign-in link and no Start, Stop or Retry control", async () => {
+    await renderRuns();
+    await findCard();
+    const link = screen.getByRole("link", { name: /admin sign-in/i });
+    expect(link.getAttribute("href")).toBe("/admin/sign-in");
+    expect(document.querySelector("[data-admin-controls]")).toBeNull();
+    for (const name of [/start run/i, /stop run/i, /^retry$/i]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+    expect(document.body.textContent).not.toContain("Signed in as admin");
+  });
+});

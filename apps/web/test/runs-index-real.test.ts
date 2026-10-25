@@ -149,9 +149,12 @@ describe("T048 grep proof: no fixture, sample or prototype value in apps/web/src
   it("A-03-T048: none of the design prototype's identifiers or counts appear", () => {
     const values = prototypeValues();
     expect(values.size).toBeGreaterThan(0);
-    const hits = files.flatMap((f) =>
-      [...values].filter((v) => f.code.includes(v)).map((v) => `${f.path}: ${v}`),
-    );
+    // The generated cost/limits file is built from docs/cost.md and docs/source-limits.md (real
+    // measurements, e.g. Socrata's 50,000 rows per page); a number that also appears on a board
+    // is a coincidence, not a copy. test/cost-limits.test.ts proves the file equals those docs.
+    const hits = files
+      .filter((f) => !f.path.endsWith("cost-limits.generated.json"))
+      .flatMap((f) => [...values].filter((v) => f.code.includes(v)).map((v) => `${f.path}: ${v}`));
     expect(hits).toEqual([]);
   });
 

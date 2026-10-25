@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node ../../scripts/build-cost-limits.mjs",
     "build": "vite build && tsx scripts/compress-wasm.ts",
     "compress-wasm": "tsx scripts/compress-wasm.ts",
     "preview": "vite preview",
@@ -21,6 +22,7 @@
     "@countylens/shared": "workspace:*",
     "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
     "@tanstack/react-query": "5.104.5",
+    "amazon-cognito-identity-js": "6.3.12",
     "hyparquet": "1.31.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
