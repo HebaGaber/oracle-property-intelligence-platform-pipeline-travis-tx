@@ -50,7 +50,7 @@ The call asks for `limit: 1000` with `status_class: stalled` and returns 0 rows 
 
 ## MCP Inspector
 
-`docs/evidence/img/A-14-inspector.png` (six tools, a `search_properties` call with provenance, the protocol log: `initialize`, `tools/list`, `tools/call` all OK) and `docs/evidence/img/A-14-inspector-connected.jpg` (the Connected card showing the hosted `/mcp` URL and protocol 2025-11-25). The first connection attempt returned `unauthorized` (the header held no token); the second, with the token, connected.
+`docs/evidence/img/A-14-inspector.png` (six tools, a `search_properties` call with provenance, the protocol log: `initialize`, `tools/list`, `tools/call` all OK) and `docs/evidence/img/A-14-inspector-connected.jpg` (the Connected card showing the hosted `/mcp` URL and protocol 2025-11-25). The first connection attempt was logged by the server as `unauthorized` (most likely an empty header value: the shell variable holding the token was empty in that terminal at the time; not verified); the second, with the token, connected.
 
 ## `donphan` answers through the MCP server alone (A-5)
 
