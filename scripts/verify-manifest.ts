@@ -20,8 +20,9 @@
 // check took about two hours locally because Pinata answers 429, so the hosted job checks a
 // sample. In a sample the CAR is read from Filebase only: Pinata's gateway answers 429 to CAR
 // downloads (story A-16 item 14, a second independent pin); the manifest and the table part are
-// still read from both gateways. A sample prints SAMPLE VERIFIED, never ALL ARTIFACTS VERIFIED. The default (no flag)
-// is the full check the operator runs after a publish.
+// still read from both gateways. A sample prints SAMPLE VERIFIED, never ALL ARTIFACTS VERIFIED,
+// and exits 3 when it passes (0 is reserved for a full verification; 1 = a check failed; 2 = usage).
+// The default (no flag) is the full check the operator runs after a publish.
 //
 // Order: the manifest itself, by its own raw-leaves CIDv1, from both gateways, compared
 // byte-for-byte with the local file; any gateway answering 200 with other bytes stops the run
@@ -600,6 +601,15 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   return report;
 }
 
+/** A `--sample` run that passed: a partial check, so it must not look like a full verification. */
+export const EXIT_SAMPLE_ONLY = 3;
+
+/** 0 only for a full verification; 3 for a passing sample; 1 for any failure. (2 = usage.) */
+export function exitCodeFor(report: Pick<VerifyReport, "ok" | "sample">): number {
+  if (!report.ok) return 1;
+  return report.sample === undefined ? 0 : EXIT_SAMPLE_ONLY;
+}
+
 interface Args {
   manifestPath: string;
   gateways: string[];
@@ -690,7 +700,7 @@ if (process.argv[1] !== undefined && import.meta.url === new URL(process.argv[1]
       resumeSkip,
       sample: args.sample,
     });
-    process.exit(report.ok ? 0 : 1);
+    process.exit(exitCodeFor(report));
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(2);

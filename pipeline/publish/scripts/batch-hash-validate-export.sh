@@ -41,20 +41,50 @@ PYTHON="${PYTHON:-python3}"
 LOCK="${OUT_DIR%/}.lock"
 # The lock sits next to OUT_DIR, so its parent must exist before the first run (A-11 Run 3 fix).
 mkdir -p "$(dirname "$LOCK")"
+# Atomic create: the pid goes into a private temp file first, then `ln` publishes it under the
+# lock name. ln fails if the lock exists, and a reader never sees a half-written (empty) owner,
+# which it would wrongly treat as stale.
+try_create() {
+  local tmp="$LOCK.$$.tmp"
+  echo "$$" >"$tmp" || return 1
+  if ln "$tmp" "$LOCK" 2>/dev/null; then rm -f "$tmp"; return 0; fi
+  rm -f "$tmp"
+  return 1
+}
+# Stale takeover (A-16 A11-10b): only the process that creates the takeover guard directory
+# (mkdir is atomic) may replace the stale lock. It re-reads the owner after taking the guard
+# (another process may already have finished a takeover), moves the stale file aside with mv
+# (atomic rename), then creates the lock exclusively. Everyone else fails closed.
+GUARD="$LOCK.takeover"
 acquire_lock() {
-  local owner
-  if (set -C; echo "$$" >"$LOCK") 2>/dev/null; then return 0; fi
+  local owner current
+  if try_create; then return 0; fi
   owner="$(cat "$LOCK" 2>/dev/null || true)"
   if [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null; then
     echo "[lock] $OUT_DIR is in use by pid $owner ($LOCK); refusing to start" >&2
     return 1
   fi
-  echo "[lock] taking over stale lock $LOCK (pid ${owner:-unknown} is gone)" >&2
-  rm -f "$LOCK"
-  (set -C; echo "$$" >"$LOCK") 2>/dev/null || {
-    echo "[lock] lost the race for $LOCK; refusing to start" >&2
+  if ! mkdir "$GUARD" 2>/dev/null; then
+    echo "[lock] another process is taking over $LOCK (guard $GUARD); refusing to start" >&2
     return 1
-  }
+  fi
+  current="$(cat "$LOCK" 2>/dev/null || true)"
+  if [ "$current" != "$owner" ] && [ -n "$current" ]; then
+    rmdir "$GUARD"
+    echo "[lock] lost the race for $LOCK (owner changed to pid $current); refusing to start" >&2
+    return 1
+  fi
+  echo "[lock] taking over stale lock $LOCK (pid ${owner:-unknown} is gone)" >&2
+  mv "$LOCK" "$LOCK.stale.$$" 2>/dev/null || true
+  if try_create; then
+    rm -f "$LOCK.stale.$$"
+    rmdir "$GUARD"
+    return 0
+  fi
+  rm -f "$LOCK.stale.$$"
+  rmdir "$GUARD"
+  echo "[lock] lost the race for $LOCK; refusing to start" >&2
+  return 1
 }
 acquire_lock || exit 1
 trap 'rm -f "$LOCK"' EXIT

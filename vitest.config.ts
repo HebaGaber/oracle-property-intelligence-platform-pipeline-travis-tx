@@ -16,6 +16,7 @@ export default defineConfig({
       { test: { name: "scripts", include: ["scripts/test/**/*.test.ts"] } },
       "profiles/travis-austin@1.0.0",
       "pipeline/publish",
+      "pipeline/bridge",
     ],
     coverage: {
       provider: "v8",
@@ -25,6 +26,7 @@ export default defineConfig({
         "packages/query-core/gazetteer/**/*.ts",
         "profiles/*/*.ts",
         "pipeline/publish/src/**/*.ts",
+        "pipeline/bridge/src/**/*.ts",
       ],
     },
   },

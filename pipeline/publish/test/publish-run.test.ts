@@ -9,6 +9,7 @@ import { cidOfBytes } from "../src/cid.js";
 import type { IdentityGateSummary } from "../src/identity-gate.js";
 import { jcsBytes } from "../src/jcs.js";
 import type { FetchLike } from "../src/kubo-add.js";
+import { FILEBASE_GATEWAY } from "../src/sequence.js";
 import {
   PUBLISH_STEPS,
   createPublishSteps,
@@ -437,6 +438,33 @@ describe("filebase step", () => {
     expect(h.cli).toHaveBeenCalledTimes(units.length);
   });
 
+  it("A11-17 R5: a receipt that appears while the lock is being taken stops the upload", async () => {
+    const { ctx } = await realContext();
+    const [first] = uploadUnits(ctx.manifest);
+    if (first === undefined) throw new Error("no unit");
+    const h = harness(ctx);
+    // Another worker finishes the first unit after our plan but before we hold its lock.
+    h.deps.filebase.onLockTaken = (id) => {
+      if (id !== first.id) return;
+      put(
+        join(ctx.receiptsDir, `${first.id}.json`),
+        JSON.stringify({ api: "https://rpc.filebase.io", root: first.artifact.cid, blocks: 1 }),
+      );
+    };
+    const report = await runPublish({
+      ctx,
+      impls: createPublishSteps(h.deps),
+      dryRun: false,
+      step: "filebase",
+    });
+    expect(report.ok).toBe(true);
+    const uploadedInputs = h.cli.mock.calls.map((c) => (c[0] as string[])[1]);
+    expect(uploadedInputs).not.toContain(join(ctx.repoRoot, first.artifact.name));
+    expect(h.cli).toHaveBeenCalledTimes(uploadUnits(ctx.manifest).length - 1);
+    expect(h.logs.some((l) => l.includes("a receipt appeared while taking the lock"))).toBe(true);
+    expect(existsSync(join(ctx.receiptsDir, `${first.id}.json.lock`))).toBe(false);
+  });
+
   it("skips an artifact that an existing top-level receipt (Run 1 style) already records", async () => {
     const { ctx } = await realContext();
     const [first] = uploadUnits(ctx.manifest);
@@ -681,6 +709,60 @@ describe("car-files and manifest steps (probe / adopt)", () => {
     expect(report.ok).toBe(true);
     expect(add).toHaveBeenCalledTimes(1);
     expect(add.mock.calls[0]?.[1]).toBe(missing?.carCid);
+  });
+
+  it("A11-17 R4: a Filebase-only receipt records deferredGateways and does not satisfy a full-readback run", async () => {
+    const { ctx } = await realContext();
+    const withCarCid = ctx.manifest.artifacts.filter((a) => a.carCid);
+    const sizes = new Map(withCarCid.map((a) => [a.carCid as string, a.size]));
+    // Filebase serves every file in full; Pinata errors (too slow for large CARs).
+    const fetchImpl: FetchLike = async (url) => {
+      if (!url.startsWith(FILEBASE_GATEWAY)) throw new TypeError("fetch failed");
+      const cid = url.split("/ipfs/")[1] as string;
+      return new Response(new Uint8Array(sizes.get(cid) ?? 0), { status: 200 });
+    };
+    const deferred = harness(ctx, { fetch: fetchImpl });
+    deferred.deps.carFiles.add = async (_path: string, cid: string) => ({
+      cid,
+      name: "x",
+      size: sizes.get(cid) ?? 0,
+    });
+    deferred.deps.carFiles.skipProbe = true;
+    deferred.deps.carFiles.readbackGateways = [FILEBASE_GATEWAY];
+    const run1 = await runPublish({
+      ctx,
+      impls: createPublishSteps(deferred.deps),
+      dryRun: false,
+      step: "car-files",
+    });
+    expect(run1.ok).toBe(true);
+    const [first] = uploadUnits(ctx.manifest);
+    const receipt = JSON.parse(
+      readFileSync(join(ctx.receiptsDir, "carfiles", `${first?.id}.json`), "utf8"),
+    );
+    expect(receipt.deferredGateways).toEqual(["https://gateway.pinata.cloud"]);
+
+    // Same deferral again: the receipts count, nothing to do.
+    const again = await runPublish({
+      ctx,
+      impls: createPublishSteps(deferred.deps),
+      dryRun: true,
+      step: "car-files",
+    });
+    expect(again.steps.at(-1)?.status).toBe("already-done");
+
+    // A run that must read Pinata back too does not accept the Filebase-only receipts.
+    const full = harness(ctx);
+    full.deps.carFiles.skipProbe = true;
+    const report = await runPublish({
+      ctx,
+      impls: createPublishSteps(full.deps),
+      dryRun: true,
+      step: "car-files",
+    });
+    const items = report.steps.at(-1)?.items ?? [];
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.action === "run")).toBe(true);
   });
 
   it("the manifest step adopts a manifest both gateways already serve byte for byte", async () => {

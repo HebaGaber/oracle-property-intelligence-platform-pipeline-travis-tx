@@ -98,8 +98,8 @@ export function captureOf(row: PermitDbRow): AustinPermitCapture {
  * The TcadRecord + SeedRow + yearBuilt the County group builds its shared files from,
  * reconstructed from the DB row through the County group's own builder (tcad/write-group.ts
  * `sharedFilesInputOf`): same geometry override (the assembled coordinate), same parse, same
- * seed row, same year built. The County writer always passes the assembled coordinate, so it is
- * always passed here too.
+ * seed row, same year built. The County writer passes the assembled coordinate whenever
+ * coordinates are assembled, so it is passed here whenever the parcel's coordinate_source is set.
  */
 export function recordAndSeedOf(parcel: ParcelDbRow): {
   record: TcadRecord;
@@ -132,12 +132,19 @@ export function recordAndSeedOf(parcel: ParcelDbRow): {
             lon: parcel.export_point_lon,
             kind: parcel.export_point_kind,
           },
-    coordinate: {
-      latitude: parcel.latitude,
-      longitude: parcel.longitude,
-      source: parcel.coordinate_source ?? "none",
-      sourceUrl: parcel.coordinate_source_url ?? null,
-    },
+    // A11-10(c): the County writer passes the coordinate only when coordinates are assembled
+    // (tcad-backbone.ts `assembled`); unassembled, a real export point stands in. Here a parcel
+    // is assembled once coordinate_source is set ("none" included: assembled, nothing usable).
+    ...(parcel.coordinate_source === null
+      ? {}
+      : {
+          coordinate: {
+            latitude: parcel.latitude,
+            longitude: parcel.longitude,
+            source: parcel.coordinate_source,
+            sourceUrl: parcel.coordinate_source_url ?? null,
+          },
+        }),
   });
   const pID = String(record.pID);
   if (pID !== parcel.request_identifier) {
