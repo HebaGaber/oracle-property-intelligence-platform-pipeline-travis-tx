@@ -135,6 +135,9 @@ importers:
       '@tanstack/react-query':
         specifier: 5.104.5
         version: 5.104.5(@types/react@19.3.0)(react@19.3.1)
+      hyparquet:
+        specifier: 1.31.2
+        version: 1.31.2
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -144,6 +147,9 @@ importers:
       react-router:
         specifier: 7.18.4
         version: 7.18.4(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
     devDependencies:
       '@testing-library/dom':
         specifier: 10.4.2
@@ -2563,6 +2569,9 @@ packages:
 
   hyparquet-writer@0.16.13:
     resolution: {integrity: sha512-Stm309KdMGdBlIaDp4RuHuqh8X/YDTB7bXZTCezc1qmvax83RHVbwRoA4ft+BnsPIBQJkKoE86LlBsLQr1nQAw==}
+
+  hyparquet@1.31.2:
+    resolution: {integrity: sha512-dpVTCGkPPIdfDExa7YZGaJpuBTmLFDKGeZ6meHUj1mz/Q3qmaQHGLLqCyPBkQjfxrYNb08YTax682qeGO+zkVA==}
 
   hyparquet@1.31.5:
     resolution: {integrity: sha512-KPVfaxW8xOiO2/4fjeiBfFNEXhGVw9tfcb9ha2iNZdJ3J/yBjEwIeAnTyyuhllFFTb9YO9wg0DfRAOnm6KCvBg==}
@@ -6523,6 +6532,8 @@ snapshots:
   hyparquet-writer@0.16.13:
     dependencies:
       hyparquet: 1.31.5
+
+  hyparquet@1.31.2: {}
 
   hyparquet@1.31.5: {}
 

@@ -48,7 +48,8 @@ export const API_ROUTE_PATH = "/trpc/{proxy+}";
 export const API_THROTTLE = { rateLimit: 10, burstLimit: 20 } as const;
 /** ERR-18 sizing (ADR-0001 had 1,769 MB = 1 vCPU): 2 vCPU and more network for the cold read. */
 export const API_MEMORY_MB = 3008;
-export const API_TIMEOUT = Duration.seconds(15);
+/** 29 s: under the HTTP API integration limit (30 s). A full-county Explore search binds 200 table parts on a cold sandbox (A-13, Run 2); 15 s was not enough. */
+export const API_TIMEOUT = Duration.seconds(29);
 /** Retention (AD-16 as amended by AM-03): function log 14 days, access (query) log 30 days. */
 export const FUNCTION_LOG_RETENTION = logs.RetentionDays.TWO_WEEKS;
 export const ACCESS_LOG_RETENTION = logs.RetentionDays.ONE_MONTH;

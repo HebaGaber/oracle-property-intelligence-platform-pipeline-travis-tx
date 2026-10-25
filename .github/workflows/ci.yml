@@ -236,14 +236,15 @@ jobs:
     # commit, then Playwright on the hosted URL (plan Complexity Tracking). 60 since A-11 Run 2:
     # at full-county scale TC-NF-01's 20 cold loads alone take ~15 min from a GitHub runner.
     timeout-minutes: 60
-    # Four jobs on four runners (playwright.config.ts projects), each with its own memory: the
-    # full-county Permits cases, the manifest cases (~2.8 GB of CAR downloads), the rest of the
-    # site, and the cases that must run alone (perf timings, rate-limited public gateways). One worker each (A-16 item 11 for the reason).
+    # Seven jobs on seven runners (playwright.config.ts projects), each with its own memory: the
+    # full-county Permits cases, the manifest cases (~2.8 GB of CAR downloads), A-13's three long
+    # spec files (Explorer, Pages, Scan: ~10-13 min each, split from `site` so they run side by side),
+    # the rest of the site, and the cases that must run alone (perf timings, rate-limited public gateways). One worker each (A-16 item 11 for the reason).
     strategy:
       fail-fast: false
       matrix:
-        shard: [permits, manifest, site, isolated]
-    # A newer push makes this commit's hosted run stale; cancel it (per shard, so the three jobs
+        shard: [permits, manifest, site, a13-explorer, a13-pages, a13-scan, isolated]
+    # A newer push makes this commit's hosted run stale; cancel it (per shard, so the jobs
     # of one run never cancel each other).
     concurrency:
       group: e2e-hosted-${{ github.ref }}-${{ matrix.shard }}

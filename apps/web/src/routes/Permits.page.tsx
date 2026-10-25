@@ -369,6 +369,7 @@ export function PermitsPage({ load }: PermitsPageProps): ReactElement {
       data-route="permits"
       data-state={state.kind}
     >
+      <h2 className={styles.title}>Permits</h2>
       {state.kind === "loading" ? (
         <>
           <LinearProgress label={PROGRESS_LABELS.permits} stageText={state.stage} />

@@ -17,8 +17,11 @@
 #      fallback excludes .json) and the Runs page shows RUN_INDEX_TEXTS.unreadable, never
 #      placeholder data (infra/test/amplify-build.test.ts). Then write public/build.json
 #      {sha, branch} from Amplify's own AWS_COMMIT_ID / AWS_BRANCH, which CI and the hosted
-#      tests poll (TC-052 step 0).
-#   4. vite build (VITE_CID_COPY_HOST and VITE_FILEBASE_GATEWAY_HOST come from the app's
+#      tests poll (TC-052 step 0). Then write public/site-links.json {crmUrl, demoVideoUrl, prUrl}
+#      (A-13 contracts/site-links.md) from the Amplify variables CRM_URL, DEMO_VIDEO_URL and
+#      PR_URL that the Web stack sets from CDK context, "" when unset (the Hub hides the link and
+#      validates https itself). A link switch is a Web-stack deploy plus a rebuild, no code change.
+#   4. vite build (VITE_CID_COPY_HOST, VITE_FILEBASE_GATEWAY_HOST and VITE_PINATA_GATEWAY_HOST come from the app's
 #      environment, never from this file), then gzip duckdb-eh.wasm in dist/ to .wasm.gz and
 #      delete the raw .wasm (apps/web/scripts/compress-wasm.ts, T057); the engine fetches the .gz
 #      and gunzips it in the browser (no Content-Encoding header: Amplify rejects it as read-only,
@@ -48,6 +51,9 @@ applications:
             - |
               node -e 'require("node:fs").writeFileSync("public/build.json", JSON.stringify({ sha: process.env.AWS_COMMIT_ID, branch: process.env.AWS_BRANCH }) + "\n")'
             - cat public/build.json
+            - |
+              node -e 'const e = (k) => (process.env[k] ?? "").trim(); require("node:fs").writeFileSync("public/site-links.json", JSON.stringify({ crmUrl: e("CRM_URL"), demoVideoUrl: e("DEMO_VIDEO_URL"), prUrl: e("PR_URL") }) + "\n")'
+            - cat public/site-links.json
         build:
           commands:
             - nvm use 22

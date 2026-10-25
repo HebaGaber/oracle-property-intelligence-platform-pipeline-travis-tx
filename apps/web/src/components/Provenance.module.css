@@ -22,6 +22,10 @@
   min-width: 0;
 }
 
+/* ERR-47: the source link is a 48 px target (D5) made of block padding on an inline box, so the
+   line keeps the 16 px text height (an inline-flex min-height box made its line 48 px high). */
 .link {
+  display: inline;
+  padding-block: var(--space-4);
   color: var(--md-sys-color-primary);
 }

@@ -482,6 +482,19 @@ export function bindRun(
   return bindManifest(manifestBytes, "", engine, { partUrl, views: PERMITS_VIEWS });
 }
 
+/**
+ * Binds every contract view to the manifest, for the Explore SQL panel (AC-6): unlike the Permits
+ * page it may query any view (v_property, v_roofing_permit, …). With the parts not prefetched
+ * (a full run), DuckDB range-reads only what a query touches from `partUrl`.
+ */
+export function bindAllViews(
+  engine: QueryEngine,
+  manifestBytes: Uint8Array,
+  partUrl: (artifact: { name: string; cid: string }) => string,
+): Promise<BoundRun> {
+  return bindManifest(manifestBytes, "", engine, { partUrl });
+}
+
 /** The single page of permits, ordered by permit_number (listRoofingPermitsSql), validated; measured as `countylens:query:list`. */
 export async function listPermits(engine: QueryEngine): Promise<PermitListRow[]> {
   const rows = await timed(PERF_MEASURES.list, () => engine.all(listRoofingPermitsSql()));

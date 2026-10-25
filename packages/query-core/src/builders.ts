@@ -99,7 +99,16 @@ function radius(input: RadiusInput): Radius {
   return { lat, lon, radiusM: Number((miles * METRES_PER_MILE).toFixed(3)), limit };
 }
 
-/** The bbox prefilter and the haversine distance (metres) over `<alias>.latitude/longitude`. */
+/** The bbox prefilter and the haversine distance (metres) over `<alias>.latitude/longitude`.
+ *  Exported as `geoSql` for the Explore search builder (explore.ts, A-13), so every radius query
+ *  shares one bbox and one haversine. */
+export function geoSql(
+  centre: { lat: number; lon: number; radiusM: number },
+  alias = "p",
+): { bbox: string; distance: string } {
+  return geo({ ...centre, limit: 1 }, alias);
+}
+
 function geo({ lat, lon, radiusM }: Radius, alias = "p"): { bbox: string; distance: string } {
   const dLat = radiusM / MIN_METRES_PER_DEGREE;
   const dLon = dLat / Math.cos((lat * Math.PI) / 180);

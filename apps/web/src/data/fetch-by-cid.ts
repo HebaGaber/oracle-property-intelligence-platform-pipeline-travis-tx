@@ -9,7 +9,7 @@
 // manifest records (./fetch-parts) or range-read by the engine through `partUrl`. Browser-safe:
 // hosts come in through `urls`; nothing here reads the environment.
 import { rawCid } from "@countylens/query-core";
-import type { ReadPathUrls } from "@countylens/shared";
+import { VERIFY_TEXTS, type ReadPathUrls } from "@countylens/shared";
 import { browserFetch, throwIfAborted } from "./http";
 
 /** D-2: the copy must deliver a first byte within 4 s or the read falls back. */
@@ -226,5 +226,5 @@ function isAborted(signal: AbortSignal | undefined): boolean {
 
 /** `fallback · {host}` for a fallback read (TC-032…034), `null` when the copy served it. */
 export function fallbackLabel(source: ReadSource): string | null {
-  return source.kind === "fallback" ? `fallback · ${source.host}` : null;
+  return source.kind === "fallback" ? VERIFY_TEXTS.fallback(source.host) : null;
 }

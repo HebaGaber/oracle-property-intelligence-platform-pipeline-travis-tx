@@ -7,6 +7,7 @@
 // picks the values; this file formats them.
 import type { ReactElement, ReactNode } from "react";
 import type { Missing } from "@countylens/contract";
+import { safeHttpUrl } from "../data/safe-url";
 import { CidDisplay } from "./CidDisplay";
 import { Icon } from "./Icon";
 import { MissingReason } from "./MissingReason";
@@ -17,6 +18,28 @@ export function formatUtc(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
+/** A source URL as a link when it is http(s); anything else (javascript:, data:, …) is plain text. */
+export function SourceLink({
+  url,
+  className,
+}: {
+  readonly url: string;
+  readonly className?: string | undefined;
+}): ReactElement {
+  const href = safeHttpUrl(url);
+  if (href === undefined) return <span data-unsafe-url="">{url}</span>;
+  return (
+    <a
+      href={href}
+      {...(className === undefined ? {} : { className })}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      {url}
+    </a>
+  );
 }
 
 export interface PermitProvenanceProps {
@@ -57,9 +80,7 @@ function PermitLine({
       {sourceUrl === null ? (
         <MissingReason field={missing.field} reason={missing.reason} />
       ) : (
-        <a href={sourceUrl} className={styles.link} rel="noopener noreferrer" target="_blank">
-          {sourceUrl}
-        </a>
+        <SourceLink url={sourceUrl} className={styles.link} />
       )}
       {" · collected "}
       <time dateTime={capturedAt}>{formatUtc(capturedAt)}</time>
