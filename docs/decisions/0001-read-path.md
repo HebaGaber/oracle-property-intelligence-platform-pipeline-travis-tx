@@ -4,7 +4,7 @@ type: decision
 parent: ARD-A
 story: A-03
 title: "Read path: CloudFront CID copy for files, Lambda DuckDB for radius and roof-age queries, --part-size 48m"
-status: Accepted (PO decision D-4, 2026-10-21; was "Proposed (spike result; needs PO review before A-03 Stage 3, see 'Needs a PO decision')")
+status: Accepted, amended 2026-10-26 (A-16 AC-13, see "Amendment 1"; PO decision D-4, 2026-10-21; was "Proposed (spike result; needs PO review before A-03 Stage 3, see 'Needs a PO decision')")
 date: 2026-10-21
 ---
 
@@ -192,6 +192,22 @@ Per table, the largest is `structure`: 17.5 MB corrected, 93.4 MB uncorrected. T
 | Laptop → CloudFront signed URLs, 48m, **5 runs** (link-bound upper bound, not Lambda) | 2 | 4,641 / 4,656 ms | 17,688 / 18,126 ms | 12,899 / 13,008 ms | 81 MB | 02:11–02:14Z |
 
 Verdict: DuckDB compute for these queries is ≤ 175 ms at p95 on one thread and needs < 100 MB of memory. The time is all in moving bytes: radius needs ~85.6 MB of column chunks and roof-age ~38 MB (browser-measured on 48m). **Projection (not measured):** a Lambda in eu-north-1 reading from CloudFront/S3 meets p95 < 3 s only if it sustains ≥ 85.6 MB / 2.8 s ≈ **31 MB/s** of parallel range reads. **Size:** 1,769 MB memory (1 vCPU; the memory is for the vCPU, not the < 100 MB working set), DuckDB `threads = 2`, timeout 15 s, no reserved concurrency (account limit 10, AD-11). Keep the query result ≤ 1,000 rows (AD-21). If the hosted p95 in A-03 is still ≥ 3 s, the next lever inside AD-01 is a two-step query: filter on `latitude`/`longitude` alone, then fetch only the matching rows' other columns. That cuts the bytes read without a second dataset.
+
+## Amendment 1 (A-16, 2026-10-26): per-run Explore index for the Lambda path
+
+**Status:** Proposed with A-16 G5; PO chose option (a) on 2026-10-25/26 (`DEC-A-13-explore-full-county.md`, "To close it").
+
+**Why:** decision 2 above holds at the 14-property slice, but on the full county (441,961 properties, 15,025 permits) the Lambda binds every table part and joins inside the request: `explore.search` ran out of memory at 1 GB and then hit the 29 s HTTP API limit on every call; the agent and MCP data tools fail the same way (`DEC-A-14-agent-mcp-full-county.md`).
+
+**What changes:** for a full-county run the Lambda (API, agent, MCP) reads a **per-run Explore index** instead of binding the published parts per request:
+- The index is the four contract views (`v_property`, `v_roofing_permit`, `v_contractor`, `v_run`) materialised to Parquet with exactly the published columns, plus `index.json` recording the run's manifest CID, every source part's name, CID and SHA-256, and `viewsSha256` (the hash of the view SQL it was built with).
+- It is built on the operator laptop only from the run's **published** parts (fetched from the CloudFront CID copy, each SHA-256 checked against the CID-verified manifest), never from the Query DB, and stored privately at `s3://<CID-copy bucket>/private/explore-index/<manifestCid>/`. It is derived data, not a new publication: every row still carries its published `cid`, `table_cid` and `manifest_cid`, so anyone can re-check an answer against IPFS.
+- The reader refuses an index whose `manifestCid` or `viewsSha256` doesn't match (`index_stale`), and a full-county run without an index answers `index_not_built` with a reason instead of attempting the whole-county join. Small runs keep the direct bind.
+- The browser path (decision 1, SQL panel, Data · Verify) is unchanged.
+
+**Measured (machamp, laptop, 2026-10-26):** Run 2 build 75 s (160 parts, 356.5 MB fetched, SHA-checked), index ~42 MB; Explore cases 68–188 ms against the index versus 29 s timeouts today. Run 3 built from local parts in 17 s. Hosted cold/warm p95 to be measured in A-16 (target < 3 s).
+
+**Constitution:** P0-1 (Query DB private) and "consumers read only published CIDs" hold: the index is a cache of published data, rebuildable and verifiable from the manifest. Zero idle cost holds: S3 storage cents only.
 
 ## Known gaps
 
