@@ -118,11 +118,10 @@
   white-space: pre-wrap;
 }
 
+/* A citation is a link inside a sentence, sized by its line of text (WCAG 2.5.8 inline exception);
+   the numbered rows it jumps to are the full-size targets. */
 .cite {
-  display: inline-flex;
-  align-items: center;
-  min-width: var(--space-6);
-  min-height: var(--space-6);
+  display: inline;
   color: var(--md-sys-color-primary);
   font-weight: var(--md-sys-typescale-label-large-weight);
 }

@@ -49,6 +49,8 @@ const A13_SHARDS = {
 const A14_SHARDS = {
   "a14-agent": "A-14.spec.ts",
   "a14-mcp": "A-14-mcp.spec.ts",
+  // Stubbed-response responsive checks (smeargle): no real model or MCP call.
+  "a14-responsive": "A-14-responsive.spec.ts",
 } as const;
 // One report and output folder per CI phase, so the second invocation never clears the first.
 const phase = process.env.PW_PHASE ?? "all";
