@@ -450,6 +450,7 @@ describe("A-04 T043 `backbone coords` (contracts/cli.md)", () => {
       rowsWritten: 9,
       detail: "complete",
     },
+    addressPoints: null,
     assembled: { rowsWritten: 5 },
   };
 
@@ -493,6 +494,7 @@ describe("A-04 T043 `backbone coords` (contracts/cli.md)", () => {
     expect(h.calls.find((c) => c.service === "GisImport")?.body).toEqual({
       artifactDir: null,
       assemble: true,
+      addressPointsDir: null,
       tcadJobId: "travis-a04-202610220100",
     });
   });
