@@ -4,11 +4,11 @@
     {
       "id": "G1",
       "prompt": "Which properties in Travis County within five miles of Pflugerville have roofs older than 15 years?",
-      "durationMs": 8043,
-      "requestId": "tyFB8TK-Id_LrUR7IcF2PgkNcwckfQM8x_FsV2edNunFBripHZ5M5Q==",
+      "durationMs": 8712,
+      "requestId": "1Jh1hDBIxziyI-poRHeIMzB4YA0pVCgcWl6I8k_yoRWJ22mndY-_Yw==",
       "response": {
-        "answer": "The search returned **no matches** using the following exact filters:\n\n- **Area:** Pflugerville (centered at ~30.448°N, 97.602°W)\n- **Radius:** 5 miles\n- **Minimum roof age:** 15 years\n- **Rows excluded due to unknown roof age:** 0\n\nThe tool confirms this is a genuine **no-match** result (`empty_reason: no_match`), and no rows were excluded due to missing roof age data — meaning no properties within 5 miles of Pflugerville in the published dataset have a recorded roof age of 15 years or older.\n\nA few possible explanations:\n- Roof age data may not be populated for properties in this area of the dataset.\n- Properties in this corridor may have had roof replacements recorded within the last 15 years.\n\nWould you like me to try a **lower roof age threshold** (e.g., 10 years), a **wider radius**, or search for **open/stalled roofing permits** near Pflugerville instead?",
-        "how": "Pflugerville city · Census 2024 Gazetteer · 30.447765, -97.602116; radius_mi: 5; roof_age_years_min: 15; sort: \"roof_desc\"; limit: 50",
+        "answer": "In this run, the search returned **no matches** for properties within **5 miles of Pflugerville** with a **roof age of at least 15 years**, using the following filters:\n\n- **Area:** Pflugerville (centered at 30.4478°N, 97.6021°W)\n- **Radius:** 5 miles\n- **Roof age:** At least 15 years\n\nA few notes on coverage:\n- **0 properties were excluded** due to unknown roof age, so this isn't a data gap issue — the result is genuinely empty for this run.\n- Pflugerville is only **partially within Travis County**, so some properties near Pflugerville may fall outside the Travis County published data.\n\nYou may want to try:\n1. **Widening the radius** (e.g., 10 miles) to capture more of the surrounding area.\n2. **Reducing the roof age threshold** (e.g., 10 years) to broaden the criteria.\n\nWould you like me to adjust either of those parameters?",
+        "how": "Run travis-202609-permits-20261021t103516z, as of 2026-10-21; Pflugerville city · Census 2024 Gazetteer · 30.447765, -97.602116; Gazetteer travis-places@1.0.0 (sha256 0f4c08a8bda5…); radius_mi: 5; roof_age_years_min: 15; sort: \"roof_desc\"; limit: 50",
         "steps": [
           {
             "tool": "searchProperties",
@@ -46,10 +46,15 @@
           }
         ],
         "outcome": "answered",
+        "run": {
+          "run_id": "travis-202609-permits-20261021t103516z",
+          "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
+          "as_of": "2026-10-21T10:40:04.543Z"
+        },
         "modelCalls": 2,
-        "outputTokens": 379,
-        "durationMs": 5529,
-        "traceId": "1-6ade1345-793e0d21439e81f03e41d68c"
+        "outputTokens": 381,
+        "durationMs": 7145,
+        "traceId": "1-6ade5935-0f318c1b205836be1a6b2d8d"
       },
       "oracleTotal": 0,
       "oracleRowCount": 0,
@@ -60,8 +65,8 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 379,
-        "durationMs": 5529
+        "outputTokens": 381,
+        "durationMs": 7145
       },
       "honesty": {
         "pass": true,
@@ -91,11 +96,11 @@
     {
       "id": "G2",
       "prompt": "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?",
-      "durationMs": 5546,
-      "requestId": "I8u18sS6HDL12nMjxP-wiZEY9bpqRyXvCvod0NRLp2m0-VfLcWcBVg==",
+      "durationMs": 7287,
+      "requestId": "XHftajFnVWDOTXht-VzhK_xSHzLv2yjc2V_mWDRcDzVv_MXCjL68IQ==",
       "response": {
-        "answer": "No properties matched those filters. Here's a plain summary:\n\n**Result: No matches found.**\n\n- **Area:** Pflugerville (5-mile radius, same as before)\n- **Filter applied:** Roofing permits with status **open**, open for **at least 5 years** (\"many years\" = open_years_min 5)\n- **Why no results:** The tool confirmed `no_match` — meaning there are simply no properties within 5 miles of Pflugerville that currently have an open (not stalled, not closed) roofing permit that has been open for 5+ years.\n\nA couple of notes:\n- **Contractor names are not available** in the published data export, so even if matches had been found, I would not be able to report the listed contractor.\n- If you'd like to broaden the search (e.g., include *stalled* permits, reduce the years threshold, or widen the radius), just let me know! BBB status is not available in the published data. The contractor name is not printed in the published source (contractor not printed).",
-        "how": "Pflugerville city · Census 2024 Gazetteer · 30.447765, -97.602116; radius_mi: 5; status_class: \"open\"; open_years_min: 5; sort: \"open_desc\"; limit: 50; permits open at least 5 years",
+        "answer": "Both searches returned **zero results** in this run. Here's a summary of exactly what was searched and what was found:\n\n---\n\n### Search Parameters Applied\n| Filter | Value |\n|---|---|\n| Area | Pflugerville (30.4478°N, 97.6021°W) |\n| Radius | 5 miles |\n| Permit status | Open |\n| Open for at least | **5 years** (my interpretation of \"many years\") |\n\n---\n\n### Results\n- **Properties with open roofing permits (5+ years open):** 0 matches\n- **Roofing permits (open, 5+ years):** 0 matches\n- No rows were excluded due to unknown fields (`unknown_excluded` was empty in both cases).\n\nIn this run, there are simply no properties or roofing permits within 5 miles of Pflugerville that have an **open** status and have been open for **at least 5 years**.\n\n---\n\n### A Note on Contractors\nEven if results had been returned, **contractor names are not available in the published export** — I would not be able to report the listed contractor for any permit.\n\n---\n\nIf you'd like, I can try relaxing the time threshold (e.g., 2 or 3 years open) or widen the search to **open or stalled** permits — just let me know! BBB status is not available in the published data. The contractor name is not printed in the published source (contractor not printed).",
+        "how": "Run travis-202609-permits-20261021t103516z, as of 2026-10-21; Pflugerville city · Census 2024 Gazetteer · 30.447765, -97.602116; Gazetteer travis-places@1.0.0 (sha256 0f4c08a8bda5…); radius_mi: 5; status_class: \"open\"; open_years_min: 5; sort: \"open_desc\"; limit: 50; permits open at least 5 years",
         "steps": [
           {
             "tool": "searchProperties",
@@ -106,10 +111,10 @@
               "radius_mi": 5,
               "status_class": "open",
               "open_years_min": 5,
-              "sort": "open_desc",
+              "sort": "nearest",
               "limit": 50
             },
-            "summary": "1 tool call(s), 1 result(s)"
+            "summary": "2 tool call(s), 2 result(s)"
           },
           {
             "tool": "",
@@ -143,10 +148,15 @@
           }
         ],
         "outcome": "answered",
+        "run": {
+          "run_id": "travis-202609-permits-20261021t103516z",
+          "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
+          "as_of": "2026-10-21T10:40:04.543Z"
+        },
         "modelCalls": 2,
-        "outputTokens": 406,
-        "durationMs": 5147,
-        "traceId": "1-6ade137a-48619d7665fe3ce957032bd4"
+        "outputTokens": 601,
+        "durationMs": 6879,
+        "traceId": "1-6ade596b-62b11bd23fcbff0a5a86813f"
       },
       "oracleTotal": 0,
       "oracleRowCount": 0,
@@ -157,8 +167,8 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 406,
-        "durationMs": 5147
+        "outputTokens": 601,
+        "durationMs": 6879
       },
       "honesty": {
         "pass": true,
@@ -188,11 +198,11 @@
     {
       "id": "G3",
       "prompt": "Show me open roofing permits older than five years within five miles of Manor",
-      "durationMs": 4616,
-      "requestId": "eUEW-TovmvIMB6Xb2_yHS1NM5_ayv-HMvMRxhTtWaD0dooANo6JGFg==",
+      "durationMs": 4975,
+      "requestId": "pUgHdMzNkDxgC4CTasJUf5JgveM9HV23n3iVN9uea9A7Z1A_-aia6w==",
       "response": {
-        "answer": "No results were found matching your filters. Here's a summary of what was searched:\n\n- **Area:** Manor city (centered at 30.354228, -97.558259)\n- **Radius:** 5 miles\n- **Status:** Open permits only\n- **Minimum age:** 5+ years open\n\nThere are **zero open roofing permits** that have been open for more than 5 years within 5 miles of Manor. No rows were excluded due to unknown values, so this appears to be a genuine absence of matches under these exact criteria.\n\nYou could try broadening the search — for example, including **stalled** permits (open_or_stalled), reducing the open-years threshold, or increasing the radius — if you'd like to see more results.",
-        "how": "Manor city · Census 2024 Gazetteer · 30.354228, -97.558259; radius_mi: 5; status_class: \"open\"; open_years_min: 5; sort: \"open_desc\"; limit: 50; permits open at least 5 years",
+        "answer": "In this run, searching for **open** roofing permits open **at least 5 years**, within **5 miles of Manor** (city center: 30.354228, −97.558259), returned **zero matches**.\n\n- **Filters applied:** status = open, open_years_min = 5, radius = 5 mi\n- **empty_reason:** `no_match` — meaning the search was in scope and executed, but no permits met all three criteria simultaneously.\n\nNo unknown records were excluded. You may want to try:\n- Widening the radius (e.g., 10 miles)\n- Lowering the age threshold (e.g., 3 years)\n- Expanding the status to `open_or_stalled` to include stalled permits as well\n\nJust let me know how you'd like to adjust!",
+        "how": "Run travis-202609-permits-20261021t103516z, as of 2026-10-21; Manor city · Census 2024 Gazetteer · 30.354228, -97.558259; Gazetteer travis-places@1.0.0 (sha256 0f4c08a8bda5…); radius_mi: 5; status_class: \"open\"; open_years_min: 5; sort: \"open_desc\"; limit: 50; permits open at least 5 years",
         "steps": [
           {
             "tool": "searchRoofingPermits",
@@ -232,10 +242,15 @@
           }
         ],
         "outcome": "answered",
+        "run": {
+          "run_id": "travis-202609-permits-20261021t103516z",
+          "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
+          "as_of": "2026-10-21T10:40:04.543Z"
+        },
         "modelCalls": 2,
-        "outputTokens": 295,
-        "durationMs": 4250,
-        "traceId": "1-6ade1394-69c5cae16f0626077be89f27"
+        "outputTokens": 315,
+        "durationMs": 4120,
+        "traceId": "1-6ade5987-2f3c5cc823a9107a36ce8ab7"
       },
       "oracleTotal": 0,
       "oracleRowCount": 0,
@@ -246,8 +261,8 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 295,
-        "durationMs": 4250
+        "outputTokens": 315,
+        "durationMs": 4120
       },
       "honesty": {
         "pass": true,
@@ -277,11 +292,11 @@
     {
       "id": "G4",
       "prompt": "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?",
-      "durationMs": 6456,
-      "requestId": "3OkAH0w_urzm6Y41gK4Dem2RM6WYF1oyGEaoNEId0JT4ZMiznTLH6w==",
+      "durationMs": 6441,
+      "requestId": "SCeJcDbIsyrdwUM-EWCL0BRSvhKvFjiLHpgxP9wrSKPHqhl0cBf7pw==",
       "response": {
-        "answer": "Here's what I found — and an important limitation to flag:\n\n---\n\n### Results: Homes near Lakeway with 10+ Years Same Owner\n\n**0 matches returned** from a 5-mile radius search around Lakeway with `tenure_years_min: 10`.\n\n- **`empty_reason: no_match`** — meaning the search was in scope and executed correctly, but no properties met the criteria within that radius.\n- **`unknown_excluded: 0`** — no properties were dropped due to unknown tenure data, so this is a clean zero result under those filters.\n\n---\n\n### On \"Owners Outside the Area\"\n\n⚠️ **Owner mailing address / ZIP is not in the published export.** I cannot identify which owners live outside the area — this data simply isn't available in the dataset. Even if matches had been returned, I would not be able to filter or flag out-of-area owners.\n\n---\n\n### Summary\n\n| Filter | Value |\n|---|---|\n| Area | Lakeway (5-mile radius) |\n| Tenure (same owner) | 10+ years |\n| Out-of-area owner | ❌ Not available in published data |\n| Matches | **0** |\n\nYou may want to try:\n- A **wider radius** (e.g., 10 miles)\n- A **lower tenure threshold** (e.g., 5 years)\n\nJust let me know how you'd like to adjust!",
-        "how": "Lakeway city · Census 2024 Gazetteer · 30.354982, -97.986269; radius_mi: 5; tenure_years_min: 10; sort: \"nearest\"; limit: 50",
+        "answer": "Here's what I found in this run:\n\n---\n\n### Results: Homes near Lakeway — Owner Tenure More Than 10 Years\n\n**0 matches** were returned within a 5-mile radius of Lakeway with owner tenure more than 10 years. The `unknown_excluded` count is **0**, meaning no rows were dropped due to unknown tenure data — this is a genuine no-match result for those filters in this run.\n\n---\n\n### ⚠️ Two Important Caveats\n\n1. **Out-of-area owners:** Owner mailing address is **not in the published export**, so it's impossible to filter by whether owners live outside the area — regardless of search results. I cannot identify which owners are \"outside the area\" from this data.\n\n2. **No matches on tenure:** No properties near Lakeway (within 5 miles) matched the **more than 10 years** owner tenure threshold in this run. You could try:\n   - Widening the radius (currently 5 miles)\n   - Lowering the tenure threshold (e.g., more than 5 years)\n\nWould you like me to adjust either of those filters and try again?",
+        "how": "Run travis-202609-permits-20261021t103516z, as of 2026-10-21; Lakeway city · Census 2024 Gazetteer · 30.354982, -97.986269; Gazetteer travis-places@1.0.0 (sha256 0f4c08a8bda5…); radius_mi: 5; tenure_years_min: 10; sort: \"nearest\"; limit: 50; owner tenure more than 10 years",
         "steps": [
           {
             "tool": "searchProperties",
@@ -323,10 +338,15 @@
           }
         ],
         "outcome": "answered",
+        "run": {
+          "run_id": "travis-202609-permits-20261021t103516z",
+          "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
+          "as_of": "2026-10-21T10:40:04.543Z"
+        },
         "modelCalls": 2,
-        "outputTokens": 514,
-        "durationMs": 6107,
-        "traceId": "1-6ade13ac-4c917f31691e48aa6cf3c8c5"
+        "outputTokens": 452,
+        "durationMs": 6083,
+        "traceId": "1-6ade599f-00d5adc804b97de619c4320a"
       },
       "oracleTotal": 0,
       "oracleRowCount": 0,
@@ -337,8 +357,8 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 514,
-        "durationMs": 6107
+        "outputTokens": 452,
+        "durationMs": 6083
       },
       "honesty": {
         "pass": true,
@@ -367,11 +387,11 @@
     {
       "id": "G5",
       "prompt": "What's the BBB rating of the contractor on permit {real permit number}?",
-      "durationMs": 4381,
-      "requestId": "BjwimpRa6xKq6MX87c0KRI513XpFJCz_U6-7kdAGHsad3tN__Tz0MA==",
+      "durationMs": 4549,
+      "requestId": "Ew6sMicUQQw-3B0GmFftIp0nRSsJRbujAYbYIJQUlRl7Z5ZZbDK9BQ==",
       "response": {
-        "answer": "I found permit **2026-116568 BP** [1], but I'm unable to provide a BBB rating for two reasons:\n\n1. **Contractor name not available:** The published data export shows the contractor as **unresolved** for this permit [1], so the specific contractor cannot be identified.\n2. **BBB ratings are not published:** Even if the contractor were identified, BBB ratings are not included in the published data export — they are not available through this system.\n\nHere's what I *can* share about the permit [1]:\n- **Status:** Open\n- **Days Open:** 47\n- **Open Years:** ~0.13\n\nFor BBB rating information, you'd need to look up the contractor directly on [bbb.org](https://www.bbb.org) once you've identified them through the permit authority. BBB status is not available in the published data. The contractor name is not printed in the published source (contractor not printed).",
-        "how": "permit_number: \"2026-116568 BP\"; sort: \"open_desc\"; limit: 50",
+        "answer": "I found permit **2026-116568 BP** [1], but I'm unable to provide a BBB rating for two reasons:\n\n1. **Contractor names and BBB ratings are not available in the published export** — this is outside what the published data includes, regardless of the permit.\n2. Specifically for this permit, the contractor is listed as **unresolved** in this run, meaning no contractor entity was linked to it at all (`contractor_resolution: unresolved`).\n\nHere's what I *can* share about the permit [1]:\n- **Status:** Open\n- **Days Open:** 47 days (~0.13 years)\n\nIf you need contractor and BBB information, you'd need to check directly with the Travis County permitting office or the BBB's own directory. BBB status is not available in the published data. The contractor name is not printed in the published source (contractor not printed).",
+        "how": "Run travis-202609-permits-20261021t103516z, as of 2026-10-21; permit_number: \"2026-116568 BP\"; sort: \"open_desc\"; limit: 50",
         "steps": [
           {
             "tool": "searchRoofingPermits",
@@ -490,7 +510,7 @@
           },
           {
             "field": "bbb_status",
-            "reason": "no_lexicon_carrier"
+            "reason": "contractor_unresolved"
           },
           {
             "field": "bbb_url",
@@ -503,17 +523,18 @@
           {
             "field": "work_class_raw",
             "reason": "no_lexicon_carrier"
-          },
-          {
-            "field": "bbb_status",
-            "reason": "contractor_unresolved"
           }
         ],
         "outcome": "answered",
+        "run": {
+          "run_id": "travis-202609-permits-20261021t103516z",
+          "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
+          "as_of": "2026-10-21T10:40:04.543Z"
+        },
         "modelCalls": 2,
-        "outputTokens": 264,
-        "durationMs": 4044,
-        "traceId": "1-6ade13c7-3530e79a1d17c284314913a5"
+        "outputTokens": 254,
+        "durationMs": 4144,
+        "traceId": "1-6ade59b9-4abb4c81382576e448cd7ef2"
       },
       "oracleTotal": 1,
       "oracleRowCount": 1,
@@ -524,8 +545,8 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 264,
-        "durationMs": 4044
+        "outputTokens": 254,
+        "durationMs": 4144
       },
       "honesty": {
         "pass": true,
@@ -554,11 +575,11 @@
     {
       "id": "G6",
       "prompt": "How many properties have roofs older than 40 years in ZIP 99999?",
-      "durationMs": 2984,
-      "requestId": "fpmQ8v-zPR3XgF2vQKhDmFw-UymFj0vE88rQ4srCbFnAcAt8prkqhA==",
+      "durationMs": 3133,
+      "requestId": "SeHk19cBkRDJSqhfdH4OwzqQE6xXN8_LqnMmS5gYAxdtvAGTDBnBtQ==",
       "response": {
-        "answer": "ZIP code **99999** is not within Travis County and falls outside the scope of this dataset. I can only provide property and roofing data for areas within **Travis County, TX**.\n\nIf you have a Travis County ZIP code, city, or neighborhood in mind, feel free to ask and I'll look it up for you!",
-        "how": "",
+        "answer": "ZIP code **99999** is outside Travis County (or does not exist in the Census Gazetteer), so it's out of scope for this tool. I can only search properties within **Travis County, TX**.\n\nIf you meant a different ZIP code — for example, one in the Austin/Travis County area — please share it and I'll run the search right away!",
+        "how": "Run travis-202609-permits-20261021t103516z, as of 2026-10-21",
         "steps": [
           {
             "tool": "geocodePlace",
@@ -577,10 +598,15 @@
         "query": {},
         "missing": [],
         "outcome": "answered",
+        "run": {
+          "run_id": "travis-202609-permits-20261021t103516z",
+          "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
+          "as_of": "2026-10-21T10:40:04.543Z"
+        },
         "modelCalls": 2,
-        "outputTokens": 127,
-        "durationMs": 2660,
-        "traceId": "1-6ade13df-2195dac843e69a0047b832e6"
+        "outputTokens": 136,
+        "durationMs": 2756,
+        "traceId": "1-6ade59d2-11a0f77673be54e0327edeec"
       },
       "oracleTotal": null,
       "oracleRowCount": null,
@@ -591,8 +617,8 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 127,
-        "durationMs": 2660
+        "outputTokens": 136,
+        "durationMs": 2756
       },
       "honesty": {
         "pass": true,

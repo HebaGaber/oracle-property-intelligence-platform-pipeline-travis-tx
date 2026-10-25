@@ -54,6 +54,10 @@ Token-leak counts: Run by the PO in their own shell on 2026-10-25, token loaded 
 
 `docs/evidence/img/A-14-inspector.png` (six tools, a `search_properties` call with provenance, the protocol log: `initialize`, `tools/list`, `tools/call` all OK) and `docs/evidence/img/A-14-inspector-connected.jpg` (the Connected card showing the hosted `/mcp` URL and protocol 2025-11-25). The first connection attempt was logged by the server as `unauthorized` (most likely an empty header value: the shell variable holding the token was empty in that terminal at the time; not verified); the second, with the token, connected.
 
+## Rerun on the final build (`40808ca`, 2026-10-25, PO ran with the token)
+
+The MCP request tests were rerun after the final-review fixes: **12 passed, 1 failed (TC-021, the accepted ERR-64 deviation), 2 skipped (TC-017, TC-029)**, the same as the first full run. Figures quoted above are from the first full run (build `ec9a7e7`); the saved JSON under `docs/evidence/mcp/` is from this rerun and differs a little: `tools/list` 139 ms, `search_properties` G1 2,558 ms (first call after a cold start), `list_permits` 816 ms, `get_coverage` 324 ms, p50 330 ms, p95 408 ms, max 427 ms over 20 calls. The 40-call burst gave 23 x 200, 3 x 429, 14 x 503 (first run: 14 x 200, 1 x 429, 25 x 503): the same deviation, with different counts, because API Gateway's throttle is approximate.
+
 ## `donphan` answers through the MCP server alone (A-5)
 
 The server was registered in Claude Code with `claude mcp add --transport http --scope local countylens <MCP_URL> --header "Authorization: Bearer $MCP_TOKEN"`. The `soofi-xyz-team-kit:donphan` agent was run with the walkthrough's question, **plus** operating notes added by the operator: use no other MCP server and no web access, and pass the pinned `manifest_cid` (the default run times out). Question as given: "For this question, use only the tools on MCP server `countylens` (the CountyLens server for Travis County, TX). Which properties near Lakeway have owners outside the area? Cite every `property_cid`, and state scope, row limits and gaps." Transcript, word for word (donphan's final report):

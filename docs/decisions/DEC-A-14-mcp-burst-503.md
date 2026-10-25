@@ -19,6 +19,7 @@ The deviation recorded in `docs/defects/ERR-64.md` is accepted and documented, n
 | --- | --- | --- | --- |
 | 15 simultaneous `get_schema` calls | 13 | 0 | 2 |
 | 40 simultaneous `get_schema` calls | 14 | 1 | 25 |
+| 40 simultaneous `get_schema` calls, rerun on build `40808ca` | 23 | 3 | 14 |
 
 Evidence: `docs/evidence/mcp/A-14-TC-021-burst.json`. Stage settings: `POST /mcp` rate 5, burst 10.
 

@@ -257,3 +257,19 @@ Notes on the history:
 - An answered G2 contractor line with a real contractor name: not possible, the published export carries no contractor name (`contractor.name_as_printed` has no lexicon carrier, `docs/decisions/0002-lexicon-carriers.md`).
 - p95 over the full county, the `AI_PROVIDER=gateway` run and the Explore-page leg of AC-8: **not measured**.
 - The `donphan` transcript through MCP: done, in `docs/evidence/A-14-mcp.md` (honest empty answer on the small pinned run).
+
+
+## Run 5, final build `40808ca` (2026-10-25): 6 of 6 pass
+
+The golden queries were rerun against the deployed agent after the final-review fixes (spend accounting, input bounds, run echo, gazetteer in `how`, `missing[]` fixes, 23 s abort). Same pinned small run `travis-202609-permits-20261021t103516z`, one question at a time, 20 s apart. Every response now carries the optional `run` field (`run_id`, `manifest_cid`, `as_of`) naming the run searched, which runs 1 to 4 did not.
+
+| Case | Result | Wall clock (client) | Model calls | Output tokens | Vacuous (0 oracle rows) | empty_reason check | Trace id |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| G1 | PASS | 8712 ms | 2 | 381 | yes | checked | `1-6ade5935-0f318c1b205836be1a6b2d8d` |
+| G2 | PASS | 7287 ms | 2 | 601 | yes | checked | `1-6ade596b-62b11bd23fcbff0a5a86813f` |
+| G3 | PASS | 4975 ms | 2 | 315 | yes | checked | `1-6ade5987-2f3c5cc823a9107a36ce8ab7` |
+| G4 | PASS | 6441 ms | 2 | 452 | yes | inconclusive | `1-6ade599f-00d5adc804b97de619c4320a` |
+| G5 | PASS | 4549 ms | 2 | 254 | no | checked | `1-6ade59b9-4abb4c81382576e448cd7ef2` |
+| G6 | PASS | 3133 ms | 2 | 136 | no | inconclusive | `1-6ade59d2-11a0f77673be54e0327edeec` |
+
+The same limits as before apply: G1 to G4 pass on zero matching rows; the `empty_reason` comparison is golden-versus-oracle, not the agent's own field; G2, G4 and G5 rely partly on the deterministic server-side sentences. Raw responses are in `docs/evidence/A-14-golden-results.json` (this run overwrote the earlier file; the earlier runs are in git history at `3a9199a`, `830c4c5`, `313d628` and `95b6370`).

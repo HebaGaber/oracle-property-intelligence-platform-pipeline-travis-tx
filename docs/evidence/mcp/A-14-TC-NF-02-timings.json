@@ -3,27 +3,7 @@
     {
       "tool": "get_schema",
       "status": 200,
-      "ms": 417
-    },
-    {
-      "tool": "search_properties",
-      "status": 200,
-      "ms": 358
-    },
-    {
-      "tool": "get_schema",
-      "status": 200,
-      "ms": 118
-    },
-    {
-      "tool": "search_properties",
-      "status": 200,
-      "ms": 313
-    },
-    {
-      "tool": "get_schema",
-      "status": 200,
-      "ms": 110
+      "ms": 427
     },
     {
       "tool": "search_properties",
@@ -33,37 +13,47 @@
     {
       "tool": "get_schema",
       "status": 200,
-      "ms": 136
+      "ms": 124
     },
     {
       "tool": "search_properties",
       "status": 200,
-      "ms": 317
+      "ms": 362
     },
     {
       "tool": "get_schema",
       "status": 200,
-      "ms": 143
+      "ms": 159
     },
     {
       "tool": "search_properties",
       "status": 200,
-      "ms": 325
+      "ms": 330
     },
     {
       "tool": "get_schema",
       "status": 200,
-      "ms": 116
+      "ms": 134
     },
     {
       "tool": "search_properties",
       "status": 200,
-      "ms": 356
+      "ms": 358
     },
     {
       "tool": "get_schema",
       "status": 200,
-      "ms": 116
+      "ms": 134
+    },
+    {
+      "tool": "search_properties",
+      "status": 200,
+      "ms": 341
+    },
+    {
+      "tool": "get_schema",
+      "status": 200,
+      "ms": 128
     },
     {
       "tool": "search_properties",
@@ -73,35 +63,45 @@
     {
       "tool": "get_schema",
       "status": 200,
-      "ms": 119
+      "ms": 143
     },
     {
       "tool": "search_properties",
       "status": 200,
-      "ms": 415
+      "ms": 365
     },
     {
       "tool": "get_schema",
       "status": 200,
-      "ms": 115
+      "ms": 143
     },
     {
       "tool": "search_properties",
       "status": 200,
-      "ms": 401
+      "ms": 338
     },
     {
       "tool": "get_schema",
       "status": 200,
-      "ms": 117
+      "ms": 126
     },
     {
       "tool": "search_properties",
       "status": 200,
-      "ms": 349
+      "ms": 351
+    },
+    {
+      "tool": "get_schema",
+      "status": 200,
+      "ms": 142
+    },
+    {
+      "tool": "search_properties",
+      "status": 200,
+      "ms": 408
     }
   ],
-  "p50_ms": 313,
-  "p95_ms": 415,
-  "max_ms": 417
+  "p50_ms": 330,
+  "p95_ms": 408,
+  "max_ms": 427
 }

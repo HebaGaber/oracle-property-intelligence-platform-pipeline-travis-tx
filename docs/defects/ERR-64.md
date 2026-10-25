@@ -52,6 +52,8 @@ Calls beyond the bucket (10 burst, then 5 per second) are answered `429` by API 
 
 Statuses of the 40 calls: 14 × `200`, 25 × `503`, 1 × `429` (file `docs/evidence/mcp/A-14-TC-021-burst.json`, latency 309 to 1,456 ms). An earlier run with 15 calls gave 13 × `200` and 2 × `503`. The stage's route settings are `POST /mcp: rate 5, burst 10` (read back with `GetStage`).
 
+Second measurement (build `40808ca`, same test, PO run): 23 x `200`, 3 x `429`, 14 x `503`. The 503 share varies between runs because API Gateway's throttle is approximate; it never answered with a clean `429` for the whole excess.
+
 ## Impact and severity
 
 - **Impact:** a client that bursts gets a retryable `503` instead of `429`; no data is returned and no cost is incurred beyond the Lambda that did run. The documented error shape is not honoured under burst, and one over-limit client can use up the account's whole Lambda concurrency for about a second, which the agent and the query API share.
