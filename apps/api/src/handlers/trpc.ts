@@ -86,6 +86,12 @@ export function procedureOf(event: APIGatewayProxyEventV2): string {
   return PROCEDURE_NAME.test(name) ? name : "unknown";
 }
 
+/** True when a batched request (comma-joined procedure names) includes explore.search. */
+export function isBatchedExploreSearch(procedure: string): boolean {
+  const names = procedure.split(",");
+  return names.length > 1 && names.includes("explore.search");
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -237,6 +243,17 @@ export function createHandler(options: HandlerOptions = {}): TrpcHandler {
     }
 
     const headers = responseHeaders(obs, context.awsRequestId);
+    // explore.search has its own route throttle; a batch through the proxy route would skip it
+    // (metagross review, Major 1), so a batch that names it is refused before any work runs.
+    if (isApiGatewayEvent(event) && isBatchedExploreSearch(procedureOf(event))) {
+      return {
+        statusCode: 400,
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({
+          error: { code: "BAD_REQUEST", message: "explore.search cannot be batched" },
+        }),
+      };
+    }
     const manifestCid = manifestCidOf(event);
     const response = await observeQuery(
       obs,
