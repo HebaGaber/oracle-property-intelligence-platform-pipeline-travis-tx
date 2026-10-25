@@ -6,7 +6,7 @@ story: A-14
 test_case: A-14-TC-021
 ac_reference: A-14-AC-10
 severity: Medium
-status: Open
+status: Open (accepted deviation, PO 2026-10-25; see docs/decisions/DEC-A-14-mcp-burst-503.md)
 found_by: HebaGaber (hosted MCP run, test written by Claude)
 found_date: 2026-10-25
 fix_branch: 014-agent-and-mcp
@@ -74,4 +74,4 @@ Reserved concurrency for the MCP Lambda is not possible while the account total 
 | Root cause | API Gateway HTTP API throttling is approximate; with an account concurrency of 10, the Lambda's own throttling (reported as 503) takes over before the gateway rejects. |
 | Fix | open |
 | Re-test | open |
-| Status | ☐ Closed ☐ Reopened, reason: n/a |
+| Status | Accepted deviation, not fixed: PO decision "yes document it", 2026-10-25, record `docs/decisions/DEC-A-14-mcp-burst-503.md`. TC-021 stays red on purpose. |

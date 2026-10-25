@@ -1,0 +1,36 @@
+{
+  "measuredAt": "2026-10-25T14:39:01.170Z",
+  "runtime": "https://014-agent-and-mcp.d2lx0utip89u18.amplifyapp.com",
+  "asks": [
+    {
+      "tc": "004",
+      "prompt": "How many properties have roofs older than 40 years in ZIP 99999?",
+      "state": "no_results",
+      "ms": 3393,
+      "httpStatus": 200,
+      "outcome": "answered",
+      "steps": 2,
+      "matches": 0
+    },
+    {
+      "tc": "006",
+      "prompt": "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?",
+      "state": "timed_out",
+      "ms": 25493,
+      "httpStatus": null,
+      "outcome": null,
+      "steps": null,
+      "matches": null
+    },
+    {
+      "tc": "007",
+      "prompt": "What's the BBB rating of the contractor on permit 1982-012866 BP?",
+      "state": "timed_out",
+      "ms": 25483,
+      "httpStatus": null,
+      "outcome": null,
+      "steps": null,
+      "matches": null
+    }
+  ]
+}
