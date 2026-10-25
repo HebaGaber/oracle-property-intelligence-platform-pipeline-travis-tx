@@ -133,9 +133,7 @@ const API_PACKAGE_JSON = fileURLToPath(new URL("../../apps/api/package.json", im
 /** A placeholder handler until apps/api/src/mcp/server.ts (T024-T026) lands. */
 const MCP_ENTRY = fileURLToPath(new URL("../../apps/api/src/handlers/mcp.ts", import.meta.url));
 /** A placeholder handler until apps/api/src/agent/ask.ts (T019-T022) lands. */
-const AGENT_ENTRY = fileURLToPath(
-  new URL("../../apps/api/src/handlers/agent.ts", import.meta.url),
-);
+const AGENT_ENTRY = fileURLToPath(new URL("../../apps/api/src/handlers/agent.ts", import.meta.url));
 
 /** The `@duckdb/node-api` version apps/api pins; the asset installs exactly that one. */
 export function duckDbNodeApiVersion(): string {
@@ -563,7 +561,7 @@ export class ApiStack extends Stack {
     const mcpIntegration = new HttpLambdaIntegration("Mcp", this.mcpFn, {
       payloadFormatVersion: apigwv2.PayloadFormatVersion.VERSION_2_0,
     });
-    this.mcpHttpApi.addRoutes({
+    const mcpRoutes = this.mcpHttpApi.addRoutes({
       path: MCP_ROUTE_PATH,
       methods: [apigwv2.HttpMethod.POST],
       integration: mcpIntegration,
@@ -604,6 +602,10 @@ export class ApiStack extends Stack {
     // it the way a typed prop would: the keys below must already be the literal CFN property
     // names (confirmed by inspecting the synthesized template directly).
     const cfnMcpStage = this.mcpStage.node.defaultChild as apigwv2.CfnStage;
+    // The stage names the route in routeSettings, so CloudFormation must create the route first
+    // (without this the stage can be created before the route and the deploy fails with 404).
+    for (const route of mcpRoutes)
+      cfnMcpStage.addResourceDependency(route.node.defaultChild as apigwv2.CfnRoute);
     cfnMcpStage.routeSettings = {
       [`POST ${MCP_ROUTE_PATH}`]: {
         ThrottlingRateLimit: MCP_THROTTLE.rateLimit,
@@ -745,7 +747,7 @@ export class ApiStack extends Stack {
         "throttle",
       createDefaultStage: false,
     });
-    this.agentHttpApi.addRoutes({
+    const agentRoutes = this.agentHttpApi.addRoutes({
       path: AGENT_ROUTE_PATH,
       methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
       integration: new HttpLambdaIntegration("Agent", this.agentFn, {
@@ -778,6 +780,9 @@ export class ApiStack extends Stack {
     // `throttle` prop only sets stage-wide DefaultRouteSettings, so the per-route limit needs
     // the underlying CfnStage, keyed by the exact route key API Gateway renders).
     const cfnAgentStage = this.agentStage.node.defaultChild as apigwv2.CfnStage;
+    // Same ordering fix as the MCP stage: the routes must exist before the stage names them.
+    for (const route of agentRoutes)
+      cfnAgentStage.addResourceDependency(route.node.defaultChild as apigwv2.CfnRoute);
     cfnAgentStage.routeSettings = {
       [`POST ${AGENT_ROUTE_PATH}`]: {
         ThrottlingRateLimit: AGENT_THROTTLE.rateLimit,
@@ -816,8 +821,7 @@ export class ApiStack extends Stack {
     });
 
     const agentDefaultPolicy = agentRole.node.tryFindChild("DefaultPolicy") as
-      | iam.Policy
-      | undefined;
+      iam.Policy | undefined;
     if (agentDefaultPolicy !== undefined) {
       Validations.of(agentDefaultPolicy).acknowledge({
         id: "AwsSolutions-IAM5[Resource::*]",

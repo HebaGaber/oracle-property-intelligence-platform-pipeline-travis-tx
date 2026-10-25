@@ -81,14 +81,16 @@ describe("CountyLensApi MCP resources (A-14 T010/T018): a Lambda distinct from t
       const routeSettings = (s.Properties as { RouteSettings?: Record<string, unknown> })
         .RouteSettings;
       const entry = routeSettings?.[`POST ${MCP_ROUTE_PATH}`] as
-        | { ThrottlingRateLimit?: number; ThrottlingBurstLimit?: number }
-        | undefined;
+        { ThrottlingRateLimit?: number; ThrottlingBurstLimit?: number } | undefined;
       return (
         entry?.ThrottlingRateLimit === MCP_THROTTLE.rateLimit &&
         entry?.ThrottlingBurstLimit === MCP_THROTTLE.burstLimit
       );
     });
-    expect(stageWithMcpThrottle, "a stage carries the POST /mcp route-level throttle").toBeDefined();
+    expect(
+      stageWithMcpThrottle,
+      "a stage carries the POST /mcp route-level throttle",
+    ).toBeDefined();
 
     // The tRPC API's own $default stage keeps its original 10 rps / burst 20 stage-wide
     // throttle, unaffected by the MCP block (no shared throttle object).
@@ -109,17 +111,17 @@ describe("CountyLensApi MCP resources (A-14 T010/T018): a Lambda distinct from t
       (r) => (r.Properties as { RouteKey: string }).RouteKey === "GET /health",
     );
     expect(health, "GET /health route exists").toBeDefined();
-    expect(
-      (health?.Properties as { AuthorizationType?: string }).AuthorizationType ?? "NONE",
-    ).toBe("NONE");
+    expect((health?.Properties as { AuthorizationType?: string }).AuthorizationType ?? "NONE").toBe(
+      "NONE",
+    );
   });
 
   it("exactly one ssm:GetParameter grant, scoped to MCP_TOKEN_PARAMETER_NAME only, no wildcard", () => {
     const { template } = synthApi();
     const statements = Object.values(template.findResources("AWS::IAM::Policy")).flatMap(
       (p) =>
-        (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument
-          .Statement ?? [],
+        (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument.Statement ??
+        [],
     );
     const ssmGets = statements.filter((s) => asList(s.Action).includes("ssm:GetParameter"));
     expect(ssmGets).toHaveLength(1);
@@ -154,12 +156,36 @@ describe("CountyLensApi MCP resources (A-14 T010/T018): a Lambda distinct from t
     expect(mcpFn).toBeDefined();
     const statements = Object.values(template.findResources("AWS::IAM::Policy")).flatMap(
       (p) =>
-        (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument
-          .Statement ?? [],
+        (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument.Statement ??
+        [],
     );
     const gets = statements.filter((s) => asList(s.Action).includes("s3:GetObject"));
     // One for the tRPC Lambda, one for the MCP Lambda (AD-19: same reader boundary, separate
     // grants since they are separate roles).
     expect(gets.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("CountyLensApi stages that throttle per route (deploy-order regression)", () => {
+  it("each stage with routeSettings depends on the routes it names, or CloudFormation can create the stage first and fail with a 404", () => {
+    const { resources } = synthApi();
+    const stages = Object.entries(resources).filter(
+      ([, r]) =>
+        r.Type === "AWS::ApiGatewayV2::Stage" &&
+        (r.Properties?.RouteSettings as Record<string, unknown> | undefined) !== undefined,
+    );
+    expect(stages.length).toBeGreaterThanOrEqual(2);
+    for (const [id, stage] of stages) {
+      const wanted = Object.keys(stage.Properties?.RouteSettings as Record<string, unknown>);
+      const deps = ((stage as { DependsOn?: string[] }).DependsOn ?? []).map(
+        (d) => resources[d] as CfnResource,
+      );
+      for (const key of wanted) {
+        const hit = deps.some(
+          (d) => d.Type === "AWS::ApiGatewayV2::Route" && d.Properties?.RouteKey === key,
+        );
+        expect(hit, `${id} must depend on the route ${key}`).toBe(true);
+      }
+    }
   });
 });
