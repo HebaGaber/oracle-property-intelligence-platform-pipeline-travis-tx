@@ -319,3 +319,26 @@ export function demoArea(): DemoArea {
     fromEvidence: true,
   };
 }
+
+// ---------------------------------------------------------------------------------------
+// Parked gaps (PO 2026-10-25, docs/decisions/DEC-A-13-explore-full-county.md)
+// ---------------------------------------------------------------------------------------
+
+/** The A-16 "Carried forward from A-13" items a case can be parked under. */
+export const PARKED_GAPS = {
+  /** Explore search returns HTTP 500 after ~29 s on the full county. */
+  exploreSearch:
+    "A-16 gap 1: Explore search does not run on the full county (HTTP 500 after ~29 s)",
+  /** The SQL panel's first query binds 225 table parts (~97 s; fails on the CI runner). */
+  sqlFirstQuery: "A-16 gap 2: the SQL panel's first query on the full county takes ~97 s",
+  /** Runs · Log LCP is 3.1 s against the 2.5 s limit. */
+  runsLogLcp: "A-16 gap 3: Runs · Log LCP is ~3.1 s against the 2.5 s limit",
+} as const;
+
+/**
+ * Skips the case and shows the reason in the report ("skipped"), never as passed. The case is
+ * unparked by deleting this call when the A-16 item it names is closed.
+ */
+export function parkGap(reason: (typeof PARKED_GAPS)[keyof typeof PARKED_GAPS]): void {
+  test.fixme(true, `Parked: ${reason}`);
+}

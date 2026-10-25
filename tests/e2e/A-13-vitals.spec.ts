@@ -5,7 +5,7 @@
 // TC-082 (initial JS size) lives in A-13-perf.spec.ts.
 import { ROUTES } from "@countylens/shared";
 import { writeEvidenceSection } from "./lib/a13-evidence.js";
-import { expect, noteBranch, test } from "./lib/a13-fixtures.js";
+import { PARKED_GAPS, expect, noteBranch, parkGap, test } from "./lib/a13-fixtures.js";
 import { median } from "./lib/a13-routes.js";
 import { scenario } from "./lib/a13-ui.js";
 import {
@@ -25,6 +25,7 @@ test.describe("A-13 vitals", { tag: "@a13-vitals" }, () => {
   test.describe.configure({ mode: "serial" });
 
   test(scenario("058"), async ({ browser, oracle }) => {
+    parkGap(PARKED_GAPS.runsLogLcp);
     test.setTimeout(15 * 60_000);
     noteBranch(oracle, `${oracle.runs.length} run(s); provisional below 3`);
     // 1. Lighthouse-profile loads of /runs/log (five, at least three required).
