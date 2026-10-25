@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-26
 
-**Status**: Draft
+**Status**: Clarified, ready for planning (2026-10-26)
 
 **Input**: User description: "Story A-16 from stories/A-16-cost-and-admin.md (all 14 ACs: Part 1 cost and limits AC-1..5, Part 2 admin sign-in and run commands AC-6..11 with Task B's email+password Cognito sign-in, Part 3 prototype parity AC-12, full-county per-run Explore index AC-13, carried gaps closure AC-14). Branch must be 016-cost-and-admin cut from feature/oracle-pipeline."
 
@@ -102,6 +102,18 @@ The evaluator reads the final evidence and the pull request and finds no silent 
 - Sign-in service email or rate limit reached → the sign-in screen shows a plain "try later" message; the public app is unaffected.
 - A board shows a feature an architecture decision removed (e.g. user sign-in shown as Coming soon) → recorded as Justified, not built.
 - A run published after the index was built → the index is per run; a run without an index answers with a plain "index not available for this run" reason, never a timeout.
+
+## Clarifications
+
+### Session 2026-10-26 (PO answers, recorded in place of a separate `/speckit-clarify` round; no open questions remained)
+
+- Q: The UI must follow the prototype — layout only, or data too? → A: Board by board at 390/768/1440: layout, section order, components, labels, states; light theme only; placeholder numbers are not compared (AC-12).
+- Q: Admin sign-in method? → A: Copy Task B's working email + password Cognito flow instead of the email code (AC-6).
+- Q: How is the full-county gap closed? → A: Option (a), a private per-run index built only from published CIDs (AC-13, ADR-0001 amendment 1).
+- Q: Cost proof window? → A: Last full billed days, idle vs per-use split; Part 2 resources from pricing until billed (AC-1, gate exception).
+- Q: Spend more AWS to fix MCP burst 503 (WAF)? → A: No; zero idle cost wins, A14-2 stays an exception.
+- Q: Second independent pin? → A: On hold until the PO has seen the alternatives.
+- Q: Dark theme? → A: Out of scope.
 
 ## Requirements *(mandatory)*
 

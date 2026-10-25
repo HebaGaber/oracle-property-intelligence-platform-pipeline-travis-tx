@@ -66,27 +66,29 @@ docs/reviews/CR-A-16.md, docs/reports/A-16-test-report.md
 
 ### Source Code (builder groups, disjoint files)
 
-```text
-G1 metagross · infra + API
-  infra/src/api-stack.ts, ops-stack.ts, web-stack.ts (env only), infra/test/idle-cost.test.ts, infra/test/api.test.ts
-  apps/api/src/trpc.ts, context.ts, routers/admin.ts, routers/index.ts, apps/api/package.json
-G2 metagross · web + e2e + parity fixes
-  apps/web/src/auth/*, routes/* (except the engine files G4 owns), components/*, content/cost-limits.generated.json
-  scripts/build-cost-limits.mjs, packages/shared/src/routes.ts + text constants, tests/e2e/*
-G3 machamp · contract, queue, bridge, pipeline closures
-  packages/contract/src/run-command.ts, live-run.ts, index.ts
-  infra/src/admin-queue.ts (construct; G1 adds the one instantiation line), infra/test/admin-queue.test.ts
-  pipeline/bridge/*, pipeline/local-stack/scripts/run-lock.ts, batch-hash-validate-export.sh,
-  pipeline/oracle-runtime/travis/permits/write-group.ts, run-manifest.ts, pipeline/publish/src/manifest.ts
-G4 machamp · per-run Explore index (AC-13)
-  pipeline/index/* (port of Task B BuildIndex), packages/query-core/src/explore*.ts + tools,
-  apps/api/src/routers/explore.ts, apps/api/src/agent/tools.ts, apps/api/src/mcp/tools.ts,
-  apps/web/src/routes/ExploreSql.engine.ts, apps/web/src/engine/load-permits.ts (speed items A13-2, A11-9, A11-11)
-```
+The authoritative file ownership per group (G1, G2a, G2b, G3, G4, Me) is the "Group ownership (final)" list at the top of [tasks.md](tasks.md); this plan does not repeat it, so the two cannot disagree.
 
-**Final ownership is in tasks.md (G2 split into G2a/G2b by page family; G4 owns `pipeline/publish` index files and `apps/api/src/engine`, `agent`, `mcp`; web speed items moved to G2b; the index IAM grant is in G1's `api-stack.ts`).**
+**Frozen first (wave 1, before groups start):** admin router Zod I/O and `RunCommandV1`/`LiveRunV1` in `packages/contract` (G3 writes, G1/G2a read); env names `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_USER_POOL_CLIENT_ID`, `COUNTYLENS_ADMIN_QUEUE_URL`, `EXPLORE_INDEX_PREFIX`, `COUNTYLENS_TEST_USERNAME/PASSWORD`; routes `/admin/sign-in`, `/activity`; `cost-limits.generated.json` row schema; `EXPLORE_SEARCH_THROTTLE`; the index layout `private/explore-index/<manifestCid>/` and `IndexDescriptor` (G4 writes, G1 grants read).
 
-**Frozen first (wave 1, before groups start):** admin router Zod I/O and `RunCommandV1`/`LiveRunV1` in `packages/contract` (G3 writes, G1/G2 read); env names `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_USER_POOL_CLIENT_ID`, `COUNTYLENS_ADMIN_QUEUE_URL`, `COUNTYLENS_TEST_USERNAME/PASSWORD`; routes `/admin/sign-in`, `/activity`; `cost-limits.generated.json` row schema; `EXPLORE_SEARCH_THROTTLE`; the index row schema and S3 key (G4 writes, G1 grants read).
+### Data flow
+
+1. **Cost and limits:** Cost Explorer + CloudFormation (read by the operator) → `docs/cost.md`, `docs/source-limits.md` → `scripts/build-cost-limits.mjs` at web build → `cost-limits.generated.json` → Coverage · Cost and Limits.
+2. **Admin command:** browser (Cognito access token) → `/trpc` `admin.run.start` → `adminProcedure` (JWT + `admin` group) → SQS `countylens-admin-commands` (`RunCommandV1`) → bridge on the laptop (long poll, outbound only) → Restate `AustinPermits` → gated `publish-run.ts` → bridge writes `live/live.json` → API `admin.runs.live` → Runs page.
+3. **Full-county read:** published parts on the CloudFront CID copy → laptop `build-explore-index.ts` (SHA-256 checked against the manifest) → `private/explore-index/<manifestCid>/` (4 Parquet + `index.json`) → Lambda `bind()` (verify `index.json`, `/tmp` cache) → `explore.search`, agent tools, MCP tools.
+4. **Activity:** query log group (30 d) → Logs Insights from `admin.activity.summary` (5-min cache) → Activity page with query links.
+
+### Integration points
+
+- Cognito user pool (new, `CountyLensApi`); SQS queue + DLQ + alarm (new, `AdminQueue` construct in `CountyLensApi`, alarm to the `CountyLensOps` topic); S3 CID-copy bucket (new private prefixes); CloudWatch Logs Insights (existing query log); Restate ingress on the laptop (existing local stack); Amplify env vars (new pool IDs).
+- Task B code copied, not linked: `roofing-crm` auth files and `BuildIndex` logic, adapted and owned here.
+
+### Test approach
+
+- **Unit/contract (Vitest, per group, tests first):** Zod contracts, `adminProcedure` 401/403, bridge loop with a fake SQS client, index build parity (`EXCEPT ALL` = 0) and reader stale/not-built, cost JSON drift, pipeline closures.
+- **Infra (`cdk synth` assertions, CI):** `idle-cost.test.ts` (AC-2, AC-11), `admin-queue.test.ts`, updated `api.test.ts`.
+- **Hosted (Playwright on the Amplify preview, then production):** `tests/e2e/A-16.spec.ts` one test per `testplans/A-16-test-cases.md` UI case; unparked A-13/A-14 cases; responsive suite; index p95 with 20 cold + 20 warm calls.
+- **Parity:** smeargle at 390/768/1440 on every page family → `docs/evidence/A-16-prototype-parity.md`.
+- **Bridge:** one real dry-run Start through SQS observed on the hosted Runs page, plus the offline/expired case.
 
 ### Order and pushes
 
