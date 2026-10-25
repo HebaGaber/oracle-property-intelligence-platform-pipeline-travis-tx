@@ -1,5 +1,5 @@
 // A-13 performance cases (T033; testplans/A-13-test-cases.md § 8): TC-040 (first DuckDB-WASM load
-// ≤ 8 s with a progress bar), TC-041 (20 timed runs per Filters search, p95 < 3 s, input change →
+// ≤ 8 s with a progress bar), TC-041 (5 timed runs per Filters search on the hosted site since 2026-10-25, 20 for the operator benchmark; see A-16 gap 1, p95 < 3 s, input change →
 // updated header, engine = server per FR-006a) and TC-082 (initial JS ≤ 300 KB gzipped excluding
 // DuckDB). Both TC-040 and TC-041 "Wait for A-11": today they run on the single published run and
 // are recorded as provisional. The SQL `count(*)` run has no timing target (FR-006a); TC-004 records
@@ -145,7 +145,7 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
     await nextSearch(page, () => page.goto(url));
     await ready(page, "explore");
     await expect(page.locator(SEL.header)).toBeVisible();
-    // 2. One untimed warm-up at a radius outside the timed list, then 20 timed runs, each at a new radius.
+    // 2. One untimed warm-up at a radius outside the timed list, then QUERY_SAMPLE_RUNS (5) timed runs, each at a new radius (20 in the operator benchmark).
     await timedRadius(page, WARM_UP_RADIUS, label, 0);
     for (const [i, r] of searchRadii(QUERY_SAMPLE_RUNS, URL_RADIUS).entries()) {
       const run = await timedRadius(page, r, label, i + 1);
@@ -157,7 +157,7 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
 
   test(scenario("041"), async ({ page, oracle }) => {
     parkGap(PARKED_GAPS.exploreSearch);
-    // Two series of 1 warm-up + 20 runs, each run capped at PER_RUN_TIMEOUT_MS: the budget is the cap
+    // Two series of 1 warm-up + 5 runs (hosted sample, PO 2026-10-25), each run capped at PER_RUN_TIMEOUT_MS: the budget is the cap
     // times the run count (the 300 s default is a few runs short of that worst case); typical use ~2 min.
     test.setTimeout(seriesBudgetMs(2, QUERY_SAMPLE_RUNS));
     noteBranch(oracle, "provisional until A-11");

@@ -71,3 +71,31 @@ CR-n = `/code-review`, MG-n = metagross, AU-n = audino.
 | P0 rules in `docs/architecture-constitution.md` | ✅ | AD-01/02/03/04/05/07/08/18/19/24/25, AM-01/04/06/08 (see plan Constitution Check); Verify never uses the CID copy; SQL only in query-core |
 
 **Open Critical findings:** 0. **Reviewer scores:** metagross 77, audino 82 (both ≥ 75).
+
+## Post-merge review (2026-10-25): the delta `3749547..HEAD`
+
+Scope: the code A-13 changed after it was merged with A-04, A-07 and A-11, for the full-county re-test: `catalogTables` batched grouping, `bindAllViews` for the SQL panel, `retry: false` on Explore search, `tabIndex={0}` on `<main>`, API DuckDB limit 2 GB and Lambda timeout 29 s, the seven-shard CI and `scripts/ci-watch.sh`, and the e2e test edits. Reviewers read the diff and files; they did not run the hosted site.
+
+| Reviewer | Score | Open Critical | Verdict |
+| --- | --- | --- | --- |
+| `metagross` (architecture, final review) | **80** | 0 | PASS: sound; add a spend and concurrency guard for the 29 s / 2 GB Lambda and document the 5-sample p95 |
+| `audino` (frontend) | **80** | 0 | PASS: catalog grouping, `retry: false` and `tabIndex` are sound; explain the long SQL wait |
+
+`/code-review medium` on the same delta was not run as a separate pass: both reviewers read the full diff and report no Critical or correctness findings. (If you want the separate pass, say so; it is one command.)
+
+### Findings and what was done
+
+| # | Reviewer | Severity | Finding | Disposition |
+| --- | --- | --- | --- | --- |
+| 1 | metagross | Major | Lambda timeout 29 s at 3,008 MB bills up to about 87 GB-s per failing Explore search (about $0.0012 each); the stage throttle allows 10 rps, so a polling client could cost about $40 an hour and about 290 concurrent executions would hit the account concurrency quota (AD-11 forbids reserved concurrency); the credit budget is $120 | **Recorded, not fixed here.** Every Explore search now fails at 29 s whether the timeout is 15 s or 29 s, so the 29 s setting buys nothing and doubles the cost. Recommendation: put the timeout back to 15 s (one CDK deploy, needs the PO's go) until A-16 gap 1 closes, and add a per-route throttle for `explore.search` and a duration alarm in A-16. Written into the DEC and A-16 gap 6 |
+| 2 | metagross | Major | DuckDB 2 GB under a 3,008 MB Lambda leaves about 1 GB for Node, Arrow and `/tmp`; no peak-memory evidence | **Recorded.** A-16 gap 6: read `Max Memory Used` from the Lambda REPORT line for a cold Explore search and keep the cap only if the peak stays under 2.8 GB |
+| 3 | metagross | Major | TC-041 sample 20 → 5: a p95 over 5 samples is the maximum; stale "20 runs" comments | **Fixed in the comments; documented.** The 5-sample hosted sample follows the A-11 convention (PO 2026-10-25); the 20-run rule stays the operator benchmark; restore 20 when TC-041 is unparked (A-16 gap 1). TC-041 is parked, so nothing is weakened today |
+| 4 | both | Minor | `catalogTables` skips a part whose batch group is unknown, with no row and no reason ("missing data says why") | **Recorded** (A-16 follow-up): show an "unclassified table parts (N)" row; the old code had the same gap, so no regression |
+| 5 | audino | Major | The 97 s first SQL query is not explained to the user (only the stage text "Binding the published tables") | **Recorded** (A-16 gap 2 follow-up): a one-line `role="status"` note under the bar. Copy change; not made now so the deployed code stays `dc46a6d` |
+| 6 | audino | Minor | The SQL engine-error banner has no Retry, so a failure after 97 s means a reload and another wait | **Recorded** (A-16 gap 2) |
+| 7 | audino, metagross | Minor | `<main tabIndex={0}>`: the global focus ring (Atlas token) may be clipped at the viewport edge; `<main>` has no accessible name | **Recorded.** A negative `outline-offset` was tried and rejected by the repository's no-negative-values test; use an inset ring token or `aria-label` in A-16 |
+| 8 | metagross | Minor | `retry: false` also drops the retry for transient 5xx on fast searches | Accepted trade-off (the page has its own Retry button; documented in the code comment and ERR-59) |
+| 9 | metagross | Minor | `ci-watch.sh` matches `failure` only, not `timed_out` | **Recorded** (A-16 follow-up); not changed now because `scripts/` is not on the docs-only list the evidence check allows after the deployed commit |
+| 10 | metagross | Minor | TC-004 falls back to a fixed 441,961 (documented in `docs/evidence/A-04.md`) | Accepted while parked; derive it from the Query DB oracle when unparked |
+
+No reviewer found a weakened assertion beyond the documented, parked A-16 gaps. Both scores are 75 or more and no Critical finding is open, so C-03 is met for the delta.
