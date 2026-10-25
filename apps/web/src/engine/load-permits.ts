@@ -98,8 +98,8 @@ export interface EngineModule {
   readonly permitsPartNames: typeof permitsPartNames;
   readonly countPermits: typeof countPermits;
   readonly listPermits: typeof listPermits;
-  /** The first PERMITS_PAGE_SIZE rows in listing order; default: the listing SQL with a LIMIT. */
-  readonly listFirstPage?: (engine: OpenedEngine) => Promise<PermitListRow[]>;
+  /** The first page in listing order (duckdb-wasm listFirstPage); absent = no early paint. */
+  readonly listFirstPage?: (engine: OpenedEngine, pageSize: number) => Promise<PermitListRow[]>;
 }
 
 export interface PermitsLoaderDeps {
@@ -146,17 +146,6 @@ function permitsEmitted(manifest: RunManifestV1): number {
 }
 
 type OpenedEngine = Awaited<ReturnType<typeof openEngine>>;
-
-/** A11-11: the listing's own ORDER BY with a LIMIT, so the first page equals the full list's first page. */
-async function defaultFirstPage(engine: OpenedEngine): Promise<PermitListRow[]> {
-  const [{ parsePermitRows }, core] = await Promise.all([
-    import("./permit-list"),
-    import("@countylens/query-core"),
-  ]);
-  return parsePermitRows(
-    await engine.all(`${core.listRoofingPermitsSql()}\nLIMIT ${PERMITS_PAGE_SIZE}`),
-  );
-}
 
 export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}): PermitsLoader {
   return async (report, signal, onFirstPage) => {
@@ -221,8 +210,8 @@ export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}):
         permitsEmitted: emitted,
         fallbackLabel: deps.fallbackLabel(loaded.read.source),
       };
-      if (onFirstPage !== undefined) {
-        const first = await (engineModule.listFirstPage ?? defaultFirstPage)(engine);
+      if (onFirstPage !== undefined && engineModule.listFirstPage !== undefined) {
+        const first = await engineModule.listFirstPage(engine, PERMITS_PAGE_SIZE);
         signal.throwIfAborted();
         onFirstPage({ ...facts, rows: first, partial: true });
       }

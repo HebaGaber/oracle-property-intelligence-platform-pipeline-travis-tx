@@ -5,7 +5,13 @@
 // run schemas whole, so the union keeps the earlier views). Parts are prefetched only for the bound
 // views and only once. Pure: the bind and the part reads are fakes.
 import { describe, expect, it, vi } from "vitest";
-import { createViewBinder, type ViewBinderDeps } from "../src/routes/ExploreSql.engine";
+import { CONTRACT_VIEWS, viewsReadBy } from "@countylens/query-core";
+import {
+  SQL_VIEWS,
+  createViewBinder,
+  viewsNamedIn,
+  type ViewBinderDeps,
+} from "../src/routes/ExploreSql.engine";
 
 const part = (name: string) => ({ name, cid: `cid-${name}`, size: 10, sha256: "0".repeat(64) });
 
@@ -24,6 +30,19 @@ function deps(overrides: Partial<ViewBinderDeps> = {}) {
   };
   return { base, bind, fetchAndRegister };
 }
+
+describe("the panel's own view list (no query-core runtime import in the route chunk)", () => {
+  it("equals query-core's CONTRACT_VIEWS and names views like viewsReadBy", () => {
+    expect(SQL_VIEWS).toEqual([...CONTRACT_VIEWS]);
+    for (const sql of [
+      "SELECT * FROM v_property p JOIN v_roofing_permit r USING (property_cid)",
+      "SELECT 1",
+      "SHOW TABLES",
+      "select count(*) from v_run, v_contractor",
+    ])
+      expect(viewsNamedIn(sql)).toEqual(viewsReadBy(sql));
+  });
+});
 
 describe("createViewBinder (A13-2: bind only the named views, memoised)", () => {
   it("binds only the view the query names", async () => {

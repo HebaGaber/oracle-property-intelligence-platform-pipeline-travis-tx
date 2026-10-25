@@ -89,6 +89,23 @@
   display: none;
 }
 
+/* Signed in as an admin (RunsAdmin1440 board): a tonal chip linking to Activity. */
+.adminChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-on-tertiary-container);
+  background: var(--md-sys-color-tertiary-container);
+  text-decoration: none;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+}
+
 /* Bottom navigation at 390 shows four destinations (Shell390More board): Coverage moves into
    More on compact widths and is back on the rail from 600 px. */
 .nav .compactHidden {

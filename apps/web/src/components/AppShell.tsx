@@ -22,6 +22,14 @@ import {
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { COMING_SOON_ITEMS } from "../content/coming-soon";
 import { MORE_PAGES } from "../routes/route-list";
+
+import {
+  AdminAccessProvider,
+  AdminChip,
+  AdminMoreLink,
+  AdminNavItem,
+  hasStoredSession,
+} from "./AdminNav";
 import { CountySelect } from "./CountySelect";
 import { HelpMenu } from "./HelpMenu";
 import { SyncBadge } from "./SyncBadge";
@@ -119,6 +127,9 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
             </Link>
           </li>
         ))}
+        <li className={styles.compactOnly}>
+          <AdminMoreLink className={styles.sheetItem} onClick={onClose} />
+        </li>
         {MORE_PAGES.map((page) => (
           <li key={page.path}>
             <Link to={page.path} className={styles.sheetItem} onClick={onClose}>
@@ -170,85 +181,104 @@ export function AppShell(): ReactElement {
     wasOpen.current = moreOpen;
   }, [moreOpen]);
 
+  // Ask admin.me again whenever a session appears or goes (sign-in, sign-out); none = no request.
+  const sessionKey = hasStoredSession() ? "session" : "signed-out";
+
   return (
-    <div className={styles.shell}>
-      <header
-        inert={moreOpen}
-        className={scrolled ? `${styles.bar} ${styles.barScrolled}` : styles.bar}
-      >
-        <h1 className={styles.title}>
-          <Link to={ROUTES.hub} className={styles.titleLink}>
-            {APP_TITLE}
-          </Link>
-        </h1>
-        {inCounty ? (
-          <div className={styles.location}>
-            <CountySelect />
-          </div>
-        ) : null}
-        <div className={styles.actions}>
-          <span className={styles.sync}>
-            <SyncBadge />
-          </span>
-          <HelpMenu />
-          <Link to={ASK_PATH} className={styles.ask} aria-label={ASK_LABEL}>
-            <Icon name="smart_toy" size="medium" />
-            <span className={styles.askText} aria-hidden="true">
-              {ASK_LABEL}
+    <AdminAccessProvider key={sessionKey}>
+      <div className={styles.shell}>
+        <header
+          inert={moreOpen}
+          className={scrolled ? `${styles.bar} ${styles.barScrolled}` : styles.bar}
+        >
+          <h1 className={styles.title}>
+            <Link to={ROUTES.hub} className={styles.titleLink}>
+              {APP_TITLE}
+            </Link>
+          </h1>
+          {inCounty ? (
+            <div className={styles.location}>
+              <CountySelect />
+            </div>
+          ) : null}
+          <div className={styles.actions}>
+            <AdminChip className={styles.adminChip} />
+            <span className={styles.sync}>
+              <SyncBadge />
             </span>
-          </Link>
-        </div>
-      </header>
-      <nav className={styles.nav} aria-label="Primary" inert={moreOpen}>
-        {DESTINATIONS.map((destination) => (
-          <NavLink
-            key={destination.to}
-            to={destination.to}
-            className={({ isActive }) =>
-              [
-                styles.item,
-                isActive ? styles.itemActive : "",
-                destination.compact === false ? styles.compactHidden : "",
-              ]
-                .filter(Boolean)
-                .join(" ")
-            }
+            <HelpMenu />
+            <Link to={ASK_PATH} className={styles.ask} aria-label={ASK_LABEL}>
+              <Icon name="smart_toy" size="medium" />
+              <span className={styles.askText} aria-hidden="true">
+                {ASK_LABEL}
+              </span>
+            </Link>
+          </div>
+        </header>
+        <nav className={styles.nav} aria-label="Primary" inert={moreOpen}>
+          {DESTINATIONS.map((destination) => (
+            <NavLink
+              key={destination.to}
+              to={destination.to}
+              className={({ isActive }) =>
+                [
+                  styles.item,
+                  isActive ? styles.itemActive : "",
+                  destination.compact === false ? styles.compactHidden : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+              }
+            >
+              <span className={styles.pill}>
+                <Glyph name={destination.icon} />
+              </span>
+              <span className={styles.label}>{destination.label}</span>
+            </NavLink>
+          ))}
+          <AdminNavItem
+            classes={{
+              item: `${styles.item} ${styles.compactHidden}`,
+              itemActive: styles.itemActive,
+              pill: styles.pill,
+              label: styles.label,
+            }}
+          />
+          <button
+            ref={moreButton}
+            type="button"
+            className={styles.more}
+            aria-expanded={moreOpen}
+            aria-controls="more-sheet"
+            onClick={() => setMoreOpen((open) => !open)}
           >
             <span className={styles.pill}>
-              <Glyph name={destination.icon} />
+              <Glyph name="more_horiz" />
             </span>
-            <span className={styles.label}>{destination.label}</span>
-          </NavLink>
-        ))}
-        <button
-          ref={moreButton}
-          type="button"
-          className={styles.more}
-          aria-expanded={moreOpen}
-          aria-controls="more-sheet"
-          onClick={() => setMoreOpen((open) => !open)}
+            <span className={styles.label}>{MORE_LABEL}</span>
+          </button>
+        </nav>
+        {moreOpen ? (
+          <>
+            <div
+              className={styles.scrim}
+              data-more-scrim=""
+              onClick={closeMore}
+              aria-hidden="true"
+            />
+            <MoreSheet onClose={closeMore} />
+          </>
+        ) : null}
+        <main
+          className={styles.main}
+          onScroll={onScroll}
+          inert={moreOpen}
+          tabIndex={0}
+          aria-label={MAIN_LABEL}
         >
-          <span className={styles.pill}>
-            <Glyph name="more_horiz" />
-          </span>
-          <span className={styles.label}>{MORE_LABEL}</span>
-        </button>
-      </nav>
-      {moreOpen ? (
-        <>
-          <div className={styles.scrim} data-more-scrim="" onClick={closeMore} aria-hidden="true" />
-          <MoreSheet onClose={closeMore} />
-        </>
-      ) : null}
-      <main
-        className={styles.main}
-        onScroll={onScroll}
-        inert={moreOpen}
-        tabIndex={0}
-        aria-label={MAIN_LABEL}
-      >
-        <Outlet />
-      </main>
-    </div>
+          <Outlet />
+        </main>
+      </div>
+    </AdminAccessProvider>
   );
 }

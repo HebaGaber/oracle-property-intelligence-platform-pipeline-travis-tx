@@ -7,7 +7,7 @@
 // in parallel with the reads (ERR-17). `readOnlyRefusal` keeps every statement read-only before it
 // reaches the engine (one SELECT, WITH, DESCRIBE or SHOW statement, no data-changing keyword);
 // `sqlErrorLine` turns an engine error into one line "{first line} · Try: {fix}", no stack trace.
-import { CONTRACT_VIEWS, viewsReadBy, type ContractView, type Row } from "@countylens/query-core";
+import type { ContractView, Row } from "@countylens/query-core";
 import { EXPLORE_TEXTS } from "@countylens/shared";
 import { readPathUrlsFromEnv } from "../data/config";
 import { fallbackLabel } from "../data/fetch-by-cid";
@@ -20,6 +20,25 @@ import {
 import { loadManifest } from "../data/manifest";
 import { latestRun, loadRunsIndex } from "../data/runs-index";
 import { STAGE_TEXTS } from "../engine/stages";
+
+/**
+ * query-core's CONTRACT_VIEWS, kept here so this route chunk imports no query-core runtime code
+ * (its bind code reaches the panel only through the lazy engine chunk); test/sql-lazy-bind pins
+ * it to query-core's list.
+ */
+export const SQL_VIEWS: readonly ContractView[] = [
+  "v_property",
+  "v_roofing_permit",
+  "v_contractor",
+  "v_run",
+];
+const VIEW_REF = new RegExp(`\\b(${SQL_VIEWS.join("|")})\\b`, "g");
+
+/** The contract views `sql` names, in SQL_VIEWS order (query-core viewsReadBy). */
+export function viewsNamedIn(sql: string): ContractView[] {
+  const named = new Set([...sql.matchAll(VIEW_REF)].map((m) => m[1]));
+  return SQL_VIEWS.filter((v) => named.has(v));
+}
 
 export interface SqlSession {
   readonly runId: string;
@@ -74,10 +93,10 @@ export function createViewBinder(deps: ViewBinderDeps): ViewBinder {
   const registered = new Set<string>();
   let chain: Promise<void> = Promise.resolve();
   const missing = (sql: string): ContractView[] =>
-    viewsReadBy(sql).filter((v) => !bound.includes(v));
+    viewsNamedIn(sql).filter((v) => !bound.includes(v));
   const ensure = async (sql: string): Promise<void> => {
     if (missing(sql).length === 0) return;
-    const union = CONTRACT_VIEWS.filter((v) => bound.includes(v) || viewsReadBy(sql).includes(v));
+    const union = SQL_VIEWS.filter((v) => bound.includes(v) || viewsNamedIn(sql).includes(v));
     deps.onBind(union);
     const names = deps.partsFor(union);
     const fresh = names.filter((n) => !registered.has(n));
@@ -112,28 +131,27 @@ export async function openSqlSession(
   signal: AbortSignal,
 ): Promise<SqlSession> {
   report(STAGE_TEXTS.engine);
-  const starting = Promise.all([
-    import("../engine/duckdb-wasm"),
-    import("@countylens/query-core"),
-  ]).then(async ([module, core]) => ({ core, engine: await module.openEngine() }));
+  const starting = import("../engine/duckdb-wasm").then(async (module) => ({
+    module,
+    engine: await module.openEngine(),
+  }));
   starting.catch(() => undefined);
   try {
     report(STAGE_TEXTS.manifest);
     const index = await loadRunsIndex({ signal });
     const entry = latestRun(index);
     const loaded = await loadManifest(entry.manifestCid, { urls: readPathUrlsFromEnv(), signal });
-    const { core, engine } = await starting;
+    const { module, engine } = await starting;
     signal.throwIfAborted();
     // A13-2: nothing is bound yet; each query binds the views it names (createViewBinder).
     const binder = createViewBinder({
-      partsFor: (views) => core.boundPartNames(loaded.manifest.artifacts, views),
+      partsFor: (views) => module.viewPartNames(loaded.manifest.artifacts, views),
       prefetchable: (names) => partsToPrefetch(loaded.manifest, undefined, names),
       fetchAndRegister: async (parts) => {
         for (const part of await fetchParts(parts, loaded.read, { signal }))
           await engine.registerFile(registeredPartName(part), part.bytes);
       },
-      bind: (views, partUrl) =>
-        core.bindManifest(loaded.read.bytes, "", engine, { partUrl, views }),
+      bind: (views, partUrl) => module.bindViews(engine, loaded.read.bytes, partUrl, views),
       remoteUrl: loaded.read.partUrl,
       registeredUrl: registeredPartName,
       onBind: () => report(STAGE_TEXTS.bind),

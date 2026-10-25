@@ -235,6 +235,7 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
     expect(compact.map((li) => li.querySelector("a")?.getAttribute("href"))).toEqual([
       "/tx/travis/coverage",
       "/tx/travis/explore?mode=sql",
+      "/admin/sign-in",
     ]);
   });
 
@@ -247,12 +248,14 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
       expect.stringContaining("Runs"),
       expect.stringContaining("Coverage"),
       expect.stringContaining("Data"),
+      expect.stringContaining("Admin"),
     ]);
     expect(links.map((l) => l.getAttribute("href"))).toEqual([
       "/tx/travis/explore",
       "/runs",
       "/tx/travis/coverage",
       "/data/manifest",
+      "/admin/sign-in",
     ]);
     expect(links[1]?.getAttribute("aria-current")).toBe("page");
     expect(links[0]?.getAttribute("aria-current")).toBeNull();
