@@ -166,3 +166,20 @@ Boards are `ExploreQ-*` (1440), `ExploreQ390-*`, `ExploreQ768-*`. Hosted compari
 
 ## Not compared (not page boards)
 `ProtoBar`, `canvas.json`, `Flows`, `A11yAudit`, `Extensions`, `Main` (site map), `Pager` and `SearchBox`/`RunChain`/`PropertyDetail` components (covered through the pages that use them).
+
+## Justified differences (kept on purpose, with reason)
+
+### Runs, Compare, Log, Coverage, Admin, Activity (G2a, merge `38ea8b3`)
+
+| Board | Element | What the app shows instead | Reason |
+| --- | --- | --- | --- |
+| Runs1440/768/390 | Gantt chart, selected-source strip | Coming soon | The run manifest records no per-step timings; drawing them would invent data |
+| Runs | Fresh / Stale / Failed pills | "Published" for published runs; Running / Failed / Stopped live from the bridge (admin only) | No freshness threshold is defined in the contract |
+| Runs | Run menu "view earlier run card" | Menu lists each run with CID, Verify and Compare | Earlier-run card view not built (time); every run is still reachable by CID |
+| RunsLog | Verified, Records added, Warning event types | Only the event types the manifest records; 50 rows per page | Those events are not in a manifest |
+| RunsCompare | Artifact CID column | Counts of kept, changed and new CIDs | A per-artifact CID diff of ~285 artifacts is not readable on 390 px; counts come from the two manifests |
+| Coverage | Area heatmap, trend, Reconciliation, "Gaps only" | Area card and Areas tile say why | No per-area or merge data is published |
+| Coverage · Cost | "Last bill" tile | Gross and Credits tiles | The free plan nets usage with credits; showing both is AC-1 edge case 1 |
+| AdminSignIn | "Code sent" state | Email + password; success goes to Runs | AC-6 amended (Task B sign-in, PO 2026-10-26) |
+| RunsAdmin1440 | One primary button | Start, Stop and Retry always visible to the admin; a dry-run checkbox | AC-6 lists all three; dry run keeps demos from publishing by accident |
+| Activity | Top lists, query-log table | Three metrics + questions per day, each linked to its Logs Insights query | AC-10 scope; the API returns only those |
