@@ -87,14 +87,18 @@ describe("CountyLensApi agent resources (A-14 T009/T016): Lambda, spend table, 8
 
   it("A-16 T025 (A14-3): the 80% spend alarm notifies the Ops topic countylens-alerts on ALARM and OK", () => {
     const { template } = synthApi();
-    const topicArn = Match.objectLike({
-      "Fn::Join": Match.arrayWith([Match.arrayWith([":countylens-alerts"])]),
-    });
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      Threshold: SPEND_ALARM_THRESHOLD_USD,
-      AlarmActions: [topicArn],
-      OKActions: [topicArn],
-    });
+    // The topic ARN is a literal string when CDK_DEFAULT_ACCOUNT is set and an Fn::Join otherwise.
+    const alarms = Object.values(
+      template.findResources("AWS::CloudWatch::Alarm", {
+        Properties: { Threshold: SPEND_ALARM_THRESHOLD_USD },
+      }),
+    ) as Array<{ Properties: { AlarmActions?: unknown[]; OKActions?: unknown[] } }>;
+    expect(alarms).toHaveLength(1);
+    const props = alarms[0]!.Properties;
+    for (const actions of [props.AlarmActions, props.OKActions]) {
+      expect(actions).toHaveLength(1);
+      expect(JSON.stringify(actions)).toContain(":countylens-alerts");
+    }
   });
 });
 

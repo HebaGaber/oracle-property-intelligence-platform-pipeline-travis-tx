@@ -51,6 +51,8 @@ export function useAdminAccess(): AdminAccess {
 export type LiveState =
   | { readonly kind: "loading" }
   | { readonly kind: "ready"; readonly live: AdminLive }
+  /** The API answered NOT_FOUND: the bridge has never written its status object. */
+  | { readonly kind: "never-seen" }
   | { readonly kind: "unavailable" };
 
 export const LIVE_POLL_MS = 5000;
@@ -63,8 +65,10 @@ export function useLiveRun(enabled: boolean): { state: LiveState; refresh: () =>
       (live) => {
         if (alive.current) setState({ kind: "ready", live });
       },
-      () => {
-        if (alive.current) setState({ kind: "unavailable" });
+      (error: unknown) => {
+        if (!alive.current) return;
+        const notFound = error instanceof AdminApiError && error.code === "NOT_FOUND";
+        setState({ kind: notFound ? "never-seen" : "unavailable" });
       },
     );
   }, []);

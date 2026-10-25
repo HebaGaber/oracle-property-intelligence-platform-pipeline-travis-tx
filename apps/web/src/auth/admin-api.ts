@@ -71,7 +71,8 @@ interface AdminTrpc {
 }
 export type { Procedure };
 
-export type AdminErrorCode = "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
+export type AdminErrorCode =
+  "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" | "NOT_FOUND" | "UNAVAILABLE";
 
 export class AdminApiError extends Error {
   override readonly name = "AdminApiError";
@@ -116,6 +117,9 @@ export function toAdminError(error: unknown): AdminApiError {
   }
   if (code === "CONFLICT" || status === 409) {
     return new AdminApiError("CONFLICT", ADMIN_TEXTS.alreadyRunning);
+  }
+  if (code === "NOT_FOUND" || status === 404) {
+    return new AdminApiError("NOT_FOUND", ADMIN_TEXTS.unavailable);
   }
   return new AdminApiError("UNAVAILABLE", ADMIN_TEXTS.unavailable);
 }

@@ -260,6 +260,12 @@ export function AdminActions({
           <p className={styles.bannerText}>{message}</p>
         </div>
       )}
+      {liveState.kind === "never-seen" ? (
+        <p className={styles.helper} data-live-never-seen="">
+          Bridge offline · the bridge has not reported a status yet. Start it on the operator
+          machine.
+        </p>
+      ) : null}
       {liveState.kind === "unavailable" ? (
         <p className={styles.helper} data-live-unavailable="">
           Run status is not available right now: the bridge status could not be read.

@@ -8,7 +8,7 @@ import { AdminQueue } from "../src/admin-queue.js";
 
 function synth(): Template {
   const stack = new Stack(new App(), "T", {
-    env: { region: "eu-north-1", account: "111111111111" },
+    env: { region: process.env.CDK_DEFAULT_REGION ?? "test-region-1", account: "111111111111" },
   });
   const topic = new sns.Topic(stack, "Topic");
   const q = new AdminQueue(stack, "AdminQueue", { alarmTopic: topic });

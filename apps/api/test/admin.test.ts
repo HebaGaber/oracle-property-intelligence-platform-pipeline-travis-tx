@@ -225,7 +225,7 @@ describe("admin.run.* (AC-7, AC-9)", () => {
     const sent = await caller(ADMIN_TOKEN).admin.run.start({ mode: "dry_run" });
     const calls = sqs.commandCalls(SendMessageCommand);
     expect(calls).toHaveLength(1);
-    const input = calls[0]?.args[0].input ?? {};
+    const input = (calls[0]?.args[0].input ?? {}) as { QueueUrl?: string; MessageBody?: string };
     expect(input.QueueUrl).toBe(process.env.COUNTYLENS_ADMIN_QUEUE_URL);
     const command = RunCommandV1.parse(JSON.parse(input.MessageBody ?? "null"));
     expect(command).toMatchObject({
