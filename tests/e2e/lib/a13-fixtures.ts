@@ -334,6 +334,9 @@ export const PARKED_GAPS = {
   /** Five manifest-driven pages exceed the 2.5 s LCP limit on the full county; Manifest CLS 0.132. */
   /** The SQL tab binds every Run 3 table on load: ~96 s against the 60 s wait (2026-10-26). */
   sqlTabBind: "A-16 item 18: the Explore SQL tab binds Run 3 in about 96 s; the tests wait 60 s",
+  /** Run 3 has 255 table parts, 24 tables, 983 MB; the Catalog's footers do not all arrive in 2 min. */
+  catalogFooters:
+    "A-16 item 19: on Run 3 (255 parts, 983 MB) the Catalog's Parquet footers do not all arrive within the 2-minute test budget",
   runsLogLcp:
     "A-16 gap 3: LCP is 2.7-3.4 s against the 2.5 s limit on Runs, Runs · Log, Coverage, Catalog and Manifest, and Manifest CLS is 0.132 against 0.1",
 } as const;

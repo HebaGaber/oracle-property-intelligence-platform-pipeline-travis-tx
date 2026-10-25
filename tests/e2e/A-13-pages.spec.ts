@@ -321,6 +321,7 @@ function exportColumns(json: unknown, table: string): { name: string; type: stri
 
 test.describe("A-13 pages · Catalog, Legal, Runs log", { tag: "@a13-pages" }, () => {
   test(scenario("053"), async ({ page, oracle }) => {
+    parkGap(PARKED_GAPS.catalogFooters);
     noteBranch(oracle);
     const { M } = oracle;
     // 1. Open /data/catalog.
