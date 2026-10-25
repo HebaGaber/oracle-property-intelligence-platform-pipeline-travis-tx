@@ -77,12 +77,12 @@ export const GROUP_COVERAGE_KEYS: Record<
     ["permits_ambiguous_geoid", "aggregate_match"],
     ["permits_address_unmatched", "aggregate_match"],
     ["permits_ambiguous_address", "aggregate_match"],
-    // AD-05's five contractor-identity states (A-07), collapsed to three manifest-coverage
-    // buckets per ADR-0002 #6: there is no lexicon carrier on property_improvement or company
-    // for anything short of a `resolved` match (AD-06), so ambiguous/conflicting/unresolved
-    // are not distinguished in the published coverage either. The producer is
-    // run-month.ts's `contractorCoverage` (oracle-runtime), fed by
-    // transformAustinPropertyImprovement's `PropertyImprovementCounts.by_contractor_state`.
+    // AD-05's five contractor-identity states (A-07). These three are required in every run;
+    // a run that resolved its published names against the loaded registry (Run 3.1, ERR-73)
+    // also states contractor_ambiguous and contractor_conflicting. Run-level counts only: no
+    // per-permit state is published (ADR-0002 #6, AD-06). Producers: run-month.ts's
+    // `contractorCoverage` for a monthly run, pipeline/local-stack/scripts/contractor-coverage.ts
+    // for a re-export.
     ["contractor_resolved", "aggregate_match"],
     ["contractor_candidate", "aggregate_match"],
     ["contractor_unresolved", "aggregate_match"],

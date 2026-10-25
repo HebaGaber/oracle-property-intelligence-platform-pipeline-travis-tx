@@ -148,7 +148,7 @@ printed (the lexicon links a permit's contractor to a company only, so no person
 written); a printed company always wins. `company.name` can therefore hold an individual's name.
 No column changes, so this stays v1.1.
 
-On `v_roofing_permit`: `contractor_name_as_printed` (the company name, null with
+On `v_roofing_permit`: `contractor_name_as_printed` (the printed contractor name, null with
 `contractor_unresolved`), `bbb_status` = `blocked` with `bbb_status_reason` = `bbb_blocked` when a
 name exists (else `not_checked` / `contractor_unresolved`), `bbb_rating` always null (missing
 reason `bbb_blocked`; the UI says "BBB rating not published (BBB blocked the lookup)"), and `bbb_url`,
@@ -241,7 +241,7 @@ Two further notes from the pilot export:
 | `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
 | `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32) | never empty |
 | `contractor_company_cid` | `VARCHAR` | yes | Contractor company as printed (unverified; resolved only with a registry id) | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
-| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
+| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the contractor the permit prints (the company, else the contractor person, ERR-72), AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
 | `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
 | `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | bbb_blocked when a contractor name is printed, else contractor_unresolved | never empty |
 | `bbb_rating` | `VARCHAR` | yes | BBB rating not published (BBB blocked the lookup) | always null: BBB blocks the lookup (A-01), no rating is published | `bbb_blocked` |
@@ -341,7 +341,7 @@ Two further notes from the pilot export:
 | `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
 | `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32) | never empty |
 | `contractor_company_cid` | `VARCHAR` | yes | Contractor company as printed (unverified; resolved only with a registry id) | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
-| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
+| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the contractor the permit prints (the company, else the contractor person, ERR-72), AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
 | `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
 | `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | bbb_blocked when a contractor name is printed, else contractor_unresolved | never empty |
 | `bbb_rating` | `VARCHAR` | yes | BBB rating not published (BBB blocked the lookup) | always null: BBB blocks the lookup (A-01), no rating is published | `bbb_blocked` |

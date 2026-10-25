@@ -477,7 +477,7 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     "string",
     V,
     true,
-    "company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity)",
+    "company.name via the only property_improvement_has_contractor edge: the contractor the permit prints (the company, else the contractor person, ERR-72), AS PRINTED, UNVERIFIED (not a registry identity)",
     "Contractor as printed on the permit (unverified)",
     "contractor_unresolved",
   ),

@@ -233,6 +233,48 @@ describe("buildRunManifest", () => {
     );
   });
 
+  it("refuses a dropLimitationPrefixes entry that matches no carried note", async () => {
+    const f = await runFixture();
+    await expect(
+      buildRunManifest(config(f, { dropLimitationPrefixes: ["Incremental refreshh"] }), deps(f)),
+    ).rejects.toThrow(/Incremental refreshh/);
+  });
+
+  it("checks contractor_* coverage against the contractor-coverage report (ERR-73)", async () => {
+    const f = await runFixture();
+    const path = join(f.root, "contractor-coverage.json");
+    const byState = { resolved: 0, candidate: 2, ambiguous: 0, conflicting: 1, unresolved: 4 };
+    writeFileSync(path, JSON.stringify({ permits: 7, byState }));
+    const overrides = (counts: Record<string, number>) =>
+      Object.fromEntries(
+        Object.entries(counts).map(([k, n]) => [
+          `contractor_${k}`,
+          { count: n, derivation: "aggregate_match" as const },
+        ]),
+      );
+    const ok = await buildRunManifest(
+      config(f, { contractorCoverage: path, coverageOverrides: overrides(byState) }),
+      deps(f),
+    );
+    expect(ok.manifest.coverage.contractor_conflicting?.count).toBe(1);
+    await expect(
+      buildRunManifest(
+        config(f, {
+          contractorCoverage: path,
+          coverageOverrides: overrides({ ...byState, candidate: 3 }),
+        }),
+        deps(f),
+      ),
+    ).rejects.toThrow(/contractor_candidate is 3 but contractorCoverage says 2/);
+    writeFileSync(path, JSON.stringify({ permits: 8, byState }));
+    await expect(
+      buildRunManifest(
+        config(f, { contractorCoverage: path, coverageOverrides: overrides(byState) }),
+        deps(f),
+      ),
+    ).rejects.toThrow(/8 permits but 7 are published/);
+  });
+
   it("refuses sourceLimitations for a source the base does not carry", async () => {
     const f = await runFixture();
     await expect(
@@ -345,6 +387,39 @@ describe("address-point source (Run 3, ADR 0004)", () => {
     // the first two sources are exactly what they were without the layer
     const plain = (await buildRunManifest(config(f), deps(f))).manifest;
     expect(m.sources.slice(0, 2)).toEqual(plain.sources);
+  });
+
+  it("a correction run carries the base's layer source with delta 0 (Run 3.1, carryAddressPoints)", async () => {
+    const f = await runFixture();
+    const path = join(f.root, "address-points-receipt.json");
+    writeFileSync(path, JSON.stringify(receipt));
+    const run3 = await buildRunManifest(config(f, { addressPointsReceipt: path }), deps(f));
+    put(join(f.root, "runs", "travis-full-run2-20261024", "manifest.json"), run3.bytes);
+    const { manifest: m } = await buildRunManifest(
+      config(f, {
+        runId: "travis-full-run3-1-20261025",
+        baseManifest: "runs/travis-full-run2-20261024/manifest.json",
+        previousManifestCid: run3.cid,
+        addressPointsReceipt: path,
+        carryAddressPoints: true,
+      }),
+      deps(f),
+    );
+    expect(m.sources.map((s) => s.name)).toEqual([
+      "austin-3syk-w9eu",
+      "tcad-2026-certified-json",
+      "austin-address-points",
+    ]);
+    const a = m.sources[2];
+    expect(a).toMatchObject({ watermark: receipt.layer_last_edit_date, added: 0, changed: 0, removed: 0 });
+    expect(a?.limitations).toEqual(run3.manifest.sources[2]?.limitations);
+  });
+
+  it("carryAddressPoints refuses a run without the receipt", async () => {
+    const f = await runFixture();
+    await expect(
+      buildRunManifest(config(f, { carryAddressPoints: true }), deps(f)),
+    ).rejects.toThrow(/addressPointsReceipt/);
   });
 
   it("a run without the receipt lists exactly the two original sources", async () => {

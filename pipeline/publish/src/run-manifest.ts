@@ -108,6 +108,18 @@ export const RunManifestConfig = z
     /** Replaces the Austin source's "Comptroller baseline not loaded" note (ERR-73). */
     registryNote: z.string().min(1).optional(),
     /**
+     * A correction run that reuses the base run's County artifacts (Run 3.1): the base's
+     * address-point source is carried like the other sources (delta 0, its limitations kept),
+     * because the reused coordinates still come from it. Needs `addressPointsReceipt`.
+     */
+    carryAddressPoints: z.boolean().optional(),
+    /**
+     * The report written by pipeline/local-stack/scripts/contractor-coverage.ts (ERR-73). With it,
+     * every contractor_* coverageOverrides count must equal the report's five-state totals, and the
+     * totals must add up to the published permits, so hand-copied counts cannot drift.
+     */
+    contractorCoverage: Dir.optional(),
+    /**
      * An incremental run (Run 3): the facts file written by
      * pipeline/local-stack/scripts/incremental-facts.ts for the Austin permits source. With it
      * the Austin source gets the new watermark, the real delta and the new capture-time total;
@@ -382,15 +394,48 @@ export async function buildRunManifest(
   };
 
   // The address-point source belongs to the run that used the layer; it is never carried over.
-  const baseSources = base.sources.filter((s) => s.name !== ADDRESS_POINT_SOURCE);
+  const carryPoints = config.carryAddressPoints === true;
+  if (carryPoints) {
+    if (facts !== null) throw new Error("carryAddressPoints is for a run with no new capture");
+    if (config.addressPointsReceipt === undefined)
+      throw new Error("carryAddressPoints needs addressPointsReceipt");
+    if (!base.sources.some((s) => s.name === ADDRESS_POINT_SOURCE))
+      throw new Error(`carryAddressPoints: the base manifest has no ${ADDRESS_POINT_SOURCE} source`);
+  }
+  const baseSources = base.sources.filter((s) => carryPoints || s.name !== ADDRESS_POINT_SOURCE);
   const sourceLimits = config.sourceLimitations ?? {};
   for (const name of Object.keys(sourceLimits)) {
     if (!baseSources.some((s) => s.name === name))
       throw new Error(`sourceLimitations names ${name}, which the base manifest does not carry`);
   }
   const dropPrefixes = config.dropLimitationPrefixes ?? [];
+  for (const p of dropPrefixes) {
+    if (!base.limitations.some((l) => l.startsWith(p)))
+      throw new Error(`dropLimitationPrefixes: no carried limitation starts with "${p}"`);
+  }
+  if (config.contractorCoverage !== undefined) {
+    const report = JSON.parse(
+      readFileSync(resolvePath(repoRoot, config.contractorCoverage), "utf8"),
+    ) as { permits: number; byState: Record<string, number> };
+    if (report.permits !== emitted.total)
+      throw new Error(
+        `contractorCoverage counts ${report.permits} permits but ${emitted.total} are published`,
+      );
+    for (const [state, n] of Object.entries(report.byState)) {
+      const got = coverage[`contractor_${state}`]?.count;
+      if (got !== n)
+        throw new Error(`coverage contractor_${state} is ${String(got)} but contractorCoverage says ${n}`);
+    }
+  }
   const receiptFor = (name: string): string =>
-    resolvePath(repoRoot, name.startsWith("austin") ? config.austinReceipt : config.tcadReceipt);
+    resolvePath(
+      repoRoot,
+      name === ADDRESS_POINT_SOURCE && config.addressPointsReceipt !== undefined
+        ? config.addressPointsReceipt
+        : name.startsWith("austin")
+          ? config.austinReceipt
+          : config.tcadReceipt,
+    );
   const input: BuildManifestInput = {
     runId: config.runId,
     county: base.county,
@@ -424,7 +469,7 @@ export async function buildRunManifest(
           ? austinSourceInput(facts, carried)
           : unchangedSourceInput({ ...carried, watermark: s.watermark });
       }),
-      ...(config.addressPointsReceipt === undefined
+      ...(config.addressPointsReceipt === undefined || carryPoints
         ? []
         : [addressPointSourceInput(resolvePath(repoRoot, config.addressPointsReceipt))]),
     ],
