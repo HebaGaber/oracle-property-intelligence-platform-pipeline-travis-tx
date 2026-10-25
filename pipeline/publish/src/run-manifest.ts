@@ -27,6 +27,13 @@ import {
   type BuiltManifest,
   type ManifestGroupInput,
 } from "./manifest.js";
+import {
+  austinSourceInput,
+  checkFactsAgainstBase,
+  parseAustinFacts,
+  unchangedSourceInput,
+  type AustinIncrementalFacts,
+} from "./incremental/austin-run.js";
 import { parseRunsIndex } from "./runs-index.js";
 
 export const DEFAULT_BASE_MANIFEST = "runs/travis-full-run1-20261023/manifest.json";
@@ -84,7 +91,16 @@ export const RunManifestConfig = z
       .optional(),
     /** Linked-permit total for the A-16 #6 reconciliation (unpublished; see buildManifest). */
     linkedPermits: z.number().int().nonnegative().optional(),
-    correctionNote: z.string().min(1).default(CORRECTION_NOTE),
+    /** Run 1's Run 2 default; an incremental run states its own note instead (see below). */
+    correctionNote: z.string().min(1).optional(),
+    /**
+     * An incremental run (Run 3): the facts file written by
+     * pipeline/local-stack/scripts/incremental-facts.ts for the Austin permits source. With it
+     * the Austin source gets the new watermark, the real delta and the new capture-time total;
+     * every other source keeps its facts with delta 0 and the reason "source unchanged,
+     * watermark X". `austinReceipt` must then be the receipt file written beside the facts.
+     */
+    austinFacts: Dir.optional(),
   })
   .strict();
 export type RunManifestConfig = z.input<typeof RunManifestConfig>;
@@ -101,6 +117,53 @@ export function restatePermitRows(
 ): string {
   if (baseRows === undefined || baseRows === rows) return limitation;
   return limitation.split(`(${baseRows} rows)`).join(`(${rows} rows)`);
+}
+
+const INCREMENTAL_NOTE_PREFIX = "Incremental refresh of the Austin permits source";
+
+/** Source limitations an earlier incremental run added; they describe that run, not the source. */
+const RUN_SCOPED_SOURCE_LIMITATIONS = [
+  "Incremental run:",
+  "Row count reconciliation:",
+  "source unchanged, watermark",
+  "source bulk re-stamp; delta by content digest",
+  "removals not checked:",
+];
+
+/** A base source's limitations without the ones a previous incremental run attached to itself. */
+export function carriedSourceLimitations(limitations: readonly string[]): string[] {
+  return limitations.filter((l) => !RUN_SCOPED_SOURCE_LIMITATIONS.some((p) => l.startsWith(p)));
+}
+
+/** The run-level limitation of an incremental run: what was refreshed, from which watermark. */
+export function incrementalRunNote(f: AustinIncrementalFacts): string {
+  return (
+    `Incremental refresh of the Austin permits source (watermark ${f.watermarkUsed} to ${f.watermarkNew}): ` +
+    `added ${f.delta.added}, changed ${f.delta.changed}, removed ${f.delta.removed} permits by content digest. ` +
+    `Groups listed here were rebuilt from the Query DB after the merge; their previous CIDs stay fetchable.`
+  );
+}
+
+const PERMIT_LINK_NOTES: Record<string, string> = {
+  permits_no_tcad_geoid:
+    "Query DB property_improvements.unmatched_reason='no_tcad_geoid', request_identifier IS NULL, all captured Austin permits",
+  permits_no_tcad_id: "unmatched_reason='no_tcad_id'",
+  permits_ambiguous_geoid: "unmatched_reason='ambiguous_geoid'",
+  permits_address_unmatched: "unmatched_reason='address_unmatched'",
+  permits_ambiguous_address: "unmatched_reason='ambiguous_address'",
+};
+
+/** The five permit-link exclusion counts of an incremental run, as coverage overrides. */
+function permitLinkCoverage(f: AustinIncrementalFacts): Record<string, CoverageCount> {
+  const out: Record<string, CoverageCount> = {};
+  for (const [key, note] of Object.entries(PERMIT_LINK_NOTES)) {
+    out[key] = {
+      count: f.permitLink[key as keyof typeof f.permitLink],
+      derivation: "aggregate_match",
+      note,
+    };
+  }
+  return out;
 }
 
 function resolvePath(repoRoot: string, path: string): string {
@@ -198,6 +261,20 @@ export async function buildRunManifest(
   }
   if (config.runId === base.runId) throw new Error(`runId ${config.runId} is the base run's id`);
 
+  // An incremental run (Run 3): the Austin source's real delta, watermark and total.
+  const facts =
+    config.austinFacts === undefined
+      ? null
+      : parseAustinFacts(
+          JSON.parse(readFileSync(resolvePath(repoRoot, config.austinFacts), "utf8")),
+        );
+  if (facts !== null) {
+    const austin = base.sources.find((s) => s.name.startsWith("austin"));
+    if (austin === undefined) throw new Error("the base manifest has no Austin source");
+    checkFactsAgainstBase(facts, austin);
+  }
+  const linkedPermits = config.linkedPermits ?? facts?.permitLink.linkedPermits;
+
   const countyDir = resolvePath(repoRoot, config.countyDir);
   const permitsDir = resolvePath(repoRoot, config.permitsDir);
   const countyBatches = config.countyBatches ?? discoverBatches(countyDir, "travis-county");
@@ -219,7 +296,11 @@ export async function buildRunManifest(
   const emitted = publishedRows(permitsGroups, "property_improvement");
   const parcels = publishedRows(countyGroups, "property");
   const baseEmitted = base.coverage.permits_emitted?.count;
-  const overrides = config.coverageOverrides ?? {};
+  // Facts-derived permit-link totals first; an explicit coverageOverrides entry wins.
+  const overrides: Record<string, CoverageCount> = {
+    ...(facts === null ? {} : permitLinkCoverage(facts)),
+    ...((config.coverageOverrides ?? {}) as Record<string, CoverageCount>),
+  };
   if (emitted.total !== baseEmitted) {
     const stale = Object.keys(base.coverage).filter(
       (k) => k !== "permits_emitted" && k !== "parcels_published" && !(k in overrides),
@@ -263,33 +344,67 @@ export async function buildRunManifest(
     previousManifestCid: config.previousManifestCid,
     runDir: repoRoot,
     groups: [...countyGroups, ...permitsGroups],
-    sources: base.sources.map((s) => ({
-      name: s.name,
-      url: s.url,
-      watermark: s.watermark,
-      receipts: receiptFor(s.name),
-      limitations: [...s.limitations],
-      // No new capture: nothing added, changed or removed since the base run.
-      delta: { added: 0, changed: 0, removed: 0 },
-    })),
+    sources: base.sources.map((s) => {
+      if (facts === null) {
+        return {
+          name: s.name,
+          url: s.url,
+          watermark: s.watermark,
+          receipts: receiptFor(s.name),
+          limitations: [...s.limitations],
+          // No new capture: nothing added, changed or removed since the base run.
+          delta: { added: 0, changed: 0, removed: 0 },
+        };
+      }
+      const carried = {
+        name: s.name,
+        url: s.url,
+        receipts: receiptFor(s.name),
+        limitations: carriedSourceLimitations(s.limitations),
+      };
+      return s.name.startsWith("austin")
+        ? austinSourceInput(facts, carried)
+        : unchangedSourceInput({ ...carried, watermark: s.watermark });
+    }),
     profiles: withGazetteerProfile(base.profiles, (deps.gitCommit ?? shortCommit)(repoRoot)),
     coverage,
     ownersRedacted: ownersRedactedOf(base),
     limitations: [
       ...base.limitations
         .filter((l) => !l.startsWith(DRAFT_LIMITATION_PREFIX))
+        // an incremental run is not a correction run: drop the earlier run's own notes
+        .filter(
+          (l) =>
+            facts === null || (l !== CORRECTION_NOTE && !l.startsWith(INCREMENTAL_NOTE_PREFIX)),
+        )
         .map((l) => restatePermitRows(l, baseEmitted, emitted.total)),
-      config.correctionNote,
+      config.correctionNote ?? (facts === null ? CORRECTION_NOTE : incrementalRunNote(facts)),
     ],
     repoRoot,
-    ...(config.linkedPermits === undefined ? {} : { linkedPermits: config.linkedPermits }),
+    ...(linkedPermits === undefined ? {} : { linkedPermits }),
     ...(deps.workTreeStatus === undefined ? {} : { workTreeStatus: deps.workTreeStatus }),
   };
 
   const built = await buildManifest(input);
-  // No new capture: the source facts must come out exactly as the base recorded them.
+  // The source facts must come out exactly as the base recorded them, except the Austin source
+  // of an incremental run, which must carry the facts' new watermark, total and delta.
   for (const [i, s] of built.manifest.sources.entries()) {
     const b = base.sources[i];
+    if (facts !== null && s.name.startsWith("austin")) {
+      if (
+        s.watermark !== facts.watermarkNew ||
+        s.records !== facts.totalAfter ||
+        s.captured_at !== facts.capturedAt ||
+        s.added !== facts.delta.added ||
+        s.changed !== facts.delta.changed ||
+        s.removed !== facts.delta.removed
+      ) {
+        throw new Error(
+          `source ${s.name}: the receipt file does not match the incremental facts (watermark, total, captured_at or delta); regenerate both with incremental-facts.ts`,
+        );
+      }
+      continue;
+    }
     if (
       b === undefined ||
       s.watermark !== b.watermark ||
