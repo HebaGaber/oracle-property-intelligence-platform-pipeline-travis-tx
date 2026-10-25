@@ -54,7 +54,7 @@ import {
   type GhRelease,
   type PublishArgs,
 } from "../src/publish-run.js";
-import { filebaseEnvProblem, spawnRunner } from "../src/sequence.js";
+import { FILEBASE_GATEWAY, filebaseEnvProblem, spawnRunner } from "../src/sequence.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const DEFAULT_CLI = join(
@@ -172,7 +172,13 @@ async function main(): Promise<number> {
       // PUBLISH_FILEBASE_KINDS=car uploads CAR units only (tables wait for the provider; ERR-33).
       kinds: (process.env.PUBLISH_FILEBASE_KINDS ?? "").split(",").filter((k) => k !== ""),
     },
-    carFiles: { loadEnv, now, log },
+    // PUBLISH_DEFER_PINATA=1: Filebase-only readback of the carCid files (PO 2026-10-25, A-16 item 14).
+    carFiles: {
+      loadEnv,
+      now,
+      log,
+      ...(process.env.PUBLISH_DEFER_PINATA === "1" ? { readbackGateways: [FILEBASE_GATEWAY] } : {}),
+    },
     manifest: { loadEnv, now, log },
     cidCopy: {
       now,

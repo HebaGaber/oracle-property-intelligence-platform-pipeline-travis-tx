@@ -556,6 +556,8 @@ export interface CarFilesStepDeps {
   add?: UploadCarFileOptions["add"];
   now: () => Date;
   log: (line: string) => void;
+  /** Readback gateways for the carCid files; default both (see UploadCarFileOptions). */
+  readbackGateways?: readonly string[];
 }
 
 function carFileId(ctx: PublishContext, target: CarFileTarget): string {
@@ -627,6 +629,9 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
         if (target === undefined) throw new Error(`no carCid target ${item.id}`);
         const result = await uploadCarFile(target, {
           env,
+          ...(deps.readbackGateways === undefined
+            ? {}
+            : { readbackGateways: deps.readbackGateways }),
           log: (line) => deps.log(`  ${item.id}: ${line}`),
           ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
           ...(deps.add === undefined ? {} : { add: deps.add }),
