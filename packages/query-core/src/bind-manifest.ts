@@ -66,6 +66,10 @@ export const REQUIRED_TABLES: readonly RequiredTable[] = [
   edge("county", "property_has_sales_history"),
   edge("county", "sales_history_has_person"),
   edge("county", "sales_history_has_company"),
+  // ERR-28: owners hang on the property (current owners), not only on the latest sale. A run
+  // written before Run 3 has no such edge; it binds as an empty typed relation.
+  edge("county", "person_has_property"),
+  edge("county", "company_has_property"),
   edge("county", "person_has_mailing_address"),
   edge("county", "company_has_mailing_address"),
   {

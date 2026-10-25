@@ -222,7 +222,7 @@ export function terminalDateAccepted(
   return date <= asOfDay && (issueDate === null || date >= issueDate);
 }
 
-/** Owner kind on the latest dated sale: company when any company, else person, else unknown. */
+/** Owner kind of the property's current owners (person_has_property / company_has_property): company when any company, else person, else unknown. */
 export const ownerKind = (persons: number, companies: number): "person" | "company" | "unknown" =>
   companies > 0 ? "company" : persons > 0 ? "person" : "unknown";
 
@@ -230,7 +230,7 @@ export type OwnerGapReason =
   "owner_unparsed" | "owner_confidential" | "no_owner_record" | "needs_review";
 
 /**
- * Why a property with a dated sale has no owner. The export cannot tell the cases apart, so the
+ * Why a property has no owner (ERR-28: owners hang on the property, not on the sale). The export cannot tell the cases apart, so the
  * run's coverage counts decide: when exactly one of owner_unparsed / owner_confidential /
  * owner_no_record is non-zero every such row is in it; when several are, needs_review.
  */
@@ -387,8 +387,6 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
       WHEN coalesce(u, 0) > 0 THEN 'owner_unparsed'
       WHEN coalesce(c, 0) > 0 THEN 'owner_confidential'
       ELSE 'no_owner_record' END`,
-  owner_missing_reason:
-    "(has_dated_sale, gap) AS CASE WHEN has_dated_sale THEN gap ELSE 'no_dated_sale' END",
   contractor_resolution:
     "(registry_id) AS CASE WHEN registry_id IS NULL THEN 'unresolved' ELSE 'resolved' END",
   sole_contractor: "(edges, min_cid) AS CASE WHEN edges = 1 THEN min_cid END",

@@ -196,16 +196,17 @@ history (caveat \`partial_history\`, in the manifest).
 
 ## Owner
 
-The current owner is read from the **latest dated sale**: the persons and companies linked to
-that \`sales_history\` record (an assumption: the latest dated sale is the current owner; TCAD
-\`owners[]\` are linked to it by the transform). \`owner_kind\` is \`company\` when any company is
+The current owners are read through the property: the persons and companies linked to it by
+\`person_has_property\` and \`company_has_property\` (ERR-28), independent of any sale, so a
+property with no dated sale still has an owner. \`owner_kind\` is \`company\` when any company is
 linked, else \`person\`, else \`unknown\`; \`owner_name\` lists the persons (by last, first name) and
-then the companies (by name), each once, separated by \`; \`. When there is no owner the reason is
-\`no_dated_sale\` (no dated sale to link to; linking without a sale is deferred to A-04), or for a
-dated sale without an owner \`owner_unparsed\`, \`owner_confidential\` (TCAD confidentiality flag,
-P0-15) or \`no_owner_record\`, read from the manifest \`coverage\` counts \`owner_unparsed\`,
-\`owner_confidential\` and \`owner_no_record\` (when more than one is non-zero the row cannot be
-told apart and lists \`needs_review\`).
+then the companies (by name), each once, separated by \`; \`. A property with no owner lists
+\`owner_unparsed\`, \`owner_confidential\` (TCAD confidentiality flag, P0-15) or \`no_owner_record\`,
+read from the manifest \`coverage\` counts \`owner_unparsed\`, \`owner_confidential\` and
+\`owner_no_record\` (when more than one is non-zero the row cannot be told apart and lists
+\`needs_review\`). \`no_dated_sale\` is a tenure reason only. A run written before Run 3 has no
+property-owner edges: its current owners are the persons and companies of the latest dated sale
+(the latest dated sale is the current owner), so the same rows keep reading.
 
 ## Contractor
 

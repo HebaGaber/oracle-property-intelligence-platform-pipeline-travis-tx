@@ -364,9 +364,9 @@ describe("row schemas (generated from columns.ts)", () => {
     expect(schema?.safeParse(null).success).toBe(false);
   });
 
-  it("owner_name is missing for no_dated_sale first (the other owner reasons are per row)", () => {
+  it("owner_name is missing for no_owner_record first (the other owner reasons are per row; no_dated_sale is a tenure reason only)", () => {
     const col = VIEWS.v_property.find((c) => c.name === "owner_name");
-    expect(col?.missingReason).toBe("no_dated_sale");
+    expect(col?.missingReason).toBe("no_owner_record");
   });
 
   it("builds a schema for every view", () => {

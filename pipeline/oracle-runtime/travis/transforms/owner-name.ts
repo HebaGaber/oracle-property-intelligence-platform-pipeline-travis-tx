@@ -441,3 +441,23 @@ export function parseOwner(owner: OwnerNameFields): ParsedOwner {
     ? { kind: "people", people: [primary], skippedCoOwner: true }
     : { kind: "people", people: [primary, second], skippedCoOwner: extraParty };
 }
+
+/**
+ * Whether individuals' names are written to the County group. The PO decision on publishing
+ * individuals' names county-wide is pending (ERR-28); until it lands the default is `publish`.
+ * `omit` leaves every person (and their mailing address) out without a code change; companies
+ * are unaffected. Read from the OWNER_PERSONS environment variable; any other value throws, so a
+ * typo can never silently publish names.
+ */
+export type OwnerPersonsMode = "publish" | "omit";
+
+export const OWNER_PERSONS_DEFAULT: OwnerPersonsMode = "publish";
+
+export function ownerPersonsMode(
+  env: Record<string, string | undefined> = process.env,
+): OwnerPersonsMode {
+  const v = (env.OWNER_PERSONS ?? "").trim().toLowerCase();
+  if (v === "") return OWNER_PERSONS_DEFAULT;
+  if (v === "publish" || v === "omit") return v;
+  throw new Error(`OWNER_PERSONS must be "publish" or "omit", got "${v}"`);
+}

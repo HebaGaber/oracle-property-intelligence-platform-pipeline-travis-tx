@@ -114,32 +114,46 @@ latest_sale AS (
     PARTITION BY psh.from_cid
     ORDER BY TRY_CAST(sh.ownership_transfer_date AS DATE) DESC, sh.cid) = 1
 ),
--- Persons and companies of the latest dated sale, aggregated separately (no cross join), each
+-- Current owners per property (ERR-28): a person or company is an owner of a property when the
+-- export links them to it (person_has_property / company_has_property), whether or not the
+-- property has a dated sale. A run written before Run 3 has no such edge; its owners are the
+-- people and companies of the latest dated sale (sales_history_has_person / _company), so the
+-- same rows keep reading. Persons and companies are aggregated separately (no cross join), each
 -- record once.
+person_link AS (
+  SELECT from_cid AS person_cid, to_cid AS property_cid FROM county.person_has_property
+  UNION
+  SELECT shp.to_cid, ls.property_cid
+  FROM latest_sale ls
+  JOIN county.sales_history_has_person shp ON shp.from_cid = ls.sale_cid
+),
+company_link AS (
+  SELECT from_cid AS company_cid, to_cid AS property_cid FROM county.company_has_property
+  UNION
+  SELECT shc.to_cid, ls.property_cid
+  FROM latest_sale ls
+  JOIN county.sales_history_has_company shc ON shc.from_cid = ls.sale_cid
+),
 owner_person AS (
-  SELECT ls.property_cid, count(*) AS n,
+  SELECT pl.property_cid, count(*) AS n,
          string_agg(pe.first_name || ' ' || pe.last_name, '; '
            ORDER BY pe.last_name, pe.first_name, pe.cid) AS names
-  FROM latest_sale ls
-  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.sales_history_has_person) shp
-    ON shp.from_cid = ls.sale_cid
+  FROM person_link pl
   JOIN (SELECT * FROM county.person
         QUALIFY row_number() OVER (PARTITION BY cid ORDER BY _part) = 1) pe
-    ON pe.cid = shp.to_cid
-  GROUP BY ls.property_cid
+    ON pe.cid = pl.person_cid
+  GROUP BY pl.property_cid
 ),
 owner_company AS (
-  SELECT ls.property_cid, count(*) AS n,
+  SELECT cl.property_cid, count(*) AS n,
          string_agg(co.name, '; ' ORDER BY co.name, co.cid) AS names
-  FROM latest_sale ls
-  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.sales_history_has_company) shc
-    ON shc.from_cid = ls.sale_cid
+  FROM company_link cl
   JOIN (SELECT * FROM county.company
         QUALIFY row_number() OVER (PARTITION BY cid ORDER BY _part) = 1) co
-    ON co.cid = shc.to_cid
-  GROUP BY ls.property_cid
+    ON co.cid = cl.company_cid
+  GROUP BY cl.property_cid
 ),
--- Why a dated sale has no owner: the export cannot tell, so the run's capture-receipt counts
+-- Why a property has no owner: the export cannot tell, so the run's capture-receipt counts
 -- decide (derive.ts ownerGapReason).
 owner_gap AS (
   SELECT owner_gap_reason(
@@ -148,22 +162,18 @@ owner_gap AS (
     TRY_CAST(json_extract(coverage, '$.owner_no_record.count') AS INTEGER)) AS reason
   FROM meta.run
 ),
--- Mailing addresses of the current owners (persons and companies of the latest dated sale), one
+-- Mailing addresses of the current owners (persons and companies linked to the property), one
 -- row per (property, address). Edges only; the address text is not needed here.
 owner_mailing AS (
-  SELECT ls.property_cid, e.to_cid AS address_cid
-  FROM latest_sale ls
-  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.sales_history_has_person) shp
-    ON shp.from_cid = ls.sale_cid
+  SELECT pl.property_cid, e.to_cid AS address_cid
+  FROM person_link pl
   JOIN (SELECT DISTINCT from_cid, to_cid FROM county.person_has_mailing_address) e
-    ON e.from_cid = shp.to_cid
+    ON e.from_cid = pl.person_cid
   UNION
-  SELECT ls.property_cid, e.to_cid
-  FROM latest_sale ls
-  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.sales_history_has_company) shc
-    ON shc.from_cid = ls.sale_cid
+  SELECT cl.property_cid, e.to_cid
+  FROM company_link cl
   JOIN (SELECT DISTINCT from_cid, to_cid FROM county.company_has_mailing_address) e
-    ON e.from_cid = shc.to_cid
+    ON e.from_cid = cl.company_cid
 ),
 -- The owner mailing area per property: each address's ZIP (first 5 digits) against meta.zcta_area.
 -- Co-owners can mail from different areas; the property takes the most local class among them
@@ -209,7 +219,7 @@ base AS (
     ls.transfer_source AS last_transfer_source,
     owner_kind_of(coalesce(op.n, 0), coalesce(oc.n, 0)) AS owner_kind,
     nullif(concat_ws('; ', op.names, oc.names), '') AS owner_name,
-    owner_missing_reason(ls.transfer_date IS NOT NULL, og.reason) AS owner_reason,
+    og.reason AS owner_reason,
     owner_area_class(m.area_class) AS owner_area_class,
     m.n_mailing,
     m.n_zip,

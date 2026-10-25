@@ -1,5 +1,6 @@
 // A-11 Run 3 (task B gap 2): v_property.owner_area_class from the owners' mailing addresses.
-// Current owners = the persons/companies of the latest dated sale; their address is reached
+// Current owners = the persons/companies linked to the property (person_has_property /
+// company_has_property, ERR-28; no sale needed); their address is reached
 // through person_has_mailing_address / company_has_mailing_address; address.postal_code (when an
 // export carries it) is looked up in the travis-places ZCTA list. Rows are synthetic fixtures.
 import { afterAll, describe, expect, it } from "vitest";
@@ -38,8 +39,9 @@ const NOTZCTA = "baguqeeraown07"; // ZIP that is not a ZCTA
 const NOSALE = "baguqeeraown08"; // no dated sale at all
 const OLD = "baguqeeraown09"; // Travis ZIP on an OLD sale, New York on the latest
 const PLUS4 = "baguqeeraown10"; // ZIP+4 text
+const NOSALE_OWNED = "baguqeeraown11"; // no dated sale, but a current owner with a Travis ZIP
 
-const ALL = [IN, REG, OUT, NOMAIL, NOZIP, MIXED, NOTZCTA, NOSALE, OLD, PLUS4];
+const ALL = [IN, REG, OUT, NOMAIL, NOZIP, MIXED, NOTZCTA, NOSALE, OLD, PLUS4, NOSALE_OWNED];
 
 function tables(withZip: boolean): FixtureTables {
   const addr = (cid: string, zip: string | null): Row =>
@@ -59,17 +61,18 @@ function tables(withZip: boolean): FixtureTables {
         sale("s-old", "2001-01-01"),
         sale("s-new", "2020-01-01"),
       ],
-      sales_history_has_person: [
-        edge(`s-${IN}`, "p-in"),
-        edge(`s-${OUT}`, "p-out"),
-        edge(`s-${NOMAIL}`, "p-nomail"),
-        edge(`s-${NOZIP}`, "p-nozip"),
-        edge("s-MIXED", "p-mixed-out"),
-        edge("s-MIXED", "p-mixed-in"),
-        edge(`s-${NOTZCTA}`, "p-notzcta"),
-        edge("s-old", "p-old"),
-        edge("s-new", "p-new"),
-        edge(`s-${PLUS4}`, "p-plus4"),
+      // p-old is a former owner (sold in 2001): not linked to the property any more.
+      person_has_property: [
+        edge("p-in", IN),
+        edge("p-out", OUT),
+        edge("p-nomail", NOMAIL),
+        edge("p-nozip", NOZIP),
+        edge("p-mixed-out", MIXED),
+        edge("p-mixed-in", MIXED),
+        edge("p-notzcta", NOTZCTA),
+        edge("p-new", OLD),
+        edge("p-plus4", PLUS4),
+        edge("p-nosale", NOSALE_OWNED),
       ],
       person: [
         "p-in",
@@ -82,8 +85,9 @@ function tables(withZip: boolean): FixtureTables {
         "p-old",
         "p-new",
         "p-plus4",
+        "p-nosale",
       ].map(person),
-      sales_history_has_company: [edge(`s-${REG}`, "c-reg")],
+      company_has_property: [edge("c-reg", REG)],
       company: [{ cid: "c-reg", name: "Reg Holdings LLC", request_identifier: "x" }],
       person_has_mailing_address: [
         edge("p-in", "a-in"),
@@ -95,6 +99,7 @@ function tables(withZip: boolean): FixtureTables {
         edge("p-old", "a-in"),
         edge("p-new", "a-out"),
         edge("p-plus4", "a-plus4"),
+        edge("p-nosale", "a-in"),
       ],
       company_has_mailing_address: [edge("c-reg", "a-reg")],
       address: [
@@ -148,7 +153,7 @@ describe("owner_area_class when the export carries address.postal_code", () => {
     expect(p(MIXED)).toMatchObject({ owner_area_class: "in_county", owner_is_out_of_area: false });
   });
 
-  it("only the latest dated sale's owners count", async () => {
+  it("only the property's current owners count (a former owner is not linked)", async () => {
     const p = await rowsOf(tables(true));
     expect(p(OLD)).toMatchObject({ owner_area_class: "out_of_area", owner_is_out_of_area: true });
   });
@@ -160,9 +165,18 @@ describe("owner_area_class when the export carries address.postal_code", () => {
     expect(reasonOf(p(NOMAIL), "owner_is_out_of_area")).toBe("no_mailing_address");
     expect(reasonOf(p(NOZIP), "owner_area_class")).toBe("no_mailing_address");
     expect(reasonOf(p(NOTZCTA), "owner_area_class")).toBe("zip_not_zcta");
-    // no dated sale: the owner reason is the area reason
+    // no owner at all: the owner reason is the area reason
     expect(p(NOSALE)?.owner_area_class).toBe("unknown");
-    expect(reasonOf(p(NOSALE), "owner_area_class")).toBe("no_dated_sale");
+    expect(reasonOf(p(NOSALE), "owner_area_class")).toBe("no_owner_record");
+  });
+
+  it("a property with no dated sale still gets its owner area from the property edge", async () => {
+    const p = await rowsOf(tables(true));
+    expect(p(NOSALE_OWNED)).toMatchObject({
+      owner_area_class: "in_county",
+      owner_is_out_of_area: false,
+      last_ownership_transfer_date: null,
+    });
   });
 });
 

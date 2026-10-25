@@ -293,7 +293,7 @@ const V_PROPERTY: readonly Column[] = [
   enumCol(
     "owner_kind",
     false,
-    "derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown",
+    "derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown",
     "Owner kind",
     null,
   ),
@@ -302,9 +302,9 @@ const V_PROPERTY: readonly Column[] = [
     "string",
     V,
     true,
-    "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale",
-    "Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review",
-    "no_dated_sale",
+    "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale)",
+    "Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review",
+    "no_owner_record",
   ),
   enumCol(
     "owner_area_class",

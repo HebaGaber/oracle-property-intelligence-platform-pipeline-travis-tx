@@ -12,6 +12,7 @@ import {
   transformTcadCounty,
   type CountyTransformInput,
 } from "../../travis/transforms/tcad-county.js";
+import { ownerPersonsMode } from "../../travis/transforms/owner-name.js";
 import { tcadRecord } from "../fixtures/tcad-records.js";
 
 const CIDS = {
@@ -283,6 +284,52 @@ describe("transformTcadCounty: provenance and links", () => {
       to: { "/": "./property.json" },
     });
     expect(out.counts).toMatchObject({ owner: "no_dated_sale", companies_written: 1 });
+  });
+});
+
+describe("transformTcadCounty: OWNER_PERSONS switch (ERR-28, PO decision pending)", () => {
+  const withMode = (
+    ownerPersons: "publish" | "omit",
+    over = { pID: 100020, geoID: "0100030105" },
+  ) =>
+    transformTcadCounty({
+      ...input(over, "1985", "property_built_year", (raw) => {
+        owners(raw)[0] = {
+          ...owners(raw)[0],
+          name: "DOE JANE & JOHN",
+          firstName: null,
+          lastName: null,
+        };
+      }),
+      ownerPersons,
+    });
+
+  it("publish (the default) writes the individuals; omit writes no person and no person mailing address", () => {
+    const published = withMode("publish");
+    expect(published.counts).toMatchObject({ persons_written: 2, persons_omitted: 0 });
+    const omitted = withMode("omit");
+    expect(omitted.counts).toMatchObject({
+      persons_written: 0,
+      persons_omitted: 2,
+      owner: "suppressed",
+    });
+    expect(Object.keys(omitted.files).some((n) => OWNER_FILE.test(n))).toBe(false);
+    for (const text of Object.values(omitted.files)) expect(text).not.toContain("Jane");
+  });
+
+  it("leaves companies alone in omit mode", () => {
+    const out = transformTcadCounty({
+      ...input({ pID: 100021, geoID: "0100030105" }),
+      ownerPersons: "omit",
+    });
+    expect(out.counts).toMatchObject({ companies_written: 1, persons_omitted: 0 });
+    expect(out.counts.owner).not.toBe("suppressed");
+  });
+
+  it("the environment variable decides when the input does not; a typo throws", () => {
+    expect(ownerPersonsMode({})).toBe("publish");
+    expect(ownerPersonsMode({ OWNER_PERSONS: "OMIT" })).toBe("omit");
+    expect(() => ownerPersonsMode({ OWNER_PERSONS: "off" })).toThrow(/OWNER_PERSONS/);
   });
 });
 

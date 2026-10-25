@@ -91,7 +91,7 @@ describe("contract/v1 sample (T063)", () => {
       "Market value is absent",
       "`captured_at` is source-level",
       "falls back to the source-level URL",
-      "latest dated sale is the current owner",
+      "person_has_property",
       "a schema contract, not a distribution",
       "skewed to open permits",
       "For raw-table consumers",

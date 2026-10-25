@@ -288,15 +288,6 @@ describe("owner kind, name and missing reason (code-review #2, donphan M1)", () 
       ),
     ).toBe(reason);
   });
-
-  it("an owner without a dated sale is missing for no_dated_sale, else for the gap reason", async () => {
-    expect(d.ownerMissingReason(false, "owner_unparsed")).toBe("no_dated_sale");
-    expect(d.ownerMissingReason(true, "owner_unparsed")).toBe("owner_unparsed");
-    expect(await sql(`owner_missing_reason(false, 'owner_unparsed')`)).toBe("no_dated_sale");
-    expect(await sql(`owner_missing_reason(true, 'owner_confidential')`)).toBe(
-      "owner_confidential",
-    );
-  });
 });
 
 describe("contractor edge count (donphan M4: never pick one of several)", () => {

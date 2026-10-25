@@ -90,10 +90,12 @@ describe("view plan (ERR-19)", () => {
       [
         "county.company",
         "county.company_has_mailing_address",
+        "county.company_has_property",
         "county.geometry",
         "county.parcel_has_geometry",
         "county.person",
         "county.person_has_mailing_address",
+        "county.person_has_property",
         "county.property",
         "county.property_has_parcel",
         "county.property_has_sales_history",

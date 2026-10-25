@@ -33,7 +33,12 @@ import {
   type TcadRecord,
 } from "./shared-seed.js";
 import type { DataGroupCids } from "./lexicon-manifest.js";
-import { parseOwner, type ParsedPerson } from "./owner-name.js";
+import {
+  ownerPersonsMode,
+  parseOwner,
+  type OwnerPersonsMode,
+  type ParsedPerson,
+} from "./owner-name.js";
 import { transferEventsOf } from "../tcad/tenure.js";
 
 export { ENTITY_NAME, PERSON_NAME } from "./owner-name.js";
@@ -138,6 +143,12 @@ export interface CountyTransformInput {
    * entity keeps the TCAD export request.
    */
   geometrySourceUrl?: string | null;
+  /**
+   * Whether individuals' names are written (ERR-28; PO decision pending). Default: the
+   * OWNER_PERSONS environment variable, itself defaulting to "publish". "omit" writes no person
+   * and no person mailing address; the property then reads as owner_confidential (withheld).
+   */
+  ownerPersons?: OwnerPersonsMode;
 }
 
 export type OwnerOutcome =
@@ -155,6 +166,8 @@ export interface CountyTransformCounts {
   /** Owner entries whose second named party could not be read with certainty (first one kept). */
   owners_co_owner_skipped: number;
   persons_written: number;
+  /** Individuals left out because ownerPersons is "omit". */
+  persons_omitted: number;
   companies_written: number;
   /** Mailing addresses written in the `unnormalized_address` form (a component broke a pattern). */
   mailing_address_fallback: number;
@@ -351,6 +364,8 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
   let skippedCoOwners = 0;
   let mailingFallback = 0;
   let personsWritten = 0;
+  let personsOmitted = 0;
+  const personsMode = input.ownerPersons ?? ownerPersonsMode();
   let companiesWritten = 0;
   if (confidential) owner = "suppressed";
   else if (record.owners.length > 0) {
@@ -398,6 +413,10 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
         lastName: o.lastName,
       });
       const entities: string[] = [];
+      if (parsed.kind === "people" && personsMode === "omit") {
+        personsOmitted += parsed.people.length;
+        continue;
+      }
       if (parsed.kind === "people") {
         for (const p of parsed.people) entities.push(personFile(p));
         if (parsed.skippedCoOwner) skippedCoOwners += 1;
@@ -448,11 +467,16 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
     }
     personsWritten = persons;
     companiesWritten = companies;
+    // Nothing written: withheld by policy (persons omitted, nothing unparsed) or unparsed. The
+    // view reads owners through the property edges, so a property whose owners could not be
+    // written is counted for what it is whether or not it has a dated sale.
     owner =
-      dated.length === 0
-        ? "no_dated_sale"
-        : kinds.size === 0
-          ? "unparsed"
+      kinds.size === 0
+        ? personsOmitted > 0 && unparsed === 0
+          ? "suppressed"
+          : "unparsed"
+        : dated.length === 0
+          ? "no_dated_sale"
           : kinds.size === 2
             ? "mixed"
             : ([...kinds][0] as "person" | "company");
@@ -481,6 +505,7 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
       owners_unparsed: unparsed,
       owners_co_owner_skipped: skippedCoOwners,
       persons_written: personsWritten,
+      persons_omitted: personsOmitted,
       companies_written: companiesWritten,
       mailing_address_fallback: mailingFallback,
       warnings,

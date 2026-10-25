@@ -113,16 +113,17 @@ history (caveat `partial_history`, in the manifest).
 
 ## Owner
 
-The current owner is read from the **latest dated sale**: the persons and companies linked to
-that `sales_history` record (an assumption: the latest dated sale is the current owner; TCAD
-`owners[]` are linked to it by the transform). `owner_kind` is `company` when any company is
+The current owners are read through the property: the persons and companies linked to it by
+`person_has_property` and `company_has_property` (ERR-28), independent of any sale, so a
+property with no dated sale still has an owner. `owner_kind` is `company` when any company is
 linked, else `person`, else `unknown`; `owner_name` lists the persons (by last, first name) and
-then the companies (by name), each once, separated by `; `. When there is no owner the reason is
-`no_dated_sale` (no dated sale to link to; linking without a sale is deferred to A-04), or for a
-dated sale without an owner `owner_unparsed`, `owner_confidential` (TCAD confidentiality flag,
-P0-15) or `no_owner_record`, read from the manifest `coverage` counts `owner_unparsed`,
-`owner_confidential` and `owner_no_record` (when more than one is non-zero the row cannot be
-told apart and lists `needs_review`).
+then the companies (by name), each once, separated by `; `. A property with no owner lists
+`owner_unparsed`, `owner_confidential` (TCAD confidentiality flag, P0-15) or `no_owner_record`,
+read from the manifest `coverage` counts `owner_unparsed`, `owner_confidential` and
+`owner_no_record` (when more than one is non-zero the row cannot be told apart and lists
+`needs_review`). `no_dated_sale` is a tenure reason only. A run written before Run 3 has no
+property-owner edges: its current owners are the persons and companies of the latest dated sale
+(the latest dated sale is the current owner), so the same rows keep reading.
 
 ## Contractor
 
@@ -268,8 +269,8 @@ Two further notes from the pilot export:
 | `tenure_years` | `INTEGER` | yes | Owner tenure | derived: whole years from last_ownership_transfer_date to as_of | `no_dated_sale` |
 | `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `deed_date`, `unknown`) | derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
-| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown | never empty |
-| `owner_name` | `VARCHAR` | yes | Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale | `no_dated_sale` |
+| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown | never empty |
+| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale) | `no_owner_record` |
 | `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
@@ -300,8 +301,8 @@ Two further notes from the pilot export:
 | `tenure_years` | `INTEGER` | yes | Owner tenure | derived: whole years from last_ownership_transfer_date to as_of | `no_dated_sale` |
 | `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `deed_date`, `unknown`) | derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
-| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown | never empty |
-| `owner_name` | `VARCHAR` | yes | Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale | `no_dated_sale` |
+| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown | never empty |
+| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale) | `no_owner_record` |
 | `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |

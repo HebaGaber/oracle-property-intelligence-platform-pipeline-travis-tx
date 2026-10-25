@@ -126,13 +126,14 @@ const TABLES: FixtureTables = {
       { cid: "sh1", ownership_transfer_date: "2015-07-07", request_identifier: "x" },
       { cid: "sh3", ownership_transfer_date: "2010-02-02", request_identifier: "x" },
     ],
-    sales_history_has_person: [edge("sh1", "pe1"), edge("sh1", "pe2"), edge("sh0", "pe3")],
+    // ERR-28: owners hang on the property. pe3 owns a property with no dated sale at all.
+    person_has_property: [edge("pe1", P1), edge("pe2", P1), edge("pe3", P2)],
     person: [
       { cid: "pe1", first_name: "Ann", last_name: "Zed", request_identifier: "x" },
       { cid: "pe2", first_name: "Bob", last_name: "Young", request_identifier: "x" },
       { cid: "pe3", first_name: "Old", last_name: "Owner", request_identifier: "x" },
     ],
-    sales_history_has_company: [edge("sh1", "co1"), edge("sh1", "co2")],
+    company_has_property: [edge("co1", P1), edge("co2", P1)],
     company: [
       { cid: "co1", name: "Zeta LLC", request_identifier: "x" },
       { cid: "co2", name: "Alpha Inc", request_identifier: "x" },
@@ -317,7 +318,7 @@ describe("contractor edges (donphan M4)", () => {
 });
 
 describe("owner (code-review #2, donphan M1)", () => {
-  it("2 persons + 2 companies on the latest sale: company, each name once, persons then companies", () => {
+  it("2 persons + 2 companies on the property: company, each name once, persons then companies", () => {
     expect(prop(P1)).toMatchObject({
       owner_kind: "company",
       owner_name: "Bob Young; Ann Zed; Alpha Inc; Zeta LLC",
@@ -325,13 +326,17 @@ describe("owner (code-review #2, donphan M1)", () => {
     });
   });
 
-  it("no dated sale → owner missing for no_dated_sale", () => {
-    expect(prop(P2)).toMatchObject({ owner_kind: "unknown", owner_name: null });
-    expect(reasonOf(prop(P2), "owner_name")).toBe("no_dated_sale");
-    expect(reasonOf(prop(P2), "owner_kind")).toBe("no_dated_sale");
+  it("no dated sale does not hide the owner; tenure keeps its own no_dated_sale reason", () => {
+    expect(prop(P2)).toMatchObject({
+      owner_kind: "person",
+      owner_name: "Old Owner",
+      last_ownership_transfer_date: null,
+    });
+    expect(reasonOf(prop(P2), "owner_name")).toBeUndefined();
+    expect(reasonOf(prop(P2), "tenure_years")).toBe("no_dated_sale");
   });
 
-  it("a dated sale without an owner and no gap counts → no_owner_record", () => {
+  it("a property without an owner and no gap counts → no_owner_record", () => {
     expect(reasonOf(prop(P3), "owner_name")).toBe("no_owner_record");
   });
 
@@ -340,7 +345,7 @@ describe("owner (code-review #2, donphan M1)", () => {
     [{ owner_confidential: 1 }, "owner_confidential"],
     [{ owner_no_record: 2 }, "no_owner_record"],
     [{ owner_unparsed: 1, owner_confidential: 1 }, "needs_review"],
-  ] as const)("coverage %o → %s for a dated sale without an owner", async (counts, reason) => {
+  ] as const)("coverage %o → %s for a property without an owner", async (counts, reason) => {
     const f = await bindFixture(TABLES, (m) => {
       withoutOwnerCounts(m);
       for (const [k, n] of Object.entries(counts))
@@ -350,6 +355,38 @@ describe("owner (code-review #2, donphan M1)", () => {
       const rows = await f.rows(`SELECT missing FROM v_property WHERE property_cid = '${P3}'`);
       expect(reasonOf(rows[0], "owner_name")).toBe(reason);
       expect(reasonOf(rows[0], "owner_kind")).toBe(reason);
+    } finally {
+      f.close();
+    }
+  });
+});
+
+describe("owners of a run written before Run 3 (sale edges only, no property edges)", () => {
+  it("the persons and companies of the latest dated sale still read as the owners", async () => {
+    const {
+      person_has_property: _p,
+      company_has_property: _c,
+      ...legacy
+    } = TABLES.county as Record<string, unknown>;
+    const f = await bindFixture(
+      {
+        ...TABLES,
+        county: {
+          ...legacy,
+          sales_history_has_person: [edge("sh3", "pe1"), edge("sh0", "pe3")],
+          sales_history_has_company: [edge("sh3", "co1")],
+        },
+      } as typeof TABLES,
+      withoutOwnerCounts,
+    );
+    try {
+      const rows = await f.rows(
+        `SELECT property_cid, owner_kind, owner_name FROM v_property WHERE property_cid IN ('${P1}', '${P3}')`,
+      );
+      const by = (cid: string) => rows.find((r) => r.property_cid === cid);
+      // P3: its latest sale (sh3) has Ann Zed and Zeta LLC. P1: only the older sale sh0 has an owner.
+      expect(by(P3)).toMatchObject({ owner_kind: "company", owner_name: "Ann Zed; Zeta LLC" });
+      expect(by(P1)?.owner_name).toBeNull();
     } finally {
       f.close();
     }
