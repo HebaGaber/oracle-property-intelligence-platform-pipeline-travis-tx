@@ -100,6 +100,31 @@ describe("Property drawer (FR-004b, FR-005, TC-030, TC-032, TC-034)", () => {
     expect(drawer.textContent).not.toMatch(/licen[cs]e/i);
   });
 
+  it("follows the Property boards: chips, Street View box, Ask link and the evidence chain", () => {
+    render(
+      <MemoryRouter>
+        <PropertyDrawer row={row} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    const drawer = screen.getByRole("dialog");
+    expect(drawer.querySelector("[data-address-reason]")?.textContent).toContain(
+      EXPLORE_TEXTS.noCarrier,
+    );
+    expect(drawer.querySelector("[data-drawer-chips] [data-permit-chip]")).not.toBeNull();
+    expect(drawer.querySelector("[data-street-view]")?.textContent).toContain(
+      "Street View: coming soon",
+    );
+    const ask = screen.getByRole("link", { name: /Ask about this property/ });
+    expect(ask.getAttribute("href")).toMatch(/^\/tx\/travis\/explore\?mode=ai&q=/);
+    expect(decodeURIComponent(ask.getAttribute("href") ?? "")).toContain(row.property_cid);
+    const chain = drawer.querySelector("[data-evidence-chain]");
+    expect(chain?.querySelectorAll("li")).toHaveLength(4);
+    expect(chain?.querySelector("[data-cid]")?.getAttribute("data-cid")).toBe(
+      row.provenance.table_cid,
+    );
+    expect(screen.getByRole("button", { name: /Show in the list/ })).toBeDefined();
+  });
+
   it("closes through its Close button", () => {
     const onClose = vi.fn();
     render(
