@@ -19,6 +19,7 @@ import { CidV1 } from "@countylens/contract";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { BoundRun, QueryEngine } from "@countylens/query-core";
 import { bindOnce, getEngine } from "../engine/duckdb-node.js";
+import { lazyViewEngine, type BindViews } from "../engine/lazy-views.js";
 import { createCitationRegistry, type Match } from "./citations.js";
 import { agentObservability } from "./observability.js";
 import {
@@ -355,7 +356,10 @@ export interface AskDeps {
   reservationUsd: number;
   model: LanguageModel;
   getEngine: () => Promise<QueryEngine>;
+  /** The initial bind: just `v_run`, enough for the run echo (ERR-19 follow-up). */
   bindOnce: (manifestCid: string) => Promise<BoundRun>;
+  /** Binds the views a tool query names, lazily, per statement (default: bindOnce). */
+  bindViews: BindViews;
   resolveManifestCid: ResolveManifestCid;
   runModelLoop: RunModelLoop;
 }
@@ -387,7 +391,8 @@ export async function runAgentAsk(
   const maxOutputTokens = overrides.maxOutputTokens ?? MAX_OUTPUT_TOKENS;
   const model = overrides.model ?? getModel(env);
   const getEngineFn = overrides.getEngine ?? getEngine;
-  const bindFn = overrides.bindOnce ?? ((manifestCid: string) => bindOnce(manifestCid));
+  const bindFn = overrides.bindOnce ?? ((manifestCid: string) => bindOnce(manifestCid, ["v_run"]));
+  const bindViews = overrides.bindViews ?? bindOnce;
   const resolveManifestCid = overrides.resolveManifestCid ?? defaultResolveManifestCid;
   const runModelLoop = overrides.runModelLoop ?? defaultRunModelLoop;
 
@@ -409,7 +414,11 @@ export async function runAgentAsk(
   const bound = await bindFn(manifestCid);
 
   const registry = createCitationRegistry();
-  const tools = createAgentTools({ engine, bound, registry });
+  const tools = createAgentTools({
+    engine: lazyViewEngine(engine, manifestCid, bindViews),
+    bound,
+    registry,
+  });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), abortTimeoutMs);
