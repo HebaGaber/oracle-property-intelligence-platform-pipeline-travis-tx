@@ -306,7 +306,7 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
     files["geometry.json"] = jsonFile({
       ...base,
       ...(input.geometrySourceUrl
-        ? { source_http_request: { method: "GET", url: input.geometrySourceUrl } }
+        ? { source_http_request: requestOf(input.geometrySourceUrl) }
         : {}),
       latitude: point.latitude,
       longitude: point.longitude,
@@ -510,5 +510,24 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
       mailing_address_fallback: mailingFallback,
       warnings,
     },
+  };
+}
+
+/**
+ * A GET the lexicon accepts: `url` is the bare path (its pattern forbids `?` and `&`), the query
+ * parameters go in `multiValueQueryString` (elephant-cli validate rejects a query in `url`).
+ */
+export function requestOf(full: string): {
+  method: "GET";
+  url: string;
+  multiValueQueryString?: Record<string, string[]>;
+} {
+  const u = new URL(full);
+  const params: Record<string, string[]> = {};
+  for (const [k, v] of u.searchParams) (params[k] ??= []).push(v);
+  return {
+    method: "GET",
+    url: `${u.origin}${u.pathname}`,
+    ...(Object.keys(params).length > 0 ? { multiValueQueryString: params } : {}),
   };
 }

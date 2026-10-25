@@ -47,7 +47,8 @@ function permit(
 
 const ADDRESS_POINT_REQUEST = JSON.stringify({
   method: "GET",
-  url: "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/FeatureServer/0/query?objectIds=77&outFields=*&outSR=4326&f=json",
+  url: "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/FeatureServer/0/query",
+  multiValueQueryString: { objectIds: ["77"], outFields: ["*"], outSR: ["4326"], f: ["json"] },
 });
 
 const P1 = "baguqeeraprop1";

@@ -345,7 +345,11 @@ describe("County group geometry for an address_point (write-group geometryFor)",
     expect(g.geometry_rule).toBe("address_point");
     const geo = must(geometryOf(g.files));
     expect(geo).toMatchObject({ latitude: 30.31, longitude: -97.71 });
-    expect(geo.source_http_request).toEqual({ method: "GET", url });
+    expect(geo.source_http_request).toEqual({
+      method: "GET",
+      url: "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/FeatureServer/0/query",
+      multiValueQueryString: { objectIds: ["77"], outFields: ["*"], outSR: ["4326"], f: ["json"] },
+    });
   });
 
   it("an address_point without a source URL is an error (no invented provenance)", () => {

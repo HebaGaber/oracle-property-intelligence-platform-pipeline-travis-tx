@@ -243,6 +243,15 @@ describe("parseOwner (A-11, ERR-28)", () => {
     }
   });
 
+  it("a second line that is only a unit designator is not a party (condo owners)", () => {
+    const joint = parseOwner({ name: "STOTESBERY WILLIAM D & SUSAN R", nameSecondary: "UNIT A" });
+    expect(joint.kind).toBe("people");
+    if (joint.kind === "people") expect(joint.people).toHaveLength(2);
+    const one = parseOwner({ name: "DOE JANE", nameSecondary: "APT 4" });
+    expect(one.kind === "people" && one.people.length === 1 && !one.skippedCoOwner).toBe(true);
+    expect(parseOwner({ name: "DOE JANE", nameSecondary: "UNIT OWNERS ASSOC" }).kind).toBe("unparsed");
+  });
+
   it("keeps the entity detection of earlier runs", () => {
     for (const n of ["ACME LLC", "ACME INC", "ACME LP", "FIRST BAPTIST CHURCH", "AUSTIN ISD"]) {
       expect(ENTITY_NAME.test(n), n).toBe(true);

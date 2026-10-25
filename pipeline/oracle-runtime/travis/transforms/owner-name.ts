@@ -274,6 +274,9 @@ const TRUST_TAIL = new Set([
   "TRS",
 ]);
 
+/** A second name line that is only a unit designator ("UNIT A", "APT 4", "STE 200", "#B"). */
+const UNIT_LINE = /^(UNIT|APT|APARTMENT|STE|SUITE|BLDG|BUILDING|#)\s*[A-Z0-9-]{1,6}$/;
+
 /** True when the text carries an entity word or a lookalike organisation word. */
 function isOrgText(text: string): boolean {
   return ENTITY_NAME.test(text) || text.split(" ").some((w) => NON_PERSON_WORD.has(w));
@@ -375,7 +378,9 @@ function natural(seg: Segment, sharedLast: string): ParsedPerson | null {
  */
 export function parseOwner(owner: OwnerNameFields): ParsedOwner {
   const name = squash(owner.name).toUpperCase().replace(/ AND /g, " & ");
-  const secondary = squash(owner.nameSecondary).toUpperCase();
+  // A condo owner's second line is often only the unit ("UNIT A"): an address designator, not a party.
+  const rawSecondary = squash(owner.nameSecondary).toUpperCase();
+  const secondary = UNIT_LINE.test(rawSecondary) ? "" : rawSecondary;
   if (name !== "" && ENTITY_NAME.test(name)) return { kind: "company", name: squash(owner.name) };
 
   if (nonEmpty(owner.firstName) && nonEmpty(owner.lastName)) {
