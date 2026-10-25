@@ -16,7 +16,6 @@ import { cidOfBytes } from "../../pipeline/publish/src/cid.js";
 import { jcsBytes } from "../../pipeline/publish/src/jcs.js";
 import {
   ALL_VERIFIED_TEXT,
-  EXIT_SAMPLE_ONLY,
   GATEWAYS,
   MAX_ATTEMPTS,
   STREAM_THRESHOLD_BYTES,
@@ -228,9 +227,8 @@ describe("exit code (A11-16)", () => {
     expect(exitCodeFor(report({}))).toBe(0);
   });
 
-  it("a sample that passes is not a full verification: exit 3, never 0", () => {
-    expect(exitCodeFor(report({ sample: { checked: 2, total: 240 } }))).toBe(EXIT_SAMPLE_ONLY);
-    expect(EXIT_SAMPLE_ONLY).toBe(3);
+  it("a sample that passes exits 0 (hosted TC-040); its log line says SAMPLE VERIFIED, not ALL", () => {
+    expect(exitCodeFor(report({ sample: { checked: 2, total: 240 } }))).toBe(0);
   });
 
   it("any failure exits 1, sample or not", () => {

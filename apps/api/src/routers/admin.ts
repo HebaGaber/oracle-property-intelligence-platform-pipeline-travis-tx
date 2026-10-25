@@ -49,7 +49,12 @@ export type AdminMeOutput = z.infer<typeof AdminMeOutput>;
 
 export const RunStartInput = z.object({ mode: z.enum(["publish", "dry_run"]) }).strict();
 export const RunStopInput = z.object({ commandId: z.uuid().optional() }).strict();
-export const RunRetryInput = z.object({ targetRunId: z.string().min(1) }).strict();
+export const RunRetryInput = z
+  .object({
+    targetRunId: z.string().min(1),
+    mode: z.enum(["publish", "dry_run"]).default("publish"),
+  })
+  .strict();
 export const RunCommandSent = z.object({ commandId: z.uuid(), expiresAt: z.string() }).strict();
 export type RunCommandSent = z.infer<typeof RunCommandSent>;
 
@@ -381,7 +386,7 @@ export const adminRouter = router({
       return send(ctx.user, {
         action: "retry",
         window: null,
-        mode: "publish",
+        mode: input.mode,
         targetRunId: input.targetRunId,
       });
     }),

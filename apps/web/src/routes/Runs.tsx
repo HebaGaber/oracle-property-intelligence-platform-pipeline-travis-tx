@@ -101,12 +101,7 @@ export function Component(): ReactElement {
           run={run}
           adminSlot={
             access.kind === "admin" ? (
-              <AdminActions
-                access={access}
-                liveState={live.state}
-                refresh={live.refresh}
-                latestRunId={latest.runId}
-              />
+              <AdminActions access={access} liveState={live.state} refresh={live.refresh} />
             ) : access.kind === "signed-out" ? (
               <Link className={styles.textLink} to={ROUTES.adminSignIn}>
                 <Icon name="admin_panel_settings" size="medium" />
