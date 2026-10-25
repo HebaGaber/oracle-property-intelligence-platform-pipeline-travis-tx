@@ -201,6 +201,10 @@ Each carried item has one stable ID. The plan assigns each to a builder group or
 | A11-10 | A-11 `/code-review medium` findings (a)–(e) | Close (b), (c), (e); (a) policy noted; (d) Close |
 | A11-11 | Permits first-load time; tighten the 60 s limit | Close (measure after paging) |
 | A11-12 | smeargle on Permits and Runs | Close (AC-12 parity run) |
+| A11-14 | Second independent pin + independent public gateway, 10 county CARs on the newest Release | On hold with A11-3 (PO 2026-10-26); attaching the county CARs to the Release is closed here (Me) |
+| A11-15 | Run 3 published (index step) | PO go-ahead for the `index` step; then closes A11-2 and A13-4 |
+| A11-16 | `/code-review medium` findings on the Run 3 corrections | Close `verify-manifest --sample` exit code, `openDaysReason` default, untimed downloads (G3); data-precedence findings Exception (change only from Run 4) |
+| A11-17 | Reviewer findings R2–R11 on Run 3 | Close R4–R6 publish tooling (G3, with A11-10b) and R10–R11 labels/docs (Me); R2, R3, R8, R9 Exception (Run 4 data) |
 | A13-1 | Explore search on the full county | Close (AC-13 index) |
 | A13-2 | SQL panel first query | Close (lazy binding) |
 | A13-3 | LCP on manifest-driven pages | Close (run list first) |

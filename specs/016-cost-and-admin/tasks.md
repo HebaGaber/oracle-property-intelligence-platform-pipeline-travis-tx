@@ -5,12 +5,12 @@
 Format: `[ID] [P?] [Group] Description — files — AC / Closure ID`. `[P]` = can run in parallel with the other tasks of the same phase. Groups own disjoint files (plan.md § Project Structure, updated below); a builder never edits another group's file.
 
 **Group ownership (final):**
-- **G1 metagross · infra + API:** `infra/src/api-stack.ts`, `ops-stack.ts`, `web-stack.ts`, `config.ts`, `infra/test/*` (except `admin-queue.test.ts`), `apps/api/src/trpc.ts`, `context.ts`, `routers/admin.ts`, `routers/index.ts`, `apps/api/package.json`.
-- **G2a metagross · admin + Coverage + Runs pages:** `apps/web/src/auth/*`, `routes/AdminSignIn.tsx`, `Activity.tsx`, `Coverage*.tsx`, `Runs*.tsx`, `Runs.shared.tsx`, `data/run-loader.ts`, `content/*`, `scripts/build-cost-limits.mjs`, `packages/shared/src/routes.ts`, `routes/route-list.ts`, `tests/e2e/A-16.spec.ts`, `tests/e2e/lib/auth.ts`, `playwright.config.ts`.
-- **G2b metagross · parity on every other page + speed:** `apps/web/src/routes/{Hub,Explore*,PropertyDrawer,DataCatalog,DataManifest,DataVerify,HelpMcp,Legal*,ComingSoon,Permits*}.tsx` and their `.module.css`, shared `components/*` and shell, `engine/load-permits.ts`, `routes/ExploreSql.engine.ts`, `tests/e2e/responsive.spec.ts`, `tests/e2e/lib/a13-fixtures.ts`.
+- **G1 metagross · infra + API:** `infra/src/api-stack.ts`, `ops-stack.ts`, `web-stack.ts`, `data-stack.ts`, `config.ts`, `infra/test/*` (except `admin-queue.test.ts`), `apps/api/src/trpc.ts`, `context.ts`, `routers/admin.ts`, `routers/index.ts`, `apps/api/package.json`.
+- **G2a metagross · admin + Coverage + Runs pages:** `apps/web/src/auth/*`, `routes/AdminSignIn.tsx`, `Activity.tsx`, `Coverage*.tsx`, `Runs*.tsx`, `Runs.shared.tsx`, `data/run-loader.ts`, `content/*`, `scripts/build-cost-limits.mjs`, `packages/shared/src/routes.ts`, `routes/route-list.ts`, `tests/e2e/A-16-admin.spec.ts`, `tests/e2e/A-16-cost.spec.ts`, `tests/e2e/lib/auth.ts`, `playwright.config.ts`.
+- **G2b metagross · parity on every other page + speed:** `apps/web/src/routes/{Hub,Explore*,PropertyDrawer,DataCatalog,DataManifest,DataVerify,HelpMcp,Legal*,ComingSoon,Permits*}.tsx` and their `.module.css`, shared `components/*` and shell, `engine/load-permits.ts`, `routes/ExploreSql.engine.ts`, `tests/e2e/responsive.spec.ts`, `tests/e2e/lib/a13-fixtures.ts`, `tests/e2e/A-13*.spec.ts`, `tests/e2e/A-14*.spec.ts` (unparking only), `tests/e2e/A-16-parity.spec.ts`, `tests/e2e/A-16-county.spec.ts`.
 - **G3 machamp · contract, queue, bridge, pipeline closures:** `packages/contract/src/{run-command,live-run,index}.ts`, `infra/src/admin-queue.ts`, `infra/test/admin-queue.test.ts`, `pipeline/bridge/*`, `pipeline/local-stack/scripts/run-lock.ts`, `batch-hash-validate-export.sh`, `pipeline/oracle-runtime/travis/permits/write-group.ts`, `run-manifest.ts`, `pipeline/publish/src/manifest.ts`.
 - **G4 machamp · per-run Explore index + agent/MCP read path:** `pipeline/publish/src/explore-index.ts`, `pipeline/publish/scripts/build-explore-index.ts`, `pipeline/publish/test/explore-index.test.ts`, `apps/api/src/engine/**`, `apps/api/src/routers/explore.ts`, `apps/api/src/agent/**`, `apps/api/src/mcp/**`.
-- **Me (main session):** `docs/**`, `specs/016-*/**`, `stories/A-16-*`, `docs/decisions/0001-read-path.md` amendment, `docs/architecture-constitution.md` amendment rows.
+- **Me (main session):** `tests/e2e/A-16-closure.spec.ts`, `docs/**`, `specs/016-*/**`, `stories/A-16-*`, `docs/decisions/0001-read-path.md` amendment, `docs/architecture-constitution.md` amendment rows.
 
 ---
 
@@ -27,7 +27,7 @@ Format: `[ID] [P?] [Group] Description — files — AC / Closure ID`. `[P]` = c
 ## Phase 2 · Wave 2: build in parallel (tests first)
 
 ### G4 · index (critical path) — AC-13, A13-1, A13-8, A14-1, A14-4, A14-5, A14-8
-- [ ] T010 [G4] Tests: fixture run → each index file's schema equals `DESCRIBE` of the bound view; `EXCEPT ALL` parity 0; SHA mismatch and unbound batch are hard stops; existing index is a no-op — `pipeline/publish/test/explore-index.test.ts`
+- [ ] T010 [G4] Tests: fixture run → each index file's schema equals `DESCRIBE` of the bound view; `EXCEPT ALL` parity 0; SHA mismatch and unbound batch are hard stops; existing index is a no-op — `pipeline/publish/test/explore-index.test.ts`; `index.json` also records raw-table permit count vs `v_roofing_permit` count (A14-7)
 - [ ] T011 [G4] Build CLI ported from Task B `BuildIndex`/`fetchPart`/`plan` (`--manifest --source cidcopy|local --upload --verify`), `index.json` written last, `If-None-Match` upload — `pipeline/publish/scripts/build-explore-index.ts`
 - [ ] T012 [G4] Tests then reader: verify `index.json` (manifest CID, `viewsSha256`), download to `/tmp`, views over `read_parquet`, single in-flight cold load, `index_not_built` / `index_stale` — `apps/api/src/engine/explore-index.ts`, `duckdb-node.ts` `bind()`
 - [ ] T013 [G4] Tests then map `index_not_built`/`index_stale` to a typed tRPC error, agent tool error and MCP `isError` with reason; out-of-area filter returns "owner area not published in this run" — `apps/api/src/routers/explore.ts`, `agent/tools.ts`, `mcp/tools.ts`
@@ -51,7 +51,7 @@ Format: `[ID] [P?] [Group] Description — files — AC / Closure ID`. `[P]` = c
 - [ ] T035 [G3] Bridge README (start command, profile `assess`, kill switch) — `pipeline/bridge/README.md`
 
 ### G2a · admin + Coverage + Runs pages — AC-4, AC-5, AC-6, AC-7, AC-9, AC-10, AC-12 (these pages), A13-3
-- [ ] T039 [G2a] Tests first: `tests/e2e/lib/auth.ts` (credentials from `~/.config/assessment/countylens-test.env`, `storageState` gitignored) and `tests/e2e/A-16.spec.ts` cases for AC-4..AC-10 + AC-12 (these pages)
+- [ ] T039 [G2a] Tests first: `tests/e2e/lib/auth.ts` (credentials from `~/.config/assessment/countylens-test.env`, `storageState` gitignored) and `tests/e2e/A-16-admin.spec.ts` + `A-16-cost.spec.ts` cases for AC-4..AC-10 + AC-12 (these pages); credentials env names as in `testplans/A-16-test-cases.md`
 - [ ] T040 [G2a] Tests then `scripts/build-cost-limits.mjs` (prebuild): parse `docs/cost.md` + `docs/source-limits.md` → `cost-limits.generated.json`; fails on a row without a date or a zero where the doc says not available; drift test
 - [ ] T041 [G2a] Coverage · Cost and Limits sections in `apps/web/src/routes/Coverage.tsx` + `CoverageCostLimits.tsx` per `Coverage{390,768,1440}` / `CoverageStates` boards: gross vs credits, as-of, source, "not available · reason", TCAD "blocked" row
 - [ ] T042 [G2a] Auth copied from Task B (`config`, `signIn`, `signOut`, `session`, `identity`, `RequireSession`), page `AdminSignIn` per `AdminSignIn*` boards ("code sent" state Justified), "Sign-in is not available right now, try later"
@@ -66,16 +66,24 @@ Format: `[ID] [P?] [Group] Description — files — AC / Closure ID`. `[P]` = c
 - [ ] T052 [G2b] Tests (unit: fallback over the cap throws `TooLargeOnFallback`) then A11-9 `TooLargeOnFallback` typed error + message; A11-11 first paint from the first page of parts, rest after; tighten the 60 s limit to measured p95 × 2 — `engine/load-permits.ts`, `Permits.page.tsx`, `tests/e2e/lib/perf.ts`
 - [ ] T053 [G2b] Remove `parkGap` calls once T016 is live on the preview — `tests/e2e/lib/a13-fixtures.ts`, A-14 spec skips
 
+
+### Closure tasks added after `/speckit-analyze` (H4)
+- [ ] T036 [G3] Tests then A11-16: `verify-manifest --sample` exit code, `openDaysReason` default, timeouts on untimed downloads; A11-17 R4–R6: `deferredGateways` in car-file receipts, receipt re-check after taking the lock, real exit codes in worker scripts — `pipeline/publish/scripts/*`, `pipeline/publish/src/*` (not `explore-index.ts`)
+- [ ] T025 [G1] A14-3/A14-6: wire the agent 80% spend alarm to the Ops topic; alarm on account concurrent executions ≥ 8; note the quota-increase option — `infra/src/ops-stack.ts`
+- [ ] T026 [G2b] T053 also covers the A-14 spec skips; G2b owns those edits — `tests/e2e/A-14*.spec.ts`
+- [ ] T072 [Me] A11-4 fresh sample verify log of Run 1 and Run 2 (operator tool, small sample per PO 2026-10-25); A11-10(a) and A11-8 minors written as Exceptions; A13-5 county counts: Closed if Run 3 publishes them, else Exception; A11-14 county CARs attached to the newest Release; A11-17 R10–R11 labels/docs — `docs/evidence/A-16.md`, `docs/sources.md`
+- [ ] T073 [Me] A14-4 golden queries G1–G6 rerun on the full county after T016 — `docs/evidence/A-16.md`, `docs/reports/A-16-test-report.md`
+
 ## Phase 3 · Finalise docs (Me, parallel with Phase 2)
 
-- [ ] T070 [Me] Finalise `docs/cost.md` (FR-001: Part 2 rows after deploy, older `assessment usd` budget note, shared-account upper bound) and `docs/source-limits.md` (FR-003: TCAD 403 and Bedrock 10 rpm evidence links or "no evidence file" marked) — `docs/cost.md`, `docs/source-limits.md`
-- [ ] T071 [P] [Me] Parity matrix moved into the repo from the smeargle run — `docs/evidence/A-16-prototype-parity.md`, `docs/evidence/img/A-16-parity-*.png`
+- [ ] T070 [Me] Read the bill again after the deploy, ✋ PO takes the Cost Explorer screenshot (`docs/evidence/img/A-16-billing.png`), finalise `docs/cost.md` (FR-001: Part 2 rows after deploy, older `assessment usd` budget note, shared-account upper bound) and `docs/source-limits.md` (FR-003: TCAD 403 and Bedrock 10 rpm evidence links or "no evidence file" marked) — `docs/cost.md`, `docs/source-limits.md`
+- [ ] T071 [P] [Me] Parity inventory (smeargle, read-only, started in wave 1 on 2026-10-26) moved into the repo — `docs/evidence/A-16-prototype-parity.md`, `docs/evidence/img/A-16-parity-*.png`
 
 ## Phase 4 · Batches, deploy, hosted proof (TZ)
 
 - [ ] TZ01 [Me] Batch 1 push (web parity + Coverage + docs): local CI checks (`pnpm check`, `pnpm format:check`, `scripts/grep-gates.sh`, stylelint, bundle gate) → `git push origin 016-cost-and-admin` → Amplify preview `/build.json` = head → smoke on the preview; then 🛑 PO OK → laptop `cdk deploy` (profile `assess`, `CountyLensApi` → `CountyLensWeb` → `CountyLensOps`) → smoke `admin.me` 401 and `explore.search` on Run 2 at once; ✋ PO creates the admin and a non-admin Cognito user (commands pre-filled in `docs/evidence/A-16.md`)
 - [ ] TZ02 [Me] Batch 2 push (admin UI/API, index read path, speed, parity rest) → preview; one review round in parallel while it builds: `/code-review medium` + `metagross`, `machamp`, `audino` read-only, each ≥ 75 — `docs/reviews/CR-A-16.md`
-- [ ] TZ03 [Me] Hosted Playwright on the preview: `tests/e2e/A-16.spec.ts` (one test per `testplans/A-16-test-cases.md` UI case), unparked A-13/A-14 cases, `tests/e2e/responsive.spec.ts`; index p95 20 cold + 20 warm — `docs/reports/A-16-test-report.md`, screenshots `docs/evidence/img/A-16-TC-{nnn}-{step}.png`
+- [ ] TZ03 [Me] Hosted Playwright on the preview: `tests/e2e/A-16-{admin,cost,county,parity,closure}.spec.ts` (one test per `testplans/A-16-test-cases.md` UI case), unparked A-13/A-14 cases, `tests/e2e/responsive.spec.ts`; index p95 20 cold + 20 warm — `docs/reports/A-16-test-report.md`, screenshots `docs/evidence/img/A-16-TC-{nnn}-{step}.png`
 - [ ] TZ04 [Me] `smeargle` at 390/768/1440 on every page family (AC-12) after the fixes — `docs/evidence/A-16-prototype-parity.md`, `docs/evidence/A-16-smeargle.md`
 - [ ] TZ05 [Me] Independent test = story `agents.verify`: `docs/cost.md` + billing evidence; ✋ PO starts local stack + bridge; admin Start (`dry_run`) → SQS message ID → bridge log → Restate workflow ID → Runs page "Running"; non-admin 403; bridge stopped → expired; DLQ alarm email — `docs/evidence/A-16.md` § Part 2
 - [ ] TZ06 [Me] Fixes (`docs/defects/ERR-72+`), `/speckit-converge` once, evidence `docs/evidence/A-16.md` (§ Closure = story Closure table), statuses (story Done, `docs/traceability.md` A-16 rows + gate log, `docs/feature-list.md`, `docs/decisions/DEC-A-13-explore-full-county.md` + `DEC-A-14-agent-mcp-full-county.md` closed/superseded, `docs/pr-body.md` Known gaps), one `docs/kit-usage.md` line (agents and skills used in A-16), G7 pre-check `docs/gates/G7-A-16-precheck.md` → 🛑 G7 → `git merge --no-ff` → `bash scripts/progress.sh` → push
