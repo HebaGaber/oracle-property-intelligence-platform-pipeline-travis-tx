@@ -331,6 +331,35 @@ const V_PROPERTY: readonly Column[] = [
     "Digest of the ZIP and regional lists",
     null,
   ),
+  // v1.2 (additive, Run 3.1, PO 2026-10-26): the address fields, now emitted by export-tables
+  // with the oneOf-columns patch (pipeline/publish/patches/elephant-cli-export-oneof.patch).
+  col(
+    "unnormalized_address",
+    "string",
+    V,
+    true,
+    "address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP)",
+    "Property (situs) address as printed",
+    "source_missing",
+  ),
+  col(
+    "owner_mailing_postal_code",
+    "string",
+    V,
+    true,
+    "address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated",
+    "Owner mailing ZIP",
+    "no_mailing_address",
+  ),
+  col(
+    "owner_mailing_state_code",
+    "string",
+    V,
+    true,
+    "address.state_code of the same mailing addresses; distinct values sorted, '; '-separated",
+    "Owner mailing state",
+    "no_mailing_address",
+  ),
   ...PROVENANCE_COLUMNS,
 ];
 
@@ -705,7 +734,6 @@ export interface UncarriedField {
   fallback: string;
 }
 
-const NOT_EMITTED = "address is a top-level oneOf; export-tables emits none of its properties";
 const NO_PERMIT_CARRIER = "no property_improvement property (ADR-0002)";
 
 /**
@@ -716,34 +744,16 @@ const NO_PERMIT_CARRIER = "no property_improvement property (ADR-0002)";
 export const UNCARRIED = {
   v_property: [
     {
-      field: "unnormalized_address",
-      reason: "not_in_export",
-      carrier: `address.unnormalized_address via property_has_address (${NOT_EMITTED})`,
-      fallback: "not a v1 column; latitude/longitude come from geometry",
-    },
-    {
       field: "city_name",
-      reason: "not_in_export",
-      carrier: `address.city_name via property_has_address (${NOT_EMITTED})`,
-      fallback: "not a v1 column",
+      reason: "source_missing",
+      carrier: "address.city_name via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate city",
+      fallback: "the city is inside unnormalized_address (v1.2)",
     },
     {
       field: "postal_code",
-      reason: "not_in_export",
-      carrier: `address.postal_code via property_has_address (${NOT_EMITTED})`,
-      fallback: "not a v1 column",
-    },
-    {
-      field: "owner_mailing_postal_code",
-      reason: "not_in_export",
-      carrier: `address.postal_code via *_has_mailing_address (${NOT_EMITTED})`,
-      fallback: "not a v1 column; owner_area_class = unknown, owner_is_out_of_area = null",
-    },
-    {
-      field: "owner_mailing_state_code",
-      reason: "not_in_export",
-      carrier: `address.state_code via *_has_mailing_address (${NOT_EMITTED})`,
-      fallback: "not a v1 column",
+      reason: "source_missing",
+      carrier: "address.postal_code via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate ZIP",
+      fallback: "the ZIP is inside unnormalized_address (v1.2)",
     },
   ],
   v_roofing_permit: [

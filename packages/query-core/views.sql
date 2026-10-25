@@ -9,10 +9,11 @@
 -- improvement_status); every derivation is a derive.ts macro over meta.run.as_of (the manifest
 -- finishedAt); every empty value gets a {field, reason} entry in `missing`. Records are read
 -- once per cid and edges once per (from_cid, to_cid), whatever the number of parts.
--- Address properties are not in the export (ADR-0002), so the address-only fields appear in
--- `missing` as not_in_export. The owner mailing ZIP is read through meta.address_zip, which
--- bindManifest fills from address.postal_code when the export carries it (it does not yet: Run 2
--- exports address with identity columns only), and stays empty otherwise.
+-- Address fields (v1.2) are read through meta.address_fields, which bindManifest fills from the
+-- county.address columns the export carries (export-tables emits them with the oneOf-columns
+-- patch from Run 3.1 on; an earlier run's address table has identity columns only, so the fields
+-- are NULL and listed in `missing` as not_in_export). TCAD prints the situs as one line, so the
+-- situs city and ZIP are source_missing (they are inside unnormalized_address).
 
 -- One row per (permit, property edge) of a published county property, with its jurisdiction
 -- (request host → profile jurisdiction map) and its status_class. Shared by v_property (roof
@@ -177,17 +178,34 @@ mailing AS (
   SELECT om.property_cid,
     CAST(count(DISTINCT om.address_cid) AS INTEGER) AS n_mailing,
     CAST(count(DISTINCT az.postal_code) AS INTEGER) AS n_zip,
+    nullif(array_to_string(list_sort(list_distinct(list(left(az.postal_code, 5)))), '; '), '')
+      AS mailing_zips,
+    nullif(array_to_string(list_sort(list_distinct(list(af.state_code))), '; '), '')
+      AS mailing_states,
     CASE WHEN bool_or(za.area_class = 'in_county') THEN 'in_county'
          WHEN bool_or(za.area_class = 'regional') THEN 'regional'
          WHEN bool_or(za.area_class = 'out_of_area') THEN 'out_of_area' END AS area_class
   FROM owner_mailing om
   LEFT JOIN meta.address_zip az ON az.cid = om.address_cid
+  LEFT JOIN meta.address_fields af ON af.cid = om.address_cid
   LEFT JOIN meta.zcta_area za ON za.zcta = left(az.postal_code, 5)
   GROUP BY om.property_cid
 ),
--- Whether this run's export carries any mailing ZIP at all, and whether the run named an area list.
+-- The situs address text of each property (v1.2), one per property (the smallest address cid
+-- when an export ever links two).
+situs AS (
+  SELECT pa.from_cid AS property_cid,
+         arg_min(af.unnormalized_address, af.cid) AS unnormalized_address
+  FROM (SELECT DISTINCT from_cid, to_cid FROM county.property_has_address) pa
+  JOIN meta.address_fields af ON af.cid = pa.to_cid
+  WHERE af.unnormalized_address IS NOT NULL
+  GROUP BY pa.from_cid
+),
+-- Whether this run's export carries any mailing ZIP / situs text at all, and whether the run
+-- named an area list.
 area_env AS (
   SELECT (SELECT count(postal_code) FROM meta.address_zip) > 0 AS zips_emitted,
+         (SELECT count(unnormalized_address) FROM meta.address_fields) > 0 AS address_text_emitted,
          (SELECT count(*) FROM meta.zcta_area) > 0 AS lookup_loaded
 ),
 county_source AS (
@@ -215,6 +233,10 @@ base AS (
     nullif(concat_ws('; ', op.names, oc.names), '') AS owner_name,
     og.reason AS owner_reason,
     owner_area_class(m.area_class) AS owner_area_class,
+    st.unnormalized_address,
+    m.mailing_zips AS owner_mailing_postal_code,
+    m.mailing_states AS owner_mailing_state_code,
+    env.address_text_emitted,
     m.n_mailing,
     m.n_zip,
     env.zips_emitted,
@@ -241,6 +263,7 @@ base AS (
   LEFT JOIN owner_person op ON op.property_cid = p.cid
   LEFT JOIN owner_company oc ON oc.property_cid = p.cid
   LEFT JOIN mailing m ON m.property_cid = p.cid
+  LEFT JOIN situs st ON st.property_cid = p.cid
   LEFT JOIN meta.source src ON src.url = json_extract_string(p.source_http_request, '$.url')
   LEFT JOIN meta.part part ON part.name = p._part
 ),
@@ -277,6 +300,9 @@ SELECT
   owner_area_class,
   owner_is_out_of_area(owner_area_class) AS owner_is_out_of_area,
   area_list_sha256,
+  unnormalized_address,
+  owner_mailing_postal_code,
+  owner_mailing_state_code,
   cid,
   source_url,
   coalesce(record_captured_at, group_captured_at) AS captured_at,
@@ -291,9 +317,10 @@ SELECT
     CASE WHEN property_usage_type IS NULL THEN miss('property_usage_type', 'source_missing') END,
     CASE WHEN property_structure_built_year IS NULL
       THEN miss('property_structure_built_year', 'source_missing') END,
-    miss('unnormalized_address', 'not_in_export'),
-    miss('city_name', 'not_in_export'),
-    miss('postal_code', 'not_in_export'),
+    CASE WHEN unnormalized_address IS NULL THEN miss('unnormalized_address',
+      CASE WHEN address_text_emitted THEN 'source_missing' ELSE 'not_in_export' END) END,
+    miss('city_name', 'source_missing'),
+    miss('postal_code', 'source_missing'),
     CASE WHEN latitude IS NULL THEN miss('latitude', 'no_coordinates') END,
     CASE WHEN longitude IS NULL THEN miss('longitude', 'no_coordinates') END,
     CASE WHEN coordinate_source = 'none' THEN miss('coordinate_source', 'no_coordinates') END,
@@ -310,8 +337,10 @@ SELECT
     CASE WHEN tenure_years IS NULL THEN miss('is_long_tenure', 'no_dated_sale') END,
     CASE WHEN owner_kind = 'unknown' THEN miss('owner_kind', owner_reason) END,
     CASE WHEN owner_name IS NULL THEN miss('owner_name', owner_reason) END,
-    miss('owner_mailing_postal_code', 'not_in_export'),
-    miss('owner_mailing_state_code', 'not_in_export'),
+    CASE WHEN owner_mailing_postal_code IS NULL THEN miss('owner_mailing_postal_code',
+      owner_mailing_reason(owner_kind, owner_reason, n_mailing, zips_emitted)) END,
+    CASE WHEN owner_mailing_state_code IS NULL THEN miss('owner_mailing_state_code',
+      owner_mailing_reason(owner_kind, owner_reason, n_mailing, zips_emitted)) END,
     CASE WHEN owner_area_class = 'unknown' THEN miss('owner_area_class',
       owner_area_reason(owner_kind, owner_reason, n_mailing, n_zip, zips_emitted, lookup_loaded)) END,
     CASE WHEN owner_is_out_of_area(owner_area_class) IS NULL THEN miss('owner_is_out_of_area',

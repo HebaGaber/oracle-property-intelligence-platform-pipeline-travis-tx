@@ -236,6 +236,33 @@
         "missingReason": null
       },
       {
+        "name": "unnormalized_address",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Property (situs) address as printed",
+        "source": "address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP)",
+        "missingReason": "source_missing"
+      },
+      {
+        "name": "owner_mailing_postal_code",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Owner mailing ZIP",
+        "source": "address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated",
+        "missingReason": "no_mailing_address"
+      },
+      {
+        "name": "owner_mailing_state_code",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Owner mailing state",
+        "source": "address.state_code of the same mailing addresses; distinct values sorted, '; '-separated",
+        "missingReason": "no_mailing_address"
+      },
+      {
         "name": "cid",
         "type": "VARCHAR",
         "kind": "cid",
@@ -1451,6 +1478,33 @@
       "meaning": "Digest of the ZIP and regional lists",
       "source": "manifest profiles[] (travis-places)",
       "missingReason": null
+    },
+    {
+      "name": "unnormalized_address",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "Property (situs) address as printed",
+      "source": "address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP)",
+      "missingReason": "source_missing"
+    },
+    {
+      "name": "owner_mailing_postal_code",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "Owner mailing ZIP",
+      "source": "address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated",
+      "missingReason": "no_mailing_address"
+    },
+    {
+      "name": "owner_mailing_state_code",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "Owner mailing state",
+      "source": "address.state_code of the same mailing addresses; distinct values sorted, '; '-separated",
+      "missingReason": "no_mailing_address"
     },
     {
       "name": "property_source_url",

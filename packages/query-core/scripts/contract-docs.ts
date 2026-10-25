@@ -242,6 +242,22 @@ contractor"; null with \`source_missing\` when there is no name). The link is ne
 \`contractor_name_as_printed\`. Not published (still \`no_lexicon_carrier\`): \`status_raw\`,
 \`expiry_date\`. Details: \`docs/defects/ERR-32-contractor-name-and-bbb-link-missing.md\`.
 
+### v1.2 (additive): property address and owner mailing ZIP
+
+Backward compatible: three new nullable \`v_property\` columns, every earlier column unchanged.
+\`unnormalized_address\` is the situs as TCAD prints it, one line with street, city, state and ZIP
+(\`address.unnormalized_address\` via \`property_has_address\`). \`owner_mailing_postal_code\` and
+\`owner_mailing_state_code\` are the current owners' mailing ZIP (first 5 digits) and state
+(\`address.postal_code\` / \`address.state_code\` via \`person_has_mailing_address\` /
+\`company_has_mailing_address\`), distinct values sorted and \`; \`-separated when co-owners mail from
+different places; the same ZIPs now drive \`owner_area_class\`. The fields come from the published
+\`address\` table: from Run 3.1, \`export-tables\` runs with a small patch
+(\`pipeline/publish/patches/elephant-cli-export-oneof.patch\`) that gives the top-level \`oneOf\`
+\`address\` class the columns of its two shapes; the CAR files are unchanged. An earlier run binds
+the three columns as null with \`not_in_export\`. The situs \`city_name\` and \`postal_code\` stay gaps
+with \`source_missing\`: TCAD prints the situs as one line, so they are inside
+\`unnormalized_address\`. Details: \`docs/defects/ERR-74-address-not-in-tables.md\`.
+
 ## Manifest coverage and profiles for consumers
 
 \`coverage.parcels_published\` (\`published_rows\`) is the number of County \`property\` rows the run

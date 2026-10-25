@@ -159,6 +159,22 @@ contractor"; null with `source_missing` when there is no name). The link is neve
 `contractor_name_as_printed`. Not published (still `no_lexicon_carrier`): `status_raw`,
 `expiry_date`. Details: `docs/defects/ERR-32-contractor-name-and-bbb-link-missing.md`.
 
+### v1.2 (additive): property address and owner mailing ZIP
+
+Backward compatible: three new nullable `v_property` columns, every earlier column unchanged.
+`unnormalized_address` is the situs as TCAD prints it, one line with street, city, state and ZIP
+(`address.unnormalized_address` via `property_has_address`). `owner_mailing_postal_code` and
+`owner_mailing_state_code` are the current owners' mailing ZIP (first 5 digits) and state
+(`address.postal_code` / `address.state_code` via `person_has_mailing_address` /
+`company_has_mailing_address`), distinct values sorted and `; `-separated when co-owners mail from
+different places; the same ZIPs now drive `owner_area_class`. The fields come from the published
+`address` table: from Run 3.1, `export-tables` runs with a small patch
+(`pipeline/publish/patches/elephant-cli-export-oneof.patch`) that gives the top-level `oneOf`
+`address` class the columns of its two shapes; the CAR files are unchanged. An earlier run binds
+the three columns as null with `not_in_export`. The situs `city_name` and `postal_code` stay gaps
+with `source_missing`: TCAD prints the situs as one line, so they are inside
+`unnormalized_address`. Details: `docs/defects/ERR-74-address-not-in-tables.md`.
+
 ## Manifest coverage and profiles for consumers
 
 `coverage.parcels_published` (`published_rows`) is the number of County `property` rows the run
@@ -196,11 +212,8 @@ These fields are **not columns** in v1. Each one appears in every row's `missing
 
 | Field | Reason in `missing` | View | Why there is no carrier | Fallback |
 | --- | --- | --- | --- | --- |
-| `unnormalized_address` | `not_in_export` | v_property | address.unnormalized_address via property_has_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column; latitude/longitude come from geometry |
-| `city_name` | `not_in_export` | v_property | address.city_name via property_has_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column |
-| `postal_code` | `not_in_export` | v_property | address.postal_code via property_has_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column |
-| `owner_mailing_postal_code` | `not_in_export` | v_property | address.postal_code via *_has_mailing_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column; owner_area_class = unknown, owner_is_out_of_area = null |
-| `owner_mailing_state_code` | `not_in_export` | v_property | address.state_code via *_has_mailing_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column |
+| `city_name` | `source_missing` | v_property | address.city_name via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate city | the city is inside unnormalized_address (v1.2) |
+| `postal_code` | `source_missing` | v_property | address.postal_code via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate ZIP | the ZIP is inside unnormalized_address (v1.2) |
 | `status_raw` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | Expired is published as improvement_status null → status_class stalled (D-4a) |
 | `expiry_date` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | not published |
 | `description` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | the profile classifies it before export; improvement_type/action carry the result |
@@ -278,6 +291,9 @@ Two further notes from the pilot export:
 | `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
+| `unnormalized_address` | `VARCHAR` | yes | Property (situs) address as printed | address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP) | `source_missing` |
+| `owner_mailing_postal_code` | `VARCHAR` | yes | Owner mailing ZIP | address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated | `no_mailing_address` |
+| `owner_mailing_state_code` | `VARCHAR` | yes | Owner mailing state | address.state_code of the same mailing addresses; distinct values sorted, '; '-separated | `no_mailing_address` |
 | `property_source_url` | `VARCHAR` | yes | The property's uRL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
 | `property_captured_at` | `TIMESTAMP WITH TIME ZONE` | no | The property's when that source was captured (source-level, not per record) | manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt) | never empty |
 | `property_table` | `VARCHAR` | no | The property's the export table the row's main record came from | export table name | never empty |
@@ -310,6 +326,9 @@ Two further notes from the pilot export:
 | `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
+| `unnormalized_address` | `VARCHAR` | yes | Property (situs) address as printed | address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP) | `source_missing` |
+| `owner_mailing_postal_code` | `VARCHAR` | yes | Owner mailing ZIP | address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated | `no_mailing_address` |
+| `owner_mailing_state_code` | `VARCHAR` | yes | Owner mailing state | address.state_code of the same mailing addresses; distinct values sorted, '; '-separated | `no_mailing_address` |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
 | `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
 | `captured_at` | `TIMESTAMP WITH TIME ZONE` | no | When that source was captured (source-level, not per record) | manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt) | never empty |

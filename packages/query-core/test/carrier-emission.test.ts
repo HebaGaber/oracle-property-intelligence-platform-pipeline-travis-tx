@@ -129,8 +129,9 @@ describe("A-02-TC-004 a carrier the export does not emit becomes no carrier (not
   });
 
   it("every not_in_export field appears in no view's column list", () => {
+    // Since v1.2 (Run 3.1, ERR-74) the export emits the address fields, so the list is empty;
+    // the rule still holds for any field that is added to it later.
     const fields = notInExport();
-    expect(fields.length).toBeGreaterThan(0);
     const all = new Set(Object.values(VIEWS).flatMap((cols) => cols.map((c) => c.name)));
     for (const f of fields) expect(all.has(f.field), `${f.view}.${f.field}`).toBe(false);
   });

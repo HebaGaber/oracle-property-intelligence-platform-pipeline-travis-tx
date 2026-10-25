@@ -44,8 +44,17 @@ const NOSALE_OWNED = "baguqeeraown11"; // no dated sale, but a current owner wit
 const ALL = [IN, REG, OUT, NOMAIL, NOZIP, MIXED, NOTZCTA, NOSALE, OLD, PLUS4, NOSALE_OWNED];
 
 function tables(withZip: boolean): FixtureTables {
+  // v1.2: with the patched export, address rows carry their fields (mailing: ZIP and state;
+  // situs: one unnormalized line).
+  const state = (zip: string | null) => (zip === null ? null : zip.startsWith("1") ? "NY" : "TX");
   const addr = (cid: string, zip: string | null): Row =>
-    withZip ? { cid, request_identifier: "x", postal_code: zip } : { cid, request_identifier: "x" };
+    withZip
+      ? { cid, request_identifier: "x", postal_code: zip, state_code: state(zip), unnormalized_address: null }
+      : { cid, request_identifier: "x" };
+  const situs = (cid: string, text: string): Row =>
+    withZip
+      ? { cid, request_identifier: "x", postal_code: null, state_code: null, unnormalized_address: text }
+      : { cid, request_identifier: "x" };
   return {
     county: {
       property: ALL.map((p) => propertyRows(p, 1990)),
@@ -102,7 +111,10 @@ function tables(withZip: boolean): FixtureTables {
         edge("p-nosale", "a-in"),
       ],
       company_has_mailing_address: [edge("c-reg", "a-reg")],
+      property_has_address: [edge(IN, "sit-in"), edge(MIXED, "sit-mixed")],
       address: [
+        situs("sit-in", "1 MAIN ST, AUSTIN, TX 78701"),
+        situs("sit-mixed", "2 OAK AVE, PFLUGERVILLE, TX 78660"),
         addr("a-in", "78701"),
         addr("a-reg", "78626"),
         addr("a-out", "10001"),
@@ -177,6 +189,49 @@ describe("owner_area_class when the export carries address.postal_code", () => {
       owner_is_out_of_area: false,
       last_ownership_transfer_date: null,
     });
+  });
+});
+
+describe("v1.2 address columns (Run 3.1 export with address fields)", () => {
+  it("publishes the situs line and the owners' mailing ZIP and state", async () => {
+    const p = await rowsOf(tables(true));
+    expect(p(IN)).toMatchObject({
+      unnormalized_address: "1 MAIN ST, AUSTIN, TX 78701",
+      owner_mailing_postal_code: "78701",
+      owner_mailing_state_code: "TX",
+    });
+    expect(reasonOf(p(IN), "unnormalized_address")).toBeUndefined();
+    expect(reasonOf(p(IN), "owner_mailing_postal_code")).toBeUndefined();
+    // ZIP+4 is cut to five digits; co-owners in two places list both, sorted
+    expect(p(PLUS4)?.owner_mailing_postal_code).toBe("78753");
+    expect(p(MIXED)).toMatchObject({
+      unnormalized_address: "2 OAK AVE, PFLUGERVILLE, TX 78660",
+      owner_mailing_postal_code: "10001; 78701",
+      owner_mailing_state_code: "NY; TX",
+    });
+    // the situs city and ZIP stay inside the one line
+    expect(reasonOf(p(IN), "city_name")).toBe("source_missing");
+    expect(reasonOf(p(IN), "postal_code")).toBe("source_missing");
+  });
+
+  it("says why each one is empty", async () => {
+    const p = await rowsOf(tables(true));
+    expect(p(OUT)?.unnormalized_address).toBeNull();
+    expect(reasonOf(p(OUT), "unnormalized_address")).toBe("source_missing");
+    expect(reasonOf(p(NOMAIL), "owner_mailing_postal_code")).toBe("no_mailing_address");
+    expect(reasonOf(p(NOZIP), "owner_mailing_postal_code")).toBe("no_mailing_address");
+    expect(reasonOf(p(NOSALE), "owner_mailing_state_code")).toBe("no_owner_record");
+  });
+
+  it("an export without address fields binds the columns as null with not_in_export", async () => {
+    const p = await rowsOf(tables(false));
+    expect(p(IN)).toMatchObject({
+      unnormalized_address: null,
+      owner_mailing_postal_code: null,
+      owner_mailing_state_code: null,
+    });
+    expect(reasonOf(p(IN), "unnormalized_address")).toBe("not_in_export");
+    expect(reasonOf(p(IN), "owner_mailing_postal_code")).toBe("not_in_export");
   });
 });
 

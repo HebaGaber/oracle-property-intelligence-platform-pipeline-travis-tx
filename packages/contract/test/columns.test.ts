@@ -50,6 +50,10 @@ const EXPECTED: Record<ViewName, string[]> = {
     "owner_area_class",
     "owner_is_out_of_area",
     "area_list_sha256",
+    // v1.2 (additive, Run 3.1, ERR-74)
+    "unnormalized_address",
+    "owner_mailing_postal_code",
+    "owner_mailing_state_code",
     ...PROVENANCE,
   ],
   v_roofing_permit: [
@@ -150,19 +154,15 @@ describe("columns", () => {
     }
   });
 
-  it("address-only fields are not v1 columns; each is listed as not_in_export (ADR-0002)", () => {
+  it("v1.2 publishes the situs line and the owner mailing ZIP/state; the situs city and ZIP stay gaps (ERR-74)", () => {
     const names = columnNames("v_property");
-    const addressOnly = [
-      "unnormalized_address",
-      "city_name",
-      "postal_code",
-      "owner_mailing_postal_code",
-      "owner_mailing_state_code",
-    ];
-    for (const f of addressOnly) expect(names).not.toContain(f);
-    expect(UNCARRIED.v_property.map((u) => [u.field, u.reason])).toEqual(
-      addressOnly.map((f) => [f, "not_in_export"]),
-    );
+    for (const f of ["unnormalized_address", "owner_mailing_postal_code", "owner_mailing_state_code"])
+      expect(names).toContain(f);
+    for (const f of ["city_name", "postal_code"]) expect(names).not.toContain(f);
+    expect(UNCARRIED.v_property.map((u) => [u.field, u.reason])).toEqual([
+      ["city_name", "source_missing"],
+      ["postal_code", "source_missing"],
+    ]);
     const area = VIEWS.v_property.find((c) => c.name === "owner_is_out_of_area");
     expect(area?.missingReason).toBe("not_in_export");
   });

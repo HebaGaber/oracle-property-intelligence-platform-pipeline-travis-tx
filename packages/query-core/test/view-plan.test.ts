@@ -97,6 +97,7 @@ describe("view plan (ERR-19)", () => {
         "county.person_has_mailing_address",
         "county.person_has_property",
         "county.property",
+        "county.property_has_address",
         "county.property_has_parcel",
         "county.property_has_sales_history",
         "county.property_has_structure",
@@ -109,7 +110,7 @@ describe("view plan (ERR-19)", () => {
       ].sort(),
     );
     expect(keysFor(CONTRACT_VIEWS)).toEqual(REQUIRED_TABLES.map(key).sort());
-    // county.address is read through meta.address_zip: planned, but deliberately not required.
+    // county.address is read through meta.address_fields / address_zip: planned, but deliberately not required.
     expect(planViews(["v_property"]).tables.has("county.address")).toBe(true);
     expect(planViews(["v_roofing_permit"]).tables.has("county.address")).toBe(false);
   });
