@@ -72,10 +72,10 @@
   );
 }
 
+/* Atlas disabled state: the whole control at the disabled-opacity token, no mixed colours. */
 .pagerButton:disabled {
   cursor: default;
-  color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
-  border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+  opacity: var(--md-sys-state-disabled-opacity);
 }
 
 /* Cards (< 600 px) */
