@@ -1,3 +1,4 @@
+/* global process, console */
 // A-11 Run 3 one-off: fetch the CAR files that the CID copy already holds and that are not on disk.
 // CloudFront serves S3 key ipfs/<cid> at https://<host>/<cid>; a 403/404 means "not copied yet".
 // Prints "<present>/<total>". Kubo add later refuses a file whose CID differs from the manifest.
