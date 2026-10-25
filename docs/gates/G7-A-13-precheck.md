@@ -1,13 +1,46 @@
 ---
 gate: G7
 artifact: A-13 (branch 013-explorer-and-pages)
-artifact_version: "code 2cc58ac, tip 2c13e09 + bookkeeping commit; CI run 39835352646 success"
-run_date: 2026-10-22
+artifact_version: "code dc46a6d (docs-only commits after it); CI run 40185511164 success; merged with feature/oracle-pipeline at 3749547"
+run_date: 2026-10-25
 tool: Claude
-verdict: PASS
+verdict: FAIL
 ---
 
-# G7 pre-check: A-13 Explorer UI with its hub, legal, catalog and Coming soon pages
+# G7 pre-check (run 2, on the full county): A-13 Explorer UI with its hub, legal, catalog and Coming soon pages
+
+Inputs read: `specs/013-explorer-and-pages/tasks.md`; `docs/reports/A-13-unit-test-report.md`, `A-13-test-report.md`; `docs/reviews/CR-A-13.md`; `docs/defects/`; `docs/evidence/A-13.md`; `git log feature/oracle-pipeline..013-explorer-and-pages` (41 commits); `gh run view 40185511164`; `docs/decisions/DEC-A-13-explore-full-county.md`; `stories/A-16-cost-and-admin.md`. The first G7 run (2026-10-22, PASS 10/10 on the 14-property slice) is kept at the end of this file. This run re-checks the branch after the merge with A-04, A-07 and A-11 and the hosted re-test on Run 2.
+
+**Verdict: FAIL, 4 checks (C-03, C-05, C-07, C-08), all bookkeeping and review gaps that can be fixed without new product work. C-04 passes only with the PO exception recorded in `DEC-A-13-explore-full-county.md`.**
+
+| Check | Criterion | Result | Finding |
+| --- | --- | --- | --- |
+| C-01 | Tasks done | PASS | `tasks.md`: 54 ticked, 0 open. |
+| C-02 | Unit tests | PASS | CI run 40185511164 (code `dc46a6d`): `workspace` (typecheck, lint, unit tests, synth, coverage gates) and `oracle-runtime` success. Local: web 506 passed, e2e harness 92, infra 104, publish 345. New code (`catalogTables` grouping, `bindAllViews`, `publishedTexts`) is covered by the web and harness tests. |
+| C-03 | Code review | FAIL | `CR-A-13.md` scores (metagross 77, audino 82, 0 open Critical) date from 2026-10-22 and cover the branch before the merge. These changed afterwards and were never reviewed: `catalogTables` (batched tables), `bindAllViews` in `ExploreSql.engine.ts`, `retry: false` in `ExploreFilters.tsx`, `tabIndex={0}` on `<main>`, API DuckDB limit 2 GB and Lambda timeout 29 s (`infra/src/api-stack.ts`). Fix: one `/code-review medium` on `git diff 3749547^1..HEAD -- apps packages infra` plus both reviewers scoring that delta, appended to `CR-A-13.md`. |
+| C-04 | TC executed on hosted URL | PASS with PO exception | All 73 cases ran against the preview with build `dc46a6d`, none on localhost: 44 passed, 0 failed, **29 are parked (skipped with a reason)**: Explore search 21 (A-16 gap 1), SQL first query 6 (gap 2), page speed 2 (gap 3). The parked cases have no passing result on Run 2; the PO accepted this on 2026-10-25 ("go to option 3 and document the gaps in a16"). Demo lines D-8 and D-9 are therefore not proven on live full-county data. |
+| C-05 | Defects closed | FAIL | The failing cases are gap-linked (allowed), but the real defects found and fixed on Run 2 have no `ERR` record: Catalog showed no tables for batched runs; the browser SQL engine bound only `v_roofing_permit` (so `v_property` was missing); `<main>` not keyboard-focusable (axe `scrollable-region-focusable`, `/runs/log`); Explore search retried a timed-out call and kept the page loading about 59 s. `docs/defects/` ends at ERR-55. Fix: ERR-56 to ERR-59 with cause, fix commit and re-test (CI run 40185511164). |
+| C-06 | No open Critical | PASS | No Critical defect or review finding is open. The Explore search failure is High, accepted as a gap, and tracked in A-16. |
+| C-07 | Evidence | FAIL | `docs/evidence/A-13.md` has the URL, build, CI results and parked list for Run 2, but the screenshots (`docs/evidence/img/`, 368 files) and the CloudWatch line and X-Ray trace id (`1-6ad9d23c-…`, an `explore.search` call) are all from the pilot slice. `explore.search` now fails, so that trace is not a Run 2 proof. Fix: capture Run 2 screenshots of Hub, Runs, Coverage, Catalog, Manifest and Verify, and one CloudWatch line plus X-Ray trace id for a call that works on Run 2 (for example `runs.summary`). |
+| C-08 | Traceability | FAIL | `docs/traceability.md` G7 row for A-13 still reads "code `2cc58ac`, CI run 39835352646 … merge waits for A-11". `docs/kit-usage.md` rows are complete. Fix: replace the row with this run (code `dc46a6d`, CI run 40185511164, 44 pass, 29 parked, PO exception) after the decision. |
+| C-09 | Commits | PASS | All 41 commits since the feature tip start with `A-13:`; gitleaks green on every run. |
+| C-10 | Story status | PASS | Front matter `status: Done (G7 approved 2026-10-22; merge … waits for A-11)`. Ready to be updated to Done with the merge once G7 is decided again. |
+
+## Fix list (ordered by impact on the assessment score)
+
+1. **C-07** Run 2 screenshots and a Run 2 trace id: what the evaluator opens first.
+2. **C-05** ERR-56 to ERR-59.
+3. **C-03** Review of the post-merge delta.
+4. **C-08** G7 row, after your decision.
+
+## PO decision (G7, second run)
+
+☐ Approved · ☐ Returned · date: ______ (the 2026-10-22 approval below was for the slice and its merge was held for A-11; it does not cover this state)
+
+---
+
+## First G7 run, 2026-10-22 (history)
+
 
 Inputs read: `specs/013-explorer-and-pages/tasks.md`; `docs/reports/A-13-unit-test-report.md`, `A-13-test-report.md`; `docs/reviews/CR-A-13.md`; `docs/defects/ERR-50` to `ERR-49`; `docs/evidence/A-13.md` and its detail files; `git log`; GitHub Actions run 39835352646. This report finds gaps; it does not approve.
 
