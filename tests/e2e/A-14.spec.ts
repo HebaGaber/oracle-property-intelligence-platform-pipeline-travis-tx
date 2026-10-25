@@ -629,13 +629,20 @@ test(`${scenario14("NF-01")} agent scale budget from the real asks of this file`
     if (ask.steps !== null) expect(ask.steps).toBeLessThanOrEqual(6);
     if (ask.matches !== null) expect(ask.matches).toBeLessThanOrEqual(1000);
   }
-  const answered = askLog.filter((a) => a.state === "answered" || a.state === "no_results");
+  // Classify by the server's own outcome when the response was seen; the displayed state is only
+  // the fallback (it can briefly disagree with the response, which made this check flaky).
+  const answered = askLog.filter((a) =>
+    a.outcome !== null
+      ? a.outcome === "answered"
+      : a.state === "answered" || a.state === "no_results",
+  );
   if (answered.length > 0) {
     expect(
       percentile(
         answered.map((a) => a.ms),
         95,
       ),
+      `p95 over the answered asks: ${JSON.stringify(answered.map((a) => ({ tc: a.tc, state: a.state, ms: a.ms, outcome: a.outcome })))}`,
     ).toBeLessThan(20_000);
   } else {
     test.info().annotations.push({
