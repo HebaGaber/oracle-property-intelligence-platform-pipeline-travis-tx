@@ -13,7 +13,7 @@
 import type { ExploreResult, ExploreRow } from "@countylens/query-core/explore";
 import { resolvePlace, searchPlaces, type ResolvedPlace } from "@countylens/query-core/places";
 import { EXPLORE_TEXTS } from "@countylens/shared";
-import { keepPreviousData, skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@countylens/api-client/react";
 import {
   useCallback,
@@ -168,7 +168,6 @@ export function ExploreFilters({
       : null;
   const debounced = useDebounced(asked, SEARCH_DEBOUNCE_MS);
   const trpc = useTRPC();
-  const queryClient = useQueryClient();
   const search = useQuery({
     ...trpc.explore.search.queryOptions(debounced?.request ?? skipToken),
     // No automatic retry: a search the server could not finish already took up to 29 s, and a second
