@@ -4,10 +4,10 @@
     {
       "id": "G1",
       "prompt": "Which properties in Travis County within five miles of Pflugerville have roofs older than 15 years?",
-      "durationMs": 7957,
-      "requestId": "S3azfxBihxGd5xb2ipzQP3RgV2-JMYsAZaWY674J7dk3rgrEI6Cfaw==",
+      "durationMs": 8043,
+      "requestId": "tyFB8TK-Id_LrUR7IcF2PgkNcwckfQM8x_FsV2edNunFBripHZ5M5Q==",
       "response": {
-        "answer": "Here's what the search returned based on your exact filters:\n\n- **Area:** Within 5 miles of Pflugerville\n- **Filter:** Roof age ≥ 15 years\n- **Result:** **No matches found**\n\nThe tool confirmed this as a **no_match** result — meaning properties within that radius either don't meet the 15+ year roof age threshold in the published data, or roof age data is not recorded for them. Notably, **0 properties were excluded due to unknown roof age**, so this isn't a data gap issue — it's a genuine absence of matches under these specific filters.\n\n### A few suggestions to broaden your search:\n1. **Lower the roof age threshold** (e.g., 10 years) to cast a wider net.\n2. **Increase the radius** (e.g., 10 miles) to cover more of Travis County near Pflugerville.\n3. **Try a nearby area** such as Round Rock or Austin to see if results appear there.\n\nWould you like me to adjust any of these parameters?",
+        "answer": "The search returned **no matches** using the following exact filters:\n\n- **Area:** Pflugerville (centered at ~30.448°N, 97.602°W)\n- **Radius:** 5 miles\n- **Minimum roof age:** 15 years\n- **Rows excluded due to unknown roof age:** 0\n\nThe tool confirms this is a genuine **no-match** result (`empty_reason: no_match`), and no rows were excluded due to missing roof age data — meaning no properties within 5 miles of Pflugerville in the published dataset have a recorded roof age of 15 years or older.\n\nA few possible explanations:\n- Roof age data may not be populated for properties in this area of the dataset.\n- Properties in this corridor may have had roof replacements recorded within the last 15 years.\n\nWould you like me to try a **lower roof age threshold** (e.g., 10 years), a **wider radius**, or search for **open/stalled roofing permits** near Pflugerville instead?",
         "how": "Pflugerville city · Census 2024 Gazetteer · 30.447765, -97.602116; radius_mi: 5; roof_age_years_min: 15; sort: \"roof_desc\"; limit: 50",
         "steps": [
           {
@@ -48,8 +48,8 @@
         "outcome": "answered",
         "modelCalls": 2,
         "outputTokens": 379,
-        "durationMs": 5923,
-        "traceId": "1-6ade1154-673505e329fe2c9645674636"
+        "durationMs": 5529,
+        "traceId": "1-6ade1345-793e0d21439e81f03e41d68c"
       },
       "oracleTotal": 0,
       "oracleRowCount": 0,
@@ -61,7 +61,7 @@
         "steps": 2,
         "modelCalls": 2,
         "outputTokens": 379,
-        "durationMs": 5923
+        "durationMs": 5529
       },
       "honesty": {
         "pass": true,
@@ -91,14 +91,14 @@
     {
       "id": "G2",
       "prompt": "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?",
-      "durationMs": 5821,
-      "requestId": "kxVOB99UmeQSGeKTgV7NGymdlfo0p2PMR511hxCVzOMbEGh_qixa0Q==",
+      "durationMs": 5546,
+      "requestId": "I8u18sS6HDL12nMjxP-wiZEY9bpqRyXvCvod0NRLp2m0-VfLcWcBVg==",
       "response": {
-        "answer": "Here's what the search returned:\n\n**No matches found** for open roofing permits within **5 miles of Pflugerville** that have been open for **at least 5 years** (my applied threshold for \"many years\").\n\nThe tool confirmed this as a genuine **no_match** — meaning no open permits meeting these filters exist in the published data for that area, not a coverage gap.\n\n### On the contractor question:\nContractor names are **not available in the published export** for Travis County. Even if permits had been returned, I would not be able to provide contractor names or any BBB ratings from this data.\n\n**Summary of filters applied:**\n| Filter | Value |\n|---|---|\n| Area | Pflugerville (same as prior question) |\n| Radius | 5 miles |\n| Permit status | Open only |\n| Open duration | ≥ 5 years (\"many years\") |\n| Sort | Longest open first |\n\nIf you'd like, I can broaden the status to **open or stalled**, lower the duration threshold, or try a different area — just let me know! BBB status is not available in the published data.",
+        "answer": "No properties matched those filters. Here's a plain summary:\n\n**Result: No matches found.**\n\n- **Area:** Pflugerville (5-mile radius, same as before)\n- **Filter applied:** Roofing permits with status **open**, open for **at least 5 years** (\"many years\" = open_years_min 5)\n- **Why no results:** The tool confirmed `no_match` — meaning there are simply no properties within 5 miles of Pflugerville that currently have an open (not stalled, not closed) roofing permit that has been open for 5+ years.\n\nA couple of notes:\n- **Contractor names are not available** in the published data export, so even if matches had been found, I would not be able to report the listed contractor.\n- If you'd like to broaden the search (e.g., include *stalled* permits, reduce the years threshold, or widen the radius), just let me know! BBB status is not available in the published data. The contractor name is not printed in the published source (contractor not printed).",
         "how": "Pflugerville city · Census 2024 Gazetteer · 30.447765, -97.602116; radius_mi: 5; status_class: \"open\"; open_years_min: 5; sort: \"open_desc\"; limit: 50; permits open at least 5 years",
         "steps": [
           {
-            "tool": "searchRoofingPermits",
+            "tool": "searchProperties",
             "input": {
               "area": {
                 "place": "Pflugerville"
@@ -144,9 +144,9 @@
         ],
         "outcome": "answered",
         "modelCalls": 2,
-        "outputTokens": 449,
-        "durationMs": 5556,
-        "traceId": "1-6ade1189-10980a2f07a76d9a7435cc4c"
+        "outputTokens": 406,
+        "durationMs": 5147,
+        "traceId": "1-6ade137a-48619d7665fe3ce957032bd4"
       },
       "oracleTotal": 0,
       "oracleRowCount": 0,
@@ -157,14 +157,12 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 449,
-        "durationMs": 5556
+        "outputTokens": 406,
+        "durationMs": 5147
       },
       "honesty": {
-        "pass": false,
-        "missingMentions": [
-          "contractor not printed|no_lexicon_carrier"
-        ],
+        "pass": true,
+        "missingMentions": [],
         "missingFlags": [],
         "emptyReasonMismatch": false,
         "expectedEmptyReason": "no_match"
@@ -190,10 +188,10 @@
     {
       "id": "G3",
       "prompt": "Show me open roofing permits older than five years within five miles of Manor",
-      "durationMs": 4209,
-      "requestId": "qnuY5u0r3FZHSk4h-AbmVURrU27vkKmpPCB_-ev6mCj4cyX_WVAiIg==",
+      "durationMs": 4616,
+      "requestId": "eUEW-TovmvIMB6Xb2_yHS1NM5_ayv-HMvMRxhTtWaD0dooANo6JGFg==",
       "response": {
-        "answer": "No open roofing permits matching those filters were found. Here's a summary of what was searched:\n\n- **Area:** Manor (city center ~30.3542°N, 97.5583°W)\n- **Radius:** 5 miles\n- **Status:** Open only\n- **Minimum time open:** 5+ years\n\nThe tool confirmed this as **no match** — not a data gap — so there are genuinely no open roofing permits older than five years within five miles of Manor in the published dataset. You could try broadening the radius, lowering the open-years threshold, or switching to `open_or_stalled` status if you'd like to cast a wider net.",
+        "answer": "No results were found matching your filters. Here's a summary of what was searched:\n\n- **Area:** Manor city (centered at 30.354228, -97.558259)\n- **Radius:** 5 miles\n- **Status:** Open permits only\n- **Minimum age:** 5+ years open\n\nThere are **zero open roofing permits** that have been open for more than 5 years within 5 miles of Manor. No rows were excluded due to unknown values, so this appears to be a genuine absence of matches under these exact criteria.\n\nYou could try broadening the search — for example, including **stalled** permits (open_or_stalled), reducing the open-years threshold, or increasing the radius — if you'd like to see more results.",
         "how": "Manor city · Census 2024 Gazetteer · 30.354228, -97.558259; radius_mi: 5; status_class: \"open\"; open_years_min: 5; sort: \"open_desc\"; limit: 50; permits open at least 5 years",
         "steps": [
           {
@@ -235,9 +233,9 @@
         ],
         "outcome": "answered",
         "modelCalls": 2,
-        "outputTokens": 279,
-        "durationMs": 3806,
-        "traceId": "1-6ade11a3-1230746b20ad155334fe11a8"
+        "outputTokens": 295,
+        "durationMs": 4250,
+        "traceId": "1-6ade1394-69c5cae16f0626077be89f27"
       },
       "oracleTotal": 0,
       "oracleRowCount": 0,
@@ -248,8 +246,8 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 279,
-        "durationMs": 3806
+        "outputTokens": 295,
+        "durationMs": 4250
       },
       "honesty": {
         "pass": true,
@@ -279,10 +277,10 @@
     {
       "id": "G4",
       "prompt": "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?",
-      "durationMs": 7429,
-      "requestId": "urYWudxLYnh9xh_HbpSOEEmkuRfSgWYVGmJa_nrlc2XeJ45vyvh2Fw==",
+      "durationMs": 6456,
+      "requestId": "3OkAH0w_urzm6Y41gK4Dem2RM6WYF1oyGEaoNEId0JT4ZMiznTLH6w==",
       "response": {
-        "answer": "Here's what the search returned — and an important caveat on your second filter:\n\n---\n\n### Results: Homes near Lakeway, 10+ Years Same Owner\n\n**Zero matches** were returned for this search with the following filters applied:\n- 📍 **Area:** Lakeway (centered at ~30.355, -97.986)\n- 📏 **Radius:** 5 miles\n- 🏠 **Tenure:** 10+ years without an ownership change\n- ✅ **Unknown excluded:** 0 — meaning no rows were dropped due to a missing tenure value\n\nSince `unknown_excluded` for tenure is **0**, this isn't a data gap issue — the published data genuinely returned no matches meeting the 10-year tenure threshold within 5 miles of Lakeway.\n\n---\n\n### ⚠️ On \"Owners Outside the Area\"\n\n**Owner mailing address (out-of-area) is not in the published export.** Even if matches had been found, I would not be able to identify which owners live outside the area, as that data field is not available. I cannot filter or flag properties on that basis.\n\n---\n\n**Suggestions to broaden your search:**\n- Lower the tenure threshold (e.g., 5+ years)\n- Increase the search radius (e.g., 10 miles)\n- Try a nearby place name (e.g., Bee Cave, Austin)\n\nWould you like me to try any of those adjustments?",
+        "answer": "Here's what I found — and an important limitation to flag:\n\n---\n\n### Results: Homes near Lakeway with 10+ Years Same Owner\n\n**0 matches returned** from a 5-mile radius search around Lakeway with `tenure_years_min: 10`.\n\n- **`empty_reason: no_match`** — meaning the search was in scope and executed correctly, but no properties met the criteria within that radius.\n- **`unknown_excluded: 0`** — no properties were dropped due to unknown tenure data, so this is a clean zero result under those filters.\n\n---\n\n### On \"Owners Outside the Area\"\n\n⚠️ **Owner mailing address / ZIP is not in the published export.** I cannot identify which owners live outside the area — this data simply isn't available in the dataset. Even if matches had been returned, I would not be able to filter or flag out-of-area owners.\n\n---\n\n### Summary\n\n| Filter | Value |\n|---|---|\n| Area | Lakeway (5-mile radius) |\n| Tenure (same owner) | 10+ years |\n| Out-of-area owner | ❌ Not available in published data |\n| Matches | **0** |\n\nYou may want to try:\n- A **wider radius** (e.g., 10 miles)\n- A **lower tenure threshold** (e.g., 5 years)\n\nJust let me know how you'd like to adjust!",
         "how": "Lakeway city · Census 2024 Gazetteer · 30.354982, -97.986269; radius_mi: 5; tenure_years_min: 10; sort: \"nearest\"; limit: 50",
         "steps": [
           {
@@ -326,9 +324,9 @@
         ],
         "outcome": "answered",
         "modelCalls": 2,
-        "outputTokens": 517,
-        "durationMs": 6925,
-        "traceId": "1-6ade11bb-2597eacf5f94524a65dc533a"
+        "outputTokens": 514,
+        "durationMs": 6107,
+        "traceId": "1-6ade13ac-4c917f31691e48aa6cf3c8c5"
       },
       "oracleTotal": 0,
       "oracleRowCount": 0,
@@ -339,8 +337,8 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 517,
-        "durationMs": 6925
+        "outputTokens": 514,
+        "durationMs": 6107
       },
       "honesty": {
         "pass": true,
@@ -369,10 +367,10 @@
     {
       "id": "G5",
       "prompt": "What's the BBB rating of the contractor on permit {real permit number}?",
-      "durationMs": 3908,
-      "requestId": "mipQoBmCr-XdMEOb4htGfEfwb_95eZeTT9cqhv-8jLjsURTj4HRmPA==",
+      "durationMs": 4381,
+      "requestId": "BjwimpRa6xKq6MX87c0KRI513XpFJCz_U6-7kdAGHsad3tN__Tz0MA==",
       "response": {
-        "answer": "I found permit **2026-116568 BP** [1], but I'm unable to provide a BBB rating for two reasons:\n\n1. **Contractor not resolved** – The contractor on this permit is listed as \"unresolved\" in the published data, meaning no contractor entity was identified [1].\n2. **BBB ratings not available** – Even if a contractor were identified, BBB ratings are **not included in the published export** for Travis County. This data simply isn't available through this system.\n\nHere's what I *can* tell you about the permit:\n- **Status:** Open [1]\n- **Days Open:** 47 days [1]\n\nIf you need BBB rating information, I'd recommend checking the [BBB website](https://www.bbb.org) directly once you identify the contractor. BBB status is not available in the published data. The contractor name is not printed in the published source (contractor not printed).",
+        "answer": "I found permit **2026-116568 BP** [1], but I'm unable to provide a BBB rating for two reasons:\n\n1. **Contractor name not available:** The published data export shows the contractor as **unresolved** for this permit [1], so the specific contractor cannot be identified.\n2. **BBB ratings are not published:** Even if the contractor were identified, BBB ratings are not included in the published data export — they are not available through this system.\n\nHere's what I *can* share about the permit [1]:\n- **Status:** Open\n- **Days Open:** 47\n- **Open Years:** ~0.13\n\nFor BBB rating information, you'd need to look up the contractor directly on [bbb.org](https://www.bbb.org) once you've identified them through the permit authority. BBB status is not available in the published data. The contractor name is not printed in the published source (contractor not printed).",
         "how": "permit_number: \"2026-116568 BP\"; sort: \"open_desc\"; limit: 50",
         "steps": [
           {
@@ -513,9 +511,9 @@
         ],
         "outcome": "answered",
         "modelCalls": 2,
-        "outputTokens": 260,
-        "durationMs": 3580,
-        "traceId": "1-6ade11d6-344bd43b1be525a014cd45c8"
+        "outputTokens": 264,
+        "durationMs": 4044,
+        "traceId": "1-6ade13c7-3530e79a1d17c284314913a5"
       },
       "oracleTotal": 1,
       "oracleRowCount": 1,
@@ -526,8 +524,8 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 260,
-        "durationMs": 3580
+        "outputTokens": 264,
+        "durationMs": 4044
       },
       "honesty": {
         "pass": true,
@@ -556,22 +554,16 @@
     {
       "id": "G6",
       "prompt": "How many properties have roofs older than 40 years in ZIP 99999?",
-      "durationMs": 3474,
-      "requestId": "mel5gYlGr7NlnuduD7lXtwJfIjP-Up5PAQ5FaqCJcebLcPoXHjht6Q==",
+      "durationMs": 2984,
+      "requestId": "fpmQ8v-zPR3XgF2vQKhDmFw-UymFj0vE88rQ4srCbFnAcAt8prkqhA==",
       "response": {
-        "answer": "ZIP **99999** is **out of scope** — it falls outside Travis County, which is the only area covered by this dataset. No results can be returned for that location.\n\nIf you meant a Travis County ZIP code (e.g., 78701, 78745, 78759, etc.), please provide the correct ZIP and I'll be happy to run that search for you!",
-        "how": "radius_mi: 1; roof_age_years_min: 40; sort: \"nearest\"; limit: 50",
+        "answer": "ZIP code **99999** is not within Travis County and falls outside the scope of this dataset. I can only provide property and roofing data for areas within **Travis County, TX**.\n\nIf you have a Travis County ZIP code, city, or neighborhood in mind, feel free to ask and I'll look it up for you!",
+        "how": "",
         "steps": [
           {
-            "tool": "searchProperties",
+            "tool": "geocodePlace",
             "input": {
-              "area": {
-                "place": "99999"
-              },
-              "radius_mi": 1,
-              "roof_age_years_min": 40,
-              "sort": "nearest",
-              "limit": 50
+              "query": "99999"
             },
             "summary": "1 tool call(s), 1 result(s)"
           },
@@ -582,26 +574,13 @@
           }
         ],
         "matches": [],
-        "query": {
-          "area": {
-            "place": "99999"
-          },
-          "radius_mi": 1,
-          "roof_age_years_min": 40,
-          "sort": "nearest",
-          "limit": 50
-        },
-        "missing": [
-          {
-            "field": "result",
-            "reason": "out_of_scope"
-          }
-        ],
+        "query": {},
+        "missing": [],
         "outcome": "answered",
         "modelCalls": 2,
-        "outputTokens": 206,
-        "durationMs": 3130,
-        "traceId": "1-6ade11ee-5eeacce35e1b7a8630d5217e"
+        "outputTokens": 127,
+        "durationMs": 2660,
+        "traceId": "1-6ade13df-2195dac843e69a0047b832e6"
       },
       "oracleTotal": null,
       "oracleRowCount": null,
@@ -612,8 +591,8 @@
         "pass": true,
         "steps": 2,
         "modelCalls": 2,
-        "outputTokens": 206,
-        "durationMs": 3130
+        "outputTokens": 127,
+        "durationMs": 2660
       },
       "honesty": {
         "pass": true,
