@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { tryUnitLock } from "../src/publish-run.js";
+import { tryUnitLock, unitSelected } from "../src/publish-run.js";
 
 const lockIn = (): string =>
   join(mkdtempSync(join(tmpdir(), "unit-lock-")), "county-b01-car.json.lock");
@@ -37,5 +37,16 @@ describe("tryUnitLock", () => {
     const path = lockIn();
     writeFileSync(path, "not-a-pid");
     expect(tryUnitLock(path, 111, () => true)).toBeTypeOf("function");
+  });
+});
+
+describe("unitSelected", () => {
+  it("uploads every kind when no limit is set", () => {
+    expect(unitSelected("tables", undefined)).toBe(true);
+    expect(unitSelected("tables", [])).toBe(true);
+  });
+  it("limits a worker to the listed kinds", () => {
+    expect(unitSelected("car", ["car"])).toBe(true);
+    expect(unitSelected("tables", ["car"])).toBe(false);
   });
 });

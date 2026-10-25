@@ -169,6 +169,8 @@ async function main(): Promise<number> {
       log,
       // A second worker: PUBLISH_FILEBASE_REVERSE=1 walks the queue from the end (per-unit locks).
       reverse: process.env.PUBLISH_FILEBASE_REVERSE === "1",
+      // PUBLISH_FILEBASE_KINDS=car uploads CAR units only (tables wait for the provider; ERR-33).
+      kinds: (process.env.PUBLISH_FILEBASE_KINDS ?? "").split(",").filter((k) => k !== ""),
     },
     carFiles: { loadEnv, now, log },
     manifest: { loadEnv, now, log },

@@ -393,6 +393,13 @@ export interface FilebaseStepDeps {
   attempts?: number;
   /** Walk the pending units from the end: a second worker started with this never meets the first early. */
   reverse?: boolean;
+  /** Upload only these unit kinds (for example only "car" while the provider's dag/import of tables hangs). */
+  kinds?: readonly string[];
+}
+
+/** Whether a unit of `kind` is uploaded by a worker limited to `kinds` (no limit when empty). */
+export function unitSelected(kind: string, kinds: readonly string[] | undefined): boolean {
+  return kinds === undefined || kinds.length === 0 || kinds.includes(kind);
 }
 
 /**
@@ -464,6 +471,10 @@ function filebaseStep(deps: FilebaseStepDeps): StepImpl {
       for (const item of order) {
         const unit = units.get(item.id);
         if (unit === undefined) throw new Error(`no upload unit ${item.id}`);
+        if (!unitSelected(unit.kind, deps.kinds)) {
+          deps.log(`skip ${unit.id} (this worker uploads only ${(deps.kinds ?? []).join(", ")})`);
+          continue;
+        }
         const final = join(ctx.receiptsDir, `${unit.id}.json`);
         const partial = `${final}.partial`;
         mkdirSync(ctx.receiptsDir, { recursive: true });
