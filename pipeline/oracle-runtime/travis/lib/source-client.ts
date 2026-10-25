@@ -82,6 +82,8 @@ const policy = (concurrency: number, minIntervalMs = 0): HostPolicy => ({
 export const HOST_POLICY: Readonly<Record<string, HostPolicy>> = Object.freeze({
   "gis.traviscountytx.gov": policy(2),
   "data.austintexas.gov": policy(1, 1_000),
+  // A-11 Run 3: City of Austin address-point layer (public ArcGIS org), 1 request/s.
+  "services.arcgis.com": policy(1, 1_000),
   "traviscad.org": policy(1),
   "www.traviscad.org": policy(1),
 });
