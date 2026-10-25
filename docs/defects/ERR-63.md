@@ -6,13 +6,11 @@ story: A-14
 test_case: G5, G2, budget check (golden)
 ac_reference: A-14 AC-5 (budgets observable), contract missing[] field names
 severity: Medium
-status: Fixed (pending hosted retest)
+status: Closed
 found_by: golden run (tests/agent/golden.test.ts) on the deployed agent
 found_date: 2026-10-25
 fix_branch: 014-agent-and-mcp
-fix_commit:
-retest_date:
----
+fix_commit: c741363, 830c4c5, 313d628 (014-agent-and-mcp)retest_date: 2026-10-25---
 
 # ERR-63: Agent – missing[] field names and answer wording differ from the contract; budget figures not exposed
 

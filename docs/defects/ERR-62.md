@@ -6,13 +6,11 @@ story: A-14
 test_case: G4 (golden)
 ac_reference: A-14 honesty rule: "unknown is never none found"; missing data says why
 severity: High
-status: Fixed (pending hosted retest)
+status: Closed
 found_by: golden run (tests/agent/golden.test.ts) on the deployed agent
 found_date: 2026-10-25
 fix_branch: 014-agent-and-mcp
-fix_commit:
-retest_date:
----
+fix_commit: c741363, 830c4c5, 313d628 (014-agent-and-mcp)retest_date: 2026-10-25---
 
 # ERR-62: Agent – out-of-area-owner question silently widens the radius and claims good coverage
 

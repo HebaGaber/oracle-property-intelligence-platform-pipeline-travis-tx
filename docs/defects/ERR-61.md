@@ -6,13 +6,11 @@ story: A-14
 test_case: G2 (golden)
 ac_reference: A-14 AC-5 (budget), contract "never a partial answer returned as answered"
 severity: High
-status: Fixed (pending hosted retest)
+status: Closed
 found_by: golden run (tests/agent/golden.test.ts) on the deployed agent
 found_date: 2026-10-25
 fix_branch: 014-agent-and-mcp
-fix_commit:
-retest_date:
----
+fix_commit: c741363, 830c4c5, 313d628 (014-agent-and-mcp)retest_date: 2026-10-25---
 
 # ERR-61: Agent – follow-up question returns an unfinished sentence as the answer with outcome "answered"
 

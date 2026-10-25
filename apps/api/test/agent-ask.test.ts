@@ -380,7 +380,7 @@ describe("ERR-63: budget figures are exposed", () => {
   });
 });
 
-describe("ERR-64: golden G2/G4/G5 deterministic rules", () => {
+describe("ERR-61..63 follow-up: golden G2/G4/G5 deterministic rules", () => {
   it("G2: 'many years' is read as at least 5, named in how and in the answer; contractor not printed even with an empty search", async () => {
     let system = "";
     const loop: RunModelLoop = async (params) => {
