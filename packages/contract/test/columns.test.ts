@@ -70,8 +70,11 @@ const EXPECTED: Record<ViewName, string[]> = {
     "open_days",
     "contractor_resolution",
     "contractor_company_cid",
+    "contractor_name_as_printed",
     "bbb_status",
     "bbb_status_reason",
+    "bbb_rating",
+    "bbb_url",
     "profile_version",
     "profile_sha256",
     ...PROVENANCE,
@@ -134,12 +137,12 @@ describe("columns", () => {
 
   it("has no v1 column for an uncarried field (D-4c)", () => {
     const all = Object.values(VIEWS).flatMap((cols) => cols.map((c) => c.name));
+    // v1.1 (ERR-32) made bbb_rating and bbb_url columns of v_roofing_permit, and
+    // contractor_name_raw became contractor_name_as_printed; the rest still have no carrier.
     for (const banned of [
       "status_raw",
       "expiry_date",
       "contractor_name_raw",
-      "bbb_rating",
-      "bbb_url",
       "description",
       "work_class_raw",
     ]) {
@@ -168,9 +171,6 @@ describe("columns", () => {
     expect(UNCARRIED.v_roofing_permit.map((u) => u.field)).toEqual([
       "status_raw",
       "expiry_date",
-      "contractor_name_raw",
-      "bbb_rating",
-      "bbb_url",
       "description",
       "work_class_raw",
     ]);
@@ -178,8 +178,10 @@ describe("columns", () => {
       expect(u.fallback.length, u.field).toBeGreaterThan(0);
       expect(u.carrier.length, u.field).toBeGreaterThan(0);
     }
-    const all = Object.values(VIEWS).flatMap((cols) => cols.map((c) => c.name));
-    for (const u of Object.values(UNCARRIED).flat()) expect(all).not.toContain(u.field);
+    for (const [view, fields] of Object.entries(UNCARRIED)) {
+      const names = VIEWS[view as keyof typeof VIEWS].map((c) => c.name);
+      for (const u of fields) expect(names, `${view}.${u.field}`).not.toContain(u.field);
+    }
   });
 
   it("the sample row is a permit row plus its property's columns, property provenance prefixed", () => {
@@ -265,8 +267,11 @@ describe("row schemas (generated from columns.ts)", () => {
     open_days: 224,
     contractor_resolution: "unresolved",
     contractor_company_cid: null,
+    contractor_name_as_printed: null,
     bbb_status: "not_checked",
     bbb_status_reason: "contractor_unresolved",
+    bbb_rating: null,
+    bbb_url: null,
     profile_version: "travis-austin@1.0.0",
     profile_sha256: "b".repeat(64),
     ...provenance,

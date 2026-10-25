@@ -319,6 +319,12 @@ contractor AS (
   FROM property_improvement.property_improvement_has_contractor
   GROUP BY from_cid
 ),
+-- The contractor company the permit PRINTS (ERR-32): company.name is "as printed, unverified"
+-- and, with no registry id, never makes the permit resolved. Runs before Run 3 bind an empty table.
+contractor_company AS (
+  SELECT cid, any_value(name) AS name, any_value(sunbiz_document_number) AS registry_id
+  FROM property_improvement.company GROUP BY cid
+),
 permit_source AS (
   SELECT s.url, s.captured_at FROM meta.source s
   JOIN meta.group_source g ON g.source_name = s.name AND g.data_group = 'property_improvement'
@@ -348,18 +354,21 @@ base AS (
     part.table_cid,
     run.run_id,
     run.manifest_cid,
-    run.as_of
+    run.as_of,
+    co.name AS contractor_name_as_printed,
+    co.registry_id AS contractor_registry_id
   FROM meta.permit pm
   CROSS JOIN meta.run run
   CROSS JOIN permit_source ps
   LEFT JOIN contractor c ON c.permit_cid = pm.permit_cid
+  LEFT JOIN contractor_company co ON co.cid = sole_contractor(coalesce(c.edges, 0), c.min_cid)
   LEFT JOIN meta.source src ON src.url = json_extract_string(pm.source_http_request, '$.url')
   LEFT JOIN meta.part part ON part.name = pm._part
   WHERE pm.improvement_type = 'Roofing' AND pm.improvement_action = 'Replacement'
 ),
 derived AS (
   SELECT *,
-    contractor_resolution(contractor_company_cid) AS contractor_resolution,
+    contractor_resolution(contractor_registry_id) AS contractor_resolution,
     open_days(status_class, issue_date, as_of, final_date) AS open_days
   FROM base
 )
@@ -381,8 +390,11 @@ SELECT
   open_days,
   contractor_resolution,
   contractor_company_cid,
-  bbb_status() AS bbb_status,
-  bbb_status_reason(contractor_resolution) AS bbb_status_reason,
+  contractor_name_as_printed,
+  bbb_status(contractor_name_as_printed) AS bbb_status,
+  bbb_status_reason(contractor_name_as_printed) AS bbb_status_reason,
+  CAST(NULL AS VARCHAR) AS bbb_rating,
+  bbb_search_url(contractor_name_as_printed) AS bbb_url,
   profile_version,
   profile_sha256,
   cid,
@@ -411,9 +423,11 @@ SELECT
       THEN miss('open_days', open_days_reason(status_class, issue_date, as_of, final_date)) END,
     CASE WHEN contractor_company_cid IS NULL
       THEN miss('contractor_company_cid', contractor_missing_reason(contractor_edges)) END,
-    miss('contractor_name_raw', 'no_lexicon_carrier'),
-    miss('bbb_rating', 'no_lexicon_carrier'),
-    miss('bbb_url', 'no_lexicon_carrier'),
+    CASE WHEN contractor_name_as_printed IS NULL
+      THEN miss('contractor_name_as_printed', contractor_missing_reason(contractor_edges)) END,
+    miss('bbb_rating', CASE WHEN contractor_name_as_printed IS NULL
+      THEN 'contractor_unresolved' ELSE 'bbb_blocked' END),
+    CASE WHEN contractor_name_as_printed IS NULL THEN miss('bbb_url', 'source_missing') END,
     miss('description', 'no_lexicon_carrier'),
     miss('work_class_raw', 'no_lexicon_carrier'),
     CASE WHEN source_url IS NULL THEN miss('source_url', 'not_in_export') END
@@ -442,6 +456,7 @@ base AS (
   SELECT
     co.cid AS contractor_company_cid,
     co.name,
+    co.sunbiz_document_number AS registry_id,
     url_host(json_extract_string(co.source_http_request, '$.url')) AS identity_source,
     n.permit_count,
     n.roofing_permit_count,
@@ -463,10 +478,10 @@ base AS (
 SELECT
   contractor_company_cid,
   name,
-  'resolved' AS contractor_resolution,
+  contractor_resolution(registry_id) AS contractor_resolution,
   identity_source,
-  bbb_status() AS bbb_status,
-  bbb_status_reason('resolved') AS bbb_status_reason,
+  bbb_status(name) AS bbb_status,
+  bbb_status_reason(name) AS bbb_status_reason,
   permit_count,
   roofing_permit_count,
   cid,

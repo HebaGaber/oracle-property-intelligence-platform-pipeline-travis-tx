@@ -64,6 +64,10 @@ export const ADDRESS_POINT_PROVENANCE_TEXT =
  */
 export const CONTRACTOR_NOT_PRINTED_LABEL = "Contractor not printed on permit";
 
+/** v1.1 (ERR-32): the BBB search link text, and the rating note shown beside it. */
+export const BBB_SEARCH_LINK_LABEL = "Search BBB for this contractor";
+export const BBB_RATING_NOT_PUBLISHED_LABEL = "BBB rating not published (BBB blocked the lookup)";
+
 /**
  * Runs-page labels for manifest `coverage` counts (TC-012, TC-031). These are counts, not row
  * reasons: a permit without a TCAD id is never published, so no row can carry it (spec "Story

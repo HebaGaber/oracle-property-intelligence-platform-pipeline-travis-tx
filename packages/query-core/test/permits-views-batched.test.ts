@@ -151,17 +151,18 @@ describe("Permits page bind over a multi-batch run (v_roofing_permit only)", () 
     expect(VIEWS).toEqual(["v_roofing_permit"]);
   });
 
-  it("boundPartNames lists the county property part of every batch and the four permits tables of every permits batch, not the rest", () => {
+  it("boundPartNames lists the county property part of every batch and the five permits tables of every permits batch, not the rest", () => {
     const expected = [
       ...COUNTY_BATCHES.map((b) => countyName(b, "property")),
       ...PERMIT_BATCHES.flatMap((b) => [
         permitsName(b, "property_improvement"),
         permitsName(b, "property_has_property_improvement"),
         permitsName(b, "property_improvement_has_contractor"),
+        permitsName(b, "company"),
       ]),
     ];
     expect(boundPartNames(artifactsOf(), VIEWS).sort()).toEqual(expected.sort());
-    // 9 of 22 here; the unused tables of every batch (and the permits batches' junk "property",
+    // 11 of 22 here; the unused tables of every batch (and the permits batches' junk "property",
     // which must not be mistaken for county.property) stay out.
     expect(tableParts()).toHaveLength(22);
     expect(boundPartNames(artifactsOf(), VIEWS)).not.toContain(permitsName("b01", "property"));
@@ -174,7 +175,7 @@ describe("Permits page bind over a multi-batch run (v_roofing_permit only)", () 
   it("the subset bind asks partUrl for exactly those parts; the full bind asks for all 22", async () => {
     const subset = await bind(VIEWS);
     expect(subset.sort()).toEqual(boundPartNames(artifactsOf(), VIEWS).sort());
-    expect(subset).toHaveLength(9);
+    expect(subset).toHaveLength(11);
     const everything = await bind();
     expect(everything.sort()).toEqual(tableParts().sort());
   });

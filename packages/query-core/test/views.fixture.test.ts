@@ -156,10 +156,22 @@ const TABLES: FixtureTables = {
       ],
       [edge(P2, "pa")],
     ],
-    property_improvement_has_contractor: [edge("pa", "cA"), edge("pa", "cB"), edge("pc", "cA")],
+    property_improvement_has_contractor: [
+      edge("pa", "cA"),
+      edge("pa", "cB"),
+      edge("pc", "cA"),
+      edge("pj", "cC"),
+    ],
     company: [
       { cid: "cA", name: "Roofer A", source_http_request: austinRequest("x") },
       { cid: "cB", name: "Roofer B", source_http_request: austinRequest("x") },
+      // "A&B Roofing" prints an ampersand; cC carries a registry id (a future official match)
+      {
+        cid: "cC",
+        name: "A&B Roofing (O'Neil)",
+        sunbiz_document_number: "P12000012345",
+        source_http_request: austinRequest("x"),
+      },
     ],
   },
 };
@@ -253,11 +265,41 @@ describe("one row per permit and per edge (code-review #3)", () => {
 });
 
 describe("contractor edges (donphan M4)", () => {
-  it("exactly one edge → resolved with that company", () => {
+  it("exactly one edge → that company, as printed and unverified, so still unresolved (ERR-32)", () => {
     expect(pmt("pc")).toMatchObject({
-      contractor_resolution: "resolved",
+      contractor_resolution: "unresolved",
       contractor_company_cid: "cA",
+      contractor_name_as_printed: "Roofer A",
+      bbb_status: "blocked",
+      bbb_status_reason: "bbb_blocked",
+      bbb_rating: null,
+      bbb_url:
+        "https://www.bbb.org/search?find_country=USA&find_text=Roofer%20A&find_loc=Austin%2C%20TX&find_type=Category",
     });
+    expect(reasonOf(pmt("pc"), "bbb_rating")).toBe("bbb_blocked");
+    expect(reasonOf(pmt("pc"), "contractor_name_as_printed")).toBeUndefined();
+    expect(reasonOf(pmt("pc"), "bbb_url")).toBeUndefined();
+  });
+
+  it("a company with an official registry id is resolved; the link encodes ampersands and quotes", () => {
+    expect(pmt("pj")).toMatchObject({
+      contractor_resolution: "resolved",
+      contractor_name_as_printed: "A&B Roofing (O'Neil)",
+    });
+    expect(pmt("pj")?.bbb_url).toContain("find_text=A%26B%20Roofing%20%28O%27Neil%29&");
+  });
+
+  it("no contractor name → no link, not_checked, name and url missing with their reasons", () => {
+    expect(pmt("pf")).toMatchObject({
+      contractor_name_as_printed: null,
+      bbb_url: null,
+      bbb_rating: null,
+      bbb_status: "not_checked",
+      bbb_status_reason: "contractor_unresolved",
+    });
+    expect(reasonOf(pmt("pf"), "contractor_name_as_printed")).toBe("contractor_unresolved");
+    expect(reasonOf(pmt("pf"), "bbb_url")).toBe("source_missing");
+    expect(reasonOf(pmt("pf"), "bbb_rating")).toBe("contractor_unresolved");
   });
 
   it("two edges → unresolved, no company picked, needs_review", () => {
@@ -344,7 +386,7 @@ describe("source_url fallback (code-review #6)", () => {
     for (const r of [...props, ...permits]) expect(reasonOf(r, "source_url")).toBeUndefined();
     const contractors = fx.rows("SELECT missing FROM v_contractor");
     return contractors.then((rows) => {
-      expect(rows.length).toBe(2);
+      expect(rows.length).toBe(3);
       for (const r of rows) expect(reasonOf(r, "source_url")).toBeUndefined();
     });
   });

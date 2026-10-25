@@ -468,7 +468,7 @@
           "unresolved"
         ],
         "meaning": "Contractor identity state (AD-24)",
-        "source": "derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review)",
+        "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32)",
         "missingReason": null
       },
       {
@@ -476,8 +476,17 @@
         "type": "VARCHAR",
         "kind": "cid",
         "nullable": true,
-        "meaning": "Resolved contractor company",
+        "meaning": "Contractor company as printed (unverified; resolved only with a registry id)",
         "source": "to_cid of the only property_improvement_has_contractor edge",
+        "missingReason": "contractor_unresolved"
+      },
+      {
+        "name": "contractor_name_as_printed",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Contractor as printed on the permit (unverified)",
+        "source": "company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity)",
         "missingReason": "contractor_unresolved"
       },
       {
@@ -492,7 +501,7 @@
           "not_checked"
         ],
         "meaning": "BBB lookup state",
-        "source": "always not_checked in v1",
+        "source": "blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked",
         "missingReason": null
       },
       {
@@ -501,8 +510,26 @@
         "kind": "string",
         "nullable": true,
         "meaning": "Why there is no BBB rating",
-        "source": "contractor_unresolved if unresolved, else no_lexicon_carrier",
+        "source": "bbb_blocked when a contractor name is printed, else contractor_unresolved",
         "missingReason": null
+      },
+      {
+        "name": "bbb_rating",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "BBB rating not published (BBB blocked the lookup)",
+        "source": "always null: BBB blocks the lookup (A-01), no rating is published",
+        "missingReason": "bbb_blocked"
+      },
+      {
+        "name": "bbb_url",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Search BBB for this contractor",
+        "source": "derived: BBB search URL built from contractor_name_as_printed and city Austin; never fetched; shape unverified",
+        "missingReason": "source_missing"
       },
       {
         "name": "profile_version",
@@ -633,7 +660,7 @@
           "unresolved"
         ],
         "meaning": "Contractor identity state",
-        "source": "always resolved (reached through property_improvement_has_contractor)",
+        "source": "derived: resolved only with an official registry id on the company; a printed-name company stays unresolved (v1.1)",
         "missingReason": null
       },
       {
@@ -657,7 +684,7 @@
           "not_checked"
         ],
         "meaning": "BBB lookup state",
-        "source": "always not_checked in v1",
+        "source": "blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked",
         "missingReason": null
       },
       {
@@ -1040,7 +1067,7 @@
         "unresolved"
       ],
       "meaning": "Contractor identity state (AD-24)",
-      "source": "derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review)",
+      "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32)",
       "missingReason": null
     },
     {
@@ -1048,8 +1075,17 @@
       "type": "VARCHAR",
       "kind": "cid",
       "nullable": true,
-      "meaning": "Resolved contractor company",
+      "meaning": "Contractor company as printed (unverified; resolved only with a registry id)",
       "source": "to_cid of the only property_improvement_has_contractor edge",
+      "missingReason": "contractor_unresolved"
+    },
+    {
+      "name": "contractor_name_as_printed",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "Contractor as printed on the permit (unverified)",
+      "source": "company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity)",
       "missingReason": "contractor_unresolved"
     },
     {
@@ -1064,7 +1100,7 @@
         "not_checked"
       ],
       "meaning": "BBB lookup state",
-      "source": "always not_checked in v1",
+      "source": "blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked",
       "missingReason": null
     },
     {
@@ -1073,8 +1109,26 @@
       "kind": "string",
       "nullable": true,
       "meaning": "Why there is no BBB rating",
-      "source": "contractor_unresolved if unresolved, else no_lexicon_carrier",
+      "source": "bbb_blocked when a contractor name is printed, else contractor_unresolved",
       "missingReason": null
+    },
+    {
+      "name": "bbb_rating",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "BBB rating not published (BBB blocked the lookup)",
+      "source": "always null: BBB blocks the lookup (A-01), no rating is published",
+      "missingReason": "bbb_blocked"
+    },
+    {
+      "name": "bbb_url",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "Search BBB for this contractor",
+      "source": "derived: BBB search URL built from contractor_name_as_printed and city Austin; never fetched; shape unverified",
+      "missingReason": "source_missing"
     },
     {
       "name": "profile_version",

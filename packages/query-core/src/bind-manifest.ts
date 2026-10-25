@@ -89,7 +89,7 @@ export const REQUIRED_TABLES: readonly RequiredTable[] = [
   {
     group: "property_improvement",
     table: "company",
-    columns: { ...ENTITY, name: V, source_http_request: V },
+    columns: { ...ENTITY, name: V, sunbiz_document_number: V, source_http_request: V },
   },
 ];
 

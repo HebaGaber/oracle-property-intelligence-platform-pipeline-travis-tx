@@ -33,15 +33,9 @@ const COLUMNS_JSON = join(ROOT, "contract/v1/columns.json");
 const SAMPLE = join(ROOT, "contract/v1/sample.parquet");
 const README = join(ROOT, "contract/v1/README.md");
 const EXPIRED = ["2026-029405 BP", "2026-022834 BP", "2026-022879 BP"];
-const NO_CARRIER = [
-  "status_raw",
-  "expiry_date",
-  "contractor_name_raw",
-  "bbb_rating",
-  "bbb_url",
-  "description",
-  "work_class_raw",
-];
+// v1.1 (ERR-32) turned contractor_name_raw, bbb_rating and bbb_url into columns
+// (contractor_name_as_printed, bbb_rating, bbb_url); the rest still have no carrier.
+const NO_CARRIER = ["status_raw", "expiry_date", "description", "work_class_raw"];
 const TC011_GREP =
   /\b(i?like|similar to|regexp_[a-z_]+)\b|~|now\(\)|current_date|reroof|re-roof|roof replace|solar|photovoltaic|\brtu\b/i;
 
