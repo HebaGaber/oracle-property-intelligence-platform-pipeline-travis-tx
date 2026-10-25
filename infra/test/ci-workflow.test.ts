@@ -36,9 +36,11 @@ const workflow = parse(text) as {
 describe("ci.yml (metagross M4): e2e-hosted environment", () => {
   const job = workflow.jobs["e2e-hosted"] as Job;
 
-  it("parses as YAML and has the e2e-hosted job after the merge-blocking checks", () => {
+  // PO decision 2026-10-24 (A-11): e2e-hosted runs alongside the unit-test jobs and needs only the
+  // secret scan; it still tests its own commit (the /build.json wait below).
+  it("parses as YAML and has the e2e-hosted job after the secret scan only", () => {
     expect(job).toBeDefined();
-    expect([job.needs].flat().sort()).toEqual(["gitleaks", "oracle-runtime", "workspace"]);
+    expect([job.needs].flat().sort()).toEqual(["gitleaks"]);
     expect(job.steps.length).toBeGreaterThan(0);
   });
 

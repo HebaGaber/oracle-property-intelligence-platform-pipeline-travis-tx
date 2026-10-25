@@ -23,7 +23,7 @@ import {
   CONTRACT_VIEWS,
   MAX_ROWS,
   bindManifest,
-  tablesForViews,
+  boundPartNames,
   type BoundRun,
   type ContractView,
   type QueryEngine,
@@ -99,22 +99,14 @@ interface BoundState {
 
 let bound: BoundState | undefined;
 
-/** "tables/<group>/<table>/<part>" → "<group>.<table>", else undefined. */
-function tableOf(name: string): string | undefined {
-  const [root, group, table, part, ...rest] = name.split("/");
-  return root === "tables" && group && table && part && rest.length === 0
-    ? `${group}.${table}`
-    : undefined;
-}
-
 async function bind(manifestCid: string, views: readonly ContractView[]): Promise<BoundRun> {
   // NOT_FOUND and the CID mismatch are raised here, before any engine work.
   const bytes = await getManifest(manifestCid);
   const manifest = RunManifestV1.parse(JSON.parse(new TextDecoder().decode(bytes)));
-  const needed = new Set(tablesForViews(views).map((t) => `${t.group}.${t.table}`));
-  const parts = manifest.artifacts.filter(
-    (a) => a.kind === "table" && needed.has(tableOf(a.name) ?? ""),
-  );
+  // Exactly the parts bindManifest reads for these views, by query-core's own batch rule (a
+  // full-county run names parts `<run>/…/tables/<bNN>/<table>/<part>`, not `tables/<group>/…`).
+  const needed = new Set(boundPartNames(manifest.artifacts, views));
+  const parts = manifest.artifacts.filter((a) => a.kind === "table" && needed.has(a.name));
   // In parallel: one GetObject per small part (verified, cached in /tmp), a local presign else.
   const urls = new Map(
     await Promise.all(

@@ -7,11 +7,12 @@
 // ranged GET (`Range: bytes=0-{size-1}` → 206, TC-026), at most PART_CONCURRENCY at a time, from
 // the host that served the manifest (`read.partUrl`: one probe decides the host for the whole
 // load, D-2), retries a throttled or dropped request with backoff, accepts the bytes only when
-// their raw-leaves CID equals the manifest's (constitution A3), and hands them to the engine as
-// registered files. A run whose parts total more than PART_PREFETCH_MAX_BYTES is not prefetched:
+// their SHA-256 equals the one the manifest records for the part (the manifest itself is
+// CID-verified, so its hashes are trusted: constitution A3 as amended by PO decision 2026-10-24;
+// a part above 256 KiB has a UnixFS DAG CID that rawCid cannot recompute), and hands them to the
+// engine as registered files. A run whose parts total more than PART_PREFETCH_MAX_BYTES is not prefetched:
 // the engine range-reads those parts over HTTP itself (ADR-0001 decision 4 flags).
 import type { RunManifestV1 } from "@countylens/contract";
-import { rawCid } from "@countylens/query-core";
 import type { FetchByCidResult, ReadSource } from "./fetch-by-cid";
 import { browserFetch, throwIfAborted } from "./http";
 
@@ -38,6 +39,8 @@ export interface PartToFetch {
   readonly name: string;
   readonly cid: string;
   readonly size: number;
+  /** The part's SHA-256 (64 lowercase hex characters) as the CID-verified manifest records it. */
+  readonly sha256: string;
 }
 
 export interface FetchedPart extends PartToFetch {
@@ -61,14 +64,20 @@ export class PartReadError extends Error {
   }
 }
 
-/** The table parts of a manifest, or null when they are too large to read up front. */
+/**
+ * The table parts of a manifest, or null when they are too large to read up front. `only` limits
+ * the parts (and so the size total) to those names: the parts the bind will read, not the whole run.
+ */
 export function partsToPrefetch(
   manifest: Pick<RunManifestV1, "artifacts">,
   maxBytes: number = PART_PREFETCH_MAX_BYTES,
+  only?: ReadonlySet<string>,
 ): PartToFetch[] | null {
   const parts = manifest.artifacts
-    .filter((artifact) => artifact.kind === "table")
-    .map(({ name, cid, size }) => ({ name, cid, size }));
+    .filter(
+      (artifact) => artifact.kind === "table" && (only === undefined || only.has(artifact.name)),
+    )
+    .map(({ name, cid, size, sha256 }) => ({ name, cid, size, sha256 }));
   const total = parts.reduce((sum, part) => sum + part.size, 0);
   return total > maxBytes ? null : parts;
 }
@@ -107,6 +116,12 @@ class RetryableReadError extends Error {
   override readonly name = "RetryableReadError";
 }
 
+/** Lowercase hex SHA-256 of `bytes` (Web Crypto: Node and the browser). */
+export async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)));
+  return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 async function readOnce(
   part: PartToFetch,
   url: string,
@@ -136,8 +151,14 @@ async function readOnce(
   if (bytes.length !== part.size) {
     throw new PartReadError(part, host, `${bytes.length} bytes, the manifest says ${part.size}`);
   }
-  const actual = await rawCid(bytes);
-  if (actual !== part.cid) throw new PartReadError(part, host, `bytes hash to ${actual}`);
+  const actual = await sha256Hex(bytes);
+  if (actual !== part.sha256) {
+    throw new PartReadError(
+      part,
+      host,
+      `bytes hash to sha256 ${actual}, the manifest says ${part.sha256}`,
+    );
+  }
   return bytes;
 }
 

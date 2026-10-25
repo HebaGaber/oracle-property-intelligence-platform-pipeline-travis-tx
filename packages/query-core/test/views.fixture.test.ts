@@ -320,9 +320,29 @@ describe("manifest digests (code-review #8, oracle F5)", () => {
     for (const r of props) expect(r.area_list_sha256).toBe(GAZETTEER.sha256);
   });
 
-  it("throws when the manifest has no travis-places profile (no fallback)", async () => {
-    await expect(bindFixture(TABLES, without)).rejects.toThrow(/travis-places/);
-  });
+  it(
+    "degrades gracefully (no throw) when the manifest has no travis-places profile " +
+      "(A-11 bug 2: places/business out of scope for a run is missing data, not a bind failure)",
+    async () => {
+      const fixture = await bindFixture(TABLES, without);
+      try {
+        const rows = await fixture.rows(
+          "SELECT area_list_sha256, owner_area_class, missing FROM v_property",
+        );
+        expect(rows.length).toBeGreaterThan(0);
+        for (const r of rows) {
+          // No travis-places profile: never silently falls back to the in-repo gazetteer
+          // (code-review #8) — area_list_sha256 is NULL and owner_area_class is the same
+          // "unknown" + missing-reason pair a real gap already renders (never a raw crash).
+          expect(r["area_list_sha256"]).toBeNull();
+          expect(r["owner_area_class"]).toBe("unknown");
+          expect(reasonOf(r, "owner_area_class")).toBe("not_in_export");
+        }
+      } finally {
+        fixture.close();
+      }
+    },
+  );
 
   it("throws when the manifest's travis-austin digest is not the in-repo profile DIGEST", async () => {
     await expect(

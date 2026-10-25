@@ -51,7 +51,9 @@ import {
 } from "@countylens/shared";
 import { expect, test } from "./lib/fixtures.js";
 import { checkpoint } from "./lib/evidence.js";
-import { artifactsOf, groupOf } from "./lib/manifest.js";
+import { artifactsOf, groupOfDirectory, resolveDataGroups } from "./lib/manifest.js";
+import { PERMITS_LOAD_WAIT_MS } from "./lib/perf.js";
+import { permitsTotal, rowsOnPageOf, waitForPermitRows } from "./lib/permits-pages.js";
 import { fetchBuildInfo, repoRoot, requireCidCopyHost, runtimeUrl } from "./lib/runtime.js";
 
 /** P0-4: this phrase never appears on the page (checked case-insensitively, stricter than the grep gate). */
@@ -291,18 +293,26 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       await expect(sources.locator("[data-coverage]")).toHaveCount(0);
       await expect(sources.getByText(COVERAGE_LABELS.permits_emitted)).toHaveCount(0);
 
-      // Step 4: the Permits list has exactly that many rows (one page, no placeholders).
+      // Step 4: the Permits list reports exactly that many permits (its range line total) and
+      // shows page 1 of them: min(page size, count) rows, no placeholders. Opened in the same
+      // page. Root cause of the earlier CI stalls here: one page of every row built ~950,000 DOM
+      // elements and froze the runner's browser; the list is paged now (A-11, 2026-10-25).
       await page.goto("/permits");
       if (published.count === 0) {
         await expect(page.getByText(PERMITS_TEXTS.empty, { exact: true })).toBeVisible({
-          timeout: 120_000,
+          timeout: PERMITS_LOAD_WAIT_MS,
         });
         await expect(page.locator(PERMIT_ROW)).toHaveCount(0);
         await checkpoint(page, "012", "4-permits-empty");
         return;
       }
-      await expect(page.locator(PERMIT_ROW).first()).toBeVisible({ timeout: 120_000 });
-      await expect(page.locator(PERMIT_ROW)).toHaveCount(published.count);
+      await waitForPermitRows(page);
+      expect(await permitsTotal(page), "the Permits page total equals the published count").toBe(
+        published.count,
+      );
+      await expect(page.locator(PERMIT_ROW), "rows on page 1").toHaveCount(
+        rowsOnPageOf(published.count, 0),
+      );
       await checkpoint(page, "012", "4-permits-row-count");
     });
   });
@@ -311,7 +321,16 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
     test("@scenario:A-03-TC-013", async ({ page, run }) => {
       const { manifest, runId } = run;
       const directories = artifactsOf(manifest, "directory");
-      expect(directories.map(groupOf).sort()).toEqual(["county", "property_improvement"]);
+      // Full-county adaptation 2026-10-24 (A-11 Run 2): a group is published as several export
+      // batches (Run 2: 10 county + 5 property_improvement), so groups are resolved from the
+      // manifest's batch structure (lib/manifest.ts), not from the pilot's `tables/<group>` names.
+      const groups = resolveDataGroups(manifest);
+      const groupOf = (directory: (typeof directories)[number]): string =>
+        groupOfDirectory(groups, directory) ?? `unresolved:${directory.name}`;
+      expect([...new Set(directories.map(groupOf))].sort()).toEqual([
+        "county",
+        "property_improvement",
+      ]);
 
       await page.goto("/runs");
       await expect(runCard(page, runId)).toBeVisible({ timeout: 60_000 });

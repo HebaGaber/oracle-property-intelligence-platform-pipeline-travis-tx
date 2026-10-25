@@ -30,10 +30,13 @@
 #
 # Allow-list (documented exceptions, nothing else is skipped):
 #   - a line that carries `grep-gates:allow` is skipped by every gate; put the reason on the line;
-#   - the query-db gate skips the three files that *are* the ban and must spell its words out:
+#   - the query-db gate skips the files that *are* the ban and must spell its words out:
 #       packages/eslint-config/index.js            the ESLint no-restricted-imports list
 #       packages/eslint-config/test/rules.test.ts  the T080 test that proves the ESLint ban fires
 #       pipeline/publish/test/manifest.test.ts     the T027 test that asserts the ban on the publisher
+#       infra/test/no-connection-string.test.ts    the A-11 T025 test that asserts no Postgres
+#                                                   connection string or hardcoded DB host exists;
+#                                                   its own pattern literals must say "postgres"
 #   - the A-04 runtime scan of the query-db gate skips two A-01 files that name the words without
 #     a client: travis/discovery/check-catalog.ts (the catalog secret-pattern ban list) and
 #     travis/discovery/destination-proof.ts (the Docker service name and the variable name for
@@ -48,7 +51,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 ALLOW_MARK='grep-gates:allow'
 QUERY_DB_RT_ALLOW='^pipeline/oracle-runtime/travis/discovery/(check-catalog|destination-proof)\.ts:'
-QUERY_DB_ALLOW='^(packages/eslint-config/index\.js|packages/eslint-config/test/rules\.test\.ts|pipeline/publish/test/manifest\.test\.ts):'
+QUERY_DB_ALLOW='^(packages/eslint-config/index\.js|packages/eslint-config/test/rules\.test\.ts|pipeline/publish/test/manifest\.test\.ts|infra/test/no-connection-string\.test\.ts):'
 # shellcheck disable=SC2089
 EXCLUDE_DIRS='--exclude-dir=node_modules --exclude-dir=dist --exclude-dir=cdk.out --exclude-dir=.turbo'
 

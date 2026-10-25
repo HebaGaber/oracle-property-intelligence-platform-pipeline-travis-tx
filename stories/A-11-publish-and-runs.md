@@ -11,7 +11,7 @@ priority: P1
 moscow: Must
 branch: 011-publish-and-runs
 spec: specs/011-publish-and-runs/
-depends_on: [A-07]
+depends_on: [A-02, A-03, A-04, A-07]
 size_days: 2.5
 agents:
   design: [oracle, machamp]
@@ -20,9 +20,9 @@ agents:
   verify: "`verify-manifest` on 2 gateways (Run 1); immutability check after Run 3"
 skills: [use-oracle, build-batch-workflows, durable-workflow-builder, monitoring-oracle-ingestion, unify-metrics, apply-engineering-guidelines]
 ui: false
-status: Draft
+status: Done
 gate: G4
-qc_testability_signoff: false
+qc_testability_signoff: true
 created: 2026-10-19
 merged: 2026-10-21
 ---
@@ -159,15 +159,15 @@ Not a UI story. The manifest and verify screens are `design/prototype/DataManife
 
 | # | Criterion | Status |
 | --- | --- | --- |
-| G4-1 | Front matter complete (parent FEAT, eval point, branch, priority, **agents and skills from AGENT-MAP.md**) | ☐ |
-| G4-2 | "As a / I want / So that" stated, with an independent test | ☐ |
-| G4-3 | Every AC is Given / When / Then, and its testable box is ticked | ☐ |
-| G4-4 | One scale AC and one missing-data or error AC | ☐ |
-| G4-5 | At least two edge cases | ☐ |
-| G4-6 | Every requirement traces to an AC; NFRs have thresholds | ☐ |
-| G4-7 | Prototype screen linked (UI stories) | ☐ |
-| G4-8 | Dependencies done, or stubbed with **real** sample data | ☐ |
-| G4-9 | No `[NEEDS CLARIFICATION]` left | ☐ |
-| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☐ |
+| G4-1 | Front matter complete (parent FEAT, eval point, branch, priority, **agents and skills from AGENT-MAP.md**) | ☑ |
+| G4-2 | "As a / I want / So that" stated, with an independent test | ☑ |
+| G4-3 | Every AC is Given / When / Then, and its testable box is ticked | ☑ |
+| G4-4 | One scale AC and one missing-data or error AC | ☑ |
+| G4-5 | At least two edge cases | ☑ |
+| G4-6 | Every requirement traces to an AC; NFRs have thresholds | ☑ |
+| G4-7 | Prototype screen linked (UI stories) | ☑ N/A, `ui: false` |
+| G4-8 | Dependencies done, or stubbed with **real** sample data | ☑ A-02/A-03/A-04/A-07 all merged, status Done |
+| G4-9 | No `[NEEDS CLARIFICATION]` left | ☑ |
+| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ with 2 recorded exceptions: C-04 (no hosted UI, `ui: false` — proof is public IPFS + AWS + PR) and C-11 (2.5-day size is calendar wait, not compressible work; AC-9 needs ≥3 UTC dates) — see `docs/gates/G4-A-11-precheck.md` |
 
-**Decision:** ☐ Ready ☐ Returned, reason: {…} · {date}
+**Decision:** ☑ Ready ☐ Returned, reason: {…} · 2026-10-23

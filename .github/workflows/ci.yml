@@ -34,7 +34,9 @@ permissions:
 
 jobs:
   workspace:
-    runs-on: ubuntu-latest
+    # GitHub's native arm64 runner (free for public repos): the Lambdas are ARM_64, so they bundle
+    # natively, with no emulation.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     env:
       # synth reads the region from configuration (infra/src/config.ts throws without
@@ -58,8 +60,17 @@ jobs:
       - name: pnpm install
         run: pnpm install --frozen-lockfile
 
+      # Turborepo's local cache, kept between runs: unchanged packages skip their tasks. Infra
+      # tests are never cached (turbo.json), because they build app code turbo can't see.
+      - name: Restore the Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Typecheck, lint, test, synth (Turborepo)
-        run: pnpm turbo run typecheck lint test synth
+        run: pnpm turbo run typecheck lint test synth --cache-dir=.turbo/cache
 
       # NFR-09: ≥ 80 % lines and branches on packages/contract and packages/query-core. The
       # thresholds are passed on the command line so the gate lives in this file; Vitest exits
@@ -217,14 +228,25 @@ jobs:
 
   e2e-hosted:
     if: github.event_name == 'push' && (github.ref_name == 'feature/oracle-pipeline' || startsWith(github.ref_name, '0'))
-    needs: [workspace, oracle-runtime, gitleaks]
+    # Runs alongside the unit-test jobs; only the secret scan must pass first. It still tests its
+    # own commit: the wait step below blocks until /build.json reports this GITHUB_SHA.
+    needs: [gitleaks]
     runs-on: ubuntu-latest
     # The one job outside the 15-minute budget: ≤ 12 min waiting for the Amplify build of this
-    # commit, then Playwright on the hosted URL (plan Complexity Tracking).
-    timeout-minutes: 30
-    # A newer push makes this commit's hosted run stale; cancel it.
+    # commit, then Playwright on the hosted URL (plan Complexity Tracking). 60 since A-11 Run 2:
+    # at full-county scale TC-NF-01's 20 cold loads alone take ~15 min from a GitHub runner.
+    timeout-minutes: 60
+    # Four jobs on four runners (playwright.config.ts projects), each with its own memory: the
+    # full-county Permits cases, the manifest cases (~2.8 GB of CAR downloads), the rest of the
+    # site, and the cases that must run alone (perf timings, rate-limited public gateways). One worker each (A-16 item 11 for the reason).
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [permits, manifest, site, isolated]
+    # A newer push makes this commit's hosted run stale; cancel it (per shard, so the three jobs
+    # of one run never cancel each other).
     concurrency:
-      group: e2e-hosted-${{ github.ref }}
+      group: e2e-hosted-${{ github.ref }}-${{ matrix.shard }}
       cancel-in-progress: true
     # Credential-free on purpose (no AWS step, no OIDC token; AM-08): @needs-aws cases stay excluded and
     # announced. build-checks.spec.ts (TC-052/053) runs the infra suites, which need the region
@@ -293,15 +315,20 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       # The Playwright config refuses localhost (TC-060); RUNTIME_URL is the hosted branch URL.
+      # One project per matrix shard, one worker: with 2 or 4 workers on one runner the job was
+      # cancelled ~2 min into the full-county Permits cases (cause not yet confirmed; A-16
+      # item 11), while 1 worker runs to completion.
       - name: Playwright on the hosted URL
         working-directory: tests/e2e
-        run: pnpm exec playwright test
+        env:
+          PW_PHASE: ${{ matrix.shard }}
+        run: pnpm exec playwright test --project ${{ matrix.shard }} --workers 1
 
       - name: Upload the Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ github.sha }}
+          name: playwright-report-${{ github.sha }}-${{ matrix.shard }}
           path: tests/e2e/playwright-report
           if-no-files-found: ignore
           retention-days: 14

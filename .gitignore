@@ -21,6 +21,11 @@ pipeline/oracle-runtime/test/.out/
 # elephant-cli debug log (written into the working folder)
 elephant-cli.log
 
+# A-11: local-only scratch logs from dry-run batch orchestration (superseded direct-validate
+# attempt logs plus the live batch-runner echo logs); never meaningful provenance, never uploaded.
+specs/011-publish-and-runs/dry-run-*.log
+specs/011-publish-and-runs/dry-run/
+
 # A-02 workspace: census downloads, Parquet outputs (only the published contract sample is tracked, ARD D-07)
 pipeline/data/raw/census/
 **/*.parquet

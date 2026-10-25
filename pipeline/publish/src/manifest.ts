@@ -30,11 +30,68 @@ import {
   type ManifestSource,
 } from "@countylens/contract";
 import { cidOfBytes, cidOfFile, codecName, sameDigest } from "./cid.js";
+import type { SourceDeltaResult } from "./incremental/delta.js";
 import { jcsBytes } from "./jcs.js";
 import { PART_SIZE, PART_SIZE_BYTES, sha256File, type DataGroup } from "./sequence.js";
 
-/** The display order of `sources[]` (data-model.md): Austin permits first, then TCAD. */
+/** The display order of `sources[]` (data-model.md): Austin permits first, then TCAD. This is
+ *  the known-real source profile for Run 1; it is a plain constant, not a group count, because
+ *  sources and groups are independent axes (one source can feed several groups). A future source
+ *  (BBB/places) is added here, to SOURCE_ORDER, once it is actually captured — never fabricated
+ *  ahead of real provenance (research.md "Manifest builder scaling to 5 data groups"). */
 export const SOURCE_ORDER = ["austin-3syk-w9eu", "tcad-2026-certified-json"] as const;
+
+/**
+ * The required coverage keys per data group (AD-05's five contractor states; data-model.md's
+ * three derivations: `published_rows`, `capture_receipt`, `aggregate_match`). `checkInput`
+ * requires exactly the union of these for the groups actually present in `input.groups` — never
+ * "anything goes": a present group's key missing, or an absent group's key supplied, both throw.
+ * This is the per-run profile T004/T009 widen from the old hardcoded 2-item tuple.
+ */
+export const GROUP_COVERAGE_KEYS: Record<
+  DataGroup,
+  ReadonlyArray<readonly [string, CoverageCount["derivation"]]>
+> = {
+  // No coverage key of its own: the county group is the parcel backbone, not a counted metric
+  // (A-03 status quo, kept unchanged so the walking-skeleton fixtures keep passing). Owner and
+  // parcel geometry are already embedded fields inside county's per-record export — not a
+  // separately counted coverage key (corrected 2026-10-23; see sequence.ts's DataGroup comment).
+  county: [],
+  property_improvement: [
+    ["permits_emitted", "published_rows"],
+    // CR-A-11-porygon finding 2: `permits_no_tcad_geoid` alone left 4 of A-04's 5
+    // permit-to-parcel-link `UnmatchedReason`s (travis/permits/link.ts) with no coverage key at
+    // all, so captured - emitted could legitimately differ by hundreds of thousands of rows with
+    // the manifest naming only part of why. All 5 reasons are now labeled, same convention
+    // (`permits_<reason>`, `aggregate_match`).
+    ["permits_no_tcad_geoid", "aggregate_match"],
+    ["permits_no_tcad_id", "aggregate_match"],
+    ["permits_ambiguous_geoid", "aggregate_match"],
+    ["permits_address_unmatched", "aggregate_match"],
+    ["permits_ambiguous_address", "aggregate_match"],
+    // AD-05's five contractor-identity states (A-07), collapsed to three manifest-coverage
+    // buckets per ADR-0002 #6: there is no lexicon carrier on property_improvement or company
+    // for anything short of a `resolved` match (AD-06), so ambiguous/conflicting/unresolved
+    // are not distinguished in the published coverage either. The producer is
+    // run-month.ts's `contractorCoverage` (oracle-runtime), fed by
+    // transformAustinPropertyImprovement's `PropertyImprovementCounts.by_contractor_state`.
+    ["contractor_resolved", "aggregate_match"],
+    ["contractor_candidate", "aggregate_match"],
+    ["contractor_unresolved", "aggregate_match"],
+  ],
+};
+
+/**
+ * The coverage keys required for exactly `groups` (order-independent; T004/T009 profile). Groups
+ * are deduped first: a group split into N batches (full-county scale, S6a.2) still names its own
+ * keys once, never once per batch — the per-run profile is about which groups are present, not
+ * how many CARs carry each one.
+ */
+export function requiredCoverageKeys(
+  groups: readonly DataGroup[],
+): ReadonlyArray<readonly [string, CoverageCount["derivation"]]> {
+  return [...new Set(groups)].flatMap((g) => GROUP_COVERAGE_KEYS[g]);
+}
 
 /** The Austin source's fixed limitation note (addendum A5; plan § "Fixed texts"). */
 export const COMPTROLLER_LIMITATION = "Comptroller baseline not loaded (A-07)";
@@ -76,6 +133,37 @@ export interface ManifestSourceInput {
   /** A `.jsonl` of capture receipts, or a `.json` receipt with `captured_at` and `records`. */
   receipts: string;
   limitations: string[];
+  /**
+   * The source's added/changed/removed counts (data-model.md's `SourceDelta.delta`), supplied by
+   * `incremental/delta.ts`'s `computeSourceDelta` for an incremental run (T017/T018). Omitted for
+   * Run 1 — or any caller not yet wired to the delta computation (e.g. upload.ts's `manifestInput`,
+   * out of this wave's file ownership) — which keeps A-03's walking-skeleton default: everything
+   * this capture reports is new (`added: records, changed: 0, removed: 0`). Never invented by
+   * `source()`: when supplied, its three counts are used verbatim.
+   */
+  delta?: { added: number; changed: number; removed: number };
+}
+
+/**
+ * Builds the `delta` (and merges the limitations) a `ManifestSourceInput` needs from T017's
+ * `SourceDeltaResult` (T018/T019 wiring): the delta's own `added`/`changed`/`removed` verbatim,
+ * and its own limitations (e.g. `NO_NEWER_EXPORT`, `RESTAMP_LIMITATION`) appended after any
+ * caller-supplied notes — the same "add once, after the source's own notes" rule `source()`
+ * already applies to the fixed Austin/TCAD notes. Never invents a count or a reason: everything
+ * here comes from the delta result the caller already computed.
+ */
+export function sourceInputFromDelta(
+  result: Pick<SourceDeltaResult, "watermark" | "delta" | "limitations">,
+  base: { name: string; url: string; receipts: string; limitations?: string[] },
+): ManifestSourceInput {
+  return {
+    name: base.name,
+    url: base.url,
+    watermark: result.watermark,
+    receipts: base.receipts,
+    limitations: [...(base.limitations ?? []), ...result.limitations],
+    delta: { ...result.delta },
+  };
 }
 
 export interface BuildManifestInput {
@@ -100,6 +188,12 @@ export interface BuildManifestInput {
    */
   ownersRedacted: number;
   limitations: string[];
+  /**
+   * A-16 #6: how many captured Austin permits linked to a TCAD property (Query DB). It is not
+   * published (no manifest field carries it). When given and the five permit-link exclusion keys
+   * are present, `exclusions + linkedPermits` must equal the Austin source's `records`.
+   */
+  linkedPermits?: number;
   /** Where `git status` runs (default: the current directory). */
   repoRoot?: string;
   /** `git status --porcelain --untracked-files=no` output; injectable for tests. */
@@ -293,16 +387,19 @@ function source(input: ManifestSourceInput, fixedNote: string): ManifestSource {
     records = typeof receipt.records === "number" ? receipt.records : receipt.records.length;
     capturedAt = receipt.captured_at;
   }
+  // T018: explicit added/changed/removed when the caller supplies a delta (incremental runs,
+  // via sourceInputFromDelta/computeSourceDelta); otherwise A-03's walking-skeleton default —
+  // the first run of this contract, where everything this capture reports is new.
+  const delta = input.delta ?? { added: records, changed: 0, removed: 0 };
   return {
     name: input.name,
     url: input.url,
     watermark: input.watermark,
     captured_at: capturedAt,
     records,
-    // First run of this contract: everything is new.
-    added: records,
-    changed: 0,
-    removed: 0,
+    added: delta.added,
+    changed: delta.changed,
+    removed: delta.removed,
     limitations: input.limitations.includes(fixedNote)
       ? [...input.limitations]
       : [...input.limitations, fixedNote],
@@ -336,13 +433,10 @@ function checkInput(input: BuildManifestInput): void {
       `sources must be exactly, in order: ${SOURCE_ORDER.join(", ")}; got ${names.join(", ") || "none"}`,
     );
   }
-  const required: ReadonlyArray<[string, CoverageCount["derivation"]]> = [
-    ["permits_emitted", "published_rows"],
-    ["permits_no_tcad_geoid", "aggregate_match"],
-  ];
+  const required = requiredCoverageKeys(input.groups.map((g) => g.group));
   for (const [key, derivation] of required) {
     const count = input.coverage[key];
-    if (!count) throw new Error(`coverage.${key} is required`);
+    if (!count) throw new Error(`coverage.${key} is required for group(s) in this run`);
     if (count.derivation !== derivation)
       throw new Error(
         `coverage.${key}.derivation must be "${derivation}", not "${count.derivation}"`,
@@ -352,26 +446,78 @@ function checkInput(input: BuildManifestInput): void {
   if (status !== "") throw new Error(`working tree is dirty; commit before publishing:\n${status}`);
 }
 
+export const PERMIT_EXCLUSION_KEYS = [
+  "permits_no_tcad_geoid",
+  "permits_no_tcad_id",
+  "permits_ambiguous_geoid",
+  "permits_address_unmatched",
+  "permits_ambiguous_address",
+] as const;
+
+/**
+ * A-16 #6: every captured Austin permit is either linked or excluded for exactly one of the five
+ * reasons. Checked only when all five exclusion keys and a linked total are available; throws
+ * with the numbers otherwise-wrong.
+ */
+export function assertPermitLinkReconciliation(args: {
+  coverage: Record<string, CoverageCount>;
+  linkedPermits: number | undefined;
+  austinRecords: number;
+}): void {
+  const { coverage, linkedPermits, austinRecords } = args;
+  if (linkedPermits === undefined) return;
+  // Given a linked total, the check must run: a missing key is a failure, never a silent skip.
+  const missing = PERMIT_EXCLUSION_KEYS.filter((k) => coverage[k] === undefined);
+  if (missing.length > 0)
+    throw new Error(
+      `permit link reconciliation cannot run: coverage lacks ${missing.join(", ")} (linkedPermits ${linkedPermits} was given)`,
+    );
+  if (!Number.isInteger(linkedPermits) || linkedPermits < 0)
+    throw new Error(`linkedPermits must be a non-negative integer, got ${String(linkedPermits)}`);
+  const excluded = PERMIT_EXCLUSION_KEYS.reduce(
+    (n, k) => n + (coverage[k] as CoverageCount).count,
+    0,
+  );
+  if (excluded + linkedPermits !== austinRecords) {
+    throw new Error(
+      `permit link reconciliation failed: excluded ${excluded} (${PERMIT_EXCLUSION_KEYS.map((k) => `${k} ${(coverage[k] as CoverageCount).count}`).join(", ")}) + linked ${linkedPermits} = ${excluded + linkedPermits}, but the Austin source records ${austinRecords}`,
+    );
+  }
+}
+
 export async function buildManifest(input: BuildManifestInput): Promise<BuiltManifest> {
   const runDir = input.runDir ?? input.pilotDir;
   if (!runDir) throw new Error("runDir is required");
   checkInput(input);
   const artifacts: ManifestArtifact[] = [];
+  // S6a.2: `input.groups` is N CARs per data group at full-county scale (AD-0001's batching —
+  // 10 for `county`, 2 for `property_improvement` in Run 1), not the A-03 pilot's one-CAR
+  // assumption. Every batch's artifacts are kept (never overwritten); each table's rows are
+  // summed across every batch of the same group, so a published-rows coverage check (e.g.
+  // `permits_emitted`) sees the group's true total, not just its last batch's.
   const rows = new Map<DataGroup, Record<string, number>>();
   for (const g of input.groups) {
     const built = await groupArtifacts(runDir, g);
     artifacts.push(...built.artifacts);
-    rows.set(g.group, built.rows);
+    const existing = rows.get(g.group) ?? {};
+    for (const [table, count] of Object.entries(built.rows)) {
+      existing[table] = (existing[table] ?? 0) + count;
+    }
+    rows.set(g.group, existing);
   }
   // `published_rows`: the count is literally the number of published property_improvement rows.
-  const published = rows.get("property_improvement")?.property_improvement;
-  const emitted = input.coverage.permits_emitted as CoverageCount;
-  if (published === undefined)
-    throw new Error("coverage.permits_emitted needs the property_improvement group's table");
-  if (emitted.count !== published) {
-    throw new Error(
-      `coverage.permits_emitted.count ${emitted.count} is not the number of published property_improvement rows (${published})`,
-    );
+  // Only checked when this run actually includes the property_improvement group (T004/T009's
+  // per-group profile: a run of, say, county+owner alone never needs permits_emitted).
+  if (input.groups.some((g) => g.group === "property_improvement")) {
+    const published = rows.get("property_improvement")?.property_improvement;
+    const emitted = input.coverage.permits_emitted as CoverageCount;
+    if (published === undefined)
+      throw new Error("coverage.permits_emitted needs the property_improvement group's table");
+    if (emitted.count !== published) {
+      throw new Error(
+        `coverage.permits_emitted.count ${emitted.count} is not the number of published property_improvement rows (${published})`,
+      );
+    }
   }
   const manifest = RunManifestV1.parse({
     schema: "oracle-travis-run-manifest.v1",
@@ -388,6 +534,63 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
     coverage: input.coverage,
     limitations: input.limitations,
   });
+  const austin = manifest.sources.find((s) => s.name === SOURCE_ORDER[0]);
+  if (!austin && input.linkedPermits !== undefined)
+    throw new Error(
+      `permit link reconciliation cannot run: no ${SOURCE_ORDER[0]} source in the manifest`,
+    );
+  if (austin)
+    assertPermitLinkReconciliation({
+      coverage: input.coverage,
+      linkedPermits: input.linkedPermits,
+      austinRecords: austin.records,
+    });
   const bytes = jcsBytes(manifest);
   return { manifest, bytes, cid: await cidOfBytes(bytes) };
+}
+
+/**
+ * A data group split into N batches at full-county scale (AD-0001's batching:
+ * `pipeline/publish/scripts/split-into-batches.py` + `batch-hash-validate-export.sh` — 10 for
+ * Run 1's `county`, 2 for its `property_improvement`). Their fixed layout under `dir`:
+ * `cars/<carPrefix>-bNN.car` and `tables/bNN/` + `tables/bNN-export.json`, `NN` zero-padded to 2
+ * digits. T013's original stub assumed a single dry run directory for every group; corrected at
+ * S6a.2, now that the real batched output exists and spans more than one run directory per group
+ * (`dir` is passed per group, not assumed shared).
+ */
+export interface BatchedGroupDirs {
+  group: DataGroup;
+  /** Directory containing this group's `cars/` and `tables/` batch subdirectories. */
+  dir: string;
+  /** The CAR file prefix before `-bNN`, e.g. `travis-county`. */
+  carPrefix: string;
+  /** Batch numbers to include, in the order they should appear (e.g. `[1, 2, ..., 10]`). */
+  batches: readonly number[];
+}
+
+/**
+ * Builds one `ManifestGroupInput` per batch from `BatchedGroupDirs`'s fixed layout (T013/T017
+ * wave-2 wiring, closed at S6a.2: `buildManifest()` itself now sums rows across batches of the
+ * same group; this is the glue that turns N on-disk batch directories into the
+ * `ManifestGroupInput[]` it expects). The CAR root and tables root are read verbatim from each
+ * batch's own `export-tables --output-json` summary (its `countyRoot`/`root` fields) — never
+ * recomputed, guessed, or taken from a differently-named file — so this is pure path/JSON
+ * plumbing over `elephant-cli`'s own printed output, not a new source of truth. `buildManifest`'s
+ * own checks (CAR root vs `CountyTables.county_root`, tables root vs the block's own hash, every
+ * part's CID and size) still re-verify every one of these batches against the real files.
+ */
+export function manifestGroupInputsFromBatches(spec: BatchedGroupDirs): ManifestGroupInput[] {
+  return spec.batches.map((n) => {
+    const b = String(n).padStart(2, "0");
+    const tablesExportJson = join(spec.dir, "tables", `b${b}-export.json`);
+    const summary = TablesExportSummary.parse(JSON.parse(readFileSync(tablesExportJson, "utf8")));
+    return {
+      group: spec.group,
+      carPath: join(spec.dir, "cars", `${spec.carPrefix}-b${b}.car`),
+      carRoot: summary.countyRoot,
+      tablesDir: join(spec.dir, "tables", `b${b}`),
+      tablesRoot: summary.root,
+      tablesExportJson,
+    };
+  });
 }

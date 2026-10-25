@@ -61,10 +61,10 @@ export type FixtureTables = Partial<
   Record<"county" | "property_improvement", Record<string, TableRows>>
 >;
 
-const columnsOf = (table: string): [string, string][] =>
+export const columnsOf = (table: string): [string, string][] =>
   table.includes("_has_") ? RELATIONSHIP : classColumns(table);
 
-const literal = (v: Value | undefined, type: string): string =>
+export const literal = (v: Value | undefined, type: string): string =>
   v === null || v === undefined
     ? `NULL::${type}`
     : typeof v === "string"

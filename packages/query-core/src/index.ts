@@ -10,6 +10,8 @@ export {
   REQUIRED_TABLES,
   TRAVIS_GROUP_SOURCES,
   bindManifest,
+  boundPartNames,
+  resolveBatchGroups,
   tablesForViews,
   type BindOptions,
   type BoundRun,

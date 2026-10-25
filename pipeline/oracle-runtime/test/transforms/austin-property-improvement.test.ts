@@ -9,6 +9,8 @@
 // `profile` is injected (the run passes the real profile module); here a stub with the
 // profile contract's shape (contracts/profile.md) keeps the test about the transform.
 import { describe, expect, it } from "vitest";
+import { buildCrosswalkIndex } from "../../travis/identity/crosswalk.js";
+import type { RegistryRecord } from "../../travis/identity/resolver.js";
 import { buildSeedRow } from "../../travis/pilot/build-seed.js";
 import { buildSharedFiles, parseTcadRecord } from "../../travis/transforms/shared-seed.js";
 import { transformTcadCounty } from "../../travis/transforms/tcad-county.js";
@@ -17,6 +19,7 @@ import {
   assertEmittedClasses,
   transformAustinPropertyImprovement,
   type AustinPermitCapture,
+  type ContractorIdentityInput,
   type ProfileApi,
 } from "../../travis/transforms/austin-property-improvement.js";
 import { tcadRecord } from "../fixtures/tcad-records.js";
@@ -157,13 +160,68 @@ describe("transformAustinPropertyImprovement", () => {
     });
   });
 
-  it("a trade sub-permit is published with its trade type, never Roofing (D-4b)", () => {
+  it("a BP + EP + PP + MP project emits only the BP; the trade sub-permits stay in the ledger (D-4b, PO 2026-10-24)", () => {
+    const out = transformAustinPropertyImprovement(
+      setup([
+        capture("2003-012717 BP"),
+        capture("2003-012717 EP", { permittype: "EP" }),
+        capture("2003-012717 MP", { permittype: "MP" }),
+        capture("2003-012717 PP", { permittype: "PP" }),
+      ]),
+    );
+    const permitFiles = Object.keys(out.files).filter((n) =>
+      /^property_improvement_\d+\.json$/.test(n),
+    );
+    expect(permitFiles).toEqual(["property_improvement_1.json"]);
+    expect(parse(out.files, "property_improvement_1.json")).toMatchObject({
+      permit_number: "2003-012717 BP",
+      improvement_type: "Roofing",
+    });
+    expect(
+      Object.keys(out.files).filter((n) =>
+        /^relationship_property_has_property_improvement_/.test(n),
+      ),
+    ).toEqual(["relationship_property_has_property_improvement_1.json"]);
+    expect(Object.values(out.files).join("")).not.toContain("2003-012717 EP");
+    expect(out.counts).toMatchObject({
+      emitted: 1,
+      excluded: 3,
+      needs_review: 0,
+      by_skip: { trade_sub_permit: 3 },
+    });
+    expect(out.ledger.map((l) => [l.permit_number, l.emitted, l.skip_reason])).toEqual([
+      ["2003-012717 BP", true, null],
+      ["2003-012717 EP", false, "trade_sub_permit"],
+      ["2003-012717 MP", false, "trade_sub_permit"],
+      ["2003-012717 PP", false, "trade_sub_permit"],
+    ]);
+    // the internal ledger keeps the trade type the profile adapter assigned
+    expect(out.ledger[1]).toMatchObject({ improvement_type: "Electrical", reason: "trade_permit" });
+  });
+
+  it("a property whose only permit is a trade sub-permit emits nothing (counted as excluded)", () => {
     const out = transformAustinPropertyImprovement(
       setup([capture("2026-100002 EP", { permittype: "EP" })]),
     );
-    expect(parse(out.files, "property_improvement_1.json")).toMatchObject({
-      improvement_type: "Electrical",
+    expect(out.files).toEqual({});
+    expect(out.counts).toMatchObject({
+      emitted: 0,
+      excluded: 1,
+      needs_review: 0,
+      by_skip: { trade_sub_permit: 1 },
     });
+    expect(out.ledger[0]).toMatchObject({ emitted: false, skip_reason: "trade_sub_permit" });
+  });
+
+  it("a trade sub-permit is skipped as trade_sub_permit whatever its status word", () => {
+    const out = transformAustinPropertyImprovement(
+      setup([
+        capture("2026-100007 EP", { permittype: "EP", status_current: "VOID" }),
+        capture("2026-100008 PP", { permittype: "PP", status_current: "Archived" }),
+      ]),
+    );
+    expect(out.counts).toMatchObject({ emitted: 0, excluded: 2, needs_review: 0 });
+    expect(out.counts.by_skip).toEqual({ trade_sub_permit: 2 });
   });
 
   it("excluded and needs_review permits are not emitted and are counted", () => {
@@ -260,6 +318,115 @@ describe("transformAustinPropertyImprovement", () => {
     expect(out.ledger).toHaveLength(2);
     for (const row of out.ledger)
       expect(row).toMatchObject({ profile_version: "travis-austin@1.0.0", profile_sha256: SHA });
+  });
+});
+
+// A-11 fix: wires A-07's real resolver (resolver.ts's resolveContractor, unmodified) into the
+// ledger per permit. Per ADR-0002 #6 the five-state verdict has no lexicon carrier, so it stays
+// off the emitted JSON record; these tests prove each real state reaches `ledger[i]
+// .contractor_resolution` and that `counts.by_contractor_state` rolls it up, never silently
+// dropping a non-resolved state or defaulting one to `resolved`.
+describe("contractor identity resolution (A-07/AD-05, wired via ClassificationLedgerRow)", () => {
+  const REGISTRY: RegistryRecord[] = [
+    { taxpayerNumber: "100", legalName: "ACME ROOFING LLC", sosStatusCode: "active" },
+    { taxpayerNumber: "200", legalName: "ACME ROOFING LLC", sosStatusCode: "active" },
+    { taxpayerNumber: "300", legalName: "STALE ROOFING INC", sosStatusCode: "terminated" },
+  ];
+
+  function identity(over: Partial<ContractorIdentityInput> = {}): ContractorIdentityInput {
+    return {
+      registry: REGISTRY,
+      registryLoaded: true,
+      registrySnapshotDigest: "d".repeat(64),
+      effectiveOn: "2026-10-23T00:00:00.000Z",
+      ...over,
+    };
+  }
+
+  it("without a wired registry every emitted permit genuinely resolves unresolved (registry_unavailable), never null or resolved", () => {
+    const out = transformAustinPropertyImprovement(setup([capture("2026-200001 BP")]));
+    expect(out.ledger[0]?.contractor_resolution).toBe("unresolved");
+    expect(out.counts.by_contractor_state).toEqual({ unresolved: 1 });
+  });
+
+  it("a legal-name match whose only registry hit is not active resolves conflicting, never candidate or resolved", () => {
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200002 BP", { contractor_company_name: "STALE ROOFING INC" })]),
+      contractorIdentity: identity(),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("conflicting");
+    expect(out.counts.by_contractor_state).toEqual({ conflicting: 1 });
+  });
+
+  it("an identifier crosswalk match resolves resolved (AC-2's fixture-fallback path, D-10)", () => {
+    const crosswalk = buildCrosswalkIndex([{ permitKey: "2026-200003 BP", taxpayerNumber: "100" }]);
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200003 BP", { contractor_company_name: "ANYTHING" })]),
+      contractorIdentity: identity({ crosswalk }),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("resolved");
+    expect(out.counts.by_contractor_state).toEqual({ resolved: 1 });
+  });
+
+  it("a single active legal-name match (no crosswalk) resolves candidate", () => {
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200004 BP", { contractor_company_name: "Lone Star Roofing Co" })]),
+      contractorIdentity: identity({
+        registry: [
+          { taxpayerNumber: "400", legalName: "LONE STAR ROOFING CO", sosStatusCode: "active" },
+        ],
+      }),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("candidate");
+    expect(out.counts.by_contractor_state).toEqual({ candidate: 1 });
+  });
+
+  it("two active legal-name matches resolve ambiguous (all kept by the resolver, not dropped)", () => {
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200005 BP", { contractor_company_name: "ACME ROOFING LLC" })]),
+      contractorIdentity: identity(),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("ambiguous");
+  });
+
+  it("no printed contractor name resolves unresolved with contractor_not_printed, never null", () => {
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200006 BP", { contractor_company_name: null })]),
+      contractorIdentity: identity(),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("unresolved");
+  });
+
+  it("no match at all against a loaded registry resolves unresolved, never defaulted to resolved", () => {
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200007 BP", { contractor_company_name: "NOBODY MATCHES THIS LLC" })]),
+      contractorIdentity: identity(),
+    });
+    expect(out.ledger[0]?.contractor_resolution).toBe("unresolved");
+  });
+
+  it("no contractor-identity field ever reaches the emitted JSON record, in any state (ADR-0002 #6: no lexicon carrier)", () => {
+    const crosswalk = buildCrosswalkIndex([{ permitKey: "2026-200008 BP", taxpayerNumber: "100" }]);
+    const out = transformAustinPropertyImprovement({
+      ...setup([capture("2026-200008 BP")]),
+      contractorIdentity: identity({ crosswalk }),
+    });
+    const record = parse(out.files, "property_improvement_1.json");
+    expect(record).not.toHaveProperty("contractor_company_cid");
+    expect(record).not.toHaveProperty("contractor_resolution");
+    expect(Object.keys(record).sort()).toEqual(
+      [
+        "completion_date",
+        "contractor_type",
+        "improvement_action",
+        "improvement_status",
+        "improvement_type",
+        "permit_issue_date",
+        "permit_number",
+        "request_identifier",
+        "source_http_request",
+      ].sort(),
+    );
   });
 });
 

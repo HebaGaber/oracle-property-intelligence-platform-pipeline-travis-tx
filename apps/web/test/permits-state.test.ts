@@ -217,7 +217,7 @@ describe("loading (FR-008, TC-024): progress bar and skeletons, never a table or
 });
 
 describe("ready (FR-003, TC-020…025): the single page of permits with provenance and labels", () => {
-  it("renders the Atlas data table from 600 px: one row per permit in the given order, no pagination, sorting or column controls", async () => {
+  it("renders the Atlas data table from 600 px: one row per permit in the given order, no sorting or column controls (paging: permits-paging.test.ts)", async () => {
     stubViewport(true);
     renderPage(immediate(loaded()));
     const table = await screen.findByRole("table");
@@ -244,7 +244,7 @@ describe("ready (FR-003, TC-020…025): the single page of permits with provenan
     expect(table.querySelectorAll("[aria-sort]")).toHaveLength(0);
     const buttons = within(table).getAllByRole("button");
     expect(buttons.every((b) => /copy/i.test(b.getAttribute("aria-label") ?? ""))).toBe(true);
-    expect(document.body.textContent).not.toMatch(/\bnext page\b|\bprevious page\b|\b1–\d+ of\b/i);
+    expect(screen.getByTestId("permits-range").textContent).toBe(PERMITS_TEXTS.showing(1, 3, 3));
   });
 
   it("renders cards below 600 px with the same content, the provenance line last", async () => {
