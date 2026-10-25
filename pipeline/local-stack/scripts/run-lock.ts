@@ -17,6 +17,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 
@@ -37,6 +38,8 @@ export interface RunLockOptions {
   beforeTakeover?: () => void;
   /** Test hook: runs while this process holds the takeover guard. */
   afterGuard?: () => void;
+  /** Age after which a leftover takeover guard is stale (default GUARD_STALE_MS). */
+  guardStaleMs?: number;
 }
 
 function readOwner(path: string): number {
@@ -58,6 +61,19 @@ function tryCreate(path: string, pid: number): boolean {
     throw e;
   } finally {
     rmSync(tmp, { force: true });
+  }
+}
+
+/** A takeover guard older than this is stale (its process died mid-takeover). */
+export const GUARD_STALE_MS = 60_000;
+
+function clearStaleGuard(guard: string, staleMs: number): boolean {
+  try {
+    if (Date.now() - statSync(guard).mtimeMs < staleMs) return false;
+    rmSync(guard, { force: true });
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ENOENT"; // gone already: try again
   }
 }
 
@@ -83,7 +99,11 @@ export function acquireRunLock(path: string, options: RunLockOptions = {}): () =
     options.beforeTakeover?.();
     const guard = `${path}.takeover`;
     if (!tryGuard(guard)) {
-      throw new Error(`${path}: another process is taking over (${guard}); not starting`);
+      // A takeover takes milliseconds; a guard older than this was left by a killed process
+      // (code-review finding 5) and must not block every later takeover.
+      if (!clearStaleGuard(guard, options.guardStaleMs ?? GUARD_STALE_MS) || !tryGuard(guard)) {
+        throw new Error(`${path}: another process is taking over (${guard}); not starting`);
+      }
     }
     try {
       options.afterGuard?.();

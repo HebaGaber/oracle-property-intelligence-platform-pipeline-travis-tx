@@ -26,7 +26,7 @@ Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the
 | B-G2a | Sign-in, Activity, Runs admin, Coverage Cost/Limits, Runs/Compare/Log/Coverage parity (T039–T046) | G2a metagross | R2→R3 | G1 API types (for wiring) | 70 m | 01:50 | ✅ merged 38ea8b3 |
 | B-G2b | Speed fixes, then parity: shell → Explore + drawer → Data → Hub/Help/Legal (T050–T052) | G2b metagross | R2→R3 | parity matrix ✅ | 80 m | 02:20 | 🔄 batch 1 merged 6cc6fad (shell, Explore, speed); Data/Hub/Legal + index error copy in progress |
 | M1 | Merge the five worktree branches into `016-cost-and-admin`; run `pnpm check`, format, grep gates, stylelint, bundle gate, `cdk synth` | Me | R2 | each builder done | 15 m | 01:45 | ✅ lint, format, gates, stylelint, typecheck, full tests (2 load-timeouts rerun green) |
-| D1 | 🛑 Laptop CDK deploy (Api → Web → Ops) + smoke `admin.me` 401, `explore.search` on Run 2 + spike log retention 14 d | Me + PO OK | R2 | B-G1, B-G3, M1 | 15 m | 01:55 | ✅ deployed 01:45 (447 s); smoke admin.me 401, explore.search Run 2 3.8 s cold / 1.3 s warm; ERR-72 Api redeploy running |
+| D1 | 🛑 Laptop CDK deploy (Api → Web → Ops) + smoke `admin.me` 401, `explore.search` on Run 2 + spike log retention 14 d | Me + PO OK | R2 | B-G1, B-G3, M1 | 15 m | 01:55 | ✅ deployed 01:45 (447 s); smoke admin.me 401, explore.search Run 2 3.8 s cold / 1.3 s warm; ERR-75 Api redeploy running |
 | U1 | ✋ PO creates admin + non-admin Cognito users and the test env file (commands pre-filled) | PO | R2 | D1 | 5 m | 02:00 | ✅ test users created by Claude (Task B pattern, .test addresses), env file mode 600 |
 | P1 | Batch 1 push (web parity families done + Coverage + docs) → Amplify preview → smoke | Me | R2 | M1 (G2a/G2b first commits) | 25 m | 02:00 | ✅ pushed 01:53 (one push after the deploy); Amplify preview + CI building |
 | P2 | Batch 2 push (admin UI/API, index read path, rest of parity) → preview | Me | R3 | B-G2a, B-G2b, B-G4, D1 | 25 m | 02:30 | ⏳ G2b rest + review fixes |
@@ -35,7 +35,7 @@ Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the
 | T1 | Hosted Playwright on the preview: A-16 specs, unparked cases, responsive; index p95 20 cold + 20 warm; golden G1–G6 on Run 2 | Me | R3 | P2, UP, U1 | 20 m | 02:45 | ⏳ after preview is live |
 | T2 | Parity re-run (smeargle) on the preview, after-fix verdicts | Me | R3 | P2 | 15 m (parallel with T1) | 02:45 | ⏳ after P2 |
 | BR | ✋ PO starts local stack + bridge; admin Start (`dry_run`) → SQS → bridge → Restate → "Running"; stop bridge → expired; DLQ email | Me + PO | R3 | D1, U1, B-G3 | 15 m (parallel with T1) | 02:40 | ⏳ needs PO to start local stack + bridge |
-| FX | Fixes from review and hosted tests (ERR-72+), re-tests | builders | R3 | RV, T1, T2 | 15 m | 02:40 | ⏳ after RV |
+| FX | Fixes from review and hosted tests (ERR-75+), re-tests | builders | R3 | RV, T1, T2 | 15 m | 02:40 | ⏳ after RV |
 | EV | Evidence `docs/evidence/A-16.md` (Closure table), cost/limits final + ✋ billing screenshot, statuses, PR body, kit-usage, converge | Me (+ PO screenshot) | R3 | T1, BR | 15 m (parallel with FX) | 02:50 | ⏳ |
 | G7 | G7 pre-check → 🛑 G7 → merge `--no-ff` → `progress.sh` → push | Me + PO | R3 | FX, EV | 10 m | 03:00 | ⏳ |
 

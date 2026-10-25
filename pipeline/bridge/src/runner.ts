@@ -116,10 +116,20 @@ export function createRunner(deps: RunnerDeps): CommandRunner {
     const progress = readProgress(progressPath);
     const startedAt = progress === undefined ? deps.now() : new Date(progress.startedAt);
     const done = new Set(progress?.done ?? []);
+    // A Restate workflow runs once per key, so a retry after a failed capture needs a new key
+    // (machamp review M2): failed capture attempts are counted in progress.json.
+    let captureAttempts = progress?.captureAttempts ?? 0;
+    const saveProgress = (): void =>
+      files.writeText(
+        progressPath,
+        `${JSON.stringify({ startedAt: startedAt.toISOString(), done: [...done], captureAttempts }, null, 2)}\n`,
+      );
     // The Restate job id must match /^travis-a04-[a-z0-9-]+$/; derived from the run id so a retry
     // attaches to the same durable workflow instead of starting a new capture.
     const jobId = `travis-a04-permits-incremental-${runId.replace(/^travis-(incr|dryrun)-/, "").replace(/-/g, "")}`;
-    const key = `austin-3syk-w9eu-${jobId.replace(/^travis-a04-permits-/, "")}`;
+    const baseKey = `austin-3syk-w9eu-${jobId.replace(/^travis-a04-permits-/, "")}`;
+    const keyFor = (attempts: number): string =>
+      attempts === 0 ? baseKey : `${baseKey}-a${attempts}`;
     const permitsJob = `travis-a11-permits-${runId}`;
     const permitsDir = `${c.dataRunsDir}/${permitsJob}`;
     const manifestRel = `runs/${runId}/manifest.json`;
@@ -160,8 +170,10 @@ export function createRunner(deps: RunnerDeps): CommandRunner {
         name: "preflight",
         run: async () => {
           const state = readState();
-          const countyDir = c.countyDir ?? state.countyDir;
-          const seedJob = c.permitsSeedJob ?? state.permitsSeedJob;
+          // The saved state (the last run this bridge published) wins; the env only seeds the
+          // first run (code-review finding 2: env must never roll the base back).
+          const countyDir = state.countyDir ?? c.countyDir;
+          const seedJob = state.permitsSeedJob ?? c.permitsSeedJob;
           if (countyDir === undefined)
             throw new StepFailed(
               "BRIDGE_COUNTY_DIR is not set (the last published run's county batches directory)",
@@ -174,16 +186,28 @@ export function createRunner(deps: RunnerDeps): CommandRunner {
           if (indexText === undefined) throw new StepFailed("runs/index.json is missing");
           const runs = (JSON.parse(indexText) as { runs: { runId: string; manifestCid: string }[] })
             .runs;
-          const lastRun = runs[runs.length - 1];
-          if (lastRun === undefined)
-            throw new StepFailed("runs/index.json has no runs to build on");
-          preflight = { base: lastRun, countyDir, seedJob };
+          // The base is the run the command names (window.sinceRunId); a retry has no window and
+          // builds on the newest run. A named run missing from the index fails closed (finding 6).
+          const since = cmd.window?.sinceRunId;
+          const base =
+            since === undefined ? runs[runs.length - 1] : runs.find((r) => r.runId === since);
+          if (base === undefined)
+            throw new StepFailed(
+              since === undefined
+                ? "runs/index.json has no runs to build on"
+                : `the command's base run ${since} is not in runs/index.json`,
+            );
+          preflight = { base, countyDir, seedJob };
         },
       },
       {
         name: "capture-merge",
         run: async () => {
-          const out = await deps.restate.runIncremental(jobId, key);
+          const out = await deps.restate.runIncremental(jobId, keyFor(captureAttempts));
+          if (out.exitCode !== 0) {
+            captureAttempts += 1;
+            saveProgress();
+          }
           if (out.exitCode === 2)
             throw new StepFailed(
               `capture blocked by the source or waiting for a human (status ${out.status}); not retried`,
@@ -331,19 +355,60 @@ export function createRunner(deps: RunnerDeps): CommandRunner {
               run: () => sh("publish-dry-run", "npx", publishArgs(["--dry-run"]), c.repoRoot),
             },
           ]
-        : PUBLISH_STEP_ORDER.map((step) => ({
-            name: `publish-${step}`,
-            run: () => sh(`publish-${step}`, "npx", publishArgs(["--step", step]), c.repoRoot),
-          }))),
+        : PUBLISH_STEP_ORDER.flatMap((step) => {
+            const publish = {
+              name: `publish-${step}`,
+              run: () => sh(`publish-${step}`, "npx", publishArgs(["--step", step]), c.repoRoot),
+            };
+            // machamp review M1: a bridge-published run gets its Explore index right after the
+            // CID copy holds its parts, before the run is listed, so it is searchable at once.
+            if (step !== "cid-copy") return [publish];
+            return [
+              publish,
+              {
+                name: "explore-index",
+                run: () =>
+                  sh(
+                    "explore-index",
+                    "npx",
+                    [
+                      "tsx",
+                      "pipeline/publish/scripts/build-explore-index.ts",
+                      "--manifest",
+                      manifestRel,
+                      "--source",
+                      "cidcopy",
+                      "--work-dir",
+                      `${workDir}/explore-index`,
+                      "--verify",
+                      "--upload",
+                      ...(c.copyHost === undefined ? [] : ["--copy-host", c.copyHost]),
+                    ],
+                    c.repoRoot,
+                  ),
+              },
+            ];
+          })),
     ];
 
-    function readProgress(path: string): { startedAt: string; done: string[] } | undefined {
+    function readProgress(
+      path: string,
+    ): { startedAt: string; done: string[]; captureAttempts: number } | undefined {
       const text = files.readText(path);
       if (text === undefined) return undefined;
       try {
-        const parsed = JSON.parse(text) as { startedAt?: unknown; done?: unknown };
+        const parsed = JSON.parse(text) as {
+          startedAt?: unknown;
+          done?: unknown;
+          captureAttempts?: unknown;
+        };
         if (typeof parsed.startedAt !== "string" || !Array.isArray(parsed.done)) return undefined;
-        return { startedAt: parsed.startedAt, done: parsed.done.map(String) };
+        const attempts = typeof parsed.captureAttempts === "number" ? parsed.captureAttempts : 0;
+        return {
+          startedAt: parsed.startedAt,
+          done: parsed.done.map(String),
+          captureAttempts: attempts,
+        };
       } catch {
         return undefined;
       }
@@ -373,10 +438,7 @@ export function createRunner(deps: RunnerDeps): CommandRunner {
         await step.run();
         if (step.name !== "preflight") {
           done.add(step.name);
-          files.writeText(
-            progressPath,
-            `${JSON.stringify({ startedAt: startedAt.toISOString(), done: [...done] }, null, 2)}\n`,
-          );
+          saveProgress();
         }
       }
       if (cmd.mode === "publish") {

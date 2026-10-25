@@ -32,7 +32,7 @@ export function command(over: Partial<RunCommandV1> = {}): RunCommandV1 {
     schema: RUN_COMMAND_SCHEMA,
     commandId: randomUUID(),
     action: "start",
-    window: { kind: "austin_permits_since_watermark", sinceRunId: "travis-full-run3-20261025" },
+    window: { kind: "austin_permits_since_watermark", sinceRunId: "travis-full-run2-20261024" },
     mode: "dry_run",
     requestedBy: "sub-123",
     requestedAt,

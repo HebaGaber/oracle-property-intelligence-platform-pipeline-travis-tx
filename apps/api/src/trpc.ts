@@ -14,7 +14,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import type { Context } from "./context.js";
 
-// isDev false: error responses never carry a stack trace (ERR-72; the Lambdas do not set NODE_ENV).
+// isDev false: error responses never carry a stack trace (ERR-75; the Lambdas do not set NODE_ENV).
 const t = initTRPC.context<Context>().create({ isDev: false });
 
 export const router = t.router;

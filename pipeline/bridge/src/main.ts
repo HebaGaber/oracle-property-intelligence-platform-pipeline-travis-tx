@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { livePutter, sqsQueue } from "./aws.js";
+import { livePutter, sqsQueue, snsAlert } from "./aws.js";
 import { makeExec } from "./exec.js";
 import { IdempotencyStore } from "./idempotency.js";
 import { LiveStatus } from "./live.js";
@@ -94,6 +94,9 @@ async function main(): Promise<void> {
       return runner(cmd);
     },
     killSwitch: () => existsSync(`${bridgeDir}/KILL`),
+    ...(process.env["COUNTYLENS_ALERTS_TOPIC_ARN"]
+      ? { alert: snsAlert(process.env["COUNTYLENS_ALERTS_TOPIC_ARN"], profile) }
+      : {}),
   });
 
   const controller = new AbortController();

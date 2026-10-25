@@ -1,5 +1,5 @@
 ---
-id: ERR-72
+id: ERR-75
 type: defect
 feature: FEAT-A17
 story: A-16
@@ -15,7 +15,7 @@ retest_date: 2026-10-26
 closed_date: 2026-10-26
 ---
 
-# ERR-72: tRPC error responses carried a server stack trace
+# ERR-75: tRPC error responses carried a server stack trace
 
 ## Brief description
 
