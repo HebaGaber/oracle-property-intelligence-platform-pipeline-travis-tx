@@ -357,7 +357,10 @@ function composeStructuredParts(
   }
   for (const match of matches) {
     for (const entry of match.missing) {
-      missing.push({ field: CONTRACT_MISSING_NAMES[entry.field] ?? entry.field, reason: entry.reason });
+      missing.push({
+        field: CONTRACT_MISSING_NAMES[entry.field] ?? entry.field,
+        reason: entry.reason,
+      });
     }
     if (match.bbb_status !== undefined) {
       missing.push({ field: "bbb_status", reason: match.bbb_status_reason ?? match.bbb_status });
@@ -403,7 +406,10 @@ export function describeFilterChanges(steps: AgentAskStep[], question: string): 
   const last = new Map<string, Record<string, unknown>>();
   const show = (v: unknown): string => JSON.stringify(v);
   for (const step of steps) {
-    if (!isRecord(step.input) || (step.tool !== "searchProperties" && step.tool !== "searchRoofingPermits"))
+    if (
+      !isRecord(step.input) ||
+      (step.tool !== "searchProperties" && step.tool !== "searchRoofingPermits")
+    )
       continue;
     const current = step.input;
     const previous = last.get(step.tool);
@@ -605,7 +611,8 @@ export async function runAgentAsk(
       result.text.trim() !== "" &&
       result.steps.length < maxToolSteps &&
       !result.steps.some(
-        (s) => s.tool === "searchRoofingPermits" && isRecord(s.input) && s.input.permit_number === asked,
+        (s) =>
+          s.tool === "searchRoofingPermits" && isRecord(s.input) && s.input.permit_number === asked,
       )
     ) {
       const lookupInput = { permit_number: asked, limit: 1, sort: "open_desc" as const };
@@ -618,9 +625,15 @@ export async function runAgentAsk(
         result.toolOutputs = [...result.toolOutputs, output];
         result.steps = [
           ...result.steps,
-          { tool: "searchRoofingPermits", input: lookupInput, summary: "deterministic permit lookup" },
+          {
+            tool: "searchRoofingPermits",
+            input: lookupInput,
+            summary: "deterministic permit lookup",
+          },
         ];
-        const found = Array.isArray(output.matches) ? (output.matches as Record<string, unknown>[]) : [];
+        const found = Array.isArray(output.matches)
+          ? (output.matches as Record<string, unknown>[])
+          : [];
         const facts =
           found.length > 0
             ? `Permit ${asked} [${String(found[0]?.n)}]: status ${String(found[0]?.status_class)}, open ${String(found[0]?.open_years ?? "unknown")} years.`
@@ -683,17 +696,24 @@ export async function runAgentAsk(
     if (asksVagueDuration(input.prompt) && typeof years === "number") {
       const stated = new RegExp(`(at least|>=)\\s*${years}\\b`, "i");
       if (!stated.test(cleaned)) {
-        extra.push(`I read the open-time threshold as at least ${years} years (>= ${years} years).`);
+        extra.push(
+          `I read the open-time threshold as at least ${years} years (>= ${years} years).`,
+        );
       }
     }
-    if (missing.some((m) => m.field === "bbb_status") && !/BBB status is not available in the published data/i.test(cleaned)) {
+    if (
+      missing.some((m) => m.field === "bbb_status") &&
+      !/BBB status is not available in the published data/i.test(cleaned)
+    ) {
       extra.push("BBB status is not available in the published data.");
     }
     if (
       missing.some((m) => m.field === "contractor.name_as_printed") &&
-      !/contractor[^.]*not (printed|available)/i.test(cleaned)
+      !/contractor not printed|no_lexicon_carrier/i.test(cleaned)
     ) {
-      extra.push("The contractor name is not printed in the published source (contractor not printed).");
+      extra.push(
+        "The contractor name is not printed in the published source (contractor not printed).",
+      );
     }
     missing = dedupeMissing(missing);
 

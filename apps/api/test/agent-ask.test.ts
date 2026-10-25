@@ -253,7 +253,11 @@ describe("ERR-61: an unfinished loop is never 'answered'", () => {
       incomplete: true,
       modelCalls: 3,
       steps: [
-        { tool: "searchRoofingPermits", input: { status_class: "open", open_years_min: 5 }, summary: "" },
+        {
+          tool: "searchRoofingPermits",
+          input: { status_class: "open", open_years_min: 5 },
+          summary: "",
+        },
       ],
       toolOutputs: [EMPTY_ENVELOPE({ status_class: "open", open_years_min: 5 })],
       totalTokens: 10,
@@ -279,8 +283,16 @@ describe("ERR-61/62: a changed filter is stated, never silent", () => {
     const loop: RunModelLoop = async () => ({
       text: "No matches.",
       steps: [
-        { tool: "searchRoofingPermits", input: { status_class: "open_or_stalled", open_years_min: 3 }, summary: "" },
-        { tool: "searchRoofingPermits", input: { status_class: "open_or_stalled", open_years_min: 1 }, summary: "" },
+        {
+          tool: "searchRoofingPermits",
+          input: { status_class: "open_or_stalled", open_years_min: 3 },
+          summary: "",
+        },
+        {
+          tool: "searchRoofingPermits",
+          input: { status_class: "open_or_stalled", open_years_min: 1 },
+          summary: "",
+        },
       ],
       toolOutputs: [EMPTY_ENVELOPE({ status_class: "open_or_stalled", open_years_min: 1 })],
       totalTokens: 10,
@@ -300,14 +312,26 @@ describe("ERR-62/63: contract missing[] names and honest owner-location statemen
   it("owner_is_out_of_area filter -> missing lists it and the answer says not in the published export", async () => {
     const loop: RunModelLoop = async () => ({
       text: "No properties matched; the dataset had good coverage.",
-      steps: [{ tool: "searchProperties", input: { tenure_years_min: 10, owner_is_out_of_area: true }, summary: "" }],
+      steps: [
+        {
+          tool: "searchProperties",
+          input: { tenure_years_min: 10, owner_is_out_of_area: true },
+          summary: "",
+        },
+      ],
       toolOutputs: [
         EMPTY_ENVELOPE({ radius_mi: 5, tenure_years_min: 10, owner_is_out_of_area: true }),
       ],
       totalTokens: 10,
     });
-    const result = await runAgentAsk({ prompt: "Homes near Lakeway with owners outside the area?" }, baseDeps({ runModelLoop: loop }));
-    expect(result.missing).toContainEqual({ field: "owner_is_out_of_area", reason: "not_in_export" });
+    const result = await runAgentAsk(
+      { prompt: "Homes near Lakeway with owners outside the area?" },
+      baseDeps({ runModelLoop: loop }),
+    );
+    expect(result.missing).toContainEqual({
+      field: "owner_is_out_of_area",
+      reason: "not_in_export",
+    });
     expect(result.answer).toMatch(/not in the published export/);
     expect(result.query).toMatchObject({ radius_mi: 5 });
   });
@@ -319,7 +343,10 @@ describe("ERR-62/63: contract missing[] names and honest owner-location statemen
       toolOutputs: [EMPTY_ENVELOPE({ permit_number: "2026-1 BP" })],
       totalTokens: 10,
     });
-    const result = await runAgentAsk({ prompt: "What is the BBB rating of the contractor on 2026-1 BP?" }, baseDeps({ runModelLoop: loop }));
+    const result = await runAgentAsk(
+      { prompt: "What is the BBB rating of the contractor on 2026-1 BP?" },
+      baseDeps({ runModelLoop: loop }),
+    );
     const fields = result.missing.map((m) => m.field);
     expect(fields).toContain("bbb_status");
     expect(fields).toContain("contractor.name_as_printed");
@@ -360,13 +387,22 @@ describe("ERR-64: golden G2/G4/G5 deterministic rules", () => {
       system = params.system;
       return {
         text: "No open roofing permits matched.",
-        steps: [{ tool: "searchRoofingPermits", input: { status_class: "open", open_years_min: 5 }, summary: "" }],
+        steps: [
+          {
+            tool: "searchRoofingPermits",
+            input: { status_class: "open", open_years_min: 5 },
+            summary: "",
+          },
+        ],
         toolOutputs: [EMPTY_ENVELOPE({ radius_mi: 5, status_class: "open", open_years_min: 5 })],
         totalTokens: 10,
       };
     };
     const result = await runAgentAsk(
-      { prompt: "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?" },
+      {
+        prompt:
+          "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?",
+      },
       baseDeps({ runModelLoop: loop }),
     );
     expect(system).toMatch(/many years.*open_years_min 5/);
@@ -379,10 +415,32 @@ describe("ERR-64: golden G2/G4/G5 deterministic rules", () => {
   });
 
   it("G2: contractor not printed applies even when no permit search happened", async () => {
-    const loop: RunModelLoop = async () => ({ text: "I could not run that.", steps: [], toolOutputs: [], totalTokens: 5 });
-    const result = await runAgentAsk({ prompt: "Who is the contractor on the oldest roof permit?" }, baseDeps({ runModelLoop: loop }));
+    const loop: RunModelLoop = async () => ({
+      text: "I could not run that.",
+      steps: [],
+      toolOutputs: [],
+      totalTokens: 5,
+    });
+    const result = await runAgentAsk(
+      { prompt: "Who is the contractor on the oldest roof permit?" },
+      baseDeps({ runModelLoop: loop }),
+    );
     expect(result.answer).toMatch(/contractor name is not printed/);
     expect(result.missing.map((m) => m.field)).toContain("contractor.name_as_printed");
+  });
+
+  it("G2: the model's own 'names are not available' wording does not suppress the contract phrase 'contractor not printed'", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "Contractor names are **not available** in the published export.",
+      steps: [],
+      toolOutputs: [],
+      totalTokens: 5,
+    });
+    const result = await runAgentAsk(
+      { prompt: "Who is the contractor on the oldest roof permit?" },
+      baseDeps({ runModelLoop: loop }),
+    );
+    expect(result.answer).toMatch(/contractor not printed/);
   });
 
   it("G4: owners-outside-area question flags owner_is_out_of_area even when the model dropped that filter", async () => {
@@ -393,10 +451,16 @@ describe("ERR-64: golden G2/G4/G5 deterministic rules", () => {
       totalTokens: 10,
     });
     const result = await runAgentAsk(
-      { prompt: "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?" },
+      {
+        prompt:
+          "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?",
+      },
       baseDeps({ runModelLoop: loop }),
     );
-    expect(result.missing).toContainEqual({ field: "owner_is_out_of_area", reason: "not_in_export" });
+    expect(result.missing).toContainEqual({
+      field: "owner_is_out_of_area",
+      reason: "not_in_export",
+    });
     expect(result.answer).toContain(
       "I cannot tell which owners live outside the area: the owner's mailing location is not in the published export.",
     );
@@ -411,7 +475,10 @@ describe("ERR-64: golden G2/G4/G5 deterministic rules", () => {
       toolOutputs: [EMPTY_ENVELOPE({ tenure_years_min: 10 })],
       totalTokens: 10,
     });
-    const result = await runAgentAsk({ prompt: "Which homes near Lakeway have not changed owners in 10+ years?" }, baseDeps({ runModelLoop: loop }));
+    const result = await runAgentAsk(
+      { prompt: "Which homes near Lakeway have not changed owners in 10+ years?" },
+      baseDeps({ runModelLoop: loop }),
+    );
     expect(result.missing.map((m) => m.field)).not.toContain("owner_is_out_of_area");
   });
 
@@ -433,7 +500,11 @@ describe("ERR-64: golden G2/G4/G5 deterministic rules", () => {
     });
     const result = await runAgentAsk(
       { prompt: "What's the BBB rating of the contractor on permit 2024-123456 BP?" },
-      baseDeps({ runModelLoop: loop, getEngine: async () => engine, bindViews: async () => FAKE_BOUND }),
+      baseDeps({
+        runModelLoop: loop,
+        getEngine: async () => engine,
+        bindViews: async () => FAKE_BOUND,
+      }),
     );
     expect(calls.some((q) => q.includes("2024-123456 BP"))).toBe(true);
     expect(result.steps.map((s) => s.tool)).toContain("searchRoofingPermits");
@@ -445,16 +516,25 @@ describe("ERR-64: golden G2/G4/G5 deterministic rules", () => {
 
   it("G5: no second lookup when the model already searched that permit number", async () => {
     const calls: string[] = [];
-    const engine: QueryEngine = { run: async () => {}, all: async (sql: string) => (calls.push(sql), []) };
+    const engine: QueryEngine = {
+      run: async () => {},
+      all: async (sql: string) => (calls.push(sql), []),
+    };
     const loop: RunModelLoop = async () => ({
       text: "Not found.",
-      steps: [{ tool: "searchRoofingPermits", input: { permit_number: "2024-123456 BP" }, summary: "" }],
+      steps: [
+        { tool: "searchRoofingPermits", input: { permit_number: "2024-123456 BP" }, summary: "" },
+      ],
       toolOutputs: [EMPTY_ENVELOPE({ permit_number: "2024-123456 BP" })],
       totalTokens: 10,
     });
     await runAgentAsk(
       { prompt: "BBB rating of the contractor on permit 2024-123456 BP?" },
-      baseDeps({ runModelLoop: loop, getEngine: async () => engine, bindViews: async () => FAKE_BOUND }),
+      baseDeps({
+        runModelLoop: loop,
+        getEngine: async () => engine,
+        bindViews: async () => FAKE_BOUND,
+      }),
     );
     expect(calls).toHaveLength(0);
   });
