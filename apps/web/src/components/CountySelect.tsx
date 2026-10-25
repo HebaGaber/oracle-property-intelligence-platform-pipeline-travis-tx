@@ -6,6 +6,7 @@
 import { PAGE_TEXTS } from "@countylens/shared/texts";
 import { useState, type ChangeEvent, type ReactElement } from "react";
 import { ComingSoonEntry } from "./ComingSoonEntry";
+import { Icon } from "./Icon";
 import styles from "./CountySelect.module.css";
 
 const COUNTIES = Object.freeze([
@@ -26,21 +27,26 @@ export function CountySelect(): ReactElement {
       <label className={styles.label} htmlFor="county-select">
         County
       </label>
-      <select
-        id="county-select"
-        className={styles.select}
-        value="travis"
-        onChange={onChange}
-        data-county-picker=""
-        data-main-control=""
-      >
-        {COUNTIES.map((county) => (
-          <option key={county.value} value={county.value}>
-            {county.label}
-          </option>
-        ))}
-      </select>
-      <ComingSoonEntry id="other-counties" />
+      <span className={styles.chip}>
+        <Icon name="location_on" size="medium" />
+        <select
+          id="county-select"
+          className={styles.select}
+          value="travis"
+          onChange={onChange}
+          data-county-picker=""
+          data-main-control=""
+        >
+          {COUNTIES.map((county) => (
+            <option key={county.value} value={county.value}>
+              {county.label}
+            </option>
+          ))}
+        </select>
+      </span>
+      <span className={styles.entry}>
+        <ComingSoonEntry id="other-counties" />
+      </span>
       {other ? (
         <p className={styles.message} role="status" data-county-message="">
           {PAGE_TEXTS.travisOnly}

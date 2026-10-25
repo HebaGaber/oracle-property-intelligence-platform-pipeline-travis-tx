@@ -31,6 +31,74 @@
   transition: box-shadow var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
 }
 
+/* Shell boards: title, location chip, then the actions (sync badge, help, Ask) at the end. On
+   compact widths the location chip takes a second row under the title (Shell390 boards). */
+.bar {
+  height: auto;
+  min-height: var(--space-10);
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+}
+
+.location {
+  order: 3;
+  flex-basis: 100%;
+  padding-bottom: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.sync {
+  display: none;
+}
+
+/* Ask: icon button on compact; a tonal pill with its label from 600 px (Shell1440 board). */
+.ask {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  min-width: var(--space-9);
+  min-height: var(--space-9);
+  padding: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-on-surface-variant);
+  text-decoration: none;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+}
+
+.ask > :first-child,
+.actions :global(.material-symbols-rounded) {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.askText {
+  display: none;
+}
+
+/* Bottom navigation at 390 shows four destinations (Shell390More board): Coverage moves into
+   More on compact widths and is back on the rail from 600 px. */
+.nav .compactHidden {
+  display: none;
+}
+
+.compactOnly {
+  display: block;
+}
+
 .barScrolled {
   box-shadow: var(--md-sys-elevation-level2);
 }
@@ -258,6 +326,38 @@ a.sheetItem:hover {
 
   .main {
     padding: var(--space-6);
+  }
+
+  .bar {
+    flex-wrap: nowrap;
+  }
+
+  .location {
+    order: 0;
+    flex-basis: auto;
+    padding-bottom: 0;
+  }
+
+  .sync {
+    display: inline-flex;
+  }
+
+  .ask {
+    padding: 0 var(--space-4);
+    background: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+  }
+
+  .askText {
+    display: inline;
+  }
+
+  .nav .compactHidden {
+    display: flex;
+  }
+
+  .compactOnly {
+    display: none;
   }
 
   .sheet {

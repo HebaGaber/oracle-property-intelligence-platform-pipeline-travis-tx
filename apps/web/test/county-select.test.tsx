@@ -56,13 +56,14 @@ describe("shell location slot", () => {
     await screen.findByRole("navigation", { name: "Primary" }, { timeout: 20_000 });
   }
 
-  it("is mounted under /tx/ and absent elsewhere; the app bar keeps no button", async () => {
+  it("is the app bar's location chip under /tx/ and absent elsewhere (Shell boards, A-16)", async () => {
     await renderAt("/runs");
     expect(screen.queryByRole("combobox", { name: "County" })).toBeNull();
     cleanup();
     await renderAt("/tx/harris/explore");
-    expect(await screen.findByRole("combobox", { name: "County" })).toBeTruthy();
-    expect(screen.getByRole("banner").querySelectorAll("button, select")).toHaveLength(0);
+    const select = await screen.findByRole("combobox", { name: "County" });
+    expect(screen.getByRole("banner").contains(select)).toBe(true);
+    expect(screen.getByRole("main").querySelector("select[data-county-picker]")).toBeNull();
   });
 
   it("/tx/{other}/… renders the Travis-only text with a link to Explore", async () => {
