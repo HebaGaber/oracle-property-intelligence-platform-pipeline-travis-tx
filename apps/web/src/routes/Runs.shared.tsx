@@ -5,9 +5,11 @@
 // manifest ("Manifest unavailable · {cid} · {reason}", the full CID in `data-cid`). The reason is
 // the A-03 text (RUN_INDEX_TEXTS, BOTH_HOSTS_DOWN_TEXT, a CID mismatch) as its own element, so
 // both the A-03 checks and the A-13 sentence read exactly. Not a route module (no `Component`).
-import { RUNS_TEXTS, sourceLabel } from "@countylens/shared";
+import { RUNS_TEXTS, SOURCE_LABELS, isSourceName, sourceLabel } from "@countylens/shared";
 import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
+import styles from "./Runs.module.css";
 import { readPathUrlsFromEnv } from "../data/config";
+import type { RunEvent } from "../data/run-events";
 import { loadManifest, type LoadedManifest } from "../data/manifest";
 import {
   RUN_STAGE_TEXTS,
@@ -61,6 +63,7 @@ export async function loadManifestByCid(
 export async function loadLatestRun(
   signal: AbortSignal,
   onStage?: (stage: RunStage) => void,
+  onIndex?: (index: LoadedRun["index"]) => void,
 ): Promise<LoadedRun> {
   onStage?.("index");
   let index: LoadedRun["index"];
@@ -72,6 +75,9 @@ export async function loadLatestRun(
     throw new RunLoadFailure({ kind: "index", reason });
   }
   const entry = latestRun(index);
+  // A-16 T045 (A13-3, LCP): the run list is known as soon as the index is read; the page paints
+  // it while the (much larger) manifest is still being fetched.
+  onIndex?.(index);
   onStage?.("manifest");
   const { manifest, manifestCid, read } = await loadManifestByCid(entry.manifestCid, signal);
   try {
@@ -93,16 +99,29 @@ export function toRunLoadError(error: unknown): RunLoadError {
 }
 
 /** The latest run for a page, with its loading stage, error and a retry. */
-export function useLatestRun(): { readonly state: RunPageState; readonly retry: () => void } {
+export function useLatestRun(): {
+  readonly state: RunPageState;
+  readonly retry: () => void;
+  /** The run index once it is read, before the manifest (A-16 LCP: the list paints first). */
+  readonly index: LoadedRun["index"] | undefined;
+} {
   const [state, setState] = useState<RunPageState>({ kind: "loading", stage: "index" });
+  const [index, setIndex] = useState<LoadedRun["index"] | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     const live = (): boolean => !controller.signal.aborted;
     setState({ kind: "loading", stage: "index" });
-    loadLatestRun(controller.signal, (stage) => {
-      if (live()) setState({ kind: "loading", stage });
-    }).then(
+    setIndex(undefined);
+    loadLatestRun(
+      controller.signal,
+      (stage) => {
+        if (live()) setState({ kind: "loading", stage });
+      },
+      (read) => {
+        if (live()) setIndex(read);
+      },
+    ).then(
       (run) => {
         if (live()) setState({ kind: "ready", run });
       },
@@ -113,7 +132,7 @@ export function useLatestRun(): { readonly state: RunPageState; readonly retry: 
     return () => controller.abort();
   }, [attempt]);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
-  return { state, retry };
+  return { state, retry, index: state.kind === "ready" ? state.run.index : index };
 }
 
 const MARK_A = "\u0000";
@@ -158,6 +177,61 @@ export function runErrorNode(error: RunLoadError): ReactNode {
       ) : null}
     </>
   );
+}
+
+export type BarTone = "primary" | "added" | "changed" | "removed";
+
+/**
+ * A share bar drawn with the native `<progress>` element, so the width comes from `value` and
+ * `max` and no inline style is needed (the web app bans them). `label` is its accessible name.
+ */
+export function ShareBar({
+  value,
+  max,
+  label,
+  tone = "primary",
+}: {
+  readonly value: number;
+  readonly max: number;
+  readonly label: string;
+  readonly tone?: BarTone;
+}): ReactElement {
+  const toneClass = `${styles.progress} ${styles[`bar_${tone}`] ?? ""}`;
+  return (
+    <progress
+      className={toneClass}
+      value={Math.max(0, value)}
+      max={Math.max(1, max)}
+      aria-label={label}
+    />
+  );
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** `Oct 24` (UTC) for an ISO instant; the instant itself when it does not parse. */
+export function shortDay(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  const d = new Date(ms);
+  return `${MONTHS[d.getUTCMonth()] ?? ""} ${d.getUTCDate()}`;
+}
+
+/**
+ * `Run 3 · Oct 24` (parity matrix R7): the run's 1-based number in `runs/index.json` order (the
+ * numbering contract, RUNS_TEXTS.numbering) and its finish day in UTC. The run ID stays visible
+ * beside it where the page has room.
+ */
+export function runLabel(number: number, finishedAt: string): string {
+  return `Run ${number} · ${shortDay(finishedAt)}`;
+}
+
+/** The Log and Latest events wording of a manifest-derived event. */
+export function eventLabel(event: RunEvent): string {
+  if (event.kind === "started") return "Run started";
+  if (event.kind === "finished") return "Run finished";
+  const name = isSourceName(event.source) ? SOURCE_LABELS[event.source] : event.source;
+  return `Captured ${name}`;
 }
 
 /** Per-source delta versus the previous run (FR-001c), or the first-run text. */

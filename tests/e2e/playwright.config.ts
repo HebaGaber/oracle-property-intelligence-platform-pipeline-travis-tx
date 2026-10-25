@@ -52,6 +52,13 @@ const A14_SHARDS = {
   // Stubbed-response responsive checks (smeargle): no real model or MCP call.
   "a14-responsive": "A-14-responsive.spec.ts",
 } as const;
+// A-16: the admin cases sign in against Cognito and some need the operator's bridge; the Cost and
+// Limits cases read the docs. Each runs alone in its own project; a case without credentials (or
+// without the bridge) skips with a stated reason and is never reported as passed.
+const A16_SHARDS = {
+  "a16-admin": "A-16-admin.spec.ts",
+  "a16-cost": "A-16-cost.spec.ts",
+} as const;
 // One report and output folder per CI phase, so the second invocation never clears the first.
 const phase = process.env.PW_PHASE ?? "all";
 
@@ -110,6 +117,11 @@ export default defineConfig({
       testMatch: `**/${file}`,
       use: { ...devices["Desktop Chrome"] },
     })),
+    ...Object.entries(A16_SHARDS).map(([name, file]) => ({
+      name,
+      testMatch: `**/${file}`,
+      use: { ...devices["Desktop Chrome"] },
+    })),
     {
       name: "site",
       testIgnore: [
@@ -118,6 +130,7 @@ export default defineConfig({
         MANIFEST,
         ...Object.values(A13_SHARDS),
         ...Object.values(A14_SHARDS),
+        ...Object.values(A16_SHARDS),
       ].map((f) => `**/${f}`),
       use: { ...devices["Desktop Chrome"] },
     },

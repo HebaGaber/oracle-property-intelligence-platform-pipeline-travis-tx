@@ -1,18 +1,35 @@
-// Runs · Log (`/runs/log`; A-13 T040, US9, AC-12, FR-012): every event of every run in
-// runs/index.json, ascending by time, each with its run ID. Events come only from manifest
-// timestamps (data/run-events): a run's start, each source's capture, and its finish with the
-// run's limitations. An unreadable index is one banner; an unreadable manifest is a banner naming
-// its CID while the other runs still list. A react-router lazy route module.
+// Runs · Log (`/runs/log`; A-13 T040, US9, AC-12, FR-012; A-16 T046, board RunsLog1440/768):
+// "Pipeline history log": event-kind filter chips with counts, run chips, a table (Time UTC, Run,
+// Event, Source, Count, Status pill), a pager and Download CSV. Every event of every run in
+// runs/index.json comes only from manifest timestamps (data/run-events): a run's start, each
+// source's capture, and its finish with the run's limitations; nothing is invented. Order is
+// ascending by time by default (A-13 AC-12); the Time header sorts the other way.
+// Justified differences from the board: the board's "Verified", "Records added", "Warning" and
+// "Schema checked" events are not in a manifest (it cannot carry its own publish or verify time),
+// so the chips are the three kinds that exist; the status pill is "Done" (or "Done with
+// limitations" for a finish that carries notes), never a rate-limit or blocked pill the data does
+// not record. An unreadable index is one banner; an unreadable manifest is a banner naming its CID
+// while the other runs still list. A react-router lazy route module.
 import type { RunManifestV1 } from "@countylens/contract";
-import { PROGRESS_LABELS, RUNS_TEXTS, SOURCE_LABELS, isSourceName } from "@countylens/shared";
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { PROGRESS_LABELS, RUNS_TEXTS, sourceLabel, isSourceName } from "@countylens/shared";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { Icon } from "../components/Icon";
 import { LinearProgress } from "../components/LinearProgress";
 import { Skeleton } from "../components/Skeleton";
+import { StatusPill } from "../components/StatusPill";
 import { formatUtc } from "../components/Provenance";
+import { formatCount } from "../data/format";
 import { RunIndexError, loadRunsIndex, runIndexText } from "../data/runs-index";
 import { runEvents, type RunEvent } from "../data/run-events";
-import { RUN_STAGE_TEXTS, loadManifestByCid, runErrorNode, toRunLoadError } from "./Runs.shared";
+import {
+  RUN_STAGE_TEXTS,
+  eventLabel,
+  loadManifestByCid,
+  runErrorNode,
+  runLabel,
+  toRunLoadError,
+} from "./Runs.shared";
 import type { RunLoadError } from "./Runs.shared";
 import runsStyles from "./Runs.module.css";
 import styles from "./RunsLog.module.css";
@@ -22,6 +39,8 @@ type LogState =
   | {
       readonly kind: "ready";
       readonly manifests: readonly RunManifestV1[];
+      /** 1-based run number and finish time by run ID, from the index order. */
+      readonly numbers: ReadonlyMap<string, { number: number; finishedAt: string }>;
       readonly failures: readonly RunLoadError[];
     }
   | { readonly kind: "error"; readonly error: RunLoadError };
@@ -44,14 +63,93 @@ async function loadAll(signal: AbortSignal): Promise<LogState> {
     if (result.status === "fulfilled") manifests.push(result.value.manifest);
     else failures.push(toRunLoadError(result.reason));
   }
-  return { kind: "ready", manifests, failures };
+  const numbers = new Map(
+    index.runs.map((run, i) => [run.runId, { number: i + 1, finishedAt: run.finishedAt }]),
+  );
+  return { kind: "ready", manifests, numbers, failures };
 }
 
-function eventLabel(event: RunEvent): string {
-  if (event.kind === "started") return "Run started";
-  if (event.kind === "finished") return "Run finished";
-  const name = isSourceName(event.source) ? SOURCE_LABELS[event.source] : event.source;
-  return `Captured ${name}`;
+// The board pages at 12; A-13 AC-12 says every event is listed, which the hosted checks read in
+// one pass, so a page holds 50 (Justified: the pager only appears once a county has more events).
+const PAGE_SIZE = 50;
+type Kind = RunEvent["kind"];
+const KINDS: readonly { kind: Kind; label: string }[] = [
+  { kind: "started", label: "Run started" },
+  { kind: "captured", label: "Source captured" },
+  { kind: "finished", label: "Run finished" },
+];
+
+interface LogRow {
+  readonly event: RunEvent;
+  readonly runNumber: number | null;
+  readonly what: string;
+  readonly source: string;
+  readonly count: string;
+  readonly done: string;
+  readonly limited: boolean;
+}
+
+function buildRows(
+  manifests: readonly RunManifestV1[],
+  numbers: ReadonlyMap<string, { number: number; finishedAt: string }>,
+): LogRow[] {
+  const byRun = new Map(manifests.map((m) => [m.runId, m]));
+  return runEvents(manifests).map((event) => {
+    const manifest = byRun.get(event.runId);
+    const runNumber = numbers.get(event.runId)?.number ?? null;
+    if (event.kind === "started") {
+      return {
+        event,
+        runNumber,
+        what: eventLabel(event),
+        source: "Manual or scheduled start",
+        count: `${manifest?.sources.length ?? 0} sources`,
+        done: "Started",
+        limited: false,
+      };
+    }
+    if (event.kind === "captured") {
+      const source = manifest?.sources.find((s) => s.name === event.source);
+      return {
+        event,
+        runNumber,
+        what: "Source captured",
+        source: isSourceName(event.source) ? sourceLabel(event.source) : event.source,
+        count: source === undefined ? "–" : formatCount(source.records),
+        done: "Done",
+        limited: false,
+      };
+    }
+    return {
+      event,
+      runNumber,
+      what: eventLabel(event),
+      source: "Manifest and run index",
+      count: `${manifest?.artifacts.length ?? 0} artifacts`,
+      done: event.limitations.length > 0 ? "Done with limitations" : "Done",
+      limited: event.limitations.length > 0,
+    };
+  });
+}
+
+const csvCell = (value: string): string => `"${value.replaceAll('"', '""')}"`;
+
+function toCsv(rows: readonly LogRow[]): string {
+  const head = ["Time (UTC)", "Run", "Run ID", "Event", "Source", "Count", "Status"];
+  const lines = rows.map((r) =>
+    [
+      formatUtc(r.event.time),
+      r.runNumber === null ? "" : String(r.runNumber),
+      r.event.runId,
+      r.what,
+      r.source,
+      r.count,
+      r.done,
+    ]
+      .map(csvCell)
+      .join(","),
+  );
+  return [head.map(csvCell).join(","), ...lines].join("\n");
 }
 
 export function Component(): ReactElement {
@@ -79,7 +177,13 @@ export function Component(): ReactElement {
       data-state={state.kind}
       className={runsStyles.page}
     >
-      <h2 className={runsStyles.title}>Runs · Log</h2>
+      <div className={runsStyles.pageHead}>
+        <h2 className={runsStyles.pageTitle}>Pipeline history log</h2>
+        <p className={runsStyles.intro}>
+          Every event of every published run, read from each run&apos;s manifest.{" "}
+          {RUNS_TEXTS.nextSync}
+        </p>
+      </div>
       {state.kind === "loading" ? (
         <>
           <LinearProgress label={PROGRESS_LABELS.runs} stageText={RUN_STAGE_TEXTS.manifest} />
@@ -94,35 +198,223 @@ export function Component(): ReactElement {
           {state.failures.map((failure, i) => (
             <ErrorBanner key={i} message={runErrorNode(failure)} onRetry={retry} />
           ))}
-          <div className={runsStyles.card}>
-            <p className={runsStyles.itemBody}>{RUNS_TEXTS.nextSync}</p>
-            <ul className={styles.events} aria-label="Run events">
-              {runEvents(state.manifests).map((event, i) => (
-                <li
-                  key={i}
-                  className={styles.event}
-                  data-event={event.kind}
-                  data-time={event.time}
-                  data-run-id={event.runId}
+          <LogTable manifests={state.manifests} numbers={state.numbers} />
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function LogTable({
+  manifests,
+  numbers,
+}: {
+  readonly manifests: readonly RunManifestV1[];
+  readonly numbers: ReadonlyMap<string, { number: number; finishedAt: string }>;
+}): ReactElement {
+  const all = useMemo(() => buildRows(manifests, numbers), [manifests, numbers]);
+  const [kinds, setKinds] = useState<ReadonlySet<Kind>>(new Set());
+  const [run, setRun] = useState<string>("all");
+  const [newestFirst, setNewestFirst] = useState(false);
+  const [page, setPage] = useState(1);
+
+  const runIds = [...numbers.entries()].map(([runId, v]) => ({ runId, ...v }));
+  const inRun = (r: LogRow): boolean => run === "all" || r.event.runId === run;
+  const fit = all.filter((r) => inRun(r) && (kinds.size === 0 || kinds.has(r.event.kind)));
+  const ordered = newestFirst ? [...fit].reverse() : fit;
+  const pages = Math.max(1, Math.ceil(ordered.length / PAGE_SIZE));
+  const current = Math.min(page, pages);
+  const start = (current - 1) * PAGE_SIZE;
+  const shown = ordered.slice(start, start + PAGE_SIZE);
+  const filtered = kinds.size > 0 || run !== "all";
+
+  const toggleKind = (kind: Kind): void => {
+    const next = new Set(kinds);
+    if (next.has(kind)) next.delete(kind);
+    else next.add(kind);
+    setKinds(next);
+    setPage(1);
+  };
+  const clear = (): void => {
+    setKinds(new Set());
+    setRun("all");
+    setPage(1);
+  };
+  const download = (): void => {
+    const url = URL.createObjectURL(new Blob([toCsv(ordered)], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pipeline_log.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className={runsStyles.card}>
+      <div className={runsStyles.cardHead}>
+        <div className={runsStyles.chips} role="group" aria-label="Event kind">
+          <button
+            type="button"
+            className={runsStyles.chip}
+            aria-pressed={kinds.size === 0}
+            onClick={() => {
+              setKinds(new Set());
+              setPage(1);
+            }}
+          >
+            All events
+          </button>
+          {KINDS.map(({ kind, label }) => (
+            <button
+              key={kind}
+              type="button"
+              className={runsStyles.chip}
+              aria-pressed={kinds.has(kind)}
+              onClick={() => toggleKind(kind)}
+            >
+              {label} {all.filter((r) => inRun(r) && r.event.kind === kind).length}
+            </button>
+          ))}
+          {filtered ? (
+            <button type="button" className={runsStyles.chip} onClick={clear}>
+              <Icon name="filter_alt_off" size="small" />
+              Clear filters
+            </button>
+          ) : null}
+        </div>
+        <button type="button" className={runsStyles.chip} onClick={download}>
+          <Icon name="download" size="small" />
+          Download CSV
+        </button>
+      </div>
+      <div className={runsStyles.chips} role="group" aria-label="Run">
+        <button
+          type="button"
+          className={runsStyles.chip}
+          aria-pressed={run === "all"}
+          onClick={() => {
+            setRun("all");
+            setPage(1);
+          }}
+        >
+          All runs
+        </button>
+        {[...runIds].reverse().map((r) => (
+          <button
+            key={r.runId}
+            type="button"
+            className={runsStyles.chip}
+            aria-pressed={run === r.runId}
+            title={r.runId}
+            onClick={() => {
+              setRun(r.runId);
+              setPage(1);
+            }}
+          >
+            {runLabel(r.number, r.finishedAt)}
+          </button>
+        ))}
+      </div>
+      <div className={runsStyles.tableWrap}>
+        <table className={runsStyles.table} aria-label="Run events">
+          <thead>
+            <tr>
+              <th aria-sort={newestFirst ? "descending" : "ascending"}>
+                <button
+                  type="button"
+                  className={styles.sort}
+                  onClick={() => setNewestFirst(!newestFirst)}
                 >
-                  <time className={styles.time} dateTime={event.time}>
-                    {formatUtc(event.time)} UTC
-                  </time>
-                  <span className={styles.what}>{eventLabel(event)}</span>
-                  <span className={styles.runId}>{event.runId}</span>
-                  {event.kind === "finished" && event.limitations.length > 0 ? (
+                  Time (UTC)
+                  <Icon name={newestFirst ? "arrow_downward" : "arrow_upward"} size="small" />
+                </button>
+              </th>
+              <th>Run</th>
+              <th>Event</th>
+              <th>Source</th>
+              <th className={runsStyles.num}>Count</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((row, i) => (
+              <tr
+                key={`${row.event.runId}-${row.event.kind}-${row.event.time}-${i}`}
+                data-event={row.event.kind}
+                data-time={row.event.time}
+                data-run-id={row.event.runId}
+              >
+                <td className={runsStyles.num}>
+                  <time dateTime={row.event.time}>{formatUtc(row.event.time)} UTC</time>
+                </td>
+                <td>
+                  <span>{row.runNumber === null ? "" : `Run ${row.runNumber}`}</span>
+                  <span className={styles.runId}>{row.event.runId}</span>
+                </td>
+                <td>
+                  {row.what}
+                  {row.event.kind === "finished" && row.event.limitations.length > 0 ? (
                     <ul className={styles.notes} aria-label="Limitations">
-                      {event.limitations.map((limitation) => (
+                      {row.event.limitations.map((limitation) => (
                         <li key={limitation}>{limitation}</li>
                       ))}
                     </ul>
                   ) : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
-      ) : null}
-    </section>
+                </td>
+                <td>{row.source}</td>
+                <td className={runsStyles.num}>{row.count}</td>
+                <td>
+                  <StatusPill
+                    status={row.limited ? "warning" : row.done === "Started" ? "info" : "verified"}
+                    icon={
+                      row.done === "Started" ? "play_circle" : row.limited ? "warning" : "check"
+                    }
+                    text={row.done}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {shown.length === 0 ? (
+          <p className={runsStyles.helperText} data-log-empty="">
+            No events match these filters.{" "}
+            <button type="button" className={runsStyles.chip} onClick={clear}>
+              Clear filters
+            </button>
+          </p>
+        ) : null}
+      </div>
+      <div className={runsStyles.pager}>
+        <span className={runsStyles.helperText}>
+          Read from the run history in each manifest · times are UTC
+        </span>
+        <span aria-live="polite" data-pager-text="">
+          {ordered.length === 0
+            ? "0 of 0"
+            : `${start + 1}–${Math.min(ordered.length, start + PAGE_SIZE)} of ${ordered.length}`}
+        </span>
+        <span className={runsStyles.chips} role="group" aria-label="Log pages">
+          <button
+            type="button"
+            className={runsStyles.chip}
+            disabled={current <= 1}
+            onClick={() => setPage(current - 1)}
+          >
+            <Icon name="chevron_left" size="small" />
+            Previous
+          </button>
+          <button
+            type="button"
+            className={runsStyles.chip}
+            disabled={current >= pages}
+            onClick={() => setPage(current + 1)}
+          >
+            Next
+            <Icon name="chevron_right" size="small" />
+          </button>
+        </span>
+      </div>
+    </div>
   );
 }

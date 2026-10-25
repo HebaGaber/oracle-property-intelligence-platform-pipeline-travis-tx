@@ -188,7 +188,7 @@ describe("Coverage gaps say why (FR-002, FR-007, TC-017)", () => {
     await renderCoverage();
     await screen.findAllByRole("article");
 
-    const region = screen.getByRole("region", { name: /denominators/i });
+    const region = screen.getByRole("region", { name: /own total/i });
     for (const source of built.manifest.sources) {
       expect(
         within(region).getByText(COVERAGE_TEXTS.denominatorMissingFor(source.name)),
@@ -204,7 +204,7 @@ describe("Coverage gaps say why (FR-002, FR-007, TC-017)", () => {
     await renderCoverage();
     await screen.findAllByRole("article");
 
-    const region = screen.getByRole("region", { name: /denominators/i });
+    const region = screen.getByRole("region", { name: /own total/i });
     const row = region.querySelector<HTMLElement>('[data-denominator="austin-3syk-w9eu"]');
     expect(row?.textContent).toContain("4321");
     expect(row?.textContent).not.toContain(COVERAGE_TEXTS.denominatorMissing);

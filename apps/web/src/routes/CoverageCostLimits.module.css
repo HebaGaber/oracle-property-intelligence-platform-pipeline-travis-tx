@@ -1,0 +1,55 @@
+/* Coverage · Source speed and Cost (A-16 T041). The tables come from Runs.module.css; below
+   600 px each row stacks as a labelled block (the boards' "stacked, charts as tables"). Tokens only. */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--status-info-container);
+  color: var(--status-info);
+}
+
+.noticeText {
+  margin: 0;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 839px) {
+  .stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .stack,
+  .stack tbody,
+  .stack tr,
+  .stack td {
+    display: block;
+  }
+
+  .stack tr {
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .stack td {
+    padding: var(--space-1) 0;
+    border-top: 0;
+    text-align: start;
+  }
+
+  .stack td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--md-sys-color-on-surface-variant);
+    font-family: var(--md-sys-typescale-body-small-font);
+    font-size: var(--md-sys-typescale-body-small-size);
+  }
+}
