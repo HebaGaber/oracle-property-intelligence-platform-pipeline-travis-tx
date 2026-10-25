@@ -76,6 +76,16 @@ export interface CountyGroup {
   geometry_rule: GeometryRule;
   /** Mailing addresses written in the `unnormalized_address` form (tcad-county.ts). */
   mailing_address_fallback: number;
+  /** Owner entries by outcome (tcad-county.ts counts), summed into the writeGroup tally. */
+  owners: OwnerTally;
+}
+
+/** What the owner reader did with one property's owners[] (A-11, ERR-28). */
+export interface OwnerTally {
+  persons: number;
+  companies: number;
+  unparsed: number;
+  co_owner_skipped: number;
 }
 
 export interface GroupPlan {
@@ -177,6 +187,12 @@ export function planCountyGroup(inputs: readonly GroupInput[], cids: DataGroupCi
       files: t.files,
       geometry_rule: rule,
       mailing_address_fallback: t.counts.mailing_address_fallback,
+      owners: {
+        persons: t.counts.persons_written,
+        companies: t.counts.companies_written,
+        unparsed: t.counts.owners_unparsed,
+        co_owner_skipped: t.counts.owners_co_owner_skipped,
+      },
     });
   }
   return { groups, out_of_scope: out };

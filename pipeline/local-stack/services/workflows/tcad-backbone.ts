@@ -226,6 +226,7 @@ export async function writeGroupWith(deps: WriteGroupDeps, jobId: string, opts: 
   let zips = 0;
   let outOfScope = 0;
   let fallback = 0;
+  const owners = { persons: 0, companies: 0, unparsed: 0, co_owner_skipped: 0 };
   const roofAge = { built_year: 0, no_tcad_date: 0, missing_ledger_row: 0, ledger_table_missing: false };
   let batch: GroupInput[] = [];
   const flush = async (): Promise<void> => {
@@ -244,6 +245,10 @@ export async function writeGroupWith(deps: WriteGroupDeps, jobId: string, opts: 
     for (const g of plan.groups) {
       geometry[g.geometry_rule] = (geometry[g.geometry_rule] ?? 0) + 1;
       fallback += g.mailing_address_fallback;
+      owners.persons += g.owners.persons;
+      owners.companies += g.owners.companies;
+      owners.unparsed += g.owners.unparsed;
+      owners.co_owner_skipped += g.owners.co_owner_skipped;
       seen.add(g.pID);
     }
     batch = [];
@@ -281,6 +286,7 @@ export async function writeGroupWith(deps: WriteGroupDeps, jobId: string, opts: 
     dir: dir.replace(/^.*\/pipeline\//, "pipeline/"),
     geometry,
     mailing_address_fallback: fallback,
+    owners,
     roof_age: roofAge,
     ...(wanted === null ? {} : { missing_pids: [...wanted].filter((p) => !seen.has(p)) }),
   };

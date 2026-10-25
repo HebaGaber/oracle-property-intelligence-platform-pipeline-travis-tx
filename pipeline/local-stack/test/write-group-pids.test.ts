@@ -70,6 +70,9 @@ describe("writeGroupWith", () => {
     expect(out.zips).toBe(3);
     expect(readdirSync(dir).sort()).toEqual(["7001.zip", "7002.zip", "7003.zip"]);
     expect(out.mailing_address_fallback).toBe(0);
+    // A-11: the owner reader tally covers every owner entry of the three records
+    const o = out.owners;
+    expect(o.persons + o.companies + o.unparsed).toBeGreaterThanOrEqual(3);
     expect(out).not.toHaveProperty("missing_pids");
   });
 

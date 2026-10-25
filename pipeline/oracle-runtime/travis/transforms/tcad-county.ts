@@ -7,7 +7,9 @@
 //                          derived in the view from the published Austin permit rows
 //                          (Roofing + Replacement, closed → completion_date / permit_close_date)
 //   sales_history_N.json ← sales[] with a saleDt, oldest first (ownership_transfer_date only)
-//   person_N / company_N + mailing_address_N ← current owners[], linked to the latest dated sale
+//   person_N / company_N + mailing_address_N ← current owners[]; each is linked to the property
+//                          (person_has_property / company_has_property) and, when the property has
+//                          a dated sale, to the latest one. Names are read by owner-name.ts (A-11)
 //   <County schema CID>.json
 // Rules: every entity carries source_http_request (the bulk export GET, no headers) and
 // request_identifier (pID as printed); relationships are only {from, to} relative links;
@@ -28,6 +30,9 @@ import {
   type TcadRecord,
 } from "./shared-seed.js";
 import type { DataGroupCids } from "./lexicon-manifest.js";
+import { parseOwner, type ParsedPerson } from "./owner-name.js";
+
+export { ENTITY_NAME, PERSON_NAME } from "./owner-name.js";
 
 /** structure properties the lexicon lists as non-optional; written null (no TCAD source in A-02). */
 const STRUCTURE_NULL_FIELDS = [
@@ -75,12 +80,6 @@ const STRUCTURE_NULL_FIELDS = [
   "window_operation_type",
   "window_screen_material",
 ] as const;
-
-/** Entity words that make an unsplit owner name a company (never a person guess). */
-export const ENTITY_NAME =
-  /\b(LLC|L\.L\.C\.?|INC|INCORPORATED|CORP|CORPORATION|CO|COMPANY|LP|L\.P\.|LTD|LLP|PLLC|TRUST|TRUSTEES?|PARTNERSHIP|PARTNERS|ASSOCIATION|ASSN|BANK|CHURCH|HOLDINGS|PROPERTIES|INVESTMENTS|FUND|FOUNDATION|ISD|CITY OF|COUNTY OF|STATE OF)\b/;
-
-export const PERSON_NAME = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
 
 export interface RoofAgeEntry {
   pID: string;
@@ -135,6 +134,10 @@ export interface CountyTransformCounts {
   confidential_basis: string[];
   sales_dated: number;
   owners_unparsed: number;
+  /** Owner entries whose second named party could not be read with certainty (first one kept). */
+  owners_co_owner_skipped: number;
+  persons_written: number;
+  companies_written: number;
   /** Mailing addresses written in the `unnormalized_address` form (a component broke a pattern). */
   mailing_address_fallback: number;
   warnings: string[];
@@ -150,12 +153,6 @@ export interface CountyTransformOutput {
 
 const nonEmpty = (v: string | null | undefined): boolean =>
   typeof v === "string" && v.trim() !== "";
-
-function titleCase(word: string): string {
-  return word
-    .toLowerCase()
-    .replace(/(^|[ \-',.])([a-z])/g, (_m, sep: string, ch: string) => `${sep}${ch.toUpperCase()}`);
-}
 
 function saleDate(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -329,75 +326,114 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
 
   let owner: OwnerOutcome = "none";
   let unparsed = 0;
+  let skippedCoOwners = 0;
   let mailingFallback = 0;
+  let personsWritten = 0;
+  let companiesWritten = 0;
   if (confidential) owner = "suppressed";
-  else if (record.owners.length > 0 && dated.length === 0) owner = "no_dated_sale";
   else if (record.owners.length > 0) {
-    const latest = `sales_history_${dated.length}.json`;
+    // The owners are written either way (A-11): every one is linked to the property, and to the
+    // latest dated sale too when there is one. Without a dated sale the outcome stays
+    // "no_dated_sale" so the receipts keep counting properties whose owner the sales view cannot reach.
+    const latest = dated.length > 0 ? `sales_history_${dated.length}.json` : null;
     const kinds = new Set<"person" | "company">();
     let persons = 0;
     let companies = 0;
-    for (const o of record.owners) {
-      const first = titleCase((o.firstName ?? "").trim());
-      const last = titleCase((o.lastName ?? "").trim());
-      const name = (o.name ?? "").trim();
-      let entity: string;
-      if (
-        nonEmpty(o.firstName) &&
-        nonEmpty(o.lastName) &&
-        PERSON_NAME.test(first) &&
-        PERSON_NAME.test(last)
-      ) {
-        persons += 1;
-        entity = `person_${persons}.json`;
-        files[entity] = jsonFile({
-          ...base,
-          first_name: first,
-          last_name: last,
-          middle_name: null,
-          prefix_name: null,
-          suffix_name: null,
-          birth_date: null,
-          us_citizenship_status: null,
-          veteran_status: null,
-        });
+    let mailings = 0;
+    const personFile = (p: ParsedPerson): string => {
+      persons += 1;
+      const entity = `person_${persons}.json`;
+      files[entity] = jsonFile({
+        ...base,
+        first_name: p.first_name,
+        last_name: p.last_name,
+        middle_name: p.middle_name,
+        prefix_name: null,
+        suffix_name: p.suffix_name,
+        birth_date: null,
+        us_citizenship_status: null,
+        veteran_status: null,
+      });
+      if (latest !== null) {
         many(
           "sales_history_has_person",
           relationship(`relationship_sales_history_has_person_${persons}.json`, latest, entity),
         );
-        kinds.add("person");
-      } else if (name !== "" && ENTITY_NAME.test(name)) {
+      }
+      many(
+        "person_has_property",
+        relationship(`relationship_person_has_property_${persons}.json`, entity, "property.json"),
+      );
+      kinds.add("person");
+      return entity;
+    };
+    for (const o of record.owners) {
+      const secondary = (o as Record<string, unknown>).nameSecondary;
+      const parsed = parseOwner({
+        name: o.name,
+        nameSecondary: typeof secondary === "string" ? secondary : null,
+        firstName: o.firstName,
+        lastName: o.lastName,
+      });
+      const entities: string[] = [];
+      if (parsed.kind === "people") {
+        for (const p of parsed.people) entities.push(personFile(p));
+        if (parsed.skippedCoOwner) skippedCoOwners += 1;
+      } else if (parsed.kind === "company") {
         companies += 1;
-        entity = `company_${companies}.json`;
-        files[entity] = jsonFile({ ...base, name, sunbiz_document_number: null });
+        const entity = `company_${companies}.json`;
+        files[entity] = jsonFile({ ...base, name: parsed.name, sunbiz_document_number: null });
+        if (latest !== null) {
+          many(
+            "sales_history_has_company",
+            relationship(
+              `relationship_sales_history_has_company_${companies}.json`,
+              latest,
+              entity,
+            ),
+          );
+        }
         many(
-          "sales_history_has_company",
-          relationship(`relationship_sales_history_has_company_${companies}.json`, latest, entity),
+          "company_has_property",
+          relationship(
+            `relationship_company_has_property_${companies}.json`,
+            entity,
+            "property.json",
+          ),
         );
         kinds.add("company");
+        entities.push(entity);
       } else {
         unparsed += 1;
         continue;
       }
+      // One mailing address per owner entity (a joint entry's people share the printed address).
       const mailing = mailingAddress(o, base);
       if (mailing) {
-        if (mailing.fallback) mailingFallback += 1;
-        const n = persons + companies;
-        const addr = `mailing_address_${n}.json`;
-        files[addr] = jsonFile(mailing.address);
-        const kind = entity.startsWith("person_") ? "person" : "company";
-        many(
-          `${kind}_has_mailing_address`,
-          relationship(`relationship_${kind}_has_mailing_address_${n}.json`, entity, addr),
-        );
+        for (const entity of entities) {
+          if (mailing.fallback) mailingFallback += 1;
+          const kind = entity.startsWith("person_") ? "person" : "company";
+          mailings += 1;
+          const n = mailings;
+          const addr = `mailing_address_${n}.json`;
+          files[addr] = jsonFile(mailing.address);
+          many(
+            `${kind}_has_mailing_address`,
+            relationship(`relationship_${kind}_has_mailing_address_${n}.json`, entity, addr),
+          );
+        }
       }
     }
+    personsWritten = persons;
+    companiesWritten = companies;
     owner =
-      kinds.size === 0
-        ? "unparsed"
-        : kinds.size === 2
-          ? "mixed"
-          : ([...kinds][0] as "person" | "company");
+      dated.length === 0
+        ? "no_dated_sale"
+        : kinds.size === 0
+          ? "unparsed"
+          : kinds.size === 2
+            ? "mixed"
+            : ([...kinds][0] as "person" | "company");
   }
 
   const ordered = Object.fromEntries(
@@ -420,6 +456,9 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
       confidential_basis: basis,
       sales_dated: dated.length,
       owners_unparsed: unparsed,
+      owners_co_owner_skipped: skippedCoOwners,
+      persons_written: personsWritten,
+      companies_written: companiesWritten,
       mailing_address_fallback: mailingFallback,
       warnings,
     },

@@ -147,9 +147,7 @@ describe("open_days (as_of − issue_date for open/stalled without final_date; e
   ] as const)("%s issued %s final %s → %s", async (cls, issue, fin, expected) => {
     expect(d.openDays(cls, issue, AS_OF, fin)).toBe(expected);
     expect(
-      await sql(
-        `open_days('${cls}', ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
-      ),
+      await sql(`open_days('${cls}', ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`),
     ).toBe(expected);
   });
 });
@@ -209,14 +207,17 @@ describe("status_class (generated status map, scoped to the profile's jurisdicti
     ["stalled", "2026-03-11", "2026-04-01", "not_open"],
     ["stalled", "2026-03-11", "2026-03-01", "needs_review"],
     ["open", "2026-03-11", "2027-01-01", "needs_review"],
-  ] as const)("open_days reason: class %s issued %s final %s → %s", async (cls, issue, fin, expected) => {
-    expect(d.openDaysReason(cls, issue, AS_OF, fin)).toBe(expected);
-    expect(
-      await sql(
-        `open_days_reason(${lit(cls)}, ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
-      ),
-    ).toBe(expected);
-  });
+  ] as const)(
+    "open_days reason: class %s issued %s final %s → %s",
+    async (cls, issue, fin, expected) => {
+      expect(d.openDaysReason(cls, issue, AS_OF, fin)).toBe(expected);
+      expect(
+        await sql(
+          `open_days_reason(${lit(cls)}, ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
+        ),
+      ).toBe(expected);
+    },
+  );
 
   it.each([
     // improvement_status is null: stalled means the enum has no value for the source word
