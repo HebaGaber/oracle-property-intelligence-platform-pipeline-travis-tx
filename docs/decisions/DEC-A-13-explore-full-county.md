@@ -34,3 +34,7 @@ The fix is a design change (a per-run Explore index and an ADR-0001 amendment), 
 ## What the evaluator will see
 
 Demo lines D-8 and D-9 on live full-county data return an error state. The evidence (`docs/evidence/A-13.md`) and the G7 report list every affected case as failed, with this record as the reason.
+
+## Cost and concurrency risk of the stop-gap settings (metagross review, 2026-10-25)
+
+The API Lambda now runs with a 2 GB DuckDB limit and a 29 s timeout (CDK, deployed from the laptop). A failing Explore search can bill up to about 87 GB-s (about $0.0012); at the stage throttle of 10 requests per second that is about $40 an hour, and about 290 concurrent executions would reach the account concurrency quota. Every search fails at 29 s whether the timeout is 15 s or 29 s, so the longer timeout adds cost and no benefit. Recommended: return the timeout to 15 s, add a per-route throttle and a duration alarm (A-16 gap 6). Not done in this decision because it needs one more CDK deploy, which needs the PO's go.
