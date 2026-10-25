@@ -422,6 +422,17 @@ describe("Runs page: sources in manifest order (TC-011)", () => {
     expect(tcad.textContent).toContain(`${source1.records} records`);
     expect(within(tcad).getByRole("link").getAttribute("href")).toBe(source1.url);
   });
+
+  it("shows each source's added, changed and removed counts and its watermark (A-11 Run 3)", async () => {
+    await renderRuns();
+    await findCard();
+    const austin = within(listNamed("Sources")).getAllByRole("listitem")[0];
+    const delta = austin?.querySelector('[data-source-delta="austin-3syk-w9eu"]');
+    expect(delta?.textContent).toContain("42 added · 0 changed · 0 removed");
+    expect(delta?.textContent).toContain("2026-09-30");
+    const tcad = within(listNamed("Sources")).getAllByRole("listitem")[1];
+    expect(tcad?.querySelector("[data-source-delta]")?.textContent).toContain("watermark none");
+  });
 });
 
 describe("Runs page: coverage rows (TC-012, TC-031, T060)", () => {
