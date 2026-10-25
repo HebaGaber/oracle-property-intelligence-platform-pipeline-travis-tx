@@ -4,7 +4,7 @@ Updated every 15 minutes by the main session. Times are EEST (UTC+3). Session ta
 
 Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the PO · 🛑 PO decision · ⚠️ at risk
 
-**Last update:** 00:40 EEST · **Elapsed:** 1 h 00 m · **Remaining to target:** 2 h 00 m
+**Last update:** 00:55 EEST · **Elapsed:** 1 h 15 m · **Remaining to target:** 1 h 45 m
 
 ## Rounds
 
@@ -19,12 +19,12 @@ Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the
 
 | ID | Work | Owner | Round | Depends on | Est. | ETA | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| B-G4 | Index build CLI + reader + agent/MCP read path (T010–T015) | G4 machamp | R2 | wave 1 ✅ | 50 m | 01:30 | 🔄 |
-| B-G4i | Upload Run 2 then Run 1 index; Run 3 local check only | G4 machamp | R2 | B-G4 CLI | 10 m | 01:30 | 🔄 |
-| B-G1 | Infra (pool, timeout 15 s, throttle, alarms, grants) + admin API + idle-cost tests (T020–T025) | G1 metagross | R2 | wave 1 ✅; G3 queue construct for T023 | 50 m | 01:30 | 🔄 |
-| B-G3 | Queue construct, bridge, pipeline closures (T030–T036) | G3 machamp | R2 | wave 1 ✅ | 50 m | 01:30 | 🔄 |
-| B-G2a | Sign-in, Activity, Runs admin, Coverage Cost/Limits, Runs/Compare/Log/Coverage parity (T039–T046) | G2a metagross | R2→R3 | G1 API types (for wiring) | 70 m | 01:50 | ⚠️ |
-| B-G2b | Speed fixes, then parity: shell → Explore + drawer → Data → Hub/Help/Legal (T050–T052) | G2b metagross | R2→R3 | parity matrix ✅ | 80 m | 02:00 | ⚠️ |
+| B-G4 | Index build CLI + reader + agent/MCP read path (T010–T015) | G4 machamp | R2 | wave 1 ✅ | 50 m | 01:30 | 🔄 20 files in progress, 0 commits |
+| B-G4i | Upload Run 2 then Run 1 index; Run 3 local check only | G4 machamp | R2 | B-G4 CLI | 15 m | 01:35 | ⏳ |
+| B-G1 | Infra (pool, timeout 15 s, throttle, alarms, grants) + admin API + idle-cost tests (T020–T025) | G1 metagross | R2 | wave 1 ✅; G3 queue construct for T023 | 50 m | 01:30 | 🔄 21 files in progress, 0 commits |
+| B-G3 | Queue construct, bridge, pipeline closures (T030–T036) | G3 machamp | R2 | wave 1 ✅ | 50 m | 01:30 | 🔄 3 commits (A11-6, A11-10c/d closures) |
+| B-G2a | Sign-in, Activity, Runs admin, Coverage Cost/Limits, Runs/Compare/Log/Coverage parity (T039–T046) | G2a metagross | R2→R3 | G1 API types (for wiring) | 70 m | 01:50 | ⚠️ 32 files in progress, 0 commits |
+| B-G2b | Speed fixes, then parity: shell → Explore + drawer → Data → Hub/Help/Legal (T050–T052) | G2b metagross | R2→R3 | parity matrix ✅ | 80 m | 02:00 | 🔄 speed fixes T051/T052 committed; parity next |
 | M1 | Merge the five worktree branches into `016-cost-and-admin`; run `pnpm check`, format, grep gates, stylelint, bundle gate, `cdk synth` | Me | R2 | each builder done | 15 m | after each | ⏳ |
 | D1 | 🛑 Laptop CDK deploy (Api → Web → Ops) + smoke `admin.me` 401, `explore.search` on Run 2 + spike log retention 14 d | Me + PO OK | R2 | B-G1, B-G3, M1 | 15 m | 01:40 | ⏳ |
 | U1 | ✋ PO creates admin + non-admin Cognito users and the test env file (commands pre-filled) | PO | R2 | D1 | 5 m | 01:45 | ⏳ |
