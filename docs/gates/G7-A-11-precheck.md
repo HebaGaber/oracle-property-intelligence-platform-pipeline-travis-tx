@@ -6,7 +6,7 @@ run_date: 2026-10-25
 tool: Claude
 verdict: PASS
 scope_decision: "PO 2026-10-25: close A-11 now; Run 3 and the three-run immutability check stay a known gap, carried to A-16 items 2 and 4. The Run 3 correction work on branch 011b-run3-corrections is not part of this merge."
-decision: pending (PO records Approved and the date below)
+decision: Approved 2026-10-25 (HebaGaber)
 ---
 
 # G7 pre-check: A-11
@@ -35,4 +35,4 @@ Supersedes the 2026-10-24 early scan. Final CI on the push that carries this rep
 
 ## Decision
 
-PO approval: pending. Record "Approved" and the date here after final CI is green.
+PO approval: **Approved 2026-10-25** (HebaGaber), after CI run 40152943770 on ddeba06 went green (all 7 jobs).
