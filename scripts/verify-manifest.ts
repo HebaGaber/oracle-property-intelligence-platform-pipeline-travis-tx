@@ -12,6 +12,16 @@
 // required for a verified run.
 //
 //   npx tsx scripts/verify-manifest.ts runs/<runId>/manifest.json [--gateway <url>]... [--verbose]
+//   npx tsx scripts/verify-manifest.ts runs/<runId>/manifest.json --sample      (CI, very small)
+//
+// `--sample` (PO decision 2026-10-25) checks the manifest itself on both gateways exactly as
+// below, then only two artifacts: the smallest table part and the smallest CAR (by size, then
+// name). A full-county run lists 225 table parts and 15 CARs (about 2.8 GB of CARs) and a full
+// check took about two hours locally because Pinata answers 429, so the hosted job checks a
+// sample. In a sample the CAR is read from Filebase only: Pinata's gateway answers 429 to CAR
+// downloads (story A-16 item 14, a second independent pin); the manifest and the table part are
+// still read from both gateways. A sample prints SAMPLE VERIFIED, never ALL ARTIFACTS VERIFIED. The default (no flag)
+// is the full check the operator runs after a publish.
 //
 // Order: the manifest itself, by its own raw-leaves CIDv1, from both gateways, compared
 // byte-for-byte with the local file; any gateway answering 200 with other bytes stops the run
@@ -72,6 +82,15 @@ export const GATEWAYS: readonly string[] = [
 export const TIMEOUT_MS_DEFAULT = 300_000;
 export const MAX_ATTEMPTS = 5;
 export const ALL_VERIFIED_TEXT = "ALL ARTIFACTS VERIFIED";
+
+/** The `--sample` selection: the smallest table part and the smallest CAR (size, then name). */
+export function selectSample<T extends ManifestArtifactLike>(artifacts: readonly T[]): T[] {
+  const smallest = (kind: string): T | undefined =>
+    artifacts
+      .filter((a) => a.kind === kind)
+      .sort((x, y) => x.size - y.size || x.name.localeCompare(y.name))[0];
+  return [smallest("table"), smallest("car")].filter((a): a is T => a !== undefined);
+}
 /** NFR-06: artifacts at or above this size are proof the streaming path is exercised, not a
  *  special code path — the same streaming hash runs for every size. */
 export const STREAM_THRESHOLD_BYTES = 50 * 1024 * 1024;
@@ -344,6 +363,8 @@ export interface VerifyReport {
   gateways: string[];
   manifest: VerifyCheck[];
   artifacts: VerifyCheck[];
+  /** Set for a `--sample` run: how many artifacts were checked out of how many are listed. */
+  sample?: { checked: number; total: number };
 }
 
 export interface VerifyManifestOptions {
@@ -354,6 +375,8 @@ export interface VerifyManifestOptions {
   random?: () => number;
   timeoutMs?: number;
   verbose?: boolean;
+  /** Check only selectSample(artifacts) instead of every artifact. */
+  sample?: boolean;
   log?: (line: string) => void;
   /**
    * Artifact checks to skip, already known-good from a prior run (key: `${gateway}\u0000${name}`).
@@ -361,7 +384,7 @@ export interface VerifyManifestOptions {
    * any other restart otherwise re-checks all 458 checks from zero. Does not skip the manifest
    * self-check (cheap, and correctness-critical to re-verify every run).
    */
-  resumeSkip?: ReadonlySet<string>;
+  resumeSkip?: ReadonlySet<string> | undefined;
 }
 
 export function resumeKey(gateway: string, name: string): string {
@@ -466,9 +489,13 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   const resumeSkip = options.resumeSkip;
   const tasks: Task[] = [];
   const artifactChecks: (VerifyCheck | undefined)[] = [];
+  const selected = options.sample ? selectSample(manifest.artifacts) : manifest.artifacts;
+  if (options.sample)
+    report.sample = { checked: selected.length, total: manifest.artifacts.length };
   let idx = 0;
-  for (const artifact of manifest.artifacts) {
+  for (const artifact of selected) {
     for (const gateway of gateways) {
+      if (options.sample && artifact.kind === "car" && isPinataGateway(gateway)) continue;
       const { field, cid } = target(artifact);
       if (resumeSkip?.has(resumeKey(gateway, artifact.name))) {
         const check: VerifyCheck = {
@@ -561,7 +588,11 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   const checks = [...report.manifest, ...report.artifacts];
   const failed = checks.filter((c) => !c.ok).length;
   report.ok = failed === 0 && missing.length === 0;
-  if (report.ok) log(ALL_VERIFIED_TEXT);
+  if (report.ok && report.sample)
+    log(
+      `SAMPLE VERIFIED ${report.sample.checked} of ${report.sample.total} artifacts (the CAR on Filebase only)`,
+    );
+  else if (report.ok) log(ALL_VERIFIED_TEXT);
   else
     log(
       `VERIFICATION FAILED: ${failed} of ${checks.length} checks failed${missing.length > 0 ? `, ${missing.join(", ")} not checked` : ""}`,
@@ -573,12 +604,13 @@ interface Args {
   manifestPath: string;
   gateways: string[];
   verbose: boolean;
-  resumeFrom?: string;
+  resumeFrom?: string | undefined;
+  sample: boolean;
 }
 
 function usage(): never {
   console.error(
-    "usage: npx tsx scripts/verify-manifest.ts runs/<runId>/manifest.json [--gateway <url>]... [--verbose] [--resume-from <prior-log-file>]",
+    "usage: npx tsx scripts/verify-manifest.ts runs/<runId>/manifest.json [--gateway <url>]... [--verbose] [--resume-from <prior-log-file>] [--sample]",
   );
   process.exit(2);
 }
@@ -587,6 +619,7 @@ function parseArgs(argv: string[]): Args {
   let manifestPath: string | undefined;
   const gateways: string[] = [];
   let verbose = false;
+  let sample = false;
   let resumeFrom: string | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
@@ -599,6 +632,8 @@ function parseArgs(argv: string[]): Args {
       gateways.push(arg.slice("--gateway=".length));
     } else if (arg === "--verbose" || arg === "-v") {
       verbose = true;
+    } else if (arg === "--sample") {
+      sample = true;
     } else if (arg === "--resume-from") {
       const value = argv[i + 1];
       if (value === undefined || value.startsWith("--")) usage();
@@ -620,6 +655,7 @@ function parseArgs(argv: string[]): Args {
     gateways: gateways.length > 0 ? gateways : [...GATEWAYS],
     verbose,
     resumeFrom,
+    sample,
   };
 }
 
@@ -652,6 +688,7 @@ if (process.argv[1] !== undefined && import.meta.url === new URL(process.argv[1]
       timeoutMs: timeoutMsFromEnv(),
       verbose: args.verbose,
       resumeSkip,
+      sample: args.sample,
     });
     process.exit(report.ok ? 0 : 1);
   } catch (err) {

@@ -6,14 +6,17 @@
 // page's own COUNT `countylens:query:count`. The specs read them with
 // `performance.getEntriesByType('measure')` after each load.
 //
-// - TC-NF-01: 20 cold first loads (a fresh browser context each, so nothing is cached), each
+// Very small samples on the hosted CI (PO 2026-10-25; lib/perf.ts FIRST_LOAD_SAMPLES and
+// QUERY_SAMPLE_RUNS): each full-county load takes 45-90 s, so 20 + 21 loads never fit the
+// 60-minute 'isolated' job. The nearest-rank p95 of a 5-run sample is its slowest run.
+// - TC-NF-01: FIRST_LOAD_SAMPLES (2) cold first loads (a fresh browser context each, so nothing is cached), each
 //   timed from navigation start to the first rendered permit row and the range line (the page
 //   is paged, 200 rows at a time), with the `Loading permits`
 //   progress bar seen in between; every load ≤ LIMITS.firstLoadMs (60 s at full-county scale; 8 s on the pilot). The DuckDB init measure of each load is
 //   recorded beside it.
-// - TC-NF-02: in one context, one untimed warm-up load, then 20 reloads (the page re-runs its
-//   COUNT and listing on each); the `countylens:query:count` and `countylens:query:list`
-//   measures of each reload are the timings; each p95 < 3,000 ms. Every reload must end `ready`
+// - TC-NF-02: in one context, one untimed warm-up load, then QUERY_SAMPLE_RUNS (5) reloads (the
+//   page re-runs its COUNT and listing on each); the `countylens:query:count` and
+//   `countylens:query:list` measures of each reload are the timings; each p95 < 3,000 ms. Every reload must end `ready`
 //   (the page itself fails when its COUNT or row count differs from the manifest) and show
 //   `permits_emitted` rows.
 // Timings are attached as JSON for docs/evidence/A-03.md and docs/decisions/0001-read-path.md.
@@ -21,9 +24,10 @@ import type { Page } from "@playwright/test";
 import { checkpoint } from "./lib/evidence.js";
 import { expect, test } from "./lib/fixtures.js";
 import {
+  FIRST_LOAD_SAMPLES,
   LIMITS,
+  QUERY_SAMPLE_RUNS,
   SELECTORS,
-  TIMED_RUNS,
   permitsEmitted as permitsEmittedOf,
   summarize,
 } from "./lib/perf.js";
@@ -38,7 +42,7 @@ const MEASURES = {
 } as const;
 type MeasureName = (typeof MEASURES)[keyof typeof MEASURES];
 
-const COLD_LOADS = TIMED_RUNS;
+const COLD_LOADS = FIRST_LOAD_SAMPLES;
 
 interface FirstLoadProbe {
   progressAt: number | null;
@@ -76,8 +80,8 @@ async function readMeasures(
   return out;
 }
 
-test.describe("A-03-TC-NF-01 browser first load ≤ 60 s (full county) with a progress bar", () => {
-  test.describe.configure({ timeout: 30 * 60_000 });
+test.describe("A-03-TC-NF-01 browser first load ≤ 60 s (full county, 2 cold loads) with a progress bar", () => {
+  test.describe.configure({ timeout: 10 * 60_000 });
 
   test("@scenario:A-03-TC-NF-01", async ({ browser, run }, testInfo) => {
     const permitsEmitted = permitsEmittedOf(run.manifest);
@@ -173,8 +177,8 @@ test.describe("A-03-TC-NF-01 browser first load ≤ 60 s (full county) with a pr
   });
 });
 
-test.describe("A-03-TC-NF-02 COUNT and listing p95 < 3 s in the browser (20 runs)", () => {
-  test.describe.configure({ timeout: 15 * 60_000 });
+test.describe("A-03-TC-NF-02 COUNT and listing p95 < 3 s in the browser (5 timed reloads)", () => {
+  test.describe.configure({ timeout: 10 * 60_000 });
 
   test("@scenario:A-03-TC-NF-02", async ({ browser, run }, testInfo) => {
     const permitsEmitted = permitsEmittedOf(run.manifest);
@@ -203,7 +207,7 @@ test.describe("A-03-TC-NF-02 COUNT and listing p95 < 3 s in the browser (20 runs
           page.goto(`${runtimeUrl()}/permits`, { waitUntil: "domcontentloaded" }),
         )
       ).measured;
-      for (let i = 1; i <= TIMED_RUNS; i += 1) {
+      for (let i = 1; i <= QUERY_SAMPLE_RUNS; i += 1) {
         const { measured, rows, total } = await loadOnce(() =>
           page.reload({ waitUntil: "domcontentloaded" }),
         );
@@ -215,7 +219,7 @@ test.describe("A-03-TC-NF-02 COUNT and listing p95 < 3 s in the browser (20 runs
           total,
         });
       }
-      await checkpoint(page, "NF-02", `after-${TIMED_RUNS}-reloads-listing`);
+      await checkpoint(page, "NF-02", `after-${QUERY_SAMPLE_RUNS}-reloads-listing`);
     } finally {
       await context.close();
     }
@@ -240,8 +244,8 @@ test.describe("A-03-TC-NF-02 COUNT and listing p95 < 3 s in the browser (20 runs
       contentType: "application/json",
     });
 
-    expect(count.n).toBe(TIMED_RUNS);
-    expect(list.n).toBe(TIMED_RUNS);
+    expect(count.n).toBe(QUERY_SAMPLE_RUNS);
+    expect(list.n).toBe(QUERY_SAMPLE_RUNS);
     for (const r of runs) {
       expect
         .soft(r.total, `run ${r.run}: the listing's total is permits_emitted`)
