@@ -28,6 +28,19 @@ export const AMPLIFY_MONOREPO_APP_ROOT = "apps/web";
 export const AUTO_BRANCH_PATTERN = "0*";
 /** FILEBASE_GATEWAY_HOST (plan § "Fixed texts and config keys"); the web build reads VITE_*. */
 export const DEFAULT_FILEBASE_GATEWAY_HOST = "ipfs.filebase.io";
+/** PINATA_GATEWAY_HOST (A-13 AM-01): the independent Verify gateway; the web build reads VITE_*. */
+export const DEFAULT_PINATA_GATEWAY_HOST = "gateway.pinata.cloud";
+/**
+ * Hub links (A-13 contracts/site-links.md, research R6): Amplify variable → CDK context key.
+ * Empty by default (the link is hidden; the CRM card stays "Coming soon · Not deployed yet").
+ * amplify.yml writes them to public/site-links.json; switching one is a Web-stack deploy plus
+ * an Amplify rebuild, never a code change.
+ */
+export const SITE_LINK_CONTEXT_KEYS = {
+  CRM_URL: "countylens:crmUrl",
+  DEMO_VIDEO_URL: "countylens:demoVideoUrl",
+  PR_URL: "countylens:prUrl",
+} as const;
 /** SSM String parameters mirroring the outputs (same pattern as the Data stack). */
 export const WEB_SSM_PREFIX = "/countylens/web";
 /** Logical id of the noEcho parameter: `--parameters CountyLensWeb:GitHubAccessToken=…`. */
@@ -64,6 +77,29 @@ export interface WebStackProps extends StackProps {
   readonly cidCopyHost?: string;
   /** Public IPFS gateway host used as the labelled fallback (FILEBASE_GATEWAY_HOST). */
   readonly filebaseGatewayHost?: string;
+  /** Independent IPFS gateway host for Verify (PINATA_GATEWAY_HOST, A-13 AM-01). */
+  readonly pinataGatewayHost?: string;
+}
+
+/** A site link from context: "" when unset or blank, else an https:// URL (anything else fails synth). */
+function siteLinkFromContext(scope: Construct, key: string): string {
+  const raw: unknown = scope.node.tryGetContext(key);
+  if (raw === undefined || raw === null) return "";
+  if (typeof raw !== "string") {
+    throw new Error(`CountyLensWeb: ${key} must be an https:// URL or empty, got ${typeof raw}`);
+  }
+  const value = raw.trim();
+  if (value === "") return "";
+  let url: URL | undefined;
+  try {
+    url = new URL(value);
+  } catch {
+    url = undefined;
+  }
+  if (url?.protocol !== "https:") {
+    throw new Error(`CountyLensWeb: ${key} must be an https:// URL or empty, got ${value}`);
+  }
+  return value;
 }
 
 /** Amplify's branch URL label: `/` becomes `-` (feature/oracle-pipeline → feature-oracle-pipeline). */
@@ -142,6 +178,13 @@ export class WebStack extends Stack {
       environmentVariables.push({ name: "VITE_CID_COPY_HOST", value: props.cidCopyHost });
     }
     environmentVariables.push({ name: "VITE_FILEBASE_GATEWAY_HOST", value: filebaseGatewayHost });
+    environmentVariables.push({
+      name: "VITE_PINATA_GATEWAY_HOST",
+      value: props.pinataGatewayHost ?? DEFAULT_PINATA_GATEWAY_HOST,
+    });
+    for (const [name, key] of Object.entries(SITE_LINK_CONTEXT_KEYS)) {
+      environmentVariables.push({ name, value: siteLinkFromContext(this, key) });
+    }
 
     // Rules apply top-down: the API rewrite must come before the SPA fallback, whose regex would
     // otherwise swallow /api/trpc/runs.summary (it has a dot) as index.html.

@@ -1,0 +1,189 @@
+/* Explore filter sheet (A-13 T025, FR-018): Atlas § 7 outlined text fields and filter chips,
+   48 px targets. Compact (< 840 px): a "Filters" button opens the controls as a sheet in the
+   flow; expanded (≥ 840 px): the controls always show and the button is hidden. Atlas tokens. */
+
+.sheet {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.toggle,
+.chip {
+  box-sizing: border-box;
+  min-width: var(--space-9);
+  min-height: var(--space-9);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container-low);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+}
+
+.toggle:focus-visible,
+.chip:focus-visible,
+.input:focus-visible,
+.box:focus-visible,
+.option:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.panel {
+  display: none;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.open {
+  display: grid;
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.label {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
+  font-family: var(--md-sys-typescale-body-large-font);
+  font-size: var(--md-sys-typescale-body-large-size);
+  line-height: var(--md-sys-typescale-body-large-line-height);
+}
+
+.unit,
+.hint,
+.definition {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+}
+
+.unit {
+  flex: none;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--space-9);
+}
+
+/* A 48 × 48 hit area (§ 14.1) around a drawn 20 px box: the native glyph is replaced
+   (appearance: none) so the control is large to touch but not to look at. `font: inherit` stops
+   the UA font (Arial) the control would otherwise compute (ERR-12). */
+.box {
+  appearance: none;
+  display: grid;
+  place-content: center;
+  flex: none;
+  box-sizing: border-box;
+  width: var(--space-9);
+  height: var(--space-9);
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.box::before {
+  content: "";
+  box-sizing: border-box;
+  width: var(--space-5);
+  height: var(--space-5);
+  border: 2px solid var(--md-sys-color-on-surface-variant);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+}
+
+.box:checked::before {
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary);
+}
+
+.box:checked::after {
+  content: "";
+  grid-area: 1 / 1;
+  box-sizing: border-box;
+  width: var(--space-2);
+  height: var(--space-3);
+  margin-bottom: var(--space-1);
+  border: solid var(--md-sys-color-on-primary);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.box::before {
+  grid-area: 1 / 1;
+}
+
+.options {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container-highest);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  overflow-wrap: anywhere;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (min-width: 840px) {
+  .toggle {
+    display: none;
+  }
+
+  .panel {
+    display: grid;
+  }
+}
