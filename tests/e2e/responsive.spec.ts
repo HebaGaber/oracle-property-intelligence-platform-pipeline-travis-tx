@@ -62,7 +62,8 @@ const READY_TIMEOUT_MS = { runs: 60_000, permits: PERMITS_LOAD_WAIT_MS } as cons
 
 async function open(page: Page, path: string, ready: string, timeout: number): Promise<void> {
   await page.goto(`${runtimeUrl()}${path}`, { waitUntil: "domcontentloaded" });
-  await page.locator(ready).first().waitFor({ state: "visible", timeout });
+  // visible only: the Runs page Run menu holds hidden copies of every CID first
+  await page.locator(ready).filter({ visible: true }).first().waitFor({ state: "visible", timeout });
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
 }
 
