@@ -680,7 +680,8 @@ test.describe("A-13 pages · Coming soon", { tag: "@a13-pages" }, () => {
       for (const h of await inSiteHrefs(page)) hrefs.add(h);
     }
     expect(
-      [...hrefs].filter((h) => /ai-user|sign-?in/i.test(h)),
+      // The admin sign-in entry (A-16 AC-6, /admin/sign-in) is not the AI-user sign-in.
+      [...hrefs].filter((h) => /ai-user|sign-?in/i.test(h) && !h.startsWith("/admin/")),
       "no link to AI-user sign-in",
     ).toEqual([]);
     await checkpoint(page, "063", 1);
@@ -888,7 +889,8 @@ test.describe("A-13 pages · cross-cutting", { tag: "@a13-pages" }, () => {
     }
     expect(broken, "no broken in-site link").toEqual([]);
     expect(
-      [...hrefs].filter((h) => /ai-user|sign-?in/i.test(h)),
+      // The admin sign-in entry (A-16 AC-6, /admin/sign-in) is not the AI-user sign-in.
+      [...hrefs].filter((h) => /ai-user|sign-?in/i.test(h) && !h.startsWith("/admin/")),
       "no link to AI-user sign-in",
     ).toEqual([]);
     test.info().annotations.push({ type: "links-crawled", description: String(hrefs.size) });

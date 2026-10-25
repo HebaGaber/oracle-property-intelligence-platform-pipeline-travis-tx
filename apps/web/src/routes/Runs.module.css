@@ -138,6 +138,8 @@
 .link {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-width: var(--space-9);
   min-height: var(--space-9);
   color: var(--md-sys-color-primary);
   overflow-wrap: anywhere;

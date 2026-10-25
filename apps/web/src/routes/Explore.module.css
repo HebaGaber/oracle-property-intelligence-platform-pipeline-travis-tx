@@ -418,7 +418,7 @@
 }
 
 .pager > :first-child {
-  margin-right: auto;
+  flex: 1 1 auto;
 }
 
 .pageButton {

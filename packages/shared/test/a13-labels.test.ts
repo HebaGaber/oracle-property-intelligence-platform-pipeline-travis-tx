@@ -103,7 +103,7 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
 });
 
 describe("A-13 routes and URL parameters (contracts/ui-routes.md)", () => {
-  it("names every route of the contract, and /permits is kept", () => {
+  it("names every route of the contract, /permits kept, plus the A-16 admin routes", () => {
     expect(Object.values(ROUTES).sort()).toEqual(
       [
         "/",
@@ -121,6 +121,9 @@ describe("A-13 routes and URL parameters (contracts/ui-routes.md)", () => {
         "/legal/terms",
         "/soon/:item",
         "/permits",
+        // A-16 (frozen interfaces): admin sign-in and Activity
+        "/admin/sign-in",
+        "/activity",
       ].sort(),
     );
     expect(verifyPath("bafkreiabc")).toBe("/data/verify/bafkreiabc");

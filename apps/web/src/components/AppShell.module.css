@@ -48,9 +48,10 @@
 
 .actions {
   display: flex;
+  flex: 1 1 auto;
+  justify-content: flex-end;
   align-items: center;
   gap: var(--space-1);
-  margin-left: auto;
 }
 
 .sync {

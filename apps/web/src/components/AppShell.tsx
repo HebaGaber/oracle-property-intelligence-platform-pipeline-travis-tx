@@ -169,7 +169,11 @@ export function AppShell(): ReactElement {
   }, []);
   // The location slot (county selector) sits at the top of the page region under `/tx/…`; the
   // app bar keeps the title as its only control.
-  const inCounty = useLocation().pathname.startsWith("/tx/");
+  const { pathname } = useLocation();
+  const inCounty = pathname.startsWith("/tx/");
+  // Legal and Coming soon pages are static and make no data request (A-13 TC-056), so the sync
+  // badge, which reads /runs/index.json, is not rendered there (justified board difference).
+  const staticPage = pathname.startsWith("/legal/") || pathname.startsWith("/soon/");
   const [moreOpen, setMoreOpen] = useState(false);
   const moreButton = useRef<HTMLButtonElement>(null);
   const closeMore = useCallback(() => setMoreOpen(false), []);
@@ -203,9 +207,11 @@ export function AppShell(): ReactElement {
           ) : null}
           <div className={styles.actions}>
             <AdminChip className={styles.adminChip} />
-            <span className={styles.sync}>
-              <SyncBadge />
-            </span>
+            {staticPage ? null : (
+              <span className={styles.sync}>
+                <SyncBadge />
+              </span>
+            )}
             <HelpMenu />
             <Link to={ASK_PATH} className={styles.ask} aria-label={ASK_LABEL}>
               <Icon name="smart_toy" size="medium" />

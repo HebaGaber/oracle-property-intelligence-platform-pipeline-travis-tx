@@ -237,7 +237,11 @@ export async function readPublishedRun(page: Page): Promise<PublishedRun> {
   const index = await fetchRunsIndex();
   const latest = latestRun(index);
   await page.goto(`${runtimeUrl()}/runs`, { waitUntil: "domcontentloaded" });
-  const cidElement = page.locator(`[data-cid="${latest.manifestCid}"]`).first();
+  // The Run menu lists every CID in a collapsed list first; the card's visible CID is the one shown.
+  const cidElement = page
+    .locator(`[data-cid="${latest.manifestCid}"]`)
+    .filter({ visible: true })
+    .first();
   await cidElement.waitFor({ state: "visible", timeout: 60_000 });
   const manifestCid = await cidElement.getAttribute("data-cid");
   if (!manifestCid) throw new Error("the run card's manifest CID element has no data-cid");
