@@ -12,3 +12,12 @@ describe("unpublished fields (ERR-78)", () => {
     expect(JSON.stringify(VIEWS)).toContain("contractor_name_as_printed");
   });
 });
+
+describe("system prompt (ERR-78)", () => {
+  it("never tells the model that contractor names are unavailable", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/agent/ask.ts", import.meta.url), "utf8");
+    expect(src).not.toMatch(/Contractor names and BBB ratings are likewise/);
+    expect(src).toMatch(/contractor_name_as_printed on each permit row/);
+  });
+});
