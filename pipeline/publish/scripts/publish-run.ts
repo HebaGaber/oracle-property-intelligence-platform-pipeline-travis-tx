@@ -180,6 +180,8 @@ async function main(): Promise<number> {
       ...(process.env.PUBLISH_DEFER_PINATA === "1" ? { readbackGateways: [FILEBASE_GATEWAY] } : {}),
       // PUBLISH_CARFILES_NO_PROBE=1: upload without the "already served?" probe (gateways hang on new CIDs).
       skipProbe: process.env.PUBLISH_CARFILES_NO_PROBE === "1",
+      // PUBLISH_CARFILES_PRESENT_ONLY=1: upload only the CAR files already fetched (cloud runner).
+      presentOnly: process.env.PUBLISH_CARFILES_PRESENT_ONLY === "1",
     },
     manifest: { loadEnv, now, log },
     cidCopy: {
