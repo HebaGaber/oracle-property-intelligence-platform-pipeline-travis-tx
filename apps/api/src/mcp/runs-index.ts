@@ -34,8 +34,12 @@ function defaultRunsIndexPath(): string {
 
 export type RunsIndexEnv = Readonly<Record<string, string | undefined>>;
 
-async function loadFromUrl(url: string): Promise<RunsIndexV1> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+async function loadFromUrl(url: string, signal?: AbortSignal): Promise<RunsIndexV1> {
+  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  // T036: the caller's deadline (agent.ask's 23 s abort) also cancels this fetch.
+  const response = await fetch(url, {
+    signal: signal === undefined ? timeout : AbortSignal.any([timeout, signal]),
+  });
   if (!response.ok) throw new Error(`runs index: GET ${url} answered ${response.status}`);
   return RunsIndexV1.parse(await response.json());
 }
@@ -49,9 +53,12 @@ async function loadFromLocalFile(env: RunsIndexEnv): Promise<RunsIndexV1> {
 /** Reads and Zod-validates `runs/index.json`: from the site URL (`RUNS_INDEX_URL` set -- the
  *  hosted Lambdas) or from a local file (unset -- the stdio build, tests). Throws (never a
  *  default/empty index) on any failure. */
-export async function loadRunsIndex(env: RunsIndexEnv = process.env): Promise<RunsIndexV1> {
+export async function loadRunsIndex(
+  env: RunsIndexEnv = process.env,
+  signal?: AbortSignal,
+): Promise<RunsIndexV1> {
   const url = env[RUNS_INDEX_URL_ENV];
-  return url !== undefined && url !== "" ? loadFromUrl(url) : loadFromLocalFile(env);
+  return url !== undefined && url !== "" ? loadFromUrl(url, signal) : loadFromLocalFile(env);
 }
 
 export interface RunsIndexEntry {

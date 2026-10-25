@@ -43,6 +43,7 @@ export const SearchPropertiesInput = RunRef.extend({
   radius_mi: z.number().min(0.25).max(25),
   /** Whole years, roof_age_years >= this value (unknown ages are excluded, as on the Explore page, and counted in unknown_excluded). */
   roof_age_years_min: z.number().int().min(0).max(120).optional(),
+  /** Owner tenure STRICTLY MORE than this many whole years (tenure_years > N, as Explore's "Tenure > years"); unknown tenures are excluded and counted in unknown_excluded. */
   tenure_years_min: z.number().int().min(1).max(100).optional(),
   owner_is_out_of_area: z.literal(true).optional(),
   status_class: z.enum(PROPERTY_STATUS_CLASSES).optional(),

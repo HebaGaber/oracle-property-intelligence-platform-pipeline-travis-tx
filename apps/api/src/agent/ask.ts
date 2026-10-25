@@ -18,6 +18,7 @@ import { z } from "zod";
 import { CidV1 } from "@countylens/contract";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { BoundRun, QueryEngine } from "@countylens/query-core";
+import { raceAbort } from "./abort.js";
 import { bindOnce, getEngine } from "../engine/duckdb-node.js";
 import { lazyViewEngine, type BindViews } from "../engine/lazy-views.js";
 import { createCitationRegistry, type Match } from "./citations.js";
@@ -27,6 +28,7 @@ import {
   SPEND_RESERVATION_USD,
   getSpendDocumentClient,
   recordSpend,
+  releaseSpend,
   reserveSpend,
 } from "./spend.js";
 import { getModel, type EnvSource } from "./model.js";
@@ -221,19 +223,22 @@ export async function defaultRunModelLoop(params: ModelLoopParams): Promise<Mode
 // Latest-run resolution (manifest_cid omitted on turn 1 -> runs/index.json's latest entry)
 // ---------------------------------------------------------------------------------------
 
-export type ResolveManifestCid = (env: EnvSource) => Promise<string>;
+export type ResolveManifestCid = (env: EnvSource, signal?: AbortSignal) => Promise<string>;
 
 /** Reads the site's `runs/index.json` (`loadRunsIndex`, via `RUNS_INDEX_URL`) and returns the
  *  entry with the greatest `finishedAt` (`latestOf`). Any read/parse failure, or an empty index,
  *  throws: it propagates as a real Lambda error, never a guessed run. */
-export async function defaultResolveManifestCid(env: EnvSource): Promise<string> {
-  const latest = latestOf(await loadRunsIndex(env));
+export async function defaultResolveManifestCid(
+  env: EnvSource,
+  signal?: AbortSignal,
+): Promise<string> {
+  const latest = latestOf(await loadRunsIndex(env, signal));
   if (latest === undefined) throw new Error("runs/index.json: no published runs");
   return latest.manifestCid;
 }
 
 // ---------------------------------------------------------------------------------------
-// Error classification (never swallowed as a fake outcome: anything else re-throws)
+// Error classification (abort -> timed_out, throttle -> throttled, anything else -> failed)
 // ---------------------------------------------------------------------------------------
 
 function errorName(error: unknown): string | undefined {
@@ -390,6 +395,9 @@ function composeStructuredParts(
     if (key === "area" || key === "manifest_cid") continue;
     howParts.push(`${key}: ${JSON.stringify(value)}`);
   }
+  if (typeof applied.tenure_years_min === "number") {
+    howParts.push(`owner tenure more than ${applied.tenure_years_min} years`);
+  }
   if (typeof applied.open_years_min === "number") {
     howParts.push(`permits open at least ${applied.open_years_min} years`);
   }
@@ -467,6 +475,8 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "contains a permit number (YYYY-NNNNNN XX), ALWAYS call searchRoofingPermits with that",
     "permit_number first, then answer from the result; BBB ratings are not available in the",
     "published data, but still report the permit facts you found.",
+    "Thresholds: tenure_years_min means owner tenure MORE THAN that many years (strictly); say",
+    "'more than N years' for it. roof_age_years_min and open_years_min mean at least N years.",
     "Your last step writes the final answer with no further tool calls; never end by planning a call.",
     "Be concise: this answer has a 1,500-output-token budget and at most 3 tool-calling turns.",
     input.overrides !== undefined
@@ -509,6 +519,9 @@ export interface AskDeps {
   runModelLoop: RunModelLoop;
 }
 
+/** T037: the only text a `failed` outcome from an unexpected error carries. */
+const FAILED_MESSAGE = "Something went wrong on our side. Try again, or use Filters instead.";
+
 function emptyResponse(outcome: AgentOutcome, answer = ""): AgentAskResponse {
   return { answer, how: "", steps: [], matches: [], query: {}, missing: [], outcome };
 }
@@ -523,6 +536,7 @@ export async function runAgentAsk(
   rawInput: z.input<typeof AgentAskInput>,
   overrides: Partial<AskDeps> = {},
 ): Promise<AgentAskResponse> {
+  // Bad input is the caller's error (tRPC maps a ZodError to a 4xx), not an agent failure.
   const input = AgentAskInput.parse(rawInput);
   const env = overrides.env ?? process.env;
   const now = overrides.now ?? (() => new Date());
@@ -534,56 +548,67 @@ export async function runAgentAsk(
   const maxModelCalls = overrides.maxModelCalls ?? MAX_MODEL_CALLS;
   const maxToolSteps = overrides.maxToolSteps ?? MAX_TOOL_STEPS;
   const maxOutputTokens = overrides.maxOutputTokens ?? MAX_OUTPUT_TOKENS;
-  const model = overrides.model ?? getModel(env);
   const getEngineFn = overrides.getEngine ?? getEngine;
   const bindFn = overrides.bindOnce ?? ((manifestCid: string) => bindOnce(manifestCid, ["v_run"]));
   const bindViews = overrides.bindViews ?? bindOnce;
   const resolveManifestCid = overrides.resolveManifestCid ?? defaultResolveManifestCid;
   const runModelLoop = overrides.runModelLoop ?? defaultRunModelLoop;
 
-  // Spend-cap pre-check (agent-design.md § "ash" > "Spend-cap + alarm design"; Stage 5 review
-  // fix, Major #3): one atomic conditional reservation, never a separate read-then-later-write
-  // (which let two concurrent requests both pass a check before either's model call finished).
-  // Never a half-run -- checked/reserved before any model call is placed.
-  const spend = await reserveSpend(ddb, spendTableName, now(), reservationUsd, cap);
-  if (spend.spentUsd >= cap) {
-    agentObservability().logger.warn("agent.ask paused: daily spend cap reached", {
-      spentUsd: spend.spentUsd,
-      cap,
-    });
-    return emptyResponse("paused", "Daily AI budget reached for today.");
-  }
-
-  const manifestCid = input.manifest_cid ?? (await resolveManifestCid(env));
-  const engine = await getEngineFn();
-  const bound = await bindFn(manifestCid);
-
-  const registry = createCitationRegistry();
-  const tools = createAgentTools({
-    engine: lazyViewEngine(engine, manifestCid, bindViews),
-    bound,
-    registry,
-  });
-
+  // T036 (AD-27 layer 1): the 23 s abort starts before the first awaited step (spend reservation,
+  // run lookup, engine, bind, tool calls, model loop) and the whole body is raced against it, so
+  // a hung tool or engine call still ends as `timed_out`, never a 5xx.
   const startedAt = Date.now();
-  const traceId = /Root=([^;]+)/.exec(env._X_AMZN_TRACE_ID ?? "")?.[1];
-  const telemetry = (modelCalls?: number, outputTokens?: number) => ({
-    ...(modelCalls !== undefined ? { modelCalls } : {}),
-    ...(outputTokens !== undefined ? { outputTokens } : {}),
-    durationMs: Date.now() - startedAt,
-    ...(traceId !== undefined ? { traceId } : {}),
-  });
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), abortTimeoutMs);
+  const signal = controller.signal;
 
-  try {
+  // T048: the reservation is trued up on success and released in `finally` otherwise.
+  let reservation = "none" as "none" | "held" | "settled";
+  let reservedAt = now();
+
+  const execute = async (): Promise<AgentAskResponse> => {
+    const model = overrides.model ?? getModel(env);
+
+    // Spend-cap pre-check (agent-design.md § "ash" > "Spend-cap + alarm design"; Stage 5 review
+    // fix, Major #3): one atomic conditional reservation, never a separate read-then-later-write
+    // (which let two concurrent requests both pass a check before either's model call finished).
+    // Never a half-run -- checked/reserved before any model call is placed.
+    reservedAt = now();
+    const spend = await reserveSpend(ddb, spendTableName, reservedAt, reservationUsd, cap);
+    if (spend.spentUsd >= cap) {
+      agentObservability().logger.warn("agent.ask paused: daily spend cap reached", {
+        spentUsd: spend.spentUsd,
+        cap,
+      });
+      return emptyResponse("paused", "Daily AI budget reached for today.");
+    }
+    reservation = "held";
+
+    const manifestCid = input.manifest_cid ?? (await resolveManifestCid(env, signal));
+    const engine = await getEngineFn();
+    const bound = await bindFn(manifestCid);
+
+    const registry = createCitationRegistry();
+    const tools = createAgentTools({
+      engine: lazyViewEngine(engine, manifestCid, bindViews),
+      bound,
+      registry,
+    });
+
+    const traceId = /Root=([^;]+)/.exec(env._X_AMZN_TRACE_ID ?? "")?.[1];
+    const telemetry = (modelCalls?: number, outputTokens?: number) => ({
+      ...(modelCalls !== undefined ? { modelCalls } : {}),
+      ...(outputTokens !== undefined ? { outputTokens } : {}),
+      durationMs: Date.now() - startedAt,
+      ...(traceId !== undefined ? { traceId } : {}),
+    });
+
     const result = await runModelLoop({
       model,
       tools,
       system: buildSystemPrompt(input),
       prompt: buildPrompt(input),
-      abortSignal: controller.signal,
+      abortSignal: signal,
       maxOutputTokens,
       // AC-5's two budgets (<=6 tool steps, <=3 model calls) are enforced through the one AI SDK
       // stop condition the default loop supports (stepCountIs): the smaller cap dominates, which
@@ -593,13 +618,21 @@ export async function runAgentAsk(
 
     if (result.totalTokens !== undefined) {
       // True the reservation up to the real cost (never re-incrementing model_calls -- reserveSpend
-      // already counted this call).
+      // already counted this call). `settled` first, so a late finally never releases it as well.
+      reservation = "settled";
       const actualUsd = result.totalTokens * ESTIMATED_USD_PER_TOKEN;
-      const status = await recordSpend(ddb, spendTableName, actualUsd - reservationUsd, now(), {
-        incrementModelCalls: false,
-      });
+      const status = await recordSpend(
+        ddb,
+        spendTableName,
+        actualUsd - reservationUsd,
+        reservedAt,
+        { incrementModelCalls: false },
+      );
       // The SpendAlarm's statistic is Maximum/5min: emit the day's running total, not the delta.
       agentObservability().metrics.addMetric(SPEND_METRIC_NAME, MetricUnit.NoUnit, status.spentUsd);
+    } else {
+      // The model answered but reported no usage: the reservation stays as the cost estimate.
+      reservation = "settled";
     }
 
     // ERR-64: a permit number in the question is always looked up, even if the model skipped the
@@ -619,7 +652,7 @@ export async function runAgentAsk(
       const output: unknown = await tools.searchRoofingPermits.execute?.(lookupInput, {
         toolCallId: "deterministic-permit-lookup",
         messages: [],
-        abortSignal: controller.signal,
+        abortSignal: signal,
         context: {},
       });
       if (isRecord(output)) {
@@ -735,6 +768,10 @@ export async function runAgentAsk(
       outcome: "answered",
       ...telemetry(modelCalls, result.outputTokens),
     };
+  };
+
+  try {
+    return await raceAbort(execute(), signal);
   } catch (error) {
     if (isAbortError(error)) {
       agentObservability().logger.warn("agent.ask timed out (23s abort)");
@@ -744,8 +781,25 @@ export async function runAgentAsk(
       agentObservability().logger.warn("agent.ask throttled by the model provider");
       return emptyResponse("throttled", "The model is busy right now; try again in a minute.");
     }
-    throw error; // unexpected -- a real Lambda error, never swallowed as a fake outcome.
+    // T037 (FR-005, contract "Never a 5xx"): any other failure (DynamoDB, runs index, engine,
+    // bind, tool, ...) is a plain `failed` outcome with a fixed message; the detail goes to the
+    // log only, never into the response.
+    agentObservability().logger.error("agent.ask failed", {
+      errorName: errorName(error),
+      errorMessage: errorMessage(error),
+    });
+    return emptyResponse("failed", FAILED_MESSAGE);
   } finally {
     clearTimeout(timer);
+    if (reservation === "held") {
+      // T048: no model call succeeded (paused never gets here): give the reservation back.
+      try {
+        await releaseSpend(ddb, spendTableName, reservedAt, reservationUsd);
+      } catch (releaseError) {
+        agentObservability().logger.error("agent.ask could not release its spend reservation", {
+          errorName: errorName(releaseError),
+        });
+      }
+    }
   }
 }

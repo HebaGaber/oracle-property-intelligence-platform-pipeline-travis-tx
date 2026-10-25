@@ -154,6 +154,14 @@ describe("How I read this chips", () => {
     expect(second.overrides).toEqual({ roof_age_years_min: 20 });
   });
 
+  it("labels the tenure chip 'more than' (the filter is strict), and keeps roof age 'at least' (T041)", () => {
+    const chips = howChips({ radius_mi: 3, tenure_years_min: 10, roof_age_years_min: 15 });
+    const labels = chips.editable.map((e) => e.chip.label);
+    expect(labels).toContain("Owner tenure more than");
+    expect(labels).toContain("Roof age at least");
+    expect(labels).not.toContain("Owner tenure at least");
+  });
+
   it("builds chips from the query echo only (area and plumbing keys hidden)", () => {
     const chips = howChips({
       radius_mi: 3,

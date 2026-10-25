@@ -2,9 +2,10 @@
 // data-model.md § "agent.ask contract"): four camelCase AI SDK tools, thin adapters wired to
 // packages/query-core's real functions (T011/T011a, G-1) — all four real, never stubbed, per
 // /speckit-analyze finding F1. These are agent-only concerns layered over the shared query-core
-// schemas: a compact (<=25-row) projection carrying each row's citation index `n` (so the model
-// cites `[n]`, never a CID it must invent), and registering every row the tools return this turn
-// into the per-request citation registry (citations.ts, T019). The MCP server's six tools
+// schemas: the model reads a compact (<=25-row) projection carrying each row's citation index
+// `n` (so it cites `[n]`, never a CID it must invent), while EVERY row the tools return this turn
+// (up to the 1,000-row cap, T035) is registered in the per-request citation registry
+// (citations.ts, T019), so the server-built `matches[]` is complete. The MCP server's six tools
 // (apps/api/src/mcp/tools.ts, oracle's G-3) are a separate set of thin adapters over the same
 // query-core functions/schemas — not these tool objects — because the MCP contract needs full
 // (<=1,000-row) envelopes with snake_case names (AD-21), which would blow the agent's token
@@ -24,6 +25,7 @@ import {
   type ResultEnvelope,
   type Row,
 } from "@countylens/query-core";
+import { raceAbort } from "./abort.js";
 import type { CitationRegistry } from "./citations.js";
 
 /** Rows the model sees per tool call (agent-design.md § 5): a compact projection, never the full
@@ -33,12 +35,19 @@ import type { CitationRegistry } from "./citations.js";
  *  only these — recall is measured on the server-built `matches[]`, not on what the model read. */
 export const MAX_PROJECTED_ROWS_PER_CALL = 25;
 
+/** T035: the most rows one request registers (and so returns in `matches[]`). Equals the
+ *  1,000-row `limit` cap of the search tools; rows past it are not registered and the tool output
+ *  says `truncated`, which ask.ts turns into `missing {result, truncated}`. */
+export const MAX_REGISTERED_ROWS = 1000;
+
 export interface AgentToolsContext {
   readonly engine: QueryEngine;
   readonly bound: BoundRun;
   /** One registry per request (ask.ts creates it); every tool call in this turn shares it so a
    *  row returned twice keeps its first-seen citation index. */
   readonly registry: CitationRegistry;
+  /** Registry cap override (tests); defaults to `MAX_REGISTERED_ROWS`. */
+  readonly maxRegisteredRows?: number;
 }
 
 function projectProperty(n: number, row: Row): Record<string, unknown> {
@@ -72,23 +81,32 @@ function projectPermit(n: number, row: Row): Record<string, unknown> {
   };
 }
 
-/** Registers every row of `envelope.rows` (keyed by the row's own `cid`, T019) and returns the
- *  compact projection + envelope metadata the model sees — never the full rows. */
+/** Registers EVERY row of `envelope.rows` (keyed by the row's own `cid`, T019) up to
+ *  `maxRegisteredRows` for the whole request, and returns the compact projection of the first
+ *  `MAX_PROJECTED_ROWS_PER_CALL` rows + the envelope metadata the model sees — never the full
+ *  rows. Rows the registry has no room for make `truncated` true (honest, never silent). */
 function projectEnvelope(
   envelope: ResultEnvelope<Row>,
   registry: CitationRegistry,
   project: (n: number, row: Row) => Record<string, unknown>,
+  maxRegisteredRows: number,
 ): Record<string, unknown> {
-  const matches = envelope.rows.slice(0, MAX_PROJECTED_ROWS_PER_CALL).map((row) => {
+  const matches: Record<string, unknown>[] = [];
+  let droppedByRegistry = false;
+  for (const [index, row] of envelope.rows.entries()) {
     const cid = String(row.cid);
+    if (!registry.has(cid) && registry.size() >= maxRegisteredRows) {
+      droppedByRegistry = true;
+      continue;
+    }
     const n = registry.register({ ...row, cid });
-    return project(n, row);
-  });
+    if (index < MAX_PROJECTED_ROWS_PER_CALL) matches.push(project(n, row));
+  }
   return {
     matches,
     returned: envelope.returned,
     total: envelope.total,
-    truncated: envelope.truncated,
+    truncated: envelope.truncated || droppedByRegistry,
     empty_reason: envelope.empty_reason,
     unknown_excluded: envelope.unknown_excluded,
     area: envelope.area,
@@ -99,6 +117,7 @@ function projectEnvelope(
 /** Builds the four agent tools over one bound run + one citation registry (one per request). */
 export function createAgentTools(ctx: AgentToolsContext) {
   const { engine, bound, registry } = ctx;
+  const cap = ctx.maxRegisteredRows ?? MAX_REGISTERED_ROWS;
 
   const geocodePlace = tool({
     description:
@@ -108,12 +127,13 @@ export function createAgentTools(ctx: AgentToolsContext) {
       "searchRoofingPermits accept an area place name directly and resolve it themselves, so " +
       "call this tool only to disambiguate a place or to check whether it is in scope.",
     inputSchema: z.object({ query: z.string().trim().min(1).max(100) }),
-    execute: async ({ query }) => geocodePlaceFn({ query }),
+    execute: async ({ query }, options) =>
+      raceAbort(Promise.resolve(geocodePlaceFn({ query })), options?.abortSignal),
   });
 
   const searchProperties = tool({
     description:
-      "Search properties within a radius of a place or point, filtered by roof age, tenure, an " +
+      "Search properties within a radius of a place or point, filtered by roof age (at least N years), owner tenure (more than N years), an " +
       "out-of-area owner mailing address, or an open/stalled roofing permit. Returns a compact " +
       "list of matches, each carrying a citation index n -- cite rows in the answer as [n], " +
       "never invent a CID. unknown_excluded counts rows left out because a filtered field is " +
@@ -124,12 +144,12 @@ export function createAgentTools(ctx: AgentToolsContext) {
     // containing refinements"); the agent pins one run per conversation, so every execute()
     // below drops any manifest_cid the model supplies rather than trusting it.
     inputSchema: SearchPropertiesInput,
-    execute: async (input) => {
-      const envelope = await searchPropertiesFn(engine, bound, {
-        ...input,
-        manifest_cid: undefined,
-      });
-      return projectEnvelope(envelope, registry, projectProperty);
+    execute: async (input, options) => {
+      const envelope = await raceAbort(
+        searchPropertiesFn(engine, bound, { ...input, manifest_cid: undefined }),
+        options?.abortSignal,
+      );
+      return projectEnvelope(envelope, registry, projectProperty, cap);
     },
   });
 
@@ -140,9 +160,12 @@ export function createAgentTools(ctx: AgentToolsContext) {
       "number (format 'YYYY-NNNNNN XX'). Omitting the area searches county-wide. Returns a " +
       "compact list of matches, each carrying a citation index n -- cite rows as [n].",
     inputSchema: ListPermitsInput,
-    execute: async (input) => {
-      const envelope = await listPermitsFn(engine, bound, { ...input, manifest_cid: undefined });
-      return projectEnvelope(envelope, registry, projectPermit);
+    execute: async (input, options) => {
+      const envelope = await raceAbort(
+        listPermitsFn(engine, bound, { ...input, manifest_cid: undefined }),
+        options?.abortSignal,
+      );
+      return projectEnvelope(envelope, registry, projectPermit, cap);
     },
   });
 
@@ -151,9 +174,12 @@ export function createAgentTools(ctx: AgentToolsContext) {
       "Look up one property by its CID or by the TCAD parcel identifier exactly as printed, " +
       "including its roofing permits.",
     inputSchema: GetPropertyInput,
-    execute: async (input) => {
-      const envelope = await getPropertyFn(engine, bound, { ...input, manifest_cid: undefined });
-      return projectEnvelope(envelope, registry, projectProperty);
+    execute: async (input, options) => {
+      const envelope = await raceAbort(
+        getPropertyFn(engine, bound, { ...input, manifest_cid: undefined }),
+        options?.abortSignal,
+      );
+      return projectEnvelope(envelope, registry, projectProperty, cap);
     },
   });
 

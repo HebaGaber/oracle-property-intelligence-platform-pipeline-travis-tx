@@ -137,9 +137,9 @@ const ESBUILD_TARGET = `node${RUNTIME.name.replace(/^nodejs(\d+)\.x$/, "$1")}`;
 
 const ENTRY = fileURLToPath(new URL("../../apps/api/src/handlers/trpc.ts", import.meta.url));
 const API_PACKAGE_JSON = fileURLToPath(new URL("../../apps/api/package.json", import.meta.url));
-/** A placeholder handler until apps/api/src/mcp/server.ts (T024-T026) lands. */
+/** The MCP Lambda handler (the six `/mcp` tools). */
 const MCP_ENTRY = fileURLToPath(new URL("../../apps/api/src/handlers/mcp.ts", import.meta.url));
-/** A placeholder handler until apps/api/src/agent/ask.ts (T019-T022) lands. */
+/** The agent Lambda handler (`agent.ask`). */
 const AGENT_ENTRY = fileURLToPath(new URL("../../apps/api/src/handlers/agent.ts", import.meta.url));
 
 /** The `@duckdb/node-api` version apps/api pins; the asset installs exactly that one. */
@@ -662,9 +662,8 @@ export class ApiStack extends Stack {
     });
 
     // --- Agent (A-14 T016, G-2) ---
-    // Its own Lambda (AD-27), spend-counter table and 80% alarm. No API Gateway route yet (the
-    // real `agent.ask` tRPC procedure and its route/throttle are T019-T022, wave 2) — this block
-    // is scoped to exactly what tasks.md T016 asks for.
+    // Its own Lambda (AD-27), spend-counter table and 80% alarm. Its own HTTP API route and
+    // throttle are defined further down (`agentHttpApi`).
     this.agentFunctionLogGroup = new logs.LogGroup(this, "AgentFunctionLogs", {
       retention: FUNCTION_LOG_RETENTION,
       removalPolicy: RemovalPolicy.DESTROY,

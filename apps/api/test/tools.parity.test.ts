@@ -299,3 +299,96 @@ describe("T030: searchProperties vs exploreSearchSql (the Explore page's builder
     expect(found.rows.map((r) => String(r.property_cid))).toEqual([Q.old]);
   });
 });
+
+// T035 / T044: more rows than the model's 25-row projection. `matches[]` and the citation
+// registry must carry every filtered row (up to the 1,000 cap), and the agent's property_cid set
+// must equal the MCP adapter's and the raw query-core function's.
+describe("T035: more than 25 rows are all registered and cited", () => {
+  const COUNT = 40;
+  const cid = (i: number) => `ba${"a".repeat(55)}m${String(i).padStart(4, "0")}`;
+  const ids = Array.from({ length: COUNT }, (_, i) => cid(i));
+  const BIG: FixtureTables = {
+    county: {
+      property: ids.map((id) => propertyRows(id, 1985)),
+      property_has_parcel: ids.map((id, i) => edge(id, `bp${i}`)),
+      parcel_has_geometry: ids.map((_, i) => edge(`bp${i}`, `bg${i}`)),
+      geometry: ids.map((_, i) => geometry(`bg${i}`, CENTRE)),
+    },
+  };
+  let fx: Fixture;
+  beforeAll(async () => {
+    fx = await bindFixture(BIG);
+  });
+  afterAll(() => fx.close());
+
+  const opts = { toolCallId: "t1", messages: [] } as never;
+  const run = async (tools: ReturnType<typeof createAgentTools>) => {
+    if (!tools.searchProperties.execute) throw new Error("no execute");
+    return (await tools.searchProperties.execute({ ...AREA } as never, opts)) as {
+      matches: { n: number; property_cid: string }[];
+      returned: number;
+      total: number;
+      truncated: boolean;
+    };
+  };
+
+  it("registers all 40 rows with unique indexes; the model sees a 25-row projection; set equals raw and MCP", async () => {
+    const raw = await searchProperties(fx.db, fx.bound, { ...AREA });
+    expect(raw.rows).toHaveLength(COUNT);
+
+    const registry = createCitationRegistry();
+    const output = await run(createAgentTools({ engine: fx.db, bound: fx.bound, registry }));
+    expect(output.matches).toHaveLength(25); // model-facing projection only
+    expect(output.returned).toBe(COUNT);
+    expect(output.total).toBe(COUNT);
+    expect(output.truncated).toBe(false);
+
+    const matches = registry.matches();
+    expect(matches).toHaveLength(COUNT);
+    expect(new Set(matches.map((m) => m.n)).size).toBe(COUNT);
+    expect(matches.map((m) => m.n)).toEqual(Array.from({ length: COUNT }, (_, i) => i + 1));
+    // The projected rows cite indexes that exist in matches[].
+    expect(output.matches.every((m) => matches[m.n - 1]?.property_cid === m.property_cid)).toBe(
+      true,
+    );
+
+    const deps: McpToolDeps = {
+      resolveRun: async () => ({ engine: fx.db, bound: fx.bound }),
+      runsIndex: async () => ({ runs: [] }),
+    };
+    const mcp = await searchPropertiesTool(deps, { ...AREA } as never);
+    const mcpSet = propertyCidSet((mcp.structuredContent as { rows: Row[] }).rows);
+    expect(new Set(matches.map((m) => m.property_cid))).toEqual(mcpSet);
+    expect(mcpSet).toEqual(propertyCidSet(raw.rows));
+  });
+
+  it("rows beyond the registry cap are not registered and the output says truncated", async () => {
+    const registry = createCitationRegistry();
+    const output = await run(
+      createAgentTools({ engine: fx.db, bound: fx.bound, registry, maxRegisteredRows: 30 }),
+    );
+    expect(registry.size()).toBe(30);
+    expect(output.returned).toBe(COUNT);
+    expect(output.truncated).toBe(true);
+  });
+
+  it("an aborted signal rejects a tool call instead of waiting for the engine", async () => {
+    const hanging: QueryEngine = { run: async () => {}, all: () => new Promise(() => {}) };
+    const tools = createAgentTools({
+      engine: hanging,
+      bound: fx.bound,
+      registry: createCitationRegistry(),
+    });
+    const controller = new AbortController();
+    const pending = tools.searchProperties.execute?.(
+      { ...AREA } as never,
+      {
+        toolCallId: "t",
+        messages: [],
+        abortSignal: controller.signal,
+      } as never,
+    );
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+});

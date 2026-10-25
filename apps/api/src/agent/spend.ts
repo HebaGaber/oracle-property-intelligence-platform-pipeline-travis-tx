@@ -144,6 +144,31 @@ export async function reserveSpend(
   }
 }
 
+/**
+ * T048: gives back a reservation taken by `reserveSpend` when no model call succeeded (aborted,
+ * throttled or failed request), so those calls do not permanently burn `reservationUsd`. One
+ * atomic `ADD` of the negative amounts: the real cost of such a call is 0, and the speculative
+ * `model_calls` increment `reserveSpend` made is taken back too. Never sets a TTL attribute.
+ */
+export async function releaseSpend(
+  ddb: DynamoDBDocumentClient,
+  tableName: string,
+  now: Date = new Date(),
+  reservationUsd: number = SPEND_RESERVATION_USD,
+): Promise<SpendStatus> {
+  const date = utcDateKey(now);
+  const { Attributes } = await ddb.send(
+    new UpdateCommand({
+      TableName: tableName,
+      Key: { pk: spendKey(date) },
+      UpdateExpression: "ADD spent_usd :delta, model_calls :minusOne",
+      ExpressionAttributeValues: { ":delta": -reservationUsd, ":minusOne": -1 },
+      ReturnValues: "ALL_NEW",
+    }),
+  );
+  return statusFromItem(date, Attributes);
+}
+
 /** Lazily-constructed singleton Document client (one per Lambda sandbox, like `s3-read.ts`). */
 let documentClient: DynamoDBDocumentClient | undefined;
 

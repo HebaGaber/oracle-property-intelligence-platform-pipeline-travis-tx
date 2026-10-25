@@ -63,6 +63,10 @@ export interface CitationRegistry {
   register(row: CitationRow): number;
   /** Every registered row as a `Match`, in `n` order (1-based; `matches()[i]` has `n === i+1`). */
   matches(): Match[];
+  /** True when a row with this `cid` is already registered. */
+  has(cid: string): boolean;
+  /** Number of distinct rows registered so far. */
+  size(): number;
   postCheck(answer: string): PostCheckResult;
 }
 
@@ -122,6 +126,14 @@ export function createCitationRegistry(): CitationRegistry {
         order.push(row.cid);
       }
       return order.indexOf(row.cid) + 1;
+    },
+
+    has(cid) {
+      return rows.has(cid);
+    },
+
+    size() {
+      return order.length;
     },
 
     matches() {

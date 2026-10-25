@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   DAILY_SPEND_CAP_USD,
   readSpend,
+  releaseSpend,
   recordSpend,
   spendKey,
   utcDateKey,
@@ -109,5 +110,22 @@ describe("spend counter (A-14 T008/T015)", () => {
     expect(beforeMidnight).toBe("2026-10-23");
     expect(afterMidnight).toBe("2026-10-24");
     expect(beforeMidnight).not.toBe(afterMidnight);
+  });
+});
+
+describe("releaseSpend (T048)", () => {
+  it("is one atomic ADD of the negative reservation and -1 model call, no TTL", async () => {
+    ddbMock.on(UpdateCommand).resolves({
+      Attributes: { pk: "SPEND#2026-10-23", spent_usd: 0, model_calls: 0 },
+    });
+    const status = await releaseSpend(ddb, TABLE_NAME, new Date("2026-10-23T12:00:00.000Z"), 0.05);
+    expect(status.spentUsd).toBe(0);
+    const input = ddbMock.commandCalls(UpdateCommand)[0]?.args[0].input;
+    expect(input).toMatchObject({
+      Key: { pk: "SPEND#2026-10-23" },
+      ExpressionAttributeValues: { ":delta": -0.05, ":minusOne": -1 },
+    });
+    expect(String(input?.UpdateExpression)).toMatch(/^ADD /);
+    expect(JSON.stringify(input)).not.toMatch(/ttl/i);
   });
 });

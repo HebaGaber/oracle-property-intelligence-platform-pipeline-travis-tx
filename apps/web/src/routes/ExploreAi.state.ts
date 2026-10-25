@@ -84,7 +84,7 @@ export const EDITABLE_CHIPS: readonly EditableChip[] = Object.freeze([
   },
   {
     key: "tenure_years_min",
-    label: "Owner tenure at least",
+    label: "Owner tenure more than",
     unit: "years",
     step: 1,
     min: 1,

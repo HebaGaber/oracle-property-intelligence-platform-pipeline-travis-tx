@@ -183,13 +183,163 @@ describe("agent.ask outcome taxonomy (T023)", () => {
     expect(result.matches).toEqual([]);
   }, 10_000);
 
-  it("an unexpected error is re-thrown, never swallowed as a fake outcome", async () => {
+  it("an unexpected loop error is a plain `failed` outcome, never a thrown error (T037)", async () => {
     const loop: RunModelLoop = async () => {
       throw new Error("something genuinely unexpected");
     };
-    await expect(runAgentAsk(INPUT, baseDeps({ runModelLoop: loop }))).rejects.toThrow(
-      "something genuinely unexpected",
+    const result = await runAgentAsk(INPUT, baseDeps({ runModelLoop: loop }));
+    expect(result.outcome).toBe("failed");
+    expect(result.answer).not.toContain("genuinely unexpected");
+    expect(result.matches).toEqual([]);
+  });
+});
+
+describe("T036: the 23 s abort covers the whole request", () => {
+  const never = <T>() => new Promise<T>(() => {});
+
+  it("a hanging bind ends as timed_out", async () => {
+    const result = await runAgentAsk(
+      INPUT,
+      baseDeps({ abortMs: 20, bindOnce: () => never(), runModelLoop: okModelLoop() }),
     );
+    expect(result.outcome).toBe("timed_out");
+    expect(result.answer).toMatch(/took too long/i);
+  }, 5_000);
+
+  it("a hanging engine and a hanging runs-index lookup end as timed_out", async () => {
+    const engineHang = await runAgentAsk(
+      INPUT,
+      baseDeps({ abortMs: 20, getEngine: () => never(), runModelLoop: okModelLoop() }),
+    );
+    expect(engineHang.outcome).toBe("timed_out");
+    const { manifest_cid: _omit, ...noPin } = INPUT;
+    const indexHang = await runAgentAsk(
+      noPin,
+      baseDeps({ abortMs: 20, resolveManifestCid: () => never(), runModelLoop: okModelLoop() }),
+    );
+    expect(indexHang.outcome).toBe("timed_out");
+  }, 5_000);
+
+  it("a hanging tool call (a promise that never resolves) ends as timed_out", async () => {
+    const hangingEngine: QueryEngine = { run: async () => {}, all: () => never() };
+    const loop: RunModelLoop = async (params) => {
+      await params.tools.searchRoofingPermits.execute?.(
+        { status_class: "open", limit: 5 } as never,
+        { toolCallId: "t", messages: [], abortSignal: params.abortSignal } as never,
+      );
+      return { text: "never reached", steps: [], toolOutputs: [], totalTokens: 1 };
+    };
+    const result = await runAgentAsk(
+      INPUT,
+      baseDeps({
+        abortMs: 20,
+        getEngine: async () => hangingEngine,
+        bindViews: async () => FAKE_BOUND,
+        runModelLoop: loop,
+      }),
+    );
+    expect(result.outcome).toBe("timed_out");
+  }, 5_000);
+
+  it("a hanging spend reservation also ends as timed_out", async () => {
+    ddbMock.on(UpdateCommand).callsFake(() => never());
+    const result = await runAgentAsk(INPUT, baseDeps({ abortMs: 20, runModelLoop: okModelLoop() }));
+    expect(result.outcome).toBe("timed_out");
+  }, 5_000);
+
+  it("a normal call still answers when the abort has room", async () => {
+    const result = await runAgentAsk(
+      INPUT,
+      baseDeps({ abortMs: 5_000, runModelLoop: okModelLoop() }),
+    );
+    expect(result.outcome).toBe("answered");
+  });
+});
+
+describe("T037: pre-loop errors are `failed`, not thrown", () => {
+  const { manifest_cid: _omit, ...noPin } = INPUT;
+
+  it("a DynamoDB failure on the reservation returns failed with a plain message", async () => {
+    ddbMock.on(UpdateCommand).rejects(new Error("ProvisionedThroughputExceeded secret-internal"));
+    const result = await runAgentAsk(INPUT, baseDeps({ runModelLoop: okModelLoop() }));
+    expect(result.outcome).toBe("failed");
+    expect(result.answer).not.toMatch(/secret-internal|at .*\.ts|Error:/);
+  });
+
+  it("a runs-index failure returns failed", async () => {
+    const result = await runAgentAsk(
+      noPin,
+      baseDeps({
+        resolveManifestCid: async () => {
+          throw new Error("runs index: GET answered 500");
+        },
+        runModelLoop: okModelLoop(),
+      }),
+    );
+    expect(result.outcome).toBe("failed");
+    expect(result.answer).not.toMatch(/runs index|500/);
+  });
+
+  it("a bind failure returns failed", async () => {
+    const result = await runAgentAsk(
+      INPUT,
+      baseDeps({
+        bindOnce: async () => {
+          throw new Error("duckdb bind exploded");
+        },
+        runModelLoop: okModelLoop(),
+      }),
+    );
+    expect(result.outcome).toBe("failed");
+    expect(result.answer).not.toMatch(/duckdb/);
+  });
+});
+
+describe("T048: the $0.05 reservation is trued up or released, never burned", () => {
+  const updates = () => ddbMock.commandCalls(UpdateCommand).map((c) => c.args[0].input);
+  const releases = () => updates().filter((u) => String(u.UpdateExpression).includes(":minusOne"));
+
+  it("an answered call trues up and does not release", async () => {
+    await runAgentAsk(INPUT, baseDeps({ runModelLoop: okModelLoop() }));
+    expect(releases()).toHaveLength(0);
+    expect(updates()).toHaveLength(2); // reserve + true-up
+  });
+
+  it.each([
+    ["throttled", throttledModelLoop()],
+    [
+      "failed",
+      async () => {
+        throw new Error("boom");
+      },
+    ],
+    ["timed_out", slowModelLoop(2000)],
+  ])("a %s call releases the reservation once, with the reserved amount", async (_n, loop) => {
+    await runAgentAsk(INPUT, baseDeps({ abortMs: 20, runModelLoop: loop as RunModelLoop }));
+    const rel = releases();
+    expect(rel).toHaveLength(1);
+    expect(rel[0]?.ExpressionAttributeValues).toMatchObject({ ":delta": -0.05, ":minusOne": -1 });
+  });
+
+  it("a failure before the model (bind) also releases it", async () => {
+    await runAgentAsk(
+      INPUT,
+      baseDeps({
+        bindOnce: async () => {
+          throw new Error("x");
+        },
+      }),
+    );
+    expect(releases()).toHaveLength(1);
+  });
+
+  it("a paused call took no reservation, so it releases nothing", async () => {
+    ddbMock.on(UpdateCommand).rejects(conditionalCheckFailed());
+    ddbMock
+      .on(GetCommand)
+      .resolves({ Item: { pk: "SPEND#2026-10-23", spent_usd: 3, model_calls: 9 } });
+    await runAgentAsk(INPUT, baseDeps({ dailySpendCapUsd: 3, runModelLoop: okModelLoop() }));
+    expect(releases()).toHaveLength(0);
   });
 });
 
