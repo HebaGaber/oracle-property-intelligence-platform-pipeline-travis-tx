@@ -92,7 +92,7 @@ export function compareIdentity(
 ): { comparison: IdentityComparison; failures: string[] } {
   const map: IdentityComparison["cid_map"] = [];
   const lost: string[] = [];
-  let missing = { property: 0, permit: 0 };
+  const missing = { property: 0, permit: 0 };
   let changed = 0;
   let remapped = 0;
   const check = (
@@ -147,12 +147,19 @@ export async function collectIdentity(engine: QueryEngine): Promise<IdentitySet>
   const pairs = async (sql: string): Promise<Map<string, string | null>> => {
     const out = new Map<string, string | null>();
     for (const r of await engine.all(sql))
-      out.set(String(r["cid"]), r["rid"] === null || r["rid"] === undefined ? null : String(r["rid"]));
+      out.set(
+        String(r["cid"]),
+        r["rid"] === null || r["rid"] === undefined ? null : String(r["rid"]),
+      );
     return out;
   };
   return {
-    properties: await pairs("SELECT property_cid AS cid, request_identifier AS rid FROM v_property"),
-    permits: await pairs("SELECT permit_cid AS cid, request_identifier AS rid FROM v_roofing_permit"),
+    properties: await pairs(
+      "SELECT property_cid AS cid, request_identifier AS rid FROM v_property",
+    ),
+    permits: await pairs(
+      "SELECT permit_cid AS cid, request_identifier AS rid FROM v_roofing_permit",
+    ),
   };
 }
 

@@ -57,6 +57,7 @@ const EXPECTED: Record<ViewName, string[]> = {
     "property_cid",
     "jurisdiction",
     "permit_number",
+    "request_identifier",
     "improvement_type",
     "improvement_action",
     "improvement_status",
@@ -183,9 +184,9 @@ describe("columns", () => {
 
   it("the sample row is a permit row plus its property's columns, property provenance prefixed", () => {
     const names = SAMPLE_COLUMNS.map((c) => c.name);
-    expect(names.slice(0, columnNames("v_roofing_permit").length)).toEqual(
-      columnNames("v_roofing_permit"),
-    );
+    // the property's request_identifier keeps the plain name; the permit's is not sampled
+    const permitCols = columnNames("v_roofing_permit").filter((n) => n !== "request_identifier");
+    expect(names.slice(0, permitCols.length)).toEqual(permitCols);
     expect(names).toContain("roof_age_years");
     expect(names).toContain(`${SAMPLE_PROPERTY_PREFIX}source_url`);
     expect(names).toContain(`${SAMPLE_PROPERTY_PREFIX}missing`);
@@ -251,6 +252,7 @@ describe("row schemas (generated from columns.ts)", () => {
     property_cid: DAG,
     jurisdiction: "austin",
     permit_number: "2026-034767 BP",
+    request_identifier: "2026-034767 BP",
     improvement_type: "Roofing",
     improvement_action: "Replacement",
     improvement_status: null,
