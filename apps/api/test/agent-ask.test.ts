@@ -233,3 +233,122 @@ describe("documented, reversible config helpers (T023)", () => {
     expect(abortMs({ AGENT_ABORT_MS: "1000" })).toBe(1000);
   });
 });
+
+const EMPTY_ENVELOPE = (applied: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+  matches: [],
+  returned: 0,
+  total: 0,
+  truncated: false,
+  empty_reason: "no_match",
+  unknown_excluded: {},
+  area: { label: "Pflugerville city · Census 2024 Gazetteer · 30.45, -97.60" },
+  applied,
+  ...extra,
+});
+
+describe("ERR-61: an unfinished loop is never 'answered'", () => {
+  it("budget exhausted on tool calls -> failed, planning text not surfaced, tried calls listed", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "Let me also try without the open_years_min filter.",
+      incomplete: true,
+      modelCalls: 3,
+      steps: [
+        { tool: "searchRoofingPermits", input: { status_class: "open", open_years_min: 5 }, summary: "" },
+      ],
+      toolOutputs: [EMPTY_ENVELOPE({ status_class: "open", open_years_min: 5 })],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk(INPUT, baseDeps({ runModelLoop: loop }));
+    expect(result.outcome).not.toBe("answered");
+    expect(result.outcome).toBe("failed");
+    expect(result.answer).not.toContain("Let me also try");
+    expect(result.answer).toContain("searchRoofingPermits");
+    expect(result.matches).toEqual([]);
+    expect(result.missing).toContainEqual({ field: "result", reason: "incomplete" });
+  });
+
+  it("empty final text is also not 'answered'", async () => {
+    const loop: RunModelLoop = async () => ({ text: "  ", steps: [], toolOutputs: [] });
+    const result = await runAgentAsk(INPUT, baseDeps({ runModelLoop: loop }));
+    expect(result.outcome).toBe("failed");
+  });
+});
+
+describe("ERR-61/62: a changed filter is stated, never silent", () => {
+  it("radius 5 -> 10 and open -> open_or_stalled appear in answer, how and query", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "No matches.",
+      steps: [
+        { tool: "searchRoofingPermits", input: { status_class: "open_or_stalled", open_years_min: 3 }, summary: "" },
+        { tool: "searchRoofingPermits", input: { status_class: "open_or_stalled", open_years_min: 1 }, summary: "" },
+      ],
+      toolOutputs: [EMPTY_ENVELOPE({ status_class: "open_or_stalled", open_years_min: 1 })],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk(
+      { prompt: "Which have open roofing permits open for 5 years?" },
+      baseDeps({ runModelLoop: loop }),
+    );
+    expect(result.answer).toContain("open_years_min changed from 3 to 1");
+    expect(result.answer).toContain("widened to open_or_stalled");
+    expect(result.how).toContain("Filters changed during the search");
+    expect(result.query).toMatchObject({ open_years_min: 1 });
+  });
+});
+
+describe("ERR-62/63: contract missing[] names and honest owner-location statement", () => {
+  it("owner_is_out_of_area filter -> missing lists it and the answer says not in the published export", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "No properties matched; the dataset had good coverage.",
+      steps: [{ tool: "searchProperties", input: { tenure_years_min: 10, owner_is_out_of_area: true }, summary: "" }],
+      toolOutputs: [
+        EMPTY_ENVELOPE({ radius_mi: 5, tenure_years_min: 10, owner_is_out_of_area: true }),
+      ],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk({ prompt: "Homes near Lakeway with owners outside the area?" }, baseDeps({ runModelLoop: loop }));
+    expect(result.missing).toContainEqual({ field: "owner_is_out_of_area", reason: "not_in_export" });
+    expect(result.answer).toMatch(/not in the published export/);
+    expect(result.query).toMatchObject({ radius_mi: 5 });
+  });
+
+  it("contractor/BBB questions flag the contract names, not the column names", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "Permit 2026-1 has no BBB data.",
+      steps: [{ tool: "searchRoofingPermits", input: { permit_number: "2026-1 BP" }, summary: "" }],
+      toolOutputs: [EMPTY_ENVELOPE({ permit_number: "2026-1 BP" })],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk({ prompt: "What is the BBB rating of the contractor on 2026-1 BP?" }, baseDeps({ runModelLoop: loop }));
+    const fields = result.missing.map((m) => m.field);
+    expect(fields).toContain("bbb_status");
+    expect(fields).toContain("contractor.name_as_printed");
+    expect(fields).not.toContain("bbb_rating");
+    expect(fields).not.toContain("contractor_name_raw");
+    expect(result.answer).toMatch(/BBB status is not available/);
+  });
+});
+
+describe("ERR-63: budget figures are exposed", () => {
+  it("modelCalls, outputTokens, durationMs and traceId are present; traceId is the X-Ray Root only", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "Done.",
+      steps: [],
+      toolOutputs: [],
+      modelCalls: 2,
+      outputTokens: 321,
+      totalTokens: 400,
+    });
+    const result = await runAgentAsk(
+      INPUT,
+      baseDeps({
+        runModelLoop: loop,
+        env: { _X_AMZN_TRACE_ID: "Root=1-abc-def;Parent=1;Sampled=1" },
+      }),
+    );
+    expect(result.modelCalls).toBe(2);
+    expect(result.outputTokens).toBe(321);
+    expect(typeof result.durationMs).toBe("number");
+    expect(result.traceId).toBe("1-abc-def");
+  });
+});

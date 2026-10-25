@@ -215,16 +215,41 @@ export interface HonestyResult {
   missingMentions: string[];
   missingFlags: string[];
   emptyReasonMismatch: boolean;
+  /** The empty_reason actually required of this case (undefined = not checked). */
+  expectedEmptyReason: string | null | undefined;
 }
 
 function missingFields(missing: AgentAskResponse["missing"]): string[] {
   return missing.map((m) => (typeof m === "string" ? m : (m.field ?? ""))).filter(Boolean);
 }
 
+/** The expectation is the oracle's truth over the pinned run. A golden file that says `null`
+ *  ("there are rows") is only meaningful when the oracle returns rows; when the oracle returns
+ *  zero rows, the expected reason is the oracle's own empty_reason (e.g. `no_match`). A non-null
+ *  golden reason (field_not_published, out_of_scope, ...) is always required as written, and
+ *  `null` stays `null` whenever the oracle returns rows. `oracleRowCount` null means unknown
+ *  (geocode oracle): the golden value is used as written. */
+export function expectedEmptyReason(
+  goldenEmptyReason: string | null | undefined,
+  oracleRowCount: number | null,
+  oracleEmptyReason: string | null,
+): string | null | undefined {
+  if (goldenEmptyReason === undefined) return undefined;
+  if (goldenEmptyReason === null && oracleRowCount === 0) return oracleEmptyReason;
+  return goldenEmptyReason;
+}
+
+/** True when the oracle returned zero rows, so every recall/precision/groundedness pass is
+ *  vacuous (nothing to find, nothing to ground). */
+export function isVacuous(oracleRowCount: number | null): boolean {
+  return oracleRowCount === 0;
+}
+
 export function checkHonesty(
   response: AgentAskResponse,
   expect: { must_mention?: string[]; must_flag_missing?: string[]; empty_reason?: string | null },
   oracleEmptyReason: string | null,
+  oracleRowCount: number | null = null,
 ): HonestyResult {
   const haystack = `${response.answer}\n${response.how}`;
   const missingMentions = (expect.must_mention ?? []).filter(
@@ -234,19 +259,15 @@ export function checkHonesty(
   const flagged = new Set(missingFields(response.missing));
   const missingFlags = (expect.must_flag_missing ?? []).filter((field) => !flagged.has(field));
 
-  const emptyReasonMismatch =
-    expect.empty_reason !== undefined &&
-    oracleEmptyReason === null &&
-    expect.empty_reason !== null
-      ? false // oracle computed non-empty when a fixed expectation names a reason: let caller decide
-      : expect.empty_reason !== undefined &&
-        expect.empty_reason !== oracleEmptyReason;
+  const expected = expectedEmptyReason(expect.empty_reason, oracleRowCount, oracleEmptyReason);
+  const emptyReasonMismatch = expected !== undefined && expected !== oracleEmptyReason;
 
   return {
     pass: missingMentions.length === 0 && missingFlags.length === 0 && !emptyReasonMismatch,
     missingMentions,
     missingFlags,
     emptyReasonMismatch,
+    expectedEmptyReason: expected,
   };
 }
 

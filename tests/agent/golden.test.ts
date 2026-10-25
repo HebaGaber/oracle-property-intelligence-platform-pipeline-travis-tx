@@ -22,6 +22,7 @@ import {
   checkHonesty,
   checkOutOfScope,
   checkRecall,
+  isVacuous,
   runOracle,
   type AgentAskResponse,
   type OracleCall,
@@ -234,11 +235,9 @@ describe("agent.ask golden queries (T020, checks.md § 7.1, agent-design.md § 6
       if (fallback && "total" in oracle && oracle.total === 0) oracle = await runOracle(fallback, ctx);
 
       const budget = checkBudget(response);
-      const honesty = checkHonesty(
-        response,
-        expectation,
-        "empty_reason" in oracle ? (oracle.empty_reason as string | null) : null,
-      );
+      const oracleRowCount = "rows" in oracle ? oracle.rows.length : null;
+      const oracleEmptyReason = "empty_reason" in oracle ? (oracle.empty_reason as string | null) : null;
+      const honesty = checkHonesty(response, expectation, oracleEmptyReason, oracleRowCount);
       const correctness = checkCorrectness(response, oracle);
       const recall = checkRecall(response, oracle);
       const groundedness = await checkGroundedness(response, exists);
@@ -247,7 +246,9 @@ describe("agent.ask golden queries (T020, checks.md § 7.1, agent-design.md § 6
         expectation.matches_length === undefined || response.matches.length === expectation.matches_length;
       collected.push({
         id: rawCase.id, prompt: lastPrompt, ...meta, response, oracleTotal: "total" in oracle ? oracle.total : null,
-        oracleEmptyReason: "empty_reason" in oracle ? oracle.empty_reason : null,
+        oracleRowCount, oracleEmptyReason,
+        // true = the oracle found nothing, so recall/precision/groundedness pass trivially.
+        vacuous: isVacuous(oracleRowCount),
         budget, honesty, correctness, recall, groundedness, outOfScope, matchesLengthOk,
       });
 

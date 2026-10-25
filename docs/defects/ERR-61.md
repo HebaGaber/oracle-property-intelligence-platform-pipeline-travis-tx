@@ -6,7 +6,7 @@ story: A-14
 test_case: G2 (golden)
 ac_reference: A-14 AC-5 (budget), contract "never a partial answer returned as answered"
 severity: High
-status: Open
+status: Fixed (pending hosted retest)
 found_by: golden run (tests/agent/golden.test.ts) on the deployed agent
 found_date: 2026-10-25
 fix_branch: 014-agent-and-mcp

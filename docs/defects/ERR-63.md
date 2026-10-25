@@ -6,7 +6,7 @@ story: A-14
 test_case: G5, G2, budget check (golden)
 ac_reference: A-14 AC-5 (budgets observable), contract missing[] field names
 severity: Medium
-status: Open
+status: Fixed (pending hosted retest)
 found_by: golden run (tests/agent/golden.test.ts) on the deployed agent
 found_date: 2026-10-25
 fix_branch: 014-agent-and-mcp

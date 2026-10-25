@@ -53,6 +53,11 @@ export const AgentAskResponse = z.object({
   query: z.record(z.string(), z.unknown()),
   missing: z.array(MissingEntry),
   outcome: z.enum(AGENT_OUTCOMES),
+  // ERR-63: observable budgets; optional so an older server still validates.
+  modelCalls: z.number().optional(),
+  outputTokens: z.number().optional(),
+  durationMs: z.number().optional(),
+  traceId: z.string().optional(),
 });
 export type AgentAskResponse = z.infer<typeof AgentAskResponse>;
 

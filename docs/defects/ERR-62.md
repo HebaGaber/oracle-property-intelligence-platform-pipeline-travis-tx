@@ -6,7 +6,7 @@ story: A-14
 test_case: G4 (golden)
 ac_reference: A-14 honesty rule: "unknown is never none found"; missing data says why
 severity: High
-status: Open
+status: Fixed (pending hosted retest)
 found_by: golden run (tests/agent/golden.test.ts) on the deployed agent
 found_date: 2026-10-25
 fix_branch: 014-agent-and-mcp

@@ -24,6 +24,11 @@ Owner: `ash`. Full detail: `../design-ash.md`. Shared types: `../data-model.md`.
   query: Record<string, unknown>;  // the resolved applied filters (echoes query-core's `applied`)
   missing: { field: string; reason: string }[];
   outcome: "answered" | "failed" | "paused" | "throttled" | "timed_out" | "cancelled";
+  // Optional observability fields (ERR-63; absent on paused/throttled/timed_out except durationMs/traceId):
+  modelCalls?: number;   // model calls this turn (AC-5 ceiling 3)
+  outputTokens?: number; // output tokens this turn (AC-5 ceiling 1,500)
+  durationMs?: number;
+  traceId?: string;      // X-Ray trace id (`_X_AMZN_TRACE_ID` Root), no secrets
 }
 ```
 
@@ -33,7 +38,9 @@ Owner: `ash`. Full detail: `../design-ash.md`. Shared types: `../data-model.md`.
 - Timeout layering (AD-27): 23 s `AbortSignal.timeout` → `outcome: "timed_out"`; 25 s Lambda timeout; 25 s client stop; 29–30 s HTTP API ceiling (should never fire).
 - $3/day spend cap (DynamoDB counter, checked before each model call) → `outcome: "paused"` with a `resetsAt` (next UTC day).
 - Bedrock throttling (10 req/min account-wide) → `outcome: "throttled"`.
-- Never a 5xx; never a partial answer returned as `"answered"`.
+- Never a 5xx; never a partial answer returned as `"answered"`. A loop that ends without a final text answer (budget spent on tool calls, token cut-off) returns `outcome: "failed"` with `answer` stating which calls were tried, `matches = []` and `missing = [{field:"result", reason:"incomplete"}]`; planning text is never surfaced.
+- Filters are never changed silently: if the model changed a filter between calls (or widened `open` to `open_or_stalled`), `answer` and `how` state the change.
+- `missing[]` uses contract names: `contractor.name_as_printed`, `bbb_status`, `owner_is_out_of_area` (`not_in_export`; the owner mailing location is not in the published export).
 
 ## Error / empty behavior
 

@@ -87,6 +87,12 @@ export interface AgentAskResponse {
   query: Record<string, unknown>;
   missing: { field: string; reason: string }[];
   outcome: AgentOutcome;
+  /** ERR-63: observable budgets (AC-5). All optional so older clients stay compatible. */
+  modelCalls?: number;
+  outputTokens?: number;
+  durationMs?: number;
+  /** X-Ray trace id of the Lambda invocation (`_X_AMZN_TRACE_ID` Root=...), no secrets. */
+  traceId?: string;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -141,6 +147,12 @@ export interface ModelLoopOutput {
    *  aggregating across all of these, never from model text. */
   toolOutputs: Record<string, unknown>[];
   totalTokens?: number;
+  outputTokens?: number;
+  modelCalls?: number;
+  /** ERR-61: true when the loop did not end in a final text answer (budget used up on tool
+   *  calls, output cut at the token limit, ...). The text is then planning chatter, never an
+   *  answer. */
+  incomplete?: boolean;
 }
 
 export interface ModelLoopParams {
@@ -172,6 +184,10 @@ export async function defaultRunModelLoop(params: ModelLoopParams): Promise<Mode
     abortSignal: params.abortSignal,
     maxOutputTokens: params.maxOutputTokens,
     stopWhen: stepCountIs(params.maxSteps),
+    // ERR-61: the last allowed step is text-only, so the model must write its answer from the
+    // results it already has instead of planning one more call.
+    prepareStep: ({ stepNumber }) =>
+      stepNumber >= params.maxSteps - 1 ? { toolChoice: "none" as const } : undefined,
   });
 
   const steps: AgentAskStep[] = result.steps.map((step) => {
@@ -183,15 +199,21 @@ export async function defaultRunModelLoop(params: ModelLoopParams): Promise<Mode
     };
   });
 
-  const toolOutputs = result.toolResults
+  // result.toolResults is the LAST step only; the answer needs every step's envelope.
+  const toolOutputs = result.steps
+    .flatMap((step) => step.toolResults)
     .map((toolResult) => toolResult.output)
     .filter(isRecord);
 
+  const usage = result.totalUsage ?? result.usage;
   return {
     text: result.text,
     steps,
     toolOutputs,
-    ...(result.usage?.totalTokens !== undefined ? { totalTokens: result.usage.totalTokens } : {}),
+    modelCalls: result.steps.length,
+    incomplete: result.finishReason !== "stop",
+    ...(usage?.totalTokens !== undefined ? { totalTokens: usage.totalTokens } : {}),
+    ...(usage?.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
   };
 }
 
@@ -276,9 +298,17 @@ function isEnvelopeOutput(
  * ordinary "most recent wins" rule); `area`/`unknown_excluded`/`empty_reason`/`truncated`
  * contribute to `missing[]`/`how` from every envelope, not only the last.
  */
+/** ERR-63: the contract's names (packages/contract columns.ts UNCARRIED + golden.json
+ *  must_flag_missing) for fields the row-level `missing` reports under their column names. */
+const CONTRACT_MISSING_NAMES: Record<string, string> = {
+  contractor_name_raw: "contractor.name_as_printed",
+  bbb_rating: "bbb_status",
+};
+
 function composeStructuredParts(
   matches: Match[],
   toolOutputs: Record<string, unknown>[],
+  question = "",
 ): { how: string; query: Record<string, unknown>; missing: { field: string; reason: string }[] } {
   const envelopes = toolOutputs.filter(isEnvelopeOutput);
 
@@ -301,7 +331,27 @@ function composeStructuredParts(
     if (envelope.truncated === true) missing.push({ field: "result", reason: "truncated" });
   }
   for (const match of matches) {
-    for (const entry of match.missing) missing.push(entry);
+    for (const entry of match.missing) {
+      missing.push({ field: CONTRACT_MISSING_NAMES[entry.field] ?? entry.field, reason: entry.reason });
+    }
+    if (match.bbb_status !== undefined) {
+      missing.push({ field: "bbb_status", reason: match.bbb_status_reason ?? match.bbb_status });
+    }
+  }
+  // ERR-62: the owner's mailing ZIP is not in the published export (columns.ts UNCARRIED
+  // owner_mailing_postal_code -> owner_area_class unknown -> owner_is_out_of_area null), so
+  // any question that filters on it cannot be answered, whatever the row count says.
+  if (applied.owner_is_out_of_area === true) {
+    missing.push({ field: "owner_is_out_of_area", reason: "not_in_export" });
+  }
+  // The permit export carries no contractor name and no BBB rating (UNCARRIED v_roofing_permit):
+  // flag both when the question asks about the contractor or BBB, even for an empty result.
+  const usedPermits = envelopes.some(
+    (e) => "status_class" in e.applied || "open_years_min" in e.applied || "permit_number" in e.applied,
+  );
+  if (usedPermits && /contractor|bbb|better business/i.test(question)) {
+    missing.push({ field: "contractor.name_as_printed", reason: "no_lexicon_carrier" });
+    missing.push({ field: "bbb_status", reason: "no_lexicon_carrier" });
   }
 
   const howParts: string[] = [];
@@ -314,6 +364,47 @@ function composeStructuredParts(
   return { how: howParts.join("; "), query: applied, missing: dedupeMissing(missing) };
 }
 
+const FILTER_IGNORED = new Set(["limit", "sort", "manifest_cid"]);
+
+/** ERR-61/62: filters the model changed between calls of the same tool (or relaxed against the
+ *  question) are never silent. Returns plain-language change notes, empty when none. */
+export function describeFilterChanges(steps: AgentAskStep[], question: string): string[] {
+  const notes: string[] = [];
+  const last = new Map<string, Record<string, unknown>>();
+  const show = (v: unknown): string => JSON.stringify(v);
+  for (const step of steps) {
+    if (!isRecord(step.input) || (step.tool !== "searchProperties" && step.tool !== "searchRoofingPermits"))
+      continue;
+    const current = step.input;
+    const previous = last.get(step.tool);
+    if (previous !== undefined) {
+      const keys = new Set([...Object.keys(previous), ...Object.keys(current)]);
+      for (const key of keys) {
+        if (FILTER_IGNORED.has(key)) continue;
+        const before = previous[key];
+        const after = current[key];
+        if (JSON.stringify(before) === JSON.stringify(after)) continue;
+        notes.push(
+          before === undefined
+            ? `${key} added (${show(after)})`
+            : after === undefined
+              ? `${key} dropped (was ${show(before)})`
+              : `${key} changed from ${show(before)} to ${show(after)}`,
+        );
+      }
+    }
+    last.set(step.tool, current);
+    if (
+      current.status_class === "open_or_stalled" &&
+      /\bopen\b/i.test(question) &&
+      !/stalled/i.test(question)
+    ) {
+      notes.push("status_class widened to open_or_stalled although the question asked for open");
+    }
+  }
+  return [...new Set(notes)];
+}
+
 function buildSystemPrompt(input: AgentAskInput): string {
   return [
     "You are CountyLens's property-lead assistant for Travis County roofing leads.",
@@ -323,6 +414,17 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "If the question refers to 'that area' or a prior place, use the most recent area from",
     "turns/overrides unless the question names a new place; call geocodePlace only to",
     "disambiguate, since searchProperties/searchRoofingPermits resolve area.place themselves.",
+    "Keep the user's filters exactly as asked: never loosen a threshold, change open to",
+    "open_or_stalled, or widen the radius to find more rows; when a search returns nothing, say",
+    "so plainly and name the filters used. A default radius is the tool default; state it as an",
+    "assumption. Do not call tools again after an empty result unless the question needs a",
+    "different tool. Never claim 'good coverage' or 'genuinely no matches' unless a tool result",
+    "supports it; unknown_excluded and empty_reason are the only coverage evidence.",
+    "owner_is_out_of_area is not in the published export (owner mailing ZIP is not published):",
+    "when asked who lives outside the area, say you cannot tell from the published data",
+    "because it is not in the published export. Contractor names and BBB ratings are likewise",
+    "not available in the published export; say so when asked.",
+    "Your last step writes the final answer with no further tool calls; never end by planning a call.",
     "Be concise: this answer has a 1,500-output-token budget and at most 3 tool-calling turns.",
     input.overrides !== undefined
       ? `The user edited these assumptions this turn: ${JSON.stringify(input.overrides)}.`
@@ -420,6 +522,15 @@ export async function runAgentAsk(
     registry,
   });
 
+  const startedAt = Date.now();
+  const traceId = /Root=([^;]+)/.exec(env._X_AMZN_TRACE_ID ?? "")?.[1];
+  const telemetry = (modelCalls?: number, outputTokens?: number) => ({
+    ...(modelCalls !== undefined ? { modelCalls } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    durationMs: Date.now() - startedAt,
+    ...(traceId !== undefined ? { traceId } : {}),
+  });
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), abortTimeoutMs);
 
@@ -450,7 +561,64 @@ export async function runAgentAsk(
 
     const matches = registry.matches();
     const { cleaned, outOfRangeCitations, ungroundedCids } = registry.postCheck(result.text);
-    const { how, query, missing } = composeStructuredParts(matches, result.toolOutputs);
+    const composed = composeStructuredParts(matches, result.toolOutputs, input.prompt);
+    const { query } = composed;
+    let { how, missing } = composed;
+    const changes = describeFilterChanges(result.steps, input.prompt);
+    const modelCalls = result.modelCalls ?? result.steps.length;
+
+    // ERR-61: no final text answer (budget spent on tool calls, token cut-off, empty text) is
+    // never "answered" and the planning text is never surfaced; say what was tried.
+    if (result.incomplete === true || result.text.trim() === "") {
+      const tried = result.steps
+        .filter((s) => s.tool !== "")
+        .map((s) => `${s.tool} ${JSON.stringify(s.input)}`)
+        .join("; ");
+      agentObservability().logger.warn("agent.ask incomplete: no final answer", {
+        toolSteps: result.steps.length,
+      });
+      return {
+        answer:
+          "I could not finish this question within my step limit, so I have no answer to give." +
+          (tried.length > 0 ? ` I tried: ${tried}.` : "") +
+          (changes.length > 0 ? ` Filters changed along the way: ${changes.join("; ")}.` : "") +
+          " This is not a 'none found'. Try a narrower question, or use Filters.",
+        how,
+        steps: result.steps,
+        matches: [],
+        query,
+        missing: [{ field: "result", reason: "incomplete" }],
+        outcome: "failed",
+        ...telemetry(modelCalls, result.outputTokens),
+      };
+    }
+
+    // ERR-62/63: plain statements the structured parts guarantee, in case the model omitted them.
+    const extra: string[] = [];
+    if (changes.length > 0) {
+      how = [how, `Filters changed during the search: ${changes.join("; ")}`]
+        .filter((p) => p.length > 0)
+        .join("; ");
+      extra.push(`Note: the search filters changed during this answer (${changes.join("; ")}).`);
+    }
+    if (
+      missing.some((m) => m.field === "owner_is_out_of_area") &&
+      !/not in the published export/i.test(cleaned)
+    ) {
+      extra.push(
+        "I cannot tell who lives outside the area: the owner's mailing location is not in the published export.",
+      );
+    }
+    if (missing.some((m) => m.field === "bbb_status") && !/BBB[^.]*not available/i.test(cleaned)) {
+      extra.push("BBB status is not available in the published data.");
+    }
+    if (
+      missing.some((m) => m.field === "contractor.name_as_printed") &&
+      !/contractor[^.]*not (printed|available)/i.test(cleaned)
+    ) {
+      extra.push("The contractor name is not printed in the published source (contractor not printed).");
+    }
+    missing = dedupeMissing(missing);
 
     agentObservability().logger.info("agent.ask answered", {
       toolSteps: result.steps.length,
@@ -460,13 +628,14 @@ export async function runAgentAsk(
     });
 
     return {
-      answer: cleaned,
+      answer: [cleaned, ...extra].join(" ").trim(),
       how,
       steps: result.steps,
       matches,
       query,
       missing,
       outcome: "answered",
+      ...telemetry(modelCalls, result.outputTokens),
     };
   } catch (error) {
     if (isAbortError(error)) {
