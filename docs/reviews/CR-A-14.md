@@ -55,3 +55,17 @@ One review round (light lane L5), run on the whole branch diff (`feature/oracle-
 | P0 rules in `docs/architecture-constitution.md` | ✅ | No SQL tool (P0-13); no fabricated rows (empty-result reasons always typed); no direct provider SDK (constitution VI); DuckDB wiring confined to `apps/*/src/engine/**` (the `engine-duckdb` package promotion was itself reverted during the build for tripping this exact guard — see `run-log.md`). |
 
 **Open Critical findings:** 0.
+
+## Final round (2026-10-25, head `3be4ff9`)
+
+One more reviewer round on the final code, after about 45 commits since the first review (agent honesty rules, lazy view binding, per-request MCP server, the 23 s abort, spend release, run echo). Each reviewer wrote its own file.
+
+| Reviewer | Score | Previous | File | Top findings |
+| --- | --- | --- | --- | --- |
+| `alakazam` | 80 | 85 | `CR-A-14-final-alakazam.md` | `matches[]`/`missing[]`/`query` accumulate across loosened retries (T050, A-16); honesty flags are English regexes (T049, A-16) |
+| `ash` | 84 | 88 | `CR-A-14-final-ash.md` | spend reservation erased on a billed call and a flat cost estimate (fixed in `40808ca`); unbounded `turns`/`overrides` (fixed) |
+| `oracle` | 80 | 82 | `CR-A-14-final-oracle.md` | no per-call deadline on the MCP server, transient errors reported as `run_not_found` (T042, A-16) |
+| `donphan` | 80 | 83 | `CR-A-14-final-donphan.md` | answers did not name the run searched and `how` did not cite the gazetteer (fixed in `40808ca`); permits without a property row are dropped upstream (A-16) |
+| `/code-review medium` | 9 findings | 8 | (this log) | release-on-timeout spend bug, invalid `nearest` sort without an area, unbounded client text, all fixed in `40808ca`; the rest carried to A-16 |
+
+All four scores are at least 75; no Critical finding. The fixes made after the round are in `40808ca` and re-verified on the hosted site (golden run 5, MCP rerun, responsive, UI). The findings not built are listed in `stories/A-16-cost-and-admin.md` under "Carried forward from A-14".
