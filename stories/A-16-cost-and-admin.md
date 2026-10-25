@@ -20,9 +20,9 @@ agents:
   verify: "`docs/cost.md` + billing screenshot; Playwright admin sign-in + Start run reaches the bridge; non-admin gets 403"
 skills: [build-frontend-backends, build-batch-workflows, frontend-bug-fix, responsive-design-tests, apply-engineering-guidelines]
 ui: true
-status: Draft
+status: Ready
 gate: G4
-qc_testability_signoff: false
+qc_testability_signoff: true
 created: 2026-10-19
 merged: 2026-10-21
 ---
@@ -66,26 +66,26 @@ When done:
 
 ### Part 1 · Zero idle cost and source limits (was A-16, Must)
 
-1. **AC-1** (A-16 AC-1, window amended 2026-10-26 by the PO) · **Given** the deployed stacks, **When** Cost Explorer is read for the last full billed days (at least 3), grouped by service and by record type, with per-use lines (evaluator traffic, CI, deploys) separated from idle lines, **Then** `docs/cost.md` shows each component's idle cost (Amplify static, Lambda, API Gateway, S3 + CloudFront CID copy, DynamoDB on-demand, SSM, CloudWatch Logs, disabled scheduler, Cognito, SQS + DLQ, SNS) with $0.00 fixed per month plus storage cents, who pays per use, and the screenshot is in `docs/evidence/img/`. ☐ testable
-2. **AC-2** (A-16 AC-2) · **Given** the CDK app, **When** `cdk synth` runs, **Then** assertions confirm: scheduler `DISABLED`; no Secrets Manager, RDS, KMS CMK, provisioned concurrency, WAF or Route 53 hosted zone; log retention 14 days (query log 30); a $10 budget alert; region from config. ☐ testable
-3. **AC-3** (A-16 AC-3, scale) · **Given** the measurements from A-01 to A-11, **When** `docs/source-limits.md` is written, **Then** every source has throughput (rows or requests per minute), page size, the full-capture duration measured at full scale (for example the 2,380,725-row Austin backfill and the full GIS paging), rate limits, anti-bot posture and the optimisation applied. ☐ testable
-4. **AC-4** (A-16 AC-4) · **Given** the hosted Coverage page, **When** the evaluator opens Cost and Limits, **Then** both sections render the same numbers as the two docs, each with its "as of" date and source. ☐ testable
-5. **AC-5** (A-16 AC-5, missing data) · **Given** Cost Explorer has not yet produced data for the current day (about 24 h lag) or Filebase usage is not readable through its API, **When** the page renders, **Then** it shows the last available date with "as of {date}" or "Filebase usage: not available · {reason}", never a zero filled in. ☐ testable
+1. **AC-1** (A-16 AC-1, window amended 2026-10-26 by the PO) · **Given** the deployed stacks, **When** Cost Explorer is read for the last full billed days (at least 3), grouped by service and by record type, with per-use lines (evaluator traffic, CI, deploys) separated from idle lines, **Then** `docs/cost.md` shows each component's idle cost (Amplify static, Lambda, API Gateway, S3 + CloudFront CID copy, DynamoDB on-demand, SSM, CloudWatch Logs, disabled scheduler, Cognito, SQS + DLQ, SNS) with $0.00 fixed per month plus storage cents, who pays per use, and the screenshot is in `docs/evidence/img/`. ☑ testable
+2. **AC-2** (A-16 AC-2) · **Given** the CDK app, **When** `cdk synth` runs, **Then** assertions confirm: scheduler `DISABLED`; no Secrets Manager, RDS, KMS CMK, provisioned concurrency, WAF or Route 53 hosted zone; log retention 14 days (query log 30); a $10 budget alert; region from config. ☑ testable
+3. **AC-3** (A-16 AC-3, scale) · **Given** the measurements from A-01 to A-11, **When** `docs/source-limits.md` is written, **Then** every source has throughput (rows or requests per minute), page size, the full-capture duration measured at full scale (for example the 2,380,725-row Austin backfill and the full GIS paging), rate limits, anti-bot posture and the optimisation applied. ☑ testable
+4. **AC-4** (A-16 AC-4) · **Given** the hosted Coverage page, **When** the evaluator opens Cost and Limits, **Then** both sections render the same numbers as the two docs, each with its "as of" date and source. ☑ testable
+5. **AC-5** (A-16 AC-5, missing data) · **Given** Cost Explorer has not yet produced data for the current day (about 24 h lag) or Filebase usage is not readable through its API, **When** the page renders, **Then** it shows the last available date with "as of {date}" or "Filebase usage: not available · {reason}", never a zero filled in. ☑ testable
 
 ### Part 2 · Admin sign-in and run commands (was A-17, Should)
 
-6. **AC-6** (A-17 AC-1, amended 2026-10-26: sign-in copied from Task B's working Cognito email + password flow instead of the email code, PO decision) · **Given** the operator's email is in the `admin` group, **When** they open Admin and sign in with that email and its password, **Then** they land on Runs with Start / Stop / Retry visible and "Signed in as admin" shown; signed-out visitors never see these controls. ☐ testable
-7. **AC-7** (A-17 AC-2) · **Given** a signed-in admin and the bridge running, **When** they press Start for "Austin permits since Run {n} watermark", **Then** one SQS message with a command ID is sent, the bridge picks it up within 60 s, the Restate `CountyIngest` workflow starts, and the Runs page shows "Running · started {UTC time}" from `runs/live.json`. ☐ testable
-8. **AC-8** (A-17 AC-3, error) · **Given** a signed-in user who is not in the `admin` group, or an expired token, **When** they call any `admin.*` procedure, **Then** the API answers 403 or 401, sends nothing to SQS, and logs the refusal without the token. ☐ testable
-9. **AC-9** (A-17 AC-4, missing data / error) · **Given** the bridge is offline, **When** a Start command waits 15 minutes, **Then** it expires, the UI shows "Bridge offline · command expired at {time}", nothing runs later by surprise, and after 3 failed receives the message goes to the DLQ, whose alarm emails the operator. ☐ testable
-10. **AC-10** (A-17 AC-5, scale) · **Given** 30 days of query log, **When** the admin opens Activity, **Then** the summary (questions per day, p95 latency, failures by outcome) loads in p95 < 3 s through the 5-minute cache, and every number links to its Logs Insights query. ☐ testable
-11. **AC-11** (A-17 AC-6) · **Given** the CDK app, **When** `cdk synth` runs, **Then** assertions confirm self sign-up off, the queue's DLQ and alarm, no inbound path from AWS to the operator machine, no Query DB connection string in `apps/` or `infra/`, and $0 idle cost (Cognito free tier, SQS per request). ☐ testable
+6. **AC-6** (A-17 AC-1, amended 2026-10-26: sign-in copied from Task B's working Cognito email + password flow instead of the email code, PO decision) · **Given** the operator's email is in the `admin` group, **When** they open Admin and sign in with that email and its password, **Then** they land on Runs with Start / Stop / Retry visible and "Signed in as admin" shown; signed-out visitors never see these controls. ☑ testable
+7. **AC-7** (A-17 AC-2) · **Given** a signed-in admin and the bridge running, **When** they press Start for "Austin permits since Run {n} watermark", **Then** one SQS message with a command ID is sent, the bridge picks it up within 60 s, the Restate `CountyIngest` workflow starts, and the Runs page shows "Running · started {UTC time}" from `runs/live.json`. ☑ testable
+8. **AC-8** (A-17 AC-3, error) · **Given** a signed-in user who is not in the `admin` group, or an expired token, **When** they call any `admin.*` procedure, **Then** the API answers 403 or 401, sends nothing to SQS, and logs the refusal without the token. ☑ testable
+9. **AC-9** (A-17 AC-4, missing data / error) · **Given** the bridge is offline, **When** a Start command waits 15 minutes, **Then** it expires, the UI shows "Bridge offline · command expired at {time}", nothing runs later by surprise, and after 3 failed receives the message goes to the DLQ, whose alarm emails the operator. ☑ testable
+10. **AC-10** (A-17 AC-5, scale) · **Given** 30 days of query log, **When** the admin opens Activity, **Then** the summary (questions per day, p95 latency, failures by outcome) loads in p95 < 3 s through the 5-minute cache, and every number links to its Logs Insights query. ☑ testable
+11. **AC-11** (A-17 AC-6) · **Given** the CDK app, **When** `cdk synth` runs, **Then** assertions confirm self sign-up off, the queue's DLQ and alarm, no inbound path from AWS to the operator machine, no Query DB connection string in `apps/` or `infra/`, and $0 idle cost (Cognito free tier, SQS per request). ☑ testable
 
 ### Part 3 · Close the carried gaps and match the prototype (added 2026-10-26, PO)
 
-12. **AC-12** (prototype, scale) · **Given** the hosted app and the CountyLens boards in `design/prototype/`, **When** each page is opened at 390, 768 and 1440 px in every state its board shows (light theme), **Then** its layout, section order, components, labels and states match its board, and every remaining difference is listed in `docs/evidence/A-16-prototype-parity.md` with its reason (an AD-xx decision, real data, or an accessibility rule); placeholder numbers on the boards are not compared. ☐ testable
-13. **AC-13** (full county, scale) · **Given** the latest published full-county run (441,961 properties), **When** an evaluator runs an Explore search (radius, roof age, open permits, tenure, out-of-area owner), asks the agent a README prompt, or calls an MCP data tool, **Then** each answers from a per-run Explore index built only from that run's published CIDs (recorded in the index), with p95 < 3 s for Explore and no Lambda timeout, and the A-13/A-14 tests parked for this gap run again. ☐ testable
-14. **AC-14** (missing data / closure) · **Given** the items carried forward from A-11, A-13 and A-14 below, **When** A-16 reaches G7, **Then** each row of the Closure table is closed with evidence or listed in `docs/evidence/A-16.md` § Exceptions with its reason and a PO decision; no parked test is counted as passed. ☐ testable
+12. **AC-12** (prototype, scale) · **Given** the hosted app and the CountyLens boards in `design/prototype/`, **When** each page is opened at 390, 768 and 1440 px in every state its board shows (light theme), **Then** its layout, section order, components, labels and states match its board, and every remaining difference is listed in `docs/evidence/A-16-prototype-parity.md` with its reason (an AD-xx decision, real data, or an accessibility rule); placeholder numbers on the boards are not compared. ☑ testable
+13. **AC-13** (full county, scale) · **Given** the latest published full-county run (441,961 properties), **When** an evaluator runs an Explore search (radius, roof age, open permits, tenure, out-of-area owner), asks the agent a README prompt, or calls an MCP data tool, **Then** each answers from a per-run Explore index built only from that run's published CIDs (recorded in the index), with p95 < 3 s for Explore and no Lambda timeout, and the A-13/A-14 tests parked for this gap run again. ☑ testable
+14. **AC-14** (missing data / closure) · **Given** the items carried forward from A-11, A-13 and A-14 below, **When** A-16 reaches G7, **Then** each row of the Closure table is closed with evidence or listed in `docs/evidence/A-16.md` § Exceptions with its reason and a PO decision; no parked test is counted as passed. ☑ testable
 
 ## Edge cases (at least two)
 
@@ -237,15 +237,21 @@ Each carried item has one stable ID. The plan assigns each to a builder group or
 
 | # | Criterion | Status |
 | --- | --- | --- |
-| G4-1 | Front matter complete (parent FEAT, eval point, branch, priority, **agents and skills from AGENT-MAP.md**) | ☐ |
-| G4-2 | "As a / I want / So that" stated, with an independent test | ☐ |
-| G4-3 | Every AC is Given / When / Then, and its testable box is ticked | ☐ |
-| G4-4 | One scale AC and one missing-data or error AC | ☐ |
-| G4-5 | At least two edge cases | ☐ |
-| G4-6 | Every requirement traces to an AC; NFRs have thresholds | ☐ |
-| G4-7 | Prototype screen linked (UI stories) | ☐ |
-| G4-8 | Dependencies done, or stubbed with **real** sample data | ☐ |
-| G4-9 | No `[NEEDS CLARIFICATION]` left | ☐ |
-| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☐ |
+| G4-1 | Front matter complete (parent FEAT, eval point, branch, priority, **agents and skills from AGENT-MAP.md**) | ☑ |
+| G4-2 | "As a / I want / So that" stated, with an independent test | ☑ |
+| G4-3 | Every AC is Given / When / Then, and its testable box is ticked | ☑ |
+| G4-4 | One scale AC and one missing-data or error AC | ☑ |
+| G4-5 | At least two edge cases | ☑ |
+| G4-6 | Every requirement traces to an AC; NFRs have thresholds | ☑ |
+| G4-7 | Prototype screen linked (UI stories) | ☑ |
+| G4-8 | Dependencies done, or stubbed with **real** sample data | ☑ |
+| G4-9 | No `[NEEDS CLARIFICATION]` left | ☑ |
+| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ |
 
-**Decision:** ☐ Ready ☐ Returned, reason: {…} · {date}
+### Gate G4 notes
+
+- **Sizing exception (PO, 2026-10-26):** `size_days: 2` is above the 0.5–1.5 day band and Part 3 (AC-12 to AC-14) adds more. Accepted because A-16 is the final Task A story and the carried gaps from A-11, A-13 and A-14 belong here (primary evaluation point A4; Part 3 also serves A5 and A6). Not split; the build runs in parallel builder groups within one session.
+- **AC-1 window (PO, 2026-10-26):** last full billed days instead of a quiet day; recorded gate exception.
+- **AC-6 (PO, 2026-10-26):** email + password sign-in copied from Task B; the AdminSignIn board's "code sent" state is Justified in the parity matrix.
+
+**Decision:** ☑ Ready ☐ Returned · 2026-10-26 (PO approved G4 with the sizing exception)
