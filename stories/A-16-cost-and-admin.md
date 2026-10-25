@@ -11,14 +11,14 @@ priority: P2
 moscow: Must
 branch: 016-cost-and-admin
 spec: specs/016-cost-and-admin/
-depends_on: [A-03, A-11, A-13]
+depends_on: [A-03, A-11, A-13, A-14]
 size_days: 2
 agents:
   design: [metagross, machamp]
   builder: [metagross, machamp]   # AGENT-MAP: metagross (cost page, sign-in, UI, API), machamp (cost jobs, queue, DLQ, bridge)
-  reviewers: [metagross, machamp, audino]
+  reviewers: [metagross, machamp, audino, donphan]
   verify: "`docs/cost.md` + billing screenshot; Playwright admin sign-in + Start run reaches the bridge; non-admin gets 403"
-skills: [build-frontend-backends, build-batch-workflows, frontend-bug-fix, responsive-design-tests, apply-engineering-guidelines]
+skills: [build-frontend-backends, build-batch-workflows, frontend-bug-fix, responsive-design-tests, figma-to-code, apply-engineering-guidelines]
 ui: true
 status: Draft
 gate: G4
@@ -36,7 +36,7 @@ merged: 2026-10-21
 | Evaluation point | A4 (primary) · A1 · A3 |
 | Demo line(s) | D-1 (opening claim), D-4 ("without requiring Oracle-hosted database infrastructure"); the admin part needs no demo line and supports D-2 by showing how a run is started |
 | Agents | design `metagross`, `machamp` · builder `metagross` (cost page, sign-in, UI, API), `machamp` (cost jobs, queue, DLQ, bridge) · reviewers `metagross`, `machamp`, `audino` · verify `docs/cost.md` + billing screenshot; Playwright admin sign-in + Start run reaches the bridge; non-admin gets 403 (source: [AGENT-MAP.md](../../assessment-guide/AGENT-MAP.md) § 4) |
-| Depends on | A-03, A-11 (full publish and incremental runs, which now include the former A-12), A-13 (Explorer pages) |
+| Depends on | A-03, A-11 (full publish and incremental runs, which now include the former A-12), A-13 (Explorer pages), A-14 (agent outcome events, MCP; added 2026-10-26, D-1) |
 | Size | 2 days (0.5 + 1.5) |
 | Branch | `016-cost-and-admin`, merged into `feature/oracle-pipeline` |
 
@@ -74,12 +74,18 @@ When done:
 
 ### Part 2 · Admin sign-in and run commands (was A-17, Should)
 
-6. **AC-6** (A-17 AC-1) · **Given** the operator's email is in the `admin` group, **When** they open Admin, enter the email and the 6-digit code from the Cognito email, **Then** they land on Runs with Start / Stop / Retry visible and "Signed in as admin" shown; signed-out visitors never see these controls. ☐ testable
+6. **AC-6** (A-17 AC-1, amended 2026-10-26: sign-in copied from Task B's working Cognito email + password flow instead of the email code, PO decision) · **Given** the operator's email is in the `admin` group, **When** they open Admin and sign in with that email and its password, **Then** they land on Runs with Start / Stop / Retry visible and "Signed in as admin" shown; signed-out visitors never see these controls. ☐ testable
 7. **AC-7** (A-17 AC-2) · **Given** a signed-in admin and the bridge running, **When** they press Start for "Austin permits since Run {n} watermark", **Then** one SQS message with a command ID is sent, the bridge picks it up within 60 s, the Restate `CountyIngest` workflow starts, and the Runs page shows "Running · started {UTC time}" from `runs/live.json`. ☐ testable
 8. **AC-8** (A-17 AC-3, error) · **Given** a signed-in user who is not in the `admin` group, or an expired token, **When** they call any `admin.*` procedure, **Then** the API answers 403 or 401, sends nothing to SQS, and logs the refusal without the token. ☐ testable
 9. **AC-9** (A-17 AC-4, missing data / error) · **Given** the bridge is offline, **When** a Start command waits 15 minutes, **Then** it expires, the UI shows "Bridge offline · command expired at {time}", nothing runs later by surprise, and after 3 failed receives the message goes to the DLQ, whose alarm emails the operator. ☐ testable
 10. **AC-10** (A-17 AC-5, scale) · **Given** 30 days of query log, **When** the admin opens Activity, **Then** the summary (questions per day, p95 latency, failures by outcome) loads in p95 < 3 s through the 5-minute cache, and every number links to its Logs Insights query. ☐ testable
 11. **AC-11** (A-17 AC-6) · **Given** the CDK app, **When** `cdk synth` runs, **Then** assertions confirm self sign-up off, the queue's DLQ and alarm, no inbound path from AWS to the operator machine, no Query DB connection string in `apps/` or `infra/`, and $0 idle cost (Cognito free tier, SQS per request). ☐ testable
+
+### Part 3 · Close the carried gaps and match the prototype (added 2026-10-26, PO)
+
+12. **AC-12** (prototype, scale) · **Given** the hosted app and the CountyLens boards in `design/prototype/`, **When** each page is opened at 390, 768 and 1440 px in every state its board shows (light theme), **Then** its layout, section order, components, labels and states match its board, and every remaining difference is listed in `docs/evidence/A-16-prototype-parity.md` with its reason (an AD-xx decision, real data, or an accessibility rule); placeholder numbers on the boards are not compared. ☐ testable
+13. **AC-13** (full county, scale) · **Given** the latest published full-county run (441,961 properties), **When** an evaluator runs an Explore search (radius, roof age, open permits, tenure, out-of-area owner), asks the agent a README prompt, or calls an MCP data tool, **Then** each answers from a per-run Explore index built only from that run's published CIDs (recorded in the index), with p95 < 3 s for Explore and no Lambda timeout, and the A-13/A-14 tests parked for this gap run again. ☐ testable
+14. **AC-14** (missing data / closure) · **Given** the items carried forward from A-11, A-13 and A-14 below, **When** A-16 reaches G7, **Then** each one is closed with evidence or listed in `docs/evidence/A-16.md` § Exceptions with its reason and a PO decision; no parked test is counted as passed. ☐ testable
 
 ## Edge cases (at least two)
 
@@ -89,6 +95,7 @@ When done:
 - (A-17) Two Start presses in a row → the second is rejected while a run is active ("A run is already running"); one command ID per run.
 - (A-17) Stop during publication → the bridge finishes the current atomic step, never leaves half-published CIDs, and records "stopped by admin" in the run limitations.
 - (A-17) The Cognito email quota (default SES sender) is reached → the sign-in screen shows "Code could not be sent, try later"; the public app is unaffected.
+- (cost window, PO 2026-10-26) The story must finish in one 3-hour session, so AC-1 reads the last full billed days, splits idle from per-use by service and record type, and states the Part 2 resources (Cognito, SQS, SNS) from their pricing model until their first billed day; recorded as a gate exception.
 - (merge) The Part 2 resources (Cognito, SQS, DLQ, SNS) appear in Cost Explorer → they are listed in `docs/cost.md` as per-use, with $0 idle; a non-zero idle line fails AC-1.
 
 ## Requirements
@@ -105,6 +112,9 @@ When done:
 | FR-008 | (A-17 FR-003) System MUST reject non-admin and expired tokens on every admin procedure | AC-8 |
 | FR-009 | (A-17 FR-004) System MUST expire unpicked commands and alarm on DLQ messages | AC-9 |
 | FR-010 | (A-17 FR-005) System MUST show Activity from the query log with links to its queries | AC-10 |
+| FR-011 | System MUST match each prototype board at 390/768/1440 or record the reason | AC-12 |
+| FR-012 | Explore, the agent and MCP MUST read a per-run index built from published CIDs only | AC-13 |
+| FR-013 | Every carried gap MUST be closed or recorded as a PO-approved exception | AC-14 |
 | NFR-001 | (A-16 NFR-001) $0.00 fixed per month while idle; $10 budget alert (NFR-02) | AC-1, AC-2, AC-11 |
 | NFR-002 | (A-16 NFR-002) Responsive at 390/768/1440, Atlas only (NFR-08) | AC-4, AC-6 |
 | NFR-003 | (A-17 NFR-001) Activity p95 < 3 s cached; command pickup ≤ 60 s while the bridge runs | AC-7, AC-10 |
@@ -116,6 +126,7 @@ When done:
 | --- | --- |
 | Claude Design screens, Part 1 | `design/prototype/Coverage1440.dc.html` (Cost section), `Coverage768.dc.html`, `Coverage390.dc.html`, `CoverageStates.dc.html` |
 | Claude Design screens, Part 2 | `design/prototype/AdminSignIn1440.dc.html` (+ 768, 390), `design/prototype/RunsAdmin1440.dc.html`, `design/prototype/Activity1440.dc.html` (+ 768, 390), `design/prototype/ActivityStates.dc.html` |
+| Part 3 (AC-12) | Every board in `design/prototype/` that maps to a route (inventory in `docs/evidence/A-16-prototype-parity.md`); light theme only (PO 2026-10-26) |
 | States covered | Cost: populated · partial (as of yesterday) · unavailable with reason. Admin: signed out · code sent · signed in · running · bridge offline · expired · empty activity · error |
 | Design system | `assessment-guide/design-system/` (Atlas, Material 3, mobile-first) |
 
