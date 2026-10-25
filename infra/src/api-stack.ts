@@ -1,5 +1,5 @@
 // CountyLensApi (A-03 T074): the tRPC Lambda behind an HTTP API. Sizing from ADR-0001 and ARD
-// § 16 AM-06, updated by ERR-18 (arm64, 3,008 MB = 2 vCPU, 15 s, DuckDB threads 4, no reserved or
+// § 16 AM-06, updated by ERR-18 and A-16 (arm64, 1,769 MB, 15 s, DuckDB threads 4, no reserved or
 // provisioned concurrency: AD-11, account limit 10; per-invocation cost only, $0 idle; the AM-06
 // text change is the PO's). The HTTP API is the only way in (AD-09: a Function URL would bypass
 // the stage throttle of 10 rps / burst 20) and its JSON access log is the 30-day "query log"
@@ -29,15 +29,27 @@ import { AccessLogField, AccessLogFormat } from "aws-cdk-lib/aws-apigateway";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
+import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as sns from "aws-cdk-lib/aws-sns";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as xray from "aws-cdk-lib/aws-xray";
 import type { Construct } from "constructs";
+import { AdminQueue } from "./admin-queue.js";
 import { COUNTYLENS_DOMAIN_NAME } from "./cert-stack.js";
+import {
+  ADMIN_GROUP_NAME,
+  ALERTS_TOPIC_NAME,
+  ENV_NAMES,
+  EXPLORE_INDEX_PREFIX,
+  EXPLORE_SEARCH_THROTTLE,
+  LIVE_STATUS_KEY,
+} from "./config.js";
 import type { DataStack } from "./data-stack.js";
 
 /** Function name, Powertools service name and X-Ray sampling-rule service name (one identifier). */
@@ -53,10 +65,20 @@ export const RUNS_INDEX_URL = `https://${COUNTYLENS_DOMAIN_NAME}/runs/index.json
 export const API_ROUTE_PATH = "/trpc/{proxy+}";
 /** Stage throttle (AD-11, FR-007; TC-053). */
 export const API_THROTTLE = { rateLimit: 10, burstLimit: 20 } as const;
-/** ERR-18 sizing (ADR-0001 had 1,769 MB = 1 vCPU): 2 vCPU and more network for the cold read. */
-export const API_MEMORY_MB = 3008;
-/** 29 s: under the HTTP API integration limit (30 s). A full-county Explore search binds 200 table parts on a cold sandbox (A-13, Run 2); 15 s was not enough. */
-export const API_TIMEOUT = Duration.seconds(29);
+/** A-16 (agent-design § index "Sizing"): the per-run Explore index is ~48 MB, so the query
+ *  Lambda goes back from ERR-18's 3,008 MB to ADR-0001's 1,769 MB (one full vCPU). */
+export const API_MEMORY_MB = 1769;
+/** A-16 (A13-6): back to 15 s (AM-06). The 29 s stop-gap only made every failing full-county
+ *  search bill twice as long; the per-run index answers well inside 15 s. */
+export const API_TIMEOUT = Duration.seconds(15);
+/** The dedicated route that carries EXPLORE_SEARCH_THROTTLE (same integration as the proxy). */
+export const EXPLORE_SEARCH_ROUTE_PATH = "/trpc/explore.search";
+export { EXPLORE_SEARCH_THROTTLE };
+/** The duration alarm fires when p95 reaches 80 % of API_TIMEOUT (A13-6). */
+export const API_DURATION_ALARM_P95_MS = API_TIMEOUT.toMilliseconds() * 0.8;
+/** Cognito names (A-16 AC-6). */
+export const USER_POOL_NAME = "countylens-admins";
+export const USER_POOL_CLIENT_NAME = "countylens-web";
 /** Retention (AD-16 as amended by AM-03): function log 14 days, access (query) log 30 days. */
 export const FUNCTION_LOG_RETENTION = logs.RetentionDays.TWO_WEEKS;
 export const ACCESS_LOG_RETENTION = logs.RetentionDays.ONE_MONTH;
@@ -71,7 +93,8 @@ export const HTTP_API_URL_PARAMETER = "/countylens/api/http-api-url";
 // are tested (infra/test/countylens-api-mcp.test.ts, T010) ahead of that.
 /** Function name, Powertools service name of the MCP Lambda (distinct from API_FUNCTION_NAME). */
 export const MCP_FUNCTION_NAME = "countylens-mcp";
-/** Same size as the query API (AM-09): the MCP server runs the same DuckDB engine on the same full-county parts, and ran out of memory at 1,769 MB. */
+/** Same size as the query API (AM-09). AM-09 raised it to 3,008 MB when the MCP tools read whole
+ *  full-county parts; A-16 moves them onto the ~48 MB per-run index, so 1,769 MB again. */
 export const MCP_MEMORY_MB = API_MEMORY_MB;
 export const MCP_TIMEOUT = Duration.seconds(15);
 export const MCP_ROUTE_PATH = "/mcp";
@@ -94,7 +117,8 @@ export const MCP_TOKEN_PARAMETER_NAME = "/countylens/mcp/token";
 // API, not folded into either, so its blast radius and throttle stay AD-27's own.
 /** Function name, Powertools service name of the agent Lambda (distinct from the other two). */
 export const AGENT_FUNCTION_NAME = "countylens-agent";
-/** AD-27 sizing, amended by AM-09: same as the query API, because the agent tools run the same engine (1,769 MB ran out of memory on the first hosted call). */
+/** AD-27 sizing, amended by AM-09: same as the query API, because the agent tools run the same
+ *  engine (A-16: on the per-run index, so 1,769 MB like the query API). */
 export const AGENT_MEMORY_MB = API_MEMORY_MB;
 /** AD-27: 23 s in-process abort → `timed_out`, 25 s Lambda timeout (the backstop), independent
  *  of AM-06's 15 s query-API timeout (research.md "timeout layering"). */
@@ -130,6 +154,9 @@ export const LAMBDA_TASK_ROOT = "/var/task";
 export const DUCKDB_EXTENSION_DIR_NAME = "duckdb-extensions";
 export const DUCKDB_PLATFORM = "linux_arm64";
 export const DUCKDB_EXTENSIONS_ORIGIN = "https://extensions.duckdb.org";
+
+/** The reader grant's wildcard object paths (Data.grantApiRead), acknowledged for cdk-nag. */
+const READER_WILDCARD = /\/(ipfs|private\/bench|private\/explore-index)\/\*$/;
 
 const RUNTIME = lambda.Runtime.NODEJS_24_X;
 /** esbuild target for the runtime above (`nodejs24.x` → `node24`). */
@@ -296,6 +323,12 @@ export class ApiStack extends Stack {
   readonly agentStage: apigwv2.HttpStage;
   readonly spendTable: dynamodb.Table;
   readonly spendAlarm: cloudwatch.Alarm;
+  // --- Admin (A-16 T021, T023) ---
+  readonly userPool: cognito.UserPool;
+  readonly userPoolClient: cognito.UserPoolClient;
+  readonly adminQueue: AdminQueue;
+  /** The Ops topic, imported by name (CountyLensOps owns it and deploys after this stack). */
+  readonly alertsTopic: sns.ITopic;
 
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
@@ -352,6 +385,9 @@ export class ApiStack extends Stack {
         CID_COPY_HOST: props.data.distribution.distributionDomainName,
         FILEBASE_GATEWAY_HOST,
         READPATH_PRIVATE_PREFIX: props.data.privateBenchPrefix,
+        // A-16: the per-run Explore index (G4 reader) and the bridge's live status object.
+        [ENV_NAMES.exploreIndexPrefix]: EXPLORE_INDEX_PREFIX,
+        [ENV_NAMES.liveStatusKey]: LIVE_STATUS_KEY,
         // apps/api/src/engine/duckdb-node.ts (EXTENSION_DIRECTORY_ENV): DuckDB's
         // `extension_directory`; httpfs sits at <dir>/<release>/<platform>/httpfs.duckdb_extension.
         DUCKDB_EXTENSION_DIRECTORY: `${LAMBDA_TASK_ROOT}/${DUCKDB_EXTENSION_DIR_NAME}`,
@@ -363,7 +399,8 @@ export class ApiStack extends Stack {
       },
       bundling: this.bundling,
     });
-    // Reader grant (contracts/storage.md): GetObject on ipfs/* and private/bench/* only.
+    // Reader grant (contracts/storage.md, A-16): GetObject on ipfs/*, private/bench/*,
+    // private/explore-index/* and live/live.json only.
     props.data.grantApiRead(this.fn);
 
     // HTTP API: routes under /trpc only; any other path is a gateway 404 and never invokes the
@@ -374,12 +411,21 @@ export class ApiStack extends Stack {
         "CountyLens tRPC over HTTP API v2; reached as /api/trpc/* through the Amplify rewrite",
       createDefaultStage: false,
     });
+    const trpcIntegration = new HttpLambdaIntegration("Trpc", this.fn, {
+      payloadFormatVersion: apigwv2.PayloadFormatVersion.VERSION_2_0,
+    });
     this.httpApi.addRoutes({
       path: API_ROUTE_PATH,
       methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
-      integration: new HttpLambdaIntegration("Trpc", this.fn, {
-        payloadFormatVersion: apigwv2.PayloadFormatVersion.VERSION_2_0,
-      }),
+      integration: trpcIntegration,
+    });
+    // A-16 (A13-6, A14-3): explore.search gets its own route key so it can carry a tighter
+    // route-level throttle than the stage default. More specific than /trpc/{proxy+}, same
+    // integration; the handler maps the literal path back to the procedure (context.ts).
+    const exploreSearchRoutes = this.httpApi.addRoutes({
+      path: EXPLORE_SEARCH_ROUTE_PATH,
+      methods: [apigwv2.HttpMethod.ANY],
+      integration: trpcIntegration,
     });
     this.stage = new apigwv2.HttpStage(this, "Default", {
       httpApi: this.httpApi,
@@ -405,6 +451,17 @@ export class ApiStack extends Stack {
         ),
       },
     });
+    // Same escape hatch as the MCP and agent stages below: route-level limits need the CfnStage,
+    // keyed by the exact route key, and the stage must be created after the route it names.
+    const cfnStage = this.stage.node.defaultChild as apigwv2.CfnStage;
+    for (const route of exploreSearchRoutes)
+      cfnStage.addResourceDependency(route.node.defaultChild as apigwv2.CfnRoute);
+    cfnStage.routeSettings = {
+      [`ANY ${EXPLORE_SEARCH_ROUTE_PATH}`]: {
+        ThrottlingRateLimit: EXPLORE_SEARCH_THROTTLE.rateLimit,
+        ThrottlingBurstLimit: EXPLORE_SEARCH_THROTTLE.burstLimit,
+      },
+    };
     this.httpApiUrl = this.httpApi.apiEndpoint;
 
     // X-Ray samples 100 % of countylens-api (NFR-004); the rule is free while idle.
@@ -437,15 +494,16 @@ export class ApiStack extends Stack {
       Validations.of(defaultPolicy).acknowledge({
         id: "AwsSolutions-IAM5[Resource::*]",
         reason:
-          "xray:PutTraceSegments and xray:PutTelemetryRecords support no resource-level permission " +
-          "(the service accepts only *); this is the active-tracing policy CDK attaches (NFR-03).",
+          "xray:PutTraceSegments/PutTelemetryRecords (active tracing, NFR-03) and A-16's " +
+          "logs:GetQueryResults/StopQuery support no resource-level permission (only *); StartQuery " +
+          "is limited to the query log group, so the role reads results of queries over it only.",
       });
       // The reader grant's resources are cross-stack references whose rendered form is only known
       // once references resolve; the exact finding ids are acknowledged then (see the helper).
       acknowledgeWildcardResources(
         defaultPolicy,
         () => [(defaultPolicy.node.defaultChild as iam.CfnPolicy).policyDocument],
-        (resource) => /\/(ipfs|private\/bench)\/\*$/.test(resource),
+        (resource) => READER_WILDCARD.test(resource),
         "GetObject on <bucket>/ipfs/* and <bucket>/private/bench/* is the exact reader boundary of " +
           "contracts/storage.md: objects are keyed by CID under ipfs/, the bench prefix is private and " +
           "deleted after TC-NF-05; s3:ListBucket only with s3:prefix private/bench/*, no Put or Delete (Data.grantApiRead).",
@@ -549,6 +607,7 @@ export class ApiStack extends Stack {
         DUCKDB_EXTENSION_DIRECTORY: `${LAMBDA_TASK_ROOT}/${DUCKDB_EXTENSION_DIR_NAME}`,
         // apps/api/src/mcp/auth.ts: the one SSM parameter this Lambda is allowed to read.
         MCP_TOKEN_PARAMETER_NAME,
+        [ENV_NAMES.exploreIndexPrefix]: EXPLORE_INDEX_PREFIX,
         POWERTOOLS_SERVICE_NAME: MCP_FUNCTION_NAME,
         POWERTOOLS_METRICS_NAMESPACE: API_METRICS_NAMESPACE,
         POWERTOOLS_LOG_LEVEL: "INFO",
@@ -642,7 +701,7 @@ export class ApiStack extends Stack {
       acknowledgeWildcardResources(
         mcpDefaultPolicy,
         () => [(mcpDefaultPolicy.node.defaultChild as iam.CfnPolicy).policyDocument],
-        (resource) => /\/(ipfs|private\/bench)\/\*$/.test(resource),
+        (resource) => READER_WILDCARD.test(resource),
         "GetObject on <bucket>/ipfs/* and <bucket>/private/bench/* is the exact reader boundary " +
           "of contracts/storage.md, mirrored from the tRPC Lambda's own grant (Data.grantApiRead).",
       );
@@ -729,6 +788,7 @@ export class ApiStack extends Stack {
         DUCKDB_EXTENSION_DIRECTORY: `${LAMBDA_TASK_ROOT}/${DUCKDB_EXTENSION_DIR_NAME}`,
         // apps/api/src/agent/spend.ts: the one table this Lambda reads/increments.
         SPEND_TABLE_NAME,
+        [ENV_NAMES.exploreIndexPrefix]: EXPLORE_INDEX_PREFIX,
         POWERTOOLS_SERVICE_NAME: AGENT_FUNCTION_NAME,
         POWERTOOLS_METRICS_NAMESPACE: API_METRICS_NAMESPACE,
         POWERTOOLS_LOG_LEVEL: "INFO",
@@ -870,7 +930,7 @@ export class ApiStack extends Stack {
       acknowledgeWildcardResources(
         agentDefaultPolicy,
         () => [(agentDefaultPolicy.node.defaultChild as iam.CfnPolicy).policyDocument],
-        (resource) => /\/(ipfs|private\/bench)\/\*$/.test(resource),
+        (resource) => READER_WILDCARD.test(resource),
         "GetObject on <bucket>/ipfs/* and <bucket>/private/bench/* is the exact reader boundary " +
           "of contracts/storage.md, mirrored from the tRPC and MCP Lambdas' own grants " +
           "(Data.grantApiRead).",
@@ -900,6 +960,119 @@ export class ApiStack extends Stack {
     new CfnOutput(this, "SpendTableName", {
       value: this.spendTable.tableName,
       description: "Spend-counter DynamoDB table name (data-model.md)",
+    });
+
+    // --- Admin (A-16 T021, T023, T024, T025) ---
+    // The Ops topic is imported by its fixed name: CountyLensOps owns it and depends on this
+    // stack (AM-02), so a CDK reference from here to Ops would be a cycle.
+    this.alertsTopic = sns.Topic.fromTopicArn(
+      this,
+      "AlertsTopic",
+      this.formatArn({ service: "sns", resource: ALERTS_TOPIC_NAME }),
+    );
+    // T025 (A14-3): the agent's 80 % spend alarm now notifies the Ops topic (ALARM and OK).
+    this.spendAlarm.addAlarmAction(new cwActions.SnsAction(this.alertsTopic));
+    this.spendAlarm.addOkAction(new cwActions.SnsAction(this.alertsTopic));
+
+    // T021 (AC-6, AC-11): Task B's pool without its lockout Lambda (Cognito's own sign-in
+    // throttling is enough: no extra Lambda or table). Self sign-up off, so the operator creates
+    // users with admin-create-user; email is the username; SRP only, no client secret.
+    this.userPool = new cognito.UserPool(this, "UserPool", {
+      userPoolName: USER_POOL_NAME,
+      selfSignUpEnabled: false,
+      signInAliases: { email: true },
+      standardAttributes: { email: { required: true, mutable: true } },
+      passwordPolicy: {
+        minLength: 12,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
+        requireSymbols: true,
+      },
+      accountRecovery: cognito.AccountRecovery.NONE,
+      // Lite: plain sign-in only, no managed login or threat protection, nothing billed per user.
+      featurePlan: cognito.FeaturePlan.LITE,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    this.userPoolClient = this.userPool.addClient("WebClient", {
+      userPoolClientName: USER_POOL_CLIENT_NAME,
+      generateSecret: false,
+      authFlows: { userSrp: true },
+      preventUserExistenceErrors: true,
+      accessTokenValidity: Duration.hours(1),
+      idTokenValidity: Duration.hours(1),
+      refreshTokenValidity: Duration.days(1),
+    });
+    new cognito.CfnUserPoolGroup(this, "AdminGroup", {
+      userPoolId: this.userPool.userPoolId,
+      groupName: ADMIN_GROUP_NAME,
+      description: "CountyLens admins: may Start / Stop / Retry runs and read Activity (A-16 AC-6)",
+    });
+    Validations.of(this.userPool).acknowledge(
+      {
+        id: "AwsSolutions-COG2",
+        reason:
+          "MFA would block the shared admin test login that the hosted Playwright run and the demo " +
+          "use; self sign-up is off, so only operator-created users exist (Task B posture).",
+      },
+      {
+        id: "AwsSolutions-COG3",
+        reason:
+          "Advanced security needs the Plus tier, billed per active user, with no budget in this " +
+          "$120-credit account (A7); Cognito's built-in sign-in throttling stays on.",
+      },
+      {
+        id: "AwsSolutions-COG8",
+        reason:
+          "The Lite feature plan is deliberate: Plus bills per monthly active user (A7, $0 idle); " +
+          "a handful of operator-created admins sign in with SRP and a 12-character password policy.",
+      },
+    );
+
+    // T023 (AC-7, AC-9, AC-11): the command queue (G3's construct). The API may only send.
+    this.adminQueue = new AdminQueue(this, "AdminQueue", { alarmTopic: this.alertsTopic });
+    this.fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "SendAdminCommands",
+        actions: ["sqs:SendMessage"],
+        resources: [this.adminQueue.queue.queueArn],
+      }),
+    );
+    // T024 (AC-10): Activity reads the query log through Logs Insights. StartQuery is scoped to
+    // that one log group; GetQueryResults and StopQuery take a query id and support no resource.
+    this.fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "StartQueryOnQueryLog",
+        actions: ["logs:StartQuery"],
+        resources: [this.accessLogGroup.logGroupArn],
+      }),
+    );
+    this.fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "ReadOwnQueryResults",
+        actions: ["logs:GetQueryResults", "logs:StopQuery"],
+        resources: ["*"],
+      }),
+    );
+    const adminEnv: readonly (readonly [string, string])[] = [
+      [ENV_NAMES.adminQueueUrl, this.adminQueue.queue.queueUrl],
+      [ENV_NAMES.userPoolId, this.userPool.userPoolId],
+      [ENV_NAMES.userPoolClientId, this.userPoolClient.userPoolClientId],
+      [ENV_NAMES.queryLogGroup, this.accessLogGroup.logGroupName],
+    ];
+    for (const [key, value] of adminEnv) this.fn.addEnvironment(key, value);
+
+    new CfnOutput(this, "UserPoolId", {
+      value: this.userPool.userPoolId,
+      description: "Cognito user pool of the admins (VITE_COGNITO_USER_POOL_ID)",
+    });
+    new CfnOutput(this, "UserPoolClientId", {
+      value: this.userPoolClient.userPoolClientId,
+      description: "SRP app client, no secret (VITE_COGNITO_USER_POOL_CLIENT_ID)",
+    });
+    new CfnOutput(this, "AdminQueueUrl", {
+      value: this.adminQueue.queue.queueUrl,
+      description: "Admin command queue the laptop bridge long-polls (COUNTYLENS_ADMIN_QUEUE_URL)",
     });
   }
 }
