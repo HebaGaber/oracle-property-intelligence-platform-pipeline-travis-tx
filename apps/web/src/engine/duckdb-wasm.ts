@@ -495,6 +495,35 @@ export function bindAllViews(
   return bindManifest(manifestBytes, "", engine, { partUrl });
 }
 
+/**
+ * A-16 A13-2: binds only `views` (the SQL panel's lazy binder). Lives in this chunk so the panel
+ * reaches query-core's bind code through the lazy engine chunk, never the counted app chunks.
+ */
+export function bindViews(
+  engine: QueryEngine,
+  manifestBytes: Uint8Array,
+  partUrl: (artifact: { name: string; cid: string }) => string,
+  views: readonly ContractView[],
+): Promise<BoundRun> {
+  return bindManifest(manifestBytes, "", engine, { partUrl, views });
+}
+
+/** A-16 A13-2: the table part names `views` read (query-core boundPartNames). */
+export function viewPartNames(
+  artifacts: RunManifestV1["artifacts"],
+  views: readonly ContractView[],
+): string[] {
+  return boundPartNames(artifacts, views);
+}
+
+/** A-16 A11-11: the first page of the listing (its own ORDER BY, LIMIT one page), validated. */
+export async function listFirstPage(
+  engine: QueryEngine,
+  pageSize: number,
+): Promise<PermitListRow[]> {
+  return parsePermitRows(await engine.all(`${listRoofingPermitsSql()}\nLIMIT ${pageSize}`));
+}
+
 /** The single page of permits, ordered by permit_number (listRoofingPermitsSql), validated; measured as `countylens:query:list`. */
 export async function listPermits(engine: QueryEngine): Promise<PermitListRow[]> {
   const rows = await timed(PERF_MEASURES.list, () => engine.all(listRoofingPermitsSql()));

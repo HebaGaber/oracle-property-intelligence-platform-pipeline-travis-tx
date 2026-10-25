@@ -87,7 +87,12 @@ export function routeTargets(
       case "legalPrivacy":
       case "legalTerms":
       case "permits":
+      case "adminSignIn": // A-16: the public sign-in form (no session needed).
         out.push({ key, path });
+        break;
+      case "activity":
+        // A-16: admin-only (RequireSession); a signed-out scan would only see the redirect to
+        // sign-in. Covered signed in by A-16-admin.spec.ts, so the public page scans skip it.
         break;
       default:
         throw new Error(

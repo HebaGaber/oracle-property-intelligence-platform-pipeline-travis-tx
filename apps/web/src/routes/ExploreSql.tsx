@@ -24,6 +24,9 @@ import {
 import styles from "./Explore.module.css";
 
 const LOADING_ENGINE = "Loading the query engine";
+/** A13-7 (audino finding 5): why the first query on a view waits (it binds that view's tables). */
+export const SQL_BIND_NOTE =
+  "First query on this view: the engine reads its published tables before it answers. On the full county this can take a minute; later queries on the same view are fast.";
 const DEFAULT_SQL = "SELECT count(*) FROM v_property";
 
 type EngineState =
@@ -33,7 +36,7 @@ type EngineState =
 
 type RunState =
   | { readonly kind: "idle" }
-  | { readonly kind: "running" }
+  | { readonly kind: "running"; readonly binding: boolean }
   | { readonly kind: "rows"; readonly rows: Row[]; readonly ms: number }
   | { readonly kind: "error"; readonly text: string };
 
@@ -52,6 +55,7 @@ export function ExploreSql({
   const [engine, setEngine] = useState<EngineState>({ kind: "loading", stage: LOADING_ENGINE });
   const [sql, setSql] = useState(DEFAULT_SQL);
   const [run, setRun] = useState<RunState>({ kind: "idle" });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -76,7 +80,13 @@ export function ExploreSql({
       controller.abort();
       void opened?.close().catch(() => undefined);
     };
-  }, []);
+  }, [attempt]);
+
+  const retryEngine = (): void => {
+    setRun({ kind: "idle" });
+    setEngine({ kind: "loading", stage: LOADING_ENGINE });
+    setAttempt((n) => n + 1);
+  };
 
   useEffect(() => onState(engine.kind), [engine.kind, onState]);
 
@@ -87,7 +97,7 @@ export function ExploreSql({
       setRun({ kind: "error", text: refusal });
       return;
     }
-    setRun({ kind: "running" });
+    setRun({ kind: "running", binding: engine.session.needsBind(sql) });
     const start = performance.now();
     try {
       const rows = await engine.session.query(sql);
@@ -111,7 +121,9 @@ export function ExploreSql({
       {engine.kind === "loading" ? (
         <LinearProgress label={LOADING_ENGINE} stageText={engine.stage} />
       ) : null}
-      {engine.kind === "error" ? <ErrorBanner message={engine.message} /> : null}
+      {engine.kind === "error" ? (
+        <ErrorBanner message={engine.message} onRetry={retryEngine} />
+      ) : null}
       {engine.kind === "ready" ? (
         <>
           <p className={styles.engine}>
@@ -138,6 +150,14 @@ export function ExploreSql({
               Run
             </button>
           </div>
+        </>
+      ) : null}
+      {run.kind === "running" && run.binding ? (
+        <>
+          <LinearProgress label="Running the query" stageText="Binding the published tables" />
+          <p className={styles.engine} role="status" data-sql-bind-note="">
+            {SQL_BIND_NOTE}
+          </p>
         </>
       ) : null}
       {run.kind === "error" ? (

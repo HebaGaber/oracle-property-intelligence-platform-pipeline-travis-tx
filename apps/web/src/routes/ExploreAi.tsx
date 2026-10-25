@@ -132,7 +132,11 @@ function Match({ match }: { readonly match: AgentMatch }): ReactElement {
 }
 
 export function ExploreAi({ onState, ask = askAgent }: ExploreAiProps): ReactElement {
-  const [prompt, setPrompt] = useState("");
+  // `?q=` (the "What can I ask?" card, the drawer's "Ask about this property") fills the box; it
+  // is never sent until the person presses Ask.
+  const [prompt, setPrompt] = useState(
+    () => new URLSearchParams(window.location.search).get("q") ?? "",
+  );
   const [state, setState] = useState<AiState>("idle");
   const [shown, setShown] = useState<Shown | null>(null);
   const [elapsed, setElapsed] = useState(0);

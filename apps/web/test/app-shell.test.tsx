@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { PAGE_TEXTS, ROUTES } from "@countylens/shared";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { routes } from "../src/App";
 import { DESTINATIONS } from "../src/components/AppShell";
 import { COMING_SOON_ITEMS } from "../src/content/coming-soon";
@@ -138,15 +138,105 @@ describe("no inline style literal (Atlas § 13 rule 4; ESLint no-restricted-synt
 });
 
 describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => {
-  it("shows a top app bar whose only control is the title CountyLens, linking to /", async () => {
+  // A-16 T050 (Shell1440/768/390 boards): title, then sync badge, help menu and Ask.
+  it("shows the title CountyLens linking to /, the help menu and the Ask entry", async () => {
     await renderAt("/runs");
     const bar = screen.getByRole("banner");
-    expect(bar.textContent?.trim()).toBe("CountyLens");
     expect(within(bar).getByRole("heading", { level: 1, name: "CountyLens" })).toBeTruthy();
-    expect(within(bar).queryAllByRole("button")).toHaveLength(0);
-    const links = within(bar).getAllByRole("link");
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/"]);
-    expect(links[0]?.textContent?.trim()).toBe("CountyLens");
+    const title = within(bar).getByRole("link", { name: "CountyLens" });
+    expect(title.getAttribute("href")).toBe("/");
+    const ask = within(bar).getByRole("link", { name: "Ask" });
+    expect(ask.getAttribute("href")).toBe("/tx/travis/explore?mode=ai");
+    const help = within(bar).getByRole("button", { name: "Help" });
+    expect(help.getAttribute("aria-haspopup")).toBe("menu");
+    expect(help.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("the help menu lists the board's entries and closes on Escape with focus back on Help", async () => {
+    await renderAt("/runs");
+    const bar = screen.getByRole("banner");
+    const help = within(bar).getByRole("button", { name: "Help" });
+    fireEvent.click(help);
+    const menu = within(bar).getByRole("menu", { name: "Help" });
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items.map((i) => i.querySelector("[data-help-label]")?.textContent)).toEqual([
+      "What can I ask?",
+      "Field glossary",
+      "MCP and API docs",
+      "Data use and licences",
+    ]);
+    expect(items.map((i) => i.getAttribute("href"))).toEqual([
+      "/tx/travis/explore?welcome=1",
+      "/data/catalog",
+      "/help/mcp",
+      "/legal/data",
+    ]);
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(within(bar).queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(help);
+  });
+
+  it("the sync badge shows Run N · date from /runs/index.json and links to Runs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () =>
+        Response.json({
+          schema: "oracle-travis-runs-index.v1",
+          runs: [
+            { runId: "a", manifestCid: "bafkreia", finishedAt: "2026-10-17T10:00:00Z" },
+            { runId: "b", manifestCid: "bafkreib", finishedAt: "2026-10-24T18:20:00Z" },
+          ],
+        }),
+      ),
+    );
+    try {
+      await renderAt("/runs");
+      const bar = screen.getByRole("banner");
+      await waitFor(() =>
+        expect(bar.querySelector('[data-sync-badge="ready"]')?.textContent).toContain(
+          "Run 2 · Oct 24",
+        ),
+      );
+      expect(bar.querySelector('[data-sync-badge="ready"]')?.getAttribute("href")).toBe("/runs");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("an unreadable run index shows Sync status unavailable with Retry, never a made-up run", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () => new Response("x", { status: 503 })),
+    );
+    try {
+      await renderAt("/runs");
+      const bar = screen.getByRole("banner");
+      await waitFor(() => expect(bar.querySelector('[data-sync-badge="error"]')).not.toBeNull());
+      expect(bar.textContent).toContain("Sync status unavailable");
+      expect(bar.textContent).not.toMatch(/Run \d/);
+      expect(within(bar).getByRole("button", { name: "Retry" })).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("marks Coverage hidden below 600 px and lists Coverage and SQL in More for compact", async () => {
+    await renderAt("/runs");
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    const coverage = within(nav).getByRole("link", { name: /Coverage/ });
+    const css = cssModule("../src/components/AppShell.module.css") ?? "";
+    expect(coverage.className).toMatch(/compactHidden/);
+    expect(css).toMatch(/\.nav \.compactHidden \{\s*display: none;/);
+    fireEvent.click(within(nav).getByRole("button", { name: "More" }));
+    const sheet = screen.getByRole("dialog", { name: "More" });
+    const compact = [...sheet.querySelectorAll("li")].filter((li) =>
+      /compactOnly/.test(li.className),
+    );
+    expect(compact.map((li) => li.querySelector("a")?.getAttribute("href"))).toEqual([
+      "/tx/travis/coverage",
+      "/tx/travis/explore?mode=sql",
+      "/admin/sign-in",
+    ]);
   });
 
   it("offers the destinations Explore, Runs, Coverage, Data and More, and marks the current one", async () => {
@@ -158,12 +248,14 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
       expect.stringContaining("Runs"),
       expect.stringContaining("Coverage"),
       expect.stringContaining("Data"),
+      expect.stringContaining("Admin"),
     ]);
     expect(links.map((l) => l.getAttribute("href"))).toEqual([
       "/tx/travis/explore",
       "/runs",
       "/tx/travis/coverage",
       "/data/manifest",
+      "/admin/sign-in",
     ]);
     expect(links[1]?.getAttribute("aria-current")).toBe("page");
     expect(links[0]?.getAttribute("aria-current")).toBeNull();
@@ -313,5 +405,20 @@ describe("ERR-13: landmark order: banner, navigation, then main (keyboard reache
     expect(ruleBody(css, "main")).toMatch(/grid-area:\s*main/);
     expect(css).toMatch(/"nav main"/);
     expect(css).toMatch(/"bar"\s*"main"\s*"nav"/);
+  });
+});
+
+describe("A13-7: <main> has an accessible name and an inset focus ring", () => {
+  it("names the focusable main region", async () => {
+    await renderAt("/runs");
+    expect(screen.getByRole("main", { name: "Page content" }).getAttribute("tabindex")).toBe("0");
+  });
+
+  it("draws the main focus ring inside the region with the primary token, no negative offset", () => {
+    const css = cssModule("../src/components/AppShell.module.css") ?? "";
+    const ring = /\.main:focus-visible\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(ring).toMatch(/box-shadow:\s*inset 0 0 0 2px var\(--md-sys-color-primary\)/);
+    expect(ring).toMatch(/outline:\s*none/);
+    expect(ring).not.toMatch(/outline-offset:\s*-/);
   });
 });

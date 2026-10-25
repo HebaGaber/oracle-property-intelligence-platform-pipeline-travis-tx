@@ -2,26 +2,127 @@
 // route-side importer of engine/duckdb-wasm (dynamic import, so the engine stays in its own
 // "duckdb" chunk and loads only on `?mode=sql`). Same read path as the A-03 Permits loader: run
 // index → latest manifest by CID (copy, then the labelled Filebase fallback) → the table parts
-// from that host, CID-verified → registered buffers → the contract views bound. The engine starts
+// from that host, CID-verified → registered buffers → the contract views a query names, bound on its
+// first run (A13-2, createViewBinder; before A-16 every view was bound up front). The engine starts
 // in parallel with the reads (ERR-17). `readOnlyRefusal` keeps every statement read-only before it
 // reaches the engine (one SELECT, WITH, DESCRIBE or SHOW statement, no data-changing keyword);
 // `sqlErrorLine` turns an engine error into one line "{first line} · Try: {fix}", no stack trace.
-import type { Row } from "@countylens/query-core";
+import type { ContractView, Row } from "@countylens/query-core";
 import { EXPLORE_TEXTS } from "@countylens/shared";
 import { readPathUrlsFromEnv } from "../data/config";
 import { fallbackLabel } from "../data/fetch-by-cid";
-import { fetchParts, partsToPrefetch, registeredPartName } from "../data/fetch-parts";
+import {
+  fetchParts,
+  partsToPrefetch,
+  registeredPartName,
+  type PartToFetch,
+} from "../data/fetch-parts";
 import { loadManifest } from "../data/manifest";
 import { latestRun, loadRunsIndex } from "../data/runs-index";
 import { STAGE_TEXTS } from "../engine/stages";
+
+/**
+ * query-core's CONTRACT_VIEWS, kept here so this route chunk imports no query-core runtime code
+ * (its bind code reaches the panel only through the lazy engine chunk); test/sql-lazy-bind pins
+ * it to query-core's list.
+ */
+export const SQL_VIEWS: readonly ContractView[] = [
+  "v_property",
+  "v_roofing_permit",
+  "v_contractor",
+  "v_run",
+];
+const VIEW_REF = new RegExp(`\\b(${SQL_VIEWS.join("|")})\\b`, "g");
+
+/** The contract views `sql` names, in SQL_VIEWS order (query-core viewsReadBy). */
+export function viewsNamedIn(sql: string): ContractView[] {
+  const named = new Set([...sql.matchAll(VIEW_REF)].map((m) => m[1]));
+  return SQL_VIEWS.filter((v) => named.has(v));
+}
 
 export interface SqlSession {
   readonly runId: string;
   readonly manifestCid: string;
   /** `fallback · {host}` when Filebase served the manifest and parts; null for the copy. */
   readonly fallbackLabel: string | null;
+  /** True when `sql` names a contract view not bound yet (its first query binds it: slow). */
+  readonly needsBind: (sql: string) => boolean;
   readonly query: (sql: string) => Promise<Row[]>;
   readonly close: () => Promise<void>;
+}
+
+type PartRef = { readonly name: string; readonly cid: string };
+
+export interface ViewBinderDeps {
+  /** The table part names the views read (query-core `boundPartNames`). */
+  readonly partsFor: (views: readonly ContractView[]) => string[];
+  /** Those parts to read up front, or null when they are too large (`partsToPrefetch`). */
+  readonly prefetchable: (names: ReadonlySet<string>) => PartToFetch[] | null;
+  /** Reads the parts (CID-verified) and registers them with the engine. */
+  readonly fetchAndRegister: (parts: PartToFetch[]) => Promise<void>;
+  /** Binds the views (query-core `bindManifest` with `views`), replacing the earlier bind. */
+  readonly bind: (
+    views: readonly ContractView[],
+    partUrl: (artifact: PartRef) => string,
+  ) => Promise<unknown>;
+  /** Where the engine range-reads a part it was not given (the host that served the manifest). */
+  readonly remoteUrl: (artifact: PartRef) => string;
+  /** The registered file name of a prefetched part. */
+  readonly registeredUrl: (artifact: PartRef) => string;
+  /** Called with the views about to be bound (the stage text for the status note). */
+  readonly onBind: (views: readonly ContractView[]) => void;
+}
+
+export interface ViewBinder {
+  /** Binds the views `sql` names that are not bound yet; resolves when they are queryable. */
+  (sql: string): Promise<void>;
+  /** The views bound now, in CONTRACT_VIEWS order. */
+  readonly bound: () => ContractView[];
+  /** True when `sql` names a view not bound yet. */
+  readonly pending: (sql: string) => boolean;
+}
+
+/**
+ * A13-2: bind only the contract views a query names, the first time it names them, and remember
+ * them. bindManifest drops and recreates the run schemas, so a new view rebinds the union of the
+ * views named so far; parts already registered are not read again. Calls run one after another.
+ * A failed bind leaves nothing bound (the schemas were dropped), so the next query binds again.
+ */
+export function createViewBinder(deps: ViewBinderDeps): ViewBinder {
+  let bound: ContractView[] = [];
+  const registered = new Set<string>();
+  let chain: Promise<void> = Promise.resolve();
+  const missing = (sql: string): ContractView[] =>
+    viewsNamedIn(sql).filter((v) => !bound.includes(v));
+  const ensure = async (sql: string): Promise<void> => {
+    if (missing(sql).length === 0) return;
+    const union = SQL_VIEWS.filter((v) => bound.includes(v) || viewsNamedIn(sql).includes(v));
+    deps.onBind(union);
+    const names = deps.partsFor(union);
+    const fresh = names.filter((n) => !registered.has(n));
+    const toFetch = fresh.length === 0 ? [] : deps.prefetchable(new Set(fresh));
+    if (toFetch !== null && toFetch.length > 0) {
+      await deps.fetchAndRegister(toFetch);
+      for (const p of toFetch) registered.add(p.name);
+    }
+    try {
+      await deps.bind(union, (a) =>
+        registered.has(a.name) ? deps.registeredUrl(a) : deps.remoteUrl(a),
+      );
+      bound = union;
+    } catch (error) {
+      bound = [];
+      throw error;
+    }
+  };
+  const binder = ((sql: string) => {
+    const next = chain.then(() => ensure(sql));
+    chain = next.catch(() => undefined);
+    return next;
+  }) as ViewBinder;
+  Object.defineProperty(binder, "bound", { value: () => [...bound] });
+  Object.defineProperty(binder, "pending", { value: (sql: string) => missing(sql).length > 0 });
+  return binder;
 }
 
 /** Opens the in-browser engine on the latest run; `report` receives the stage texts. */
@@ -40,22 +141,30 @@ export async function openSqlSession(
     const index = await loadRunsIndex({ signal });
     const entry = latestRun(index);
     const loaded = await loadManifest(entry.manifestCid, { urls: readPathUrlsFromEnv(), signal });
-    const wanted = partsToPrefetch(loaded.manifest);
-    const parts = wanted === null ? null : await fetchParts(wanted, loaded.read, { signal });
     const { module, engine } = await starting;
     signal.throwIfAborted();
-    report(STAGE_TEXTS.bind);
-    let partUrl = loaded.read.partUrl;
-    if (parts !== null) {
-      for (const part of parts) await engine.registerFile(registeredPartName(part), part.bytes);
-      partUrl = registeredPartName;
-    }
-    await module.bindAllViews(engine, loaded.read.bytes, partUrl);
+    // A13-2: nothing is bound yet; each query binds the views it names (createViewBinder).
+    const binder = createViewBinder({
+      partsFor: (views) => module.viewPartNames(loaded.manifest.artifacts, views),
+      prefetchable: (names) => partsToPrefetch(loaded.manifest, undefined, names),
+      fetchAndRegister: async (parts) => {
+        for (const part of await fetchParts(parts, loaded.read, { signal }))
+          await engine.registerFile(registeredPartName(part), part.bytes);
+      },
+      bind: (views, partUrl) => module.bindViews(engine, loaded.read.bytes, partUrl, views),
+      remoteUrl: loaded.read.partUrl,
+      registeredUrl: registeredPartName,
+      onBind: () => report(STAGE_TEXTS.bind),
+    });
     return {
       runId: loaded.manifest.runId,
       manifestCid: loaded.manifestCid,
       fallbackLabel: fallbackLabel(loaded.read.source),
-      query: (sql) => engine.all(boundedSql(sql)),
+      needsBind: binder.pending,
+      query: async (sql) => {
+        await binder(sql);
+        return engine.all(boundedSql(sql));
+      },
       close: () => engine.close(),
     };
   } catch (error) {
@@ -309,7 +418,7 @@ function fixFor(firstLine: string, message: string): string {
   const didYouMean = /Did you mean "([^"]+)"/.exec(message)?.[1];
   if (didYouMean !== undefined) return `use ${didYouMean}`;
   if (/Catalog Error/i.test(firstLine))
-    return "check the table or column name; SHOW TABLES lists the views (v_property, v_roofing_permit, …)";
+    return "check the table or column name; the views are v_property, v_roofing_permit, v_contractor and v_run";
   if (/Parser Error/i.test(firstLine))
     return "check the spelling of the keywords; a query starts with SELECT, WITH, DESCRIBE or SHOW";
   if (/Binder Error/i.test(firstLine)) return "check the column names; DESCRIBE {view} lists them";

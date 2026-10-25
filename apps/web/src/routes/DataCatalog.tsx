@@ -73,6 +73,18 @@ function publishedRowsFor(table: CatalogTable, manifest: RunManifestV1): Coverag
   );
 }
 
+/** A13-7: why a part is not under a table row (missing data says why). */
+const UNCLASSIFIED_REASON =
+  "Their export batch has no known data group, so they are not listed as a table; each is still in the run manifest.";
+
+/** Parquet table parts of the manifest that no catalog row lists (their batch group is unknown). */
+function unclassifiedParts(manifest: RunManifestV1, tables: readonly CatalogTable[]): number {
+  const listed = new Set(tables.flatMap((t) => t.parts.map((p) => p.name)));
+  return manifest.artifacts.filter(
+    (a) => a.kind === "table" && a.name.endsWith(".parquet") && !listed.has(a.name),
+  ).length;
+}
+
 export function Component(): ReactElement {
   const { state, retry } = useLatestRun();
   const [attempt, setAttempt] = useState(0);
@@ -104,6 +116,7 @@ export function Component(): ReactElement {
   }, [retry]);
 
   const tables = run === null ? [] : catalogTables(run.manifest);
+  const unclassified = run === null ? 0 : unclassifiedParts(run.manifest, tables);
   const failures = [...results.values()].flatMap((r) => (r.kind === "fail" ? [r.reason] : []));
   const allFailed = tables.length > 0 && failures.length === tables.length;
   let unavailable: string | null = null;
@@ -152,6 +165,15 @@ export function Component(): ReactElement {
               {PAGE_TEXTS.tableExportMissing}
             </p>
           )}
+          {unclassified > 0 ? (
+            <p className={runsStyles.itemBody} data-unclassified-parts={unclassified}>
+              <StatusPill
+                status="unavailable"
+                text={`unclassified table parts (${unclassified})`}
+              />{" "}
+              {UNCLASSIFIED_REASON}
+            </p>
+          ) : null}
           {tables.length === 0 ? (
             <StatusPill status="unavailable" text="no published table in this run's manifest" />
           ) : (

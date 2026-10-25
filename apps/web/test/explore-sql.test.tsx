@@ -18,6 +18,7 @@ import { readOnlyRefusal, sqlErrorLine } from "../src/routes/ExploreSql.engine";
 const session = vi.hoisted(() => ({
   open: vi.fn(),
   query: vi.fn<(sql: string) => Promise<Record<string, unknown>[]>>(),
+  needsBind: vi.fn<(sql: string) => boolean>(),
 }));
 
 vi.mock("../src/routes/ExploreSql.engine", async (importOriginal) => {
@@ -67,6 +68,8 @@ async function openNow(): Promise<void> {
 beforeEach(() => {
   session.open.mockReset();
   session.query.mockReset();
+  session.needsBind.mockReset();
+  session.needsBind.mockReturnValue(false);
   session.open.mockImplementation(
     (report: (stage: string) => void) =>
       new Promise((resolve) => {
@@ -77,6 +80,7 @@ beforeEach(() => {
             manifestCid: "bafkreitest",
             fallbackLabel: null,
             query: session.query,
+            needsBind: session.needsBind,
             close: async () => undefined,
           });
       }),
@@ -261,5 +265,41 @@ describe("Only the SQL panel and the A-03 Permits loader import the engine (R2)"
     expect(importers).toEqual(["engine/load-permits.ts", "routes/ExploreSql.engine.ts"]);
     const explore = readFileSync(join(root, "routes", "Explore.tsx"), "utf8");
     expect(explore).not.toMatch(/from\s+["']\.\/ExploreSql["']/);
+  });
+});
+
+describe("SQL panel A13-7 follow-ups (A-16 T051)", () => {
+  it("explains the first-query wait in a status note while a view is bound", async () => {
+    session.needsBind.mockReturnValue(true);
+    session.query.mockImplementation(() => new Promise(() => undefined));
+    await renderExplore("?mode=sql");
+    await openNow();
+    fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+    const note = await screen.findByRole("status");
+    expect(note.hasAttribute("data-sql-bind-note")).toBe(true);
+    expect(note.textContent).toContain("First query on this view");
+    expect(screen.getByRole("progressbar", { name: "Running the query" })).toBeDefined();
+  });
+
+  it("shows no note when the views are already bound", async () => {
+    session.query.mockImplementation(() => new Promise(() => undefined));
+    await renderExplore("?mode=sql");
+    await openNow();
+    fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+    await waitFor(() => expect(session.query).toHaveBeenCalled());
+    expect(document.querySelector("[data-sql-bind-note]")).toBeNull();
+  });
+
+  it("offers Retry on the engine-error banner and opens the engine again", async () => {
+    session.open.mockImplementationOnce(async () => {
+      throw new Error("The query engine could not start");
+    });
+    await renderExplore("?mode=sql");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("The query engine could not start");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(session.open).toHaveBeenCalledTimes(2));
+    release();
+    expect(await screen.findByRole("textbox", { name: "SQL" })).toBeDefined();
   });
 });

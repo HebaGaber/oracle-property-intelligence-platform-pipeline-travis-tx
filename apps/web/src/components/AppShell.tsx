@@ -22,24 +22,48 @@ import {
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { COMING_SOON_ITEMS } from "../content/coming-soon";
 import { MORE_PAGES } from "../routes/route-list";
+
+import {
+  AdminAccessProvider,
+  AdminChip,
+  AdminMoreLink,
+  AdminNavItem,
+  hasStoredSession,
+} from "./AdminNav";
 import { CountySelect } from "./CountySelect";
+import { HelpMenu } from "./HelpMenu";
+import { SyncBadge } from "./SyncBadge";
+import { Icon } from "./Icon";
 import styles from "./AppShell.module.css";
 
 export const APP_TITLE = "CountyLens";
 export const MORE_LABEL = "More";
+/** Shell1440 board: the app bar's "Ask" entry opens Explore's AI tab. */
+export const ASK_LABEL = "Ask";
+export const ASK_PATH = `${ROUTES.explore}?mode=ai`;
+/** A13-7: the accessible name of the focusable scroll container `<main>`. */
+export const MAIN_LABEL = "Page content";
 
 export interface Destination {
   readonly to: string;
   readonly label: string;
   /** Material Symbols Rounded glyph name (Atlas § 6). */
   readonly icon: string;
+  /** Shell390More board: false = not in the bottom navigation below 600 px (listed in More). */
+  readonly compact?: false;
 }
 
 export const DESTINATIONS: readonly Destination[] = [
-  { to: ROUTES.explore, label: "Explore", icon: "travel_explore" },
+  { to: ROUTES.explore, label: "Explore", icon: "map" },
   { to: ROUTES.runs, label: "Runs", icon: "history" },
-  { to: ROUTES.coverage, label: "Coverage", icon: "fact_check" },
-  { to: ROUTES.dataManifest, label: "Data", icon: "database" },
+  { to: ROUTES.coverage, label: "Coverage", icon: "donut_small", compact: false },
+  { to: ROUTES.dataManifest, label: "Data", icon: "dataset" },
+];
+
+/** More sheet rows shown only below 600 px (Shell390More board: Coverage and SQL). */
+const COMPACT_MORE: readonly { readonly to: string; readonly label: string }[] = [
+  { to: ROUTES.coverage, label: "Coverage" },
+  { to: `${ROUTES.explore}?mode=sql`, label: "SQL" },
 ];
 
 function Glyph({ name }: { readonly name: string }): ReactElement {
@@ -63,7 +87,12 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
       }
       if (event.key !== "Tab") return;
       // Focus trap: Tab and Shift+Tab cycle inside the sheet.
-      const items = Array.from(sheet.current?.querySelectorAll<HTMLElement>("a[href]") ?? []);
+      // From 600 px the compact-only rows are display:none and cannot take focus.
+      const wide =
+        typeof window.matchMedia === "function" && window.matchMedia("(min-width: 600px)").matches;
+      const items = Array.from(
+        sheet.current?.querySelectorAll<HTMLElement>("a[href]") ?? [],
+      ).filter((a) => !(wide && a.closest(`.${styles.compactOnly}`) !== null));
       const first = items[0];
       const last = items[items.length - 1];
       if (first === undefined || last === undefined) return;
@@ -91,6 +120,16 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
     >
       <h2 className={styles.sheetTitle}>Pages</h2>
       <ul className={styles.sheetList}>
+        {COMPACT_MORE.map((page) => (
+          <li key={page.to} className={styles.compactOnly}>
+            <Link to={page.to} className={styles.sheetItem} onClick={onClose}>
+              {page.label}
+            </Link>
+          </li>
+        ))}
+        <li className={styles.compactOnly}>
+          <AdminMoreLink className={styles.sheetItem} onClick={onClose} />
+        </li>
         {MORE_PAGES.map((page) => (
           <li key={page.path}>
             <Link to={page.path} className={styles.sheetItem} onClick={onClose}>
@@ -142,57 +181,104 @@ export function AppShell(): ReactElement {
     wasOpen.current = moreOpen;
   }, [moreOpen]);
 
+  // Ask admin.me again whenever a session appears or goes (sign-in, sign-out); none = no request.
+  const sessionKey = hasStoredSession() ? "session" : "signed-out";
+
   return (
-    <div className={styles.shell}>
-      <header
-        inert={moreOpen}
-        className={scrolled ? `${styles.bar} ${styles.barScrolled}` : styles.bar}
-      >
-        <h1 className={styles.title}>
-          <Link to={ROUTES.hub} className={styles.titleLink}>
-            {APP_TITLE}
-          </Link>
-        </h1>
-      </header>
-      <nav className={styles.nav} aria-label="Primary" inert={moreOpen}>
-        {DESTINATIONS.map((destination) => (
-          <NavLink
-            key={destination.to}
-            to={destination.to}
-            className={({ isActive }) =>
-              isActive ? `${styles.item} ${styles.itemActive}` : styles.item
-            }
+    <AdminAccessProvider key={sessionKey}>
+      <div className={styles.shell}>
+        <header
+          inert={moreOpen}
+          className={scrolled ? `${styles.bar} ${styles.barScrolled}` : styles.bar}
+        >
+          <h1 className={styles.title}>
+            <Link to={ROUTES.hub} className={styles.titleLink}>
+              {APP_TITLE}
+            </Link>
+          </h1>
+          {inCounty ? (
+            <div className={styles.location}>
+              <CountySelect />
+            </div>
+          ) : null}
+          <div className={styles.actions}>
+            <AdminChip className={styles.adminChip} />
+            <span className={styles.sync}>
+              <SyncBadge />
+            </span>
+            <HelpMenu />
+            <Link to={ASK_PATH} className={styles.ask} aria-label={ASK_LABEL}>
+              <Icon name="smart_toy" size="medium" />
+              <span className={styles.askText} aria-hidden="true">
+                {ASK_LABEL}
+              </span>
+            </Link>
+          </div>
+        </header>
+        <nav className={styles.nav} aria-label="Primary" inert={moreOpen}>
+          {DESTINATIONS.map((destination) => (
+            <NavLink
+              key={destination.to}
+              to={destination.to}
+              className={({ isActive }) =>
+                [
+                  styles.item,
+                  isActive ? styles.itemActive : "",
+                  destination.compact === false ? styles.compactHidden : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+              }
+            >
+              <span className={styles.pill}>
+                <Glyph name={destination.icon} />
+              </span>
+              <span className={styles.label}>{destination.label}</span>
+            </NavLink>
+          ))}
+          <AdminNavItem
+            classes={{
+              item: `${styles.item} ${styles.compactHidden}`,
+              itemActive: styles.itemActive,
+              pill: styles.pill,
+              label: styles.label,
+            }}
+          />
+          <button
+            ref={moreButton}
+            type="button"
+            className={styles.more}
+            aria-expanded={moreOpen}
+            aria-controls="more-sheet"
+            onClick={() => setMoreOpen((open) => !open)}
           >
             <span className={styles.pill}>
-              <Glyph name={destination.icon} />
+              <Glyph name="more_horiz" />
             </span>
-            <span className={styles.label}>{destination.label}</span>
-          </NavLink>
-        ))}
-        <button
-          ref={moreButton}
-          type="button"
-          className={styles.more}
-          aria-expanded={moreOpen}
-          aria-controls="more-sheet"
-          onClick={() => setMoreOpen((open) => !open)}
+            <span className={styles.label}>{MORE_LABEL}</span>
+          </button>
+        </nav>
+        {moreOpen ? (
+          <>
+            <div
+              className={styles.scrim}
+              data-more-scrim=""
+              onClick={closeMore}
+              aria-hidden="true"
+            />
+            <MoreSheet onClose={closeMore} />
+          </>
+        ) : null}
+        <main
+          className={styles.main}
+          onScroll={onScroll}
+          inert={moreOpen}
+          tabIndex={0}
+          aria-label={MAIN_LABEL}
         >
-          <span className={styles.pill}>
-            <Glyph name="more_horiz" />
-          </span>
-          <span className={styles.label}>{MORE_LABEL}</span>
-        </button>
-      </nav>
-      {moreOpen ? (
-        <>
-          <div className={styles.scrim} data-more-scrim="" onClick={closeMore} aria-hidden="true" />
-          <MoreSheet onClose={closeMore} />
-        </>
-      ) : null}
-      <main className={styles.main} onScroll={onScroll} inert={moreOpen} tabIndex={0}>
-        {inCounty ? <CountySelect /> : null}
-        <Outlet />
-      </main>
-    </div>
+          <Outlet />
+        </main>
+      </div>
+    </AdminAccessProvider>
   );
 }
