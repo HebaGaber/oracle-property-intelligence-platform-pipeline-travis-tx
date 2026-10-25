@@ -39,7 +39,7 @@ None of 1 to 6 was visible to the unit, contract or CDK tests; each was found by
 ## What works and what does not
 
 - Works on the small run: the whole path (browser or MCP client, rewrite, API, run list, model call through the AI SDK and Bedrock, tools, citations, honest empty and missing-data answers).
-- Does not work: any question that reads property data on Run 1 or Run 2. The agent ends in HTTP 500 after 25 s (the AI tab shows an error state; the exact wording is recorded in the UI test evidence); the MCP data tools do the same. `list_runs` and the auth checks (401, 429) are unaffected.
+- Does not work: any question that reads property data on Run 1 or Run 2. The agent ends in HTTP 500 after 25 s (its Lambda timeout; the AI tab shows an error state, the exact wording is recorded in the UI test evidence). The MCP data tools end at their own 15 s Lambda timeout with a bare gateway error, not a typed answer (no per-call deadline: a gap noted in the final review, not fixed here). `list_runs` and the 401 and 403 checks are unaffected; the burst behaviour (429 versus 503) is a separate, recorded deviation (ERR-64, `DEC-A-14-mcp-burst-503.md`).
 - Nothing shows sample data. Answers on the small run are mostly "no match", and say so.
 
 ## How to close it (A-16, gap with A-13 item 1)

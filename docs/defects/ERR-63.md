@@ -70,7 +70,7 @@ retest_date: 2026-10-25
 
 | Field | Value |
 | --- | --- |
-| Root cause | not investigated (reported only) |
-| Fix | |
-| Re-test | |
+| Root cause | `missing[]` used internal field names and the response carried no budget figures. |
+| Fix | c741363 and 830c4c5 (contract names `bbb_status`, `contractor.name_as_printed`; `modelCalls`, `outputTokens`, `durationMs`, `traceId` added as optional fields) on `014-agent-and-mcp` |
+| Re-test | G5 and the budget check pass on the hosted agent, build `313d628`, 2026-10-25 |
 | Status | ☐ Closed ☐ Reopened, reason: |

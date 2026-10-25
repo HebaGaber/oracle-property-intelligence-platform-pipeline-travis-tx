@@ -71,7 +71,7 @@ A complete answer: either the matches, or an honest empty-result sentence ("no o
 
 | Field | Value |
 | --- | --- |
-| Root cause | not investigated (reported only) |
-| Fix | |
-| Re-test | |
+| Root cause | The model loop spent its whole tool budget loosening filters and its last text was a plan for another call; ask.ts returned that text as the answer with outcome `answered`. |
+| Fix | c741363 (last step forced text-only; an incomplete loop returns `failed` with what was tried; filter changes are stated) on `014-agent-and-mcp` |
+| Re-test | G2 passes on the hosted agent, build `313d628`, 2026-10-25 (`docs/evidence/A-14-agent.md`) |
 | Status | ☐ Closed ☐ Reopened, reason: |

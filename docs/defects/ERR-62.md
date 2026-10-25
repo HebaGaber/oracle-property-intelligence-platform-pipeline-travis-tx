@@ -69,7 +69,7 @@ System prompt in `apps/api/src/agent/ask.ts` `buildSystemPrompt` (nothing forbid
 
 | Field | Value |
 | --- | --- |
-| Root cause | not investigated (reported only) |
-| Fix | |
-| Re-test | |
+| Root cause | The model dropped the out-of-area-owner filter, widened the radius, and claimed good coverage; the owner mailing location is not in the published export, which nothing said. |
+| Fix | c741363 and 830c4c5 (filter changes disclosed; `owner_is_out_of_area` flagged in `missing[]` with a fixed sentence when the question asks about owners outside the area) on `014-agent-and-mcp` |
+| Re-test | G4 passes on the hosted agent, build `313d628`, 2026-10-25 (the empty_reason part is recorded as inconclusive on the small run) |
 | Status | ☐ Closed ☐ Reopened, reason: |

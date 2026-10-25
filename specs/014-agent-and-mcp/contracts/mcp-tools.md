@@ -11,7 +11,7 @@ Owner: `oracle`. Full detail: `../design-oracle.md`. Shared types: `../data-mode
 ## Auth
 
 - `Authorization: Bearer <token>` required on every call except `/health`. Token read from SSM SecureString at cold start (Powertools Parameters + cache); missing parameter → fail fast with a clear log line, no default (AD-10, AD-14). No token or wrong token → `401`, and no DuckDB bind/query runs for that request.
-- Browser `Origin` allowlist: empty by default — no legitimate browser origin should call `/mcp` directly; the website's own "Try a tool" control goes through a server-side tRPC proxy that adds the token, so the token never reaches the browser.
+- Browser `Origin` allowlist: empty by default — no legitimate browser origin should call `/mcp` directly; the website's own "Try a tool" control goes through a server-side tRPC proxy (`mcpProxy.callTool`) that calls the same tool functions in process and uses no token at all (it never imports the auth module), so the token never reaches the browser.
 - Rate limit: 5 rps, burst 10, at the route level (its own CDK throttle, not stage-wide); beyond it, `429`.
 
 ## The six tools (AD-21, exact names; each `inputSchema` is the matching query-core Zod schema, unchanged)

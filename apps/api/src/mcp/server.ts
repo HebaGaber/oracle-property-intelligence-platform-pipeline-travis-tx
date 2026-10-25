@@ -46,8 +46,9 @@ export const MCP_HEALTH_PATH = "/health";
 export const SERVER_NAME = "countylens-mcp";
 export const SERVER_VERSION = "1.0.0";
 
-/** One McpServer per Lambda sandbox (tool registrations are static); a fresh transport connects
- *  to it for every request (stateless mode requires this — see module header). `obs` (Stage 5
+/** Builds one McpServer. The handler calls this once per request and closes it afterwards, with a
+ *  fresh transport each time: the SDK allows one transport per server, so a server shared across
+ *  requests fails every call after the first (found on the hosted site, fixed in ec9a7e7). `obs` (Stage 5
  *  review fix) is threaded into every registered tool so each call is logged and metered
  *  (observability.ts's `recordToolCall`). */
 export function buildMcpServer(

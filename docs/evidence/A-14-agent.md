@@ -256,4 +256,4 @@ Notes on the history:
 - G1 to G4 over real rows: **not measured** (the small run has none near Pflugerville, Manor or Lakeway; the full county times out; A-16).
 - An answered G2 contractor line with a real contractor name: not possible, the published export carries no contractor name (`contractor.name_as_printed` has no lexicon carrier, `docs/decisions/0002-lexicon-carriers.md`).
 - p95 over the full county, the `AI_PROVIDER=gateway` run and the Explore-page leg of AC-8: **not measured**.
-- The `donphan` transcript through MCP: pending (see `docs/evidence/A-14.md`).
+- The `donphan` transcript through MCP: done, in `docs/evidence/A-14-mcp.md` (honest empty answer on the small pinned run).
