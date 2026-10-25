@@ -108,6 +108,7 @@ describe("pnpm-workspace.yaml (plan § Project Structure)", () => {
       "packages/*",
       "profiles/*",
       "pipeline/publish",
+      "pipeline/bridge",
       "apps/*",
       "infra",
       "tests/e2e",
