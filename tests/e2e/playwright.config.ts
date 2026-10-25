@@ -37,6 +37,13 @@ const PERMITS = "permits.spec.ts";
 // The manifest cases download every published CAR (~2.8 GB for Run 2); a page case run after
 // them in the same worker stalled (A-03-TC-012), so they form their own CI job too.
 const MANIFEST = "manifest.spec.ts";
+// A-13's long spec files each get their own CI job, so they run side by side instead of one after
+// the other on the `site` runner (about 40 min in one worker; each is 10-13 min alone).
+const A13_SHARDS = {
+  "a13-explorer": "A-13-explorer.spec.ts",
+  "a13-pages": "A-13-pages.spec.ts",
+  "a13-scan": "A-13-scan.spec.ts",
+} as const;
 // One report and output folder per CI phase, so the second invocation never clears the first.
 const phase = process.env.PW_PHASE ?? "all";
 
@@ -85,9 +92,16 @@ export default defineConfig({
       testMatch: `**/${MANIFEST}`,
       use: { ...devices["Desktop Chrome"] },
     },
+    ...Object.entries(A13_SHARDS).map(([name, file]) => ({
+      name,
+      testMatch: `**/${file}`,
+      use: { ...devices["Desktop Chrome"] },
+    })),
     {
       name: "site",
-      testIgnore: [...ISOLATED, PERMITS, MANIFEST].map((f) => `**/${f}`),
+      testIgnore: [...ISOLATED, PERMITS, MANIFEST, ...Object.values(A13_SHARDS)].map(
+        (f) => `**/${f}`,
+      ),
       use: { ...devices["Desktop Chrome"] },
     },
     {
