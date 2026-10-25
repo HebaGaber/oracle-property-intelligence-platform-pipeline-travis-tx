@@ -30,8 +30,12 @@ function fallbackLabel(host: string): string {
 /** D-2: the copy must deliver a first byte within 4 s; TC-034 delays it 5 s. */
 const FALLBACK_AFTER_MS = 4_000;
 const DELAY_MS = 5_000;
-/** CDP event delivery sits between the page's timer and the harness clock. */
-const TIMING_SLACK_MS = 100;
+/**
+ * CDP event delivery sits between the page's timer and the harness clock: the request event
+ * reaches the harness up to a few hundred ms after the page started its 4 s timer (measured
+ * 3,808 ms against a 4 s timeout on a loaded laptop, 2026-10-25), so 100 ms was too tight.
+ */
+const TIMING_SLACK_MS = 500;
 
 function cidOfUrl(url: URL): string {
   return url.pathname.split("/").filter(Boolean).at(-1) ?? "";
