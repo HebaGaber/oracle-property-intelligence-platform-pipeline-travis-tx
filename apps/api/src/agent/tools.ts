@@ -10,6 +10,11 @@
 // query-core functions/schemas — not these tool objects — because the MCP contract needs full
 // (<=1,000-row) envelopes with snake_case names (AD-21), which would blow the agent's token
 // budget.
+// A-16 (AC-13, A14-5): a tool whose run has no usable Explore index returns
+// `{ error: index_not_built | index_stale, message }` instead of throwing; the out-of-area filter on
+// a run with no owner area adds `owner_area: { status: "not_published" }`; and a fifth tool,
+// `declareUnpublished`, lets the model state which asked-for fields the export does not carry, so
+// ask.ts builds missing[] from tool results instead of the question's wording.
 import { tool } from "ai";
 import { z } from "zod";
 import {
@@ -25,8 +30,28 @@ import {
   type ResultEnvelope,
   type Row,
 } from "@countylens/query-core";
+import { isIndexUnavailable } from "../engine/explore-index.js";
 import { raceAbort } from "./abort.js";
-import type { CitationRegistry } from "./citations.js";
+import { UNPUBLISHED_FIELDS, type CitationRegistry, type UnpublishedField } from "./citations.js";
+
+/** Same notice as explore.search and MCP search_properties. */
+export const OWNER_AREA_NOTICE = {
+  status: "not_published",
+  reason: "owner_area_not_published",
+  message: "owner area not published in this run",
+} as const;
+
+/** Index errors become a tool result the model and ask.ts can read; anything else still throws. */
+async function indexSafe(
+  run: () => Promise<Record<string, unknown>>,
+): Promise<Record<string, unknown>> {
+  try {
+    return await run();
+  } catch (error) {
+    if (isIndexUnavailable(error)) return { error: error.reason, message: error.message };
+    throw error;
+  }
+}
 
 /** Rows the model sees per tool call (agent-design.md § 5): a compact projection, never the full
  *  row and never more than this many per call, so three tool calls over 1,000-row envelopes stay
@@ -48,6 +73,8 @@ export interface AgentToolsContext {
   readonly registry: CitationRegistry;
   /** Registry cap override (tests); defaults to `MAX_REGISTERED_ROWS`. */
   readonly maxRegisteredRows?: number;
+  /** Whether the bound run publishes any owner area (default: assumed published). */
+  readonly ownerAreaPublished?: () => Promise<boolean>;
 }
 
 function projectProperty(n: number, row: Row): Record<string, unknown> {
@@ -144,13 +171,21 @@ export function createAgentTools(ctx: AgentToolsContext) {
     // containing refinements"); the agent pins one run per conversation, so every execute()
     // below drops any manifest_cid the model supplies rather than trusting it.
     inputSchema: SearchPropertiesInput,
-    execute: async (input, options) => {
-      const envelope = await raceAbort(
-        searchPropertiesFn(engine, bound, { ...input, manifest_cid: undefined }),
-        options?.abortSignal,
-      );
-      return projectEnvelope(envelope, registry, projectProperty, cap);
-    },
+    execute: async (input, options) =>
+      indexSafe(async () => {
+        const envelope = await raceAbort(
+          searchPropertiesFn(engine, bound, { ...input, manifest_cid: undefined }),
+          options?.abortSignal,
+        );
+        const projected = projectEnvelope(envelope, registry, projectProperty, cap);
+        if (
+          input.owner_is_out_of_area === true &&
+          ctx.ownerAreaPublished !== undefined &&
+          !(await ctx.ownerAreaPublished())
+        )
+          return { ...projected, owner_area: OWNER_AREA_NOTICE };
+        return projected;
+      }),
   });
 
   const searchRoofingPermits = tool({
@@ -160,13 +195,14 @@ export function createAgentTools(ctx: AgentToolsContext) {
       "number (format 'YYYY-NNNNNN XX'). Omitting the area searches county-wide. Returns a " +
       "compact list of matches, each carrying a citation index n -- cite rows as [n].",
     inputSchema: ListPermitsInput,
-    execute: async (input, options) => {
-      const envelope = await raceAbort(
-        listPermitsFn(engine, bound, { ...input, manifest_cid: undefined }),
-        options?.abortSignal,
-      );
-      return projectEnvelope(envelope, registry, projectPermit, cap);
-    },
+    execute: async (input, options) =>
+      indexSafe(async () => {
+        const envelope = await raceAbort(
+          listPermitsFn(engine, bound, { ...input, manifest_cid: undefined }),
+          options?.abortSignal,
+        );
+        return projectEnvelope(envelope, registry, projectPermit, cap);
+      }),
   });
 
   const getProperty = tool({
@@ -174,16 +210,34 @@ export function createAgentTools(ctx: AgentToolsContext) {
       "Look up one property by its CID or by the TCAD parcel identifier exactly as printed, " +
       "including its roofing permits.",
     inputSchema: GetPropertyInput,
-    execute: async (input, options) => {
-      const envelope = await raceAbort(
-        getPropertyFn(engine, bound, { ...input, manifest_cid: undefined }),
-        options?.abortSignal,
-      );
-      return projectEnvelope(envelope, registry, projectProperty, cap);
-    },
+    execute: async (input, options) =>
+      indexSafe(async () => {
+        const envelope = await raceAbort(
+          getPropertyFn(engine, bound, { ...input, manifest_cid: undefined }),
+          options?.abortSignal,
+        );
+        return projectEnvelope(envelope, registry, projectProperty, cap);
+      }),
   });
 
-  return { geocodePlace, searchProperties, searchRoofingPermits, getProperty };
+  const fields = Object.keys(UNPUBLISHED_FIELDS) as [UnpublishedField, ...UnpublishedField[]];
+  const declareUnpublished = tool({
+    description:
+      "Declare which fields the question asks about that the published export does not carry: " +
+      "owner_is_out_of_area (owners living outside the area / absentee owners: the owner's mailing " +
+      "location is not published), contractor.name_as_printed (the contractor's name), bbb_status " +
+      "(BBB rating). Call it in the same step as your search whenever the question asks about any " +
+      "of them; the answer then states they are not available.",
+    inputSchema: z.object({ fields: z.array(z.enum(fields)).min(1).max(fields.length) }).strict(),
+    execute: async ({ fields: asked }) => ({
+      unpublished: [...new Set(asked)].map((field) => ({
+        field,
+        reason: UNPUBLISHED_FIELDS[field],
+      })),
+    }),
+  });
+
+  return { geocodePlace, searchProperties, searchRoofingPermits, getProperty, declareUnpublished };
 }
 
 export type AgentTools = ReturnType<typeof createAgentTools>;

@@ -13,6 +13,8 @@ import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { QueryEngine } from "@countylens/query-core";
+import { IndexUnavailableError } from "../src/engine/explore-index.js";
+import { emptyOutcomeOf } from "../src/agent/citations.js";
 import {
   abortMs,
   AgentAskInput,
@@ -396,6 +398,19 @@ const EMPTY_ENVELOPE = (applied: Record<string, unknown>, extra: Record<string, 
   ...extra,
 });
 
+/** A-16 A14-5: the declareUnpublished tool's output (fields the export does not carry). */
+const DECLARED = (...fields: string[]) => ({
+  unpublished: fields.map((field) => ({
+    field,
+    reason: field === "owner_is_out_of_area" ? "not_in_export" : "no_lexicon_carrier",
+  })),
+});
+const DECLARE_STEP = (...fields: string[]) => ({
+  tool: "declareUnpublished",
+  input: { fields },
+  summary: "",
+});
+
 describe("ERR-61: an unfinished loop is never 'answered'", () => {
   it("budget exhausted on tool calls -> failed, planning text not surfaced, tried calls listed", async () => {
     const loop: RunModelLoop = async () => ({
@@ -489,8 +504,14 @@ describe("ERR-62/63: contract missing[] names and honest owner-location statemen
   it("contractor/BBB questions flag the contract names, not the column names", async () => {
     const loop: RunModelLoop = async () => ({
       text: "Permit 2026-1 has no BBB data.",
-      steps: [{ tool: "searchRoofingPermits", input: { permit_number: "2026-1 BP" }, summary: "" }],
-      toolOutputs: [EMPTY_ENVELOPE({ permit_number: "2026-1 BP" })],
+      steps: [
+        { tool: "searchRoofingPermits", input: { permit_number: "2026-1 BP" }, summary: "" },
+        DECLARE_STEP("contractor.name_as_printed", "bbb_status"),
+      ],
+      toolOutputs: [
+        EMPTY_ENVELOPE({ permit_number: "2026-1 BP" }),
+        DECLARED("contractor.name_as_printed", "bbb_status"),
+      ],
       totalTokens: 10,
     });
     const result = await runAgentAsk(
@@ -543,8 +564,12 @@ describe("ERR-61..63 follow-up: golden G2/G4/G5 deterministic rules", () => {
             input: { status_class: "open", open_years_min: 5 },
             summary: "",
           },
+          DECLARE_STEP("contractor.name_as_printed", "bbb_status"),
         ],
-        toolOutputs: [EMPTY_ENVELOPE({ radius_mi: 5, status_class: "open", open_years_min: 5 })],
+        toolOutputs: [
+          EMPTY_ENVELOPE({ radius_mi: 5, status_class: "open", open_years_min: 5 }),
+          DECLARED("contractor.name_as_printed", "bbb_status"),
+        ],
         totalTokens: 10,
       };
     };
@@ -567,8 +592,8 @@ describe("ERR-61..63 follow-up: golden G2/G4/G5 deterministic rules", () => {
   it("G2: contractor not printed applies even when no permit search happened", async () => {
     const loop: RunModelLoop = async () => ({
       text: "I could not run that.",
-      steps: [],
-      toolOutputs: [],
+      steps: [DECLARE_STEP("contractor.name_as_printed")],
+      toolOutputs: [DECLARED("contractor.name_as_printed")],
       totalTokens: 5,
     });
     const result = await runAgentAsk(
@@ -582,8 +607,8 @@ describe("ERR-61..63 follow-up: golden G2/G4/G5 deterministic rules", () => {
   it("G2: the model's own 'names are not available' wording does not suppress the contract phrase 'contractor not printed'", async () => {
     const loop: RunModelLoop = async () => ({
       text: "Contractor names are **not available** in the published export.",
-      steps: [],
-      toolOutputs: [],
+      steps: [DECLARE_STEP("contractor.name_as_printed")],
+      toolOutputs: [DECLARED("contractor.name_as_printed")],
       totalTokens: 5,
     });
     const result = await runAgentAsk(
@@ -593,11 +618,38 @@ describe("ERR-61..63 follow-up: golden G2/G4/G5 deterministic rules", () => {
     expect(result.answer).toMatch(/contractor not printed/);
   });
 
-  it("G4: owners-outside-area question flags owner_is_out_of_area even when the model dropped that filter", async () => {
+  it("A14-5: question wording alone flags nothing; missing[] comes from tool results only", async () => {
     const loop: RunModelLoop = async () => ({
       text: "Found homes with 10+ years of tenure.",
       steps: [{ tool: "searchProperties", input: { tenure_years_min: 10 }, summary: "" }],
       toolOutputs: [EMPTY_ENVELOPE({ radius_mi: 5, tenure_years_min: 10 })],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk(
+      {
+        prompt:
+          "Which homes near Lakeway haven't changed owners in 10+ years, have owners outside the area, and who is the contractor and BBB rating?",
+      },
+      baseDeps({ runModelLoop: loop }),
+    );
+    const fields = result.missing.map((m) => m.field);
+    expect(fields).not.toContain("owner_is_out_of_area");
+    expect(fields).not.toContain("bbb_status");
+    expect(fields).not.toContain("contractor.name_as_printed");
+    expect(result.empty_outcome).toBe("empty_in_scope");
+  });
+
+  it("G4: owners-outside-area flagged from the declareUnpublished tool even when the model dropped that filter", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "Found homes with 10+ years of tenure.",
+      steps: [
+        { tool: "searchProperties", input: { tenure_years_min: 10 }, summary: "" },
+        DECLARE_STEP("owner_is_out_of_area"),
+      ],
+      toolOutputs: [
+        EMPTY_ENVELOPE({ radius_mi: 5, tenure_years_min: 10 }),
+        DECLARED("owner_is_out_of_area"),
+      ],
       totalTokens: 10,
     });
     const result = await runAgentAsk(
@@ -643,8 +695,8 @@ describe("ERR-61..63 follow-up: golden G2/G4/G5 deterministic rules", () => {
     };
     const loop: RunModelLoop = async () => ({
       text: "BBB rating is not available.",
-      steps: [],
-      toolOutputs: [],
+      steps: [DECLARE_STEP("bbb_status")],
+      toolOutputs: [DECLARED("bbb_status")],
       totalTokens: 10,
       modelCalls: 1,
     });
@@ -1027,11 +1079,11 @@ describe("honesty sentences only when true", () => {
     expect(asksOpenPermitDuration("owners who held the home for many years")).toBe(false);
   });
 
-  it("the 'many years' sentence is not added to an owner-tenure answer", async () => {
+  it("the 'many years' sentence is not added to an owner-tenure answer (no open_years_min applied)", async () => {
     const loop: RunModelLoop = async () => ({
       text: "Done.",
       steps: [],
-      toolOutputs: [EMPTY_ENVELOPE({ open_years_min: 5 })],
+      toolOutputs: [EMPTY_ENVELOPE({ tenure_years_min: 5 })],
       totalTokens: 10,
     });
     const result = await runAgentAsk(
@@ -1205,13 +1257,12 @@ describe("final review (donphan): run echo, gazetteer, BBB and unplaced-record r
   it("bbb_status is listed once: the match's specific reason wins over no_lexicon_carrier", () => {
     const specific = composeStructuredParts(
       [match({ bbb_status: "not_checked", bbb_status_reason: "contractor_unresolved" })],
-      [],
-      "Who is the contractor and BBB rating?",
+      [DECLARED("contractor.name_as_printed", "bbb_status")],
     );
     expect(specific.missing.filter((m) => m.field === "bbb_status")).toEqual([
       { field: "bbb_status", reason: "contractor_unresolved" },
     ]);
-    const generic = composeStructuredParts([], [], "What is the BBB rating of the contractor?");
+    const generic = composeStructuredParts([], [DECLARED("bbb_status")]);
     expect(generic.missing.filter((m) => m.field === "bbb_status")).toEqual([
       { field: "bbb_status", reason: "no_lexicon_carrier" },
     ]);
@@ -1258,5 +1309,67 @@ describe("final review (donphan): run echo, gazetteer, BBB and unplaced-record r
     expect(result.missing).toContainEqual({ field: "tenure_years", reason: "unknown" });
     expect(result.answer).toContain("2 records were left out because tenure years is unknown.");
     expect(result.answer).not.toMatch(/roof age years/);
+  });
+});
+
+describe("A-16: index and run-lookup failures are typed; empty answers carry a structured outcome", () => {
+  it("AC-13: a run with no Explore index -> failed with reason index_not_built, never a 5xx", async () => {
+    const result = await runAgentAsk(
+      INPUT,
+      baseDeps({
+        runModelLoop: okModelLoop(),
+        bindOnce: async () => {
+          throw new IndexUnavailableError("index_not_built", FAKE_BOUND.manifestCid);
+        },
+      }),
+    );
+    expect(result.outcome).toBe("failed");
+    expect(result.missing).toEqual([{ field: "result", reason: "index_not_built" }]);
+    expect(result.empty_outcome).toBe("index_not_built");
+    expect(result.answer).toMatch(/search index for this run is not built yet/i);
+  });
+
+  it("A14-6: an unreadable runs index -> failed with reason run_lookup_failed", async () => {
+    const result = await runAgentAsk(
+      { prompt: INPUT.prompt },
+      baseDeps({
+        runModelLoop: okModelLoop(),
+        resolveManifestCid: async () => {
+          throw new Error("runs index: GET answered 503");
+        },
+      }),
+    );
+    expect(result.outcome).toBe("failed");
+    expect(result.missing).toEqual([{ field: "run", reason: "run_lookup_failed" }]);
+    expect(result.answer).toMatch(/list of published runs/);
+  });
+
+  it("A14-5: empty_outcome comes from the tool envelopes (field_not_published beats no_match)", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "Nothing matched.",
+      steps: [{ tool: "searchProperties", input: {}, summary: "" }],
+      toolOutputs: [
+        { ...EMPTY_ENVELOPE({ radius_mi: 5 }), empty_reason: "field_not_published" },
+        EMPTY_ENVELOPE({ radius_mi: 10 }),
+      ],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk(INPUT, baseDeps({ runModelLoop: loop }));
+    expect(result.empty_outcome).toBe("field_not_published");
+    expect(result.answer).toContain("not published in this run");
+    expect(emptyOutcomeOf(1, [EMPTY_ENVELOPE({})])).toBeNull();
+    expect(emptyOutcomeOf(0, [])).toBeNull();
+    expect(emptyOutcomeOf(0, [{ error: "index_stale" }, EMPTY_ENVELOPE({})])).toBe("index_stale");
+  });
+
+  it("an owner_area not_published notice from a tool flags owner_is_out_of_area", () => {
+    const parts = composeStructuredParts(
+      [],
+      [{ ...EMPTY_ENVELOPE({}), owner_area: { status: "not_published" } }],
+    );
+    expect(parts.missing).toContainEqual({
+      field: "owner_is_out_of_area",
+      reason: "not_in_export",
+    });
   });
 });

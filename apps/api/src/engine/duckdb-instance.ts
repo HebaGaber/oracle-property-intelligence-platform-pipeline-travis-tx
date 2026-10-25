@@ -52,6 +52,8 @@ export function remoteReadCacheSql(httpfs: boolean): string[] {
 
 export interface DuckDbEngine extends QueryEngine {
   close(): void;
+  /** Stops the statement running on the connection (it rejects); A-16 per-call deadlines. */
+  interrupt?(): void;
 }
 
 /**
@@ -120,6 +122,9 @@ export async function openDuckDb(options: DuckDbOptions): Promise<DuckDbEngine> 
     close(): void {
       connection.closeSync();
       instance.closeSync();
+    },
+    interrupt(): void {
+      connection.interrupt();
     },
   };
 }

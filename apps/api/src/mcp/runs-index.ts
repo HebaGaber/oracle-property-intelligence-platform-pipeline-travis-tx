@@ -23,6 +23,17 @@ export const RUNS_INDEX_URL_ENV = "RUNS_INDEX_URL";
 
 const FETCH_TIMEOUT_MS = 5_000;
 
+/** A-14 item 8: a fetched runs index is reused this long per sandbox (one GET per minute at most
+ *  instead of one per tool call); a failed fetch is never cached. */
+export const RUNS_INDEX_CACHE_MS = 60_000;
+
+const urlCache = new Map<string, { readonly at: number; readonly index: RunsIndexV1 }>();
+
+/** Tests only: forget the cached runs index. */
+export function resetRunsIndexCache(): void {
+  urlCache.clear();
+}
+
 /** Overrides the local-file fallback's default repo-root `runs/index.json` path (the stdio
  *  build, or tests). Only consulted when `RUNS_INDEX_URL` is unset. */
 export const RUNS_INDEX_PATH_ENV = "RUNS_INDEX_PATH";
@@ -58,7 +69,12 @@ export async function loadRunsIndex(
   signal?: AbortSignal,
 ): Promise<RunsIndexV1> {
   const url = env[RUNS_INDEX_URL_ENV];
-  return url !== undefined && url !== "" ? loadFromUrl(url, signal) : loadFromLocalFile(env);
+  if (url === undefined || url === "") return loadFromLocalFile(env);
+  const cached = urlCache.get(url);
+  if (cached !== undefined && Date.now() - cached.at < RUNS_INDEX_CACHE_MS) return cached.index;
+  const index = await loadFromUrl(url, signal);
+  urlCache.set(url, { at: Date.now(), index });
+  return index;
 }
 
 export interface RunsIndexEntry {

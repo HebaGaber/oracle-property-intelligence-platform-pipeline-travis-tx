@@ -172,3 +172,108 @@ export function createCitationRegistry(): CitationRegistry {
     },
   };
 }
+
+// ---------------------------------------------------------------------------------------
+// A-16 A14-5 (Task B's structured empty outcomes, roofing-crm composeAnswer.ts): an answer with no
+// cited row says WHY, derived only from what the tools returned (their empty_reason, an error
+// reason, the declareUnpublished tool), never from the question's wording.
+// ---------------------------------------------------------------------------------------
+
+export const EMPTY_OUTCOMES = [
+  "empty_in_scope",
+  "field_not_published",
+  "out_of_scope",
+  "not_found",
+  "run_not_found",
+  "index_not_built",
+  "index_stale",
+] as const;
+export type EmptyOutcome = (typeof EMPTY_OUTCOMES)[number];
+
+/** Most specific first: a run that cannot be read beats a scope problem beats a field gap. */
+const OUTCOME_PRIORITY: readonly EmptyOutcome[] = [
+  "index_not_built",
+  "index_stale",
+  "run_not_found",
+  "out_of_scope",
+  "field_not_published",
+  "not_found",
+  "empty_in_scope",
+];
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The structured outcome of a turn that cited nothing: `null` when any row matched or no search
+ * ran at all. A search tool output (it carries `applied`) with `empty_reason` `no_match` (or none)
+ * is `empty_in_scope`; `field_not_published`, `out_of_scope`, `not_found` and `run_not_found` pass
+ * through; a tool output with `error: index_not_built | index_stale` names the index problem.
+ */
+export function emptyOutcomeOf(
+  matchCount: number,
+  toolOutputs: readonly Record<string, unknown>[],
+): EmptyOutcome | null {
+  if (matchCount > 0) return null;
+  const seen = new Set<EmptyOutcome>();
+  for (const output of toolOutputs) {
+    const error = output.error;
+    if (error === "index_not_built" || error === "index_stale") {
+      seen.add(error);
+      continue;
+    }
+    if (!isObject(output.applied)) continue;
+    const reason = output.empty_reason;
+    if (
+      reason === "field_not_published" ||
+      reason === "out_of_scope" ||
+      reason === "not_found" ||
+      reason === "run_not_found"
+    )
+      seen.add(reason);
+    else seen.add("empty_in_scope");
+  }
+  return OUTCOME_PRIORITY.find((o) => seen.has(o)) ?? null;
+}
+
+/** The plain sentence each outcome adds when the answer cites nothing. */
+export const EMPTY_OUTCOME_SENTENCES: Readonly<Record<EmptyOutcome, string>> = {
+  empty_in_scope: "No records in this run match these filters in the searched area.",
+  field_not_published:
+    "No records can be returned: a field this search filters on is not published in this run.",
+  out_of_scope: "That place is outside Travis County, which is the only county in this run.",
+  not_found: "No record with that identifier is in this run.",
+  run_not_found: "That run is not in the published runs list.",
+  index_not_built: "The search index for this run is not built yet, so it cannot be searched.",
+  index_stale: "The search index for this run is out of date, so it cannot be searched.",
+};
+
+/** Fields the published export does not carry, with the contract reason (columns.ts UNCARRIED). */
+export const UNPUBLISHED_FIELDS = {
+  owner_is_out_of_area: "not_in_export",
+  "contractor.name_as_printed": "no_lexicon_carrier",
+  bbb_status: "no_lexicon_carrier",
+} as const;
+export type UnpublishedField = keyof typeof UNPUBLISHED_FIELDS;
+
+/** `missing[]` entries from structured tool results only: the `declareUnpublished` tool's
+ *  `unpublished` list, an `owner_area: not_published` notice, and an applied out-of-area filter. */
+export function unpublishedFromTools(
+  toolOutputs: readonly Record<string, unknown>[],
+): { field: string; reason: string }[] {
+  const out: { field: string; reason: string }[] = [];
+  for (const output of toolOutputs) {
+    if (Array.isArray(output.unpublished)) {
+      for (const entry of output.unpublished as unknown[]) {
+        if (isObject(entry) && typeof entry.field === "string" && typeof entry.reason === "string")
+          out.push({ field: entry.field, reason: entry.reason });
+      }
+    }
+    const ownerArea = output.owner_area;
+    if (isObject(ownerArea) && ownerArea.status === "not_published")
+      out.push({ field: "owner_is_out_of_area", reason: UNPUBLISHED_FIELDS.owner_is_out_of_area });
+    if (isObject(output.applied) && output.applied.owner_is_out_of_area === true)
+      out.push({ field: "owner_is_out_of_area", reason: UNPUBLISHED_FIELDS.owner_is_out_of_area });
+  }
+  return out;
+}

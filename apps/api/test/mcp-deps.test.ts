@@ -14,6 +14,7 @@ vi.mock("../src/engine/duckdb-node.js", () => ({
 }));
 
 import { createEngineDeps } from "../src/mcp/deps.js";
+import { asRun } from "../src/mcp/tools.js";
 
 const CID1 = `ba${"a".repeat(60)}`;
 const CID2 = `ba${"b".repeat(60)}`;
@@ -68,22 +69,22 @@ describe("createEngineDeps().resolveRun", () => {
   it("binds the named manifest_cid without reading the runs index", async () => {
     process.env.RUNS_INDEX_PATH = join(dir, "does-not-exist.json"); // would throw if it were read
     const ctx = await createEngineDeps().resolveRun(CID1);
-    expect(ctx?.bound).toBe(BOUND);
+    expect(asRun(ctx)?.bound).toBe(BOUND);
     expect(edge.bindOnce).toHaveBeenCalledWith(CID1, ["v_run"]);
   });
 
   it("falls back to the newest run of the runs index when no manifest_cid is given", async () => {
     const ctx = await createEngineDeps().resolveRun(undefined);
-    expect(ctx?.bound).toBe(BOUND);
+    expect(asRun(ctx)?.bound).toBe(BOUND);
     expect(edge.bindOnce).toHaveBeenCalledWith(CID2, ["v_run"]);
   });
 
   it("returns an engine that lazily binds only the views a statement reads", async () => {
     const ctx = await createEngineDeps().resolveRun(CID1);
     edge.bindOnce.mockClear();
-    await ctx?.engine.all("SELECT 1");
+    await asRun(ctx)?.engine.all("SELECT 1");
     expect(edge.bindOnce).not.toHaveBeenCalled();
-    await ctx?.engine.all("SELECT * FROM v_roofing_permit");
+    await asRun(ctx)?.engine.all("SELECT * FROM v_roofing_permit");
     expect(edge.bindOnce).toHaveBeenCalledTimes(1);
     expect(edge.bindOnce.mock.calls[0]?.[0]).toBe(CID1);
     expect(edge.bindOnce.mock.calls[0]?.[1]).toContain("v_roofing_permit");
@@ -96,9 +97,11 @@ describe("createEngineDeps().resolveRun", () => {
     expect(edge.bindOnce).not.toHaveBeenCalled();
   });
 
-  it("resolves undefined when the index cannot be read or bind fails", async () => {
+  it("A14-6: an unreadable runs index is run_lookup_failed; a failed bind of a named run is run_not_found", async () => {
     process.env.RUNS_INDEX_PATH = join(dir, "missing.json");
-    await expect(createEngineDeps().resolveRun()).resolves.toBeUndefined();
+    await expect(createEngineDeps().resolveRun()).resolves.toMatchObject({
+      failure: "run_lookup_failed",
+    });
     edge.bindOnce.mockRejectedValue(new Error("bind failed"));
     await expect(createEngineDeps().resolveRun(CID1)).resolves.toBeUndefined();
   });
