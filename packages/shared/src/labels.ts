@@ -9,6 +9,7 @@
 // test/missing-labels.test.ts walks MISSING_REASONS at run time (A-03-TC-027).
 import {
   MISSING_REASONS,
+  type COLUMN_ENUMS,
   type COVERAGE_DERIVATIONS,
   type MissingReason,
 } from "@countylens/contract";
@@ -36,6 +37,26 @@ export const MISSING_REASON_LABELS = Object.freeze({
   owner_unparsed: "Owner name could not be parsed",
   owner_confidential: "Owner is confidential (TCAD)",
 } satisfies Record<MissingReason, string>);
+
+/**
+ * A-11 Run 3 (ADR 0003): the UI wording for `coordinate_source`, one row per value of the
+ * contract's closed list. `address_point` is the City of Austin address-point layer: an exact,
+ * unique match of the situs address, a building-level point (median 24 m from the GIS point on
+ * the accounts that have both). `satisfies` makes tsc fail on a missing or an unknown key.
+ */
+export const COORDINATE_SOURCE_LABELS = Object.freeze({
+  gis_centroid: "Parcel point (Travis County GIS)",
+  address_point: "address point (City of Austin)",
+  permit_point: "Permit location",
+  none: "No coordinates",
+} satisfies Record<(typeof COLUMN_ENUMS.coordinate_source)[number], string>);
+
+/**
+ * Provenance line shown with an `address_point`: where the point comes from and how it was
+ * matched. The per-property request URL is on the published geometry record.
+ */
+export const ADDRESS_POINT_PROVENANCE_TEXT =
+  "City of Austin public address-point layer, exact match on house number and street (unit ignored); one point only";
 
 /**
  * D-2: a contractor field whose reason is `source_missing` means the source record printed no

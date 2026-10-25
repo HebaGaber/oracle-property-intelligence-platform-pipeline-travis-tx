@@ -82,11 +82,12 @@
         "nullable": false,
         "enum": [
           "gis_centroid",
+          "address_point",
           "permit_point",
           "none"
         ],
         "meaning": "Where the coordinates came from",
-        "source": "derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none",
+        "source": "derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0003), permit address → permit_point (address not in export), else none",
         "missingReason": null
       },
       {
@@ -1243,11 +1244,12 @@
       "nullable": false,
       "enum": [
         "gis_centroid",
+        "address_point",
         "permit_point",
         "none"
       ],
       "meaning": "Where the coordinates came from",
-      "source": "derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none",
+      "source": "derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0003), permit address → permit_point (address not in export), else none",
       "missingReason": null
     },
     {

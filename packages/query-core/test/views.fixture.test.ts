@@ -45,6 +45,11 @@ function permit(
   };
 }
 
+const ADDRESS_POINT_REQUEST = JSON.stringify({
+  method: "GET",
+  url: "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/FeatureServer/0/query?objectIds=77&outFields=*&outSR=4326&f=json",
+});
+
 const P1 = "baguqeeraprop1";
 const P2 = "baguqeeraprop2";
 const P3 = "baguqeeraprop3";
@@ -75,18 +80,39 @@ const TABLES: FixtureTables = {
       propertyRows(P2, 1990),
       { ...propertyRows(P3, 1970), source_http_request: null },
     ],
-    property_has_parcel: [edge(P1, "parcel1")],
+    property_has_parcel: [edge(P1, "parcel1"), edge(P2, "parcel2")],
     parcel_has_geometry: [
       edge("parcel1", "g1a"),
       edge("parcel1", "g1b"),
       edge("parcel1", "g1c"),
       edge("parcel1", "g1d"),
+      edge("parcel2", "g2a"),
     ],
     geometry: [
       { cid: "g1a", latitude: 30.0, longitude: null, request_identifier: "x" },
       { cid: "g1b", latitude: null, longitude: -97.0, request_identifier: "x" },
-      { cid: "g1c", latitude: 30.3, longitude: -97.3, request_identifier: "x" },
-      { cid: "g1d", latitude: 30.4, longitude: -97.4, request_identifier: "x" },
+      {
+        cid: "g1c",
+        latitude: 30.3,
+        longitude: -97.3,
+        request_identifier: "x",
+        source_http_request: tcadRequest(),
+      },
+      {
+        cid: "g1d",
+        latitude: 30.4,
+        longitude: -97.4,
+        request_identifier: "x",
+        source_http_request: tcadRequest(),
+      },
+      // ADR 0003: a point stamped with the City of Austin address-point layer
+      {
+        cid: "g2a",
+        latitude: 30.2,
+        longitude: -97.2,
+        request_identifier: "x",
+        source_http_request: ADDRESS_POINT_REQUEST,
+      },
     ],
     property_has_structure: [edge(P1, "s1"), edge(P2, "s2"), edge(P3, "s3")],
     structure: [
@@ -295,6 +321,19 @@ describe("coordinates from one geometry row (code-review #7)", () => {
       longitude: -97.3,
       coordinate_source: "gis_centroid",
     });
+  });
+
+  it("A-11 Run 3 (ADR 0003): a geometry stamped with the City of Austin address layer reads address_point", () => {
+    expect(prop(P2)).toMatchObject({
+      latitude: 30.2,
+      longitude: -97.2,
+      coordinate_source: "address_point",
+    });
+  });
+
+  it("a property with no geometry reads none with no_coordinates", () => {
+    expect(prop(P3)).toMatchObject({ latitude: null, coordinate_source: "none" });
+    expect(reasonOf(prop(P3), "coordinate_source")).toBe("no_coordinates");
   });
 });
 

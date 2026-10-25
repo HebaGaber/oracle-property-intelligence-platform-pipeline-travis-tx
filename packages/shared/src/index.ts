@@ -1,6 +1,8 @@
 // @countylens/shared: UI wording and read-path URL helpers shared by apps/web, apps/api and
 // the scripts (plan.md § Project Structure). Browser-safe: no node: imports, no env reads.
 export {
+  ADDRESS_POINT_PROVENANCE_TEXT,
+  COORDINATE_SOURCE_LABELS,
   CONTRACTOR_NOT_PRINTED_LABEL,
   COVERAGE_LABELS,
   DERIVATION_LABELS,

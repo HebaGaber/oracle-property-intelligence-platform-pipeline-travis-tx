@@ -147,9 +147,7 @@ describe("open_days (as_of − issue_date for open/stalled without final_date; e
   ] as const)("%s issued %s final %s → %s", async (cls, issue, fin, expected) => {
     expect(d.openDays(cls, issue, AS_OF, fin)).toBe(expected);
     expect(
-      await sql(
-        `open_days('${cls}', ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
-      ),
+      await sql(`open_days('${cls}', ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`),
     ).toBe(expected);
   });
 });
@@ -209,14 +207,17 @@ describe("status_class (generated status map, scoped to the profile's jurisdicti
     ["stalled", "2026-03-11", "2026-04-01", "not_open"],
     ["stalled", "2026-03-11", "2026-03-01", "needs_review"],
     ["open", "2026-03-11", "2027-01-01", "needs_review"],
-  ] as const)("open_days reason: class %s issued %s final %s → %s", async (cls, issue, fin, expected) => {
-    expect(d.openDaysReason(cls, issue, AS_OF, fin)).toBe(expected);
-    expect(
-      await sql(
-        `open_days_reason(${lit(cls)}, ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
-      ),
-    ).toBe(expected);
-  });
+  ] as const)(
+    "open_days reason: class %s issued %s final %s → %s",
+    async (cls, issue, fin, expected) => {
+      expect(d.openDaysReason(cls, issue, AS_OF, fin)).toBe(expected);
+      expect(
+        await sql(
+          `open_days_reason(${lit(cls)}, ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
+        ),
+      ).toBe(expected);
+    },
+  );
 
   it.each([
     // improvement_status is null: stalled means the enum has no value for the source word
@@ -299,17 +300,33 @@ describe("contractor edge count (donphan M4: never pick one of several)", () => 
 });
 
 describe("coordinate_source, contractor and BBB state", () => {
+  const TCAD =
+    "https://traviscad.org/wp-content/largefiles/2026%20Certified%20JSON%20SUPP%200%2007182026.zip";
+  const ADDRESS_LAYER =
+    "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/FeatureServer/0/query?objectIds=12&outFields=*&outSR=4326&f=json";
   it.each([
-    [30.27, -97.76, null, null, "gis_centroid"],
-    [null, null, 30.27, -97.76, "permit_point"],
-    [null, null, null, null, "none"],
-  ])("coords %s,%s / permit %s,%s → %s", async (lat, lon, plat, plon, expected) => {
-    expect(d.coordinateSource(lat, lon, plat, plon)).toBe(expected);
-    expect(
-      await sql(
-        `coordinate_source(${lit(lat, "DOUBLE")}, ${lit(lon, "DOUBLE")}, ${lit(plat, "DOUBLE")}, ${lit(plon, "DOUBLE")})`,
-      ),
-    ).toBe(expected);
+    [30.27, -97.76, null, null, null, "gis_centroid"],
+    [30.27, -97.76, null, null, TCAD, "gis_centroid"],
+    // ADR 0003: only the geometry's own source URL makes a point an address point.
+    [30.27, -97.76, null, null, ADDRESS_LAYER, "address_point"],
+    // no coordinates: the URL is irrelevant
+    [null, null, null, null, ADDRESS_LAYER, "none"],
+    [null, null, 30.27, -97.76, null, "permit_point"],
+    [null, null, null, null, null, "none"],
+  ])(
+    "coords %s,%s / permit %s,%s / geometry %s → %s",
+    async (lat, lon, plat, plon, url, expected) => {
+      expect(d.coordinateSource(lat, lon, plat, plon, url)).toBe(expected);
+      expect(
+        await sql(
+          `coordinate_source(${lit(lat, "DOUBLE")}, ${lit(lon, "DOUBLE")}, ${lit(plat, "DOUBLE")}, ${lit(plon, "DOUBLE")}, ${lit(url)})`,
+        ),
+      ).toBe(expected);
+    },
+  );
+
+  it("the four-argument call keeps its old meaning (no geometry URL → gis_centroid)", () => {
+    expect(d.coordinateSource(30.27, -97.76, null, null)).toBe("gis_centroid");
   });
 
   it.each([

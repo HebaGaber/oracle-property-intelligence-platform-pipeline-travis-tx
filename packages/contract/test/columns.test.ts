@@ -220,7 +220,7 @@ describe("columns", () => {
       bbb_status: ["rated", "not_found", "blocked", "not_checked"],
       status_class: ["open", "stalled", "closed"],
       owner_area_class: ["in_county", "regional", "out_of_area", "unknown"],
-      coordinate_source: ["gis_centroid", "permit_point", "none"],
+      coordinate_source: ["gis_centroid", "address_point", "permit_point", "none"],
       tenure_basis: ["sale_date", "unknown"],
       contractor_resolution: ["resolved", "unresolved"],
       owner_kind: ["person", "company", "unknown"],
