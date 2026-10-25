@@ -20,6 +20,7 @@ export {
 export { SOURCE_LABELS, isSourceName, sourceLabel, type SourceName } from "./sources.js";
 export { readPathUrls, type GatewayName, type ReadPathHosts, type ReadPathUrls } from "./urls.js";
 export {
+  AI_TEXTS,
   COVERAGE_TEXTS,
   EXPLORE_TEXTS,
   PAGE_TEXTS,

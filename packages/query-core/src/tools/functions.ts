@@ -1,7 +1,8 @@
 // T011/T011a (A-14, agent-design.md § 2-3, analyze finding F1): the six query-core tool
 // functions plus geocodePlace and the shared area-resolution helper, built directly on
 // gazetteer.lookup() (travis-places@1.0.0) and the existing builders.ts/permits.ts SQL
-// primitives — not on A-13's exploreSearchSql/resolvePlace, which are not on this branch.
+// primitives. searchProperties' rows and total come from A-13's exploreSearchSql (T030, AC-8), so
+// the agent tool, the MCP search_properties tool and the Explore page share one filter builder.
 // Each function: validate (the caller already ran the matching Zod schema) -> build SQL from
 // radiusSql/roofAgeSql/permitsSql -> engine.all -> map rows -> ResultEnvelope. Nothing here
 // derives a value the views do not already carry; roof age, tenure and every provenance field
@@ -17,6 +18,7 @@ import { COLUMN_ENUMS, UNCARRIED, VIEWS } from "@countylens/contract";
 import { z } from "zod";
 import type { BoundRun } from "../bind-manifest.js";
 import { METRES_PER_MILE } from "../builders.js";
+import { EXPLORE_BOUNDS, exploreSearchSql } from "../explore.js";
 import type { QueryEngine, Row } from "../engine.js";
 import { DAYS_PER_YEAR, geoFilter, permitsCountSql, permitsSql } from "../permits.js";
 import * as gazetteer from "../../gazetteer/travis-places@1.0.0/index.js";
@@ -218,71 +220,72 @@ export async function searchProperties(
   const { bbox, distance, radiusM } = geoFilter(centre.lat, centre.lon, input.radius_mi);
   const radiusWhere = `p.latitude IS NOT NULL AND p.longitude IS NOT NULL AND ${bbox} AND ${distance} < ${radiusM}`;
 
-  // Each active filter becomes one Predicate. `field` + `relaxedSql` are set only when an
-  // unknown (NULL) value for that field could plausibly be the *sole* reason nothing came back
-  // (review F1 fix): relaxedSql is the same predicate but additionally accepting NULL, so running
-  // the query with every other filter unchanged and just this one relaxed tells us whether null
-  // exclusion specifically — not some other filter, and not a real value mismatch — is the
-  // blocker. The threshold filters already read `(... OR field IS NULL)`, i.e. they are already
-  // fully null-permissive, so they never get a relaxedSql: a null value for them can never be why
-  // zero rows came back, so they can never be reported as field_not_published.
+  // T030: the matching rows come from A-13's exploreSearchSql, so the agent tool, the MCP tool and
+  // the Explore page agree on the property_cid set. Its bounds (Travis County box) are the only
+  // place a raw lat/lon can fall outside: no published data lies there, so it is out_of_scope.
+  const { lat: latB, lon: lonB } = EXPLORE_BOUNDS;
+  if (
+    !(centre.lat >= latB[0] && centre.lat <= latB[1] && centre.lon >= lonB[0] && centre.lon <= lonB[1])
+  )
+    return emptyEnvelope(run, "out_of_scope", applied);
+  // open_years_min without a status_class has always meant "open or stalled" for the agent.
+  const permit = input.status_class ?? (input.open_years_min !== undefined ? "open_or_stalled" : undefined);
+  const sql = exploreSearchSql({
+    centre,
+    radius_mi: input.radius_mi,
+    roof: input.roof_age_years_min,
+    permit,
+    openYrs: input.open_years_min,
+    tenure: input.tenure_years_min,
+    ooa: input.owner_is_out_of_area,
+    sort: input.sort,
+    limit: input.limit,
+  });
+
+  // Predicates now serve only the unknown-value diagnostics (unknown_excluded, empty_reason).
+  // Roof age, tenure and owner_is_out_of_area all exclude an unknown value, exactly as Explore
+  // does; `relaxedSql` additionally accepts NULL to test whether that exclusion alone was the
+  // blocker. The permit filter is a genuine no_match, never field_not_published.
   const predicates: Array<{ sql: string; field?: string; relaxedSql?: string }> = [];
   if (input.roof_age_years_min !== undefined)
     predicates.push({
       field: "roof_age_years",
-      sql: `(p.roof_age_years >= ${input.roof_age_years_min} OR p.roof_age_years IS NULL)`,
+      sql: `p.roof_age_years >= ${input.roof_age_years_min}`,
+      relaxedSql: `(p.roof_age_years >= ${input.roof_age_years_min} OR p.roof_age_years IS NULL)`,
     });
+  // Strictly more than N years, as Explore ("Tenure > years").
   if (input.tenure_years_min !== undefined)
     predicates.push({
       field: "tenure_years",
-      sql: `(p.tenure_years >= ${input.tenure_years_min} OR p.tenure_years IS NULL)`,
+      sql: `p.tenure_years > ${input.tenure_years_min}`,
+      relaxedSql: `(p.tenure_years > ${input.tenure_years_min} OR p.tenure_years IS NULL)`,
     });
-  // Unlike the threshold filters above, owner_is_out_of_area is an exact boolean match: an
-  // unknown value is excluded (counted in unknown_excluded), never kept as a possible match. That
-  // makes it the one filter here where null exclusion really can be the sole blocker.
   if (input.owner_is_out_of_area === true)
     predicates.push({
       field: "owner_is_out_of_area",
       sql: `p.owner_is_out_of_area = true`,
       relaxedSql: `(p.owner_is_out_of_area = true OR p.owner_is_out_of_area IS NULL)`,
     });
-
-  const statusClasses = statusClassesFor(input.status_class);
-  if (statusClasses !== undefined || input.open_years_min !== undefined) {
+  if (permit !== undefined) {
+    const classes = statusClassesFor(permit) ?? [];
     const permitWhere = [
       "r.property_cid = p.property_cid",
-      `r.status_class IN (${(statusClasses ?? ["open", "stalled"]).map(sqlStr).join(", ")})`,
+      `r.status_class IN (${classes.map(sqlStr).join(", ")})`,
     ];
     if (input.open_years_min !== undefined)
-      permitWhere.push(`r.open_days >= ${(input.open_years_min * DAYS_PER_YEAR).toFixed(4)}`);
-    // Not unknown-trackable: a permit/status_class miss is a genuine no_match, never
-    // field_not_published, so this predicate carries no `field`/`relaxedSql`.
+      permitWhere.push(`r.open_days >= ${Number((input.open_years_min * DAYS_PER_YEAR).toFixed(4))}`);
     predicates.push({ sql: `EXISTS (SELECT 1 FROM v_roofing_permit r WHERE ${permitWhere.join(" AND ")})` });
   }
 
-  const where: string[] = [radiusWhere, ...predicates.map((p) => p.sql)];
-
-  const order =
-    input.sort === "open_desc"
-      ? `EXISTS (SELECT 1 FROM v_roofing_permit r WHERE r.property_cid = p.property_cid AND r.is_open) DESC, ${distance}`
-      : input.sort === "roof_desc"
-        ? "(p.roof_age_years IS NULL), p.roof_age_years DESC"
-        : distance;
-
-  const whereSql = where.join(" AND ");
-  const rowsSql = `SELECT p.*, ${distance} AS dist_m
-FROM v_property p
-WHERE ${whereSql}
-ORDER BY ${order}, p.cid
-LIMIT ${input.limit}`;
-  const countSql = `SELECT count(*) AS n FROM v_property p WHERE ${whereSql}`;
-
-  const [rawRows, total] = await Promise.all([engine.all(rowsSql), countOf(engine, countSql)]);
-  const rows = rawRows.map((r) => ({ ...r, dist_mi: toMiles(r.dist_m) }));
+  const [summaryRows, rawRows] = await Promise.all([engine.all(sql.summary), engine.all(sql.rows)]);
+  const total = Number((summaryRows[0] as { total_within_r?: number } | undefined)?.total_within_r ?? 0);
+  const rows = rawRows.map((r) => ({
+    ...r,
+    dist_m: r.distance_m,
+    dist_mi: toMiles(r.distance_m),
+  }));
   const returned = rows.length;
 
-  // Review F1 minor: batched via Promise.all (was sequential awaits) to match the rows/total
-  // query above.
   const unknownFields = predicates.filter((p) => p.field !== undefined);
   const unknownCounts = await Promise.all(
     unknownFields.map((p) =>

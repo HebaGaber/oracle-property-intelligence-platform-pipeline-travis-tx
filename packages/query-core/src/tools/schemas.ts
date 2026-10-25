@@ -41,7 +41,7 @@ const REQUEST_IDENTIFIER = /^\d{1,10}$/;
 export const SearchPropertiesInput = RunRef.extend({
   area: AreaInput,
   radius_mi: z.number().min(0.25).max(25),
-  /** Whole years, roof_age_years >= this value (unknown ages are kept, never silently excluded). */
+  /** Whole years, roof_age_years >= this value (unknown ages are excluded, as on the Explore page, and counted in unknown_excluded). */
   roof_age_years_min: z.number().int().min(0).max(120).optional(),
   tenure_years_min: z.number().int().min(1).max(100).optional(),
   owner_is_out_of_area: z.literal(true).optional(),

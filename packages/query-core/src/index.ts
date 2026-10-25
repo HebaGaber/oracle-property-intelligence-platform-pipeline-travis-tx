@@ -40,3 +40,5 @@ export * as gazetteer from "../gazetteer/travis-places@1.0.0/index.js";
 // functions and geocodePlace) and the new permit-level builder.
 export * from "./tools/index.js";
 export * from "./permits.js";
+// permits.ts and explore.ts both define DAYS_PER_YEAR (365.25); re-export one explicitly.
+export { DAYS_PER_YEAR } from "./permits.js";

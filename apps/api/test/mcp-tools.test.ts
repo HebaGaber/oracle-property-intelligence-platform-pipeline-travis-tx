@@ -89,7 +89,9 @@ describe("MCP tool adapters: inputSchema identity (T024)", () => {
 describe("search_properties", () => {
   it("passes the envelope through unchanged and sets truncated at a forced small limit", async () => {
     const engine = makeEngine((sql) =>
-      sql.includes("count(*) AS n") ? [{ n: 5 }] : [{ property_cid: "p1" }, { property_cid: "p2" }],
+      sql.includes("total_within_r")
+        ? [{ total_within_r: 5, tenure_unknown: 0 }]
+        : [{ property_cid: "p1" }, { property_cid: "p2" }],
     );
     const deps = depsWith({ engine, bound: BOUND });
     const input = SearchPropertiesInput.parse({
