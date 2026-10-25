@@ -37,7 +37,7 @@ import { openDuckDb, type DuckDbEngine } from "./duckdb-instance.js";
  *  thread, so more threads mean more requests in flight; compute stays ≤ 175 ms. */
 export const DUCKDB_THREADS = 4;
 /** DuckDB's own cap, under the 3,008 MB Lambda so Node and the runtime keep headroom. */
-export const DUCKDB_MEMORY_LIMIT = "1GB";
+export const DUCKDB_MEMORY_LIMIT = "2GB";
 /** Overrides the extension directory (tests, local runs); the Lambda uses the bundled default. */
 export const EXTENSION_DIRECTORY_ENV = "DUCKDB_EXTENSION_DIRECTORY";
 /** Where the CDK Api stack (T074) copies httpfs: `<task root>/duckdb-extensions/<version>/<platform>/`. */
