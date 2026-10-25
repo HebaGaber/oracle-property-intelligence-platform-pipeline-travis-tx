@@ -14,7 +14,7 @@ export const MOBILE_PROFILE = Object.freeze({
   cpuSlowdown: 4,
 });
 
-export const RUNS_PER_PAGE = 5;
+export const RUNS_PER_PAGE = 3;
 export const LIMITS_VITALS = Object.freeze({ lcpMs: 2_500, cls: 0.1, inpMs: 200 });
 
 export interface LayoutShift {

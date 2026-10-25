@@ -256,12 +256,10 @@ export function verifyFileArtifact(manifest: RunManifestV1): Artifact {
   return pick;
 }
 
-/** Directory artifact: the first `tables/{group}` directory (today `tables/county`). */
+/** Directory artifact: the first directory artifact (a pilot `tables/{group}`, or one export batch of a full-county run). */
 export function directoryArtifact(manifest: RunManifestV1): Artifact {
-  const dir = manifest.artifacts.find(
-    (a) => a.kind === "directory" && /^tables\/[a-z_]+$/.test(a.name),
-  );
-  if (dir === undefined) throw new Error("the latest manifest has no tables/{group} directory");
+  const dir = manifest.artifacts.find((a) => a.kind === "directory");
+  if (dir === undefined) throw new Error("the latest manifest has no tables directory");
   return dir;
 }
 

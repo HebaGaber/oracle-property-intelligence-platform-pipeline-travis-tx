@@ -27,7 +27,7 @@ import {
   searchRadii,
   seriesBudgetMs,
 } from "./lib/a13-perf-runs.js";
-import { LIMITS, TIMED_RUNS, summarize } from "./lib/perf.js";
+import { LIMITS, QUERY_SAMPLE_RUNS, summarize } from "./lib/perf.js";
 
 const EXPLORE = ROUTES.explore;
 const COLD_LOADS = 5;
@@ -118,7 +118,7 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
       await expect(header).toContainText(radiusHeaderPattern(r), { timeout: PER_RUN_TIMEOUT_MS });
     } catch (error) {
       const cause = error instanceof Error ? (error.message.split("\n")[0] ?? "") : String(error);
-      throw new Error(runFailureMessage(label, run, TIMED_RUNS, r, cause), { cause: error });
+      throw new Error(runFailureMessage(label, run, QUERY_SAMPLE_RUNS, r, cause), { cause: error });
     }
     const ms = Date.now() - t0;
     const answered = await response;
@@ -144,7 +144,7 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
     await expect(page.locator(SEL.header)).toBeVisible();
     // 2. One untimed warm-up at a radius outside the timed list, then 20 timed runs, each at a new radius.
     await timedRadius(page, WARM_UP_RADIUS, label, 0);
-    for (const [i, r] of searchRadii(TIMED_RUNS, URL_RADIUS).entries()) {
+    for (const [i, r] of searchRadii(QUERY_SAMPLE_RUNS, URL_RADIUS).entries()) {
       const run = await timedRadius(page, r, label, i + 1);
       timings.ms.push(run.ms);
       timings.radii.push(r);
@@ -155,7 +155,7 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
   test(scenario("041"), async ({ page, oracle }) => {
     // Two series of 1 warm-up + 20 runs, each run capped at PER_RUN_TIMEOUT_MS: the budget is the cap
     // times the run count (the 300 s default is a few runs short of that worst case); typical use ~2 min.
-    test.setTimeout(seriesBudgetMs(2, TIMED_RUNS));
+    test.setTimeout(seriesBudgetMs(2, QUERY_SAMPLE_RUNS));
     noteBranch(oracle, "provisional until A-11");
     const radiusRoof = {
       ms: [] as number[],
@@ -211,8 +211,8 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
       });
     }
     // 5. p50 and p95 per search.
-    expect(radiusRoof.ms, "radius + roof runs").toHaveLength(TIMED_RUNS);
-    expect(openPermit.ms, "open-permit runs").toHaveLength(TIMED_RUNS);
+    expect(radiusRoof.ms, "radius + roof runs").toHaveLength(QUERY_SAMPLE_RUNS);
+    expect(openPermit.ms, "open-permit runs").toHaveLength(QUERY_SAMPLE_RUNS);
     expect(summarize(radiusRoof.ms).p95Ms, "radius + roof p95").toBeLessThan(LIMITS.queryP95Ms);
     expect(summarize(openPermit.ms).p95Ms, "open-permit p95").toBeLessThan(LIMITS.queryP95Ms);
   });
