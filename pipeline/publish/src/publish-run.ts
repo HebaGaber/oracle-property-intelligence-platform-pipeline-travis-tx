@@ -558,6 +558,12 @@ export interface CarFilesStepDeps {
   log: (line: string) => void;
   /** Readback gateways for the carCid files; default both (see UploadCarFileOptions). */
   readbackGateways?: readonly string[];
+  /**
+   * Skip the "already served?" gateway probe before uploading. Both gateways hang on a CID they
+   * do not hold, so for a new run the probe only costs time; the upload is idempotent (same bytes,
+   * same CID) and the local receipts still skip finished files.
+   */
+  skipProbe?: boolean;
 }
 
 function carFileId(ctx: PublishContext, target: CarFileTarget): string {
@@ -590,7 +596,7 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
           items.push({ id, action: "skip", reason: `receipt ${rel(ctx, local)}` });
           continue;
         }
-        if (probe) {
+        if (probe && deps.skipProbe !== true) {
           const checks = await probeBothGateways(target.carCid, size, deps.fetch);
           if (gatewaysAgree(checks)) {
             items.push({
@@ -614,7 +620,12 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
         items.push({
           id,
           action: "run",
-          reason: probe ? "not confirmed by the gateways" : "no local receipt (not probed offline)",
+          reason:
+            deps.skipProbe === true
+              ? "no local receipt (gateway probe skipped)"
+              : probe
+                ? "not confirmed by the gateways"
+                : "no local receipt (not probed offline)",
         });
       }
       return items;

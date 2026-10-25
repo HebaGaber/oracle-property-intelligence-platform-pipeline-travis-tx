@@ -178,6 +178,8 @@ async function main(): Promise<number> {
       now,
       log,
       ...(process.env.PUBLISH_DEFER_PINATA === "1" ? { readbackGateways: [FILEBASE_GATEWAY] } : {}),
+      // PUBLISH_CARFILES_NO_PROBE=1: upload without the "already served?" probe (gateways hang on new CIDs).
+      skipProbe: process.env.PUBLISH_CARFILES_NO_PROBE === "1",
     },
     manifest: { loadEnv, now, log },
     cidCopy: {

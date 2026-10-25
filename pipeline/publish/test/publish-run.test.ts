@@ -579,6 +579,24 @@ describe("car-files and manifest steps (probe / adopt)", () => {
     );
   });
 
+  it("skipProbe uploads without asking the gateways first", async () => {
+    const { ctx } = await realContext();
+    const fetchSpy = vi.fn();
+    const h = harness(ctx, { fetch: fetchSpy as unknown as FetchLike });
+    h.deps.carFiles.skipProbe = true;
+    const report = await runPublish({
+      ctx,
+      impls: createPublishSteps(h.deps),
+      dryRun: true,
+      probe: true,
+      step: "car-files",
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const items = report.steps.at(-1)?.items ?? [];
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.action === "run" && /probe skipped/.test(i.reason))).toBe(true);
+  });
+
   it("--probe finds files both gateways already serve at the manifest size and skips them", async () => {
     const { ctx } = await realContext();
     const sizes = new Map(
