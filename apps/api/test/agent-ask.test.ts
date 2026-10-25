@@ -352,3 +352,110 @@ describe("ERR-63: budget figures are exposed", () => {
     expect(result.traceId).toBe("1-abc-def");
   });
 });
+
+describe("ERR-64: golden G2/G4/G5 deterministic rules", () => {
+  it("G2: 'many years' is read as at least 5, named in how and in the answer; contractor not printed even with an empty search", async () => {
+    let system = "";
+    const loop: RunModelLoop = async (params) => {
+      system = params.system;
+      return {
+        text: "No open roofing permits matched.",
+        steps: [{ tool: "searchRoofingPermits", input: { status_class: "open", open_years_min: 5 }, summary: "" }],
+        toolOutputs: [EMPTY_ENVELOPE({ radius_mi: 5, status_class: "open", open_years_min: 5 })],
+        totalTokens: 10,
+      };
+    };
+    const result = await runAgentAsk(
+      { prompt: "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?" },
+      baseDeps({ runModelLoop: loop }),
+    );
+    expect(system).toMatch(/many years.*open_years_min 5/);
+    expect(result.how).toMatch(/open at least 5 years/);
+    expect(result.answer).toMatch(/at least 5 years/);
+    expect(result.answer).toMatch(/not printed/);
+    const fields = result.missing.map((m) => m.field);
+    expect(fields).toContain("contractor.name_as_printed");
+    expect(fields).toContain("bbb_status");
+  });
+
+  it("G2: contractor not printed applies even when no permit search happened", async () => {
+    const loop: RunModelLoop = async () => ({ text: "I could not run that.", steps: [], toolOutputs: [], totalTokens: 5 });
+    const result = await runAgentAsk({ prompt: "Who is the contractor on the oldest roof permit?" }, baseDeps({ runModelLoop: loop }));
+    expect(result.answer).toMatch(/contractor name is not printed/);
+    expect(result.missing.map((m) => m.field)).toContain("contractor.name_as_printed");
+  });
+
+  it("G4: owners-outside-area question flags owner_is_out_of_area even when the model dropped that filter", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "Found homes with 10+ years of tenure.",
+      steps: [{ tool: "searchProperties", input: { tenure_years_min: 10 }, summary: "" }],
+      toolOutputs: [EMPTY_ENVELOPE({ radius_mi: 5, tenure_years_min: 10 })],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk(
+      { prompt: "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?" },
+      baseDeps({ runModelLoop: loop }),
+    );
+    expect(result.missing).toContainEqual({ field: "owner_is_out_of_area", reason: "not_in_export" });
+    expect(result.answer).toContain(
+      "I cannot tell which owners live outside the area: the owner's mailing location is not in the published export.",
+    );
+    expect(result.query).toMatchObject({ radius_mi: 5, tenure_years_min: 10 });
+    expect(result.query).not.toHaveProperty("owner_is_out_of_area");
+  });
+
+  it("G4: an ordinary tenure question does not flag owner location", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "Done.",
+      steps: [],
+      toolOutputs: [EMPTY_ENVELOPE({ tenure_years_min: 10 })],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk({ prompt: "Which homes near Lakeway have not changed owners in 10+ years?" }, baseDeps({ runModelLoop: loop }));
+    expect(result.missing.map((m) => m.field)).not.toContain("owner_is_out_of_area");
+  });
+
+  it("G5: a permit number never looked up by the model is looked up deterministically; BBB flagged and stated", async () => {
+    const calls: string[] = [];
+    const engine: QueryEngine = {
+      run: async () => {},
+      all: async (sql: string) => {
+        calls.push(sql);
+        return [];
+      },
+    };
+    const loop: RunModelLoop = async () => ({
+      text: "BBB rating is not available.",
+      steps: [],
+      toolOutputs: [],
+      totalTokens: 10,
+      modelCalls: 1,
+    });
+    const result = await runAgentAsk(
+      { prompt: "What's the BBB rating of the contractor on permit 2024-123456 BP?" },
+      baseDeps({ runModelLoop: loop, getEngine: async () => engine, bindViews: async () => FAKE_BOUND }),
+    );
+    expect(calls.some((q) => q.includes("2024-123456 BP"))).toBe(true);
+    expect(result.steps.map((s) => s.tool)).toContain("searchRoofingPermits");
+    expect(result.answer).toContain("2024-123456 BP");
+    expect(result.answer).toMatch(/BBB status is not available in the published data/);
+    expect(result.missing.map((m) => m.field)).toContain("bbb_status");
+    expect(result.outcome).toBe("answered");
+  });
+
+  it("G5: no second lookup when the model already searched that permit number", async () => {
+    const calls: string[] = [];
+    const engine: QueryEngine = { run: async () => {}, all: async (sql: string) => (calls.push(sql), []) };
+    const loop: RunModelLoop = async () => ({
+      text: "Not found.",
+      steps: [{ tool: "searchRoofingPermits", input: { permit_number: "2024-123456 BP" }, summary: "" }],
+      toolOutputs: [EMPTY_ENVELOPE({ permit_number: "2024-123456 BP" })],
+      totalTokens: 10,
+    });
+    await runAgentAsk(
+      { prompt: "BBB rating of the contractor on permit 2024-123456 BP?" },
+      baseDeps({ runModelLoop: loop, getEngine: async () => engine, bindViews: async () => FAKE_BOUND }),
+    );
+    expect(calls).toHaveLength(0);
+  });
+});

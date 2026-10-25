@@ -305,6 +305,31 @@ const CONTRACT_MISSING_NAMES: Record<string, string> = {
   bbb_rating: "bbb_status",
 };
 
+/** ERR-64: questions about contractors / BBB (not answerable from the published export). */
+export function asksContractorOrBbb(question: string): boolean {
+  return /contractor|\bbbb\b|better business/i.test(question);
+}
+
+/** ERR-64: questions that filter on owners living outside the area (owner mailing location is
+ *  not in the published export). */
+export function asksOutOfAreaOwner(question: string): boolean {
+  if (/absentee|out[- ]of[- ](area|town|state)/i.test(question)) return true;
+  return (
+    /\bowners?\b|\blive\b|\bliving\b|mailing/i.test(question) &&
+    /\b(outside|out of)\b[^?.]*\b(area|town|state|county)\b/i.test(question)
+  );
+}
+
+/** ERR-64: a vague duration ("many years", "a long time") the model must read as 5 years. */
+export function asksVagueDuration(question: string): boolean {
+  return /\bmany years\b|\ba long time\b|\blong[- ]open\b/i.test(question);
+}
+
+/** A permit number as printed ('YYYY-NNNNNN XX'), if the question contains one. */
+export function permitNumberIn(question: string): string | undefined {
+  return /\b\d{4}-\d{6} [A-Z]{2}\b/.exec(question)?.[0];
+}
+
 function composeStructuredParts(
   matches: Match[],
   toolOutputs: Record<string, unknown>[],
@@ -344,12 +369,14 @@ function composeStructuredParts(
   if (applied.owner_is_out_of_area === true) {
     missing.push({ field: "owner_is_out_of_area", reason: "not_in_export" });
   }
-  // The permit export carries no contractor name and no BBB rating (UNCARRIED v_roofing_permit):
-  // flag both when the question asks about the contractor or BBB, even for an empty result.
-  const usedPermits = envelopes.some(
-    (e) => "status_class" in e.applied || "open_years_min" in e.applied || "permit_number" in e.applied,
-  );
-  if (usedPermits && /contractor|bbb|better business/i.test(question)) {
+  // ERR-64: question-text rules, independent of which filters the model chose. The permit export
+  // carries no contractor name and no BBB rating (UNCARRIED v_roofing_permit), and the owner's
+  // mailing location is not published, so a question that asks about them is flagged even when
+  // no search ran or the search returned no rows.
+  if (asksOutOfAreaOwner(question)) {
+    missing.push({ field: "owner_is_out_of_area", reason: "not_in_export" });
+  }
+  if (asksContractorOrBbb(question)) {
     missing.push({ field: "contractor.name_as_printed", reason: "no_lexicon_carrier" });
     missing.push({ field: "bbb_status", reason: "no_lexicon_carrier" });
   }
@@ -359,6 +386,9 @@ function composeStructuredParts(
   for (const [key, value] of Object.entries(applied)) {
     if (key === "area" || key === "manifest_cid") continue;
     howParts.push(`${key}: ${JSON.stringify(value)}`);
+  }
+  if (typeof applied.open_years_min === "number") {
+    howParts.push(`permits open at least ${applied.open_years_min} years`);
   }
 
   return { how: howParts.join("; "), query: applied, missing: dedupeMissing(missing) };
@@ -424,6 +454,13 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "when asked who lives outside the area, say you cannot tell from the published data",
     "because it is not in the published export. Contractor names and BBB ratings are likewise",
     "not available in the published export; say so when asked.",
+    "Read vague durations as numbers: 'many years' or 'a long time' means open_years_min 5 (at",
+    "least 5 years) unless the user gives a number; say the threshold you applied. If the",
+    "question asks for owners outside/out of the area, still run the search with the other",
+    "filters and say that owner location is not in the published export. When the question",
+    "contains a permit number (YYYY-NNNNNN XX), ALWAYS call searchRoofingPermits with that",
+    "permit_number first, then answer from the result; BBB ratings are not available in the",
+    "published data, but still report the permit facts you found.",
     "Your last step writes the final answer with no further tool calls; never end by planning a call.",
     "Be concise: this answer has a 1,500-output-token budget and at most 3 tool-calling turns.",
     input.overrides !== undefined
@@ -559,6 +596,39 @@ export async function runAgentAsk(
       agentObservability().metrics.addMetric(SPEND_METRIC_NAME, MetricUnit.NoUnit, status.spentUsd);
     }
 
+    // ERR-64: a permit number in the question is always looked up, even if the model skipped the
+    // tool; the answer then carries the permit's facts and citation. Respects the step budget.
+    const asked = permitNumberIn(input.prompt);
+    if (
+      asked !== undefined &&
+      result.incomplete !== true &&
+      result.text.trim() !== "" &&
+      result.steps.length < maxToolSteps &&
+      !result.steps.some(
+        (s) => s.tool === "searchRoofingPermits" && isRecord(s.input) && s.input.permit_number === asked,
+      )
+    ) {
+      const lookupInput = { permit_number: asked, limit: 1, sort: "open_desc" as const };
+      const output: unknown = await tools.searchRoofingPermits.execute?.(lookupInput, {
+        toolCallId: "deterministic-permit-lookup",
+        messages: [],
+        abortSignal: controller.signal,
+      });
+      if (isRecord(output)) {
+        result.toolOutputs = [...result.toolOutputs, output];
+        result.steps = [
+          ...result.steps,
+          { tool: "searchRoofingPermits", input: lookupInput, summary: "deterministic permit lookup" },
+        ];
+        const found = Array.isArray(output.matches) ? (output.matches as Record<string, unknown>[]) : [];
+        const facts =
+          found.length > 0
+            ? `Permit ${asked} [${String(found[0]?.n)}]: status ${String(found[0]?.status_class)}, open ${String(found[0]?.open_years ?? "unknown")} years.`
+            : `Permit ${asked} was not found in this run.`;
+        result.text = `${result.text.trim()} ${facts}`;
+      }
+    }
+
     const matches = registry.matches();
     const { cleaned, outOfRangeCitations, ungroundedCids } = registry.postCheck(result.text);
     const composed = composeStructuredParts(matches, result.toolOutputs, input.prompt);
@@ -603,13 +673,20 @@ export async function runAgentAsk(
     }
     if (
       missing.some((m) => m.field === "owner_is_out_of_area") &&
-      !/not in the published export/i.test(cleaned)
+      !(/not in the published export/i.test(cleaned) && /outside the area/i.test(cleaned))
     ) {
       extra.push(
-        "I cannot tell who lives outside the area: the owner's mailing location is not in the published export.",
+        "I cannot tell which owners live outside the area: the owner's mailing location is not in the published export.",
       );
     }
-    if (missing.some((m) => m.field === "bbb_status") && !/BBB[^.]*not available/i.test(cleaned)) {
+    const years = query.open_years_min;
+    if (asksVagueDuration(input.prompt) && typeof years === "number") {
+      const stated = new RegExp(`(at least|>=)\\s*${years}\\b`, "i");
+      if (!stated.test(cleaned)) {
+        extra.push(`I read the open-time threshold as at least ${years} years (>= ${years} years).`);
+      }
+    }
+    if (missing.some((m) => m.field === "bbb_status") && !/BBB status is not available in the published data/i.test(cleaned)) {
       extra.push("BBB status is not available in the published data.");
     }
     if (
