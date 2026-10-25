@@ -110,7 +110,22 @@ export const PAGE_TEXTS = Object.freeze({
   tableExportMissing: "table export not in this run's manifest",
   /** "Run {n} · {finishedAt as YYYY-MM-DD HH:mm UTC}"; n is the 1-based index position. */
   hubChip: (n: number, finishedAt: string): string => `Run ${n} · ${utcMinute(finishedAt)}`,
-  mcpNotAvailable: "Not available yet · the agent and MCP server arrive with story A-14",
+});
+
+/** Help · MCP "Try a tool" (A-14 T034): fixed wording of every state. */
+export const MCP_TRY_TEXTS = Object.freeze({
+  running: "Running the tool…",
+  noToken:
+    "Runs on the server, read-only. You do not need a token here; the token is only for MCP clients.",
+  truncated: (returned: number, total: number): string =>
+    `Showing ${returned} of ${total} rows · the tool cut the list at its row limit`,
+  complete: (returned: number): string => `${returned} rows · the full list`,
+  shownOf: (shown: number, returned: number): string =>
+    `Showing the first ${shown} of ${returned} returned rows`,
+  badJson: "The arguments are not valid JSON",
+  rateLimited: "Too many tool calls just now; wait a moment and try again",
+  unreachable: "The server could not be reached; try again",
+  emptyReason: (reason: string): string => `No rows · ${reason}`,
 });
 
 /** Explore · AI tab (A-14 T033, FR-012; contracts/agent-ask.md). Fixed wording of every state. */

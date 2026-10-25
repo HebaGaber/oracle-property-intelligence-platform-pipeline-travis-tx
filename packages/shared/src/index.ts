@@ -21,6 +21,7 @@ export { SOURCE_LABELS, isSourceName, sourceLabel, type SourceName } from "./sou
 export { readPathUrls, type GatewayName, type ReadPathHosts, type ReadPathUrls } from "./urls.js";
 export {
   AI_TEXTS,
+  MCP_TRY_TEXTS,
   COVERAGE_TEXTS,
   EXPLORE_TEXTS,
   PAGE_TEXTS,

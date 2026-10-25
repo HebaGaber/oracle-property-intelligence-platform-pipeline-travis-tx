@@ -1,17 +1,27 @@
 // A-13 T030 (FR-023; TC-042): Help · MCP (`/help/mcp`). It lists the six fixed tools of AD-21
-// (no SQL tool) and "Try a tool" answers "Not available yet · the agent and MCP server arrive with
-// story A-14", never a sample response.
+// (no SQL tool). A-14 T034: "Try a tool" runs the chosen tool through the server-side proxy
+// (`mcpProxy.callTool`, injected here as a fake `callTool`; the real client is tested against a
+// fake fetch). It shows the server's result, truncation, provenance and errors, never a sample.
 import { EXPLORE_BOUNDS, PERMIT_FILTERS, EXPLORE_SORTS } from "@countylens/query-core";
-import { PAGE_TEXTS } from "@countylens/shared";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MCP_TRY_TEXTS } from "@countylens/shared";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  MCP_TRY_PATH,
+  McpTryError,
+  tryMcpTool,
+  type McpTryResponse,
+  type McpTryTool,
+} from "../src/data/mcp-try";
 
-async function renderHelp(): Promise<void> {
+type CallTool = (tool: McpTryTool, args: Record<string, unknown>) => Promise<McpTryResponse>;
+
+async function renderHelp(callTool?: CallTool): Promise<void> {
   const { Component } = await import("../src/routes/HelpMcp");
   render(
     <MemoryRouter initialEntries={["/help/mcp"]}>
-      <Component />
+      <Component {...(callTool === undefined ? {} : { callTool })} />
     </MemoryRouter>,
   );
 }
@@ -87,16 +97,156 @@ describe("Help · MCP (FR-023, TC-042)", () => {
     expect(document.body.textContent).not.toMatch(/Bearer (?!<token>)[A-Za-z0-9]{12,}/);
   });
 
-  it("has one Try a tool control, no per-tool buttons, answering with the A-14 text", async () => {
+  it("has one Try a tool button, no per-tool buttons, and shows nothing before it is pressed", async () => {
     await renderHelp();
-    expect(screen.queryByText(PAGE_TEXTS.mcpNotAvailable)).toBeNull();
     const buttons = screen.getAllByRole("button");
     expect(buttons).toHaveLength(1);
     expect(buttons[0]?.textContent).toBe("Try a tool");
     expect(screen.queryByRole("button", { name: /Try (search|list|get)_/ })).toBeNull();
-    fireEvent.click(buttons[0] as HTMLElement);
-    expect(screen.getByText(PAGE_TEXTS.mcpNotAvailable)).toBeDefined();
+    expect(document.querySelector("[data-try-result]")).toBeNull();
     expect(document.querySelector("[data-sample]")).toBeNull();
-    expect(document.body.textContent).not.toMatch(/bafy|bafk|"rows"/);
+    expect(screen.getByText(MCP_TRY_TEXTS.noToken)).toBeDefined();
+  });
+
+  it("runs the chosen tool with the edited arguments and shows run, truncation and rows", async () => {
+    const callTool = vi.fn<CallTool>(async (tool) => ({
+      tool,
+      maxRows: 1000,
+      result: {
+        rows: Array.from({ length: 7 }, (_, i) => ({
+          property_cid: `p${i}`,
+          source_url: "https://example.test/s",
+        })),
+        returned: 7,
+        total: 120,
+        truncated: true,
+        empty_reason: null,
+        run: {
+          run_id: "travis-test",
+          manifest_cid: `ba${"a".repeat(60)}`,
+          as_of: "2026-10-20T22:00:10.663Z",
+        },
+      },
+    }));
+    await renderHelp(callTool);
+    fireEvent.change(screen.getByLabelText("Tool"), { target: { value: "list_permits" } });
+    expect((screen.getByLabelText("Arguments (JSON)") as HTMLTextAreaElement).value).toContain(
+      "open_or_stalled",
+    );
+    fireEvent.change(screen.getByLabelText("Arguments (JSON)"), {
+      target: { value: '{"limit": 7}' },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Try a tool" }));
+    await waitFor(() => expect(document.querySelector("[data-try-result]")).not.toBeNull());
+    expect(callTool).toHaveBeenCalledWith("list_permits", { limit: 7 });
+    expect(document.querySelector("[data-try-count]")?.textContent).toContain(
+      MCP_TRY_TEXTS.truncated(7, 120),
+    );
+    expect(
+      document.querySelector("[data-try-count] [data-truncated]")?.getAttribute("data-truncated"),
+    ).toBe("true");
+    expect(document.querySelector("[data-try-provenance]")?.textContent).toContain("travis-test");
+    expect(document.querySelector("[data-cid]")).not.toBeNull();
+    expect(document.body.textContent).toContain(MCP_TRY_TEXTS.shownOf(5, 7));
+    const json = document.querySelector("[data-try-json]")?.textContent ?? "";
+    expect(json).toContain("p4");
+    expect(json).not.toContain("p5");
+    expect(json).toContain("source_url");
+  });
+
+  it("shows the empty reason the server gave instead of inventing rows", async () => {
+    await renderHelp(async (tool) => ({
+      tool,
+      maxRows: 1000,
+      result: {
+        rows: [],
+        returned: 0,
+        total: 0,
+        truncated: false,
+        empty_reason: "no_match",
+        run: { run_id: "r", manifest_cid: "", as_of: "x" },
+      },
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "Try a tool" }));
+    await waitFor(() => expect(document.querySelector("[data-try-empty]")).not.toBeNull());
+    expect(document.querySelector("[data-try-empty]")?.textContent).toContain(
+      MCP_TRY_TEXTS.emptyReason("no_match"),
+    );
+  });
+
+  it("shows the server's plain sentence for a rejected argument and the rate-limit text", async () => {
+    const callTool = vi
+      .fn<CallTool>()
+      .mockRejectedValueOnce(new McpTryError("bad_request", "radius_mi must be at most 25"))
+      .mockRejectedValueOnce(new McpTryError("rate_limited", "ignored"))
+      .mockRejectedValueOnce(new Error("boom"));
+    await renderHelp(callTool);
+    const press = (): boolean =>
+      fireEvent.click(screen.getByRole("button", { name: "Try a tool" }));
+    press();
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("radius_mi must be at most 25"),
+    );
+    press();
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(MCP_TRY_TEXTS.rateLimited),
+    );
+    press();
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(MCP_TRY_TEXTS.unreachable),
+    );
+    expect(document.querySelector("[data-try-result]")).toBeNull();
+  });
+
+  it("rejects arguments that are not a JSON object without calling the server", async () => {
+    const callTool = vi.fn<CallTool>();
+    await renderHelp(callTool);
+    for (const bad of ["{nope", "[1]"]) {
+      fireEvent.change(screen.getByLabelText("Arguments (JSON)"), { target: { value: bad } });
+      fireEvent.click(screen.getByRole("button", { name: "Try a tool" }));
+      await waitFor(() =>
+        expect(screen.getByRole("alert").textContent).toContain(MCP_TRY_TEXTS.badJson),
+      );
+    }
+    expect(callTool).not.toHaveBeenCalled();
+  });
+});
+
+describe("tryMcpTool (browser client of mcpProxy.callTool)", () => {
+  const ok = { tool: "get_schema", maxRows: 1000, result: { views: [] } };
+  const reply = (body: unknown, status = 200): typeof fetch =>
+    (async () => new Response(JSON.stringify(body), { status })) as typeof fetch;
+
+  it("posts only the tool and arguments to the proxy, with no Authorization header", async () => {
+    const fetchImpl = vi.fn(reply({ result: { data: ok } }));
+    const out = await tryMcpTool("get_schema", { view: "v_property" }, fetchImpl);
+    expect(out.result).toEqual({ views: [] });
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(MCP_TRY_PATH);
+    expect(JSON.parse(String(init.body))).toEqual({
+      tool: "get_schema",
+      arguments: { view: "v_property" },
+    });
+    expect(JSON.stringify(init.headers ?? {}).toLowerCase()).not.toMatch(/authorization|bearer/);
+  });
+
+  it("maps 400, 429, a bad shape and a network failure to typed errors", async () => {
+    const err = (message: string, httpStatus: number) => ({
+      error: { message, data: { httpStatus } },
+    });
+    await expect(
+      tryMcpTool("get_schema", {}, reply(err("limit must be at most 1000", 400), 400)),
+    ).rejects.toMatchObject({ code: "bad_request", message: "limit must be at most 1000" });
+    await expect(
+      tryMcpTool("get_schema", {}, reply(err("slow down", 429), 429)),
+    ).rejects.toMatchObject({ code: "rate_limited" });
+    await expect(
+      tryMcpTool("get_schema", {}, reply({ result: { data: { tool: "run_sql" } } })),
+    ).rejects.toMatchObject({ code: "failed" });
+    await expect(
+      tryMcpTool("get_schema", {}, (async () => {
+        throw new TypeError("x");
+      }) as typeof fetch),
+    ).rejects.toMatchObject({ code: "unreachable" });
   });
 });

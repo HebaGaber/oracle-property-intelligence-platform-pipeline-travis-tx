@@ -35,33 +35,11 @@ import type {
   APIGatewayProxyStructuredResultV2,
   Context as LambdaContext,
 } from "aws-lambda";
-import type { RunsIndexV1 } from "@countylens/contract";
-import { bindOnce, getEngine } from "../engine/duckdb-node.js";
+import { createEngineDeps } from "../mcp/deps.js";
 import { createMcpObservability } from "../mcp/observability.js";
 import { createMcpHandler } from "../mcp/server.js";
-import { latestOf, loadRunsIndex } from "../mcp/runs-index.js";
-import type { McpRunContext, McpToolDeps } from "../mcp/tools.js";
 
-const deps: McpToolDeps = {
-  async resolveRun(manifestCid): Promise<McpRunContext | undefined> {
-    try {
-      let cid = manifestCid;
-      if (cid === undefined) {
-        const index = await loadRunsIndex();
-        const latest = latestOf(index);
-        if (latest === undefined) return undefined;
-        cid = latest.manifestCid;
-      }
-      const [bound, engine] = await Promise.all([bindOnce(cid), getEngine()]);
-      return { engine, bound };
-    } catch {
-      return undefined;
-    }
-  },
-  runsIndex(): Promise<Pick<RunsIndexV1, "runs">> {
-    return loadRunsIndex();
-  },
-};
+const deps = createEngineDeps();
 
 const obs = createMcpObservability();
 const handleMcpEvent = createMcpHandler({ deps, obs });
