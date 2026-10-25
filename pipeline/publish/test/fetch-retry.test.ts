@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   describeError,
+  installLongWaits,
   replayableSize,
   withRetry,
   type RetryOptions,
@@ -159,6 +160,17 @@ describe("fetch retry wrapper (ERR-33)", () => {
     });
     expect(res.status).toBe(503);
     expect(s.hits()).toBe(1);
+  });
+
+  it("raises Node's built-in fetch waits through the shared undici dispatcher", () => {
+    const key = Symbol.for("undici.globalDispatcher.1");
+    const before = (globalThis as Record<symbol, unknown>)[key];
+    try {
+      const agent = installLongWaits({ FETCH_RETRY_HEADERS_TIMEOUT_MS: "1234567" });
+      expect((globalThis as Record<symbol, unknown>)[key]).toBe(agent);
+    } finally {
+      (globalThis as Record<symbol, unknown>)[key] = before;
+    }
   });
 
   it("knows which bodies can be sent again", () => {

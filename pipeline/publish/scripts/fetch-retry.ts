@@ -11,6 +11,13 @@
 // the real cause to stderr. Requests that bring their own AbortSignal (elephant-cli's gateway
 // polling, which already retries until its deadline) and streaming bodies pass through untouched.
 // Never logs headers (the Filebase bearer token) or query values.
+//
+// Filebase answers a dag/import only after pinning the imported root. For a tables.car (a root that
+// links every part) that took longer than Node's built-in 300 s wait for response headers on
+// 2026-10-25, although the root was already served by the gateways. So the wrapper also raises
+// that wait, through undici (the library Node's fetch is built on, same version as Node's own).
+
+import { Agent, setGlobalDispatcher } from "undici";
 
 const RETRY_STATUS = new Set([429, 500, 502, 503, 504]);
 
@@ -22,11 +29,7 @@ export interface RetryOptions {
   tries: number;
   /** Fixed part of the per-request timeout. */
   baseTimeoutMs: number;
-  /**
-   * Floor for a Kubo `dag/import`: Filebase answers it only after pinning the imported root, which
-   * for a tables.car (a root linking every part) took more than 120 s on 2026-10-25. Kept under
-   * Node's own 300 s wait for response headers, which applies after the body is sent.
-   */
+  /** Floor for a Kubo `dag/import` (Filebase answers it only after pinning; see the header). */
   importTimeoutMs: number;
   /** Upload rate assumed for the size-based part of the timeout. */
   assumedBytesPerSecond: number;
@@ -45,7 +48,7 @@ export function defaultOptions(env: NodeJS.ProcessEnv = process.env): RetryOptio
   return {
     tries: num(env.FETCH_RETRY_TRIES, 6),
     baseTimeoutMs: num(env.FETCH_RETRY_BASE_TIMEOUT_MS, 120_000),
-    importTimeoutMs: num(env.FETCH_RETRY_IMPORT_TIMEOUT_MS, 295_000),
+    importTimeoutMs: num(env.FETCH_RETRY_IMPORT_TIMEOUT_MS, 1_500_000),
     assumedBytesPerSecond: num(env.FETCH_RETRY_ASSUMED_BPS, 256 * 1024),
     firstBackoffMs: num(env.FETCH_RETRY_FIRST_BACKOFF_MS, 2_000),
     maxBackoffMs: num(env.FETCH_RETRY_MAX_BACKOFF_MS, 60_000),
@@ -137,7 +140,20 @@ export function withRetry(original: typeof fetch, options: RetryOptions): typeof
   };
 }
 
+/**
+ * Raises Node's built-in waits for response headers and body (300 s each by default) so a slow
+ * dag/import reply is not cut off; the per-request timeout above stays the real limit.
+ */
+export function installLongWaits(env: NodeJS.ProcessEnv = process.env): Agent {
+  const parsed = Number(env.FETCH_RETRY_HEADERS_TIMEOUT_MS);
+  const wait = Number.isFinite(parsed) && parsed > 0 ? parsed : 1_800_000;
+  const agent = new Agent({ headersTimeout: wait, bodyTimeout: wait });
+  setGlobalDispatcher(agent);
+  return agent;
+}
+
 // Installed when loaded with --import; importing it from a test does not patch the global fetch.
 if (process.env.FETCH_RETRY_DISABLE !== "1" && process.env.VITEST === undefined) {
+  installLongWaits();
   globalThis.fetch = withRetry(globalThis.fetch.bind(globalThis), defaultOptions());
 }
