@@ -10,7 +10,9 @@ status: Closed
 found_by: golden run (tests/agent/golden.test.ts) on the deployed agent
 found_date: 2026-10-25
 fix_branch: 014-agent-and-mcp
-fix_commit: c741363, 830c4c5, 313d628 (014-agent-and-mcp)retest_date: 2026-10-25---
+fix_commit: c741363, 830c4c5, 313d628 (014-agent-and-mcp)
+retest_date: 2026-10-25
+---
 
 # ERR-62: Agent – out-of-area-owner question silently widens the radius and claims good coverage
 
