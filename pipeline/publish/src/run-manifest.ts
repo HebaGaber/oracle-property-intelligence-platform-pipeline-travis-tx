@@ -95,6 +95,19 @@ export const RunManifestConfig = z
     /** Run 1's Run 2 default; an incremental run states its own note instead (see below). */
     correctionNote: z.string().min(1).optional(),
     /**
+     * A correction run on the same captures (Run 3.1, ERR-73): carried run-level limitations that
+     * start with one of these prefixes are dropped, because the correction note restates them.
+     */
+    dropLimitationPrefixes: z.array(z.string().min(1)).optional(),
+    /**
+     * A correction run on the same captures: replaces a carried source's limitations by name
+     * (for example the Austin source's stale "Comptroller baseline not loaded"). Each named
+     * source must exist in the base manifest.
+     */
+    sourceLimitations: z.record(z.string().min(1), z.array(z.string().min(1))).optional(),
+    /** Replaces the Austin source's "Comptroller baseline not loaded" note (ERR-73). */
+    registryNote: z.string().min(1).optional(),
+    /**
      * An incremental run (Run 3): the facts file written by
      * pipeline/local-stack/scripts/incremental-facts.ts for the Austin permits source. With it
      * the Austin source gets the new watermark, the real delta and the new capture-time total;
@@ -370,6 +383,12 @@ export async function buildRunManifest(
 
   // The address-point source belongs to the run that used the layer; it is never carried over.
   const baseSources = base.sources.filter((s) => s.name !== ADDRESS_POINT_SOURCE);
+  const sourceLimits = config.sourceLimitations ?? {};
+  for (const name of Object.keys(sourceLimits)) {
+    if (!baseSources.some((s) => s.name === name))
+      throw new Error(`sourceLimitations names ${name}, which the base manifest does not carry`);
+  }
+  const dropPrefixes = config.dropLimitationPrefixes ?? [];
   const receiptFor = (name: string): string =>
     resolvePath(repoRoot, name.startsWith("austin") ? config.austinReceipt : config.tcadReceipt);
   const input: BuildManifestInput = {
@@ -390,7 +409,7 @@ export async function buildRunManifest(
             url: s.url,
             watermark: s.watermark,
             receipts: receiptFor(s.name),
-            limitations: [...s.limitations],
+            limitations: [...(sourceLimits[s.name] ?? s.limitations)],
             // No new capture: nothing added, changed or removed since the base run.
             delta: { added: 0, changed: 0, removed: 0 },
           };
@@ -412,9 +431,11 @@ export async function buildRunManifest(
     profiles: withGazetteerProfile(base.profiles, (deps.gitCommit ?? shortCommit)(repoRoot)),
     coverage,
     ownersRedacted: ownersRedactedOf(base),
+    ...(config.registryNote === undefined ? {} : { registryNote: config.registryNote }),
     limitations: [
       ...base.limitations
         .filter((l) => !l.startsWith(DRAFT_LIMITATION_PREFIX))
+        .filter((l) => !dropPrefixes.some((p) => l.startsWith(p)))
         // an incremental run is not a correction run: drop the earlier run's own notes
         .filter(
           (l) =>

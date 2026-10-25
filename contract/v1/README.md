@@ -141,8 +141,12 @@ run published before Run 3 binds them as null with a reason. The permit's printe
 with the permit's own request as provenance and **no** `sunbiz_document_number` (PO decision
 2026-10-25). It is **as printed, unverified**: a name is evidence, not identity, so
 `contractor_resolution` stays `unresolved` (it becomes `resolved` only when the company carries an
-official registry id, which no Austin permit prints). No person, phone or address is published; a
-permit that prints only a person name has no contractor.
+official registry id, which no Austin permit prints). No phone or address is published. From Run
+3.1 (PO decision 2026-10-26, ERR-72), a permit that prints no company but prints a contractor
+person (`contractor_full_name`) publishes that person's name the same way, as `company.name` as
+printed (the lexicon links a permit's contractor to a company only, so no person record is
+written); a printed company always wins. `company.name` can therefore hold an individual's name.
+No column changes, so this stays v1.1.
 
 On `v_roofing_permit`: `contractor_name_as_printed` (the company name, null with
 `contractor_unresolved`), `bbb_status` = `blocked` with `bbb_status_reason` = `bbb_blocked` when a

@@ -109,11 +109,14 @@ export function confidentialLimitation(ownersRedacted: number): string {
   return `Confidential owner records redacted (Texas Tax Code §25.025): ${ownersRedacted}`;
 }
 
-/** The fixed note of a source in SOURCE_ORDER. */
-function fixedLimitation(name: string, ownersRedacted: number): string {
+/**
+ * The fixed note of a source in SOURCE_ORDER. `registryNote` replaces the Austin source's
+ * "baseline not loaded" note for a run that did resolve against the loaded registry (ERR-73).
+ */
+function fixedLimitation(name: string, ownersRedacted: number, registryNote?: string): string {
   switch (name) {
     case SOURCE_ORDER[0]:
-      return COMPTROLLER_LIMITATION;
+      return registryNote ?? COMPTROLLER_LIMITATION;
     case SOURCE_ORDER[1]:
       return confidentialLimitation(ownersRedacted);
     case ADDRESS_POINT_SOURCE:
@@ -197,6 +200,11 @@ export interface BuildManifestInput {
    * `validate` (P0-15). Written into the TCAD source's limitation note; never defaulted.
    */
   ownersRedacted: number;
+  /**
+   * The Austin source's registry note when the run resolved its permits against the loaded
+   * Comptroller registry (ERR-73); omitted, the note says the baseline is not loaded.
+   */
+  registryNote?: string;
   limitations: string[];
   /**
    * A-16 #6: how many captured Austin permits linked to a TCAD property (Query DB). It is not
@@ -559,7 +567,9 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
     startedAt: input.startedAt,
     finishedAt: input.finishedAt,
     previousManifestCid: input.previousManifestCid,
-    sources: input.sources.map((s) => source(s, fixedLimitation(s.name, input.ownersRedacted))),
+    sources: input.sources.map((s) =>
+      source(s, fixedLimitation(s.name, input.ownersRedacted, input.registryNote)),
+    ),
     artifacts,
     profiles: input.profiles,
     coverage: input.coverage,

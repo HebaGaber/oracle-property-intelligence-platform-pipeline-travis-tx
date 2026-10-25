@@ -209,6 +209,37 @@ describe("buildRunManifest", () => {
     expect(CORRECTION_NOTE).toMatch(/each permit's property CID equals its County property CID/);
   });
 
+  it("a correction run can drop carried notes by prefix and replace a source's limitations (ERR-73)", async () => {
+    const f = await runFixture();
+    const base = RunManifestV1.parse(JSON.parse(Buffer.from(f.baseBytes).toString("utf8")));
+    const first = base.sources[0];
+    if (first === undefined) throw new Error("fixture has no source");
+    const { manifest: m } = await buildRunManifest(
+      config(f, {
+        dropLimitationPrefixes: ["county published_rows"],
+        sourceLimitations: { [first.name]: ["one GET per permit"] },
+        registryNote: "Comptroller registry loaded 2026-10-22",
+        correctionNote: "Run 3.1 note",
+      }),
+      deps(f),
+    );
+    expect(m.limitations).toEqual(["Run 3.1 note"]);
+    expect(m.sources[0]?.limitations).toEqual([
+      "one GET per permit",
+      "Comptroller registry loaded 2026-10-22",
+    ]);
+    expect(m.sources.slice(1).map((s) => s.limitations)).toEqual(
+      base.sources.slice(1).map((s) => s.limitations),
+    );
+  });
+
+  it("refuses sourceLimitations for a source the base does not carry", async () => {
+    const f = await runFixture();
+    await expect(
+      buildRunManifest(config(f, { sourceLimitations: { "no-such-source": ["x"] } }), deps(f)),
+    ).rejects.toThrow(/no-such-source/);
+  });
+
   it("returns exact JCS bytes whose raw-leaves CID is the manifest CID", async () => {
     const f = await runFixture();
     const built = await buildRunManifest(config(f), deps(f));
