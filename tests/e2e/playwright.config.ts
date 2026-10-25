@@ -44,6 +44,12 @@ const A13_SHARDS = {
   "a13-pages": "A-13-pages.spec.ts",
   "a13-scan": "A-13-scan.spec.ts",
 } as const;
+// A-14: the Explore · AI tab (real agent asks, 7 s apart, shared Bedrock budget) and the hosted
+// MCP endpoint (timing and 429 burst) each run alone, in their own project.
+const A14_SHARDS = {
+  "a14-agent": "A-14.spec.ts",
+  "a14-mcp": "A-14-mcp.spec.ts",
+} as const;
 // One report and output folder per CI phase, so the second invocation never clears the first.
 const phase = process.env.PW_PHASE ?? "all";
 
@@ -97,11 +103,20 @@ export default defineConfig({
       testMatch: `**/${file}`,
       use: { ...devices["Desktop Chrome"] },
     })),
+    ...Object.entries(A14_SHARDS).map(([name, file]) => ({
+      name,
+      testMatch: `**/${file}`,
+      use: { ...devices["Desktop Chrome"] },
+    })),
     {
       name: "site",
-      testIgnore: [...ISOLATED, PERMITS, MANIFEST, ...Object.values(A13_SHARDS)].map(
-        (f) => `**/${f}`,
-      ),
+      testIgnore: [
+        ...ISOLATED,
+        PERMITS,
+        MANIFEST,
+        ...Object.values(A13_SHARDS),
+        ...Object.values(A14_SHARDS),
+      ].map((f) => `**/${f}`),
       use: { ...devices["Desktop Chrome"] },
     },
     {

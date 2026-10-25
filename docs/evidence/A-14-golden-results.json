@@ -1,0 +1,638 @@
+{
+  "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
+  "cases": [
+    {
+      "id": "G1",
+      "prompt": "Which properties in Travis County within five miles of Pflugerville have roofs older than 15 years?",
+      "durationMs": 4917,
+      "requestId": "TZ_e27hthBdsn42NrXO1oywRWlrLYloaedqS_dbcbTYPYkORzJE44g==",
+      "response": {
+        "answer": "The search returned **no matches** for properties within 5 miles of Pflugerville with roofs older than 15 years. Here's what that means:\n\n- **Total matches found:** 0\n- **Unknown excluded:** 0 — meaning no properties were left out due to a missing/unknown roof age value.\n- **Reason:** `no_match` — the data is available and was searched, but no properties in that area currently meet both criteria (within 5 miles of Pflugerville **and** roof age > 15 years).\n\n### What you can try:\n1. **Expand the radius** — Try 10 or 15 miles to cast a wider net.\n2. **Lower the roof age threshold** — Try 10 or 12 years instead of 15.\n3. **Search a nearby area** — Try neighboring places like Austin, Round Rock, or Manor.\n\nWould you like me to adjust any of these parameters and search again?",
+        "how": "Pflugerville city · Census 2024 Gazetteer · 30.447765, -97.602116; radius_mi: 5; roof_age_years_min: 15; sort: \"roof_desc\"; limit: 50",
+        "steps": [
+          {
+            "tool": "searchProperties",
+            "input": {
+              "area": {
+                "place": "Pflugerville"
+              },
+              "radius_mi": 5,
+              "roof_age_years_min": 15,
+              "sort": "roof_desc",
+              "limit": 50
+            },
+            "summary": "1 tool call(s), 1 result(s)"
+          },
+          {
+            "tool": "",
+            "input": null,
+            "summary": "0 tool call(s), 0 result(s)"
+          }
+        ],
+        "matches": [],
+        "query": {
+          "area": {
+            "place": "Pflugerville"
+          },
+          "radius_mi": 5,
+          "roof_age_years_min": 15,
+          "sort": "roof_desc",
+          "limit": 50
+        },
+        "missing": [
+          {
+            "field": "result",
+            "reason": "no_match"
+          }
+        ],
+        "outcome": "answered"
+      },
+      "oracleTotal": 0,
+      "oracleEmptyReason": "no_match",
+      "budget": {
+        "pass": true,
+        "steps": 2,
+        "modelCalls": null,
+        "outputTokens": null,
+        "durationMs": null
+      },
+      "honesty": {
+        "pass": false,
+        "missingMentions": [],
+        "missingFlags": [],
+        "emptyReasonMismatch": true
+      },
+      "correctness": {
+        "pass": true,
+        "total": 0,
+        "incorrect": []
+      },
+      "recall": {
+        "pass": true,
+        "recall": 1,
+        "n": 0
+      },
+      "groundedness": {
+        "pass": true,
+        "checked": 0,
+        "ungrounded": []
+      },
+      "outOfScope": null,
+      "matchesLengthOk": true
+    },
+    {
+      "id": "G2",
+      "prompt": "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?",
+      "durationMs": 6329,
+      "requestId": "Kn0EY32hZGQgHSAgIdcGt-Dt3Mc0nwOpvnWv6eVnVC8tJdmD7BQYQg==",
+      "response": {
+        "answer": "Let me also try without the open_years_min filter to see all open/stalled permits near Pflugerville.",
+        "how": "Pflugerville city · Census 2024 Gazetteer · 30.447765, -97.602116; radius_mi: 5; status_class: \"open_or_stalled\"; open_years_min: 1; sort: \"open_desc\"; limit: 20",
+        "steps": [
+          {
+            "tool": "searchRoofingPermits",
+            "input": {
+              "area": {
+                "place": "Pflugerville"
+              },
+              "radius_mi": 5,
+              "status_class": "open_or_stalled",
+              "open_years_min": 3,
+              "sort": "open_desc",
+              "limit": 20
+            },
+            "summary": "1 tool call(s), 1 result(s)"
+          },
+          {
+            "tool": "searchRoofingPermits",
+            "input": {
+              "area": {
+                "place": "Pflugerville"
+              },
+              "radius_mi": 5,
+              "status_class": "open_or_stalled",
+              "open_years_min": 1,
+              "sort": "open_desc",
+              "limit": 20
+            },
+            "summary": "1 tool call(s), 1 result(s)"
+          },
+          {
+            "tool": "searchRoofingPermits",
+            "input": {
+              "area": {
+                "place": "Pflugerville"
+              },
+              "radius_mi": 5,
+              "status_class": "open_or_stalled",
+              "sort": "open_desc",
+              "limit": 20
+            },
+            "summary": "1 tool call(s), 1 result(s)"
+          }
+        ],
+        "matches": [],
+        "query": {
+          "area": {
+            "place": "Pflugerville"
+          },
+          "radius_mi": 5,
+          "status_class": "open_or_stalled",
+          "open_years_min": 1,
+          "sort": "open_desc",
+          "limit": 20
+        },
+        "missing": [
+          {
+            "field": "result",
+            "reason": "no_match"
+          }
+        ],
+        "outcome": "answered"
+      },
+      "oracleTotal": 0,
+      "oracleEmptyReason": "no_match",
+      "budget": {
+        "pass": true,
+        "steps": 3,
+        "modelCalls": null,
+        "outputTokens": null,
+        "durationMs": null
+      },
+      "honesty": {
+        "pass": false,
+        "missingMentions": [
+          "≥\\s*5|at least 5|five",
+          "contractor not printed|no_lexicon_carrier",
+          "BBB.*not available|not available.*BBB"
+        ],
+        "missingFlags": [
+          "contractor.name_as_printed",
+          "bbb_status"
+        ],
+        "emptyReasonMismatch": true
+      },
+      "correctness": {
+        "pass": true,
+        "total": 0,
+        "incorrect": []
+      },
+      "recall": {
+        "pass": true,
+        "recall": 1,
+        "n": 0
+      },
+      "groundedness": {
+        "pass": true,
+        "checked": 0,
+        "ungrounded": []
+      },
+      "outOfScope": null,
+      "matchesLengthOk": true
+    },
+    {
+      "id": "G3",
+      "prompt": "Show me open roofing permits older than five years within five miles of Manor",
+      "durationMs": 3804,
+      "requestId": "j54NBV7FuufM0V42F-FBjVf8gIU7xGkLHRafpfGnheWKxqDEZNCV_w==",
+      "response": {
+        "answer": "No open roofing permits older than five years were found within five miles of **Manor**. There are zero matches — no results were excluded due to unknown data either.\n\nThis could mean:\n- All permits in that area have been **closed out** within the past five years, or\n- There simply aren't any long-running open permits in this radius.\n\nWould you like me to try a **wider radius**, a **shorter age threshold**, or check for **stalled** permits in the same area instead?",
+        "how": "Manor city · Census 2024 Gazetteer · 30.354228, -97.558259; radius_mi: 5; status_class: \"open\"; open_years_min: 5; sort: \"open_desc\"; limit: 50",
+        "steps": [
+          {
+            "tool": "searchRoofingPermits",
+            "input": {
+              "area": {
+                "place": "Manor"
+              },
+              "radius_mi": 5,
+              "status_class": "open",
+              "open_years_min": 5,
+              "sort": "open_desc",
+              "limit": 50
+            },
+            "summary": "1 tool call(s), 1 result(s)"
+          },
+          {
+            "tool": "",
+            "input": null,
+            "summary": "0 tool call(s), 0 result(s)"
+          }
+        ],
+        "matches": [],
+        "query": {
+          "area": {
+            "place": "Manor"
+          },
+          "radius_mi": 5,
+          "status_class": "open",
+          "open_years_min": 5,
+          "sort": "open_desc",
+          "limit": 50
+        },
+        "missing": [
+          {
+            "field": "result",
+            "reason": "no_match"
+          }
+        ],
+        "outcome": "answered"
+      },
+      "oracleTotal": 0,
+      "oracleEmptyReason": "no_match",
+      "budget": {
+        "pass": true,
+        "steps": 2,
+        "modelCalls": null,
+        "outputTokens": null,
+        "durationMs": null
+      },
+      "honesty": {
+        "pass": false,
+        "missingMentions": [],
+        "missingFlags": [],
+        "emptyReasonMismatch": true
+      },
+      "correctness": {
+        "pass": true,
+        "total": 0,
+        "incorrect": []
+      },
+      "recall": {
+        "pass": true,
+        "recall": 1,
+        "n": 0
+      },
+      "groundedness": {
+        "pass": true,
+        "checked": 0,
+        "ungrounded": []
+      },
+      "outOfScope": null,
+      "matchesLengthOk": true
+    },
+    {
+      "id": "G4",
+      "prompt": "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?",
+      "durationMs": 8492,
+      "requestId": "Ywhoi8FIy5Iqahas5uOfYE7-p31WIuxACwQ1a757j1LHahvVXb8NbA==",
+      "response": {
+        "answer": "Unfortunately, even after expanding the search radius to **10 miles around Lakeway**, **no properties matched** both criteria simultaneously:\n\n- ✅ **Owner tenure of 10+ years** (long-term owners)\n- ✅ **Out-of-area owner mailing address**\n\nA few things to note:\n\n- **0 properties were excluded** due to unknown tenure or unknown owner location — meaning the dataset had good coverage, and this combination genuinely yielded no matches in that area.\n- Lakeway is noted as only **partially within Travis County**, so some surrounding properties may fall outside the dataset's coverage.\n\n### Suggestions to find leads:\n1. **Relax one filter** — e.g., search for *only* out-of-area owners, or *only* long-tenure owners near Lakeway.\n2. **Try a nearby Travis County hub** like **Bee Cave** or **Austin** for broader coverage.\n3. **Add a roof age filter** — if you're targeting roofing leads specifically, combining roof age (e.g., 15+ years) with out-of-area ownership may surface more actionable prospects.\n\nWould you like me to run any of these alternative searches?",
+        "how": "Lakeway city · Census 2024 Gazetteer · 30.354982, -97.986269; radius_mi: 10; tenure_years_min: 10; owner_is_out_of_area: true; sort: \"nearest\"; limit: 50",
+        "steps": [
+          {
+            "tool": "searchProperties",
+            "input": {
+              "area": {
+                "place": "Lakeway"
+              },
+              "radius_mi": 5,
+              "tenure_years_min": 10,
+              "owner_is_out_of_area": true,
+              "sort": "nearest",
+              "limit": 50
+            },
+            "summary": "1 tool call(s), 1 result(s)"
+          },
+          {
+            "tool": "searchProperties",
+            "input": {
+              "area": {
+                "place": "Lakeway"
+              },
+              "radius_mi": 10,
+              "tenure_years_min": 10,
+              "owner_is_out_of_area": true,
+              "sort": "nearest",
+              "limit": 50
+            },
+            "summary": "1 tool call(s), 1 result(s)"
+          },
+          {
+            "tool": "",
+            "input": null,
+            "summary": "0 tool call(s), 0 result(s)"
+          }
+        ],
+        "matches": [],
+        "query": {
+          "area": {
+            "place": "Lakeway"
+          },
+          "radius_mi": 10,
+          "tenure_years_min": 10,
+          "owner_is_out_of_area": true,
+          "sort": "nearest",
+          "limit": 50
+        },
+        "missing": [
+          {
+            "field": "result",
+            "reason": "no_match"
+          }
+        ],
+        "outcome": "answered"
+      },
+      "oracleTotal": 0,
+      "oracleEmptyReason": "no_match",
+      "budget": {
+        "pass": true,
+        "steps": 3,
+        "modelCalls": null,
+        "outputTokens": null,
+        "durationMs": null
+      },
+      "honesty": {
+        "pass": false,
+        "missingMentions": [
+          "outside the area",
+          "not_in_export|not in the published export"
+        ],
+        "missingFlags": [
+          "owner_is_out_of_area"
+        ],
+        "emptyReasonMismatch": true
+      },
+      "correctness": {
+        "pass": true,
+        "total": 0,
+        "incorrect": []
+      },
+      "recall": {
+        "pass": true,
+        "recall": 1,
+        "n": 0
+      },
+      "groundedness": {
+        "pass": true,
+        "checked": 0,
+        "ungrounded": []
+      },
+      "outOfScope": null,
+      "matchesLengthOk": true
+    },
+    {
+      "id": "G5",
+      "prompt": "What's the BBB rating of the contractor on permit {real permit number}?",
+      "durationMs": 4402,
+      "requestId": "28C0gy0F8EcqfKrZRxEqE7HdTFHJvhXtRbEbIiKgOy_cvrO9Yw5d3Q==",
+      "response": {
+        "answer": "I found permit **2026-116568 BP** [1], but a BBB rating isn't available for it. Here's why:\n\n- **Contractor status:** Unresolved — the contractor on this permit could not be identified [1].\n- **BBB status:** Not checked, specifically because the contractor is unresolved [1].\n\nSince the contractor hasn't been resolved, there's no BBB lookup possible for this permit. If you have additional contractor details (like a name or license number), you'd need to check the [BBB website](https://www.bbb.org) directly.",
+        "how": "permit_number: \"2026-116568 BP\"; sort: \"open_desc\"; limit: 50",
+        "steps": [
+          {
+            "tool": "searchRoofingPermits",
+            "input": {
+              "permit_number": "2026-116568 BP",
+              "sort": "open_desc",
+              "limit": 50
+            },
+            "summary": "1 tool call(s), 1 result(s)"
+          },
+          {
+            "tool": "",
+            "input": null,
+            "summary": "0 tool call(s), 0 result(s)"
+          }
+        ],
+        "matches": [
+          {
+            "n": 1,
+            "property_cid": "baguqeeraikr46dhhva6tta2oz6lkxtoyvsn4j7gphg4uyloyhq5mtrskgeiq",
+            "permit_cid": "baguqeerantzc5bkxzupvioy7uklxctoad5e7khcnskkpivzam5wr5f3qvuxq",
+            "permit_number": "2026-116568 BP",
+            "source_url": "https://data.austintexas.gov/resource/3syk-w9eu.json?permit_number=2026-116568%20BP",
+            "captured_at": "2026-10-21T10:35:59.798Z",
+            "table": "property_improvement",
+            "table_cid": "bafkreiezsqxcd2h63fio6qrcl2rqd3thnc4wacr7qiuriwttbnwxpm62qu",
+            "run_id": "travis-202609-permits-20261021t103516z",
+            "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
+            "as_of": "2026-10-21T10:40:04.543Z",
+            "open_days": 47,
+            "status_class": "open",
+            "contractor_resolution": "unresolved",
+            "bbb_status": "not_checked",
+            "bbb_status_reason": "contractor_unresolved",
+            "missing": [
+              {
+                "field": "status_raw",
+                "reason": "no_lexicon_carrier"
+              },
+              {
+                "field": "expiry_date",
+                "reason": "no_lexicon_carrier"
+              },
+              {
+                "field": "final_date",
+                "reason": "not_closed"
+              },
+              {
+                "field": "permit_close_date",
+                "reason": "source_missing"
+              },
+              {
+                "field": "final_inspection_date",
+                "reason": "source_missing"
+              },
+              {
+                "field": "contractor_company_cid",
+                "reason": "contractor_unresolved"
+              },
+              {
+                "field": "contractor_name_raw",
+                "reason": "no_lexicon_carrier"
+              },
+              {
+                "field": "bbb_rating",
+                "reason": "no_lexicon_carrier"
+              },
+              {
+                "field": "bbb_url",
+                "reason": "no_lexicon_carrier"
+              },
+              {
+                "field": "description",
+                "reason": "no_lexicon_carrier"
+              },
+              {
+                "field": "work_class_raw",
+                "reason": "no_lexicon_carrier"
+              }
+            ]
+          }
+        ],
+        "query": {
+          "permit_number": "2026-116568 BP",
+          "sort": "open_desc",
+          "limit": 50
+        },
+        "missing": [
+          {
+            "field": "status_raw",
+            "reason": "no_lexicon_carrier"
+          },
+          {
+            "field": "expiry_date",
+            "reason": "no_lexicon_carrier"
+          },
+          {
+            "field": "final_date",
+            "reason": "not_closed"
+          },
+          {
+            "field": "permit_close_date",
+            "reason": "source_missing"
+          },
+          {
+            "field": "final_inspection_date",
+            "reason": "source_missing"
+          },
+          {
+            "field": "contractor_company_cid",
+            "reason": "contractor_unresolved"
+          },
+          {
+            "field": "contractor_name_raw",
+            "reason": "no_lexicon_carrier"
+          },
+          {
+            "field": "bbb_rating",
+            "reason": "no_lexicon_carrier"
+          },
+          {
+            "field": "bbb_url",
+            "reason": "no_lexicon_carrier"
+          },
+          {
+            "field": "description",
+            "reason": "no_lexicon_carrier"
+          },
+          {
+            "field": "work_class_raw",
+            "reason": "no_lexicon_carrier"
+          }
+        ],
+        "outcome": "answered"
+      },
+      "oracleTotal": 1,
+      "oracleEmptyReason": null,
+      "budget": {
+        "pass": true,
+        "steps": 2,
+        "modelCalls": null,
+        "outputTokens": null,
+        "durationMs": null
+      },
+      "honesty": {
+        "pass": false,
+        "missingMentions": [
+          "BBB.*not available|rating.*not available|missing"
+        ],
+        "missingFlags": [
+          "bbb_status"
+        ],
+        "emptyReasonMismatch": false
+      },
+      "correctness": {
+        "pass": true,
+        "total": 2,
+        "incorrect": []
+      },
+      "recall": {
+        "pass": true,
+        "recall": 1,
+        "n": 1
+      },
+      "groundedness": {
+        "pass": true,
+        "checked": 2,
+        "ungrounded": []
+      },
+      "outOfScope": null,
+      "matchesLengthOk": true
+    },
+    {
+      "id": "G6",
+      "prompt": "How many properties have roofs older than 40 years in ZIP 99999?",
+      "durationMs": 3280,
+      "requestId": "tHLsKkQtqPPRAiZYeFkBRPGVArCRvxZKoCrfKtUnKqdvtXqM5fzlsA==",
+      "response": {
+        "answer": "ZIP code **99999** is **out of scope** — it falls outside Travis County, which is the only area covered by this tool. No results can be returned for that ZIP.\n\nIf you meant a different ZIP code within Travis County (e.g., 78701, 78745, 78759, etc.), please provide it and I'll pull up those properties with roofs older than 40 years right away! 🏠",
+        "how": "radius_mi: 25; roof_age_years_min: 40; sort: \"nearest\"; limit: 50",
+        "steps": [
+          {
+            "tool": "searchProperties",
+            "input": {
+              "area": {
+                "place": "99999"
+              },
+              "radius_mi": 25,
+              "roof_age_years_min": 40,
+              "sort": "nearest",
+              "limit": 50
+            },
+            "summary": "1 tool call(s), 1 result(s)"
+          },
+          {
+            "tool": "",
+            "input": null,
+            "summary": "0 tool call(s), 0 result(s)"
+          }
+        ],
+        "matches": [],
+        "query": {
+          "area": {
+            "place": "99999"
+          },
+          "radius_mi": 25,
+          "roof_age_years_min": 40,
+          "sort": "nearest",
+          "limit": 50
+        },
+        "missing": [
+          {
+            "field": "result",
+            "reason": "out_of_scope"
+          }
+        ],
+        "outcome": "answered"
+      },
+      "oracleTotal": null,
+      "oracleEmptyReason": null,
+      "budget": {
+        "pass": true,
+        "steps": 2,
+        "modelCalls": null,
+        "outputTokens": null,
+        "durationMs": null
+      },
+      "honesty": {
+        "pass": true,
+        "missingMentions": [],
+        "missingFlags": [],
+        "emptyReasonMismatch": false
+      },
+      "correctness": {
+        "pass": true,
+        "total": 0,
+        "incorrect": []
+      },
+      "recall": {
+        "pass": true,
+        "recall": 1,
+        "n": 0
+      },
+      "groundedness": {
+        "pass": true,
+        "checked": 0,
+        "ungrounded": []
+      },
+      "outOfScope": {
+        "pass": true,
+        "hasMatches": false,
+        "containsCid": false
+      },
+      "matchesLengthOk": true
+    }
+  ]
+}
