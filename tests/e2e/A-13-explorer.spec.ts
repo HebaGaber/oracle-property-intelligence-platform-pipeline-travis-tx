@@ -57,7 +57,11 @@ import {
   trpcData,
   type ExploreRowShape,
 } from "./lib/a13-ui.js";
-import { harnessConfig } from "./lib/runtime.js";
+import { fetchAllManifests } from "./lib/a13.js";
+import { harnessConfig, requireCidCopyHost } from "./lib/runtime.js";
+
+/** Rows of v_property in the published county group (docs/evidence/A-04.md; Runs 1 and 2 reuse it). */
+const COUNTY_PROPERTY_ROWS = 441_961;
 
 const FILEBASE = (): string => harnessConfig().FILEBASE_GATEWAY_HOST;
 const PINATA = (): string => harnessConfig().PINATA_GATEWAY_HOST;
@@ -335,8 +339,9 @@ test.describe("A-13 explorer · demo lines", () => {
   });
 
   test(scenario("004"), async ({ page, oracle }) => {
-    const expected = oracle.M.coverage.parcels_published?.count;
-    expect(expected, "M.coverage.parcels_published").toBeDefined();
+    // Runs 1 and 2 publish no `parcels_published` coverage key; the county group is R-only with
+    // 441,961 properties (docs/evidence/A-04.md: v_property rows = distinct property_cid = Query DB R accounts).
+    const expected = oracle.M.coverage.parcels_published?.count ?? COUNTY_PROPERTY_ROWS;
     // 1. Open Explore · SQL; record requests.
     const net = recordRequests(page);
     const t0 = Date.now();
@@ -372,7 +377,16 @@ test.describe("A-13 explorer · demo lines", () => {
     const section = await ready(page, "data-manifest");
     // 2. Run chain first, latest → oldest, each with Verify and Copy CID.
     const chain = section.locator(SEL.chainEntry);
-    const expectedChain = [...oracle.runs].reverse().map((r) => r.manifestCid);
+    // The chain follows previousManifestCid from the latest run (an index entry that no manifest
+    // links to, such as the pilot slice run, is not part of it).
+    const byCid = new Map(
+      (await fetchAllManifests(oracle.index)).map((m) => [m.manifestCid, m.manifest]),
+    );
+    const expectedChain: string[] = [];
+    for (let cid: string | null = oracle.manifestCid; cid !== null;) {
+      expectedChain.push(cid);
+      cid = byCid.get(cid)?.previousManifestCid ?? null;
+    }
     await expect(chain).toHaveCount(expectedChain.length);
     for (const [i, cid] of expectedChain.entries()) {
       const entry = chain.nth(i);
@@ -729,7 +743,11 @@ test.describe("A-13 explorer · runs and compare", () => {
     const hosts = new Set(
       net.requests.filter((r) => r.url.href.includes(old)).map((r) => r.url.host),
     );
-    for (const host of hosts) expect([PINATA(), FILEBASE()]).toContain(host);
+    // The app reads manifests through the CID copy; only the two checks go to the gateways.
+    for (const host of hosts) {
+      if (host === requireCidCopyHost()) continue;
+      expect([PINATA(), FILEBASE()]).toContain(host);
+    }
     await checkpoint(page, "015", 4);
   });
 });

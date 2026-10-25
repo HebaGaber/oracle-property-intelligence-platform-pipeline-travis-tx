@@ -35,6 +35,7 @@ import { SEL, exploreUrl, scenario, templatePattern } from "./lib/a13-ui.js";
 import { AUDITED_PROPERTIES, atlasTokenAudit, smallTapTargets } from "./lib/atlas-tokens.js";
 import { RUNTIME_URL_UNSET_TEXT, runtimeUrlLocalhostText } from "./lib/runtime-url.js";
 import { e2eRoot, fetchBuildInfo } from "./lib/runtime.js";
+import { resolveDataGroups } from "./lib/manifest.js";
 import { childEnv, run } from "./lib/spawn.js";
 
 const EXPLORE = ROUTES.explore;
@@ -255,18 +256,30 @@ test.describe("A-13 pages · Help MCP", { tag: "@a13-pages" }, () => {
 
 type Manifest = A13Oracle["M"];
 
-/** `tables/{group}/{table}` names of the published tables of `M` (a table may have several part files). */
+/** The catalog row key of a table part: `tables/{group}/{table}`, the group resolved from its export batch (a pilot run's `tables/{group}` or a full run's `…/tables/bNN`). */
+function tableKeyOf(groups: ReadonlyMap<string, string>, name: string): string | null {
+  const segs = name.split("/");
+  const group = groups.get(segs.slice(0, -2).join("/"));
+  const table = segs.at(-2);
+  return group !== undefined && table !== undefined ? `tables/${group}/${table}` : null;
+}
+
+/** `tables/{group}/{table}` names of the published tables of `M` (a table may have several part files, in several batches). */
 function tableNames(M: Manifest): string[] {
+  const groups = resolveDataGroups(M);
   const names = new Set<string>();
   for (const a of M.artifacts) {
-    const m = /^(tables\/[a-z_]+\/[A-Za-z0-9_]+)(?:\/|$)/.exec(a.name);
-    if (m?.[1] !== undefined) names.add(m[1]);
+    if (a.kind !== "table") continue;
+    const key = tableKeyOf(groups, a.name);
+    if (key !== null) names.add(key);
   }
   return [...names].sort();
 }
 
-const partsOf = (M: Manifest, table: string): Manifest["artifacts"] =>
-  M.artifacts.filter((a) => a.name === table || a.name.startsWith(`${table}/`));
+const partsOf = (M: Manifest, table: string): Manifest["artifacts"] => {
+  const groups = resolveDataGroups(M);
+  return M.artifacts.filter((a) => a.kind === "table" && tableKeyOf(groups, a.name) === table);
+};
 
 /** Columns of one table from a tables-export.json body, tolerating `tables` as an array or a record. */
 function exportColumns(json: unknown, table: string): { name: string; type: string }[] | null {

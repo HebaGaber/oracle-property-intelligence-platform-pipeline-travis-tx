@@ -19,6 +19,8 @@ import {
   mergeResponseCids,
   loadPlaceholderDenylist,
   prototypeCidTokens,
+  publishedTexts,
+  withoutPublished,
 } from "./lib/a13.js";
 import { checkpoint, expect, test } from "./lib/a13-fixtures.js";
 import { writeEvidenceSection } from "./lib/a13-evidence.js";
@@ -135,7 +137,9 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
   test(scenario("073"), async ({ browser, oracle }) => {
     test.setTimeout(30 * 60_000);
     // 1. The allowed CID set: every CID of every manifest of runs/index.json.
-    const allow = buildCidAllowlist(await fetchAllManifests(oracle.index));
+    const manifests = await fetchAllManifests(oracle.index);
+    const published = publishedTexts(manifests);
+    const allow = buildCidAllowlist(manifests);
     const denylist = loadPlaceholderDenylist();
     const prototypeCids = prototypeCidTokens();
     const rows: string[] = [];
@@ -166,7 +170,7 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
               return openEverything(page, width, note);
             });
             // 3. Scan text and attributes.
-            const all = texts.join("\n");
+            const all = withoutPublished(texts.join("\n"), published);
             const phrases = denylistHits(all, denylist, { runCount: oracle.runs.length });
             const protoCids = cidTokens(all).filter((t) => prototypeCids.includes(t));
             const foreign = disallowedCidTokens(
@@ -224,6 +228,7 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
       'nav a[href^="/"]',
     ].join(", ");
     const SKIP = /delete|remove|clear all|sign out|log out/i;
+    const published = publishedTexts(await fetchAllManifests(oracle.index));
     const bad: string[] = [];
     page.on("dialog", (d) => void d.dismiss());
     // 1. Open each route.
@@ -248,7 +253,7 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
             .allInnerTexts()
         ).join("\n");
         const body = await page.locator("body").innerText();
-        if (/not wired|prototype/i.test(`${live}\n${body}`))
+        if (/not wired|prototype/i.test(withoutPublished(`${live}\n${body}`, published)))
           bad.push(`${target.path}: "${name}" → not wired / prototype text`);
         if ((await page.locator("[data-protobar]").count()) > 0 || /ProtoBar/i.test(body)) {
           bad.push(`${target.path}: "${name}" → ProtoBar`);

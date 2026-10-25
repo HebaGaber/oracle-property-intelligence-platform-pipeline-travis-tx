@@ -262,3 +262,32 @@ export function prototypeCidTokens(dir = PROTOTYPE_DIR): string[] {
   }
   return [...tokens].sort();
 }
+
+// ---------------------------------------------------------------------------------------
+// Published text (TC-073, TC-074)
+// ---------------------------------------------------------------------------------------
+
+const squash = (text: string): string => text.replace(/\s+/g, " ").trim();
+
+/**
+ * The notes and limitations the manifests themselves publish, whitespace-squashed. A real
+ * manifest may say "Comptroller registry not wired for this run"; the Coverage page shows that
+ * sentence verbatim as provenance, so the prototype-phrase scans must not count it.
+ */
+export function publishedTexts(manifests: readonly OracleManifest[]): string[] {
+  const out = new Set<string>();
+  for (const { manifest } of manifests) {
+    for (const limitation of manifest.limitations) out.add(squash(limitation));
+    for (const entry of Object.values(manifest.coverage)) {
+      if (typeof entry.note === "string") out.add(squash(entry.note));
+    }
+  }
+  return [...out].filter((t) => t.length > 0).sort((a, b) => b.length - a.length);
+}
+
+/** `text` with every occurrence of a published sentence removed (whitespace-insensitive). */
+export function withoutPublished(text: string, published: readonly string[]): string {
+  let out = squash(text);
+  for (const sentence of published) out = out.split(sentence).join(" ");
+  return out;
+}

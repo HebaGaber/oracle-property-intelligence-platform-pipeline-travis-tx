@@ -50,7 +50,7 @@ export async function openSqlSession(
       for (const part of parts) await engine.registerFile(registeredPartName(part), part.bytes);
       partUrl = registeredPartName;
     }
-    await module.bindRun(engine, loaded.read.bytes, partUrl);
+    await module.bindAllViews(engine, loaded.read.bytes, partUrl);
     return {
       runId: loaded.manifest.runId,
       manifestCid: loaded.manifestCid,
