@@ -144,6 +144,9 @@ export function ExploreFilters({
   const queryClient = useQueryClient();
   const search = useQuery({
     ...trpc.explore.search.queryOptions(debounced?.request ?? skipToken),
+    // No automatic retry: a search the server could not finish already took up to 29 s, and a second
+    // attempt would double the wait before the error shows (the page offers its own retry).
+    retry: false,
     placeholderData: keepPreviousData,
   });
 
