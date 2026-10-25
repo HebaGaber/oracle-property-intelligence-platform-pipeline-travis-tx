@@ -22,7 +22,7 @@ import {
   publishedTexts,
   withoutPublished,
 } from "./lib/a13.js";
-import { PARKED_GAPS, checkpoint, expect, parkGap, test } from "./lib/a13-fixtures.js";
+import { checkpoint, expect, test } from "./lib/a13-fixtures.js";
 import { writeEvidenceSection } from "./lib/a13-evidence.js";
 import {
   AXE_VERSION,
@@ -135,7 +135,6 @@ async function openEverything(
 
 test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
   test(scenario("073"), async ({ browser, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     test.setTimeout(30 * 60_000);
     // 1. The allowed CID set: every CID of every manifest of runs/index.json.
     const manifests = await fetchAllManifests(oracle.index);
@@ -220,7 +219,6 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
   });
 
   test(scenario("074"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     test.setTimeout(45 * 60_000);
     const MAX_CLICKS = 40;
     const ENABLED = [

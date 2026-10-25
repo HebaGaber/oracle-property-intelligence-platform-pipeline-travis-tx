@@ -18,8 +18,6 @@ import {
   ready,
   setControl,
   test,
-  PARKED_GAPS,
-  parkGap,
 } from "./lib/a13-fixtures.js";
 import { SEL, exploreUrl, scenario, trpcData } from "./lib/a13-ui.js";
 import {
@@ -44,7 +42,6 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
   test.describe.configure({ mode: "serial" });
 
   test(scenario("040"), async ({ browser, oracle }) => {
-    parkGap(PARKED_GAPS.sqlFirstQuery);
     test.setTimeout(300_000);
     noteBranch(oracle, "provisional until A-11");
     const timings: number[] = [];
@@ -156,7 +153,6 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
   }
 
   test(scenario("041"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // Two series of 1 warm-up + 5 runs (hosted sample, PO 2026-10-25), each run capped at PER_RUN_TIMEOUT_MS: the budget is the cap
     // times the run count (the 300 s default is a few runs short of that worst case); typical use ~2 min.
     test.setTimeout(seriesBudgetMs(2, QUERY_SAMPLE_RUNS));

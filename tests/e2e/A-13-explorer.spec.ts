@@ -35,8 +35,6 @@ import {
   sqlScalar,
   test,
   type A13Oracle,
-  PARKED_GAPS,
-  parkGap,
 } from "./lib/a13-fixtures.js";
 import {
   CONTRACTOR_STATES,
@@ -341,7 +339,6 @@ test.describe("A-13 explorer · demo lines", () => {
   });
 
   test(scenario("004"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.sqlFirstQuery);
     // Runs 1 and 2 publish no `parcels_published` coverage key; the county group is R-only with
     // 441,961 properties (docs/evidence/A-04.md: v_property rows = distinct property_cid = Query DB R accounts).
     const expected = oracle.M.coverage.parcels_published?.count ?? COUNTY_PROPERTY_ROWS;
@@ -488,7 +485,6 @@ test.describe("A-13 explorer · demo lines", () => {
   });
 
   test(scenario("008"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     noteBranch(oracle);
     const place = gazetteerPlace("Pflugerville");
     const searches = trackSearches(page);
@@ -547,7 +543,6 @@ test.describe("A-13 explorer · demo lines", () => {
   });
 
   test(scenario("009"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     noteBranch(oracle);
     const area = demoArea();
     // 1. Open the demo area.
@@ -838,7 +833,6 @@ test.describe("A-13 explorer · coverage", () => {
 
 test.describe("A-13 explorer · filters and property", () => {
   test(scenario("025"), async ({ page }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     const place = gazetteerPlace("Pflugerville");
     // 1–3. Type "Pflug"; the gazetteer suggestion.
     await page.goto(EXPLORE);
@@ -864,7 +858,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("026"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // 1. The wide area.
     const result = await openExplore(page, exploreUrl(EXPLORE, { ...WIDE, roof: 0, view: "list" }));
     const rows = page.locator(SEL.resultRow);
@@ -881,7 +874,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("027"), async ({ page }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // The PO's demo area (D-11: Austin city, where 5 mi → 3 mi really changes the count), not
     // Pflugerville, where both counts are 0 on the one-month slice.
     const area = demoArea();
@@ -917,7 +909,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("028"), async ({ page }) => {
-    parkGap(PARKED_GAPS.sqlFirstQuery);
     const point = { lat: 30.447765, lon: -97.602116 };
     // Precondition: SQL count 0 for the filter; halve r until it is (contract minimum 0.25 mi).
     let r = 0.5;
@@ -959,7 +950,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("029"), async ({ page }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     const state = {
       place: "pflugerville",
       r: 5,
@@ -1004,7 +994,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("030"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // 1. The TC-026 URL.
     const result = await openExplore(page, exploreUrl(EXPLORE, { ...WIDE, roof: 0, view: "list" }));
     const first = page.locator(SEL.resultRow).first();
@@ -1028,7 +1017,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("031"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     noteBranch(oracle);
     // 1. County-wide open or stalled ≥ 5 yrs, longest first.
     const result = await openExplore(
@@ -1060,7 +1048,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("032"), async ({ page }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // 1. Wide area, any permit.
     const result = await openExplore(page, exploreUrl(EXPLORE, { ...WIDE, permit: "any" }));
     const withPermit = result.rows.find((r) => r.permit !== null);
@@ -1091,7 +1078,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("033"), async ({ page }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // 1. TC-026 URL with every optional column on.
     const result = await openExplore(page, exploreUrl(EXPLORE, { ...WIDE, roof: 0, view: "list" }));
     const columns = page.getByRole("button", { name: "Columns" });
@@ -1159,7 +1145,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("034"), async ({ page, request }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // 1. The ADR at the deployed sha is the no-carrier list; the page must not invent values.
     const build = (await (await request.get("/build.json")).json()) as { sha?: string };
     test.info().annotations.push({ type: "build-sha", description: build.sha ?? "unknown" });
@@ -1190,7 +1175,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("035"), async ({ page }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     const place = gazetteerPlace("Pflugerville");
     // 1. Open permits ≥ 5 years in Pflugerville 5 mi.
     const result = await openExplore(
@@ -1213,7 +1197,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("036"), async ({ page }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // 1–2. Explore, preset ooa78753 → tenure > 10 and out-of-area on.
     await openExplore(page, EXPLORE);
     const result = await nextSearch(page, () =>
@@ -1245,7 +1228,6 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("037"), async ({ page }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // 1. The TC-036 state.
     await openExplore(page, EXPLORE);
     const result = await nextSearch(page, () =>
@@ -1289,7 +1271,6 @@ test.describe("A-13 explorer · filters and property", () => {
 
 test.describe("A-13 explorer · SQL", () => {
   test(scenario("038"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.sqlFirstQuery);
     // 1. Explore · SQL.
     await page.goto(exploreUrl(EXPLORE, { mode: "sql" }));
     // 2. Write statements are refused.
@@ -1305,7 +1286,6 @@ test.describe("A-13 explorer · SQL", () => {
   });
 
   test(scenario("039"), async ({ page }) => {
-    parkGap(PARKED_GAPS.sqlFirstQuery);
     await page.goto(exploreUrl(EXPLORE, { mode: "sql" }));
     for (const [step, sql, fix] of [
       [2, "SELEC count(*) FROM v_property", "SELECT"],
@@ -1325,7 +1305,6 @@ test.describe("A-13 explorer · SQL", () => {
   });
 
   test(scenario("043"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // 1. Filters search; record requests.
     const net = recordRequests(page);
     const result = await openExplore(

@@ -27,8 +27,6 @@ import {
   recordRequests,
   test,
   type A13Oracle,
-  PARKED_GAPS,
-  parkGap,
 } from "./lib/a13-fixtures.js";
 import {
   inSiteHrefs,
@@ -639,7 +637,6 @@ test.describe("A-13 pages · Coming soon", { tag: "@a13-pages" }, () => {
 
   for (const [tc, id] of CASES) {
     test(scenario(tc), async ({ page, oracle }) => {
-      if (tc === "062" || tc === "065") parkGap(PARKED_GAPS.exploreSearch); // needs a search result row to open the drawer
       const item = itemFor(id);
       const entry = ENTRY[id];
       if (entry === undefined) throw new Error(`no entry point defined for Coming soon item ${id}`);
@@ -851,7 +848,6 @@ test.describe("A-13 pages · cross-cutting", { tag: "@a13-pages" }, () => {
   });
 
   test(scenario("086"), async ({ page, oracle, request }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     test.setTimeout(20 * 60_000);
     const targets = routeTargets(oracle.manifestCid);
     const visited = new Set(targets.map((t) => t.path.split("?")[0]));
