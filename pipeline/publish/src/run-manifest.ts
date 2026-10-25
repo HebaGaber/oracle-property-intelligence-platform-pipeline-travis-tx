@@ -153,6 +153,8 @@ export function addressPointSourceInput(
   };
 }
 
+/** The correction run's note, however it was worded when that run was published. */
+const CORRECTION_NOTE_PREFIX = "Correction run, no new source capture";
 const INCREMENTAL_NOTE_PREFIX = "Incremental refresh of the Austin permits source";
 
 /** Source limitations an earlier incremental run added; they describe that run, not the source. */
@@ -416,7 +418,8 @@ export async function buildRunManifest(
         // an incremental run is not a correction run: drop the earlier run's own notes
         .filter(
           (l) =>
-            facts === null || (l !== CORRECTION_NOTE && !l.startsWith(INCREMENTAL_NOTE_PREFIX)),
+            facts === null ||
+            (!l.startsWith(CORRECTION_NOTE_PREFIX) && !l.startsWith(INCREMENTAL_NOTE_PREFIX)),
         )
         .map((l) => restatePermitRows(l, baseEmitted, emitted.total)),
       config.correctionNote ?? (facts === null ? CORRECTION_NOTE : incrementalRunNote(facts)),
