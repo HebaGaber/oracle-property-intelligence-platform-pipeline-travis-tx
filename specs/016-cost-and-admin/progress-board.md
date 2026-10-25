@@ -4,7 +4,7 @@ Updated every 15 minutes by the main session. Times are EEST (UTC+3). Session ta
 
 Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the PO · 🛑 PO decision · ⚠️ at risk
 
-**Last update:** 01:10 EEST · **Elapsed:** 1 h 30 m · **Remaining to target:** 1 h 30 m
+**Last update:** 01:40 EEST · **Elapsed:** 2 h 00 m · **Remaining to target:** 1 h 00 m
 
 ## Rounds
 
@@ -19,17 +19,17 @@ Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the
 
 | ID | Work | Owner | Round | Depends on | Est. | ETA | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| B-G4 | Index build CLI + reader + agent/MCP read path (T010–T015) | G4 machamp | R2 | wave 1 ✅ | 50 m | 01:30 | 🔄 20 files in progress, 0 commits |
-| B-G4i | Upload Run 2 then Run 1 index; Run 3 local check only | G4 machamp | R2 | B-G4 CLI | 15 m | 01:35 | ⏳ |
-| B-G1 | Infra (pool, timeout 15 s, throttle, alarms, grants) + admin API + idle-cost tests (T020–T025) | G1 metagross | R2 | wave 1 ✅; G3 queue construct for T023 | 50 m | 01:30 | 🔄 21 files in progress, 0 commits |
-| B-G3 | Queue construct, bridge, pipeline closures (T030–T036) | G3 machamp | R2 | wave 1 ✅ | 50 m | 01:30 | 🔄 4 commits: closures A11-6/10c/10d/16/17 R4–R6 + bridge retry; queue construct pending |
-| B-G2a | Sign-in, Activity, Runs admin, Coverage Cost/Limits, Runs/Compare/Log/Coverage parity (T039–T046) | G2a metagross | R2→R3 | G1 API types (for wiring) | 70 m | 01:50 | ⚠️ 35 files in progress, 0 commits |
-| B-G2b | Speed fixes, then parity: shell → Explore + drawer → Data → Hub/Help/Legal (T050–T052) | G2b metagross | R2→R3 | parity matrix ✅ | 80 m | 02:00 | 🔄 speed fixes + shell parity committed; Explore next |
-| M1 | Merge the five worktree branches into `016-cost-and-admin`; run `pnpm check`, format, grep gates, stylelint, bundle gate, `cdk synth` | Me | R2 | each builder done | 15 m | after each | ⏳ |
-| D1 | 🛑 Laptop CDK deploy (Api → Web → Ops) + smoke `admin.me` 401, `explore.search` on Run 2 + spike log retention 14 d | Me + PO OK | R2 | B-G1, B-G3, M1 | 15 m | 01:40 | ⏳ |
-| U1 | ✋ PO creates admin + non-admin Cognito users and the test env file (commands pre-filled) | PO | R2 | D1 | 5 m | 01:45 | ⏳ |
-| P1 | Batch 1 push (web parity families done + Coverage + docs) → Amplify preview → smoke | Me | R2 | M1 (G2a/G2b first commits) | 25 m | 01:40 | ⏳ |
-| P2 | Batch 2 push (admin UI/API, index read path, rest of parity) → preview | Me | R3 | B-G2a, B-G2b, B-G4, D1 | 25 m | 02:05 | ⏳ |
+| B-G4 | Index build CLI + reader + agent/MCP read path (T010–T015) | G4 machamp | R2 | wave 1 ✅ | 50 m | 01:30 | ✅ merged 28ae25c |
+| B-G4i | Upload Run 2 then Run 1 index; Run 3 local check only | G4 machamp | R2 | B-G4 CLI | 15 m | 01:35 | ✅ Run 2 + Run 1 uploaded, parity 0; Run 3 local only |
+| B-G1 | Infra (pool, timeout 15 s, throttle, alarms, grants) + admin API + idle-cost tests (T020–T025) | G1 metagross | R2 | wave 1 ✅; G3 queue construct for T023 | 50 m | 01:30 | ✅ merged 68e9862 (+ post-merge fixes df55f82) |
+| B-G3 | Queue construct, bridge, pipeline closures (T030–T036) | G3 machamp | R2 | wave 1 ✅ | 50 m | 01:30 | ✅ merged 49db39e |
+| B-G2a | Sign-in, Activity, Runs admin, Coverage Cost/Limits, Runs/Compare/Log/Coverage parity (T039–T046) | G2a metagross | R2→R3 | G1 API types (for wiring) | 70 m | 01:50 | ✅ merged 38ea8b3 |
+| B-G2b | Speed fixes, then parity: shell → Explore + drawer → Data → Hub/Help/Legal (T050–T052) | G2b metagross | R2→R3 | parity matrix ✅ | 80 m | 02:05 | 🔄 shell done; Explore/drawer/Data/Hub/Legal in progress; shell admin nav requested |
+| M1 | Merge the five worktree branches into `016-cost-and-admin`; run `pnpm check`, format, grep gates, stylelint, bundle gate, `cdk synth` | Me | R2 | each builder done | 15 m | 01:45 | 🔄 lint, format, grep gates, stylelint, typecheck ✅; full `pnpm check` running |
+| D1 | 🛑 Laptop CDK deploy (Api → Web → Ops) + smoke `admin.me` 401, `explore.search` on Run 2 + spike log retention 14 d | Me + PO OK | R2 | B-G1, B-G3, M1 | 15 m | 01:55 | ⏳ PO OK given; starts when `pnpm check` passes |
+| U1 | ✋ PO creates admin + non-admin Cognito users and the test env file (commands pre-filled) | PO | R2 | D1 | 5 m | 02:00 | ⏳ after D1 |
+| P1 | Batch 1 push (web parity families done + Coverage + docs) → Amplify preview → smoke | Me | R2 | M1 (G2a/G2b first commits) | 25 m | 02:00 | ⏳ merged with P2: one push after D1 (web needs the new pool IDs) |
+| P2 | Batch 2 push (admin UI/API, index read path, rest of parity) → preview | Me | R3 | B-G2a, B-G2b, B-G4, D1 | 25 m | 02:15 | ⏳ G2b rest as a follow-up push |
 | RV | One review round in parallel while P2 builds: `/code-review medium` + metagross, machamp, audino (≥ 75) | Me + reviewers | R3 | P2 pushed | 20 m | 02:10 | ⏳ |
 | UP | Unpark A-13/A-14 tests (T053/T026) | G2b | R3 | B-G4i live on preview | 5 m | 02:10 | ⏳ |
 | T1 | Hosted Playwright on the preview: A-16 specs, unparked cases, responsive; index p95 20 cold + 20 warm; golden G1–G6 on Run 2 | Me | R3 | P2, UP, U1 | 20 m | 02:25 | ⏳ |
