@@ -32,7 +32,7 @@ None blocking. Open for your attention before or after the merge: (1) put the AP
 
 ## PO decision (G7, second run)
 
-☐ Approved · ☐ Returned · date: ______ (the 2026-10-22 approval below was for the slice and its merge was held for A-11; it does not cover this state)
+☑ **Approved** · HebaGaber · 2026-10-25 ("yes push and i approve"), with the PO exception in `docs/decisions/DEC-A-13-explore-full-county.md` (29 of 73 hosted cases parked as A-16 gaps; D-4, D-8 and D-9 not proven on the full county). The 2026-10-22 approval below was for the pilot slice and is history.
 
 ---
 
