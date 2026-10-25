@@ -85,3 +85,28 @@ describe("CountyLensApi agent resources (A-14 T009/T016): Lambda, spend table, 8
     });
   });
 });
+
+describe("CountyLensApi agent Bedrock grant (found on the first hosted call: the role had none)", () => {
+  it("the agent role may invoke only the eu. Sonnet 4.6 profile and its base models via that profile, nothing broader", () => {
+    const { stacks } = appUnderTest({ "aws:cdk:bundling-stacks": [] as string[] });
+    const policies = Template.fromStack(stacks.api).findResources("AWS::IAM::Policy");
+    const statements = Object.values(policies).flatMap(
+      (p) =>
+        (p.Properties as { PolicyDocument: { Statement: Array<Record<string, unknown>> } })
+          .PolicyDocument.Statement,
+    );
+    const bedrock = statements.filter((s) => JSON.stringify(s.Action).includes("bedrock:"));
+    expect(bedrock).toHaveLength(1);
+    const [statement] = bedrock as [Record<string, unknown>];
+    expect(statement.Effect).toBe("Allow");
+    expect(statement.Action).toEqual([
+      "bedrock:InvokeModel",
+      "bedrock:InvokeModelWithResponseStream",
+    ]);
+    const text = JSON.stringify(statement);
+    expect(text).toContain("inference-profile/eu.anthropic.claude-sonnet-4-6");
+    expect(text).toContain("foundation-model/anthropic.claude-sonnet-4-6");
+    expect(text).toContain("bedrock:InferenceProfileArn");
+    expect(text).not.toMatch(/"Resource":"\*"/);
+  });
+});

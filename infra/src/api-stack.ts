@@ -111,6 +111,9 @@ export const SPEND_ALARM_THRESHOLD_USD = DAILY_SPEND_CAP_USD * 0.8;
 export const SPEND_METRIC_NAME = "AiSpendUsd";
 /** The HTTP API route path: the tRPC AWS Lambda adapter over `agentRouter` (one procedure,
  *  `ask`), so the client POSTs `/agent/ask`. */
+/** The agent's Bedrock model (apps/api/src/agent/model.ts DEFAULT_BEDROCK_MODEL_ID) and its base model. */
+export const BEDROCK_INFERENCE_PROFILE_ID = "eu.anthropic.claude-sonnet-4-6";
+export const BEDROCK_FOUNDATION_MODEL_ID = "anthropic.claude-sonnet-4-6";
 export const AGENT_ROUTE_PATH = "/agent/{proxy+}";
 /** Route-level throttle on the agent route (Stage 5 review fix: no specific number was decided
  *  in research.md/plan.md for this route, unlike the MCP route's documented 5 rps/burst 10). A
@@ -738,6 +741,24 @@ export class ApiStack extends Stack {
     props.data.grantApiRead(this.agentFn);
     // Read/increment the daily spend item only (no Scan, no other table).
     this.spendTable.grantReadWriteData(this.agentFn);
+    // Bedrock (AI_PROVIDER=bedrock, the default): invoke only the eu. Sonnet 4.6 inference profile,
+    // and the underlying foundation models only when reached through that profile (cross-region
+    // inference runs the model in the EU regions the profile lists, hence the region wildcard).
+    this.agentFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "InvokeBedrockSonnetProfile",
+        actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+        resources: [
+          `arn:${this.partition}:bedrock:${this.region}:${this.account}:inference-profile/${BEDROCK_INFERENCE_PROFILE_ID}`,
+          `arn:${this.partition}:bedrock:*::foundation-model/${BEDROCK_FOUNDATION_MODEL_ID}`,
+        ],
+        conditions: {
+          StringLike: {
+            "bedrock:InferenceProfileArn": `arn:${this.partition}:bedrock:*:${this.account}:inference-profile/${BEDROCK_INFERENCE_PROFILE_ID}`,
+          },
+        },
+      }),
+    );
 
     // Its own HTTP API + route (Stage 5 review fix: `agent.ask` had no way in at all). A
     // separate API from both the tRPC and MCP ones above, same reasoning as those two: AD-27's
@@ -845,6 +866,14 @@ export class ApiStack extends Stack {
           "of contracts/storage.md, mirrored from the tRPC and MCP Lambdas' own grants " +
           "(Data.grantApiRead).",
       );
+      Validations.of(agentDefaultPolicy).acknowledge({
+        id: `AwsSolutions-IAM5[Resource::arn:aws:bedrock:*::foundation-model/${BEDROCK_FOUNDATION_MODEL_ID}]`,
+        reason:
+          "Cross-region inference runs the model in any of the EU regions the eu. profile lists " +
+          "(six, chosen by Bedrock), so the foundation-model ARN carries a region wildcard. It names " +
+          "one model only and carries a bedrock:InferenceProfileArn condition, so it is usable only " +
+          "through the eu.anthropic.claude-sonnet-4-6 profile (AWS-documented pattern).",
+      });
     }
 
     new CfnOutput(this, "AgentApiUrl", {
