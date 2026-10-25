@@ -40,11 +40,12 @@ interface Fixture {
 }
 let fx: Fixture;
 
-async function build(withExport: boolean): Promise<Fixture> {
+async function build(withExport: boolean, extra: readonly string[] = []): Promise<Fixture> {
   const names = [
     "tables/county/property/part-00000.parquet",
     "tables/county/property/part-00001.parquet",
     "tables/property_improvement/property_improvement/part-00000.parquet",
+    ...extra,
   ];
   const parts = await Promise.all(
     names.map(async (name) => ({ name, cid: await rawCid(encode(name)) })),
@@ -409,5 +410,32 @@ describe("Catalog: unavailable (TC-054)", () => {
     // The failing table says why once ITS footer has been attempted (ERR-41: per-table state).
     await vi.waitFor(() => expect(bad.textContent).toContain("range read failed"));
     expect(page.querySelectorAll("[data-table]")).toHaveLength(2);
+  });
+});
+
+describe("Catalog: unclassified table parts (A13-7, CR-A-13 finding 4)", () => {
+  it("counts the parts whose export batch has no known data group, with the reason", async () => {
+    fx = await build(false, [
+      "tables/mystery/unknown_table/part-00000.parquet",
+      "tables/mystery/unknown_table/part-00001.parquet",
+    ]);
+    try {
+      const page = await renderCatalog();
+      await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
+      const row = page.querySelector<HTMLElement>("[data-unclassified-parts]");
+      expect(row).not.toBeNull();
+      expect(row?.getAttribute("data-unclassified-parts")).toBe("2");
+      expect(row?.textContent).toContain("unclassified table parts (2)");
+      expect(row?.textContent).toMatch(/no known data group/);
+      expect(page.querySelectorAll("[data-table]").length).toBe(2);
+    } finally {
+      fx = await build(false);
+    }
+  });
+
+  it("shows no unclassified row when every part has a data group", async () => {
+    const page = await renderCatalog();
+    await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
+    expect(page.querySelector("[data-unclassified-parts]")).toBeNull();
   });
 });

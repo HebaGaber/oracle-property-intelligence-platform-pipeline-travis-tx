@@ -27,6 +27,8 @@ import styles from "./AppShell.module.css";
 
 export const APP_TITLE = "CountyLens";
 export const MORE_LABEL = "More";
+/** A13-7: the accessible name of the focusable scroll container `<main>`. */
+export const MAIN_LABEL = "Page content";
 
 export interface Destination {
   readonly to: string;
@@ -189,7 +191,13 @@ export function AppShell(): ReactElement {
           <MoreSheet onClose={closeMore} />
         </>
       ) : null}
-      <main className={styles.main} onScroll={onScroll} inert={moreOpen} tabIndex={0}>
+      <main
+        className={styles.main}
+        onScroll={onScroll}
+        inert={moreOpen}
+        tabIndex={0}
+        aria-label={MAIN_LABEL}
+      >
         {inCounty ? <CountySelect /> : null}
         <Outlet />
       </main>

@@ -315,3 +315,18 @@ describe("ERR-13: landmark order: banner, navigation, then main (keyboard reache
     expect(css).toMatch(/"bar"\s*"main"\s*"nav"/);
   });
 });
+
+describe("A13-7: <main> has an accessible name and an inset focus ring", () => {
+  it("names the focusable main region", async () => {
+    await renderAt("/runs");
+    expect(screen.getByRole("main", { name: "Page content" }).getAttribute("tabindex")).toBe("0");
+  });
+
+  it("draws the main focus ring inside the region with the primary token, no negative offset", () => {
+    const css = cssModule("../src/components/AppShell.module.css") ?? "";
+    const ring = /\.main:focus-visible\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(ring).toMatch(/box-shadow:\s*inset 0 0 0 2px var\(--md-sys-color-primary\)/);
+    expect(ring).toMatch(/outline:\s*none/);
+    expect(ring).not.toMatch(/outline-offset:\s*-/);
+  });
+});

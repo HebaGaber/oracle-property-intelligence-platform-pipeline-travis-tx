@@ -53,6 +53,13 @@
   padding: var(--space-4);
 }
 
+/* A13-7: the focus ring of the scroll container is drawn inside it (an inset 2 px primary ring),
+   so the viewport edge never clips it; the global outline is replaced, not offset negatively. */
+.main:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--md-sys-color-primary);
+}
+
 /* Bottom navigation on compact: 80 px tall, surface-container, destinations spread evenly. */
 .nav {
   grid-area: nav;
