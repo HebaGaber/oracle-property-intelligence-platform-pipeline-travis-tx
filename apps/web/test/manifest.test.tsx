@@ -10,6 +10,7 @@ import { VERIFY_TEXTS, verifyPath } from "@countylens/shared";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { humanBytes } from "../src/routes/DataManifest";
 
 const COPY_HOST = "copy.example.test";
 const FILEBASE_HOST = "ipfs.filebase.io";
@@ -161,8 +162,14 @@ describe("Data · Manifest artifacts (FR-003d, TC-005)", () => {
       expect(row.querySelector(`[data-cid="${artifact.cid}"]`)).not.toBeNull();
       expect(row.textContent).toContain(artifact.name);
       expect(row.textContent).toContain(artifact.codec);
-      expect(row.textContent).toContain(String(artifact.size));
-      expect(row.textContent).toContain(artifact.sha256);
+      // A-16 board: human size and a short hash on screen; the exact values in the attributes.
+      expect(row.querySelector("[data-size]")?.getAttribute("data-size")).toBe(
+        String(artifact.size),
+      );
+      expect(row.querySelector("[data-size]")?.textContent).toBe(humanBytes(artifact.size));
+      expect(row.querySelector("[data-sha256]")?.getAttribute("data-sha256")).toBe(artifact.sha256);
+      expect(row.querySelector("[data-sha256]")?.getAttribute("title")).toBe(artifact.sha256);
+      expect(row.textContent).toContain(artifact.sha256.slice(0, 8));
       if (artifact.carCid !== undefined) {
         expect(row.querySelector(`[data-car-cid="${artifact.carCid}"]`)).not.toBeNull();
       }

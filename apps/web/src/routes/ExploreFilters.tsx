@@ -152,6 +152,36 @@ function isBadRequest(error: unknown): boolean {
   );
 }
 
+/**
+ * A-16 AC-13 (frozen interfaces "Index errors"): explore.search answers PRECONDITION_FAILED with a
+ * message ending "(index_not_built)" or "(index_stale)" when the run's Explore index cannot be
+ * read. The banner says what that means and what still works, never a raw server message.
+ */
+export const INDEX_ERROR_TEXTS = Object.freeze({
+  index_not_built:
+    "The search index for this run is not built yet, so Filters cannot search it. SQL and the run's published files still work.",
+  index_stale:
+    "The search index for this run is out of date (built from other view definitions), so Filters cannot search it. SQL and the run's published files still work.",
+});
+
+/** The banner text of a failed explore.search: index, out-of-range or the server's message. */
+export function exploreErrorText(error: unknown): string {
+  if (isBadRequest(error)) return EXPLORE_TEXTS.filtersOutOfRange;
+  const message = error instanceof Error ? error.message : String(error);
+  const code = /\((index_not_built|index_stale)\)\s*$/.exec(message)?.[1];
+  if (code === "index_not_built" || code === "index_stale") return INDEX_ERROR_TEXTS[code];
+  return message;
+}
+
+/** explore.search's notice when `ooa` was asked on a run that publishes no owner area (G4). */
+function ownerAreaNotice(data: unknown): string | null {
+  const notice = (data as { owner_area?: { status?: unknown; message?: unknown } } | undefined)
+    ?.owner_area;
+  return notice?.status === "not_published" && typeof notice.message === "string"
+    ? notice.message
+    : null;
+}
+
 export function ExploreFilters({
   onState,
 }: {
@@ -261,9 +291,7 @@ export function ExploreFilters({
         {search.isFetching ? <LinearProgress label={SEARCHING} stageText={SEARCHING} /> : null}
         {search.isError ? (
           <ErrorBanner
-            message={
-              isBadRequest(search.error) ? EXPLORE_TEXTS.filtersOutOfRange : search.error.message
-            }
+            message={exploreErrorText(search.error)}
             onRetry={() => void search.refetch()}
           />
         ) : null}
@@ -353,6 +381,12 @@ function Results({
       <p className={styles.header} data-explore-header="" aria-live="polite">
         {header}
       </p>
+      {request.ooa === true && ownerAreaNotice(data) !== null ? (
+        <p className={styles.empty} role="status" data-owner-area-notice="">
+          Out-of-area owner: {ownerAreaNotice(data)}. That is why this filter finds no properties
+          here; it does not mean every owner lives in Travis County.
+        </p>
+      ) : null}
       {showTenureUnknown ? (
         <p className={styles.engine} data-tenure-unknown="">
           {EXPLORE_TEXTS.tenureUnknownCount(data.tenure_unknown)}

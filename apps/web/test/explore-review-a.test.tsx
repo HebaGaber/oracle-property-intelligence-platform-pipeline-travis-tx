@@ -226,6 +226,45 @@ describe("search errors (finding 9)", () => {
   });
 });
 
+describe("A-16 AC-13: index errors and the owner-area notice", () => {
+  it.each([
+    ["index_not_built", "is not built yet"],
+    ["index_stale", "is out of date"],
+  ])(
+    "PRECONDITION_FAILED (%s) shows the fixed index sentence, not the raw message",
+    async (code, words) => {
+      api.search.mockImplementationOnce(async () => {
+        throw Object.assign(new Error(`explore index unavailable for bafkreix (${code})`), {
+          data: { code: "PRECONDITION_FAILED" },
+        });
+      });
+      await renderExplore("?place=pflugerville&r=5");
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toContain(words);
+      expect(alert.textContent).toContain("SQL and the run's published files still work");
+      expect(alert.textContent).not.toContain(`(${code})`);
+    },
+  );
+
+  it("an out-of-area search on a run without owner area says why it finds nothing", async () => {
+    api.search.mockImplementation(async () => ({
+      ...result([], { total_within_r: 0 }),
+      owner_area: {
+        status: "not_published",
+        reason: "owner_area_not_published",
+        message: "owner area not published in this run",
+      },
+    }));
+    await renderExplore("?place=pflugerville&r=5&ooa=1");
+    const notice = await waitFor(() => {
+      const el = document.querySelector("[data-owner-area-notice]");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(notice.textContent).toContain("owner area not published in this run");
+  });
+});
+
 describe("sel not in the results (finding 10)", () => {
   it("shows the notice instead of ignoring it", async () => {
     await renderExplore(`?place=pflugerville&r=5&sel=${cids[4]}`);
