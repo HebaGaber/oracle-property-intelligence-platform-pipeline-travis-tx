@@ -92,9 +92,9 @@ describe("CountyLensApi agent resources (A-14 T009/T016): Lambda, spend table, 8
       template.findResources("AWS::CloudWatch::Alarm", {
         Properties: { Threshold: SPEND_ALARM_THRESHOLD_USD },
       }),
-    ) as Array<{ Properties: { AlarmActions?: unknown[]; OKActions?: unknown[] } }>;
+    ) as Array<{ Properties?: { AlarmActions?: unknown[]; OKActions?: unknown[] } }>;
     expect(alarms).toHaveLength(1);
-    const props = alarms[0]!.Properties;
+    const props = alarms[0]?.Properties ?? {};
     for (const actions of [props.AlarmActions, props.OKActions]) {
       expect(actions).toHaveLength(1);
       expect(JSON.stringify(actions)).toContain(":countylens-alerts");
