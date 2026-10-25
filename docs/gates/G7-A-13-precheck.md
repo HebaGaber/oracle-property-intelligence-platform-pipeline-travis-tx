@@ -1,7 +1,7 @@
 ---
 gate: G7
 artifact: A-13 (branch 013-explorer-and-pages)
-artifact_version: "code dc46a6d (docs-only commits after it); CI run 40185511164 success; merged with feature/oracle-pipeline at 3749547"
+artifact_version: "hosted results on dc46a6d, final code c800181 (one unit-test change in between); CI run 40185511164 success; merged with feature/oracle-pipeline at 3749547"
 run_date: 2026-10-25
 tool: Claude
 verdict: PASS
