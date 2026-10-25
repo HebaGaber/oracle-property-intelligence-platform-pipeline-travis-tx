@@ -110,5 +110,52 @@ export const PAGE_TEXTS = Object.freeze({
   tableExportMissing: "table export not in this run's manifest",
   /** "Run {n} · {finishedAt as YYYY-MM-DD HH:mm UTC}"; n is the 1-based index position. */
   hubChip: (n: number, finishedAt: string): string => `Run ${n} · ${utcMinute(finishedAt)}`,
-  mcpNotAvailable: "Not available yet · the agent and MCP server arrive with story A-14",
+});
+
+/** Help · MCP "Try a tool" (A-14 T034): fixed wording of every state. */
+export const MCP_TRY_TEXTS = Object.freeze({
+  running: "Running the tool…",
+  noToken:
+    "Runs on the server, read-only. You do not need a token here; the token is only for MCP clients.",
+  truncated: (returned: number, total: number): string =>
+    `Showing ${returned} of ${total} rows · the tool cut the list at its row limit`,
+  complete: (returned: number): string => `${returned} rows · the full list`,
+  shownOf: (shown: number, returned: number): string =>
+    `Showing the first ${shown} of ${returned} returned rows`,
+  badJson: "The arguments are not valid JSON",
+  rateLimited: "Too many tool calls just now; wait a moment and try again",
+  unreachable: "The server could not be reached; try again",
+  emptyReason: (reason: string): string => `No rows · ${reason}`,
+});
+
+/** Explore · AI tab (A-14 T033, FR-012; contracts/agent-ask.md). Fixed wording of every state. */
+export const AI_TEXTS = Object.freeze({
+  /** Questions an anonymous visitor may ask in one browser session (spec: 10 per session). */
+  sessionLimit: 10,
+  /** Client-side stop (AD-27 layer 3), in milliseconds. */
+  clientStopMs: 25_000,
+  working: "Working…",
+  workingElapsed: (seconds: number): string => `Working… ${seconds} s`,
+  counter: (used: number, limit: number): string =>
+    `${used} of ${limit} questions used this session`,
+  noResults: "No matching properties",
+  noResultsBody:
+    "The agent found no rows for this question. What it could not tell is listed below.",
+  throttled: "The AI is busy right now · wait a minute and try again",
+  paused: "AI answers are paused for today · the daily budget is used up and resets at 00:00 UTC",
+  timedOut: "Took too long · try again, or use Filters instead",
+  limitReached: (limit: number): string =>
+    `Question limit reached · ${limit} questions per session · use Filters or SQL, or reload to start a new session`,
+  cancelled: "Cancelled · nothing was counted",
+  failed: "The agent could not answer this question · try rephrasing it, or use Filters instead",
+  unreachable: "The agent could not be reached · try again, or use Filters instead",
+  howTitle: "How I read this",
+  howHelp: "Edit a value and ask again to change how the question is read.",
+  missingTitle: "What is missing or unknown",
+  sourcesTitle: "Sources",
+  noMissing: "Nothing reported missing for this answer.",
+  searchedRun: "Searched run",
+  runAsOf: "as of",
+  runManifest: "manifest",
+  sourceMissing: "source not in the published row",
 });

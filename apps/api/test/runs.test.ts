@@ -23,7 +23,7 @@ import {
   PRESIGN_EXPIRES_S,
   PRESIGN_REUSE_MS,
   resetPresignedPrefixCache,
-} from "../src/s3-read.js";
+} from "../src/engine/s3-read.js";
 import {
   ENV,
   FINISHED_AT,

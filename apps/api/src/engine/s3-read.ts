@@ -31,8 +31,14 @@ import { Metrics, MetricUnit } from "@aws-lambda-powertools/metrics";
 import { TRPCError } from "@trpc/server";
 import { isCidV1 } from "@countylens/contract";
 import { rawCid } from "@countylens/query-core";
-import { getConfig } from "./config.js";
-import { METRICS_NAMESPACE, SERVICE_NAME } from "./observability.js";
+import { getEngineConfig } from "./engine-config.js";
+
+// A-14 T001: the same service/namespace identifiers apps/api/src/observability.ts uses, kept
+// here as plain constants (not imported from an app's src tree) so a cold, unconfigured default
+// Logger/Metrics pair reports under the same names production already logged under; a consumer
+// (apps/api) can still override both via `setS3ReadObservability` with its own instances.
+const SERVICE_NAME = "countylens-api";
+const METRICS_NAMESPACE = "CountyLens";
 
 export interface PresignedObject {
   readonly key: string;
@@ -175,7 +181,7 @@ export async function getManifest(cid: string): Promise<Uint8Array> {
   let bytes: Uint8Array;
   try {
     const object = await s3().send(
-      new GetObjectCommand({ Bucket: getConfig().cidCopyBucket, Key: key }),
+      new GetObjectCommand({ Bucket: getEngineConfig().cidCopyBucket, Key: key }),
     );
     if (object.Body === undefined) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `${key}: empty body` });
@@ -219,7 +225,7 @@ export async function localPart(cid: string): Promise<string> {
   const file = join(cacheDir(PART_CACHE_DIR), cid);
   if ((await readCached(cid, PART_CACHE_DIR)) !== undefined) return file;
   const object = await s3().send(
-    new GetObjectCommand({ Bucket: getConfig().cidCopyBucket, Key: key }),
+    new GetObjectCommand({ Bucket: getEngineConfig().cidCopyBucket, Key: key }),
   );
   if (object?.Body === undefined) {
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `${key}: empty body` });
@@ -245,7 +251,7 @@ export async function localPart(cid: string): Promise<string> {
 
 /** A presigned in-region GET URL for `ipfs/<cid>`. */
 export async function presignPart(cid: string): Promise<string> {
-  return presign(getConfig().cidCopyBucket, ipfsKey(cid));
+  return presign(getEngineConfig().cidCopyBucket, ipfsKey(cid));
 }
 
 /** The `<name>/` part of `private/bench/<name>/`. */
@@ -253,7 +259,7 @@ const BENCH_NAME = /^[a-z0-9-]+\/$/;
 
 /** Presigned GET URLs for every `*.parquet` object under a `private/bench/<name>/` prefix. */
 export async function presignPrefix(prefix: string): Promise<PresignedObject[]> {
-  const { cidCopyBucket, readPathPrivatePrefix } = getConfig();
+  const { cidCopyBucket, readPathPrivatePrefix } = getEngineConfig();
   if (
     !prefix.startsWith(readPathPrivatePrefix) ||
     !BENCH_NAME.test(prefix.slice(readPathPrivatePrefix.length))

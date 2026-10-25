@@ -97,9 +97,8 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
     expect(PAGE_TEXTS.catalogUnavailable("HTTP 503")).toBe("Catalog unavailable · HTTP 503");
     expect(PAGE_TEXTS.tableExportMissing).toBe("table export not in this run's manifest");
     expect(PAGE_TEXTS.hubChip(1, "2026-10-21T10:40:04.543Z")).toBe("Run 1 · 2026-10-21 10:40 UTC");
-    expect(PAGE_TEXTS.mcpNotAvailable).toBe(
-      "Not available yet · the agent and MCP server arrive with story A-14",
-    );
+    // A-14 T034: the "not available" text is gone; Try a tool has real states (MCP_TRY_TEXTS).
+    expect("mcpNotAvailable" in PAGE_TEXTS).toBe(false);
   });
 });
 

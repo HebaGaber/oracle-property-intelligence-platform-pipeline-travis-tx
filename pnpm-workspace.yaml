@@ -9,6 +9,7 @@ packages:
   - apps/*
   - infra
   - tests/e2e
+  - tests/agent
 
 # Packages allowed to run install/build scripts. The pinned elephant-cli GitHub build
 # compiles itself on install (prepare); esbuild is used by tsx.

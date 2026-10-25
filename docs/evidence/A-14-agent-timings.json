@@ -1,0 +1,16 @@
+{
+  "measuredAt": "2026-10-25T19:43:21.557Z",
+  "runtime": "https://014-agent-and-mcp.d2lx0utip89u18.amplifyapp.com",
+  "asks": [
+    {
+      "tc": "004",
+      "prompt": "How many properties have roofs older than 40 years in ZIP 99999?",
+      "state": "no_results",
+      "ms": 3399,
+      "httpStatus": 200,
+      "outcome": "answered",
+      "steps": 2,
+      "matches": 0
+    }
+  ]
+}

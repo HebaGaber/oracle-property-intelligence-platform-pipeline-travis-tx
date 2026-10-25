@@ -15,6 +15,8 @@ import { fileURLToPath } from "node:url";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import type { ApiStack } from "../src/api-stack.js";
+import { AGENT_FUNCTION_NAME, MCP_FUNCTION_NAME } from "../src/api-stack.js";
+import { COUNTYLENS_DOMAIN_NAME } from "../src/cert-stack.js";
 import type { DataStack } from "../src/data-stack.js";
 import { appUnderTest } from "./helpers.js";
 
@@ -85,11 +87,38 @@ function apiPackageDuckDbVersion(): string {
   return version as string;
 }
 
+// A-14 added a second Lambda/HTTP API/stage to this same stack (the MCP block, T018), so these
+// tests scope every lookup to the tRPC resources by name/ApiId rather than assuming the stack
+// holds exactly one of each — the MCP block has its own test file (countylens-api-mcp.test.ts).
 function lambdaFunction(template: Template): [string, CfnResource] {
   return only(
-    template.findResources("AWS::Lambda::Function") as Record<string, CfnResource>,
-    "exactly one Lambda function",
+    template.findResources("AWS::Lambda::Function", {
+      Properties: { FunctionName: "countylens-api" },
+    }) as Record<string, CfnResource>,
+    "exactly one countylens-api Lambda function",
   );
+}
+
+function httpApi(template: Template): [string, CfnResource] {
+  return only(
+    template.findResources("AWS::ApiGatewayV2::Api", {
+      Properties: { Name: "countylens-api" },
+    }) as Record<string, CfnResource>,
+    "exactly one countylens-api HTTP API",
+  );
+}
+
+/** The tRPC role's own policies (IAM::Policy resources whose Roles include it), excluding the
+ *  MCP Lambda's separate role and grant. */
+function policiesForRole(
+  resources: Record<string, CfnResource>,
+  roleLogicalId: string,
+): CfnResource[] {
+  return Object.values(resources).filter((r) => {
+    if (r.Type !== "AWS::IAM::Policy") return false;
+    const roles = (r.Properties as { Roles?: unknown[] }).Roles ?? [];
+    return roles.some((ref) => json(ref).includes(`"${roleLogicalId}"`));
+  });
 }
 
 describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
@@ -120,6 +149,16 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     expect((fn.Properties as { Code: { S3Bucket: unknown; S3Key: unknown } }).Code.S3Key).toMatch(
       /\.zip$/,
     );
+  });
+
+  it("RUNS_INDEX_URL: the tRPC, MCP and agent Lambdas read the run index from the site, not from S3", () => {
+    const url = `https://${COUNTYLENS_DOMAIN_NAME}/runs/index.json`;
+    for (const name of ["countylens-api", MCP_FUNCTION_NAME, AGENT_FUNCTION_NAME]) {
+      template.hasResourceProperties("AWS::Lambda::Function", {
+        FunctionName: name,
+        Environment: { Variables: { RUNS_INDEX_URL: url } },
+      });
+    }
   });
 
   it("environment: CID_COPY_BUCKET, CID_COPY_HOST, FILEBASE_GATEWAY_HOST, READPATH_PRIVATE_PREFIX and nothing secret", () => {
@@ -158,11 +197,28 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     const group = resources[ref as string];
     expect(group?.Type).toBe("AWS::Logs::LogGroup");
     expect(group?.Properties?.RetentionInDays).toBe(14);
-    template.resourceCountIs("AWS::Logs::LogGroup", 2);
+    // Two log groups belong to the tRPC resources (function + access); the MCP block (T018) adds
+    // its own separate pair (countylens-api-mcp.test.ts) and the Agent block (T016) adds its own
+    // single function log group (countylens-api-agent.test.ts) — neither asserted here.
+    const nonMcpOrAgentLogGroups = Object.keys(resources).filter(
+      (id) =>
+        resources[id]?.Type === "AWS::Logs::LogGroup" &&
+        !id.startsWith("Mcp") &&
+        !id.startsWith("Agent"),
+    );
+    expect(nonMcpOrAgentLogGroups).toHaveLength(2);
   });
 
   it("reads only ipfs/* and private/bench/* of the CID copy (contracts/storage.md Reader); lists private/bench/* only", () => {
-    const statements = Object.values(template.findResources("AWS::IAM::Policy")).flatMap(
+    const [, fn] = lambdaFunction(template);
+    const roleLogicalId = (fn.Properties as { Role: { "Fn::GetAtt": [string, string] } }).Role[
+      "Fn::GetAtt"
+    ][0];
+    // `resources` is shadowed later in this block (the IAM statement's own Resource list, unrelated
+    // pre-existing name), so this reads straight from the template rather than the describe-level
+    // destructure to avoid that TDZ collision.
+    const stackResources = template.toJSON().Resources as Record<string, CfnResource>;
+    const statements = policiesForRole(stackResources, roleLogicalId).flatMap(
       (p) =>
         (p.Properties as { PolicyDocument: { Statement: Statement[] } }).PolicyDocument.Statement ??
         [],
@@ -185,7 +241,7 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     expect(rendered.some((r) => r.includes("/ipfs/*"))).toBe(true);
     expect(rendered.some((r) => r.includes("/private/bench/*"))).toBe(true);
     for (const r of rendered) {
-      expect(r).toMatch(/\/(ipfs|private\/bench)\/\*/);
+      expect(r).toMatch(/\/(ipfs\/\*|private\/bench\/\*)/);
       expect(r).not.toMatch(/"\/\*"|"\*"/);
     }
 
@@ -213,12 +269,14 @@ describe("CountyLensApi: HTTP API, throttles and the 30-day JSON access log (AD-
   const { template, resources } = synthApi();
 
   it("has one HTTP API with routes under /trpc only, Lambda proxy v2, no authorizer", () => {
-    template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
+    const [apiId] = httpApi(template);
     template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
       Name: "countylens-api",
       ProtocolType: "HTTP",
     });
-    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route")).filter((r) =>
+      json((r.Properties as { ApiId: unknown }).ApiId).includes(`"${apiId}"`),
+    );
     expect(routes.length).toBeGreaterThan(0);
     const keys = routes.map((r) => (r.Properties as { RouteKey: string }).RouteKey).sort();
     expect(keys).toEqual(["GET /trpc/{proxy+}", "POST /trpc/{proxy+}"]);
@@ -236,8 +294,10 @@ describe("CountyLensApi: HTTP API, throttles and the 30-day JSON access log (AD-
       Principal: "apigateway.amazonaws.com",
       SourceArn: Match.anyValue(),
     });
-    // One invoke permission per route, each scoped to this API's execute-api ARN.
-    const permissions = Object.values(template.findResources("AWS::Lambda::Permission"));
+    // One invoke permission per route of this API, each scoped to its execute-api ARN.
+    const permissions = Object.values(template.findResources("AWS::Lambda::Permission")).filter(
+      (p) => json(p.Properties?.SourceArn).includes("/trpc/"),
+    );
     expect(permissions).toHaveLength(2);
     for (const permission of permissions) {
       expect(permission.Properties?.Principal).toBe("apigateway.amazonaws.com");
@@ -247,19 +307,35 @@ describe("CountyLensApi: HTTP API, throttles and the 30-day JSON access log (AD-
   });
 
   it("A-03-TC-053: the $default stage throttles at 10 rps / burst 20 and auto-deploys", () => {
-    template.resourceCountIs("AWS::ApiGatewayV2::Stage", 1);
-    template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
+    const [apiId] = httpApi(template);
+    const [, stage] = only(
+      Object.fromEntries(
+        Object.entries(template.findResources("AWS::ApiGatewayV2::Stage")).filter(([, s]) =>
+          json((s as CfnResource).Properties?.ApiId).includes(`"${apiId}"`),
+        ),
+      ),
+      "the tRPC API's own stage",
+    );
+    expect(stage.Properties).toMatchObject({
       StageName: "$default",
       AutoDeploy: true,
-      DefaultRouteSettings: Match.objectLike({
-        ThrottlingRateLimit: 10,
-        ThrottlingBurstLimit: 20,
-      }),
+    });
+    expect(stage.Properties?.DefaultRouteSettings).toMatchObject({
+      ThrottlingRateLimit: 10,
+      ThrottlingBurstLimit: 20,
     });
   });
 
   it("access log (the query log, AM-03): JSON lines with request id, route, status and latency into a 30-day group; identifiers and counts only", () => {
-    const [, stage] = only(template.findResources("AWS::ApiGatewayV2::Stage"), "stage");
+    const [apiId] = httpApi(template);
+    const [, stage] = only(
+      Object.fromEntries(
+        Object.entries(template.findResources("AWS::ApiGatewayV2::Stage")).filter(([, s]) =>
+          json((s as CfnResource).Properties?.ApiId).includes(`"${apiId}"`),
+        ),
+      ),
+      "the tRPC API's own stage",
+    );
     const settings = (
       stage.Properties as { AccessLogSettings?: { DestinationArn?: unknown; Format?: string } }
     ).AccessLogSettings;
@@ -304,7 +380,7 @@ describe("CountyLensApi: HTTP API, throttles and the 30-day JSON access log (AD-
   it("outputs HttpApiUrl (mirrored to SSM /countylens/api/http-api-url), the function name and both log group names", () => {
     template.hasOutput("HttpApiUrl", { Value: Match.anyValue() });
     // CDK's ApiEndpoint attribute resolves to https://{id}.execute-api.{region}.amazonaws.com.
-    const [apiId] = Object.keys(template.findResources("AWS::ApiGatewayV2::Api"));
+    const [apiId] = httpApi(template);
     expect(template.toJSON().Outputs.HttpApiUrl.Value).toEqual({
       "Fn::GetAtt": [apiId, "ApiEndpoint"],
     });
