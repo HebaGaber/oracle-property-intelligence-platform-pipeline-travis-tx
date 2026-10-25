@@ -22,6 +22,7 @@ import { loadConfig, PROJECT_TAG_KEY, type InfraConfig } from "../src/config.js"
 import {
   AMPLIFY_APP_NAME,
   AMPLIFY_MONOREPO_APP_ROOT,
+  AGENT_REWRITE_SOURCE,
   API_REWRITE_SOURCE,
   AUTO_BRANCH_PATTERN,
   CID_COPY_HOST_NOT_WIRED_WARNING,
@@ -38,6 +39,7 @@ import { appUnderTest, cdkJsonContext } from "./helpers.js";
 
 // No region literal here: stacks.test.ts scans infra/**/*.ts for one (P0-18).
 const HTTP_API_URL = "https://api.example.invalid";
+const AGENT_API_URL = "https://agent.example.invalid";
 const CID_COPY_HOST = "d111111abcdef8.cloudfront.net";
 const PRODUCTION_BRANCH = "feature/oracle-pipeline";
 const EXAMPLE_APP_ID = "d1exampleappid";
@@ -125,6 +127,7 @@ function synthWired(): {
     ...base,
     github: config.github,
     httpApiUrl: HTTP_API_URL,
+    agentApiUrl: AGENT_API_URL,
     cidCopyHost: CID_COPY_HOST,
     filebaseGatewayHost: DEFAULT_FILEBASE_GATEWAY_HOST,
   });
@@ -211,15 +214,24 @@ describe("CountyLensWeb: the Amplify app for apps/web (agent-design metagross §
     });
   });
 
-  it("rewrites /api/<*> to the HTTP API (200) first, then the SPA fallback that excludes static files", () => {
+  it("rewrites /api/agent/<*> to the agent API, then /api/<*> to the HTTP API (200), then the SPA fallback that excludes static files", () => {
     const rules = app.CustomRules ?? [];
-    expect(rules.map((r) => r.Source)).toEqual([API_REWRITE_SOURCE, SPA_FALLBACK_SOURCE]);
+    expect(rules.map((r) => r.Source)).toEqual([
+      AGENT_REWRITE_SOURCE,
+      API_REWRITE_SOURCE,
+      SPA_FALLBACK_SOURCE,
+    ]);
     expect(rules[0]).toEqual({
+      Source: "/api/agent/<*>",
+      Target: `${AGENT_API_URL}/agent/<*>`,
+      Status: "200",
+    });
+    expect(rules[1]).toEqual({
       Source: "/api/<*>",
       Target: `${HTTP_API_URL}/<*>`,
       Status: "200",
     });
-    expect(rules[1]).toEqual({ Source: SPA_FALLBACK_SOURCE, Target: "/index.html", Status: "200" });
+    expect(rules[2]).toEqual({ Source: SPA_FALLBACK_SOURCE, Target: "/index.html", Status: "200" });
     // Amplify's regex form: anything without an extension, or with one outside this list.
     expect(SPA_FALLBACK_SOURCE).toMatch(
       /^<\/\^\[\^.\]\+\$\|\\\.\(\?!\(.*\)\$\)\(\[\^.\]\+\$\)\/>$/,
