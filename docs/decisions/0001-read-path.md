@@ -195,7 +195,7 @@ Verdict: DuckDB compute for these queries is ≤ 175 ms at p95 on one thread and
 
 ## Amendment 1 (A-16, 2026-10-26): per-run Explore index for the Lambda path
 
-**Status:** Proposed with A-16 G5; PO chose option (a) on 2026-10-25/26 (`DEC-A-13-explore-full-county.md`, "To close it").
+**Status:** Accepted by the PO with A-16 G5 (2026-10-26); PO chose option (a) on 2026-10-25/26 (`DEC-A-13-explore-full-county.md`, "To close it").
 
 **Why:** decision 2 above holds at the 14-property slice, but on the full county (441,961 properties, 15,025 permits) the Lambda binds every table part and joins inside the request: `explore.search` ran out of memory at 1 GB and then hit the 29 s HTTP API limit on every call; the agent and MCP data tools fail the same way (`DEC-A-14-agent-mcp-full-county.md`).
 

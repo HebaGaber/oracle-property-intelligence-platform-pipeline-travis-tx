@@ -72,3 +72,9 @@ No CRITICAL issues, but resolve H1 to H6 before `/speckit-implement`, because th
 5. Re-run `developmentsupport-g5-precheck` and `developmentsupport-g6-precheck` after the edits.
 
 Would you like concrete remediation edits for the top issues? No edits have been applied.
+
+
+## Resolution (2026-10-26)
+
+- H1: **PO exception** (2026-10-26): five builder groups kept (G1, G2a, G2b, G3, G4), files disjoint; the PO asked to maximise parallel work. Recorded in the gate log.
+- H2–H6: fixed in commits `e358159` and `ec9d7db` (T070–T073, T025, T026, T036, closure rows A11-14 to A11-17, test file owners, `data-stack.ts` to G1).

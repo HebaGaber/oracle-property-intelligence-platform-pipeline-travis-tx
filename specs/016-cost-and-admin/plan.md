@@ -32,7 +32,7 @@ The whole story runs in one session (PO target: 3 hours) as four parallel builde
 - `adminProcedure` is the only gate on `admin.*`; 401 before 403; the token never logged — `apps/api/src/trpc.ts`.
 - The API can only send to the queue; the bridge only receives/deletes; no SQS→Lambda trigger — `infra/src/admin-queue.ts`.
 - The bridge publishes only via `scripts/publish-run.ts` steps including `gate` and `gate-remote` — `pipeline/bridge/src/runner.ts`.
-- The index is built only from CIDs in the run manifest and records them in its header; the API never reads the Query DB — `pipeline/index/`, `packages/query-core`.
+- The index is built only from CIDs in the run manifest and records them in its header; the API never reads the Query DB — `pipeline/publish/src/explore-index.ts`, `apps/api/src/engine/explore-index.ts`.
 - Cost numbers reach the page only from `docs/cost.md` / `docs/source-limits.md` through the generated JSON; a test fails on drift — `scripts/build-cost-limits.mjs`.
 
 ## Constitution Check
