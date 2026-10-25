@@ -4,7 +4,8 @@ artifact: A-14 (branch 014-agent-and-mcp)
 artifact_version: "story head 1377fe9 (hosted results on 40808ca, golden run 5 and MCP rerun on it); CI run 40227521852 success on 9e98772; not yet merged"
 run_date: 2026-10-25
 tool: Claude
-verdict: FAIL
+verdict: PASS
+verdict_detail: "PASS with PO exceptions E1 to E4. The strict pre-check on 2026-10-25 was FAIL on C-01, C-04 and C-10; the PO accepted the exceptions the same day (see Decision)"
 decision: "Approved with PO exceptions E1 to E4 by HebaGaber on 2026-10-25 (answer: Approve with exceptions (Recommended))"
 ---
 
@@ -12,7 +13,9 @@ decision: "Approved with PO exceptions E1 to E4 by HebaGaber on 2026-10-25 (answ
 
 Inputs read: `specs/014-agent-and-mcp/tasks.md`; `docs/reports/A-14-unit-test-report.md`, `A-14-test-report.md`; `docs/reviews/CR-A-14.md` and `CR-A-14-final-{alakazam,ash,oracle,donphan}.md`; `docs/defects/ERR-61.md` to `ERR-64.md`; `docs/evidence/A-14.md`, `A-14-agent.md`, `A-14-mcp.md`, `A-14-smeargle.md`; `docs/decisions/DEC-A-14-*.md`; `git log feature/oracle-pipeline..014-agent-and-mcp` (53 commits); `gh run list --branch 014-agent-and-mcp`.
 
-**Verdict: FAIL on the strict rule (3 FAILs: C-01, C-04, C-10).** Two of them rest on exceptions the PO has already accepted; one (C-04) also contains three not-run cases that no decision covers yet; C-10 can only pass after the approval. If the PO accepts exceptions E1 to E4 below at D-13 and records the decision, the verdict reads **PASS with PO exceptions**, the same convention as the A-13 report (`G7-A-13-precheck.md`). The gate is not approved by this report; the PO decision is recorded at the end of this file.
+**Final verdict after the PO decision: PASS with PO exceptions E1 to E4 (front matter `verdict: PASS`). The strict pre-check below was FAIL (3 FAILs: C-01, C-04, C-10) and is kept as found.**
+
+**Pre-check verdict: FAIL on the strict rule (3 FAILs: C-01, C-04, C-10).** Two of them rest on exceptions the PO has already accepted; one (C-04) also contains three not-run cases that no decision covers yet; C-10 can only pass after the approval. If the PO accepts exceptions E1 to E4 below at D-13 and records the decision, the verdict reads **PASS with PO exceptions**, the same convention as the A-13 report (`G7-A-13-precheck.md`). The gate is not approved by this report; the PO decision is recorded at the end of this file.
 
 | Check | Criterion | Result | Finding |
 | --- | --- | --- | --- |
