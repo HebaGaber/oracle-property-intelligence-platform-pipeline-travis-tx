@@ -98,4 +98,15 @@ describe("CountyLensWeb: A-13 Amplify variables (T009 / T016)", () => {
       PR_URL: "",
     });
   });
+
+  it("A-16 T021 (AC-6): the build gets VITE_COGNITO_USER_POOL_ID / _CLIENT_ID from CountyLensApi, never a literal", () => {
+    const { stacks } = appUnderTest();
+    const env = webEnv(Template.fromStack(stacks.web));
+    for (const key of ["VITE_COGNITO_USER_POOL_ID", "VITE_COGNITO_USER_POOL_CLIENT_ID"]) {
+      expect(JSON.stringify(env[key]), key).toMatch(/Fn::GetStackOutput|Fn::ImportValue/);
+      expect(JSON.stringify(env[key]), key).toContain("CountyLensApi");
+    }
+    // A standalone Web stack without the pool wired emits neither.
+    expect(synthWeb()).not.toHaveProperty("VITE_COGNITO_USER_POOL_ID");
+  });
 });

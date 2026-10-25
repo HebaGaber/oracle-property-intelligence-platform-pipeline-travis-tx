@@ -25,7 +25,7 @@ import type {
   APIGatewayProxyStructuredResultV2,
   Context as LambdaContext,
 } from "aws-lambda";
-import { createContext } from "../context.js";
+import { asProxyRouteEvent, createContext } from "../context.js";
 import {
   HEADER_CORRELATION_ID,
   HEADER_TRACE_ID,
@@ -245,7 +245,8 @@ export function createHandler(options: HandlerOptions = {}): TrpcHandler {
         ...(manifestCid !== undefined ? { manifestCid } : {}),
       },
       async (): Promise<QueryOutcome<APIGatewayProxyStructuredResultV2>> => {
-        const value = await trpc(event, context);
+        // A-16: `ANY /trpc/explore.search` (own throttle) answers as the proxy route would.
+        const value = await trpc(asProxyRouteEvent(event), context);
         return { value, ...summariseResponse(value) };
       },
     );
