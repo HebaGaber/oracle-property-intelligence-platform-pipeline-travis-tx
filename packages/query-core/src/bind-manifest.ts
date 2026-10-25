@@ -52,7 +52,11 @@ export const REQUIRED_TABLES: readonly RequiredTable[] = [
     columns: { ...ENTITY, latitude: "DOUBLE", longitude: "DOUBLE" },
   },
   { group: "county", table: "structure", columns: { ...ENTITY, roof_date: V } },
-  { group: "county", table: "sales_history", columns: { ...ENTITY, ownership_transfer_date: V } },
+  {
+    group: "county",
+    table: "sales_history",
+    columns: { ...ENTITY, ownership_transfer_date: V, source_http_request: V },
+  },
   { group: "county", table: "person", columns: { ...ENTITY, first_name: V, last_name: V } },
   { group: "county", table: "company", columns: { ...ENTITY, name: V } },
   edge("county", "property_has_parcel"),
