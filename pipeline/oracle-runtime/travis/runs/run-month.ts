@@ -173,8 +173,7 @@ export function ownerCoverage(outcomes: Record<string, number>): Coverage {
     owner_confidential: {
       count: n("suppressed"),
       derivation: "capture_receipt",
-      note:
-        "owner name and mailing withheld: a confidentiality flag on the TCAD record (P0-15), or individuals left out by OWNER_PERSONS=omit",
+      note: "owner name and mailing withheld: a confidentiality flag on the TCAD record (P0-15), or individuals left out by OWNER_PERSONS=omit",
     },
     owner_no_record: {
       count: n("none"),
