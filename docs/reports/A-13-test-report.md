@@ -5,16 +5,32 @@ feature: FEAT-A13
 story: A-13
 test_cases: testplans/A-13-test-cases.md
 runtime_url: https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com
-build: "2e145161d15c1675d628cfdfc120dabd7fcf60c2 (2e14516), read from /build.json on 2026-10-22; earlier runs: 641bc25, a285dbe, d3ae47e, 7f04685, 015fbf9, 32a3d60"
-data_snapshot: bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i
+build: "dc46a6d259fc0f909485ebaa5a0bfc4c917f4be9 (dc46a6d) on 2026-10-25; earlier: 2e145161d15c1675d628cfdfc120dabd7fcf60c2 (2e14516), read from /build.json on 2026-10-22; earlier runs: 641bc25, a285dbe, d3ae47e, 7f04685, 015fbf9, 32a3d60"
+data_snapshot: bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute
 owner: HebaGaber             # QC Lead
-status: "Final: every TC except TC-015 passes on the hosted URL on the final build (CI run 39835352646, code 2cc58ac); TC-040 dual measurement recorded, awaiting PO sign-off at G7"   # Draft → Complete → Signed Off
+status: "Final on Run 2: 44 of 73 pass, 29 parked as PO-accepted A-16 gaps, 0 fail (CI run 40185511164, code dc46a6d); awaiting PO sign-off at G7"   # Draft → Complete → Signed Off
 gate: G7
 created: 2026-10-22
 signed_off_date:
 ---
 
 # QC Test Report: A-13 Build the Explorer UI with its hub, legal, catalog and Coming soon pages
+
+## Final result on the full county (Run 2), 2026-10-25
+
+**CI run 40185511164, preview built from code `dc46a6d` (`/build.json` sha `dc46a6d259fc0f909485ebaa5a0bfc4c917f4be9`), conclusion success. Of the 73 A-13 cases: 44 pass, 29 are parked (skipped with a reason), 0 fail.** The parked cases are not counted as passed. They are the PO-accepted gaps carried to A-16 (`docs/decisions/DEC-A-13-explore-full-county.md`, 2026-10-25): gap 1 Explore search returns HTTP 500 after about 29 s on 441,961 properties (TC-008, 009, 025 to 027, 029 to 037, 041, 043, 062, 065, 073, 074, 086); gap 2 the SQL panel's first query takes about 97 s and fails or hangs on the CI runner (TC-004, 023, 028, 038, 039, 040); gap 3 page speed misses its limits on five pages (TC-058, 081). TC-015 now passes (Runs 1 and 2 exist). The earlier results below were measured on the 14-property slice and are kept as history; where they disagree with this section, this section is the final state.
+
+| Hosted shard (CI run 40185511164) | Passed | Skipped (parked) | Failed |
+| --- | --- | --- | --- |
+| permits (A-03, Run 2 Permits page) | 9 | 0 | 0 |
+| manifest (A-03, every CAR) | 3 | 0 | 0 |
+| site (A-03 and A-11 cases) | 17 | 0 | 0 |
+| a13-explorer | 12 | 19 | 0 |
+| a13-pages | 23 | 3 | 0 |
+| a13-scan | 1 | 2 | 0 |
+| isolated (perf, verify, vitals, gateway cases) | 17 | 5 | 0 |
+
+Defects found on Run 2 and fixed on the way (all re-tested on CI run 40185511164 or the runs before it): Catalog showed no tables for batched runs; the browser SQL engine bound only `v_roofing_permit`; Explore search ran out of memory in the API (1 GB) and then exceeded the Lambda timeout (15 s, then 29 s), which is gap 1; `<main>` was not keyboard-focusable on `/runs/log`; a timed-out Explore search was retried and kept the page loading for about 59 s; the TC-005, TC-015, TC-018, TC-024, TC-053, TC-073 and TC-081 expectations assumed the one-run slice. The old defect numbers ERR-21 to ERR-26 of this story are now ERR-50 to ERR-55.
 
 Every case in `testplans/A-13-test-cases.md` (73 cases, TC-001 to TC-086) runs against the **hosted** Amplify branch preview `https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com`. No case ran on localhost (TC-085 proves the harness refuses it). The production URL `https://countylens.aldarraj.com` serves `feature/oracle-pipeline` until the G7 merge.
 

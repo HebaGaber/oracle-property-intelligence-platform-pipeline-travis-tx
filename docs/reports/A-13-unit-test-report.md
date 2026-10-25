@@ -3,8 +3,8 @@ id: UT-A-13
 type: unit-test-report
 story: A-13
 branch: 013-explorer-and-pages
-commit: 2c13e09
-code_commit: 2cc58ac
+commit: dc46a6d
+code_commit: dc46a6d
 ci_run: "GitHub Actions run 39835352646, success, 2026-10-22, commit 2c13e09 (code identical to 2cc58ac): https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39835352646"
 created: 2026-10-22
 ---
@@ -110,3 +110,7 @@ Not re-verified for this report. The red-then-green order is recorded in the com
 - `pipeline/oracle-runtime` tests, CDK bundled-asset test (`COUNTYLENS_BUNDLE=1`), pilot-export tests (`PILOT_DIR`).
 - The bundle numbers in the table were taken after a fresh build at `2e14516`; the `70561ec` run had read an existing `dist`.
 - Smeargle/Lighthouse, Web Vitals, a11y scans: Stage 6 on the hosted URL.
+
+## Update 2026-10-25 (merge with A-04, A-07, A-11 and the Run 2 fixes)
+
+CI run 40185511164 on `dc46a6d`: job `workspace` (typecheck, lint, unit tests, synth) and `oracle-runtime` succeeded. Local counts on the same code: web  506 passed | 1 skipped (507), e2e harness 92, infra 104, publish 345, query-core 284, api 166, contract 58, profile 79, shared 40. New or changed unit tests: Catalog table grouping across export batches, the run chain and run events on the committed Runs 1 and 2, the e2e harness serving every committed manifest, `publishedTexts`/`withoutPublished`, and the infra check for the 29 s API timeout.
