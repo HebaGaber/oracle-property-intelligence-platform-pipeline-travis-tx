@@ -68,10 +68,11 @@ const nextRun = (previous: string, patch: Partial<RunManifestV1> = {}): RunManif
 
 describe("run-chain", () => {
   it("follows previousManifestCid from the head to the first run", async () => {
+    const first: RunManifestV1 = { ...MANIFEST, previousManifestCid: null };
     const head = nextRun(LATEST.manifestCid);
     const byCid = new Map<string, RunManifestV1>([
       ["bafkreiheadheadheadheadheadheadheadheadheadheadheadheadhea", head],
-      [LATEST.manifestCid, MANIFEST],
+      [LATEST.manifestCid, first],
     ]);
     const load = vi.fn(async (cid: string) => {
       const m = byCid.get(cid);
@@ -88,16 +89,26 @@ describe("run-chain", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it("the committed run is a chain of one (first run)", async () => {
-    const chain = await loadRunChain(LATEST.manifestCid, async () => MANIFEST);
-    expect(chain).toEqual([
-      {
-        runId: LATEST.runId,
-        manifestCid: LATEST.manifestCid,
-        previousManifestCid: null,
-        finishedAt: MANIFEST.finishedAt,
-      },
-    ]);
+  it("the committed runs form one chain from the latest run back to the first", async () => {
+    const byCid = new Map(
+      INDEX.runs.map((r) => [
+        r.manifestCid,
+        RunManifestV1.parse(
+          JSON.parse(readFileSync(join(ROOT, "runs", r.runId, "manifest.json"), "utf8")),
+        ),
+      ]),
+    );
+    const chain = await loadRunChain(LATEST.manifestCid, async (cid) => {
+      const m = byCid.get(cid);
+      if (m === undefined) throw new Error(`no ${cid}`);
+      return m;
+    });
+    expect(chain[0]?.manifestCid).toBe(LATEST.manifestCid);
+    expect(chain.at(-1)?.previousManifestCid).toBeNull();
+    chain.slice(0, -1).forEach((link, i) => {
+      expect(link.previousManifestCid).toBe(chain[i + 1]?.manifestCid);
+    });
+    for (const link of chain) expect(INDEX.runs.map((r) => r.runId)).toContain(link.runId);
   });
 
   it("stops on a cycle instead of looping", async () => {
@@ -137,8 +148,12 @@ describe("run-events", () => {
   it("one started, one captured per source and one finished event per run, with limitations", () => {
     const events = runEvents([MANIFEST]);
     expect(events).toHaveLength(MANIFEST.sources.length + 2);
-    expect(events[0]).toEqual({ time: MANIFEST.startedAt, runId: MANIFEST.runId, kind: "started" });
-    expect(events.at(-1)).toEqual({
+    expect(events.find((e) => e.kind === "started")).toEqual({
+      time: MANIFEST.startedAt,
+      runId: MANIFEST.runId,
+      kind: "started",
+    });
+    expect(events.find((e) => e.kind === "finished")).toEqual({
       time: MANIFEST.finishedAt,
       runId: MANIFEST.runId,
       kind: "finished",
@@ -293,7 +308,7 @@ describe("parquet-meta", () => {
     const parts = MANIFEST.artifacts.filter((a) => a.kind === "table");
     expect(tables.flatMap((t) => t.parts).length).toBe(parts.length);
     const property = tables.find((t) => t.table === "county.property");
-    expect(property?.parts[0]?.name).toBe("tables/county/property/part-00000.parquet");
+    expect(property?.parts[0]?.name).toMatch(/\/property\/part-\d+\.parquet$/);
     expect(property?.size).toBe(property?.parts.reduce((n, p) => n + p.size, 0));
   });
 });

@@ -13,6 +13,7 @@ import {
   type AsyncBuffer,
   type SchemaElement,
 } from "hyparquet";
+import { resolveBatchGroups } from "@countylens/query-core";
 import { browserFetch } from "./http";
 import { readCapped } from "./read-capped";
 
@@ -131,21 +132,17 @@ export interface CatalogTable {
   readonly size: number;
 }
 
-/** "tables/<group>/<table>/<part>" → "<group>.<table>". */
-function tableName(name: string): string | undefined {
-  const [root, group, table, part, ...rest] = name.split("/");
-  return root === "tables" && group && table && part && rest.length === 0
-    ? `${group}.${table}`
-    : undefined;
-}
-
-/** The manifest's table parts grouped by table, in manifest order. */
+/** The manifest's table parts grouped by table, in manifest order. A part's table is its parent folder; its group is the one query-core resolves for its export batch (the pilot's `tables/<group>/<table>/<part>` and a full-county run's `…/tables/<bNN>/<table>/<part>` alike), so a table split over batches is one row. */
 export function catalogTables(manifest: RunManifestV1): CatalogTable[] {
+  const parts = manifest.artifacts.filter((a) => a.kind === "table");
+  const groups = resolveBatchGroups(parts.map((a) => a.name));
   const tables = new Map<string, CatalogPart[]>();
-  for (const a of manifest.artifacts) {
-    if (a.kind !== "table") continue;
-    const table = tableName(a.name);
-    if (table === undefined) continue;
+  for (const a of parts) {
+    const segs = a.name.split("/");
+    const group = groups.get(segs.slice(0, -2).join("/"));
+    const name = segs.at(-2);
+    if (!group || !name) continue;
+    const table = `${group}.${name}`;
     tables.set(table, [...(tables.get(table) ?? []), { name: a.name, cid: a.cid, size: a.size }]);
   }
   return [...tables].map(([table, parts]) => ({

@@ -109,7 +109,14 @@ describe("manifests by CID from the Pinata gateway (independent of the app's rea
   });
 
   it("fetches every manifest listed in the index", async () => {
-    const fetchImpl = stubFetch({ [pinataManifestUrl(first.manifestCid)]: manifestBytes });
+    const fetchImpl = stubFetch(
+      Object.fromEntries(
+        committedIndex.runs.map((r) => [
+          pinataManifestUrl(r.manifestCid),
+          new Uint8Array(readFileSync(resolve(repoRoot, "runs", r.runId, "manifest.json"))),
+        ]),
+      ),
+    );
     const all = await fetchAllManifests(committedIndex, { fetchImpl });
     expect(all.map((m) => m.manifestCid)).toEqual(committedIndex.runs.map((r) => r.manifestCid));
   });
