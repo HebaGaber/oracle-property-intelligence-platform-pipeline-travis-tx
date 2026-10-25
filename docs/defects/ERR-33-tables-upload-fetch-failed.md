@@ -34,15 +34,15 @@ A single stalled or reset request has no per-request timeout and no retry, so it
 
 `pipeline/publish/src/tables-upload.ts` (`uploadTables`) replaces `elephant-cli upload` for tables units only; CAR units still use the CLI. It keeps the CLI's semantics exactly (same add parameters, each returned Hash must have the digest the `tables.car` index records, `dag/import` of `tables.car`, root readback with a sha256 check, first part read back and size compared) and writes the same `--output-json` summary (`api`, `root`, `countyRoot`, `parts`, `gatewayUrl`, `uploadedAt`). Differences:
 
-| Behaviour | Value |
-| --- | --- |
-| Per-request timeout | 120 s plus part size / 256 KiB per second (so a 48 MiB part gets about 308 s), configurable |
-| Retries per request | 6, backoff 2 s doubling to 60 s; on timeout, network error, HTTP 429 and 5xx |
-| Never retried | a Hash that differs from the index; any 4xx except 429. These throw `TablesUploadFatal`, and `publish-run.ts` stops that unit at once instead of spending its 8 attempts |
-| Retry log | `retry add property/part-00003.parquet (4/21, 4718592 bytes) try 2/7 failed after 120.3s: TypeError UND_ERR_HEADERS_TIMEOUT: fetch failed; waiting 4s` (the cause code is read from `error.cause`; credentials are redacted) |
-| Resume | confirmed parts (path, size, cid) are written to `<receipt>.parts.state` next to the receipt after each add and skipped on the next attempt or run; removed on success. An add is idempotent, so this is only an optimisation. A sidecar from another API is ignored |
-| Concurrency | option, default 1 (the uplink is the bottleneck) |
-| Readback | the gateway poll treats network errors and 404 as "not yet" until 600 s (the CLI's default is 300 s); the failure message names the last answer |
+| Behaviour           | Value                                                                                                                                                                                                                                                                |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Per-request timeout | 120 s plus part size / 256 KiB per second (so a 48 MiB part gets about 308 s), configurable                                                                                                                                                                          |
+| Retries per request | 6, backoff 2 s doubling to 60 s; on timeout, network error, HTTP 429 and 5xx                                                                                                                                                                                         |
+| Never retried       | a Hash that differs from the index; any 4xx except 429. These throw `TablesUploadFatal`, and `publish-run.ts` stops that unit at once instead of spending its 8 attempts                                                                                             |
+| Retry log           | `retry add property/part-00003.parquet (4/21, 4718592 bytes) try 2/7 failed after 120.3s: TypeError UND_ERR_HEADERS_TIMEOUT: fetch failed; waiting 4s` (the cause code is read from `error.cause`; credentials are redacted)                                         |
+| Resume              | confirmed parts (path, size, cid) are written to `<receipt>.parts.state` next to the receipt after each add and skipped on the next attempt or run; removed on success. An add is idempotent, so this is only an optimisation. A sidecar from another API is ignored |
+| Concurrency         | option, default 1 (the uplink is the bottleneck)                                                                                                                                                                                                                     |
+| Readback            | the gateway poll treats network errors and 404 as "not yet" until 600 s (the CLI's default is 300 s); the failure message names the last answer                                                                                                                      |
 
 `publish-run.ts` keeps 8 attempts per unit; each attempt is now far more tolerant. The script wires `uploadTables` through `FilebaseStepDeps.uploadTables`; without that dependency (older tests) tables still go through the CLI.
 
