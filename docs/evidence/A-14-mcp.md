@@ -42,7 +42,9 @@ The call asks for `limit: 1000` with `status_class: stalled` and returns 0 rows 
 | Wrong token | HTTP 401 | A-14-TC-023 |
 | Disallowed browser Origin | HTTP 403 `origin_not_allowed` | A-14-TC-027 |
 | Burst above 5 rps (40 calls) | 14 x 200, 1 x 429, 25 x 503: **fails AC-10** | A-14-TC-021, ERR-64, `DEC-A-14-mcp-burst-503.md` |
-| Token in git, CloudWatch logs, hosted JS bundle | PENDING: the PO runs the three count checks with the token in their own shell (all must be 0) | to be filled |
+| Token in git, CloudWatch logs, hosted JS bundle | **0 in all three** (details under the table) | PO-run counts, 2026-10-25 |
+
+Token-leak counts: Run by the PO in their own shell on 2026-10-25, token loaded from SSM, counts only (the value was never printed): MCP Lambda log group 0, agent Lambda log group 0 (the AWS CLI printed one 0 per result page, all zero); the hosted preview's JavaScript bundle: 3 files, 0 matches in each; repository history (every commit reachable from any ref): 0 commits contain the token. Caveats: the log check covers the log events that existed at that time, the website check covers the preview build `21e1ebf` or later, and the repository check searches committed content only.
 
 ## Timings (A-14-TC-NF-02)
 

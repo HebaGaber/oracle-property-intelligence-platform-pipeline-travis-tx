@@ -144,4 +144,4 @@ The six deploy-time fixes found by the first hosted calls are listed in `docs/ev
 
 **Decision:** ☐ Validated (counts toward G7) ☐ Returned, reason: {…} · {date}
 
-Open items before the PO can sign: CI run URL and status, and the user-run token-leak counts (see `docs/evidence/A-14.md`).
+Open items before the PO can sign: CI run URL and status. The token-leak counts are in (all 0, `docs/evidence/A-14.md`).
