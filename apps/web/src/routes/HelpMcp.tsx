@@ -183,6 +183,16 @@ export function Component({ callTool = tryMcpTool }: HelpMcpProps = {}): ReactEl
   const [tool, setTool] = useState<McpTryTool>("search_properties");
   const [args, setArgs] = useState<string>(EXAMPLES.search_properties);
   const [state, setState] = useState<TryState>({ kind: "idle" });
+  const [client, setClient] = useState<(typeof SNIPPETS)[number]["id"]>("claude-desktop");
+  const [copied, setCopied] = useState(false);
+  const snippet =
+    SNIPPETS.find((s) => s.id === client) ?? (SNIPPETS[0] as (typeof SNIPPETS)[number]);
+  const copy = (): void => {
+    void navigator.clipboard?.writeText(snippet.code).then(
+      () => setCopied(true),
+      () => setCopied(false),
+    );
+  };
   const run = async (): Promise<void> => {
     let parsed: unknown;
     try {
@@ -218,11 +228,45 @@ export function Component({ callTool = tryMcpTool }: HelpMcpProps = {}): ReactEl
       className={runStyles.page}
     >
       <h2 className={runStyles.title}>Help · MCP</h2>
+      <p className={styles.subtitle}>MCP and API</p>
       <p className={runStyles.itemBody}>
-        The CountyLens MCP server answers with fixed, typed tools over the same published views as
-        Explore. Each tool returns at most {MAX_ROWS} rows; there is no free-form query tool
-        (free-form queries run only in your browser, in Explore).
+        Ask CountyLens from Claude Desktop, MCP Inspector or any MCP client. The tools read the same
+        published views as Explore; each returns at most {MAX_ROWS} rows. Free-form SQL is not a
+        tool: it runs only in your browser, in Explore.
       </p>
+      <div className={styles.cards}>
+        <div className={runStyles.card} data-mcp-endpoint="">
+          <h3 className={runStyles.sectionTitle}>Endpoint</h3>
+          <dl className={styles.facts}>
+            <dt>URL</dt>
+            <dd>Shared privately with reviewers, together with the token</dd>
+            <dt>Transport</dt>
+            <dd>Streamable HTTP</dd>
+            <dt>Runs on</dt>
+            <dd>Its own stateless Lambda handler, sharing query-core with Explore</dd>
+            <dt>Data</dt>
+            <dd>The latest published run (the badge in the app bar)</dd>
+          </dl>
+        </div>
+        <div className={runStyles.card} data-mcp-access="">
+          <h3 className={runStyles.sectionTitle}>Access</h3>
+          <dl className={styles.facts}>
+            <dt>
+              <code>tools/list</code>
+            </dt>
+            <dd>Bearer token</dd>
+            <dt>
+              <code>tools/call</code>
+            </dt>
+            <dd>Bearer token · read-only</dd>
+          </dl>
+          <p className={runStyles.itemBody}>
+            Send it as <code>{BEARER}</code>. Every tool only reads published data, and calls are
+            throttled. No or wrong token: 401 Unauthorized · throttled: 429 Too Many Requests.
+          </p>
+        </div>
+      </div>
+      <h3 className={runStyles.sectionTitle}>Tools ({MCP_TOOLS.length})</h3>
       <ul className={runStyles.list} aria-label="MCP tools">
         {MCP_TOOLS.map((tool) => (
           <li key={tool.name} className={runStyles.item} data-tool={tool.name}>
@@ -250,14 +294,37 @@ export function Component({ callTool = tryMcpTool }: HelpMcpProps = {}): ReactEl
       <div className={runStyles.card}>
         <h3 className={runStyles.sectionTitle}>Connect a client</h3>
         <p className={runStyles.itemBody}>Bearer token required, shared privately with reviewers</p>
+        <div role="tablist" aria-label="MCP client" className={styles.clientTabs}>
+          {SNIPPETS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={client === s.id}
+              className={`${styles.clientTab} ${client === s.id ? styles.clientTabOn : ""}`}
+              onClick={() => {
+                setClient(s.id);
+                setCopied(false);
+              }}
+            >
+              {s.title}
+            </button>
+          ))}
+        </div>
         {SNIPPETS.map((snippet) => (
           <div key={snippet.id} className={styles.snippetBox}>
-            <h4 className={runStyles.sectionTitle}>{snippet.title}</h4>
-            <pre data-snippet={snippet.id} className={styles.snippet} tabIndex={0}>
-              <code>{snippet.code}</code>
-            </pre>
+            <div role="tabpanel" aria-label={snippet.title} hidden={client !== snippet.id}>
+              <pre data-snippet={snippet.id} className={styles.snippet} tabIndex={0}>
+                <code>{snippet.code}</code>
+              </pre>
+            </div>
           </div>
         ))}
+        <span>
+          <button type="button" className={runStyles.action} onClick={copy}>
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </span>
       </div>
 
       <div className={runStyles.card}>
