@@ -248,10 +248,11 @@ export const EMPTY_OUTCOME_SENTENCES: Readonly<Record<EmptyOutcome, string>> = {
   index_stale: "The search index for this run is out of date, so it cannot be searched.",
 };
 
-/** Fields the published export does not carry, with the contract reason (columns.ts UNCARRIED). */
+/** Fields the published export does not carry, with the contract reason (columns.ts UNCARRIED).
+ *  The contractor's printed name is published since contract v1.1 (`contractor_name_as_printed`,
+ *  4,139 of 15,025 Run 3 permits), so it is no longer declared unpublished (ERR-78). */
 export const UNPUBLISHED_FIELDS = {
   owner_is_out_of_area: "not_in_export",
-  "contractor.name_as_printed": "no_lexicon_carrier",
   bbb_status: "no_lexicon_carrier",
 } as const;
 export type UnpublishedField = keyof typeof UNPUBLISHED_FIELDS;
