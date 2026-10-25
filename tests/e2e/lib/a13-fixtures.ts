@@ -331,8 +331,9 @@ export const PARKED_GAPS = {
     "A-16 gap 1: Explore search does not run on the full county (HTTP 500 after ~29 s)",
   /** The SQL panel's first query binds 225 table parts (~97 s; fails on the CI runner). */
   sqlFirstQuery: "A-16 gap 2: the SQL panel's first query on the full county takes ~97 s",
-  /** Runs · Log LCP is 3.1 s against the 2.5 s limit. */
-  runsLogLcp: "A-16 gap 3: Runs · Log LCP is ~3.1 s against the 2.5 s limit",
+  /** Five manifest-driven pages exceed the 2.5 s LCP limit on the full county; Manifest CLS 0.132. */
+  runsLogLcp:
+    "A-16 gap 3: LCP is 2.7-3.4 s against the 2.5 s limit on Runs, Runs · Log, Coverage, Catalog and Manifest, and Manifest CLS is 0.132 against 0.1",
 } as const;
 
 /**

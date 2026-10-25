@@ -47,6 +47,7 @@ test.describe("A-13 vitals", { tag: "@a13-vitals" }, () => {
   });
 
   test(scenario("081"), async ({ browser }) => {
+    parkGap(PARKED_GAPS.runsLogLcp);
     test.setTimeout(60 * 60_000);
     const pages = [
       ROUTES.hub,
