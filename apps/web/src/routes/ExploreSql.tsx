@@ -28,6 +28,12 @@ const LOADING_ENGINE = "Loading the query engine";
 export const SQL_BIND_NOTE =
   "First query on this view: the engine reads its published tables before it answers. On the full county this can take a minute; later queries on the same view are fast.";
 const DEFAULT_SQL = "SELECT count(*) FROM v_property";
+/** Read-only starting queries over the contract views (each binds only the view it names). */
+export const SQL_SUGGESTIONS: readonly string[] = Object.freeze([
+  "SELECT count(*) FROM v_property",
+  "SELECT * FROM v_roofing_permit LIMIT 20",
+  "DESCRIBE v_property",
+]);
 
 type EngineState =
   | { readonly kind: "loading"; readonly stage: string }
@@ -149,6 +155,20 @@ export function ExploreSql({
             >
               Run
             </button>
+          </div>
+          {/* ExploreQ-sql board "Suggestions": each puts a read-only query in the editor. */}
+          <div className={styles.sqlSuggestions} role="group" aria-label="SQL suggestions">
+            {SQL_SUGGESTIONS.map((q) => (
+              <button
+                key={q}
+                type="button"
+                className={styles.sqlSuggestion}
+                onClick={() => setSql(q)}
+                data-sql-suggestion=""
+              >
+                {q}
+              </button>
+            ))}
           </div>
         </>
       ) : null}
