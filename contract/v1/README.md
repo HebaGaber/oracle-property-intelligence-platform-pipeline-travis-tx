@@ -242,9 +242,9 @@ Two further notes from the pilot export:
 | `roof_age_years` | `INTEGER` | yes | Roof age in whole years; 0 allowed | derived: whole years from roof_date to as_of (never structure.roof_age_years) | `no_roof_date` |
 | `roof_age_basis` | `VARCHAR` | no | Evidence behind roof_date (`permit`, `new_construction`, `built_year`, `unknown`) | derived (mew B.5) | never empty |
 | `roof_age_confidence` | `VARCHAR` | no | Confidence of roof_age_years (`high`, `medium`, `low`, `none`) | derived (mew B.5) | never empty |
-| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | latest dated sales_history.ownership_transfer_date via property_has_sales_history | `no_dated_sale` |
+| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | latest dated sales_history.ownership_transfer_date (TCAD sale or transfer deed) via property_has_sales_history | `no_dated_sale` |
 | `tenure_years` | `INTEGER` | yes | Owner tenure | derived: whole years from last_ownership_transfer_date to as_of | `no_dated_sale` |
-| `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `unknown`) | derived: sale_date when dated, else unknown | never empty |
+| `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `deed_date`, `unknown`) | derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
 | `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown | never empty |
 | `owner_name` | `VARCHAR` | yes | Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale | `no_dated_sale` |
@@ -274,9 +274,9 @@ Two further notes from the pilot export:
 | `roof_age_years` | `INTEGER` | yes | Roof age in whole years; 0 allowed | derived: whole years from roof_date to as_of (never structure.roof_age_years) | `no_roof_date` |
 | `roof_age_basis` | `VARCHAR` | no | Evidence behind roof_date (`permit`, `new_construction`, `built_year`, `unknown`) | derived (mew B.5) | never empty |
 | `roof_age_confidence` | `VARCHAR` | no | Confidence of roof_age_years (`high`, `medium`, `low`, `none`) | derived (mew B.5) | never empty |
-| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | latest dated sales_history.ownership_transfer_date via property_has_sales_history | `no_dated_sale` |
+| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | latest dated sales_history.ownership_transfer_date (TCAD sale or transfer deed) via property_has_sales_history | `no_dated_sale` |
 | `tenure_years` | `INTEGER` | yes | Owner tenure | derived: whole years from last_ownership_transfer_date to as_of | `no_dated_sale` |
-| `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `unknown`) | derived: sale_date when dated, else unknown | never empty |
+| `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `deed_date`, `unknown`) | derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
 | `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown | never empty |
 | `owner_name` | `VARCHAR` | yes | Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale | `no_dated_sale` |

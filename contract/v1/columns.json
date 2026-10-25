@@ -143,7 +143,7 @@
         "kind": "date",
         "nullable": true,
         "meaning": "Latest dated ownership transfer",
-        "source": "latest dated sales_history.ownership_transfer_date via property_has_sales_history",
+        "source": "latest dated sales_history.ownership_transfer_date (TCAD sale or transfer deed) via property_has_sales_history",
         "missingReason": "no_dated_sale"
       },
       {
@@ -162,10 +162,11 @@
         "nullable": false,
         "enum": [
           "sale_date",
+          "deed_date",
           "unknown"
         ],
         "meaning": "Evidence behind tenure_years",
-        "source": "derived: sale_date when dated, else unknown",
+        "source": "derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown",
         "missingReason": null
       },
       {
@@ -1304,7 +1305,7 @@
       "kind": "date",
       "nullable": true,
       "meaning": "Latest dated ownership transfer",
-      "source": "latest dated sales_history.ownership_transfer_date via property_has_sales_history",
+      "source": "latest dated sales_history.ownership_transfer_date (TCAD sale or transfer deed) via property_has_sales_history",
       "missingReason": "no_dated_sale"
     },
     {
@@ -1323,10 +1324,11 @@
       "nullable": false,
       "enum": [
         "sale_date",
+        "deed_date",
         "unknown"
       ],
       "meaning": "Evidence behind tenure_years",
-      "source": "derived: sale_date when dated, else unknown",
+      "source": "derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown",
       "missingReason": null
     },
     {

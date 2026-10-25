@@ -222,7 +222,7 @@ describe("columns", () => {
       status_class: ["open", "stalled", "closed"],
       owner_area_class: ["in_county", "regional", "out_of_area", "unknown"],
       coordinate_source: ["gis_centroid", "permit_point", "none"],
-      tenure_basis: ["sale_date", "unknown"],
+      tenure_basis: ["sale_date", "deed_date", "unknown"],
       contractor_resolution: ["resolved", "unresolved"],
       owner_kind: ["person", "company", "unknown"],
     });

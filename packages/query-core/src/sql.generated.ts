@@ -99,7 +99,12 @@ roof_anchor AS (
 ),
 latest_sale AS (
   SELECT psh.from_cid AS property_cid, sh.cid AS sale_cid,
-         TRY_CAST(sh.ownership_transfer_date AS DATE) AS transfer_date
+         TRY_CAST(sh.ownership_transfer_date AS DATE) AS transfer_date,
+         -- ERR-30: a row built from a TCAD transfer deed carries transfer_source = deed in its
+         -- source_http_request.multiValueQueryString (the lexicon has no other carrier).
+         CASE WHEN json_extract_string(sh.source_http_request,
+                '$.multiValueQueryString.transfer_source[0]') = 'deed'
+              THEN 'deed' ELSE 'sale' END AS transfer_source
   FROM (SELECT DISTINCT from_cid, to_cid FROM county.property_has_sales_history) psh
   JOIN county.sales_history sh ON sh.cid = psh.to_cid
   WHERE TRY_CAST(sh.ownership_transfer_date AS DATE) IS NOT NULL
@@ -199,6 +204,7 @@ base AS (
     ra.replacement_date IS NOT NULL AS replacement_match,
     ra.replacement_date IS NULL AND ra.new_date IS NOT NULL AS new_match,
     ls.transfer_date AS last_ownership_transfer_date,
+    ls.transfer_source AS last_transfer_source,
     owner_kind_of(coalesce(op.n, 0), coalesce(oc.n, 0)) AS owner_kind,
     nullif(concat_ws('; ', op.names, oc.names), '') AS owner_name,
     owner_missing_reason(ls.transfer_date IS NOT NULL, og.reason) AS owner_reason,
@@ -238,7 +244,7 @@ derived AS (
     roof_age_basis(roof_date, replacement_match, new_match,
       property_structure_built_year) AS roof_age_basis,
     tenure_years(last_ownership_transfer_date, as_of) AS tenure_years,
-    tenure_basis(last_ownership_transfer_date) AS tenure_basis,
+    tenure_basis(last_ownership_transfer_date, last_transfer_source) AS tenure_basis,
     coalesce(record_url, group_source_url) AS source_url
   FROM base
 )

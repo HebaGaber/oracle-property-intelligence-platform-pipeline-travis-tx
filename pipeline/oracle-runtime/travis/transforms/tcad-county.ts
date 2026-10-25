@@ -6,7 +6,10 @@
 //                          a permit-anchored roof date is never written here (oracle F1): it is
 //                          derived in the view from the published Austin permit rows
 //                          (Roofing + Replacement, closed → completion_date / permit_close_date)
-//   sales_history_N.json ← sales[] with a saleDt, oldest first (ownership_transfer_date only)
+//   sales_history_N.json ← dated transfers, oldest first, one per day (ownership_transfer_date
+//                          only): sales[] with a saleDt plus the allow-listed transfer deeds in
+//                          deeds[] (tcad/tenure.ts transferEventsOf, ADR 0003). A deed row says
+//                          so in source_http_request.multiValueQueryString.transfer_source.
 //   person_N / company_N + mailing_address_N ← current owners[]; each is linked to the property
 //                          (person_has_property / company_has_property) and, when the property has
 //                          a dated sale, to the latest one. Names are read by owner-name.ts (A-11)
@@ -31,6 +34,7 @@ import {
 } from "./shared-seed.js";
 import type { DataGroupCids } from "./lexicon-manifest.js";
 import { parseOwner, type ParsedPerson } from "./owner-name.js";
+import { transferEventsOf } from "../tcad/tenure.js";
 
 export { ENTITY_NAME, PERSON_NAME } from "./owner-name.js";
 
@@ -123,6 +127,11 @@ export interface CountyTransformInput {
    * A-02 reading of propertyProfile[0].imprvActualYearBuilt is kept.
    */
   yearBuilt?: number | null;
+  /**
+   * The run's as_of date (YYYY-MM-DD): no sale or deed after it is written as a transfer.
+   * Absent means no upper bound (unit tests of the shape only).
+   */
+  asOf?: string;
 }
 
 export type OwnerOutcome =
@@ -132,7 +141,10 @@ export interface CountyTransformCounts {
   owner: OwnerOutcome;
   confidential: boolean;
   confidential_basis: string[];
+  /** Dated transfers written as sales_history rows (sales plus deeds). */
   sales_dated: number;
+  /** Of sales_dated, the rows taken from a transfer deed (no sale on that day). */
+  transfers_from_deeds: number;
   owners_unparsed: number;
   /** Owner entries whose second named party could not be read with certainty (first one kept). */
   owners_co_owner_skipped: number;
@@ -153,12 +165,6 @@ export interface CountyTransformOutput {
 
 const nonEmpty = (v: string | null | undefined): boolean =>
   typeof v === "string" && v.trim() !== "";
-
-function saleDate(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const m = /^(\d{4}-\d{2}-\d{2})/.exec(value);
-  return m ? (m[1] as string) : null;
-}
 
 type Owner = TcadRecord["owners"][number];
 
@@ -300,13 +306,20 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
     relationship("relationship_property_has_structure.json", "property.json", "structure.json"),
   );
 
-  const dated = record.sales
-    .map((s) => ({ id: s.saleID ?? 0, date: saleDate(s.saleDt) }))
-    .filter((s): s is { id: number; date: string } => s.date !== null)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  const dated = transferEventsOf(record.sales, record.deeds ?? [], input.asOf ?? null);
+  const deedBase = {
+    ...base,
+    source_http_request: {
+      ...TCAD_EXPORT_REQUEST,
+      multiValueQueryString: { transfer_source: ["deed"] },
+    },
+  };
   dated.forEach((s, i) => {
     const name = `sales_history_${i + 1}.json`;
-    files[name] = jsonFile({ ...base, ownership_transfer_date: s.date });
+    files[name] = jsonFile({
+      ...(s.source === "deed" ? deedBase : base),
+      ownership_transfer_date: s.date,
+    });
     many(
       "property_has_sales_history",
       relationship(`relationship_property_has_sales_history_${i + 1}.json`, "property.json", name),
@@ -455,6 +468,7 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
       confidential,
       confidential_basis: basis,
       sales_dated: dated.length,
+      transfers_from_deeds: dated.filter((e) => e.source === "deed").length,
       owners_unparsed: unparsed,
       owners_co_owner_skipped: skippedCoOwners,
       persons_written: personsWritten,

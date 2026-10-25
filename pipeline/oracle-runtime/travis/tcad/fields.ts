@@ -128,6 +128,7 @@ const Shape = z
     situses: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
     owners: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
     sales: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
+    deeds: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
   })
   .loose();
 
@@ -337,7 +338,7 @@ export function mapParcel(redaction: Redaction, ctx: MapContext): MappedRecord {
     ...area,
     area_list_sha256: GAZETTEER_SHA256,
     ...yearBuiltOf(redaction.record, ctx.asOf),
-    ...tenureOf(r.sales ?? [], ctx.asOf),
+    ...tenureOf(r.sales ?? [], ctx.asOf, r.deeds ?? []),
     export_point_lat: point?.lat ?? null,
     export_point_lon: point?.lon ?? null,
     // `duplicate` needs the whole export; the Loader's finalize step sets it (track tcad).
