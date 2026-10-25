@@ -242,6 +242,72 @@ describe("planPropertyImprovementGroup", () => {
   });
 });
 
+describe("printed contractors (ERR-32)", () => {
+  it("plans the printed name, city, raw status, expiry and BBB link per emitted permit, outside the files", () => {
+    const plan = planPropertyImprovementGroup(
+      [
+        {
+          parcel: parcelRow(100008, "0100030105"),
+          permits: [
+            permitRow(100008, "2026-100001 BP", {
+              contractor_company_name: " Done Right Roofing ",
+              contractor_city: "Round Rock",
+              contractor_phone: "5125550100",
+              expiresdate: "2027-01-02T00:00:00.000",
+            }),
+            permitRow(100008, "2026-100002 BP", { contractor_company_name: "OWNER" }),
+          ],
+        },
+      ],
+      CIDS,
+      STUB,
+    );
+    const g = plan.groups[0];
+    expect(g?.printed_contractors["2026-100001 BP"]).toMatchObject({
+      contractor_name_as_printed: "Done Right Roofing",
+      contractor_city: "Round Rock",
+      permit_status_raw: "Active",
+      permit_expiry_date: "2027-01-02",
+      bbb_status: "blocked",
+      bbb_status_reason: "bbb_blocked",
+    });
+    expect(g?.printed_contractors["2026-100001 BP"]?.bbb_url).toContain(
+      "find_loc=Round%20Rock%2C%20TX",
+    );
+    expect(g?.printed_contractors["2026-100002 BP"]).toMatchObject({
+      contractor_name_as_printed: null,
+      bbb_url: null,
+      bbb_status: "not_checked",
+    });
+    // never written into a lexicon file: no carrier exists (ADR-0002), no company/person/license
+    const all = Object.values(g?.files ?? {}).join("\n");
+    expect(all).not.toMatch(/Done Right|bbb\.org|5125550100|Round Rock/);
+    expect(
+      Object.keys(g?.files ?? {}).some((n) => /company|person|license|contractor/.test(n)),
+    ).toBe(false);
+  });
+
+  it("covers emitted permits only", () => {
+    const plan = planPropertyImprovementGroup(
+      [
+        {
+          parcel: parcelRow(100008, "0100030105"),
+          permits: [
+            permitRow(100008, "2026-100001 BP", { contractor_company_name: "Acme Roofing" }),
+            permitRow(100008, "2019-000009 BP", {
+              status_current: "VOID",
+              contractor_company_name: "Voided Co",
+            }),
+          ],
+        },
+      ],
+      CIDS,
+      STUB,
+    );
+    expect(Object.keys(plan.groups[0]?.printed_contractors ?? {})).toEqual(["2026-100001 BP"]);
+  });
+});
+
 describe("writePropertyImprovementGroupFiles", () => {
   it("writes each group's files as plain files under <dir>/<pID>/data/<file>, no zip", () => {
     const plan = planPropertyImprovementGroup(

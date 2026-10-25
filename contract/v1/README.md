@@ -132,6 +132,18 @@ told apart and lists `needs_review`).
 five-state totals (`contractor_resolved`, `contractor_candidate`, `contractor_ambiguous`,
 `contractor_conflicting`, `contractor_unresolved`) are in the manifest `coverage`.
 
+### Planned for v1.1: printed contractor name and BBB search link (blocked, ERR-32)
+
+PO decisions 2026-10-25 (FU-A-01): publish the contractor name **as printed, unverified** (never as
+a `company` record) and, where BBB blocks the lookup, a plain BBB **search** link built from the
+printed name and city. Planned additive v1.1 columns on `v_roofing_permit`:
+`contractor_name_as_printed`, `contractor_city`, `bbb_url`, plus `bbb_status = blocked` with
+`bbb_status_reason = bbb_blocked`; `contractor_resolution` stays `unresolved`. **Not in v1 and not
+frozen yet:** the live lexicon has no property that can carry them (verified against the live
+manifest on 2026-10-25, ADR-0002 verdicts 1, 4 and 5), and `export-tables` emits only lexicon class
+properties, so no side table can be produced. Until a carrier exists these fields stay in `missing`
+with `no_lexicon_carrier`. Details and options: `docs/defects/ERR-32-contractor-name-and-bbb-link-missing.md`.
+
 ## Manifest coverage and profiles for consumers
 
 `coverage.parcels_published` (`published_rows`) is the number of County `property` rows the run

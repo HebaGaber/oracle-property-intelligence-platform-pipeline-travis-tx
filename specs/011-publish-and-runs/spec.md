@@ -93,6 +93,7 @@ The Oracle operator wants an automated way to run future refreshes, but it must 
 - **FR-009**: System MUST be idempotent: repeating a run with the same inputs writes zero rows and reproduces the same CIDs.
 - **FR-010**: System MUST record a zero-change source's result with a stated reason rather than silently omitting it or publishing an empty new CID.
 - **FR-011**: System MUST define the scheduled automated run as disabled by default, requiring an explicit human action to enable it.
+- **FR-012** (Run 3 correction, PO decisions 2026-10-25, FU-A-01, ERR-32): System MUST publish the contractor name exactly as the permit prints it, labelled "as printed, unverified", and never as a `company`, `person` or `license` record; `contractor_resolution` stays `unresolved` until an official registry identifier matches. Where BBB blocks the lookup (A-01 receipts), System MUST publish a plain BBB search link built from the printed name and city (`bbb_url`), with the rating missing, `bbb_status = blocked` and `bbb_status_reason = bbb_blocked`, and MUST NOT request bbb.org. A placeholder name (N/A, OWNER, SELF, empty) gets no link. **Blocked until a legal carrier exists:** the live lexicon has no property for these fields and tables come only from `elephant-cli export-tables` (ERR-32); the pipeline builds the values internally and publishes none of them until the PO picks a carrier.
 
 ### Key Entities
 

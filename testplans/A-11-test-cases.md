@@ -293,6 +293,8 @@ Publishes the full Travis County dataset as CIDv1-addressed CARs and tables with
 - A record present in a previous run but absent from a later capture → `source_removed` tombstone, counted in `removed` (dedicated unit test in `pipeline/publish/test/incremental.test.ts`, not separately listed above — covered by T020 in tasks.md).
 - Run 3 lands less than 24 hours after Run 2 but on a different UTC date → still valid (covered by A-11-TC-012's date-distinctness check).
 
+- Contractor name and BBB search link (FR-012, ERR-32; Run 3 correction): unit-tested in `pipeline/oracle-runtime/test/travis/permits/bbb-search-url.test.ts` (encoding of ampersands, plus signs, quotes and unicode; whitespace; long names cut at a word boundary; empty and placeholder names such as N/A, OWNER, SELF give no link; clerk markers like `**MAIN**` are dropped from the search text only) and `write-group.test.ts` (printed values planned per emitted permit and never written into any lexicon file). Not an end-to-end case yet: it needs the PO-chosen carrier. Then add (1) a contract test that `v_roofing_permit` keeps every v1 column and type and adds `contractor_name_as_printed`, `contractor_city`, `bbb_url` (DuckDB fixture), (2) a Playwright case that the Permits drawer shows "Search BBB for this contractor" and "BBB rating not published (BBB blocked the lookup)", and (3) a manual check that a human clicked one example link (the URL shape is unverified).
+
 ## 10. Gap-linked cases (expected to fail until fixed)
 
 | TC ID | Asserts | Gap | Defect |
