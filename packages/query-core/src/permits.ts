@@ -92,7 +92,8 @@ function build(filter: PermitsFilter): { where: string[]; distanceSelect: string
     );
     distanceSelect = `, ${distance} AS dist_m`;
   }
-  if (filter.permitNumber !== undefined) where.push(`r.permit_number = ${str(filter.permitNumber)}`);
+  if (filter.permitNumber !== undefined)
+    where.push(`r.permit_number = ${str(filter.permitNumber)}`);
   if (filter.propertyCid !== undefined) where.push(`r.property_cid = ${str(filter.propertyCid)}`);
   if (filter.statusClass && filter.statusClass.length > 0) {
     validateStatusClass(filter.statusClass);

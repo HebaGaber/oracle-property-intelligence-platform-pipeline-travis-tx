@@ -95,7 +95,10 @@ describe("T032: three-way property_cid parity (query-core, MCP, agent.ask)", () 
       resolveRun: async () => ({ engine, bound }),
       runsIndex: async () => ({ runs: [] }),
     };
-    const mcp = await searchPropertiesTool(deps, { ...INPUT, manifest_cid: bound.manifestCid } as never);
+    const mcp = await searchPropertiesTool(deps, {
+      ...INPUT,
+      manifest_cid: bound.manifestCid,
+    } as never);
     const mcpData = mcp.structuredContent as { rows: Row[] };
 
     expect(propertyCidSet(mcpData.rows)).toEqual(propertyCidSet(raw.rows));
@@ -118,7 +121,10 @@ describe("T032: three-way property_cid parity (query-core, MCP, agent.ask)", () 
         resolveRun: async () => ({ engine, bound }),
         runsIndex: async () => ({ runs: [] }),
       };
-      const mcp = await searchPropertiesTool(deps, { ...INPUT, manifest_cid: bound.manifestCid } as never);
+      const mcp = await searchPropertiesTool(deps, {
+        ...INPUT,
+        manifest_cid: bound.manifestCid,
+      } as never);
       const mcpData = mcp.structuredContent as { rows: Row[] };
 
       // Stage 5 review fix (Critical #4): the agent Lambda's own tRPC router

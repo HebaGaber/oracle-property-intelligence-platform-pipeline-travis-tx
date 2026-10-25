@@ -11,7 +11,15 @@ import {
   listRuns,
   searchProperties,
 } from "../src/tools/functions.js";
-import { austinRequest, AUSTIN_URL, bindFixture, propertyRows, type Fixture, type FixtureTables, type Row } from "./helpers/fixture-export.js";
+import {
+  austinRequest,
+  AUSTIN_URL,
+  bindFixture,
+  propertyRows,
+  type Fixture,
+  type FixtureTables,
+  type Row,
+} from "./helpers/fixture-export.js";
 
 const CENTRE = { lat: 30.2672, lon: -97.7431 };
 const NORTH_HALF_MILE = { lat: 30.27444, lon: -97.7431 };
@@ -41,7 +49,11 @@ const TABLES: FixtureTables = {
     ],
     property_has_parcel: [edge(P1, "pc1"), edge(P2, "pc2"), edge(P3, "pc3")],
     parcel_has_geometry: [edge("pc1", "g1"), edge("pc2", "g2"), edge("pc3", "g3")],
-    geometry: [geometry("g1", CENTRE), geometry("g2", NORTH_HALF_MILE), geometry("g3", EAST_THREE_MILES)],
+    geometry: [
+      geometry("g1", CENTRE),
+      geometry("g2", NORTH_HALF_MILE),
+      geometry("g3", EAST_THREE_MILES),
+    ],
     property_has_structure: [edge(P1, "s1"), edge(P2, "s2")],
     structure: [
       { cid: "s1", roof_date: "1985" },
@@ -251,7 +263,9 @@ describe("getCoverage", () => {
     });
     try {
       const result = await getCoverage(fx.db, fx.bound);
-      expect(result.coverage).toEqual({ roofing_permit_rows: { count: 2, derivation: "published_rows" } });
+      expect(result.coverage).toEqual({
+        roofing_permit_rows: { count: 2, derivation: "published_rows" },
+      });
       expect(result.run.manifest_cid).toBe(fx.bound.manifestCid);
     } finally {
       fx.close();
@@ -269,7 +283,13 @@ describe("listRuns", () => {
       ],
     };
     const result = listRuns(index, { limit: 1 });
-    expect(result.runs).toEqual([{ run_id: "r2", manifest_cid: `ba${"b".repeat(60)}`, finished_at: "2026-06-01T00:00:00.000Z" }]);
+    expect(result.runs).toEqual([
+      {
+        run_id: "r2",
+        manifest_cid: `ba${"b".repeat(60)}`,
+        finished_at: "2026-06-01T00:00:00.000Z",
+      },
+    ]);
     expect(result.latest).toEqual(result.runs[0]);
   });
 });

@@ -67,7 +67,9 @@ const FAKE_RUN_ECHO: RunEcho = { run_id: "", manifest_cid: "", as_of: "" };
  *  `RunEcho` for a run that was never actually bound — every `run_not_found` shape goes through
  *  this, so there is exactly one echoing rule, not one per tool. */
 function runNotFoundRunEcho(manifestCid: string | undefined): RunEcho {
-  return manifestCid === undefined ? FAKE_RUN_ECHO : { ...FAKE_RUN_ECHO, manifest_cid: manifestCid };
+  return manifestCid === undefined
+    ? FAKE_RUN_ECHO
+    : { ...FAKE_RUN_ECHO, manifest_cid: manifestCid };
 }
 
 /** The `run_not_found` envelope for a row-returning tool that needs a bound run but couldn't get
@@ -178,7 +180,10 @@ export async function getCoverageTool(
 // list_runs
 // ---------------------------------------------------------------------------------------
 
-export async function listRunsTool(deps: McpToolDeps, input: ListRunsInput): Promise<CallToolResult> {
+export async function listRunsTool(
+  deps: McpToolDeps,
+  input: ListRunsInput,
+): Promise<CallToolResult> {
   const index = await deps.runsIndex();
   const result = listRuns(index, input);
   return toolResult(asRecord(result));
@@ -219,7 +224,12 @@ function timed(
       ok = false;
       throw error;
     } finally {
-      recordToolCall(obs, { tool, durationMs: performance.now() - started, ok, ...correlationIdOf(obs) });
+      recordToolCall(obs, {
+        tool,
+        durationMs: performance.now() - started,
+        ok,
+        ...correlationIdOf(obs),
+      });
     }
   };
 }
@@ -268,7 +278,8 @@ export function registerMcpTools(
     "get_coverage",
     {
       title: "Get run coverage",
-      description: "The published run's coverage figures, unchanged, for the latest run or a named manifest_cid.",
+      description:
+        "The published run's coverage figures, unchanged, for the latest run or a named manifest_cid.",
       inputSchema: GetCoverageInput,
     },
     async (input) => timed(obs, "get_coverage", () => getCoverageTool(deps, input))(),

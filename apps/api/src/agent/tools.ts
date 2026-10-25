@@ -125,7 +125,10 @@ export function createAgentTools(ctx: AgentToolsContext) {
     // below drops any manifest_cid the model supplies rather than trusting it.
     inputSchema: SearchPropertiesInput,
     execute: async (input) => {
-      const envelope = await searchPropertiesFn(engine, bound, { ...input, manifest_cid: undefined });
+      const envelope = await searchPropertiesFn(engine, bound, {
+        ...input,
+        manifest_cid: undefined,
+      });
       return projectEnvelope(envelope, registry, projectProperty);
     },
   });

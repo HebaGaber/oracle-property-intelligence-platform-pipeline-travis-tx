@@ -47,7 +47,11 @@ describe("loadRunsIndex: RUNS_INDEX_URL set -> HTTPS GET of the site's runs/inde
     const index = await loadRunsIndex(URL_ENV);
 
     expect(index.runs).toHaveLength(2);
-    expect(latestOf(index)).toEqual({ runId: "b", manifestCid: CID2, finishedAt: "2026-06-01T00:00:00.000Z" });
+    expect(latestOf(index)).toEqual({
+      runId: "b",
+      manifestCid: CID2,
+      finishedAt: "2026-06-01T00:00:00.000Z",
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, { signal?: AbortSignal }];
     expect(url).toBe("https://example.test/runs/index.json");
@@ -65,7 +69,9 @@ describe("loadRunsIndex: RUNS_INDEX_URL set -> HTTPS GET of the site's runs/inde
   });
 
   it("throws when the body fails RunsIndexV1 (never silently coerced)", async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ schema: "wrong", runs: [] }), { status: 200 }));
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ schema: "wrong", runs: [] }), { status: 200 }),
+    );
     await expect(loadRunsIndex(URL_ENV)).rejects.toThrow();
   });
 
@@ -129,10 +135,16 @@ describe("loadRunsIndex: RUNS_INDEX_URL unset -> local-file fallback (stdio buil
 
     const index = await loadRunsIndex({ [RUNS_INDEX_PATH_ENV]: path });
 
-    expect(latestOf(index)).toEqual({ runId: "b", manifestCid: CID2, finishedAt: "2026-06-01T00:00:00.000Z" });
+    expect(latestOf(index)).toEqual({
+      runId: "b",
+      manifestCid: CID2,
+      finishedAt: "2026-06-01T00:00:00.000Z",
+    });
   });
 
   it("throws when the local file is missing (no default/empty index)", async () => {
-    await expect(loadRunsIndex({ [RUNS_INDEX_PATH_ENV]: join(dir, "missing.json") })).rejects.toThrow();
+    await expect(
+      loadRunsIndex({ [RUNS_INDEX_PATH_ENV]: join(dir, "missing.json") }),
+    ).rejects.toThrow();
   });
 });

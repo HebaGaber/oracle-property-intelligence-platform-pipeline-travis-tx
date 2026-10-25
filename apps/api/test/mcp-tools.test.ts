@@ -222,7 +222,11 @@ describe("list_runs", () => {
     const result = await listRunsTool(deps, ListRunsInput.parse({}));
     const data = result.structuredContent as Record<string, unknown>;
 
-    expect(data.latest).toEqual({ run_id: "b", manifest_cid: CID2, finished_at: "2026-06-01T00:00:00.000Z" });
+    expect(data.latest).toEqual({
+      run_id: "b",
+      manifest_cid: CID2,
+      finished_at: "2026-06-01T00:00:00.000Z",
+    });
     expect((data.runs as unknown[]).length).toBe(2);
   });
 });
@@ -248,7 +252,14 @@ describe("get_schema", () => {
     expect(data.views).toHaveLength(1);
     expect(data.views[0]?.name).toBe("v_roofing_permit");
     expect(Object.keys(data.tool_inputs).sort()).toEqual(
-      ["searchProperties", "listPermits", "getProperty", "getCoverage", "listRuns", "getSchema"].sort(),
+      [
+        "searchProperties",
+        "listPermits",
+        "getProperty",
+        "getCoverage",
+        "listRuns",
+        "getSchema",
+      ].sort(),
     );
   });
 });

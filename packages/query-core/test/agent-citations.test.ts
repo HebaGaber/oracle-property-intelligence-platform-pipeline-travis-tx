@@ -33,7 +33,11 @@ export interface CitationRegistry {
   matches(): CitationMatch[];
   /** Strips any `[n]` outside 1..matches.length and any unregistered CID-shaped token from
    *  `answer`. Returns the cleaned text plus a count of each kind removed. */
-  postCheck(answer: string): { cleaned: string; outOfRangeCitations: number; ungroundedCids: number };
+  postCheck(answer: string): {
+    cleaned: string;
+    outOfRangeCitations: number;
+    ungroundedCids: number;
+  };
 }
 
 const CID_SHAPED = /\b(bafy[0-9a-z]{55}|bafk[0-9a-z]{55})\b/gi;
@@ -116,7 +120,13 @@ describe("referenceCitationRegistry (T018a executable spec for apps/api/src/agen
     const reg = referenceCitationRegistry();
     reg.register({ cid: "bafy_A", property_cid: "bafy_A", dist_mi: 1.2, roof_age_years: 20 });
     const [m] = reg.matches();
-    expect(m).toMatchObject({ n: 1, cid: "bafy_A", property_cid: "bafy_A", dist_mi: 1.2, roof_age_years: 20 });
+    expect(m).toMatchObject({
+      n: 1,
+      cid: "bafy_A",
+      property_cid: "bafy_A",
+      dist_mi: 1.2,
+      roof_age_years: 20,
+    });
   });
 
   it("post-check keeps in-range citations referencing registered rows untouched", () => {
@@ -167,7 +177,9 @@ describe("referenceCitationRegistry (T018a executable spec for apps/api/src/agen
   it("post-check on an empty registry strips every [n] and every CID-shaped token", () => {
     const reg = referenceCitationRegistry();
     const strayCid = `bafk${"c".repeat(55)}`;
-    const { cleaned, outOfRangeCitations, ungroundedCids } = reg.postCheck(`See [1] (${strayCid}).`);
+    const { cleaned, outOfRangeCitations, ungroundedCids } = reg.postCheck(
+      `See [1] (${strayCid}).`,
+    );
     expect(cleaned).toBe("See  ().");
     expect(outOfRangeCitations).toBe(1);
     expect(ungroundedCids).toBe(1);

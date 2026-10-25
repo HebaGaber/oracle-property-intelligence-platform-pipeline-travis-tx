@@ -97,7 +97,8 @@ interface Centre {
   lon: number;
 }
 
-type AreaResolution = { outOfScope: true; query: string } | { outOfScope: false; centre: Centre; echo: AreaEcho };
+type AreaResolution =
+  { outOfScope: true; query: string } | { outOfScope: false; centre: Centre; echo: AreaEcho };
 
 /** The shared helper T011a names: resolves AreaInput (a place name or a raw lat/lon) to a centre
  *  point and its citable echo, directly on gazetteer.lookup(). A raw lat/lon is always resolved
@@ -191,7 +192,9 @@ async function countOf(engine: QueryEngine, sql: string): Promise<number> {
 }
 
 type PropertyStatusClass = NonNullable<SearchPropertiesInput["status_class"]>;
-function statusClassesFor(statusClass: PropertyStatusClass | undefined): readonly string[] | undefined {
+function statusClassesFor(
+  statusClass: PropertyStatusClass | undefined,
+): readonly string[] | undefined {
   if (statusClass === undefined) return undefined;
   if (statusClass === "open_or_stalled") return ["open", "stalled"];
   return [statusClass];
@@ -224,12 +227,16 @@ export async function searchProperties(
   // the Explore page agree on the property_cid set. Its bounds (Travis County box) are the only
   // place a raw lat/lon can fall outside: no published data lies there, so it is out_of_scope.
   const { lat: latB, lon: lonB } = EXPLORE_BOUNDS;
-  if (
-    !(centre.lat >= latB[0] && centre.lat <= latB[1] && centre.lon >= lonB[0] && centre.lon <= lonB[1])
-  )
+  if (!(
+    centre.lat >= latB[0] &&
+    centre.lat <= latB[1] &&
+    centre.lon >= lonB[0] &&
+    centre.lon <= lonB[1]
+  ))
     return emptyEnvelope(run, "out_of_scope", applied);
   // open_years_min without a status_class has always meant "open or stalled" for the agent.
-  const permit = input.status_class ?? (input.open_years_min !== undefined ? "open_or_stalled" : undefined);
+  const permit =
+    input.status_class ?? (input.open_years_min !== undefined ? "open_or_stalled" : undefined);
   const sql = exploreSearchSql({
     centre,
     radius_mi: input.radius_mi,
@@ -273,12 +280,18 @@ export async function searchProperties(
       `r.status_class IN (${classes.map(sqlStr).join(", ")})`,
     ];
     if (input.open_years_min !== undefined)
-      permitWhere.push(`r.open_days >= ${Number((input.open_years_min * DAYS_PER_YEAR).toFixed(4))}`);
-    predicates.push({ sql: `EXISTS (SELECT 1 FROM v_roofing_permit r WHERE ${permitWhere.join(" AND ")})` });
+      permitWhere.push(
+        `r.open_days >= ${Number((input.open_years_min * DAYS_PER_YEAR).toFixed(4))}`,
+      );
+    predicates.push({
+      sql: `EXISTS (SELECT 1 FROM v_roofing_permit r WHERE ${permitWhere.join(" AND ")})`,
+    });
   }
 
   const [summaryRows, rawRows] = await Promise.all([engine.all(sql.summary), engine.all(sql.rows)]);
-  const total = Number((summaryRows[0] as { total_within_r?: number } | undefined)?.total_within_r ?? 0);
+  const total = Number(
+    (summaryRows[0] as { total_within_r?: number } | undefined)?.total_within_r ?? 0,
+  );
   const rows = rawRows.map((r) => ({
     ...r,
     dist_m: r.distance_m,
@@ -289,7 +302,10 @@ export async function searchProperties(
   const unknownFields = predicates.filter((p) => p.field !== undefined);
   const unknownCounts = await Promise.all(
     unknownFields.map((p) =>
-      countOf(engine, `SELECT count(*) AS n FROM v_property p WHERE ${radiusWhere} AND p.${p.field} IS NULL`),
+      countOf(
+        engine,
+        `SELECT count(*) AS n FROM v_property p WHERE ${radiusWhere} AND p.${p.field} IS NULL`,
+      ),
     ),
   );
   const unknownExcluded: Record<string, number> = {};
@@ -321,7 +337,16 @@ export async function searchProperties(
     emptyReason = blockingFields.length === 1 ? "field_not_published" : "no_match";
   }
 
-  return envelope({ rows, returned, total, emptyReason, unknownExcluded, area: echo, run, applied });
+  return envelope({
+    rows,
+    returned,
+    total,
+    emptyReason,
+    unknownExcluded,
+    area: echo,
+    run,
+    applied,
+  });
 }
 
 function toMiles(distM: unknown): number | undefined {
@@ -443,12 +468,13 @@ export async function getCoverage(
 ): Promise<{ coverage: unknown; run: RunEcho; empty_reason?: EmptyReason }> {
   const input = GetCoverageInput.parse(rawInput);
   const run = runEcho(bound);
-  if (wrongRun(bound, input.manifest_cid)) return { coverage: {}, run, empty_reason: "run_not_found" };
+  if (wrongRun(bound, input.manifest_cid))
+    return { coverage: {}, run, empty_reason: "run_not_found" };
   const rows = await engine.all("SELECT coverage FROM v_run");
   const raw = rows[0]?.coverage;
   // DuckDB's JSON column comes back as JSON text, not a parsed object (scripts/duckdb-engine.ts
   // does not special-case the JSON type); parse it so AC-9's deep-equal is against real objects.
-  const coverage = typeof raw === "string" ? JSON.parse(raw) : raw ?? {};
+  const coverage = typeof raw === "string" ? JSON.parse(raw) : (raw ?? {});
   return { coverage, run };
 }
 
@@ -459,9 +485,14 @@ export async function getCoverage(
 export function listRuns(
   index: Pick<RunsIndexV1, "runs">,
   rawInput: z.input<typeof ListRunsInput> = {},
-): { runs: { run_id: string; manifest_cid: string; finished_at: string }[]; latest: { run_id: string; manifest_cid: string; finished_at: string } | null } {
+): {
+  runs: { run_id: string; manifest_cid: string; finished_at: string }[];
+  latest: { run_id: string; manifest_cid: string; finished_at: string } | null;
+} {
   const input = ListRunsInput.parse(rawInput);
-  const sorted = [...index.runs].sort((a, b) => Date.parse(b.finishedAt) - Date.parse(a.finishedAt));
+  const sorted = [...index.runs].sort(
+    (a, b) => Date.parse(b.finishedAt) - Date.parse(a.finishedAt),
+  );
   const runs = sorted
     .slice(0, input.limit)
     .map((r) => ({ run_id: r.runId, manifest_cid: r.manifestCid, finished_at: r.finishedAt }));

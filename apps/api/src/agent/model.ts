@@ -9,7 +9,7 @@
 // Region: never configured here. `@ai-sdk/amazon-bedrock`'s `bedrock()` reads `AWS_REGION` from
 // the Lambda runtime by default (same P0-18 rule as apps/api/src/config.ts), so the agent
 // Lambda's environment carries no region literal either; `AI_PROVIDER=bedrock` expects an
-// `eu.` cross-region inference profile id (eu-north-1 per CLAUDE.md), reachable once the Lambda
+// `eu.` cross-region inference profile id (the project's region, from config), reachable once the Lambda
 // itself runs in that region.
 import { bedrock } from "@ai-sdk/amazon-bedrock";
 import { gateway } from "ai";
@@ -17,7 +17,7 @@ import type { LanguageModelV4 } from "@ai-sdk/provider";
 
 export type AiProvider = "bedrock" | "gateway";
 
-/** `AI_PROVIDER=bedrock` default model id: the eu-north-1 cross-region inference profile. */
+/** `AI_PROVIDER=bedrock` default model id: the EU cross-region inference profile. */
 export const DEFAULT_BEDROCK_MODEL_ID = "eu.anthropic.claude-sonnet-4-6";
 /** `AI_PROVIDER=gateway` default model id (Vercel AI Gateway catalog id). */
 export const DEFAULT_GATEWAY_MODEL_ID = "anthropic/claude-sonnet-4.6";

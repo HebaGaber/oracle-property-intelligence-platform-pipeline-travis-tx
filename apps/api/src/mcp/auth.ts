@@ -89,7 +89,8 @@ export interface AuthFailure {
   readonly body: { readonly error: "unauthorized" };
 }
 
-export type AuthResult = { readonly ok: true } | { readonly ok: false; readonly failure: AuthFailure };
+export type AuthResult =
+  { readonly ok: true } | { readonly ok: false; readonly failure: AuthFailure };
 
 const UNAUTHORIZED: AuthFailure = { status: 401, body: { error: "unauthorized" } };
 

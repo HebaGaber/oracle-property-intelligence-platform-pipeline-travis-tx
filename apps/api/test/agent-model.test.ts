@@ -6,7 +6,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_BEDROCK_MODEL_ID, DEFAULT_GATEWAY_MODEL_ID, getModel } from "../src/agent/model.js";
+import {
+  DEFAULT_BEDROCK_MODEL_ID,
+  DEFAULT_GATEWAY_MODEL_ID,
+  getModel,
+} from "../src/agent/model.js";
 
 describe("getModel (A-14 T007/T014)", () => {
   it("AI_PROVIDER=bedrock (default) returns a Bedrock-backed model at the eu. inference profile id", () => {
@@ -17,7 +21,10 @@ describe("getModel (A-14 T007/T014)", () => {
   });
 
   it("AI_PROVIDER=bedrock explicit, with a BEDROCK_MODEL_ID override", () => {
-    const model = getModel({ AI_PROVIDER: "bedrock", BEDROCK_MODEL_ID: "eu.anthropic.claude-other" });
+    const model = getModel({
+      AI_PROVIDER: "bedrock",
+      BEDROCK_MODEL_ID: "eu.anthropic.claude-other",
+    });
     expect(model.provider).toBe("amazon-bedrock");
     expect(model.modelId).toBe("eu.anthropic.claude-other");
   });

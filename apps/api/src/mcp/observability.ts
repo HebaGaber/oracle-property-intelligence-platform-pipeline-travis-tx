@@ -31,10 +31,13 @@ export type McpObservabilityOverrides = Partial<McpObservability>;
 
 /** Builds the three Powertools instances (or takes injected ones, for tests — the same pattern
  *  `apps/api/src/observability.ts`'s `createObservability` uses). */
-export function createMcpObservability(overrides: McpObservabilityOverrides = {}): McpObservability {
+export function createMcpObservability(
+  overrides: McpObservabilityOverrides = {},
+): McpObservability {
   return {
     logger: overrides.logger ?? new Logger({ serviceName: SERVICE_NAME }),
-    tracer: overrides.tracer ?? new Tracer({ serviceName: SERVICE_NAME, captureHTTPsRequests: false }),
+    tracer:
+      overrides.tracer ?? new Tracer({ serviceName: SERVICE_NAME, captureHTTPsRequests: false }),
     metrics:
       overrides.metrics ?? new Metrics({ serviceName: SERVICE_NAME, namespace: METRICS_NAMESPACE }),
   };
@@ -46,7 +49,9 @@ const whole = (ms: number): number => Math.round(ms);
  *  `exactOptionalPropertyTypes` rejects against an optional field) — shared by `tools.ts` and
  *  `server.ts` so both read the one correlation ID `handlers/mcp.ts`'s middy
  *  `injectLambdaContext` middleware sets on this same `obs.logger`. */
-export function correlationIdOf(obs: McpObservability): { correlationId: string } | Record<string, never> {
+export function correlationIdOf(
+  obs: McpObservability,
+): { correlationId: string } | Record<string, never> {
   const id: unknown = obs.logger.getCorrelationId(); // Powertools types this `unknown`
   return typeof id === "string" ? { correlationId: id } : {};
 }

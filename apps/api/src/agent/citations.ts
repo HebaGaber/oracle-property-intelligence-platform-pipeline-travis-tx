@@ -127,7 +127,8 @@ export function createCitationRegistry(): CitationRegistry {
     matches() {
       return order.map((cid, i) => {
         const row = rows.get(cid);
-        if (row === undefined) throw new Error(`citation registry: ${cid} missing from its own order`);
+        if (row === undefined)
+          throw new Error(`citation registry: ${cid} missing from its own order`);
         return toMatch(i + 1, row);
       });
     },

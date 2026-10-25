@@ -71,10 +71,12 @@ describe("SearchPropertiesInput", () => {
     expect(() => SearchPropertiesInput.parse({ ...base, roof_age_years_min: v })).toThrow();
   });
   it("accepts roof_age_years_min at the bounds 0 and 120", () => {
-    expect(SearchPropertiesInput.parse({ ...base, roof_age_years_min: 0 }).roof_age_years_min).toBe(0);
-    expect(SearchPropertiesInput.parse({ ...base, roof_age_years_min: 120 }).roof_age_years_min).toBe(
-      120,
+    expect(SearchPropertiesInput.parse({ ...base, roof_age_years_min: 0 }).roof_age_years_min).toBe(
+      0,
     );
+    expect(
+      SearchPropertiesInput.parse({ ...base, roof_age_years_min: 120 }).roof_age_years_min,
+    ).toBe(120);
   });
 
   it.each([0, 101, 5.5])("rejects tenure_years_min out of [1, 100] or non-integer: %d", (v) => {
@@ -96,9 +98,9 @@ describe("SearchPropertiesInput", () => {
   });
 
   it("owner_is_out_of_area only accepts literal true", () => {
-    expect(SearchPropertiesInput.parse({ ...base, owner_is_out_of_area: true }).owner_is_out_of_area).toBe(
-      true,
-    );
+    expect(
+      SearchPropertiesInput.parse({ ...base, owner_is_out_of_area: true }).owner_is_out_of_area,
+    ).toBe(true);
     expect(() => SearchPropertiesInput.parse({ ...base, owner_is_out_of_area: false })).toThrow();
   });
 
@@ -132,9 +134,7 @@ describe("ListPermitsInput", () => {
   });
 
   it("rejects a free-form SQL string as permit_number (edge case)", () => {
-    expect(() =>
-      ListPermitsInput.parse({ permit_number: "1' OR '1'='1" }),
-    ).toThrow();
+    expect(() => ListPermitsInput.parse({ permit_number: "1' OR '1'='1" })).toThrow();
     expect(() => ListPermitsInput.parse({ permit_number: "1982-012866" })).toThrow();
   });
 

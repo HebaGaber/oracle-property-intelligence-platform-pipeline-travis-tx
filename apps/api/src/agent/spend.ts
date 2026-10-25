@@ -45,10 +45,7 @@ export function utcDateKey(now: Date = new Date()): string {
   return now.toISOString().slice(0, 10);
 }
 
-function statusFromItem(
-  date: string,
-  item: Record<string, unknown> | undefined,
-): SpendStatus {
+function statusFromItem(date: string, item: Record<string, unknown> | undefined): SpendStatus {
   const spentUsd = typeof item?.spent_usd === "number" ? item.spent_usd : 0;
   const modelCalls = typeof item?.model_calls === "number" ? item.model_calls : 0;
   return { date, spentUsd, modelCalls, paused: spentUsd >= DAILY_SPEND_CAP_USD };

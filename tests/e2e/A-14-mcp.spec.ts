@@ -1,6 +1,6 @@
 // A-14 hosted MCP cases (testplans/A-14-test-cases.md § 8, tagged @mcp): Playwright `request`
 // tests against the hosted Streamable HTTP endpoint (`POST {MCP_URL}/mcp`), one test per case,
-// titled `@scenario:A-14-TC-{nnn}`. MCP_URL = https://s7h96zfam0.execute-api.eu-north-1.amazonaws.com
+// titled `@scenario:A-14-TC-{nnn}`. MCP_URL = the MCP stack output McpApiUrl
 // (throws for a localhost value). The bearer token comes from process.env.MCP_TOKEN only: tests
 // that need it skip with a clear message when it is unset; the no-token and wrong-token 401 cases
 // and the Origin case run without it. The token is never written to a file, a title or a log:
@@ -14,7 +14,7 @@
 // sequential calls) and the 429 burst case sit last, each alone, in one serial describe.
 // No model is called by this file.
 //
-// Run: MCP_URL=https://s7h96zfam0.execute-api.eu-north-1.amazonaws.com MCP_TOKEN=... \
+// Run: MCP_URL=<McpApiUrl stack output> MCP_TOKEN=... \
 //      RUNTIME_URL=https://014-agent-and-mcp.d2lx0utip89u18.amplifyapp.com \
 //      pnpm --filter @countylens/e2e exec playwright test --project=a14-mcp --workers=1
 import type { APIRequestContext } from "@playwright/test";

@@ -34,6 +34,11 @@ const core = async (
 ): Promise<APIGatewayProxyStructuredResultV2> => trpc(event, context);
 
 export const handler = middy<APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2>(core)
-  .use(injectLambdaContext(logger, { correlationIdPath: correlationPaths.API_GATEWAY_HTTP, resetKeys: true }))
+  .use(
+    injectLambdaContext(logger, {
+      correlationIdPath: correlationPaths.API_GATEWAY_HTTP,
+      resetKeys: true,
+    }),
+  )
   .use(captureLambdaHandler(tracer, { captureResponse: false }))
   .use(logMetrics(metrics, { captureColdStartMetric: true }));

@@ -76,8 +76,12 @@ describe("permitsSql (text)", () => {
   });
 
   it("filters by exact propertyCid (used by getProperty's permit list)", () => {
-    const sql = permitsSql({ propertyCid: "bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka" });
-    expect(sql).toMatch(/r\.property_cid = 'bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka'/);
+    const sql = permitsSql({
+      propertyCid: "bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka",
+    });
+    expect(sql).toMatch(
+      /r\.property_cid = 'bafkreibkonskeytl2lqmaoethxvhegzjkwbeon4couanb4x26ng23cs3ka'/,
+    );
   });
 });
 
@@ -125,7 +129,11 @@ const TABLES: FixtureTables = {
     property: [propertyRows(P1, 1985), propertyRows(P2, 1990), propertyRows(P3, 2000)],
     property_has_parcel: [edge(P1, "pc1"), edge(P2, "pc2"), edge(P3, "pc3")],
     parcel_has_geometry: [edge("pc1", "g1"), edge("pc2", "g2"), edge("pc3", "g3")],
-    geometry: [geometry("g1", CENTRE), geometry("g2", NORTH_HALF_MILE), geometry("g3", EAST_THREE_MILES)],
+    geometry: [
+      geometry("g1", CENTRE),
+      geometry("g2", NORTH_HALF_MILE),
+      geometry("g3", EAST_THREE_MILES),
+    ],
   },
   property_improvement: {
     property_improvement: [

@@ -36,11 +36,7 @@ import {
 } from "../../../packages/query-core/test/helpers/fixture-export.js";
 import { createAgentTools } from "../src/agent/tools.js";
 import { createCitationRegistry } from "../src/agent/citations.js";
-import {
-  listPermitsTool,
-  searchPropertiesTool,
-  type McpToolDeps,
-} from "../src/mcp/tools.js";
+import { listPermitsTool, searchPropertiesTool, type McpToolDeps } from "../src/mcp/tools.js";
 
 const CENTRE = { lat: 30.2672, lon: -97.7431 };
 const NEAR = { lat: 30.27444, lon: -97.7431 }; // ~0.5 mi north, inside the 1-mile radius
@@ -73,10 +69,25 @@ function permit(cid: string, propertyCid: string, status: string, issueDate: str
 
 const TABLES: FixtureTables = {
   county: {
-    property: [propertyRows(P1, 1985), propertyRows(P2, 1985), propertyRows(P3, 1985), propertyRows(P4, 1985)],
+    property: [
+      propertyRows(P1, 1985),
+      propertyRows(P2, 1985),
+      propertyRows(P3, 1985),
+      propertyRows(P4, 1985),
+    ],
     property_has_parcel: [edge(P1, "pc1"), edge(P2, "pc2"), edge(P3, "pc3"), edge(P4, "pc4")],
-    parcel_has_geometry: [edge("pc1", "g1"), edge("pc2", "g2"), edge("pc3", "g3"), edge("pc4", "g4")],
-    geometry: [geometry("g1", CENTRE), geometry("g2", NEAR), geometry("g3", FAR), geometry("g4", CENTRE)],
+    parcel_has_geometry: [
+      edge("pc1", "g1"),
+      edge("pc2", "g2"),
+      edge("pc3", "g3"),
+      edge("pc4", "g4"),
+    ],
+    geometry: [
+      geometry("g1", CENTRE),
+      geometry("g2", NEAR),
+      geometry("g3", FAR),
+      geometry("g4", CENTRE),
+    ],
   },
   property_improvement: {
     property_improvement: [
@@ -126,7 +137,10 @@ describe("T029: searchProperties / listPermits / MCP / agent property_cid parity
       resolveRun: async () => ({ engine, bound }),
       runsIndex: async () => ({ runs: [] }),
     };
-    const mcpProperties = await searchPropertiesTool(deps, { ...AREA, status_class: "open" } as never);
+    const mcpProperties = await searchPropertiesTool(deps, {
+      ...AREA,
+      status_class: "open",
+    } as never);
     const mcpPermits = await listPermitsTool(deps, { ...AREA, status_class: "open" } as never);
 
     const mcpPropertyData = mcpProperties.structuredContent as { rows: Row[] };
@@ -176,10 +190,30 @@ describe("T030: searchProperties vs exploreSearchSql (the Explore page's builder
   };
   const T30: FixtureTables = {
     county: {
-      property: [propertyRows(Q.old, 1985), propertyRows(Q.young, 2020), propertyRows(Q.unknown, null), propertyRows(Q.far, 1985)],
-      property_has_parcel: [edge(Q.old, "qc1"), edge(Q.young, "qc2"), edge(Q.unknown, "qc3"), edge(Q.far, "qc4")],
-      parcel_has_geometry: [edge("qc1", "qg1"), edge("qc2", "qg2"), edge("qc3", "qg3"), edge("qc4", "qg4")],
-      geometry: [geometry("qg1", CENTRE), geometry("qg2", NEAR), geometry("qg3", NEAR), geometry("qg4", FAR)],
+      property: [
+        propertyRows(Q.old, 1985),
+        propertyRows(Q.young, 2020),
+        propertyRows(Q.unknown, null),
+        propertyRows(Q.far, 1985),
+      ],
+      property_has_parcel: [
+        edge(Q.old, "qc1"),
+        edge(Q.young, "qc2"),
+        edge(Q.unknown, "qc3"),
+        edge(Q.far, "qc4"),
+      ],
+      parcel_has_geometry: [
+        edge("qc1", "qg1"),
+        edge("qc2", "qg2"),
+        edge("qc3", "qg3"),
+        edge("qc4", "qg4"),
+      ],
+      geometry: [
+        geometry("qg1", CENTRE),
+        geometry("qg2", NEAR),
+        geometry("qg3", NEAR),
+        geometry("qg4", FAR),
+      ],
       property_has_structure: [edge(Q.old, "qs1"), edge(Q.young, "qs2"), edge(Q.far, "qs4")],
       structure: [
         { cid: "qs1", roof_date: "1985" },
@@ -210,40 +244,51 @@ describe("T030: searchProperties vs exploreSearchSql (the Explore page's builder
     ["tenure > 3 (unknown tenure excluded)", { tenure_years_min: 3 }, { tenure: 3 }],
     ["tenure > 1", { tenure_years_min: 1 }, { tenure: 1 }],
     ["open_or_stalled permit", { status_class: "open_or_stalled" }, { permit: "open_or_stalled" }],
-    ["open permit, open >= 1 year", { status_class: "open", open_years_min: 1 }, { permit: "open", openYrs: 1 }],
+    [
+      "open permit, open >= 1 year",
+      { status_class: "open", open_years_min: 1 },
+      { permit: "open", openYrs: 1 },
+    ],
     ["stalled permit", { status_class: "stalled" }, { permit: "stalled" }],
     ["out-of-area owner", { owner_is_out_of_area: true }, { ooa: true }],
     ["sort roof_desc", { sort: "roof_desc" }, { sort: "roof_desc" }],
     ["sort open_desc", { sort: "open_desc" }, { sort: "open_desc" }],
     ["limit 1", { limit: 1 }, { limit: 1 }],
-    ["roof + permit + limit", { roof_age_years_min: 10, status_class: "open_or_stalled", limit: 2 }, { roof: 10, permit: "open_or_stalled", limit: 2 }],
+    [
+      "roof + permit + limit",
+      { roof_age_years_min: 10, status_class: "open_or_stalled", limit: 2 },
+      { roof: 10, permit: "open_or_stalled", limit: 2 },
+    ],
   ] as const;
 
-  it.each(cases)("%s: same ordered property_cid list as exploreSearchSql", async (_label, agent, explore) => {
-    const sql = exploreSearchSql({ centre: CENTRE, radius_mi: 1, ...explore } as never);
-    const exploreCids = (await fx.db.all(sql.rows)).map((r) => String(r.property_cid));
-    const summary = (await fx.db.all(sql.summary))[0] as { total_within_r: number };
+  it.each(cases)(
+    "%s: same ordered property_cid list as exploreSearchSql",
+    async (_label, agent, explore) => {
+      const sql = exploreSearchSql({ centre: CENTRE, radius_mi: 1, ...explore } as never);
+      const exploreCids = (await fx.db.all(sql.rows)).map((r) => String(r.property_cid));
+      const summary = (await fx.db.all(sql.summary))[0] as { total_within_r: number };
 
-    const found = await searchProperties(fx.db, fx.bound, {
-      area: { lat: CENTRE.lat, lon: CENTRE.lon },
-      radius_mi: 1,
-      ...agent,
-    } as never);
-    expect(found.rows.map((r) => String(r.property_cid))).toEqual(exploreCids);
-    expect(found.total).toBe(Number(summary.total_within_r));
+      const found = await searchProperties(fx.db, fx.bound, {
+        area: { lat: CENTRE.lat, lon: CENTRE.lon },
+        radius_mi: 1,
+        ...agent,
+      } as never);
+      expect(found.rows.map((r) => String(r.property_cid))).toEqual(exploreCids);
+      expect(found.total).toBe(Number(summary.total_within_r));
 
-    const deps: McpToolDeps = {
-      resolveRun: async () => ({ engine: fx.db, bound: fx.bound }),
-      runsIndex: async () => ({ runs: [] }),
-    };
-    const mcp = await searchPropertiesTool(deps, {
-      area: { lat: CENTRE.lat, lon: CENTRE.lon },
-      radius_mi: 1,
-      ...agent,
-    } as never);
-    const mcpRows = (mcp.structuredContent as { rows: Row[] }).rows;
-    expect(mcpRows.map((r) => String(r.property_cid))).toEqual(exploreCids);
-  });
+      const deps: McpToolDeps = {
+        resolveRun: async () => ({ engine: fx.db, bound: fx.bound }),
+        runsIndex: async () => ({ runs: [] }),
+      };
+      const mcp = await searchPropertiesTool(deps, {
+        area: { lat: CENTRE.lat, lon: CENTRE.lon },
+        radius_mi: 1,
+        ...agent,
+      } as never);
+      const mcpRows = (mcp.structuredContent as { rows: Row[] }).rows;
+      expect(mcpRows.map((r) => String(r.property_cid))).toEqual(exploreCids);
+    },
+  );
 
   it("the cases are not vacuous: the roof filter drops the unknown-roof and young properties", async () => {
     const found = await searchProperties(fx.db, fx.bound, {
