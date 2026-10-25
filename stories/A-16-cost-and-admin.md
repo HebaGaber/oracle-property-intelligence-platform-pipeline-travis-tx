@@ -207,6 +207,8 @@ Each carried item has one stable ID. The plan assigns each to a builder group or
 | A11-15 | Run 3 published (index step) | PO go-ahead for the `index` step; then closes A11-2 and A13-4 |
 | A11-16 | `/code-review medium` findings on the Run 3 corrections | Close `verify-manifest --sample` exit code, `openDaysReason` default, untimed downloads (G3); data-precedence findings Exception (change only from Run 4) |
 | A11-17 | Reviewer findings R2–R11 on Run 3 | Close R4–R6 publish tooling (G3, with A11-10b) and R10–R11 labels/docs (Me); R2, R3, R8, R9 Exception (Run 4 data) |
+| A11-18 | Explore SQL tab binds all of Run 3 (~96 s) | Close via A13-2 lazy binding; unparked, hosted CI decides |
+| A11-19 | Run 3 size: Catalog footers and Filebase fallback | Exception (parked by the Run 3 session; not addressed in A-16) |
 | A13-1 | Explore search on the full county | Close (AC-13 index) |
 | A13-2 | SQL panel first query | Close (lazy binding) |
 | A13-3 | LCP on manifest-driven pages | Close (run list first) |
