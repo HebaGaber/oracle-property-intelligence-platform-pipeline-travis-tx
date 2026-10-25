@@ -4,7 +4,7 @@ Updated every 15 minutes by the main session. Times are EEST (UTC+3). Session ta
 
 Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the PO · 🛑 PO decision · ⚠️ at risk
 
-**Last update:** 02:20 EEST · **Elapsed:** 2 h 40 m · **Revised target:** ≈ 03:15
+**Last update:** 02:10 EEST · **Elapsed:** 2 h 30 m · **Revised target:** ≈ 03:15
 
 ## Rounds
 
