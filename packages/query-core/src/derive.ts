@@ -82,8 +82,11 @@ export const roofBasisReason = (roofDate: string | null): "no_roof_date" | "basi
 export const tenureYears = (date: string | null, asOf: string): number | null =>
   date === null ? null : completedYears(date, asOf);
 
-export const tenureBasis = (date: string | null): "sale_date" | "unknown" =>
-  date === null ? "unknown" : "sale_date";
+export const tenureBasis = (
+  date: string | null,
+  source: "sale" | "deed" | null = null,
+): "sale_date" | "deed_date" | "unknown" =>
+  date === null ? "unknown" : source === "deed" ? "deed_date" : "sale_date";
 
 /** More than 10 years; null (never "long") when the tenure is unknown. */
 export const isLongTenure = (years: number | null): boolean | null =>
@@ -300,7 +303,10 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
   roof_basis_reason:
     "(roof_date) AS CASE WHEN roof_date IS NULL THEN 'no_roof_date' ELSE 'basis_unmatched' END",
   tenure_years: "(d, as_of) AS CAST(date_sub('year', d, as_of_date(as_of)) AS INTEGER)",
-  tenure_basis: "(d) AS CASE WHEN d IS NULL THEN 'unknown' ELSE 'sale_date' END",
+  // A-11 Run 3 (ERR-30): a latest transfer taken from a TCAD deed (transfer_source = 'deed') is
+  // deed_date; the default NULL keeps the one-argument call meaning sale_date.
+  tenure_basis:
+    "(d, src := NULL) AS CASE WHEN d IS NULL THEN 'unknown' WHEN src = 'deed' THEN 'deed_date' ELSE 'sale_date' END",
   is_long_tenure: "(years) AS years > 10",
   owner_area_class: "(zcta_class) AS coalesce(zcta_class, 'unknown')",
   // Why an owner's area class is unknown: no owner, no mailing edge, a run whose export carries no

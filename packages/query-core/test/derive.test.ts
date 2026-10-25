@@ -107,6 +107,19 @@ describe("tenure (max ownership_transfer_date; > 10 years is long)", () => {
   });
 });
 
+describe("tenure_basis with a transfer source (ERR-30)", () => {
+  it.each([
+    ["2019-07-01", "deed", "deed_date"],
+    ["2019-07-01", "sale", "sale_date"],
+    ["2019-07-01", null, "sale_date"],
+    [null, "deed", "unknown"],
+  ] as const)("date %s, source %s → %s", async (date, source, basis) => {
+    expect(d.tenureBasis(date, source)).toBe(basis);
+    const src = source === null ? "NULL::VARCHAR" : `'${source}'`;
+    expect(await sql(`tenure_basis(${lit(date, "DATE")}, ${src})`)).toBe(basis);
+  });
+});
+
 describe("owner_area_class / owner_is_out_of_area (travis-places lists)", () => {
   it.each([
     ["78753", "in_county", false],

@@ -46,7 +46,7 @@ export const COLUMN_ENUMS = {
   status_class: ["open", "stalled", "closed"],
   owner_area_class: ["in_county", "regional", "out_of_area", "unknown"],
   coordinate_source: ["gis_centroid", "permit_point", "none"],
-  tenure_basis: ["sale_date", "unknown"],
+  tenure_basis: ["sale_date", "deed_date", "unknown"],
   contractor_resolution: ["resolved", "unresolved"],
   owner_kind: ["person", "company", "unknown"],
 } as const satisfies Record<string, readonly string[]>;
@@ -261,7 +261,7 @@ const V_PROPERTY: readonly Column[] = [
     "date",
     "DATE",
     true,
-    "latest dated sales_history.ownership_transfer_date via property_has_sales_history",
+    "latest dated sales_history.ownership_transfer_date (TCAD sale or transfer deed) via property_has_sales_history",
     "Latest dated ownership transfer",
     "no_dated_sale",
   ),
@@ -277,7 +277,7 @@ const V_PROPERTY: readonly Column[] = [
   enumCol(
     "tenure_basis",
     false,
-    "derived: sale_date when dated, else unknown",
+    "derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown",
     "Evidence behind tenure_years",
     null,
   ),

@@ -238,7 +238,7 @@ export async function writeGroupWith(deps: WriteGroupDeps, jobId: string, opts: 
       else if (entry.anchor === "property_built_year") roofAge.built_year += 1;
       else roofAge.no_tcad_date += 1;
     }
-    const plan = planCountyGroup(batch, deps.cids);
+    const plan = planCountyGroup(batch, deps.cids, asOf);
     zips += writeCountyZips(dir, plan.groups).length;
     outOfScope += plan.out_of_scope.length;
     for (const g of plan.groups) {

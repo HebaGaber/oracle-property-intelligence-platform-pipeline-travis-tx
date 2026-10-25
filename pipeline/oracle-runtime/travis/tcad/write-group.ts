@@ -155,7 +155,12 @@ export function sharedFilesInputOf(input: SharedSource): SharedFilesSource {
 }
 
 /** County files for every R input; non-R inputs are listed out_of_scope. */
-export function planCountyGroup(inputs: readonly GroupInput[], cids: DataGroupCids): GroupPlan {
+export function planCountyGroup(
+  inputs: readonly GroupInput[],
+  cids: DataGroupCids,
+  /** The run's as_of date: no transfer dated after it is written (ERR-30). */
+  asOf?: string,
+): GroupPlan {
   const groups: CountyGroup[] = [];
   const out: GroupPlan["out_of_scope"] = [];
   for (const input of inputs) {
@@ -170,6 +175,7 @@ export function planCountyGroup(inputs: readonly GroupInput[], cids: DataGroupCi
       cids,
       roofAge: input.roofAge ?? null,
       yearBuilt,
+      ...(asOf !== undefined ? { asOf } : {}),
     });
     groups.push({
       pID: t.pID,
@@ -209,7 +215,7 @@ export const COUNTY_FIELD_MAP: Readonly<
     present: (f) => "structure.json" in f,
   },
   sale_date: {
-    source: "sales[].saleDt",
+    source: "sales[].saleDt and transfer deeds[].deedDt",
     present: (f) => Object.keys(f).some((n) => /^sales_history_\d+\.json$/.test(n)),
   },
   geometry: {
