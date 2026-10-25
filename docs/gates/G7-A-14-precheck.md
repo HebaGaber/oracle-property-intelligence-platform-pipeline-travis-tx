@@ -5,13 +5,14 @@ artifact_version: "story head 1377fe9 (hosted results on 40808ca, golden run 5 a
 run_date: 2026-10-25
 tool: Claude
 verdict: FAIL
+decision: "Approved with PO exceptions E1 to E4 by HebaGaber on 2026-10-25 (answer: Approve with exceptions (Recommended))"
 ---
 
 # G7 pre-check: A-14 Answer roofing-lead questions through a source-backed agent and an MCP server
 
 Inputs read: `specs/014-agent-and-mcp/tasks.md`; `docs/reports/A-14-unit-test-report.md`, `A-14-test-report.md`; `docs/reviews/CR-A-14.md` and `CR-A-14-final-{alakazam,ash,oracle,donphan}.md`; `docs/defects/ERR-61.md` to `ERR-64.md`; `docs/evidence/A-14.md`, `A-14-agent.md`, `A-14-mcp.md`, `A-14-smeargle.md`; `docs/decisions/DEC-A-14-*.md`; `git log feature/oracle-pipeline..014-agent-and-mcp` (53 commits); `gh run list --branch 014-agent-and-mcp`.
 
-**Verdict: FAIL on the strict rule (3 FAILs: C-01, C-04, C-10).** Two of them rest on exceptions the PO has already accepted; one (C-04) also contains three not-run cases that no decision covers yet; C-10 can only pass after the approval. If the PO accepts exceptions E1 to E4 below at D-13 and records the decision, the verdict reads **PASS with PO exceptions**, the same convention as the A-13 report (`G7-A-13-precheck.md`). The gate is not approved by this report.
+**Verdict: FAIL on the strict rule (3 FAILs: C-01, C-04, C-10).** Two of them rest on exceptions the PO has already accepted; one (C-04) also contains three not-run cases that no decision covers yet; C-10 can only pass after the approval. If the PO accepts exceptions E1 to E4 below at D-13 and records the decision, the verdict reads **PASS with PO exceptions**, the same convention as the A-13 report (`G7-A-13-precheck.md`). The gate is not approved by this report; the PO decision is recorded at the end of this file.
 
 | Check | Criterion | Result | Finding |
 | --- | --- | --- | --- |
@@ -44,13 +45,17 @@ Inputs read: `specs/014-agent-and-mcp/tasks.md`; `docs/reports/A-14-unit-test-re
 
 ## Gate checklist (the PO ticks after the decision)
 
-- [ ] G7-1 Tasks done or deferrals accepted (E2)
-- [ ] G7-2 Unit tests green in CI; coverage stated
-- [ ] G7-3 Review scores at least 75; 0 Critical
-- [ ] G7-4 Test cases executed on the hosted URL; exceptions accepted (E1, E3, E4)
-- [ ] G7-5 Defects closed or gap-linked
-- [ ] G7-6 Evidence complete
-- [ ] G7-7 Traceability complete
-- [ ] G7-8 Commits clean
-- [ ] G7-9 Story status set to Done
-- [ ] Decision: ☐ Approved ☐ Returned · name · date
+- [x] G7-1 Tasks done or deferrals accepted (E2)
+- [x] G7-2 Unit tests green in CI; coverage stated
+- [x] G7-3 Review scores at least 75; 0 Critical
+- [x] G7-4 Test cases executed on the hosted URL; exceptions accepted (E1, E3, E4)
+- [x] G7-5 Defects closed or gap-linked
+- [x] G7-6 Evidence complete
+- [x] G7-7 Traceability complete
+- [x] G7-8 Commits clean
+- [x] G7-9 Story status set to Done
+- [x] Decision: ☑ Approved (with PO exceptions E1 to E4) ☐ Returned · HebaGaber · 2026-10-25
+
+## Decision
+
+Approved with exceptions E1 to E4 by the PO (HebaGaber) on 2026-10-25, answering the D-13 question "approve the G7 gate for A-14 with exceptions E1 to E4, then merge ... and push to your fork" with "Approve with exceptions (Recommended)". E4 (TC-011, TC-017, TC-028 not executed) is accepted by this answer; E1 to E3 were accepted earlier (see the table above). The story is set to `Done` and merged into `feature/oracle-pipeline` with `--no-ff`.

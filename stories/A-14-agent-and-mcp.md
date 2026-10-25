@@ -20,7 +20,7 @@ agents:
   verify: "golden queries G1–G6 on the deployed agent; MCP Inspector on the hosted /mcp; `donphan` answers through it"
 skills: [build-rag-systems, build-ai-agents, deploy-open-data-mcp, use-elephant-mcp, responsive-design-tests, apply-engineering-guidelines]
 ui: true
-status: Ready
+status: Done
 gate: G4
 qc_testability_signoff: true
 created: 2026-10-19
