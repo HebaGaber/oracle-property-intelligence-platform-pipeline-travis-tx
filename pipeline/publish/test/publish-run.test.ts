@@ -54,7 +54,7 @@ async function realContext(
       countyDir: f.countyDir,
       permitsDir: f.permitsV2,
     },
-    { repoRoot: f.root, workTreeStatus: NOT_YET_PUBLISHED },
+    { repoRoot: f.root, workTreeStatus: NOT_YET_PUBLISHED, gitCommit: () => "abc1234" },
   );
   const path = opts.pilot
     ? join(f.root, "specs/011-publish-and-runs/pilot/manifest.json")

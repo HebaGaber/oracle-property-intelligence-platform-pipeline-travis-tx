@@ -20,7 +20,13 @@ import { exportSource, runDirFor } from "../../../oracle-runtime/travis/tcad/exp
 import { createKeyInventory } from "../../../oracle-runtime/travis/tcad/key-inventory.js";
 import { processRecord } from "../../../oracle-runtime/travis/tcad/process.js";
 import { runJoinProof } from "../../../oracle-runtime/travis/tcad/join-proof.js";
-import { planCountyGroup, writeCountyZips, type GroupInput } from "../../../oracle-runtime/travis/tcad/write-group.js";
+import {
+  planCountyGroup,
+  roofAgeEntryOf,
+  writeCountyZips,
+  type GroupInput,
+  type RoofAgeEstimateRow,
+} from "../../../oracle-runtime/travis/tcad/write-group.js";
 import {
   TCAD_SOURCE_KEY,
   loaderInput,
@@ -149,6 +155,31 @@ export async function runAsOf(sql: postgres.Sql, jobId: string): Promise<string>
   return asOf;
 }
 
+/**
+ * The roof-age ledger rows (roof_age_estimates, written by the roof-age run) for one batch of
+ * pIDs: one query per batch, never one per property. A property with no row is absent from the
+ * map; the transform then warns no_roof_age_ledger_row and writes roof_date null. A database
+ * without the table (0406 not applied) returns an empty map with `available: false`, which the
+ * result reports; any other error propagates.
+ */
+export async function roofAgeLedgerFor(
+  sql: postgres.Sql,
+  pids: readonly string[],
+): Promise<{ available: boolean; entries: Map<string, ReturnType<typeof roofAgeEntryOf>> }> {
+  const entries = new Map<string, ReturnType<typeof roofAgeEntryOf>>();
+  if (pids.length === 0) return { available: true, entries };
+  try {
+    const rows = await sql<RoofAgeEstimateRow[]>`
+      SELECT tcad_id, roof_age_basis, roof_age_years::int AS roof_age_years, as_of_date::text AS as_of_date
+      FROM roof_age_estimates WHERE tcad_id IN ${sql(pids as string[])}`;
+    for (const r of rows) entries.set(r.tcad_id, roofAgeEntryOf(r));
+    return { available: true, entries };
+  } catch (error) {
+    if ((error as { code?: string }).code !== "42P01") throw error;
+    return { available: false, entries };
+  }
+}
+
 export async function resolveGeoIdsFor(sql: postgres.Sql, ids: readonly string[]): Promise<Map<string, string[]>> {
   const m = new Map<string, string[]>();
   if (ids.length === 0) return m;
@@ -195,8 +226,18 @@ export async function writeGroupWith(deps: WriteGroupDeps, jobId: string, opts: 
   let zips = 0;
   let outOfScope = 0;
   let fallback = 0;
+  const roofAge = { built_year: 0, no_tcad_date: 0, missing_ledger_row: 0, ledger_table_missing: false };
   let batch: GroupInput[] = [];
-  const flush = (): void => {
+  const flush = async (): Promise<void> => {
+    const ledger = await roofAgeLedgerFor(sql, batch.map((b) => b.pID));
+    if (!ledger.available) roofAge.ledger_table_missing = true;
+    for (const b of batch) {
+      const entry = ledger.entries.get(b.pID) ?? null;
+      b.roofAge = entry;
+      if (entry === null) roofAge.missing_ledger_row += 1;
+      else if (entry.anchor === "property_built_year") roofAge.built_year += 1;
+      else roofAge.no_tcad_date += 1;
+    }
     const plan = planCountyGroup(batch, deps.cids);
     zips += writeCountyZips(dir, plan.groups).length;
     outOfScope += plan.out_of_scope.length;
@@ -227,9 +268,9 @@ export async function writeGroupWith(deps: WriteGroupDeps, jobId: string, opts: 
           : { lat: l.parcel.export_point_lat, lon: l.parcel.export_point_lon, kind: l.parcel.export_point_kind },
       ...(assembled ? { coordinate: c } : {}),
     });
-    if (batch.length >= 1000) flush();
+    if (batch.length >= 1000) await flush();
   }
-  if (batch.length > 0) flush();
+  if (batch.length > 0) await flush();
   const nonR =
     wanted !== null
       ? []
@@ -240,6 +281,7 @@ export async function writeGroupWith(deps: WriteGroupDeps, jobId: string, opts: 
     dir: dir.replace(/^.*\/pipeline\//, "pipeline/"),
     geometry,
     mailing_address_fallback: fallback,
+    roof_age: roofAge,
     ...(wanted === null ? {} : { missing_pids: [...wanted].filter((p) => !seen.has(p)) }),
   };
 }

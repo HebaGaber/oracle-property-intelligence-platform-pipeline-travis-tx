@@ -16,7 +16,8 @@ const q = (name: string): string => `"${name}"`;
 export function sampleSql(): string {
   const permit = new Set(VIEWS.v_roofing_permit.map((c) => c.name));
   const select = SAMPLE_COLUMNS.map((c) => {
-    if (permit.has(c.name)) return `r.${q(c.name)}`;
+    // request_identifier is the property's in the sample (the permit's is not sampled).
+    if (permit.has(c.name) && c.name !== "request_identifier") return `r.${q(c.name)}`;
     if (
       c.name.startsWith(SAMPLE_PROPERTY_PREFIX) &&
       !VIEWS.v_property.some((p) => p.name === c.name)

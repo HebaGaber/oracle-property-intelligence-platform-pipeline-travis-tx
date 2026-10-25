@@ -132,16 +132,25 @@ describe("owner_area_class / owner_is_out_of_area (travis-places lists)", () => 
   });
 });
 
-describe("open_days (as_of − issue_date for open/stalled; else null with not_open; ≥ 0)", () => {
+describe("open_days (as_of − issue_date for open/stalled without final_date; else null; ≥ 0)", () => {
   it.each([
-    ["stalled", "2026-03-11", 223],
-    ["open", "2026-09-17", 33],
-    ["open", "2026-10-25", 0],
-    ["closed", "2026-09-17", null],
-    ["open", null, null],
-  ] as const)("%s issued %s → %s", async (cls, issue, expected) => {
-    expect(d.openDays(cls, issue, AS_OF)).toBe(expected);
-    expect(await sql(`open_days('${cls}', ${lit(issue, "DATE")}, ${AS_OF_SQL})`)).toBe(expected);
+    ["stalled", "2026-03-11", null, 223],
+    ["open", "2026-09-17", null, 33],
+    ["open", "2026-10-25", null, 0],
+    ["closed", "2026-09-17", null, null],
+    ["open", null, null, null],
+    // ERR-29: a finished or implausibly-dated permit gets no interval
+    ["stalled", "1984-01-01", "1985-03-11", null],
+    ["open", "2026-03-11", "2026-04-01", null],
+    ["stalled", "2026-03-11", "2026-03-01", null],
+    ["stalled", "2026-03-11", "2027-01-01", null],
+  ] as const)("%s issued %s final %s → %s", async (cls, issue, fin, expected) => {
+    expect(d.openDays(cls, issue, AS_OF, fin)).toBe(expected);
+    expect(
+      await sql(
+        `open_days('${cls}', ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
+      ),
+    ).toBe(expected);
   });
 });
 
@@ -192,13 +201,21 @@ describe("status_class (generated status map, scoped to the profile's jurisdicti
   });
 
   it.each([
-    ["open", "2026-09-17", "not_open"],
-    ["stalled", null, "source_missing"],
-    ["closed", "2026-09-17", "not_open"],
-    [null, "2026-09-17", "needs_review"],
-  ] as const)("open_days reason: class %s issued %s → %s", async (cls, issue, expected) => {
-    expect(d.openDaysReason(cls, issue)).toBe(expected);
-    expect(await sql(`open_days_reason(${lit(cls)}, ${lit(issue, "DATE")})`)).toBe(expected);
+    ["open", "2026-09-17", null, "not_open"],
+    ["stalled", null, null, "source_missing"],
+    ["closed", "2026-09-17", null, "not_open"],
+    [null, "2026-09-17", null, "needs_review"],
+    // ERR-29: finished (plausible final_date) is not_open; implausible is a data-quality gap
+    ["stalled", "2026-03-11", "2026-04-01", "not_open"],
+    ["stalled", "2026-03-11", "2026-03-01", "needs_review"],
+    ["open", "2026-03-11", "2027-01-01", "needs_review"],
+  ] as const)("open_days reason: class %s issued %s final %s → %s", async (cls, issue, fin, expected) => {
+    expect(d.openDaysReason(cls, issue, AS_OF, fin)).toBe(expected);
+    expect(
+      await sql(
+        `open_days_reason(${lit(cls)}, ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
+      ),
+    ).toBe(expected);
   });
 
   it.each([

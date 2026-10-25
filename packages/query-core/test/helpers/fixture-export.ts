@@ -129,7 +129,14 @@ export async function bindFixture(
     for (const [table, given] of Object.entries(byTable ?? {})) {
       const partRows: Row[][] =
         given.length > 0 && Array.isArray(given[0]) ? (given as Row[][]) : [given as Row[]];
-      const cols = columnsOf(table);
+      // address is a top-level oneOf, so the real export has no postal_code; a fixture can add that
+      // column (a later export that emits oneOf properties) by giving any address row a value.
+      const cols = [
+        ...columnsOf(table),
+        ...(table === "address" && partRows.some((p) => p.some((r) => "postal_code" in r))
+          ? ([["postal_code", "VARCHAR"]] as [string, string][])
+          : []),
+      ];
       for (const [i, rows] of partRows.entries()) {
         for (const r of rows)
           for (const k of Object.keys(r))

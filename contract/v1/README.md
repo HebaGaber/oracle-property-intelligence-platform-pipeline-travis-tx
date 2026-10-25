@@ -76,6 +76,15 @@ such as InProgress) it is null and the row lists `{field: "status_class", reason
 `final_date` and `open_days` then also give `needs_review`, and a null `improvement_status`
 gives `needs_review` instead of `enum_lacks_value`.
 
+**Open duration (ERR-29).** `status_class` is the class of the source status; it does not say the
+work is still going. An Austin permit with status Expired (stalled) very often has a `final_date`:
+the work was finished and the permit lapsed administratively. `open_days` (as_of − issue_date) is
+therefore counted only for an open or stalled permit with **no** `final_date`. A plausible
+`final_date` (not before `issue_date`, not after `as_of`) gives `open_days` null with reason
+`not_open`; a `final_date` before `issue_date` or after `as_of` is a data-quality gap and gives
+`open_days` null with reason `needs_review`. A long-open lead is `open_days` above the threshold;
+`is_open` still mirrors `status_class = 'open'`.
+
 **For raw-table consumers** (reading `property_improvement` Parquet without these views): a Travis
 permit whose `improvement_status` is null, whose `source_http_request` host is an Austin host
 (`data.austintexas.gov`, `abc.austintexas.gov`) and which has a `permit_issue_date` is an
@@ -122,6 +131,17 @@ told apart and lists `needs_review`).
 `unresolved` and lists `{field: "contractor_company_cid", reason: "needs_review"}`. The AD-24
 five-state totals (`contractor_resolved`, `contractor_candidate`, `contractor_ambiguous`,
 `contractor_conflicting`, `contractor_unresolved`) are in the manifest `coverage`.
+
+## Manifest coverage and profiles for consumers
+
+`coverage.parcels_published` (`published_rows`) is the number of County `property` rows the run
+publishes; its `note` states the basis (real-property accounts only). The builder refuses a
+manifest whose count differs from the published county part row counts, like
+`permits_emitted`. A manifest without the key (Run 1, Run 2) is still valid: read the count from
+the tables. The `travis-places` profile names the ZIP area list that classifies
+`owner_area_class`. A manifest without it (Run 1, Run 2) means the run declared no area list: the
+view then leaves `owner_area_class` `unknown` with reason `out_of_scope` when ZIPs exist, and
+`area_list_sha256` is null. Absence means "not published for this run", never an empty list.
 
 ## Provenance and `missing`
 
@@ -194,7 +214,7 @@ Two further notes from the pilot export:
 | `final_date` | `DATE` | yes | Final date (frozen alias) | property_improvement.completion_date | `not_closed` |
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
-| `open_days` | `INTEGER` | yes | Days open | derived: as_of − issue_date for open and stalled | `not_open` |
+| `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
 | `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review) | never empty |
 | `contractor_company_cid` | `VARCHAR` | yes | Resolved contractor company | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
 | `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | always not_checked in v1 | never empty |
@@ -228,7 +248,7 @@ Two further notes from the pilot export:
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
 | `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown | never empty |
 | `owner_name` | `VARCHAR` | yes | Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale | `no_dated_sale` |
-| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1 | never empty |
+| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
 | `property_source_url` | `VARCHAR` | yes | The property's uRL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
@@ -260,7 +280,7 @@ Two further notes from the pilot export:
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
 | `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown | never empty |
 | `owner_name` | `VARCHAR` | yes | Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale | `no_dated_sale` |
-| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1 | never empty |
+| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
@@ -281,6 +301,7 @@ Two further notes from the pilot export:
 | `property_cid` | `VARCHAR` | no | The permit's property | from_cid of property_has_property_improvement | never empty |
 | `jurisdiction` | `VARCHAR` | yes | Issuing jurisdiction | derived: source_http_request host → profile jurisdiction map | `needs_review` |
 | `permit_number` | `VARCHAR` | yes | Permit number as printed | property_improvement.permit_number | `source_missing` |
+| `request_identifier` | `VARCHAR` | yes | Permit request identifier: the stable key of the permit record across runs (equals permit_number in Run 2) | property_improvement.request_identifier | `source_missing` |
 | `improvement_type` | `VARCHAR` | no | Lexicon improvement type | property_improvement.improvement_type (set only by the profile) | never empty |
 | `improvement_action` | `VARCHAR` | no | Lexicon improvement action | property_improvement.improvement_action (set only by the profile) | never empty |
 | `improvement_status` | `VARCHAR` | yes | Lexicon status; null for Expired (D-4a) | property_improvement.improvement_status | `enum_lacks_value` |
@@ -290,7 +311,7 @@ Two further notes from the pilot export:
 | `final_date` | `DATE` | yes | Final date (frozen alias) | property_improvement.completion_date | `not_closed` |
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
-| `open_days` | `INTEGER` | yes | Days open | derived: as_of − issue_date for open and stalled | `not_open` |
+| `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
 | `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review) | never empty |
 | `contractor_company_cid` | `VARCHAR` | yes | Resolved contractor company | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
 | `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | always not_checked in v1 | never empty |

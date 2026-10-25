@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { REQUIRED_TABLES, tablesForViews, type BindOptions } from "../src/bind-manifest.js";
 import { listRoofingPermitsSql, radiusSql, roofAgeSql, runSummarySql } from "../src/builders.js";
 import { sampleSql } from "../src/sample.js";
-import { CONTRACT_VIEWS, VIEW_STATEMENTS, viewsReadBy } from "../src/view-plan.js";
+import { CONTRACT_VIEWS, VIEW_STATEMENTS, planViews, viewsReadBy } from "../src/view-plan.js";
 import { VIEWS_SQL } from "../src/sql.js";
 import {
   AUSTIN_URL,
@@ -89,9 +89,11 @@ describe("view plan (ERR-19)", () => {
     expect(keysFor(["v_property"])).toEqual(
       [
         "county.company",
+        "county.company_has_mailing_address",
         "county.geometry",
         "county.parcel_has_geometry",
         "county.person",
+        "county.person_has_mailing_address",
         "county.property",
         "county.property_has_parcel",
         "county.property_has_sales_history",
@@ -105,6 +107,9 @@ describe("view plan (ERR-19)", () => {
       ].sort(),
     );
     expect(keysFor(CONTRACT_VIEWS)).toEqual(REQUIRED_TABLES.map(key).sort());
+    // county.address is read through meta.address_zip: planned, but deliberately not required.
+    expect(planViews(["v_property"]).tables.has("county.address")).toBe(true);
+    expect(planViews(["v_roofing_permit"]).tables.has("county.address")).toBe(false);
   });
 });
 

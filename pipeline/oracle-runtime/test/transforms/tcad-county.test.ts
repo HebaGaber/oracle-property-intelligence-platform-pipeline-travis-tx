@@ -333,6 +333,15 @@ describe("transformTcadCounty: roof date (TCAD-sourced anchors only, oracle F1)"
     ).toBeNull();
   });
 
+  it("a missing ledger row warns no_roof_age_ledger_row; an anchor-less row does not (ERR-27)", () => {
+    expect(transformTcadCounty(input(undefined, null)).counts.warnings).toContain(
+      "no_roof_age_ledger_row",
+    );
+    expect(transformTcadCounty(input(undefined, "1985", null)).counts.warnings).not.toContain(
+      "no_roof_age_ledger_row",
+    );
+  });
+
   it("refuses a ledger row for another property", () => {
     const i = input();
     i.roofAge = { pID: "999", roof_date: "2020", anchor: "property_built_year" };

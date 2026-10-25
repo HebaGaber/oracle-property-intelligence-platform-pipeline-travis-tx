@@ -13,10 +13,12 @@
 //   - the carried contractor/permit-link coverage keys must still be true: if the number of
 //     published permits differs from the base's, the caller must supply those keys explicitly.
 // The output bytes are `built.bytes` (RFC 8785 JCS) written verbatim, never re-serialized.
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
-import { RunManifestV1, type CoverageCount } from "@countylens/contract";
+import { RunManifestV1, type CoverageCount, type ManifestProfile } from "@countylens/contract";
+import { GAZETTEER_SHA256 } from "@countylens/query-core";
 import { cidOfBytes } from "./cid.js";
 import {
   buildManifest,
@@ -34,8 +36,21 @@ export const PILOT_MANIFEST_PATH = "specs/011-publish-and-runs/pilot/manifest.js
 /** Run 1's draft marker; it describes a pre-publish draft and must not travel into a published run. */
 const DRAFT_LIMITATION_PREFIX = "DRAFT for Stage 6";
 
+/** The basis of coverage.parcels_published: which accounts the County group publishes. */
+export const PARCELS_BASIS =
+  "County `property` rows of the TCAD 2026 certified export: real-property (R) accounts only; accounts of other property types are not published";
+
 export const CORRECTION_NOTE =
   "Correction run, no new source capture: the Property Improvement group's shared property files were rebuilt so that each permit's property CID equals its County property CID (the previous run's did not join, so none of its permits linked to a County property). The County group's batches are reused unchanged from the previous run.";
+
+/** The travis-places gazetteer: a static in-repo reference list (Census ZCTA-county relationship
+ *  file), not a captured source. A full-county run names it so a consumer can classify owner
+ *  mailing ZIPs (owner_area_class) with the exact list the run was built against. */
+export const GAZETTEER_PROFILE_ENTRY = {
+  name: "travis-places",
+  version: "1.0.0",
+  path: "packages/query-core/gazetteer/travis-places@1.0.0",
+} as const;
 
 const Cid = z.string().min(1);
 const Dir = z.string().min(1);
@@ -116,8 +131,11 @@ function ownersRedactedOf(base: RunManifestV1): number {
   return Number(n);
 }
 
-/** Sum of `tables.property_improvement.rows` over the permits batches' export summaries. */
-function publishedPermitRows(groups: readonly ManifestGroupInput[]): {
+/** Sum of `tables.<table>.rows` over a group's batches' export summaries. */
+function publishedRows(
+  groups: readonly ManifestGroupInput[],
+  table: string,
+): {
   total: number;
   perBatch: string;
 } {
@@ -125,9 +143,8 @@ function publishedPermitRows(groups: readonly ManifestGroupInput[]): {
     const summary = JSON.parse(readFileSync(g.tablesExportJson, "utf8")) as {
       tables?: Record<string, { rows?: number }>;
     };
-    const n = summary.tables?.property_improvement?.rows;
-    if (typeof n !== "number")
-      throw new Error(`${g.tablesExportJson} has no tables.property_improvement.rows`);
+    const n = summary.tables?.[table]?.rows;
+    if (typeof n !== "number") throw new Error(`${g.tablesExportJson} has no tables.${table}.rows`);
     return n;
   });
   const perBatch = groups
@@ -136,10 +153,28 @@ function publishedPermitRows(groups: readonly ManifestGroupInput[]): {
   return { total: rows.reduce((a, b) => a + b, 0), perBatch };
 }
 
+/** The base run's profiles plus travis-places when the base names none (a base profile is kept). */
+export function withGazetteerProfile(
+  profiles: readonly ManifestProfile[],
+  gitCommit: string,
+): ManifestProfile[] {
+  if (profiles.some((p) => p.name === GAZETTEER_PROFILE_ENTRY.name)) return [...profiles];
+  return [...profiles, { ...GAZETTEER_PROFILE_ENTRY, sha256: GAZETTEER_SHA256, gitCommit }];
+}
+
 export interface BuildRunManifestDeps {
   repoRoot: string;
   /** Injectable for tests; defaults to buildManifest's own `git status` gate. */
   workTreeStatus?: (repoRoot: string) => string;
+  /** Injectable for tests; the short commit stamped on a profile this module adds. */
+  gitCommit?: (repoRoot: string) => string;
+}
+
+function shortCommit(repoRoot: string): string {
+  return execFileSync("git", ["rev-parse", "--short=7", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).trim();
 }
 
 /**
@@ -181,12 +216,13 @@ export async function buildRunManifest(
   });
 
   // Coverage: carried from the base, `permits_emitted` recomputed from the permits tables.
-  const emitted = publishedPermitRows(permitsGroups);
+  const emitted = publishedRows(permitsGroups, "property_improvement");
+  const parcels = publishedRows(countyGroups, "property");
   const baseEmitted = base.coverage.permits_emitted?.count;
   const overrides = config.coverageOverrides ?? {};
   if (emitted.total !== baseEmitted) {
     const stale = Object.keys(base.coverage).filter(
-      (k) => k !== "permits_emitted" && !(k in overrides),
+      (k) => k !== "permits_emitted" && k !== "parcels_published" && !(k in overrides),
     );
     if (stale.length > 0) {
       throw new Error(
@@ -206,6 +242,12 @@ export async function buildRunManifest(
       count: emitted.total,
       derivation: "published_rows",
       note: `${emitted.perBatch}, ${noteSuffix}`,
+    },
+    // The County group's published property rows; buildManifest() refuses a different count.
+    parcels_published: {
+      count: parcels.total,
+      derivation: "published_rows",
+      note: `${parcels.perBatch}, ${PARCELS_BASIS}`,
     },
   };
 
@@ -230,7 +272,7 @@ export async function buildRunManifest(
       // No new capture: nothing added, changed or removed since the base run.
       delta: { added: 0, changed: 0, removed: 0 },
     })),
-    profiles: base.profiles,
+    profiles: withGazetteerProfile(base.profiles, (deps.gitCommit ?? shortCommit)(repoRoot)),
     coverage,
     ownersRedacted: ownersRedactedOf(base),
     limitations: [

@@ -14,7 +14,7 @@ import { deflateRawSync } from "node:zlib";
 import { buildSeedRow } from "../pilot/build-seed.js";
 import type { DataGroupCids } from "../transforms/lexicon-manifest.js";
 import { parseTcadRecord, type SeedRow, type TcadRecord } from "../transforms/shared-seed.js";
-import { transformTcadCounty } from "../transforms/tcad-county.js";
+import { transformTcadCounty, type RoofAgeEntry } from "../transforms/tcad-county.js";
 import type { PropType } from "./account-class.js";
 import type { ExportPointKind } from "./export-point.js";
 
@@ -25,6 +25,11 @@ export interface GroupInput {
   /** The redacted export record. */
   record: Record<string, unknown>;
   yearBuilt: number | null;
+  /**
+   * The property's roof-age ledger row (roofAgeEntryOf), or null/absent when the ledger has
+   * none (the transform then warns no_roof_age_ledger_row and writes roof_date null).
+   */
+  roofAge?: RoofAgeEntry | null;
   exportPoint: { lat: number; lon: number; kind: ExportPointKind } | null;
   /** The assembled coordinate (parcels.coordinate_*), absent before `coords`. */
   coordinate?: {
@@ -32,6 +37,33 @@ export interface GroupInput {
     longitude: number | null;
     source: "gis_centroid" | "permit_point" | "none";
   };
+}
+
+/** One row of the Query DB roof_age_estimates table (written by the roof-age run). */
+export interface RoofAgeEstimateRow {
+  tcad_id: string;
+  roof_age_basis: "permit" | "new_construction" | "built_year" | "unknown";
+  /** Whole years; null iff basis is unknown. */
+  roof_age_years: number | string | null;
+  /** The estimate's as-of date, YYYY-MM-DD. */
+  as_of_date: string;
+}
+
+/**
+ * The transform's ledger entry for one estimate. Only a built_year basis is a TCAD-sourced
+ * value: its roof_date is the built year as "YYYY" (as-of year minus the estimated age, the
+ * same year the estimator anchored on). A permit, new-construction or unknown basis yields no
+ * TCAD date: a permit date comes from the permit join, never from a TCAD request (oracle F1).
+ */
+export function roofAgeEntryOf(row: RoofAgeEstimateRow): RoofAgeEntry {
+  if (row.roof_age_basis !== "built_year" || row.roof_age_years === null) {
+    return { pID: row.tcad_id, roof_date: null, anchor: null };
+  }
+  const year = Number(row.as_of_date.slice(0, 4)) - Number(row.roof_age_years);
+  if (!Number.isInteger(year) || year < 1000 || year > 9999) {
+    throw new Error(`roof-age estimate for ${row.tcad_id} gives built year ${year}`);
+  }
+  return { pID: row.tcad_id, roof_date: String(year), anchor: "property_built_year" };
 }
 
 export type GeometryRule = "gis_centroid" | "unassembled_pilot_export_point" | "none";
@@ -136,7 +168,7 @@ export function planCountyGroup(inputs: readonly GroupInput[], cids: DataGroupCi
       record,
       seed,
       cids,
-      roofAge: null,
+      roofAge: input.roofAge ?? null,
       yearBuilt,
     });
     groups.push({

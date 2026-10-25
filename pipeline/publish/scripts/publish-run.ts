@@ -42,7 +42,7 @@ import {
   resolveCidCopyBucket,
 } from "../src/cid-copy.js";
 import { FILEBASE_ENV_FILE, parseEnvFile } from "../src/cli.js";
-import { runIdentityGate } from "../src/identity-gate.js";
+import { loadPreviousManifest, runIdentityGate } from "../src/identity-gate.js";
 import { openDuckDbEngine } from "./duckdb-engine.js";
 import {
   createPublishSteps,
@@ -135,8 +135,20 @@ async function main(): Promise<number> {
     gate: {
       // Read-only. Local parts count only when their SHA-256 matches the manifest; remote-only
       // (gate-remote) binds every part from the CID copy, the bytes the app reads.
-      run: (c, { remoteOnly }) =>
+      // A run with a previousManifestCid also proves every previous property_cid and permit_cid
+      // still exists with the same request_identifier (Task B leads key on them).
+      run: async (c, { remoteOnly }) =>
         runIdentityGate({
+          previous:
+            c.pilot || c.manifest.previousManifestCid === null
+              ? null
+              : {
+                  manifestBytes: await loadPreviousManifest(
+                    c.repoRoot,
+                    c.manifest.previousManifestCid,
+                  ),
+                  root: c.repoRoot,
+                },
           openEngine: openDuckDbEngine,
           manifestBytes: c.manifestBytes,
           manifestPath: c.manifestPath,

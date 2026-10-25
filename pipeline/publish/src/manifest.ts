@@ -57,6 +57,7 @@ export const GROUP_COVERAGE_KEYS: Record<
   // parcel geometry are already embedded fields inside county's per-record export — not a
   // separately counted coverage key (corrected 2026-10-23; see sequence.ts's DataGroup comment).
   county: [],
+  // (county's `parcels_published` is checked, not required, when present: see buildManifest.)
   property_improvement: [
     ["permits_emitted", "published_rows"],
     // CR-A-11-porygon finding 2: `permits_no_tcad_geoid` alone left 4 of A-04's 5
@@ -516,6 +517,24 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
     if (emitted.count !== published) {
       throw new Error(
         `coverage.permits_emitted.count ${emitted.count} is not the number of published property_improvement rows (${published})`,
+      );
+    }
+  }
+  // `parcels_published` (published_rows): the number of County `property` rows across all county
+  // batches. Optional so older manifests and walking-skeleton inputs stay valid, but when a
+  // county group is built and the key is given it must equal the published rows, like permits.
+  const parcels = input.coverage.parcels_published;
+  if (parcels !== undefined) {
+    const published = rows.get("county")?.property;
+    if (published === undefined)
+      throw new Error("coverage.parcels_published needs the county group's property table");
+    if (parcels.derivation !== "published_rows")
+      throw new Error(
+        `coverage.parcels_published.derivation must be "published_rows", not "${parcels.derivation}"`,
+      );
+    if (parcels.count !== published) {
+      throw new Error(
+        `coverage.parcels_published.count ${parcels.count} is not the number of published county property rows (${published})`,
       );
     }
   }

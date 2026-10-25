@@ -61,6 +61,8 @@ export const REQUIRED_TABLES: readonly RequiredTable[] = [
   edge("county", "property_has_sales_history"),
   edge("county", "sales_history_has_person"),
   edge("county", "sales_history_has_company"),
+  edge("county", "person_has_mailing_address"),
+  edge("county", "company_has_mailing_address"),
   {
     group: "property_improvement",
     table: "property_improvement",
@@ -433,6 +435,23 @@ export async function bindManifest(
       `CREATE OR REPLACE TABLE ${r.group}.${r.table} (${[...cols, "_part VARCHAR"].join(", ")})`,
     );
     tables.push({ group: r.group, table: r.table, emitted: false, parts: [] });
+  }
+
+  // meta.address_zip: the mailing ZIP of every address, from county.address.postal_code when the
+  // export carries that column (it does not yet), else an empty relation, so views.sql never
+  // names a column that may not exist.
+  // address is a top-level oneOf: export-tables emits identity columns only (ADR-0002 R7), so
+  // it is deliberately not a REQUIRED_TABLE (its absence or shape never fails a bind).
+  if (wanted("county.address")) {
+    const cols = emitted.has("county.address")
+      ? await engine.all("DESCRIBE SELECT * FROM county.address")
+      : [];
+    const hasZip = cols.some((c) => String(c.column_name) === "postal_code");
+    await engine.run(
+      hasZip
+        ? `CREATE OR REPLACE TABLE meta.address_zip AS SELECT cid, CAST(any_value(postal_code) AS VARCHAR) AS postal_code FROM county.address GROUP BY cid`
+        : "CREATE OR REPLACE TABLE meta.address_zip (cid VARCHAR, postal_code VARCHAR)",
+    );
   }
 
   const views = plan === undefined ? VIEWS_SQL : plan.statements.map((s) => s.sql).join("\n");

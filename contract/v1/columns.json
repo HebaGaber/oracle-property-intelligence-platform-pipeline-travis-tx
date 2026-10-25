@@ -212,7 +212,7 @@
           "unknown"
         ],
         "meaning": "Owner mailing area class",
-        "source": "derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1",
+        "source": "derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2)",
         "missingReason": null
       },
       {
@@ -353,6 +353,15 @@
         "missingReason": "source_missing"
       },
       {
+        "name": "request_identifier",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Permit request identifier: the stable key of the permit record across runs (equals permit_number in Run 2)",
+        "source": "property_improvement.request_identifier",
+        "missingReason": "source_missing"
+      },
+      {
         "name": "improvement_type",
         "type": "VARCHAR",
         "kind": "string",
@@ -443,8 +452,8 @@
         "type": "INTEGER",
         "kind": "integer",
         "nullable": true,
-        "meaning": "Days open",
-        "source": "derived: as_of − issue_date for open and stalled",
+        "meaning": "Days open (never counted for a finished permit)",
+        "source": "derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review)",
         "missingReason": "not_open"
       },
       {
@@ -1015,8 +1024,8 @@
       "type": "INTEGER",
       "kind": "integer",
       "nullable": true,
-      "meaning": "Days open",
-      "source": "derived: as_of − issue_date for open and stalled",
+      "meaning": "Days open (never counted for a finished permit)",
+      "source": "derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review)",
       "missingReason": "not_open"
     },
     {
@@ -1364,7 +1373,7 @@
         "unknown"
       ],
       "meaning": "Owner mailing area class",
-      "source": "derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1",
+      "source": "derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2)",
       "missingReason": null
     },
     {

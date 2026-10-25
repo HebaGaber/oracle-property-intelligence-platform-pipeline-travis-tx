@@ -35,6 +35,8 @@ function splitViews(sql: string): ViewStatement[] {
     if (name === undefined) continue; // the header comment block
     const code = stripComments(chunk);
     const tables = new Set([...code.matchAll(TABLE_REF)].map((m) => `${m[1]}.${m[2]}`));
+    // meta.address_zip is built by bindManifest from county.address (see bind-manifest.ts).
+    if (/\bmeta\.address_zip\b/.test(code)) tables.add("county.address");
     const views = new Set(
       out.map((s) => s.name).filter((v) => new RegExp(`\\b${escape(v)}\\b`).test(code)),
     );

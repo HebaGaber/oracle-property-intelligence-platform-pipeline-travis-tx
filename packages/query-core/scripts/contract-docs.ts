@@ -159,6 +159,15 @@ such as InProgress) it is null and the row lists \`{field: "status_class", reaso
 \`final_date\` and \`open_days\` then also give \`needs_review\`, and a null \`improvement_status\`
 gives \`needs_review\` instead of \`enum_lacks_value\`.
 
+**Open duration (ERR-29).** \`status_class\` is the class of the source status; it does not say the
+work is still going. An Austin permit with status Expired (stalled) very often has a \`final_date\`:
+the work was finished and the permit lapsed administratively. \`open_days\` (as_of − issue_date) is
+therefore counted only for an open or stalled permit with **no** \`final_date\`. A plausible
+\`final_date\` (not before \`issue_date\`, not after \`as_of\`) gives \`open_days\` null with reason
+\`not_open\`; a \`final_date\` before \`issue_date\` or after \`as_of\` is a data-quality gap and gives
+\`open_days\` null with reason \`needs_review\`. A long-open lead is \`open_days\` above the threshold;
+\`is_open\` still mirrors \`status_class = 'open'\`.
+
 **For raw-table consumers** (reading \`property_improvement\` Parquet without these views): a Travis
 permit whose \`improvement_status\` is null, whose \`source_http_request\` host is an Austin host
 (\`data.austintexas.gov\`, \`abc.austintexas.gov\`) and which has a \`permit_issue_date\` is an
@@ -205,6 +214,17 @@ told apart and lists \`needs_review\`).
 \`unresolved\` and lists \`{field: "contractor_company_cid", reason: "needs_review"}\`. The AD-24
 five-state totals (\`contractor_resolved\`, \`contractor_candidate\`, \`contractor_ambiguous\`,
 \`contractor_conflicting\`, \`contractor_unresolved\`) are in the manifest \`coverage\`.
+
+## Manifest coverage and profiles for consumers
+
+\`coverage.parcels_published\` (\`published_rows\`) is the number of County \`property\` rows the run
+publishes; its \`note\` states the basis (real-property accounts only). The builder refuses a
+manifest whose count differs from the published county part row counts, like
+\`permits_emitted\`. A manifest without the key (Run 1, Run 2) is still valid: read the count from
+the tables. The \`travis-places\` profile names the ZIP area list that classifies
+\`owner_area_class\`. A manifest without it (Run 1, Run 2) means the run declared no area list: the
+view then leaves \`owner_area_class\` \`unknown\` with reason \`out_of_scope\` when ZIPs exist, and
+\`area_list_sha256\` is null. Absence means "not published for this run", never an empty list.
 
 ## Provenance and \`missing\`
 

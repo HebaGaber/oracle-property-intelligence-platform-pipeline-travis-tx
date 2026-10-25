@@ -10,7 +10,9 @@
 -- finishedAt); every empty value gets a {field, reason} entry in `missing`. Records are read
 -- once per cid and edges once per (from_cid, to_cid), whatever the number of parts.
 -- Address properties are not in the export (ADR-0002), so the address-only fields appear in
--- `missing` as not_in_export and the owner mailing ZIP lookup has no input yet.
+-- `missing` as not_in_export. The owner mailing ZIP is read through meta.address_zip, which
+-- bindManifest fills from address.postal_code when the export carries it (it does not yet: Run 2
+-- exports address with identity columns only), and stays empty otherwise.
 
 -- One row per (permit, property edge) of a published county property, with its jurisdiction
 -- (request host → profile jurisdiction map) and its status_class. Shared by v_property (roof
@@ -29,6 +31,7 @@ SELECT
   e.from_cid AS property_cid,
   jh.jurisdiction,
   pi.permit_number,
+  pi.request_identifier,
   pi.improvement_type,
   pi.improvement_action,
   pi.improvement_status,
@@ -132,10 +135,43 @@ owner_gap AS (
     TRY_CAST(json_extract(coverage, '$.owner_no_record.count') AS INTEGER)) AS reason
   FROM meta.run
 ),
--- The owner mailing ZIP: address.postal_code through *_has_mailing_address once the export
--- emits address properties. Until then it has no value and the area class stays unknown.
+-- Mailing addresses of the current owners (persons and companies of the latest dated sale), one
+-- row per (property, address). Edges only; the address text is not needed here.
+owner_mailing AS (
+  SELECT ls.property_cid, e.to_cid AS address_cid
+  FROM latest_sale ls
+  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.sales_history_has_person) shp
+    ON shp.from_cid = ls.sale_cid
+  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.person_has_mailing_address) e
+    ON e.from_cid = shp.to_cid
+  UNION
+  SELECT ls.property_cid, e.to_cid
+  FROM latest_sale ls
+  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.sales_history_has_company) shc
+    ON shc.from_cid = ls.sale_cid
+  JOIN (SELECT DISTINCT from_cid, to_cid FROM county.company_has_mailing_address) e
+    ON e.from_cid = shc.to_cid
+),
+-- The owner mailing area per property: each address's ZIP (first 5 digits) against meta.zcta_area.
+-- Co-owners can mail from different areas; the property takes the most local class among them
+-- (in_county, else regional, else out_of_area), so a local co-owner means not absentee. NULL when
+-- no address resolves to a known ZCTA.
 mailing AS (
-  SELECT p.cid AS property_cid, NULL::VARCHAR AS postal_code FROM prop p
+  SELECT om.property_cid,
+    CAST(count(DISTINCT om.address_cid) AS INTEGER) AS n_mailing,
+    CAST(count(DISTINCT az.postal_code) AS INTEGER) AS n_zip,
+    CASE WHEN bool_or(za.area_class = 'in_county') THEN 'in_county'
+         WHEN bool_or(za.area_class = 'regional') THEN 'regional'
+         WHEN bool_or(za.area_class = 'out_of_area') THEN 'out_of_area' END AS area_class
+  FROM owner_mailing om
+  LEFT JOIN meta.address_zip az ON az.cid = om.address_cid
+  LEFT JOIN meta.zcta_area za ON za.zcta = left(az.postal_code, 5)
+  GROUP BY om.property_cid
+),
+-- Whether this run's export carries any mailing ZIP at all, and whether the run named an area list.
+area_env AS (
+  SELECT (SELECT count(postal_code) FROM meta.address_zip) > 0 AS zips_emitted,
+         (SELECT count(*) FROM meta.zcta_area) > 0 AS lookup_loaded
 ),
 county_source AS (
   SELECT s.url, s.captured_at FROM meta.source s
@@ -160,7 +196,11 @@ base AS (
     owner_kind_of(coalesce(op.n, 0), coalesce(oc.n, 0)) AS owner_kind,
     nullif(concat_ws('; ', op.names, oc.names), '') AS owner_name,
     owner_missing_reason(ls.transfer_date IS NOT NULL, og.reason) AS owner_reason,
-    owner_area_class(za.area_class) AS owner_area_class,
+    owner_area_class(m.area_class) AS owner_area_class,
+    m.n_mailing,
+    m.n_zip,
+    env.zips_emitted,
+    env.lookup_loaded,
     run.area_list_sha256,
     p.cid,
     source_url(p.source_http_request) AS record_url,
@@ -175,6 +215,7 @@ base AS (
   CROSS JOIN meta.run run
   CROSS JOIN county_source cs
   CROSS JOIN owner_gap og
+  CROSS JOIN area_env env
   LEFT JOIN geo ON geo.property_cid = p.cid
   LEFT JOIN structure_roof sr ON sr.property_cid = p.cid
   LEFT JOIN roof_anchor ra ON ra.property_cid = p.cid
@@ -182,7 +223,6 @@ base AS (
   LEFT JOIN owner_person op ON op.property_cid = p.cid
   LEFT JOIN owner_company oc ON oc.property_cid = p.cid
   LEFT JOIN mailing m ON m.property_cid = p.cid
-  LEFT JOIN meta.zcta_area za ON za.zcta = m.postal_code
   LEFT JOIN meta.source src ON src.url = json_extract_string(p.source_http_request, '$.url')
   LEFT JOIN meta.part part ON part.name = p._part
 ),
@@ -254,9 +294,10 @@ SELECT
     CASE WHEN owner_name IS NULL THEN miss('owner_name', owner_reason) END,
     miss('owner_mailing_postal_code', 'not_in_export'),
     miss('owner_mailing_state_code', 'not_in_export'),
-    CASE WHEN owner_area_class = 'unknown' THEN miss('owner_area_class', 'not_in_export') END,
-    CASE WHEN owner_is_out_of_area(owner_area_class) IS NULL
-      THEN miss('owner_is_out_of_area', 'not_in_export') END,
+    CASE WHEN owner_area_class = 'unknown' THEN miss('owner_area_class',
+      owner_area_reason(owner_kind, owner_reason, n_mailing, n_zip, zips_emitted, lookup_loaded)) END,
+    CASE WHEN owner_is_out_of_area(owner_area_class) IS NULL THEN miss('owner_is_out_of_area',
+      owner_area_reason(owner_kind, owner_reason, n_mailing, n_zip, zips_emitted, lookup_loaded)) END,
     CASE WHEN source_url IS NULL THEN miss('source_url', 'not_in_export') END
   ], lambda e: e IS NOT NULL) AS missing
 FROM derived;
@@ -280,6 +321,7 @@ base AS (
     pm.property_cid,
     pm.jurisdiction,
     pm.permit_number,
+    pm.request_identifier,
     pm.improvement_type,
     pm.improvement_action,
     pm.improvement_status,
@@ -310,7 +352,7 @@ base AS (
 derived AS (
   SELECT *,
     contractor_resolution(contractor_company_cid) AS contractor_resolution,
-    open_days(status_class, issue_date, as_of) AS open_days
+    open_days(status_class, issue_date, as_of, final_date) AS open_days
   FROM base
 )
 SELECT
@@ -318,6 +360,7 @@ SELECT
   property_cid,
   jurisdiction,
   permit_number,
+  request_identifier,
   improvement_type,
   improvement_action,
   improvement_status,
@@ -345,6 +388,7 @@ SELECT
   list_filter([
     CASE WHEN jurisdiction IS NULL THEN miss('jurisdiction', 'needs_review') END,
     CASE WHEN permit_number IS NULL THEN miss('permit_number', 'source_missing') END,
+    CASE WHEN request_identifier IS NULL THEN miss('request_identifier', 'source_missing') END,
     CASE WHEN improvement_status IS NULL
       THEN miss('improvement_status', status_missing_reason(status_class)) END,
     CASE WHEN status_class IS NULL THEN miss('status_class', 'needs_review') END,
@@ -356,7 +400,7 @@ SELECT
     CASE WHEN final_inspection_date IS NULL
       THEN miss('final_inspection_date', 'source_missing') END,
     CASE WHEN open_days IS NULL
-      THEN miss('open_days', open_days_reason(status_class, issue_date)) END,
+      THEN miss('open_days', open_days_reason(status_class, issue_date, as_of, final_date)) END,
     CASE WHEN contractor_company_cid IS NULL
       THEN miss('contractor_company_cid', contractor_missing_reason(contractor_edges)) END,
     miss('contractor_name_raw', 'no_lexicon_carrier'),

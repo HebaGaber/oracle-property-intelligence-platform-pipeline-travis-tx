@@ -153,28 +153,41 @@ export const finalDateReason = (
 ): "not_closed" | "source_missing" | "needs_review" =>
   cls === null ? "needs_review" : cls === "closed" ? "source_missing" : "not_closed";
 
-/** as_of − issue_date in days for open and stalled permits (≥ 0); otherwise null. */
+/**
+ * as_of − issue_date in days for open and stalled permits (≥ 0) that have no completion date;
+ * otherwise null. A permit with a final_date is finished (an Expired status after completion is an
+ * administrative lapse), and one with an implausible final_date (before the issue date or after
+ * as_of) is a data-quality gap: neither gets an interval (ERR-29).
+ */
 export function openDays(
   cls: StatusClass | null,
   issueDate: string | null,
   asOf: string,
+  finalDate: string | null = null,
 ): number | null {
-  if ((cls !== "open" && cls !== "stalled") || issueDate === null) return null;
+  if ((cls !== "open" && cls !== "stalled") || issueDate === null || finalDate !== null)
+    return null;
   const [y, m, d] = utcDate(asOf);
   const days = (Date.UTC(y, m - 1, d) - Date.parse(`${issueDate}T00:00:00Z`)) / 86_400_000;
   return Math.max(0, days);
 }
 
-/** Why open_days is empty. */
+/** Why open_days is empty: not_open (closed, or finished with a plausible final_date),
+ *  source_missing (no issue date), needs_review (no class, or an implausible final_date). */
 export const openDaysReason = (
   cls: StatusClass | null,
   issueDate: string | null,
-): "not_open" | "source_missing" | "needs_review" =>
-  cls === null
-    ? "needs_review"
-    : (cls === "open" || cls === "stalled") && issueDate === null
-      ? "source_missing"
-      : "not_open";
+  asOf: string | null = null,
+  finalDate: string | null = null,
+): "not_open" | "source_missing" | "needs_review" => {
+  if (cls === null) return "needs_review";
+  if (cls !== "open" && cls !== "stalled") return "not_open";
+  if (issueDate === null) return "source_missing";
+  if (finalDate === null) return "not_open";
+  return asOf !== null && terminalDateAccepted(finalDate, issueDate, asOf)
+    ? "not_open"
+    : "needs_review";
+};
 
 /** Why a published improvement_status is null: stalled means the carrier exists but its enum has
  *  no value for the source word (Expired); otherwise the null is unexplained. */
@@ -290,6 +303,15 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
   tenure_basis: "(d) AS CASE WHEN d IS NULL THEN 'unknown' ELSE 'sale_date' END",
   is_long_tenure: "(years) AS years > 10",
   owner_area_class: "(zcta_class) AS coalesce(zcta_class, 'unknown')",
+  // Why an owner's area class is unknown: no owner, no mailing edge, a run whose export carries no
+  // mailing ZIP, a run that named no area list, a missing ZIP, or a ZIP that is not a ZCTA.
+  owner_area_reason: `(kind, owner_reason, n_mailing, n_zip, zips_emitted, lookup_loaded) AS CASE
+      WHEN kind = 'unknown' THEN coalesce(owner_reason, 'no_owner_record')
+      WHEN coalesce(n_mailing, 0) = 0 THEN 'no_mailing_address'
+      WHEN NOT zips_emitted THEN 'not_in_export'
+      WHEN NOT lookup_loaded THEN 'out_of_scope'
+      WHEN n_zip = 0 THEN 'no_mailing_address'
+      ELSE 'zip_not_zcta' END`,
   owner_is_out_of_area: `(cls) AS CASE cls
       WHEN 'in_county' THEN false WHEN 'regional' THEN true WHEN 'out_of_area' THEN true END`,
   coordinate_source: `(lat, lon, permit_lat, permit_lon) AS CASE
@@ -304,11 +326,13 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
   is_open: "(cls) AS coalesce(cls = 'open', false)",
   final_date_reason: `(cls) AS CASE WHEN cls IS NULL THEN 'needs_review'
       WHEN cls = 'closed' THEN 'source_missing' ELSE 'not_closed' END`,
-  open_days: `(cls, issue_date, as_of) AS CASE
-      WHEN cls IN ('open', 'stalled') AND issue_date IS NOT NULL
+  open_days: `(cls, issue_date, as_of, final_date) AS CASE
+      WHEN cls IN ('open', 'stalled') AND issue_date IS NOT NULL AND final_date IS NULL
       THEN CAST(greatest(as_of_date(as_of) - issue_date, 0) AS INTEGER) END`,
-  open_days_reason: `(cls, issue_date) AS CASE WHEN cls IS NULL THEN 'needs_review'
+  open_days_reason: `(cls, issue_date, as_of, final_date) AS CASE WHEN cls IS NULL THEN 'needs_review'
       WHEN cls IN ('open', 'stalled') AND issue_date IS NULL THEN 'source_missing'
+      WHEN cls IN ('open', 'stalled') AND final_date IS NOT NULL
+        AND NOT terminal_date_accepted(final_date, issue_date, as_of) THEN 'needs_review'
       ELSE 'not_open' END`,
   status_missing_reason:
     "(cls) AS CASE WHEN cls = 'stalled' THEN 'enum_lacks_value' ELSE 'needs_review' END",

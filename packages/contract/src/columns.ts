@@ -309,7 +309,7 @@ const V_PROPERTY: readonly Column[] = [
   enumCol(
     "owner_area_class",
     false,
-    "derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1",
+    "derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2)",
     "Owner mailing area class",
     null,
   ),
@@ -363,6 +363,15 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     true,
     "property_improvement.permit_number",
     "Permit number as printed",
+    "source_missing",
+  ),
+  col(
+    "request_identifier",
+    "string",
+    V,
+    true,
+    "property_improvement.request_identifier",
+    "Permit request identifier: the stable key of the permit record across runs (equals permit_number in Run 2)",
     "source_missing",
   ),
   col(
@@ -441,8 +450,8 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     "integer",
     "INTEGER",
     true,
-    "derived: as_of − issue_date for open and stalled",
-    "Days open",
+    "derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review)",
+    "Days open (never counted for a finished permit)",
     "not_open",
   ),
   enumCol(
@@ -781,7 +790,9 @@ const PROVENANCE_NAMES = new Set(PROVENANCE_COLUMNS.map((c) => c.name));
  * run_id, manifest_cid and as_of, which equal the permit's.
  */
 export const SAMPLE_COLUMNS: readonly Column[] = [
-  ...V_ROOFING_PERMIT,
+  // The property's request_identifier keeps the plain name in the sample; the permit's equals
+  // permit_number in Run 2 and is left out of the 20-row sample.
+  ...V_ROOFING_PERMIT.filter((c) => c.name !== "request_identifier"),
   ...V_PROPERTY.filter((c) => c.name !== "property_cid" && !PROVENANCE_NAMES.has(c.name)),
   ...PROVENANCE_COLUMNS.filter((c) => !SAMPLE_SHARED.has(c.name)).map((c) => ({
     ...c,
