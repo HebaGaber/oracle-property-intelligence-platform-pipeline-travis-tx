@@ -27,6 +27,13 @@ import {
 } from "node:fs";
 import { join, sep } from "node:path";
 
+/**
+ * The 2 full-county publish groups, matching the real lexicon manifest this pipeline fetches
+ * (`seed`, `county`, `propertyImprovement` — no separate owner/contractor/parcels groups exist).
+ * An earlier A-11 draft widened this to 5 groups; corrected 2026-10-23: owner and parcel geometry
+ * are already embedded fields inside `county`'s existing per-record export, and contractor
+ * identity (AD-05) is wired as fields on `property_improvement`'s permit records, not a new group.
+ */
 export type DataGroup = "county" | "property_improvement";
 export type StepName =
   "validate" | "hash" | "validate-car" | "export-tables" | "upload-car" | "upload-tables";

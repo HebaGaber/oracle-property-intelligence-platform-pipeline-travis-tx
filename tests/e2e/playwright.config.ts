@@ -17,6 +17,29 @@ import { runtimeUrl } from "./lib/runtime-url.js";
 
 const baseURL = runtimeUrl();
 
+// Specs that must run alone: perf timings would be skewed by concurrent pages, and the public
+// gateways rate-limit per client IP (a burst answers 429 without CORS headers). CI runs projects
+// `permits`, `manifest`, `site` and `isolated` as four jobs on separate runners; a plain local
+// run runs all four with one worker.
+const ISOLATED = [
+  "perf.spec.ts",
+  "lambda-fallback.perf.spec.ts",
+  "fallback.spec.ts",
+  "verify-manifest.spec.ts",
+  // A-13: the Verify downloads, the first-load timings and the web vitals (public-gateway rate
+  // limits and timings must not share a machine with other pages).
+  "A-13-verify.spec.ts",
+  "A-13-perf.spec.ts",
+  "A-13-vitals.spec.ts",
+];
+// The full-county Permits cases (each loads the whole page) form their own CI job.
+const PERMITS = "permits.spec.ts";
+// The manifest cases download every published CAR (~2.8 GB for Run 2); a page case run after
+// them in the same worker stalled (A-03-TC-012), so they form their own CI job too.
+const MANIFEST = "manifest.spec.ts";
+// One report and output folder per CI phase, so the second invocation never clears the first.
+const phase = process.env.PW_PHASE ?? "all";
+
 const excludeNeedsAws = needsAwsExcluded();
 if (excludeNeedsAws && process.env.TEST_WORKER_INDEX === undefined) {
   process.stderr.write(`${NEEDS_AWS_EXCLUDED_NOTICE}\n`);
@@ -26,7 +49,7 @@ export default defineConfig({
   testDir: ".",
   testMatch: /.*\.spec\.ts$/,
   testIgnore: ["**/node_modules/**", "**/test-results/**", "**/playwright-report/**"],
-  outputDir: "test-results",
+  outputDir: `test-results/${phase}`,
   ...(excludeNeedsAws ? { grepInvert: NEEDS_AWS_PATTERN } : {}),
   fullyParallel: false,
   workers: 1,
@@ -36,16 +59,41 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   reporter: [
     ["list"],
-    ["html", { outputFolder: "playwright-report", open: "never" }],
-    ["json", { outputFile: "test-results/results.json" }],
+    ["html", { outputFolder: `playwright-report/${phase}`, open: "never" }],
+    ["json", { outputFile: `test-results/${phase}/results.json` }],
   ],
   use: {
     baseURL,
     colorScheme: "light",
-    trace: "retain-on-failure",
+    // No DOM snapshots: on the full-county Permits page (~15,000 rows) recording them starved the
+    // page and A-03-TC-012 never rendered rows; with snapshots off it passes (A-11). Network,
+    // screenshots and sources are still in the trace.
+    trace: { mode: "retain-on-failure", snapshots: false, screenshots: true, sources: true },
     screenshot: "only-on-failure",
     video: "off",
     permissions: ["clipboard-read", "clipboard-write"],
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // CI runs each project as its own job on its own runner (ci.yml e2e-hosted matrix).
+  projects: [
+    {
+      name: "permits",
+      testMatch: `**/${PERMITS}`,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "manifest",
+      testMatch: `**/${MANIFEST}`,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "site",
+      testIgnore: [...ISOLATED, PERMITS, MANIFEST].map((f) => `**/${f}`),
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "isolated",
+      testMatch: ISOLATED.map((f) => `**/${f}`),
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
 });

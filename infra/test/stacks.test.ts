@@ -249,11 +249,14 @@ describe("CountyLens app: five stacks in the AM-02 order", () => {
   const { app, config, stacks, templates } = synthAll();
   const all = flatten(templates);
 
-  it("has exactly CountyLensData, CountyLensApi, CountyLensWeb, CountyLensOps, CountyLensCert", () => {
+  it("has exactly CountyLensData, CountyLensApi, CountyLensWeb, CountyLensOps, CountyLensCert, plus the unordered CountyLensScheduler", () => {
     const names = app.node.children
       .filter((c): c is Stack => Stack.isStack(c))
       .map((s) => s.stackName);
-    expect(names.sort()).toEqual([...STACK_ORDER].sort());
+    // CountyLensScheduler (A-11) is deliberately outside the AM-02 ordered chain below: it has
+    // no dependents and only reads DataStack's published SSM parameters, never a direct
+    // cross-stack reference, so it never blocks or reorders Data → Api → Web → Ops → Cert.
+    expect(names.sort()).toEqual([...STACK_ORDER, "CountyLensScheduler"].sort());
     expect(stacks.data.stackName).toBe("CountyLensData");
     expect(stacks.cert.stackName).toBe("CountyLensCert");
   });

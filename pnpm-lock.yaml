@@ -358,6 +358,9 @@ importers:
       '@countylens/publish':
         specifier: workspace:*
         version: link:../../pipeline/publish
+      '@countylens/query-core':
+        specifier: workspace:*
+        version: link:../../packages/query-core
       '@countylens/shared':
         specifier: workspace:*
         version: link:../../packages/shared

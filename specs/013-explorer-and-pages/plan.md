@@ -71,7 +71,7 @@ Copied from `stories/A-13-explorer-and-pages.md` and [agent-design.md](agent-des
 | XII | Secrets | none; link URLs are public config; MCP token never in the browser | ✅ |
 | XIII–XV | Owner agents | Kit Agent Ownership filled; agent-design.md saved verbatim; metagross builds each group | ✅ |
 | XVI | Owner review | metagross + audino score the whole branch, ≥ 75, one round (L5) | ✅ |
-| XVIII–XXIII | Delivery | G4 PASS (2026-10-21); G5/G6 pre-checked in parallel; tests first per task; branch `013-explorer-and-pages`; defects as `docs/defects/ERR-21+` | ✅ |
+| XVIII–XXIII | Delivery | G4 PASS (2026-10-21); G5/G6 pre-checked in parallel; tests first per task; branch `013-explorer-and-pages`; defects as `docs/defects/ERR-50+` | ✅ |
 | Addendum | Task A | A1 Runs/Coverage from manifest; A2 counts with derivation; A3 Compare + chain; A4 Verify on two independent gateways, CIDv1, never the copy; A5 UI lead finder + SQL; Query DB never exposed; only elephant-cli output read; stop on 403 | ✅ |
 
 ## Project Structure

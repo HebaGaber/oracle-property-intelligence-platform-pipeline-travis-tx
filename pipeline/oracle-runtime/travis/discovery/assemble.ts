@@ -457,7 +457,8 @@ export function assembleParcel(r: Pick<Us1Results, "tcad" | "gis">): Parcel {
   ) {
     parcel.export_receipt = {
       url: receipt.url,
-      method: receipt.method,
+      // the TCAD export is a download: GET or HEAD only (a POST belongs to the GIS runner)
+      method: receipt.method === "HEAD" ? "HEAD" : "GET",
       status: receipt.status,
       bytes: receipt.bytes,
       sha256: receipt.sha256,

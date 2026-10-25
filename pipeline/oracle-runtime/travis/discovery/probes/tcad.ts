@@ -31,6 +31,7 @@ import {
   type ProbeDeps,
 } from "./common.js";
 import { ChallengeFreePage } from "./evidence.js";
+import { exportSha256 } from "../../tcad/export-verify.js";
 
 export const TCAD_PUBLIC_INFO_URL = "https://traviscad.org/publicinformation";
 export const TCAD_RAW_DIR = fileURLToPath(new URL("../../../../data/raw/tcad", import.meta.url));
@@ -288,12 +289,6 @@ export function priorExportFrom(receipt: ExportReceipt, repoRoot: string): Prior
   };
 }
 
-async function fileSha256(path: string): Promise<string> {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
-  return hash.digest("hex");
-}
-
 /**
  * True when the prior download can stand in for a new one with no request: the landing
  * page still links the same export URL (a new export gets a new file name on TCAD), the
@@ -314,7 +309,8 @@ export async function canReuseExport(
   }
   if (!existsSync(prior.path)) return false;
   if (statSync(prior.path).size !== r.bytes) return false;
-  return (await fileSha256(prior.path)) === r.sha256;
+  // CR2-10: re-hash only when {size, mtime, inode} changed since the last hash.
+  return (await exportSha256(prior.path)).sha256 === r.sha256;
 }
 
 // ---------- streaming scan ----------
@@ -796,3 +792,15 @@ async function scanned(
     };
   }
 }
+
+// ---------- A-04 CR2-10: verify the export without re-hashing 3.5 GB every run ----------
+// The summary file read lives in travis/tcad/export-verify.ts (this probe never reads a
+// whole file into memory); re-exported here as the A-01 probe's entry point.
+export {
+  ExportVerifyError,
+  exportSha256,
+  exportSummaryPath,
+  verifyExport,
+  type ExportSummary,
+  type ExportVerifyCode,
+} from "../../tcad/export-verify.js";

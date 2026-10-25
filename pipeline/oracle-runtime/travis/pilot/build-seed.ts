@@ -29,6 +29,9 @@ export const SEED_COLUMNS = [
   "url",
 ] as const satisfies readonly (keyof SeedRow)[];
 
+/** A-04 pilot seed: the county-seed-data columns plus why each row was picked. */
+export const PILOT_SEED_COLUMNS = [...SEED_COLUMNS, "reason"] as const;
+
 export function buildSeedRow(record: TcadRecord, geoId: string): SeedRow {
   const pID = pidOf(record);
   const point = pointOf(record);
@@ -47,6 +50,20 @@ export function buildSeedRow(record: TcadRecord, geoId: string): SeedRow {
 
 function cell(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** The A-04 pilot seed CSV: seed columns + `reason` (pilot-select.ts). */
+export function pilotSeedCsv(rows: ReadonlyArray<SeedRow & { reason: string }>): string {
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (seen.has(r.parcel_id)) throw new Error(`seed: duplicate parcel_id ${r.parcel_id}`);
+    seen.add(r.parcel_id);
+  }
+  const lines = [
+    PILOT_SEED_COLUMNS.join(","),
+    ...rows.map((r) => PILOT_SEED_COLUMNS.map((c) => cell(r[c])).join(",")),
+  ];
+  return `${lines.join("\n")}\n`;
 }
 
 export function seedCsv(rows: readonly SeedRow[]): string {
@@ -92,12 +109,20 @@ export function parseSeedCsv(text: string): SeedRow[] {
     records.push(row);
   }
   const [header, ...body] = records;
-  if (!header || header.join(",") !== SEED_COLUMNS.join(",")) {
+  // A-04: the pilot seed may carry a trailing `reason` column (PILOT_SEED_COLUMNS).
+  const width =
+    header?.join(",") === PILOT_SEED_COLUMNS.join(",")
+      ? PILOT_SEED_COLUMNS.length
+      : SEED_COLUMNS.length;
+  if (
+    !header ||
+    header.slice(0, SEED_COLUMNS.length).join(",") !== SEED_COLUMNS.join(",") ||
+    header.length !== width
+  ) {
     throw new Error(`seed: header must be ${SEED_COLUMNS.join(",")}`);
   }
   return body.map((cells) => {
-    if (cells.length !== SEED_COLUMNS.length)
-      throw new Error(`seed: row has ${cells.length} cells`);
+    if (cells.length !== width) throw new Error(`seed: row has ${cells.length} cells`);
     return Object.fromEntries(
       SEED_COLUMNS.map((c, i) => [c, cells[i] as string]),
     ) as unknown as SeedRow;

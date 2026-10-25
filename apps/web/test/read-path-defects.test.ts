@@ -280,6 +280,7 @@ async function part(i: number): Promise<{ part: PartToFetch; bytes: Uint8Array }
       name: `tables/county/t${i}/part-00000.parquet`,
       cid: await rawCid(bytes),
       size: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
     },
     bytes,
   };
@@ -386,15 +387,51 @@ describe("ERR-15: Filebase fallback reads survive the gateway's CORS-less 429 (T
     expect(host.maxInFlight).toBe(PART_CONCURRENCY.fallback);
   });
 
-  it("rejects bytes that do not hash to the manifest CID, without retrying", async () => {
+  it("rejects bytes whose SHA-256 differs from the manifest's, naming both hashes, without retrying", async () => {
     const { part: p } = await part(4);
-    const host = fakeHost(new Map([[p.cid, new TextEncoder().encode("PAR1 test part 9")]]));
+    const wrong = new TextEncoder().encode("PAR1 test part 9");
+    const host = fakeHost(new Map([[p.cid, wrong]]));
     const failure = fetchParts([{ ...p, size: 16 }], readFrom("copy"), {
       fetch: host.fetch,
       sleep: noSleep,
     });
-    await expect(failure).rejects.toThrow(/bytes hash to/);
+    await expect(failure).rejects.toBeInstanceOf(PartReadError);
+    await expect(failure).rejects.toThrow(
+      `bytes hash to sha256 ${createHash("sha256").update(wrong).digest("hex")}, the manifest says ${p.sha256}`,
+    );
     expect(host.requests).toHaveLength(1);
+  });
+
+  it("accepts bytes whose SHA-256 equals the manifest's, whatever the part's CID looks like", async () => {
+    const { part: p, bytes } = await part(5);
+    // A dag-pb (bafybei…) CID, as the manifest records for a part above one 256 KiB chunk.
+    const dagPb = { ...p, cid: "bafybei".padEnd(59, "a") };
+    const host = fakeHost(new Map([[dagPb.cid, bytes]]));
+    const [got] = await fetchParts([dagPb], readFrom("copy"), {
+      fetch: host.fetch,
+      sleep: noSleep,
+    });
+    expect(Array.from(got?.bytes ?? [])).toEqual(Array.from(bytes));
+  });
+
+  it("accepts a part above 256 KiB (a real run's parts: rawCid cannot hash it) and rejects one flipped byte of it", async () => {
+    const bytes = new Uint8Array(3_158_845).map((_, i) => (i * 31) % 251);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const big: PartToFetch = {
+      name: "tables/b01/address/part-00000.parquet",
+      cid: "bafybeicfyesy527ylqbv775pocfvxak7z7rgxleh5s5jaw277w5mxd4y2m",
+      size: bytes.length,
+      sha256,
+    };
+    const ok = fakeHost(new Map([[big.cid, bytes]]));
+    const [got] = await fetchParts([big], readFrom("copy"), { fetch: ok.fetch, sleep: noSleep });
+    expect(got?.bytes.length).toBe(3_158_845);
+    const flipped = bytes.slice();
+    flipped[1_000_000] = (flipped[1_000_000] ?? 0) ^ 1;
+    const bad = fakeHost(new Map([[big.cid, flipped]]));
+    await expect(
+      fetchParts([big], readFrom("copy"), { fetch: bad.fetch, sleep: noSleep }),
+    ).rejects.toThrow(/bytes hash to sha256 .*the manifest says/);
   });
 });
 
@@ -427,15 +464,82 @@ describe("ERR-16: a slow but working CID copy still finishes (TC-024, 2 s per re
 
   it("prefetches only the table parts, and nothing when they exceed PART_PREFETCH_MAX_BYTES (DuckDB range-reads them)", () => {
     const artifacts = [
-      { kind: "table", name: "tables/a/b/part-0.parquet", cid: "c1", size: 10 },
+      {
+        kind: "table",
+        name: "tables/a/b/part-0.parquet",
+        cid: "c1",
+        size: 10,
+        sha256: "a".repeat(64),
+      },
       { kind: "car", name: "car/x.car", cid: "c2", size: 99 },
       { kind: "directory", name: "tables/a", cid: "c3", size: 5 },
     ] as unknown as RunManifestV1["artifacts"];
     expect(partsToPrefetch({ artifacts })).toEqual([
-      { name: "tables/a/b/part-0.parquet", cid: "c1", size: 10 },
+      { name: "tables/a/b/part-0.parquet", cid: "c1", size: 10, sha256: "a".repeat(64) },
     ]);
     expect(partsToPrefetch({ artifacts }, 9)).toBeNull();
     expect(PART_PREFETCH_MAX_BYTES).toBe(16 * 1024 * 1024);
+  });
+
+  it("a run read from the Filebase fallback is always prefetched, even above PART_PREFETCH_MAX_BYTES (ERR-15 resurfaces otherwise)", async () => {
+    // A run this large (> PART_PREFETCH_MAX_BYTES) would normally be left to DuckDB's own
+    // uncontrolled range reads (ERR-16/17's intended path for the copy). Read from the fallback,
+    // that path has no concurrency cap and no 429/CORS-tolerant retry, so it must not be used.
+    const bigPart = {
+      kind: "table",
+      name: "tables/a/big.parquet",
+      cid: "c-big",
+      size: PART_PREFETCH_MAX_BYTES + 1,
+    };
+    const manifest = {
+      runId: "test-run",
+      coverage: { permits_emitted: { count: 0, derivation: "published_rows" } },
+      artifacts: [bigPart],
+    } as unknown as RunManifestV1;
+    const manifestCid = "bafkreimanifest".padEnd(59, "a");
+    const index: RunsIndexV1 = {
+      schema: "oracle-travis-runs-index.v1",
+      runs: [{ runId: "test-run", manifestCid, finishedAt: "2026-10-01T00:00:00Z" }],
+    };
+    const engine: QueryEngine & { registerFile(): Promise<void>; close(): Promise<void> } = {
+      registerFile: async () => undefined,
+      run: async () => undefined,
+      all: async () => [],
+      close: async () => undefined,
+    };
+    const engineModule: EngineModule = {
+      openEngine: async () => engine,
+      permitsPartNames: (m) => m.artifacts.filter((a) => a.kind === "table").map((a) => a.name),
+      bindRun: async () => ({ runId: "test-run", manifestCid, asOf: "x", tables: [], views: [] }),
+      countPermits: async () => 0,
+      listPermits: async () => [],
+    };
+    const captured: { parts: readonly PartToFetch[] | null } = { parts: null };
+    const load = createPermitsLoader({
+      loadRunsIndex: async () => index,
+      latestRun: (i) => i.runs[0] as RunsIndexV1["runs"][number],
+      loadManifest: async () => ({
+        manifest,
+        manifestCid,
+        read: {
+          cid: manifestCid,
+          bytes: new Uint8Array(),
+          source: { kind: "fallback" as const, host: "ipfs.filebase.io" },
+          partUrl: () => "https://ipfs.filebase.io/ipfs/c-big",
+        },
+      }),
+      fetchParts: async (parts: readonly PartToFetch[]) => {
+        captured.parts = parts;
+        return parts.map((p) => ({ ...p, bytes: new Uint8Array(p.size) }));
+      },
+      fallbackLabel: () => "fallback · ipfs.filebase.io",
+      urls: URLS,
+      engine: async () => engineModule,
+    });
+    await load(() => undefined, new AbortController().signal);
+    // null would mean DuckDB range-reads it itself (unprotected); it must go through fetchParts.
+    expect(captured.parts).not.toBeNull();
+    expect(captured.parts?.map((p) => p.cid)).toEqual(["c-big"]);
   });
 
   it("registers a part under a host-free name", () => {
@@ -492,6 +596,7 @@ describe("ERR-17: the engine starts with the first data read, not before it (TC-
         if (options.engineFails) throw new EngineStartError(new Error("fake"));
         return engine;
       }),
+      permitsPartNames: (m) => m.artifacts.filter((a) => a.kind === "table").map((a) => a.name),
       bindRun: vi.fn(async () => ({
         runId: "test-run",
         manifestCid,

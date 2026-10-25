@@ -81,9 +81,19 @@ export function computeGap(assessed: Measurement, gis: Measurement): Gap {
       gap_reason: `GIS count missing: ${gis.missing_reason ?? "not measured"}`,
     };
   }
-  if (assessed.value === 0) {
+  const pct = gapPercent(assessed.value, gis.value);
+  if (pct === "unknown") {
     return { gap_pct: "unknown", gap_reason: "roll count is 0; a percentage is undefined" };
   }
-  const pct = (Math.abs(assessed.value - gis.value) / assessed.value) * 100;
-  return { gap_pct: Math.round(pct * 1000) / 1000 };
+  return { gap_pct: pct };
+}
+
+/**
+ * CR2-9: the one gap rule. |roll - gis| / roll in percent, rounded to 3 decimals; the roll is
+ * always the denominator, so a roll of 0 or less gives "unknown".
+ */
+export function gapPercent(roll: number, gis: number): number | "unknown" {
+  if (!(roll > 0)) return "unknown";
+  const pct = (Math.abs(roll - gis) / roll) * 100;
+  return Math.round(pct * 1000) / 1000;
 }

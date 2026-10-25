@@ -69,8 +69,11 @@ import {
   type AustinPermitCapture,
   type AustinRow,
   type ClassificationLedgerRow,
+  type ContractorIdentityInput,
   type ProfileApi,
 } from "../transforms/austin-property-improvement.js";
+import type { RegistryRecord, ResolverState } from "../identity/resolver.js";
+import type { CrosswalkIndex } from "../identity/crosswalk.js";
 import { fetchDataGroupCids, type DataGroupCids } from "../transforms/lexicon-manifest.js";
 import {
   TCAD_EXPORT_REQUEST,
@@ -96,6 +99,13 @@ export const DEFAULT_TCAD_ZIP =
 /** The contractor note of every emitted permit until the Comptroller baseline lands (A-07). */
 export const CONTRACTOR_NOTE = "Comptroller baseline not loaded (A-07)";
 
+/** The A-07 Comptroller registry snapshot this run resolves contractors against, if wired. */
+export interface ContractorRegistryOption {
+  registry: readonly RegistryRecord[];
+  registrySnapshotDigest: string;
+  crosswalk?: CrosswalkIndex;
+}
+
 export function parseMonth(month: string): { year: number; month: number } {
   const m = /^(\d{4})-(\d{2})$/.exec(month);
   if (!m) throw new Error(`month must be YYYY-MM, got ${month}`);
@@ -118,14 +128,31 @@ export function runIdFor(month: string, now: Date): string {
 type Derivation = "aggregate_match" | "capture_receipt" | "published_rows";
 export type Coverage = Record<string, { count: number; derivation: Derivation; note?: string }>;
 
-/** AD-24: the five contractor identity states; all unresolved until A-07 loads the baseline. */
-export function contractorCoverage(emitted: number): Coverage {
+/**
+ * AD-24's manifest-coverage fallback for A-07/AD-05's five contractor-identity states,
+ * collapsed to the three buckets the manifest actually requires (`ambiguous`/`conflicting`/
+ * `unresolved` are all genuine non-identifications, per ADR-0002 #6: no lexicon carrier
+ * distinguishes them, so the published coverage does not either). `byState` comes from
+ * summing every published property's `PropertyImprovementCounts.by_contractor_state`
+ * (emitted permits only) -- never fabricated here. Without a wired registry, `byState` is
+ * empty and every emitted permit genuinely resolved `unresolved`/`registry_unavailable`
+ * (resolver.ts step 2), so `contractor_unresolved.count` still equals `emitted` and keeps the
+ * A-07 note.
+ */
+export function contractorCoverage(
+  byState: Partial<Record<ResolverState, number>>,
+  registryLoaded: boolean,
+): Coverage {
+  const n = (k: ResolverState): number => byState[k] ?? 0;
+  const unresolved = n("ambiguous") + n("conflicting") + n("unresolved");
   return {
-    contractor_resolved: { count: 0, derivation: "aggregate_match" },
-    contractor_candidate: { count: 0, derivation: "aggregate_match" },
-    contractor_ambiguous: { count: 0, derivation: "aggregate_match" },
-    contractor_conflicting: { count: 0, derivation: "aggregate_match" },
-    contractor_unresolved: { count: emitted, derivation: "aggregate_match", note: CONTRACTOR_NOTE },
+    contractor_resolved: { count: n("resolved"), derivation: "aggregate_match" },
+    contractor_candidate: { count: n("candidate"), derivation: "aggregate_match" },
+    contractor_unresolved: {
+      count: unresolved,
+      derivation: "aggregate_match",
+      ...(registryLoaded ? {} : { note: CONTRACTOR_NOTE }),
+    },
   };
 }
 
@@ -208,6 +235,8 @@ export interface RunMonthOptions {
   now?: () => Date;
   random?: () => number;
   log?: (event: string, fields: LogFields) => void;
+  /** Omitted = the Comptroller baseline is not wired for this run (pre-A-07 default). */
+  contractorRegistry?: ContractorRegistryOption;
 }
 
 export interface RunCounts {
@@ -304,7 +333,9 @@ function statusState(l: LedgerRow): string {
 }
 
 const exclusionKind = (l: ClassificationLedgerRow): "excluded" | "needs_review" =>
-  l.skip_reason === "status_exclude" || l.skip_reason === "no_improvement_type"
+  l.skip_reason === "status_exclude" ||
+  l.skip_reason === "no_improvement_type" ||
+  l.skip_reason === "trade_sub_permit"
     ? "excluded"
     : "needs_review";
 
@@ -564,8 +595,22 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
   const groupsDir = join(runDir, "groups");
   rmSync(groupsDir, { recursive: true, force: true });
   const countyCounts: Array<{ pID: string } & CountyTransformCounts> = [];
-  const piCounts: Array<{ pID: string; emitted: number; excluded: number; needs_review: number }> =
-    [];
+  const piCounts: Array<{
+    pID: string;
+    emitted: number;
+    excluded: number;
+    needs_review: number;
+    by_contractor_state: Partial<Record<ResolverState, number>>;
+  }> = [];
+  const contractorRegistry = options.contractorRegistry;
+  const contractorIdentity: ContractorIdentityInput | undefined = contractorRegistry && {
+    registry: contractorRegistry.registry,
+    registryLoaded: true,
+    registrySnapshotDigest: contractorRegistry.registrySnapshotDigest,
+    ...(contractorRegistry.crosswalk === undefined
+      ? {}
+      : { crosswalk: contractorRegistry.crosswalk }),
+  };
   const writeFiles = (group: string, dir: string, files: Record<string, string>): void => {
     for (const [name, text] of Object.entries(files)) {
       const path = join(groupsDir, group, dir, name);
@@ -585,6 +630,7 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
       cids,
       permits,
       profile,
+      ...(contractorIdentity === undefined ? {} : { contractorIdentity }),
     });
     if (pi.counts.emitted === 0) {
       parcelsWithoutEmittedPermit += 1;
@@ -609,7 +655,15 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
       emitted: pi.counts.emitted,
       excluded: pi.counts.excluded,
       needs_review: pi.counts.needs_review,
+      by_contractor_state: pi.counts.by_contractor_state,
     });
+  }
+  const contractorByState: Partial<Record<ResolverState, number>> = {};
+  for (const pi of piCounts) {
+    for (const [state, count] of Object.entries(pi.by_contractor_state)) {
+      const key = state as ResolverState;
+      contractorByState[key] = (contractorByState[key] ?? 0) + (count ?? 0);
+    }
   }
 
   // 9 summary
@@ -672,6 +726,28 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
         note: "tcad_id printed but no residential account carries that geoID",
       },
       permits_ambiguous_geoid: { count: byMatch("ambiguous_geoid"), derivation: "aggregate_match" },
+      // CR-A-11-porygon finding 2: `link.ts`'s other 2 full-scale, link-stage `UnmatchedReason`s
+      // (`no_tcad_id`, `address_unmatched`/`ambiguous_address` — a permit with no usable tcad_id
+      // that falls through to the geoID+address matcher). This one-month flow never runs that
+      // matcher: every permit here already carries a seed-assigned pID before TCAD lookup
+      // starts (D-5), so these counts are genuinely, structurally zero here, not omitted or
+      // assumed. The full Query-DB-driven run (A-11 T031) is the producer that can see a
+      // nonzero count for these reasons.
+      permits_no_tcad_id: {
+        count: 0,
+        derivation: "aggregate_match",
+        note: "this one-month capture pre-assigns pID by seed; link.ts's address-fallback matcher never runs here",
+      },
+      permits_address_unmatched: {
+        count: 0,
+        derivation: "aggregate_match",
+        note: "this one-month capture pre-assigns pID by seed; link.ts's address-fallback matcher never runs here",
+      },
+      permits_ambiguous_address: {
+        count: 0,
+        derivation: "aggregate_match",
+        note: "this one-month capture pre-assigns pID by seed; link.ts's address-fallback matcher never runs here",
+      },
       permits_matched_parcel: { count: byMatch("matched"), derivation: "aggregate_match" },
       parcels_matched: { count: allParcels.length, derivation: "aggregate_match" },
       parcels_published: { count: countyCounts.length, derivation: "published_rows" },
@@ -696,7 +772,7 @@ export async function runMonth(options: RunMonthOptions): Promise<RunMonthResult
         note: "owner name and mailing withheld before validate (P0-15)",
       },
       ...ownerCoverage(ownerOutcomes),
-      ...contractorCoverage(emittedRows.length),
+      ...contractorCoverage(contractorByState, contractorRegistry !== undefined),
       roof_age_permit_anchor: {
         count: roofByAnchor.permit_terminal_date ?? 0,
         derivation: "published_rows",

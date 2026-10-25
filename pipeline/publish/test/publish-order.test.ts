@@ -691,3 +691,39 @@ describe("redaction of the composed Filebase bearer (OR-7)", () => {
     expect(readFileSync(join(p, "reports/sequence-publish.json"), "utf8")).not.toContain(token);
   });
 });
+
+// AC-1 (T005, corrected 2026-10-23): an upload-readback failure on either of the 2 real groups
+// stops the sequence before any later step — report.ok is false, the failing group's `uploads`
+// stays undefined, and the other group's phase-2 steps never run, before any manifest-building
+// code could start. buildManifest only ever reads the `GroupResult`s a *successful* sequence
+// report hands it, so a report with ok:false is where the manifest step never starts; this is
+// that boundary, proven at the sequence layer. (The "it scales past 2 groups" claim this block
+// used to make doesn't apply any more — DataGroup is the real 2 groups, matching the lexicon.)
+describe("runPublish: readback failure stops the sequence before the manifest (AC-1)", () => {
+  it("an upload-readback failure on property_improvement's upload-tables stops before any later step, uploads left undefined", async () => {
+    const p = setup();
+    // 2 groups × 4 build steps = 8; property_improvement is group index 1, so its upload-tables
+    // call (the second of its two phase-2 uploads) is global step index 8 + 1*2 + 1 = 11.
+    const failAt = 8 + 1 * 2 + 1;
+    const cli = fakeCli({ failAt, stderr: "readback: CID not found on either gateway" });
+    const report = await runPublish({
+      county: "travis",
+      runDir: p,
+      groups: GROUPS,
+      run: cli.run,
+    });
+    expect(report.ok).toBe(false);
+    expect(report.failed).toMatchObject({
+      group: "property_improvement",
+      step: "upload-tables",
+      reason: "exit code 1",
+    });
+    expect(cli.calls).toHaveLength(failAt + 1);
+    // The failing group's uploads stay undefined: nothing downstream can treat it as published.
+    const pi = report.groups.find((g) => g.group === "property_improvement");
+    expect(pi?.uploads).toBeUndefined();
+    // report.ok === false is the boundary a caller must check before ever building a manifest
+    // (buildManifest is never invoked from a failed sequence report in this codebase).
+    expect(report.ok).toBe(false);
+  });
+});

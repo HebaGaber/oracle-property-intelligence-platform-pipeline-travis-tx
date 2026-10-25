@@ -1,68 +1,46 @@
 ---
 id: ERR-26
 type: defect
-kind: test defect
-feature: FEAT-A13
-story: A-13
-test_case: A-13-TC-012
-ac_reference: A-13-AC-1
-severity: Low
-status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
-found_by: hosted Playwright run (general phase)
-found_date: 2026-10-22
-fix_branch: 013-explorer-and-pages
-fix_commit: a285dbe
-retest_date: 2026-10-22
+feature: FEAT-A11
+story: A-11
+test_case: A-03-TC-032, TC-033, TC-034
+ac_reference: A-11
+severity: High
+status: Closed
+found_by: QC test runner (Claude), for HebaGaber
+found_date: 2026-10-24
+fix_branch: 011-publish-and-runs
+fix_commit: `502bfe6`
+retest_date: 2026-10-25 (hosted CI run 40150597123, commit b1de02c: e2e-hosted isolated, site, permits and manifest all green)
+closed_date: pending
 ---
 
-# ERR-26: Hosted test – 'no article' too broad for the run-index error state
+# ERR-26: `rawCid()` cannot verify table parts above 256 KiB (fallback crash)
 
 ## Brief description
 
-First hosted run of A-13 against the preview (build `641bc25`). This is a **test defect**.
+The client-side `rawCid()` check cannot verify table parts larger than 256 KiB, so the fallback path crashes (TC-032, TC-033, TC-034; currently `test.fixme`).
 
 ## Related requirement
 
-- **Story:** A-13 · **AC:** A-13-AC-1 · **Requirement:** FR-021 · **Test case:** A-13-TC-012
+- **Story:** A-11 · **Test case:** A-03-TC-032, TC-033, TC-034
 
 ## Environment
 
 | Item | Value |
 | --- | --- |
-| URL | https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com |
-| Build | `641bc25` (preview build) |
-| Data snapshot | manifest `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i` |
-| Browser / OS / device | Playwright Chromium (desktop; 390 for the touch-target cases) |
+| URL | hosted URL (re-test pending) |
+| Build | branch `011-publish-and-runs`, 2026-10-24 |
 
-## Steps to reproduce
+## Impact and severity
 
-Run `tests/e2e/A-13-*.spec.ts` case `@scenario:A-13-TC-012` with RUNTIME_URL set to the preview.
-
-## Expected result
-
-Error state shows only the error banner: no run card, count, CID or chip.
-
-## Actual result
-
-locator('article') expected 0, got 2: on the Hub the two Hub cards (CountyLens, Roofing CRM) are articles and are meant to stay.
-
-## Root cause
-
-Test defect: it asserted on every <article> instead of the run card and the run chip. The page is correct.
-
-## Fix
-
-TC-012 asserts #run-title (the Runs card heading) and the `Run n · …` chip are absent.
-
-## Regression test
-
-tests/e2e/A-13-explorer.spec.ts @scenario:A-13-TC-012 (hosted)
+- **Severity:** High
 
 ## Resolution
 
 | Field | Value |
 | --- | --- |
-| Root cause | Test defect: it asserted on every <article> instead of the run card and the run chip. The page is correct. |
-| Fix | uncommitted on `013-explorer-and-pages` (parent commits) |
-| Re-test | pending: hosted re-run on the next preview build |
-| Status | Fixed, re-test pending (hosted) |
+| Root cause | `rawCid()` does not handle multi-chunk content above 256 KiB. |
+| Fix | Commit `502bfe6`: verify parts by SHA-256 taken from the CID-verified manifest (PO decision "SHA-256 from manifest", constitution A3 amended). |
+| Re-test | Pending on the hosted URL |
+| Status | Fixed, closure pending hosted re-test of TC-032/033/034 |

@@ -1,68 +1,77 @@
 ---
 id: ERR-23
 type: defect
-kind: test defect
-feature: FEAT-A13
-story: A-13
-test_case: A-13-TC-003
-ac_reference: A-13-AC-2
-severity: Low
-status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
-found_by: hosted Playwright run (general phase)
+feature: FEAT-A04
+story: A-04
+test_case: A-04-TC-004
+ac_reference: A-04-AC-1
+severity: Medium
+status: Closed
+found_by: QC test runner (Claude), for HebaGaber
 found_date: 2026-10-22
-fix_branch: 013-explorer-and-pages
-fix_commit: a285dbe
+fix_branch: 004-property-backbone
+fix_commit: be805f8, 79e21d0
 retest_date: 2026-10-22
+closed_date: 2026-10-22
 ---
 
-# ERR-23: Coverage hosted test – textContent fuses adjacent blocks, so /\bunresolved\b/ fails
+# ERR-23: backbone CLI – `ingest --join-proof` gives up after about 5 minutes ("fetch failed") and never prints the `join_proof=` line
 
 ## Brief description
 
-First hosted run of A-13 against the preview (build `641bc25`). This is a **test defect**.
+`ingest --join-proof` reads the 30 GB export and needs about 10 minutes. The CLI makes one long HTTP call to Restate and the client side times out at about 5 minutes, so the CLI prints `backbone: ingest failed: fetch failed` and exits non-zero, although the workflow keeps running and completes with `pass: true`. The case's expected last line (`join_proof=pass matched=<n> disagreements=0`) is never printed; the result can only be read from the Restate journal. The run-log already notes the same symptom for `write-group` ("poll instead of one long HTTP call").
 
 ## Related requirement
 
-- **Story:** A-13 · **AC:** A-13-AC-2 · **Requirement:** FR-002 · **Test case:** A-13-TC-003
+- **Story:** A-04 · **AC:** A-04-AC-1 · **Requirement:** FR-001, P0-5 · **Test case:** A-04-TC-004 (step 3)
 
 ## Environment
 
-| Item | Value |
-| --- | --- |
-| URL | https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com |
-| Build | `641bc25` (preview build) |
-| Data snapshot | manifest `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i` |
-| Browser / OS / device | Playwright Chromium (desktop; 390 for the touch-target cases) |
+| Item          | Value                                                                       |
+| ------------- | --------------------------------------------------------------------------- |
+| URL           | not applicable (pipeline-only story; local terminal, Restate on :8080/:9080) |
+| Build         | branch `004-property-backbone`, 2026-10-22                                  |
+| Data snapshot | job `travis-a04-20261022052658`, TCAD export SHA-256 `6f7a7585...2346`      |
+| Role          | n/a                                                                         |
+
+## Preconditions and test data
+
+- Full-county job complete; local stack up; machine memory-constrained (join proof took 9 min 39 s).
 
 ## Steps to reproduce
 
-Run `tests/e2e/A-13-*.spec.ts` case `@scenario:A-13-TC-003` with RUNTIME_URL set to the preview.
+1. `git rev-parse --abbrev-ref HEAD` -> `004-property-backbone`.
+2. `npm --prefix pipeline/oracle-runtime run backbone -- ingest --join-proof --job travis-a04-20261022052658 --seed 2026`
+3. After the CLI exits, `restate sql "SELECT status, completion_result FROM sys_invocation WHERE target_service_key = 'travis-a04-20261022052658' AND target_handler_name = 'joinProof'"`.
 
 ## Expected result
 
-The contractor kind lists its five states, incl. unresolved.
+Last line `join_proof=pass matched=<m> disagreements=0`, exit 0 (plan TC-004 step 3).
 
 ## Actual result
 
-toContainText (textContent) received "...conflicting, unresolvedcontractor ambiguous0From the run's..." : the heading and the next row have no whitespace between them in textContent, so \b does not match. A reader sees them on separate lines.
+- CLI stderr: `backbone: ingest failed: fetch failed` after about 5 minutes, exit 1, no `join_proof=` line.
+- Restate: invocation `inv_1eeWoWwOOvDp0v41Yud8lfe5M4KZHXor7j` (`TcadBackbone/travis-a04-20261022052658/joinProof`) `completed with success` at 12:17:12Z (running time 9 min 39 s). Output from its journal: `{"seed":2026,"sampled":1000,"matched":906,"no_tcad_geoid":93,"ambiguous_geoid":1,"disagreements":0,"reverse_checked":1000,"reverse_disagreements":0,"pass":true}`.
 
-## Root cause
+## Impact and severity
 
-Test defect: it asserted on textContent, not on rendered text. The page is correct (heading is a block element).
+- **Impact:** the product result is correct (pass, 0 disagreements both ways) but the operator sees a failure and no result line; any script that relies on the exit code or the last line fails. Same cause affects `write-group` and any other long handler.
+- **Severity:** Medium: the work succeeds, the report to the operator is wrong.
 
-## Fix
+## Suggested investigation area
 
-A-13-explorer.spec.ts TC-003 reads `innerText` of the contractor kind and matches each state against it.
+`pipeline/oracle-runtime/travis/backbone/restate-client.ts`: send the workflow with the async `/send` form (or an idempotency key) and poll `attach`/status with the existing `timeoutMs` loop instead of one awaited fetch; print the `join_proof=` line from the polled output.
 
-## Regression test
+## Evidence
 
-tests/e2e/A-13-explorer.spec.ts @scenario:A-13-TC-003 (hosted); no jsdom equivalent, jsdom computes no layout
+- [ ] Screenshot: not applicable
+- [x] Command output above (2026-10-22), Restate journal of the invocation
 
 ## Resolution
 
-| Field | Value |
-| --- | --- |
-| Root cause | Test defect: it asserted on textContent, not on rendered text. The page is correct (heading is a block element). |
-| Fix | uncommitted on `013-explorer-and-pages` (parent commits) |
-| Re-test | pending: hosted re-run on the next preview build |
-| Status | Fixed, re-test pending (hosted) |
+| Field      | Value                                       |
+| ---------- | ------------------------------------------- |
+| Root cause | The CLI made one awaited HTTP call to Restate for a workflow that runs about 10 minutes; the client side gave up at about 5 minutes ("fetch failed") while the server kept running |
+| Fix        | Commit `be805f8`: `callLong` sends the workflow with the async `/send` form and an idempotency key and polls for the result (used by `--join-proof` and `write-group`); `report --json` now prints `job_id` on stderr. First version polled the wrong path; commit `79e21d0` ("callLong polls /restate/invocation/<svc>/<key>/<handler>/<idem>/output", verified live) corrects it |
+| Re-test    | A-04-TC-004, 2026-10-22: live CLI join proof on the rebuilt tables, seed 2026, job `travis-a04-20261022052658`, 12:34:48-12:50:44Z: `join_proof=pass matched=906 disagreements=0 no_tcad_geoid=93 ambiguous_geoid=1 reverse_checked=1000 reverse_disagreements=0` |
+| Status     | Closed (2026-10-22) after the passing re-test |

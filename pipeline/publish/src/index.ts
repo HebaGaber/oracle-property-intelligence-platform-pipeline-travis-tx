@@ -54,9 +54,14 @@ export {
 } from "./sequence.js";
 export {
   COMPTROLLER_LIMITATION,
+  GROUP_COVERAGE_KEYS,
   SOURCE_ORDER,
   buildManifest,
   confidentialLimitation,
+  manifestGroupInputsFromBatches,
+  requiredCoverageKeys,
+  sourceInputFromDelta,
+  type BatchedGroupDirs,
   type BuildManifestInput,
   type BuiltManifest,
   type ManifestGroupInput,

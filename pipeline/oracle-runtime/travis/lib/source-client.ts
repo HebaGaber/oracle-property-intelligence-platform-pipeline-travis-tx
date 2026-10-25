@@ -47,6 +47,45 @@ export const DEFAULT_TIMEOUT_MS = 60_000;
 /** Range resumes allowed after a download drops part-way (FR-003, PO 2026-10-20). */
 export const MAX_RESUMES = 5;
 
+/** Per-host etiquette (A-04 NFR-002/004/006): one shape for every source host. */
+export interface HostPolicy {
+  /** Most requests in flight to this host; a configured higher value is capped here. */
+  concurrency: number;
+  /** Least time between two request starts to this host (0 = no spacing). */
+  minIntervalMs: number;
+  backoff: { baseMs: number; capMs: number; attempts: number; jitter: "full" };
+  /** StopOnBlocked: the first 403 ends the capture with one attempt and no retry. */
+  stopOn403: true;
+  retryOn403: false;
+  /** The single project User-Agent (no rotation). */
+  userAgent: string;
+}
+
+const policy = (concurrency: number, minIntervalMs = 0): HostPolicy => ({
+  concurrency,
+  minIntervalMs,
+  backoff: {
+    baseMs: BACKOFF_BASE_MS,
+    capMs: BACKOFF_CAP_MS,
+    attempts: MAX_ATTEMPTS,
+    jitter: "full",
+  },
+  stopOn403: true,
+  retryOn403: false,
+  userAgent: USER_AGENT,
+});
+
+/**
+ * Host policy table (A-04 T003). Hosts not listed use MAX_CONCURRENCY_PER_HOST and no
+ * spacing. GIS ≤ 2 in flight; Austin Socrata 1 in flight and ≤ 1 request/s; TCAD 1.
+ */
+export const HOST_POLICY: Readonly<Record<string, HostPolicy>> = Object.freeze({
+  "gis.traviscountytx.gov": policy(2),
+  "data.austintexas.gov": policy(1, 1_000),
+  "traviscad.org": policy(1),
+  "www.traviscad.org": policy(1),
+});
+
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 export type CaptureOutcome = "ok" | "blocked" | "throttled-then-ok" | "failed";
 export type BlockedReason = "http-403" | "challenge" | "timeout";
@@ -76,7 +115,7 @@ export function stopExitCode(cls: StopClass): 0 | 1 | 2 {
 
 export interface CaptureReceipt {
   url: string;
-  method: "GET" | "HEAD";
+  method: "GET" | "HEAD" | "POST";
   status: number | null;
   bytes: number;
   sha256: string;
@@ -116,11 +155,24 @@ export interface StopEvidence {
   excerpt_base64: string;
   /** Size of the whole body the excerpt came from. */
   body_bytes: number;
+  /**
+   * How body_bytes was measured (CR2-8): the advertised Content-Length of an unencoded body,
+   * the decoded bytes read when the body was content-encoded (fetch decodes gzip/br, so the
+   * encoded length is not the body size), or the bytes read when no length was advertised.
+   */
+  body_bytes_basis?: "content_length" | "decoded_excerpt" | "bytes_read";
+  /** The encoded Content-Length of a content-encoded refusal, kept as its own field. */
+  content_length_encoded?: number;
 }
 
 export interface CaptureRequest<T> {
   url: string;
-  method?: "GET" | "HEAD";
+  method?: "GET" | "HEAD" | "POST";
+  /**
+   * A POST form body (`application/x-www-form-urlencoded`), for a query too long for a URL.
+   * Not part of the receipt URL; the receipt records only `method`.
+   */
+  formBody?: string;
   /** Zod schema the body must satisfy; a 2xx that fails it is a challenge (`blocked`). */
   schema?: ZodType<T>;
   /** How the body is handed to the schema: parsed JSON (default) or raw text. */
@@ -176,6 +228,13 @@ export interface SourceClientOptions {
   log?: (event: string, fields: LogFields) => void;
   /** Monotonic milliseconds for elapsed-time measurement; defaults to performance.now. */
   clock?: () => number;
+  /** Configured requests in flight per host; HOST_POLICY caps it for listed hosts. */
+  maxConcurrencyPerHost?: number;
+  /**
+   * Enforce HOST_POLICY.minIntervalMs between request starts (A-04 RunContext turns it on).
+   * Off by default: the A-01/A-03 callers space their own Austin requests.
+   */
+  hostSpacing?: boolean;
 }
 
 export interface SourceClient {
@@ -286,7 +345,13 @@ const REFUSAL_STATUSES = new Set([403, 429, 503]);
  * says "a request has been blocked by Mod Security"). Trusted on any status: a WAF refusal
  * may come as 406, 403, 501 or even 200.
  */
-const WAF_BODY = /\bmod[_ ]?security\b|\brequest (?:has been |was )?blocked\b/i;
+const WAF_BODY =
+  /\b(?:mod[_ ]?security|web application firewall|waf)\b|\brequest (?:has been |was )?blocked by (?:mod[_ ]?security|the (?:web application )?firewall|waf)\b/i;
+/**
+ * OR-N8: on a non-2xx answer a bare "request blocked" still counts (fail-closed); on a 2xx
+ * page the body must name the firewall, so a Socrata row saying "REQUEST BLOCKED" is data.
+ */
+const WAF_BODY_REFUSAL = /\brequest (?:has been |was )?blocked\b/i;
 /** Response header values naming a WAF (e.g. `server: Mod_Security`). */
 const WAF_HEADER = /\bmod[_ ]?security\b/i;
 /** A 2xx body larger than this is a document, not a WAF error page (avoids false positives). */
@@ -305,7 +370,7 @@ export function wafSignal(saved: SavedResponse): string | null {
     if (!ok2xx && WAF_HEADER.test(value)) return `${name.toLowerCase()}: ${value}`.slice(0, 200);
   }
   if (ok2xx && Buffer.byteLength(saved.body, "utf8") > WAF_MAX_2XX_BODY) return null;
-  const match = WAF_BODY.exec(saved.body);
+  const match = WAF_BODY.exec(saved.body) ?? (ok2xx ? null : WAF_BODY_REFUSAL.exec(saved.body));
   if (!match) return null;
   const status = saved.status === null ? "no HTTP status" : `HTTP ${saved.status}`;
   return `${status} names a web application firewall: "${match[0]}"`;
@@ -370,6 +435,15 @@ const realSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+
+/** A refused answer: the bounded excerpt and how big the whole body was (CR2-8). */
+interface RefusedBody {
+  excerpt: Buffer;
+  bodyBytes: number;
+  basis: NonNullable<StopEvidence["body_bytes_basis"]>;
+  contentLengthEncoded?: number;
+  challenge: string | null;
+}
 
 /** One download request's abort controller and limit timers. */
 interface StreamGuard {
@@ -510,7 +584,7 @@ type Attempt =
   | { kind: "error"; message: string; at: Date };
 
 export function createSourceClient(options: SourceClientOptions = {}): SourceClient {
-  const fetchImpl: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
+  const rawFetch: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
   const sleep = options.sleep ?? realSleep;
   const random = options.random ?? Math.random;
   const now = options.now ?? (() => new Date());
@@ -522,22 +596,42 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
   const logger = createLogger(undefined, secrets);
   const emit = options.log ?? ((event: string, fields: LogFields) => logger.info(event, fields));
   const limiters = new Map<string, LimitFunction>();
+  const configured = Math.max(1, options.maxConcurrencyPerHost ?? MAX_CONCURRENCY_PER_HOST);
+  const nextStart = new Map<string, number>();
 
   const limiterFor = (url: string): LimitFunction => {
     const host = new URL(url).host;
     let limiter = limiters.get(host);
     if (!limiter) {
-      limiter = pLimit(MAX_CONCURRENCY_PER_HOST);
+      const cap = HOST_POLICY[host]?.concurrency;
+      limiter = pLimit(cap === undefined ? configured : Math.min(configured, cap));
       limiters.set(host, limiter);
     }
     return limiter;
   };
 
+  // With hostSpacing, every request start (first attempt, retry or Range resume) to a spaced
+  // host waits for the host policy interval; the wait uses the injected sleep and clock.
+  const fetchImpl: FetchLike = async (url, init) => {
+    const host = new URL(url).host;
+    const interval = options.hostSpacing === true ? (HOST_POLICY[host]?.minIntervalMs ?? 0) : 0;
+    if (interval > 0) {
+      const due = nextStart.get(host);
+      if (due !== undefined) {
+        const wait = due - clock();
+        if (wait > 0) await sleep(wait);
+      }
+      nextStart.set(host, clock() + interval);
+    }
+    return rawFetch(url, init);
+  };
+
   async function attemptOnce(
     url: string,
-    method: "GET" | "HEAD",
+    method: "GET" | "HEAD" | "POST",
     headers: Record<string, string>,
     timeoutMs: number,
+    formBody?: string,
   ): Promise<Attempt> {
     const at = now();
     const controller = new AbortController();
@@ -546,6 +640,7 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       const response = await fetchImpl(url, {
         method,
         headers,
+        ...(formBody === undefined ? {} : { body: formBody }),
         signal: controller.signal,
         redirect: "follow",
       });
@@ -573,6 +668,9 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       accept: request.accept ?? "*/*",
     };
     if (tokenUsed && appToken !== null) headers["x-app-token"] = appToken;
+    if (request.formBody !== undefined) {
+      headers["content-type"] = "application/x-www-form-urlencoded";
+    }
 
     const observed: string[] = [];
     let attempts = 0;
@@ -581,7 +679,7 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
     const budget = Math.max(1, Math.min(MAX_ATTEMPTS, request.maxAttempts ?? MAX_ATTEMPTS));
     while (attempts < budget) {
       attempts += 1;
-      last = await attemptOnce(request.url, method, headers, timeoutMs);
+      last = await attemptOnce(request.url, method, headers, timeoutMs, request.formBody);
       if (last.kind !== "response" || !isRetryable(last.status)) break;
       // a challenge is never retried, whatever its status (StopOnBlocked)
       if (challengeOf(last.status, last.headers, last.body) !== null) break;
@@ -692,6 +790,8 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
           sha256: string;
           /** Size of the whole refused body (advertised or read) for the stop evidence. */
           body_bytes?: number;
+          body_bytes_basis?: StopEvidence["body_bytes_basis"];
+          content_length_encoded?: number;
           headers: Record<string, string>;
           excerpt: Buffer;
           path: string | null;
@@ -730,6 +830,12 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       if (fields.outcome === "blocked" || fields.outcome === "failed") {
         receipt.stop_evidence = stopEvidence(fields.headers, fields.excerpt, secrets);
         receipt.stop_evidence.body_bytes = fields.body_bytes ?? fields.bytes;
+        if (fields.body_bytes_basis !== undefined) {
+          receipt.stop_evidence.body_bytes_basis = fields.body_bytes_basis;
+        }
+        if (fields.content_length_encoded !== undefined) {
+          receipt.stop_evidence.content_length_encoded = fields.content_length_encoded;
+        }
       }
       emit("source.download", loggable(receipt));
       return {
@@ -807,12 +913,17 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
       response: Response,
       responseHeaders: Record<string, string>,
       guard: StreamGuard,
-    ): Promise<{ excerpt: Buffer; bodyBytes: number; challenge: string | null }> => {
+    ): Promise<RefusedBody> => {
       const excerpt = await readBounded(response, EXCERPT_BYTES);
       guard.clear();
+      const advertised = advertisedLength(responseHeaders);
+      // CR2-8: fetch decodes gzip/br, so an encoded Content-Length is not the body size.
+      const encoded = !identityEncoded(responseHeaders);
       return {
         excerpt,
-        bodyBytes: advertisedLength(responseHeaders) ?? excerpt.byteLength,
+        bodyBytes: !encoded && advertised !== null ? advertised : excerpt.byteLength,
+        basis: encoded ? "decoded_excerpt" : advertised !== null ? "content_length" : "bytes_read",
+        ...(encoded && advertised !== null ? { contentLengthEncoded: advertised } : {}),
         challenge: challengeOf(response.status, responseHeaders, excerpt),
       };
     };
@@ -942,6 +1053,10 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
               bytes: refused.excerpt.byteLength,
               sha256: sha256(refused.excerpt),
               body_bytes: refused.bodyBytes,
+              body_bytes_basis: refused.basis,
+              ...(refused.contentLengthEncoded === undefined
+                ? {}
+                : { content_length_encoded: refused.contentLengthEncoded }),
               headers: resumedHeaders,
               excerpt: refused.excerpt,
               path: null,
@@ -1077,7 +1192,8 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
 
       if (response.status < 200 || response.status >= 300 || isHtml) {
         // Read a bounded excerpt only; never stream an error or challenge body to disk.
-        const { excerpt, bodyBytes, challenge } = await refusal(response, responseHeaders, guard);
+        const refused = await refusal(response, responseHeaders, guard);
+        const { excerpt, bodyBytes, challenge } = refused;
         if (isRetryable(response.status) && challenge === null && attempts < MAX_ATTEMPTS) {
           const retryAfterHeader = responseHeaders["retry-after"] ?? null;
           observed.push(
@@ -1101,6 +1217,10 @@ export function createSourceClient(options: SourceClientOptions = {}): SourceCli
           bytes: excerpt.byteLength,
           sha256: sha256(excerpt),
           body_bytes: bodyBytes,
+          body_bytes_basis: refused.basis,
+          ...(refused.contentLengthEncoded === undefined
+            ? {}
+            : { content_length_encoded: refused.contentLengthEncoded }),
           headers: responseHeaders,
           excerpt,
           path: null,

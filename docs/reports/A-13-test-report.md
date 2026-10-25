@@ -57,7 +57,7 @@ Six full hosted runs, each on its own preview build, 2026-10-22 (runs 1 to 5 tim
 
 | Run | Build | Start (UTC) | General phase (60 cases) | Verify (8) | Perf (3) | Vitals (2) | Outcome |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `641bc25` | 04:10 | 44 pass, **15 fail**, 1 skipped (TC-002, 003, 008, 009, 012, 014, 016, 039, 042, 071, 072, 073 timed out at 1,800 s, 080, 083, 086) | 6 pass, 1 fail (TC-023), TC-024 skipped behind it | TC-040 pass, TC-041 timed out at 300 s, TC-082 skipped behind it | TC-058 pass, TC-081 fail | Baseline: 18 failing cases (15 + 1 + 1 + 1), recorded as ERR-21 to ERR-37 |
+| 1 | `641bc25` | 04:10 | 44 pass, **15 fail**, 1 skipped (TC-002, 003, 008, 009, 012, 014, 016, 039, 042, 071, 072, 073 timed out at 1,800 s, 080, 083, 086) | 6 pass, 1 fail (TC-023), TC-024 skipped behind it | TC-040 pass, TC-041 timed out at 300 s, TC-082 skipped behind it | TC-058 pass, TC-081 fail | Baseline: 18 failing cases (15 + 1 + 1 + 1), recorded as ERR-27 to ERR-37 and ERR-50 to ERR-55 |
 | 2 | `a285dbe` | 05:09 | 57 pass, 2 fail (TC-009 checkbox state, TC-073 scan), 1 skipped | **void** | **void** | **void** | Verify, perf and vitals ran while another Playwright process shared `tests/e2e/test-results` (ENOENT on trace files); the results were discarded and the process stopped. General phase counts. ERR-38 (smeargle) to ERR-40 found |
 | 3 | `d3ae47e` | 05:36 | 57 pass, 2 fail (TC-072 filter sheet 406 px, TC-073 click on a row after the SQL tab unmounted), 1 skipped | 8 pass | 3 pass | TC-058 pass, TC-081 fail (Data · Catalog median LCP 4,836 ms) | Clean run, nothing else on `tests/e2e`. ERR-41 found |
 | 4 | `7f04685` | 06:09 | 58 pass, 1 fail (TC-072, 406 px, second time under 4-worker load), 1 skipped | 8 pass | 3 pass | 2 pass | ERR-42 root cause found by delaying `explore.search` by 4 s |
@@ -75,7 +75,7 @@ Numbers come from the Playwright JSON reports of each run (`stats.expected`, `st
 | Total TC executed | 73 in the plan; 72 executed and 1 skipped in the final run |
 | Passed / failed / blocked | **72 / 0 / 0**, plus 1 skipped (TC-015, waits for A-11), on the GitHub runner (CI run 39835352646). On the author's slow link on `2e14516`: 71 / 1 / 0 (TC-040 failed, PO decision recorded) |
 | Pass rate | 100 % of executed cases (72 / 72); 98.6 % of the plan (72 / 73) |
-| Open Critical defects | 0. ERR-21 to ERR-46 are 8 High, 12 Medium, 6 Low; none Critical; all re-tested PASS (ERR-21 to ERR-42 on `015fbf9`, ERR-43 to ERR-46 on `2e14516`) |
+| Open Critical defects | 0. ERR-27 to ERR-46 and ERR-50 to ERR-55 are 8 High, 12 Medium, 6 Low; none Critical; all re-tested PASS (ERR-27 to ERR-42 and ERR-50 to ERR-55 on `015fbf9`, ERR-43 to ERR-46 on `2e14516`) |
 | Unit test report | `docs/reports/A-13-unit-test-report.md` (written at `70561ec`: 1,319 passed). A fresh local `pnpm test` at `2cc58ac` on 2026-10-22: 102 files passed, 1 skipped; **1,489 passed, 8 skipped, 0 failed**; the same tests, coverage gates and bundle gate pass in CI run 39835352646 |
 | Code review log | `docs/reviews/CR-A-13.md` (metagross 77, audino 82, `/code-review` medium, 0 open Critical) |
 | CI run | GitHub Actions 39835352646 (success, commit `2c13e09`, code `2cc58ac`): https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/actions/runs/39835352646 |
@@ -90,16 +90,16 @@ Result columns: "Result on 2e14516" is the final run (every case marked PASS als
 
 | TC ID | Requirement | Type | Case | Result on 2e14516 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| A-13-TC-002 | AC-1, FR-001, FR-016 | demo | D-2 Runs: latest completed run summary | **PASS** | FAIL → pass → pass → pass | ERR-21 | `A-13-TC-002-1.png`, `A-13-TC-002-3.png`, `A-13-TC-002-6.png` |
-| A-13-TC-003 | AC-2, FR-002 | demo | D-3 Coverage: counts, denominators, time, derivation, table | **PASS** | FAIL → pass → pass → pass | ERR-23 | `A-13-TC-003-1.png`, `A-13-TC-003-3.png`, `A-13-TC-003-4.png` |
+| A-13-TC-002 | AC-1, FR-001, FR-016 | demo | D-2 Runs: latest completed run summary | **PASS** | FAIL → pass → pass → pass | ERR-50 | `A-13-TC-002-1.png`, `A-13-TC-002-3.png`, `A-13-TC-002-6.png` |
+| A-13-TC-003 | AC-2, FR-002 | demo | D-3 Coverage: counts, denominators, time, derivation, table | **PASS** | FAIL → pass → pass → pass | ERR-52 | `A-13-TC-003-1.png`, `A-13-TC-003-3.png`, `A-13-TC-003-4.png` |
 | A-13-TC-004 | AC-6, FR-006 | demo | D-4 SQL count in the browser, engine line | **PASS** | pass | — | `A-13-TC-004-2.png`, `A-13-TC-004-7.png` |
 | A-13-TC-005 | AC-3, FR-003d, FR-016 | demo | D-5 Manifest: every artifact, run chain | **PASS** | pass | — | `A-13-TC-005-2.png`, `A-13-TC-005-4.png`, `A-13-TC-005-6.png` |
 | A-13-TC-007 | AC-1, FR-001a | demo · waits A-11 | D-7 Compare latest vs previous run | **PASS** | pass | — | `A-13-TC-007-today.png` |
-| A-13-TC-008 | AC-4, FR-004 | demo · waits A-11 | D-8 Pflugerville 5 mi, roof ≥ 15 yrs | **PASS** | FAIL → pass → pass → pass | ERR-24 | `A-13-TC-008-2.png`, `A-13-TC-008-6.png`, `A-13-TC-008-8.png` |
-| A-13-TC-009 | AC-5, FR-005 | demo · waits A-11 | D-9 Open or stalled ≥ 5 yrs, longest first | **PASS** | FAIL → FAIL → pass → pass | ERR-25, ERR-39 | `A-13-TC-009-3.png`, `A-13-TC-009-6.png` |
+| A-13-TC-008 | AC-4, FR-004 | demo · waits A-11 | D-8 Pflugerville 5 mi, roof ≥ 15 yrs | **PASS** | FAIL → pass → pass → pass | ERR-53 | `A-13-TC-008-2.png`, `A-13-TC-008-6.png`, `A-13-TC-008-8.png` |
+| A-13-TC-009 | AC-5, FR-005 | demo · waits A-11 | D-9 Open or stalled ≥ 5 yrs, longest first | **PASS** | FAIL → FAIL → pass → pass | ERR-54, ERR-39 | `A-13-TC-009-3.png`, `A-13-TC-009-6.png` |
 | A-13-TC-010 | AC-1, FR-001c | edge | Per-source deltas; first run says so | **PASS** | pass | — | `A-13-TC-010-3.png` |
 | A-13-TC-011 | AC-1, FR-001 | missing-data | Limitations and "Next sync" line | **PASS** | pass | — | `A-13-TC-011-3.png` |
-| A-13-TC-012 | AC-1, FR-021 | negative error | Run index unreadable → explicit error | **PASS** | FAIL → pass → pass → pass | ERR-26 | `A-13-TC-012-abort-hub.png`, `A-13-TC-012-abort-runs.png`, `A-13-TC-012-invalid-json-hub.png`, `A-13-TC-012-invalid-json-runs.png` |
+| A-13-TC-012 | AC-1, FR-021 | negative error | Run index unreadable → explicit error | **PASS** | FAIL → pass → pass → pass | ERR-55 | `A-13-TC-012-abort-hub.png`, `A-13-TC-012-abort-runs.png`, `A-13-TC-012-invalid-json-hub.png`, `A-13-TC-012-invalid-json-runs.png` |
 | A-13-TC-013 | AC-1, FR-021 | negative error | Manifest unreadable → explicit error naming the CID | **PASS** | pass | — | `A-13-TC-013-coverage.png`, `A-13-TC-013-runs.png` |
 | A-13-TC-014 | AC-1, FR-001b | edge missing-data | Single published run → Compare explains why | **PASS** | FAIL → pass → pass → pass | ERR-27 | `A-13-TC-014-3.png`, `A-13-TC-014-4.png` |
 | A-13-TC-015 | AC-1, FR-001a | negative · waits A-11 | "Still resolves" pill only after both gateways answer | **SKIPPED** | skipped in all runs | — |  |
@@ -148,7 +148,7 @@ Result columns: "Result on 2e14516" is the final run (every case marked PASS als
 | TC ID | Requirement | Type | Case | Result on 2e14516 | Earlier runs (641bc25 → a285dbe → d3ae47e → 7f04685) | Defect | Evidence (docs/evidence/img) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A-13-TC-001 | AC-9, FR-009 | smoke demo | D-1 Hub: CountyLens card, CRM Coming soon, run chip | **PASS** | pass | — | `A-13-TC-001-1.png`, `A-13-TC-001-4.png`, `A-13-TC-001-5.png` |
-| A-13-TC-042 | FR-023 | integration | Help · MCP: tools, setup, no sample response | **PASS** | FAIL → pass → pass → pass | ERR-22 | `A-13-TC-042-1.png`, `A-13-TC-042-3.png` |
+| A-13-TC-042 | FR-023 | integration | Help · MCP: tools, setup, no sample response | **PASS** | FAIL → pass → pass → pass | ERR-51 | `A-13-TC-042-1.png`, `A-13-TC-042-3.png` |
 | A-13-TC-050 | AC-9, Edge 6, FR-020 | edge | CRM card switches to a live URL through config | **PASS** | pass | — | `A-13-TC-050-5.png`, `A-13-TC-050-6.png` |
 | A-13-TC-051 | AC-9, FR-009 | edge | Watch demo and PR links hidden until configured | **PASS** | pass | — | `A-13-TC-051-2.png`, `A-13-TC-051-3.png` |
 | A-13-TC-052 | AC-9, NFR-002 | perf | Hub never loads the query engine | **PASS** | pass | — | `A-13-TC-052-1.png` |
@@ -223,16 +223,16 @@ Eleven cases carry the plan's "Waits for A-11 (PO D-1/D-2, 2026-10-21)" label. A
 
 ## Defects
 
-All 26 defects were found in the hosted runs of 2026-10-22 on branch `013-explorer-and-pages`. "Fix commit" is the first push that carried the fix. "Re-test" is the final run: `015fbf9` for ERR-21 to ERR-42, `2e14516` for ERR-43 to ERR-46; a TC listed under ERR-n passed there. None is Critical.
+All 26 defects were found in the hosted runs of 2026-10-22 on branch `013-explorer-and-pages`. "Fix commit" is the first push that carried the fix. "Re-test" is the final run: `015fbf9` for ERR-27 to ERR-42 and ERR-50 to ERR-55, `2e14516` for ERR-43 to ERR-46; a TC listed under ERR-n passed there. None is Critical.
 
 | ERR | Kind | TC | Severity | Fix commit | Status |
 | --- | --- | --- | --- | --- | --- |
-| ERR-21 | product (Runs source lines omit the watermark) | TC-002 | High | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
-| ERR-22 | product (Help · MCP `search_properties` has no `[data-schema]`) | TC-042 | Medium | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
-| ERR-23 | test (textContent fuses blocks) | TC-003 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
-| ERR-24 | test (zero-results text built with NaN) | TC-008 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
-| ERR-25 | product (D-9 zero results lacked "no open roofing permits"; a regression from a review fix) | TC-009 | High | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
-| ERR-26 | test ("no article" too broad) | TC-012 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-50 | product (Runs source lines omit the watermark) | TC-002 | High | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-51 | product (Help · MCP `search_properties` has no `[data-schema]`) | TC-042 | Medium | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-52 | test (textContent fuses blocks) | TC-003 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-53 | test (zero-results text built with NaN) | TC-008 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-54 | product (D-9 zero results lacked "no open roofing permits"; a regression from a review fix) | TC-009 | High | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
+| ERR-55 | test ("no article" too broad) | TC-012 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
 | ERR-27 | product (single-run Compare had no manifest link and counted one card as a compared run) | TC-014 | Medium | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
 | ERR-28 | test (demanded a table chip on a kind with no table) | TC-016 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
 | ERR-29 | test (County option label does not exist) | TC-071 | Low | `a285dbe` | Fixed, re-test PASS on 015fbf9 |
@@ -254,11 +254,11 @@ All 26 defects were found in the hosted runs of 2026-10-22 on branch `013-explor
 | ERR-45 | product, regression from the ERR-44 fix (the `/runs/index.json` preload also fired on the static Legal pages) | TC-056 | Medium | `32a3d60` | Closed, re-test PASS on `2e14516` (TC-056: Legal pages make no data request) |
 | ERR-46 | product, performance (render-blocking Google Fonts requests: Catalog 2,656 ms, Coverage 2,572 ms; TC-040 9 to 18 s; TC-073 screenshot waited for fonts) | TC-081, TC-040, TC-073 | High | `2e14516` | Closed, re-test PASS on `2e14516` for TC-081 and TC-073; TC-040's waterfall no longer includes Google (TC-040 itself still fails on the slow link: see the summary) |
 
-Counts: 16 product defects (ERR-21, 22, 25, 27, 30, 31, 32, 33, 38, 39, 41, 42, 43, 44, 45, 46) and 10 test defects (ERR-23, 24, 26, 28, 29, 34, 35, 36, 37, 40). Severity as written in the defect files: 8 High (ERR-21, 25, 32, 33, 34, 39, 40, 46), 12 Medium (ERR-22, 27, 30, 31, 36, 37, 38, 41, 42, 43, 44, 45), 6 Low (ERR-23, 24, 26, 28, 29, 35). Two further test-side failures in the clean run on `2e14516` (TC-053 and TC-073, see run 6) were fixed in the tests and did not get ERR numbers.
+Counts: 16 product defects (ERR-50, 51, 54, 27, 30, 31, 32, 33, 38, 39, 41, 42, 43, 44, 45, 46) and 10 test defects (ERR-52, 53, 55, 28, 29, 34, 35, 36, 37, 40). Severity as written in the defect files: 8 High (ERR-50, 25, 32, 33, 34, 39, 40, 46), 12 Medium (ERR-51, 27, 30, 31, 36, 37, 38, 41, 42, 43, 44, 45), 6 Low (ERR-52, 53, 55, 28, 29, 35). Two further test-side failures in the clean run on `2e14516` (TC-053 and TC-073, see run 6) were fixed in the tests and did not get ERR numbers.
 
 No open finding outside the 73 cases: smeargle N3 (`/help/mcp`, 390 px, `main` scrolls sideways) is ERR-43, fixed in `34c8eaf` and re-measured on the hosted build. TC-080 measures the document, not `main`, so it could not have caught it; the smeargle cell did.
 
-Notes: (1) The `docs/defects/ERR-21.md` to `ERR-42.md` files still read "Fixed, re-test pending (hosted)" with empty `fix_commit` and `retest_date`; the table above is the re-test record until they are closed at G7. ERR-43 to ERR-48 are closed in their files (ERR-47 and ERR-48 re-tested PASS in CI run 39835352646). (2) Product fixes of ERR-21 to ERR-32 were written with their tests, not seen red first, as the run-log records. (3) TC-072 failed once at 406 px under 4-worker load in runs 3 and 4 and could not be reproduced in 6 clean single runs on `d3ae47e`; it was reproduced only by delaying `explore.search` (ERR-42) and passes on `015fbf9`.
+Notes: (1) The `docs/defects/ERR-27.md` to `ERR-42.md and ERR-50 to ERR-55` files still read "Fixed, re-test pending (hosted)" with empty `fix_commit` and `retest_date`; the table above is the re-test record until they are closed at G7. ERR-43 to ERR-48 are closed in their files (ERR-47 and ERR-48 re-tested PASS in CI run 39835352646). (2) Product fixes of ERR-27 to ERR-32 and ERR-50 to ERR-55 were written with their tests, not seen red first, as the run-log records. (3) TC-072 failed once at 406 px under 4-worker load in runs 3 and 4 and could not be reproduced in 6 clean single runs on `d3ae47e`; it was reproduced only by delaying `explore.search` (ERR-42) and passes on `015fbf9`.
 
 ## Sign-off
 

@@ -277,8 +277,10 @@ describe("ERR-12: every <button> sets its font from the tokens (a UA button font
     }));
   });
 
-  it("finds the app's buttons (Copy CID, Retry, the shell's More)", () => {
-    expect(buttons.map((b) => b.cls)).toEqual(expect.arrayContaining(["copy", "retry", "more"]));
+  it("finds the app's buttons (Copy CID, Retry, the shell's More, the Permits pager)", () => {
+    expect(buttons.map((b) => b.cls)).toEqual(
+      expect.arrayContaining(["copy", "retry", "more", "pagerButton"]),
+    );
   });
 
   for (const name of [...new Set(buttons.map((b) => b.cls))]) {

@@ -193,6 +193,21 @@ export class DataStack extends Stack {
               resources: [this.bucket.bucketArn],
               conditions: { StringLike: { "s3:prefix": [`${CID_COPY_PUBLIC_PREFIX}*`] } },
             }),
+            new iam.PolicyStatement({
+              // resolveCidCopyBucket() (pipeline/publish/src/cid-copy.ts) reads this parameter
+              // when CID_COPY_BUCKET isn't set explicitly; the role never had permission for it
+              // (found 2026-10-24 running Run 1's CID-copy upload -- worked around with an
+              // explicit env var at the time, fixed properly here).
+              sid: "ReadOwnBucketParameter",
+              actions: ["ssm:GetParameter"],
+              resources: [
+                Stack.of(this).formatArn({
+                  service: "ssm",
+                  resource: "parameter",
+                  resourceName: `${CID_COPY_SSM_PREFIX.slice(1)}/bucket`,
+                }),
+              ],
+            }),
           ],
         }),
       },

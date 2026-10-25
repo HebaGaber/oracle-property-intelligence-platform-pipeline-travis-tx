@@ -7,7 +7,7 @@
 // data groups with their tables CIDs, and the "Server check" line as secondary text. Every
 // count comes from the manifest; every fixed text from @countylens/shared. A react-router lazy
 // route module: it exports `Component` and nothing else. No data or placeholder value lives here.
-import type { ManifestArtifact, ManifestSource, RunManifestV1 } from "@countylens/contract";
+import type { ManifestSource, RunManifestV1 } from "@countylens/contract";
 import {
   COVERAGE_LABELS,
   DERIVATION_LABELS,
@@ -30,6 +30,7 @@ import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
 import { formatCount, utcTimestamp } from "../data/format";
 import { RUN_STAGE_TEXTS, type LoadedRun } from "../data/run-loader";
+import { dataGroupItems, type DataGroupItem } from "../data/data-groups";
 import { RUNS_INDEX_PATH } from "../data/runs-index";
 import { serverCheckText, useServerCheck } from "../data/server-check";
 import { runErrorNode, SourceDeltas, useLatestRun } from "./Runs.shared";
@@ -71,7 +72,7 @@ function Icon({ name }: { readonly name: string }): ReactElement {
 
 function RunCard({ run }: { readonly run: LoadedRun }): ReactElement {
   const { manifest, manifestCid, read } = run;
-  const groups = manifest.artifacts.filter((artifact) => artifact.kind === "directory");
+  const groups = dataGroupItems(manifest);
   return (
     <article className={styles.card} aria-labelledby="run-title">
       <header className={styles.header}>
@@ -126,8 +127,8 @@ function RunCard({ run }: { readonly run: LoadedRun }): ReactElement {
         Data groups
       </h3>
       <ul className={styles.list} aria-labelledby="groups-heading">
-        {groups.map((artifact) => (
-          <GroupItem key={artifact.name} artifact={artifact} />
+        {groups.map((item) => (
+          <GroupItem key={item.artifact.name} item={item} />
         ))}
       </ul>
 
@@ -213,13 +214,19 @@ function CoverageRow({
   );
 }
 
-/** § 7 List item, two lines: the data group, then its tables directory CID (TC-013). */
-function GroupItem({ artifact }: { readonly artifact: ManifestArtifact }): ReactElement {
-  const group = artifact.name.replace(/^tables\//, "");
+/** § 7 List item, two lines: the data group (and its batch), then its tables directory CID (TC-013). */
+function GroupItem({ item }: { readonly item: DataGroupItem }): ReactElement {
+  const { artifact, batch, batches } = item;
+  const group = item.group ?? artifact.name;
   return (
     <li className={styles.item} data-group={group}>
       <span className={styles.itemTitle}>
         <code className={styles.mono}>{group}</code>
+        {batches > 1 ? (
+          <span className={styles.helper}>
+            batch {batch} of {batches}
+          </span>
+        ) : null}
       </span>
       <span className={styles.itemBody}>
         tables <CidDisplay cid={artifact.cid} />

@@ -1,68 +1,81 @@
 ---
 id: ERR-21
 type: defect
-kind: product defect
-feature: FEAT-A13
-story: A-13
-test_case: A-13-TC-002
-ac_reference: A-13-AC-1
-severity: High
-status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
-found_by: hosted Playwright run (general phase)
+feature: FEAT-A06
+story: A-04
+test_case: A-04-TC-NF-03
+ac_reference: A-04-AC-7
+severity: Low
+status: Closed
+found_by: QC test runner (Claude), for HebaGaber
 found_date: 2026-10-22
-fix_branch: 013-explorer-and-pages
-fix_commit: a285dbe
+fix_branch: 004-property-backbone
+fix_commit:
 retest_date: 2026-10-22
+closed_date: 2026-10-22
 ---
 
-# ERR-21: Runs – source lines do not show the manifest watermark
+# ERR-21: Test plan TC-NF-03 – expected output does not match the artifact and the code (steps 2 and 3)
 
 ## Brief description
 
-First hosted run of A-13 against the preview (build `641bc25`). This is a **product defect**.
+Running the exact commands of A-04-TC-NF-03 gives two outputs that differ from the plan's expected result, although the behaviour the case protects (no GIS request leaves the laptop) holds. Step 2 prints two lines instead of exactly `loc=US`, and step 3 counts one file that is neither the runner fetch nor the A-01 discovery probe.
 
 ## Related requirement
 
-- **Story:** A-13 · **AC:** A-13-AC-1 · **Requirement:** FR-001 · **Test case:** A-13-TC-002
+- **Story:** A-04 · **AC:** AC-7 · **Requirement:** FR-007, ARD § 8 · **Test case:** A-04-TC-NF-03
 
 ## Environment
 
-| Item | Value |
-| --- | --- |
-| URL | https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com |
-| Build | `641bc25` (preview build) |
-| Data snapshot | manifest `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i` |
-| Browser / OS / device | Playwright Chromium (desktop; 390 for the touch-target cases) |
+| Item          | Value                                                                                |
+| ------------- | ------------------------------------------------------------------------------------ |
+| URL           | not applicable (pipeline-only story; local terminal)                                 |
+| Build         | `40fa2e2`, branch `004-property-backbone`                                            |
+| Data snapshot | GIS runner artifact `pipeline/data/raw/gis/us-runner-39684063596/` (run 39684063596) |
+| Role          | n/a                                                                                  |
+
+## Preconditions and test data
+
+- Repo root, branch `004-property-backbone`, no Docker or network needed.
+- Runner artifacts present under `pipeline/data/raw/gis/us-runner-*`.
 
 ## Steps to reproduce
 
-Run `tests/e2e/A-13-*.spec.ts` case `@scenario:A-13-TC-002` with RUNTIME_URL set to the preview.
+1. `git rev-parse --abbrev-ref HEAD` -> `004-property-backbone`.
+2. `grep -r -l "gis.traviscountytx.gov" pipeline/data/artifacts pipeline/data/runs 2>/dev/null | wc -l`
+3. `cat pipeline/data/raw/gis/us-runner-*/egress.txt | sort -u`
+4. `grep -r -l "gis.traviscountytx.gov" pipeline/oracle-runtime/travis --include='*.ts' | grep -v -E "travis/(gis/runner-fetch|discovery/probes/arcgis)\.ts$" | wc -l`
 
 ## Expected result
 
-Expected the source line to contain "2026-10-20T12:35:38.032Z" (the manifest `sources[].watermark`).
+Step 2 prints `0`; step 3 prints exactly `loc=US`; step 4 prints `0`.
 
 ## Actual result
 
-Line shows "42 records · collected 2026-10-21T10:35:59.798Z UTC · https://data.austintexas.gov/resource/3syk-w9eu.json"; no watermark.
+- Step 2: `0` (matches).
+- Step 3: two lines, `colo=MSP` and `loc=US` (the runner's egress file records the Cloudflare colo as well as the country). Every `egress.txt` present agrees; none says a country other than US.
+- Step 4: `1`. The file is `pipeline/oracle-runtime/travis/lib/source-client.ts`, line 83: `"gis.traviscountytx.gov": policy(2),`, a per-host concurrency policy (etiquette limit 2), not a request. No request is made from it by `coords`, which reads only the artifact.
 
-## Root cause
+## Impact and severity
 
-Runs.tsx SourceItem rendered records, captured_at and the link only. TC-002 step 3 and FR-001 ask for the watermark too.
+- **Impact:** a literal run of TC-NF-03 reports FAIL although no GIS request left the laptop; the evaluator could read the case as failing.
+- **Severity:** Low because the protected rule holds (step 2 of the artifact says `loc=US`, no laptop receipt names the GIS host, the only code holding the host besides the runner and probe is a policy table).
 
-## Fix
+## Suggested investigation area
 
-Runs.tsx SourceItem shows `watermark {value}` (as published) after the collected time; nothing is shown for a null watermark (nothing invented).
+Fix the test plan, not the code: step 3 expected `colo=<code>` plus `loc=US` (or `grep loc= ... | sort -u` -> `loc=US`), and step 4 exclusion regex extended with `travis/lib/source-client\.ts` (or expect `1`, naming that file). Alternatively keep the plan and move the policy host key into a constant outside `travis/`. The G6 plan is approved, so the PO decides which.
 
-## Regression test
+## Evidence
 
-apps/web/test/runs.test.tsx (Runs page: sources: watermark shown, null watermark not invented)
+- [ ] Screenshot: not applicable
+- [x] Command output above (run 2026-10-22 on `40fa2e2`)
+- [ ] CloudWatch: not applicable
 
 ## Resolution
 
-| Field | Value |
-| --- | --- |
-| Root cause | Runs.tsx SourceItem rendered records, captured_at and the link only. TC-002 step 3 and FR-001 ask for the watermark too. |
-| Fix | uncommitted on `013-explorer-and-pages` (parent commits) |
-| Re-test | pending: hosted re-run on the next preview build |
-| Status | Fixed, re-test pending (hosted) |
+| Field      | Value                                                                                                            |
+| ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| Root cause | Test-plan wording written before `source-client.ts` gained its policy table and before the runner logged `colo=` |
+| Fix        |                                                                                                                  |
+| Re-test    | A-04-TC-NF-03                                                                                                    |
+| Status     | ☒ Closed (2026-10-22) ☐ Reopened |

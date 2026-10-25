@@ -35,8 +35,13 @@ export function summarize(timingsMs: readonly number[]): TimingSummary {
 
 /** NFR thresholds of the test plan (§ 8, NFR cases). */
 export const LIMITS = {
-  /** TC-NF-01: each cold first load. */
-  firstLoadMs: 8_000,
+  /**
+   * TC-NF-01: each cold first load. 8 s was set on A-03's pilot data; at full-county scale the
+   * page downloads ~95 MB (engine + the county property parts the join needs). Run 2 measured
+   * 24–28 s from a home connection and ~45 s from GitHub-hosted runners, so the PO revised the
+   * limit to 60 s (2026-10-24, "Revise target, optimize later"); optimization is carried to A-16 #11.
+   */
+  firstLoadMs: 60_000,
   /** TC-NF-02 and TC-NF-05: p95 of 20 warm runs. */
   queryP95Ms: 3_000,
   /** TC-NF-04: warm API p95 over 30 calls. */
@@ -45,8 +50,23 @@ export const LIMITS = {
   apiColdStartMs: 3_000,
 } as const;
 
-/** Timed runs per query (warm-up rule, test plan § 3: one untimed warm-up precedes them). */
+/** Timed runs per query on the pilot and in the operator benchmark (test plan § 3: one untimed warm-up precedes them). */
 export const TIMED_RUNS = 20;
+
+/**
+ * The hosted CI 'isolated' job runs on a 60-minute budget and every Permits load at full-county
+ * scale takes 45-90 s, so the hosted perf cases take a VERY SMALL sample (PO 2026-10-25):
+ * TC-NF-01 two cold first loads, TC-NF-02 five timed reloads after one warm-up. The 20-run
+ * rule stays the operator benchmark (TC-NF-05 and docs/decisions/0001-read-path.md).
+ */
+export const FIRST_LOAD_SAMPLES = 2;
+export const QUERY_SAMPLE_RUNS = 5;
+
+/**
+ * How long a non-perf case waits for the full-county Permits page to show rows: 3 × the
+ * first-load limit. Run 2 on GitHub runners loads in ~60–90 s, so 120 s left no margin (A-11).
+ */
+export const PERMITS_LOAD_WAIT_MS = LIMITS.firstLoadMs * 3;
 export const WARM_API_CALLS = 30;
 
 // ---------------------------------------------------------------------------------------
@@ -62,6 +82,8 @@ export const SELECTORS = {
   permitsCards: 'ul[aria-label="Permits"]',
   /** A rendered permit row: a data-table body row or a card. */
   permitRow: 'table[aria-label="Permits"] tbody tr, ul[aria-label="Permits"] > li',
+  /** The range line `Showing a–b of N` under the pager (data-first, data-last, data-total). */
+  permitsRange: '[data-testid="permits-range"]',
   /** The full CID of a provenance line (never the truncated text). */
   cid: "[data-cid]",
 } as const;

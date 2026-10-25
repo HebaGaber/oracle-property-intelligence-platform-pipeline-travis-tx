@@ -154,7 +154,14 @@ function setup(records?: Record<string, unknown>[]): Setup {
   return { repoRoot, zip, sha256, catalogPath: catalog(repoRoot, sha256) };
 }
 
-async function runSeptember(s: Setup, over: { catalogPath?: string; rows?: Row[] } = {}) {
+async function runSeptember(
+  s: Setup,
+  over: {
+    catalogPath?: string;
+    rows?: Row[];
+    contractorRegistry?: Parameters<typeof runMonth>[0]["contractorRegistry"];
+  } = {},
+) {
   const c = clock();
   const fake = http(over.rows ?? rows());
   const result = await runMonth({
@@ -168,6 +175,9 @@ async function runSeptember(s: Setup, over: { catalogPath?: string; rows?: Row[]
     now: c.now,
     random: () => 0,
     log: silent,
+    ...(over.contractorRegistry === undefined
+      ? {}
+      : { contractorRegistry: over.contractorRegistry }),
   });
   return { result, fake };
 }
@@ -279,6 +289,7 @@ describe("runMonth (September slice)", () => {
       note: "Comptroller baseline not loaded (A-07)",
     });
     expect(coverage.contractor_resolved?.count).toBe(0);
+    expect(coverage.contractor_candidate?.count).toBe(0);
     const sources = summary.sources as Array<{ name: string; records: number; watermark: string }>;
     expect(sources.map((x) => x.name)).toEqual(["austin-3syk-w9eu", "tcad-2026-certified-json"]);
     expect(sources[0]?.records).toBe(4);
@@ -290,6 +301,28 @@ describe("runMonth (September slice)", () => {
         expect.objectContaining({ name: "travis-austin", version: "1.0.0" }),
       ]),
     );
+  });
+
+  // A-11 fix: with a real Comptroller registry snapshot wired, the one emitted permit (whose
+  // row fixture's `contractor_company_name` is "SAMPLE CONTRACTOR") resolves against it for
+  // real, through resolver.ts's unmodified `resolveContractor` -- never defaulted to
+  // `unresolved` and never carrying the A-07 "baseline not loaded" note once it is loaded.
+  it("with a wired Comptroller registry, rolls up the real per-permit state and drops the A-07 note", async () => {
+    const s = setup();
+    const { result } = await runSeptember(s, {
+      contractorRegistry: {
+        registry: [
+          { taxpayerNumber: "900", legalName: "SAMPLE CONTRACTOR", sosStatusCode: "active" },
+        ],
+        registrySnapshotDigest: "e".repeat(64),
+      },
+    });
+    const summary = readJson(join(result.runDir, "summary.json"));
+    const coverage = summary.coverage as Record<string, { count: number; note?: string }>;
+    expect(coverage.contractor_candidate).toEqual({ count: 1, derivation: "aggregate_match" });
+    expect(coverage.contractor_resolved).toEqual({ count: 0, derivation: "aggregate_match" });
+    expect(coverage.contractor_unresolved).toEqual({ count: 0, derivation: "aggregate_match" });
+    expect(coverage.contractor_unresolved?.note).toBeUndefined();
   });
 
   it("records travis-austin, the roof profile and travis-places with their digests (CR-A-03 F-1)", async () => {

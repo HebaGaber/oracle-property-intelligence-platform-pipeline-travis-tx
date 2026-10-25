@@ -110,7 +110,7 @@ Every failing hosted test gets `docs/defects/ERR-{n}.md`. No Critical defect is 
 
 - **A1.** Ingestion uses the kit's `use-oracle` runtime and county stage skills, extended with Travis adapters and profiles, never reimplemented.
 - **A2.** Public data comes only from `elephant-cli` (validate → hash → CAR → export-tables → upload). Query DB exports are never published; the Query DB is never exposed.
-- **A3.** CIDv1 (base32) is every artifact's identity; gateway URLs are derived. Published CIDs never change; new data means a new CID; run history keeps every CID.
+- **A3.** CIDv1 (base32) is every artifact's identity; gateway URLs are derived. Published CIDs never change; new data means a new CID; run history keeps every CID. Manifests are accepted only when their bytes hash to the requested CID; table parts are accepted only when their SHA-256 equals the one the CID-verified manifest records (PO decision 2026-10-24).
 - **A4.** Every run writes a manifest (cid, name, size, codec, sha256) with a CAR for every directory, verified on two independent public gateways.
 - **A5.** Contractor identity comes from official records only; unmatched contractors stay unresolved. BBB and places are enrichment, never identity.
 - **A6.** Respect source terms: no CAPTCHA bypass, stop on 403, bounded crawls.

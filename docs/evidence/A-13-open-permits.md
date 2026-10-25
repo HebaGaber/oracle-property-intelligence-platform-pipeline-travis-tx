@@ -44,7 +44,7 @@ Preview `https://013-explorer-and-pages.d2lx0utip89u18.amplifyapp.com` (`/build.
 | Empty-state sentence (exact) | **no open roofing permits in this radius on the current run** |
 | Server | HTTP 200, `explore.search`, `rows` 0, `queryDurationMs` 166 (CloudWatch, `CountyLensApi-FunctionLogs…`, 09:07:28Z) |
 
-This is correct for the published run: the longest open permit is 47 days (0.13 yrs), far under 5 years, and no permit is `stalled`. The sentence appears because the permit filter is the only filter that excludes the rows (ERR-25 and the MG-10 review fix). Stalled permits stay at 0 until A-04, A-07 and A-11 publish the full permit history and a carrier for "Expired".
+This is correct for the published run: the longest open permit is 47 days (0.13 yrs), far under 5 years, and no permit is `stalled`. The sentence appears because the permit filter is the only filter that excludes the rows (ERR-54 and the MG-10 review fix). Stalled permits stay at 0 until A-04, A-07 and A-11 publish the full permit history and a carrier for "Expired".
 
 **Open-permit search timing (TC-041, series 2).** `docs/evidence/A-13-TC-041-timings.json`: 20 distinct radii, from the final run on `2e14516`: p50 812 ms, p95 **1,313 ms**, max 1,322 ms, against p95 < 3,000 ms (the first run on `015fbf9`: p95 812 ms). Provisional: measured on the 14-property slice. The radius + roof-age series is in [A-13-roof-age.md](A-13-roof-age.md): p50 1,320 ms, p95 1,837 ms.
 

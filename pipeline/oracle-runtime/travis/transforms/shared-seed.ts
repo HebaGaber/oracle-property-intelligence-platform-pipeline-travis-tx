@@ -8,6 +8,7 @@
 // ("[lat, lon]"), propertyIdentification[].geoID, situses[] (primarySitus), propertyProfile[]
 // (stateCd, imprvActualYearBuilt), propertyLegalDescription[].legalDescription.
 import { z } from "zod";
+import { improvementsOf } from "../tcad/year-built.js";
 
 /** The bulk export GET every TCAD entity comes from (A-01 sources catalog). Headers: none. */
 export const TCAD_EXPORT_REQUEST = {
@@ -120,42 +121,163 @@ export function situsOf(record: TcadRecord): string | null {
   return street === "" ? null : parts.join(", ");
 }
 
-/** Texas PTD state codes (propertyProfile[].stateCd) → lexicon property_type / property_usage_type. */
-const STATE_CODES: Record<string, { property_type: string; property_usage_type: string | null }> = {
-  A1: { property_type: "SingleFamily", property_usage_type: "Residential" },
-  A2: { property_type: "MobileHome", property_usage_type: "Residential" },
-  A3: { property_type: "Condominium", property_usage_type: "Residential" },
-  A4: { property_type: "Townhouse", property_usage_type: "Residential" },
-  B1: { property_type: "MultipleFamily", property_usage_type: "Residential" },
-  B2: { property_type: "Duplex", property_usage_type: "Residential" },
-  B3: { property_type: "3Units", property_usage_type: "Residential" },
-  B4: { property_type: "4Units", property_usage_type: "Residential" },
-  C1: { property_type: "VacantLand", property_usage_type: null },
-  F1: { property_type: "Building", property_usage_type: "Commercial" },
-  F2: { property_type: "Building", property_usage_type: "Industrial" },
-};
+/** Where every STATE_CODES entry comes from (no official table cited yet). */
+export const A02_PILOT_MAPPING =
+  "A-02 pilot mapping (shared-seed.ts), no official code table cited";
+
+/**
+ * TCAD state codes (propertyProfile[].stateCd) → lexicon property_type / property_usage_type.
+ * A-04 (oracle disagreement #8): this map is the A-02 pilot mapping, kept unchanged, and is
+ * extended only with a cited official PTD/TCAD code table. None is on disk: the TCAD Export
+ * Layout (Legacy 8.0.33) names the code file APPRAISAL_STATE_CODE.TXT but it is not part of
+ * the JSON export, so no code is added. A4 is NOT read as a condominium here (DEC-A-01's
+ * condo reading is unverified; the coordinate condo rule uses the shared geoID instead). Any
+ * other code → property_type null with reason `enum_lacks_value`.
+ */
+export const STATE_CODES: Readonly<
+  Record<string, { property_type: string; property_usage_type: string | null; source: string }>
+> = Object.freeze(
+  Object.fromEntries(
+    (
+      [
+        ["A1", "SingleFamily", "Residential"],
+        ["A2", "MobileHome", "Residential"],
+        ["A3", "Condominium", "Residential"],
+        ["A4", "Townhouse", "Residential"],
+        ["B1", "MultipleFamily", "Residential"],
+        ["B2", "Duplex", "Residential"],
+        ["B3", "3Units", "Residential"],
+        ["B4", "4Units", "Residential"],
+        ["C1", "VacantLand", null],
+        ["F1", "Building", "Commercial"],
+        ["F2", "Building", "Industrial"],
+      ] as const
+    ).map(([code, property_type, property_usage_type]) => [
+      code,
+      { property_type, property_usage_type, source: A02_PILOT_MAPPING },
+    ]),
+  ),
+);
+
+/** The mapped type of a state code, or null + enum_lacks_value. */
+export function propertyTypeOf(code: string): {
+  property_type: string | null;
+  property_usage_type: string | null;
+  missing_reason: "enum_lacks_value" | null;
+} {
+  const m = STATE_CODES[code.trim()];
+  return m
+    ? {
+        property_type: m.property_type,
+        property_usage_type: m.property_usage_type,
+        missing_reason: null,
+      }
+    : { property_type: null, property_usage_type: null, missing_reason: "enum_lacks_value" };
+}
+
+export type PropertyTypeRule = "state_code_table" | "improvement_fallback";
+
+/**
+ * Version of the property_type rule set (STATE_CODES + the fallback below). Stored on every
+ * parcels row (property_type_rules_version) so a published type can be tied to the rules that
+ * chose it; bump it with any change to STATE_CODES or the fallback.
+ */
+export const PROPERTY_TYPE_RULES_VERSION = "property_type_rules@2026-10-22";
+
+/**
+ * The two lexicon property_type values the fallback may use. `Building` when the record prints
+ * an improvement. `LandParcel` (neutral, in the live property_type enum, not deprecated) when
+ * it prints none: it claims no vacancy (roofing permits sit on parcels the roll shows without
+ * an improvement) and no residential or condominium use.
+ */
+export const FALLBACK_WITH_IMPROVEMENT = "Building";
+export const FALLBACK_WITHOUT_IMPROVEMENT = "LandParcel";
+
+export interface PropertyTypeChoice {
+  property_type: string | null;
+  property_usage_type: string | null;
+  missing_reason: "enum_lacks_value" | null;
+  rule: PropertyTypeRule | null;
+  note: string | null;
+}
+
+/**
+ * The property_type of one account (A-04 pilot fix). The lexicon requires a string for every
+ * emitted property (county_emit = R). Order: (a) STATE_CODES (rule state_code_table); (b) for
+ * an emitted account whose code has no table entry, a generic fallback from the record's own
+ * facts only: `Building` when it prints at least one improvement, else `LandParcel`
+ * (rule improvement_fallback, note says which code and which fact). The fallback never asserts
+ * a residential or condominium type and sets no property_usage_type. A non-emitted account
+ * (P, MH, MN) with an unmapped code stays null + enum_lacks_value. No official code table is
+ * on disk (APPRAISAL_STATE_CODE.TXT is not in the JSON export), so no code was added.
+ */
+export function propertyTypeFor(
+  code: string,
+  opts: { emitted: boolean; improvementCount: number },
+): PropertyTypeChoice {
+  const c = code.trim();
+  const m = STATE_CODES[c];
+  if (m)
+    return {
+      property_type: m.property_type,
+      property_usage_type: m.property_usage_type,
+      missing_reason: null,
+      rule: "state_code_table",
+      note: null,
+    };
+  if (!opts.emitted)
+    return {
+      property_type: null,
+      property_usage_type: null,
+      missing_reason: "enum_lacks_value",
+      rule: null,
+      note: null,
+    };
+  const has = opts.improvementCount > 0;
+  const shown = c === "" ? "(empty)" : c;
+  return {
+    property_type: has ? FALLBACK_WITH_IMPROVEMENT : FALLBACK_WITHOUT_IMPROVEMENT,
+    property_usage_type: null,
+    missing_reason: null,
+    rule: "improvement_fallback",
+    note: has
+      ? `state code ${shown} has no table entry; the record prints ${opts.improvementCount} improvement(s), so the generic type ${FALLBACK_WITH_IMPROVEMENT} is used (no residential or condominium claim)`
+      : `state code ${shown} has no table entry; the record prints no improvement, so the generic type ${FALLBACK_WITHOUT_IMPROVEMENT} is used`,
+  };
+}
 
 export interface PropertyFields {
   parcel_identifier: string;
   property_type: string | null;
   property_usage_type: string | null;
+  property_type_rule: PropertyTypeRule | null;
+  property_type_note: string | null;
   property_structure_built_year: number | null;
   property_legal_description_text: string | null;
   /** Unmapped source codes (kept out of the record, reported in the findings). */
   warnings: string[];
 }
 
-export function propertyFields(record: TcadRecord): PropertyFields {
+/**
+ * `yearBuilt` (A-04): the year from the recorded year-built rule (travis/tcad/year-built.ts);
+ * when absent, the A-02 reading of propertyProfile[0].imprvActualYearBuilt is used.
+ */
+export function propertyFields(record: TcadRecord, yearBuilt?: number | null): PropertyFields {
   const profile = record.propertyProfile[0];
   const code = (profile?.stateCd ?? "").trim();
-  const mapped = STATE_CODES[code];
-  const warnings = mapped ? [] : [`unmapped_state_code:${code || "(empty)"}`];
-  const year = profile?.imprvActualYearBuilt ?? null;
+  const type = propertyTypeFor(code, {
+    emitted: record.propType === "R",
+    improvementCount: improvementsOf(record as Record<string, unknown>).length,
+  });
+  const warnings = STATE_CODES[code] ? [] : [`unmapped_state_code:${code || "(empty)"}`];
+  const year = yearBuilt !== undefined ? yearBuilt : (profile?.imprvActualYearBuilt ?? null);
   const legal = (record.propertyLegalDescription[0]?.legalDescription ?? "").trim();
   return {
     parcel_identifier: pidOf(record),
-    property_type: mapped?.property_type ?? null,
-    property_usage_type: mapped?.property_usage_type ?? null,
+    property_type: type.property_type,
+    property_usage_type: type.property_usage_type,
+    property_type_rule: type.rule,
+    property_type_note: type.note,
     property_structure_built_year:
       year !== null && Number.isInteger(year) && year >= 1000 && year <= 9999 ? year : null,
     property_legal_description_text: legal === "" ? null : legal,
@@ -187,6 +309,8 @@ export interface SharedFilesInput {
   seed: SeedRow;
   /** Seed data-group schema CID from the live lexicon manifest. */
   seedCid: string;
+  /** A-04: year built by the recorded rule (see propertyFields). */
+  yearBuilt?: number | null;
 }
 
 /** The seed files and property.json, as file name → exact text. */
@@ -196,7 +320,7 @@ export function buildSharedFiles(input: SharedFilesInput): Record<string, string
   if (seed.parcel_id !== pID) throw new Error(`seed row ${seed.parcel_id} is not TCAD pID ${pID}`);
   const request = { ...TCAD_EXPORT_REQUEST };
   const point = pointOf(record);
-  const fields = propertyFields(record);
+  const fields = propertyFields(record, input.yearBuilt);
   const property: Record<string, unknown> = {
     source_http_request: request,
     request_identifier: pID,

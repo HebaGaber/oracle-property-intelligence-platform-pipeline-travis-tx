@@ -44,7 +44,7 @@ import {
   type Source,
 } from "./catalog.schema.js";
 import { discrepancyExplanationText, gapReasonText } from "./parcel-gap.js";
-import { computeGap, gisCountUrl } from "./probes/arcgis.js";
+import { computeGap, gapPercent, gisCountUrl } from "./probes/arcgis.js";
 import { main as runValidatorMain } from "./run-validator.js";
 import {
   amendCatalog,
@@ -272,12 +272,9 @@ function operatorEvidence(root: string, rel: string): Source["blocked_evidence"]
   return evidence.data;
 }
 
-/** |roll - GIS| / roll in percent via computeGap (3 decimals; the roll is the denominator). */
+/** |roll - GIS| / roll in percent via gapPercent (3 decimals; the roll is the denominator). */
 export function gapPct(roll: number, gis: number): number {
-  const gap = computeGap(
-    { value: roll, source_url: "https://example.invalid/", captured_at: "1970-01-01T00:00:00Z" },
-    { value: gis, source_url: "https://example.invalid/", captured_at: "1970-01-01T00:00:00Z" },
-  ).gap_pct;
+  const gap = gapPercent(roll, gis);
   if (gap === "unknown") throw new Refusal("the roll count is 0; a gap percentage is undefined");
   return gap;
 }
