@@ -8,7 +8,7 @@ test_case: A-13-TC-053, A-13-TC-054
 ac_reference: AC-10, FR-010
 severity: High
 status: Closed (fixed; re-tested PASS on the hosted preview, CI run 40185511164, code dc46a6d)
-found_by: unit run after the merge with A-11 (`groups the manifest's table parts by table`: expected 0 to be 225) and hosted run 40172676788 (TC-053 "the manifest lists tables", received 0)
+found_by: "unit run after the merge with A-11 (`groups the manifest's table parts by table`: expected 0 to be 225) and hosted run 40172676788 (TC-053 \"the manifest lists tables\", received 0)"
 found_date: 2026-10-25
 fix_branch: 013-explorer-and-pages
 fix_commit: 1912a7a

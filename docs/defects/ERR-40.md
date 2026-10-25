@@ -1,7 +1,7 @@
 ---
 id: ERR-40
 type: defect
-kind: test defect (harness): allowlist too narrow and unsettled clicks
+kind: "test defect (harness): allowlist too narrow and unsettled clicks"
 feature: FEAT-A13
 story: A-13
 test_case: A-13-TC-073

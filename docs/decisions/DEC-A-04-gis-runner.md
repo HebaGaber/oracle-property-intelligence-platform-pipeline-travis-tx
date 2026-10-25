@@ -3,7 +3,7 @@ id: DEC-A-04-gis-runner
 type: decision
 story: A-04
 title: "Page the Travis County GIS parcel layer from a GitHub-hosted US runner (Round 1 D-2)"
-status: Approved by the PO (HebaGaber) on 2026-10-21 (Round 1 D-2 and D-13: "US GitHub runner, 2 pushes (Recommended)")
+status: "Approved by the PO (HebaGaber) on 2026-10-21 (Round 1 D-2 and D-13: \"US GitHub runner, 2 pushes (Recommended)\")"
 created: 2026-10-22
 ---
 

@@ -8,7 +8,7 @@ test_case: apps/web/test/catalog.test.tsx "valid definition lists" (unit test, C
 ac_reference: AC-10, FR-010
 severity: Low
 status: Closed (fixed, 12 of 12 repeated runs and the full turbo pipeline pass locally; CI re-check on the commit that records it)
-found_by: CI run 39819086782 (workspace job: typecheck, lint, test, synth failed after 81 s on 9fbf5ff / 28fe75e)
+found_by: "CI run 39819086782 (workspace job: typecheck, lint, test, synth failed after 81 s on 9fbf5ff / 28fe75e)"
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
 fix_commit: (this commit)

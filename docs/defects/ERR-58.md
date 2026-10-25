@@ -8,7 +8,7 @@ test_case: A-13-TC-083
 ac_reference: AC-14 (accessibility, WCAG 2.2 AA)
 severity: Medium
 status: Closed (fixed; re-tested PASS, CI run 40185511164, code dc46a6d)
-found_by: hosted run 40181120042 (axe: `/runs/log: scrollable-region-focusable (serious, 1) main`)
+found_by: "hosted run 40181120042 (axe: `/runs/log: scrollable-region-focusable (serious, 1) main`)"
 found_date: 2026-10-25
 fix_branch: 013-explorer-and-pages
 fix_commit: ad2a9ef

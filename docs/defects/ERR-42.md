@@ -5,7 +5,7 @@ kind: product defect (layout, slow network)
 feature: FEAT-A13
 story: A-13
 test_case: A-13-TC-072 (also seen as a one-off in TC-080 runs)
-ac_reference: Edge 4 (390 px: no horizontal scroll), FR-018, NFR-002 (CLS)
+ac_reference: "Edge 4 (390 px: no horizontal scroll), FR-018, NFR-002 (CLS)"
 severity: Medium
 status: Closed (fixed, re-tested PASS on hosted build 34c8eaf, 2026-10-22)
 found_by: hosted Playwright run (general phase, 4 workers; 2 of 3 full runs)

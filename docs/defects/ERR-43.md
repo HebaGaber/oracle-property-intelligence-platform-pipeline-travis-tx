@@ -4,10 +4,10 @@ type: defect
 kind: product defect (layout)
 feature: FEAT-A13
 story: A-13
-test_case: smeargle run 3 (not caught by a Playwright case: the page body stays 390)
-ac_reference: Edge 4 (390 px: no horizontal scroll), FR-018, FR-023
+test_case: "smeargle run 3 (not caught by a Playwright case: the page body stays 390)"
+ac_reference: "Edge 4 (390 px: no horizontal scroll), FR-018, FR-023"
 severity: Medium
-status: Closed (fixed, re-checked on hosted build 34c8eaf: /help/mcp main 390 = 390 at 390 px)
+status: "Closed (fixed, re-checked on hosted build 34c8eaf: /help/mcp main 390 = 390 at 390 px)"
 found_by: smeargle hosted responsive check, build 015fbf9, /help/mcp at 390 px
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages

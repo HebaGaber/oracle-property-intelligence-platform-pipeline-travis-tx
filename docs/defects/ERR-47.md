@@ -4,10 +4,10 @@ type: defect
 kind: product defect (layout regression)
 feature: FEAT-A03
 story: A-03 (regressed by A-13)
-test_case: A-03-TC-NF-03 (tests/e2e/responsive.spec.ts, 'permits @ 390: first provenance line inside the first viewport')
+test_case: "A-03-TC-NF-03 (tests/e2e/responsive.spec.ts, 'permits @ 390: first provenance line inside the first viewport')"
 ac_reference: AC-2, AC-3, NFR-003
 severity: Medium
-status: Closed (fixed, re-tested PASS in CI run 39835352646: A-03-TC-NF-03)
+status: "Closed (fixed, re-tested PASS in CI run 39835352646: A-03-TC-NF-03)"
 found_by: CI run 39798211562 (hosted job), preview build 0e9be08 / 3efd120; regression of the first fix found by CI run 39808557005 (head c5c21f3)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages

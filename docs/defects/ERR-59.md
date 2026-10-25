@@ -8,7 +8,7 @@ test_case: A-13-TC-083 (flaky), A-13-TC-073, A-13-TC-074
 ac_reference: AC-5, FR-005
 severity: Medium
 status: Closed (fixed; re-tested, CI run 40185511164, code dc46a6d)
-found_by: hosted run 40185074747 (TC-083: Explore stayed `data-state="loading"` past 60 s)
+found_by: "hosted run 40185074747 (TC-083: Explore stayed `data-state=\"loading\"` past 60 s)"
 found_date: 2026-10-25
 fix_branch: 013-explorer-and-pages
 fix_commit: dc46a6d

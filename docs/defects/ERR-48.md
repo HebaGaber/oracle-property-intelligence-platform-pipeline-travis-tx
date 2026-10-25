@@ -6,7 +6,7 @@ feature: FEAT-A13
 story: A-13
 test_case: A-13-TC-008 (tests/e2e/A-13-explorer.spec.ts)
 severity: Low
-status: Closed (fixed, re-tested PASS in CI run 39835352646: A-13-TC-008)
+status: "Closed (fixed, re-tested PASS in CI run 39835352646: A-13-TC-008)"
 found_by: CI run 39808557005 (hosted job, head c5c21f3)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages

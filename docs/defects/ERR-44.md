@@ -7,7 +7,7 @@ story: A-13
 test_case: TC-081
 ac_reference: NFR LCP budget 2,500 ms (Lighthouse-mobile profile, 390 px)
 severity: Medium
-status: Closed (fixed, re-tested PASS on hosted build 2e14516: TC-081 data pages median LCP 2.28 to 2.41 s; the fix pushed in dfed5b0, its regression ERR-45 fixed in 32a3d60)
+status: "Closed (fixed, re-tested PASS on hosted build 2e14516: TC-081 data pages median LCP 2.28 to 2.41 s; the fix pushed in dfed5b0, its regression ERR-45 fixed in 32a3d60)"
 found_by: hosted vitals on build 5fdac1a (150 ms RTT, 1.6 Mbps, 4x CPU, median of 5)
 found_date: 2026-10-22
 fix_branch: 013-explorer-and-pages
