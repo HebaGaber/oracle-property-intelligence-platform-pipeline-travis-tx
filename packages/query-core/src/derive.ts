@@ -353,10 +353,11 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
       ELSE 'zip_not_zcta' END`,
   // v1.2: why an owner mailing ZIP/state is empty (no owner, no mailing address, or an export
   // without address fields).
-  owner_mailing_reason: `(kind, owner_reason, n_mailing, zips_emitted) AS CASE
+  owner_mailing_reason: `(kind, owner_reason, n_mailing, field_emitted) AS CASE
       WHEN kind = 'unknown' THEN coalesce(owner_reason, 'no_owner_record')
-      WHEN NOT zips_emitted THEN 'not_in_export'
-      ELSE 'no_mailing_address' END`,
+      WHEN coalesce(n_mailing, 0) = 0 THEN 'no_mailing_address'
+      WHEN NOT field_emitted THEN 'not_in_export'
+      ELSE 'source_missing' END`,
   owner_is_out_of_area: `(cls) AS CASE cls
       WHEN 'in_county' THEN false WHEN 'regional' THEN true WHEN 'out_of_area' THEN true END`,
   coordinate_source: `(lat, lon, permit_lat, permit_lon, geometry_url) AS CASE

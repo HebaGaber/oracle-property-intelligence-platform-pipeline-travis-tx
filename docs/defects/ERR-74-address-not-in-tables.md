@@ -10,8 +10,8 @@ status: Fixed for Run 3.1 (travis-full-run3-1-20261025), contract v1.2
 found_by: Task B (Roofing CRM) Run 3 data-gap questions 1 and 2, for HebaGaber
 found_date: 2026-10-25
 fix_branch: 011e-run3-1-permit-contractors
-fix_commit: pending
-retest_date: pending
+fix_commit: dfe2cbb (contract v1.2), review fixes on 011e-run3-1-permit-contractors after 4549e54
+retest_date: 2026-10-26
 closed_date: pending
 ---
 
@@ -43,6 +43,11 @@ PO (HebaGaber), 2026-10-26, option A: patch `export-tables` so a top-level `oneO
 - `packages/query-core`: `bindManifest` builds `meta.address_fields` (address text, ZIP, state; NULL columns for an older export); `v_property` gains `unnormalized_address`, `owner_mailing_postal_code`, `owner_mailing_state_code` (contract v1.2, additive); `owner_area_class` now reads real ZIPs.
 - The situs `city_name` / `postal_code` stay gaps with `source_missing`: TCAD prints the situs as one line.
 
-## Result
+## Result (2026-10-26)
 
-Trial on permits batch b01: only `address/part-00000.parquet` changed, and every other table part was byte-identical; 2,159 of 2,159 situs rows carry `unnormalized_address`. Full-run counts: see `specs/011-publish-and-runs/run3-1/` once the export finishes.
+- All 15 batches re-exported with the patched CLI; every export exited 0. The CAR files are not rebuilt (same CIDs as Run 3 for the 10 County CARs).
+- Row-for-row comparison with Run 3 (EXCEPT ALL both ways), `specs/011-publish-and-runs/run3-1/table-compare.md` (script `compare-tables.sh` beside it): all 21 County tables hold exactly Run 3's rows (address on its Run 3 columns); the Property Improvement tables hold Run 3's rows plus the 413 ERR-72 contractor companies and links, and 327 `properties` rows whose data-group root changed with them.
+- County table parts all get new bytes and CIDs: `export-tables` cuts row groups when the pending bytes of all tables together reach 64 MiB, and the wider address rows move those cuts. The permit batches stay under that budget, so there only `address` changed.
+- Coverage: situs `unnormalized_address` on 441,940 of 441,961 properties; `postal_code` on 408,833 of 409,205 owner mailing addresses (24,532 outside Texas).
+- Review: oracle round 2, 80/100 PASS; its findings 1 to 7 fixed before publishing (mailing reason `source_missing` when the address exists without a ZIP or state, stale docs, correction-note wording, patch digests, finish time).
+- Patch provenance and rebuild steps: `pipeline/publish/patches/README.md`.

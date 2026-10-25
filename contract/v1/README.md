@@ -93,9 +93,10 @@ permit whose `improvement_status` is null, whose `source_http_request` host is a
 ## Location, ZIP search and value
 
 The Travis export reaches a property's point only through **property_has_parcel → parcel_has_geometry → geometry**
-(the TCAD point). There is no `address_has_geometry` and no `property_has_tax` in the export, and
-`address` properties are not emitted, so there is no situs text, situs ZIP or owner mailing
-address in v1. A ZIP or place search therefore uses the travis-places gazetteer point of the ZIP
+(the TCAD point). There is no `address_has_geometry` and no `property_has_tax` in the export.
+From v1.2 (Run 3.1) the situs text (`unnormalized_address`) and the owner mailing ZIP/state are
+columns, but there is no separate situs ZIP column (TCAD prints the situs as one line). A ZIP or
+place search therefore uses the travis-places gazetteer point of the ZIP
 or place and a bounding box around it over `latitude`/`longitude`; it never matches a ZIP
 column. Market value is absent: no assessed or market value is published in v1.
 
@@ -173,7 +174,10 @@ different places; the same ZIPs now drive `owner_area_class`. The fields come fr
 `address` class the columns of its two shapes; the CAR files are unchanged. An earlier run binds
 the three columns as null with `not_in_export`. The situs `city_name` and `postal_code` stay gaps
 with `source_missing`: TCAD prints the situs as one line, so they are inside
-`unnormalized_address`. Details: `docs/defects/ERR-74-address-not-in-tables.md`.
+`unnormalized_address`. This reason now applies to every run, including runs bound before v1.2
+(they read `not_in_export` before), because the cause is the source, not the export. An owner with
+a mailing address that lacks a ZIP or state reads `source_missing`; `no_mailing_address` means the
+owner has none. Details: `docs/defects/ERR-74-address-not-in-tables.md`.
 
 ## Manifest coverage and profiles for consumers
 
@@ -223,11 +227,12 @@ These fields are **not columns** in v1. Each one appears in every row's `missing
 
 Two further notes from the pilot export:
 
-- **`address` properties are not emitted.** The lexicon `address` class is a top-level `oneOf`,
-  and `export-tables` writes only `cid`, `property_cid`, `data_group_cid` and
-  `request_identifier` for it. Situs text, city, ZIP and the owner mailing ZIP/state are therefore
-  not v1 columns (`not_in_export`); `owner_area_class` is `unknown` and `owner_is_out_of_area`
-  is null with reason `not_in_export`. Coordinates come from `geometry` (`coordinate_source = gis_centroid`).
+- **`address` properties in the pilot export.** The lexicon `address` class is a top-level
+  `oneOf`, and the unpatched `export-tables` writes only `cid`, `property_cid`,
+  `data_group_cid` and `request_identifier` for it, so on the pilot (and Runs 1 to 3) the v1.2
+  address columns are null with `not_in_export`, `owner_area_class` is `unknown` and
+  `owner_is_out_of_area` is null with reason `not_in_export`. From Run 3.1 the tables are
+  exported with the oneOf-columns patch and carry them (v1.2). Coordinates come from `geometry`.
 - **`property_cid`** is the property record's CID (`property.cid`, the `from_cid` of every
   `property_has_*` edge). The export's extra column also named `property_cid` is the Seed root
   CID, a different value; it is not used.

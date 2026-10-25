@@ -206,6 +206,7 @@ situs AS (
 area_env AS (
   SELECT (SELECT count(postal_code) FROM meta.address_zip) > 0 AS zips_emitted,
          (SELECT count(unnormalized_address) FROM meta.address_fields) > 0 AS address_text_emitted,
+         (SELECT count(state_code) FROM meta.address_fields) > 0 AS states_emitted,
          (SELECT count(*) FROM meta.zcta_area) > 0 AS lookup_loaded
 ),
 county_source AS (
@@ -237,6 +238,7 @@ base AS (
     m.mailing_zips AS owner_mailing_postal_code,
     m.mailing_states AS owner_mailing_state_code,
     env.address_text_emitted,
+    env.states_emitted,
     m.n_mailing,
     m.n_zip,
     env.zips_emitted,
@@ -340,7 +342,7 @@ SELECT
     CASE WHEN owner_mailing_postal_code IS NULL THEN miss('owner_mailing_postal_code',
       owner_mailing_reason(owner_kind, owner_reason, n_mailing, zips_emitted)) END,
     CASE WHEN owner_mailing_state_code IS NULL THEN miss('owner_mailing_state_code',
-      owner_mailing_reason(owner_kind, owner_reason, n_mailing, zips_emitted)) END,
+      owner_mailing_reason(owner_kind, owner_reason, n_mailing, states_emitted)) END,
     CASE WHEN owner_area_class = 'unknown' THEN miss('owner_area_class',
       owner_area_reason(owner_kind, owner_reason, n_mailing, n_zip, zips_emitted, lookup_loaded)) END,
     CASE WHEN owner_is_out_of_area(owner_area_class) IS NULL THEN miss('owner_is_out_of_area',

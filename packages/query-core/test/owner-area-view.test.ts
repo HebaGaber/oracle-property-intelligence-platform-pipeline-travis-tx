@@ -219,7 +219,9 @@ describe("v1.2 address columns (Run 3.1 export with address fields)", () => {
     expect(p(OUT)?.unnormalized_address).toBeNull();
     expect(reasonOf(p(OUT), "unnormalized_address")).toBe("source_missing");
     expect(reasonOf(p(NOMAIL), "owner_mailing_postal_code")).toBe("no_mailing_address");
-    expect(reasonOf(p(NOZIP), "owner_mailing_postal_code")).toBe("no_mailing_address");
+    // the owner has a mailing address, only its ZIP is empty
+    expect(reasonOf(p(NOZIP), "owner_mailing_postal_code")).toBe("source_missing");
+    expect(reasonOf(p(NOZIP), "owner_mailing_state_code")).toBe("source_missing");
     expect(reasonOf(p(NOSALE), "owner_mailing_state_code")).toBe("no_owner_record");
   });
 
