@@ -55,7 +55,6 @@ import {
   type PublishArgs,
 } from "../src/publish-run.js";
 import { filebaseEnvProblem, spawnRunner } from "../src/sequence.js";
-import { uploadTables } from "../src/tables-upload.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const DEFAULT_CLI = join(
@@ -167,8 +166,6 @@ async function main(): Promise<number> {
         return spawnRunner(cliPath, { cwd: REPO_ROOT, env: childEnv })(argv);
       },
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-      uploadTables: ({ input, env: childEnv, statePath, log: tlog }) =>
-        uploadTables({ input, env: childEnv, statePath, log: tlog }),
       log,
     },
     carFiles: { loadEnv, now, log },

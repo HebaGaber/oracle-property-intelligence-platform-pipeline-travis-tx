@@ -59,7 +59,6 @@ import {
   runsIndexBytes,
   verifyCommittedRuns,
 } from "./runs-index.js";
-import { TablesUploadFatal, type TablesUploadSummary } from "./tables-upload.js";
 import { FILEBASE_RPC_API, redact, secretValues, type CliResult } from "./sequence.js";
 
 export const PUBLISH_STEPS = [
@@ -390,17 +389,6 @@ export interface FilebaseStepDeps {
   sleep: (ms: number) => Promise<void>;
   log: (line: string) => void;
   attempts?: number;
-  /**
-   * Uploads a tables directory in-process with per-request timeouts and retries (ERR-33). When
-   * absent, tables go through `elephant-cli upload` like the CARs. `statePath` is the resume
-   * sidecar next to the receipt.
-   */
-  uploadTables?: (args: {
-    input: string;
-    env: NodeJS.ProcessEnv;
-    statePath: string;
-    log: (line: string) => void;
-  }) => Promise<TablesUploadSummary>;
 }
 
 function filebaseStep(deps: FilebaseStepDeps): StepImpl {
@@ -448,26 +436,11 @@ function filebaseStep(deps: FilebaseStepDeps): StepImpl {
           let result: CliResult | undefined;
           let failure = "";
           try {
-            if (unit.kind === "tables" && deps.uploadTables !== undefined) {
-              const summary = await deps.uploadTables({
-                input,
-                env,
-                statePath: `${final}.parts.state`,
-                log: (line) => deps.log(redact(line, secrets)),
-              });
-              writeFileSync(partial, JSON.stringify(summary, null, 2));
-              result = { code: 0, stdout: "", stderr: "" };
-            } else {
-              result = await deps.runCli(
-                ["upload", input, "--api", FILEBASE_RPC_API, "--output-json", partial],
-                env,
-              );
-            }
+            result = await deps.runCli(
+              ["upload", input, "--api", FILEBASE_RPC_API, "--output-json", partial],
+              env,
+            );
           } catch (error) {
-            if (error instanceof TablesUploadFatal) {
-              rmSync(partial, { force: true });
-              throw new Error(`${unit.id}: ${redact(message(error), secrets)}`, { cause: error });
-            }
             failure = message(error);
           }
           if (result !== undefined && result.code === 0 && existsSync(partial)) {
