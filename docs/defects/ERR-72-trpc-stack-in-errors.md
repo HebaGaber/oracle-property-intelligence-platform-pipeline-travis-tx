@@ -6,13 +6,13 @@ story: A-16
 test_case: smoke after the A-16 deploy (`admin.me` signed out); unit pin in apps/api/test (error shape)
 ac_reference: AC-8 (refusal logged without the token; nothing internal exposed)
 severity: Medium
-status: Fixed in code; closes on the next CountyLensApi deploy and re-test
+status: Closed 2026-10-26: CountyLensApi redeployed (191 s, PO-approved); GET /trpc/admin.me signed out answers 401 with no `stack` in the body
 found_by: Claude (main session) for HebaGaber
 found_date: 2026-10-26
 fix_branch: 016-cost-and-admin
-fix_commit: pending
-retest_date: pending
-closed_date: pending
+fix_commit: 814dbb6
+retest_date: 2026-10-26
+closed_date: 2026-10-26
 ---
 
 # ERR-72: tRPC error responses carried a server stack trace
