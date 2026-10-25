@@ -10,6 +10,11 @@
 // line with `procedure = explore.search` and `queryDurationMs` (returned here, summed over the
 // statements), and the `duckdb.query` X-Ray subsegment. Engine failures become
 // INTERNAL_SERVER_ERROR with a plain message: no stack, no SQL, no engine text.
+// A-16 AC-13: a full-county run is read from its per-run Explore index (engine/explore-index.ts).
+// A run with no index, or with an index built from other view SQL, is a typed
+// PRECONDITION_FAILED whose message ends with the reason code (`index_not_built` / `index_stale`),
+// never a 29 s timeout. The out-of-area owner filter on a run that publishes no owner area answers
+// `owner_area: { status: "not_published", … }`, so an empty list is never read as "none".
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { CidV1 } from "@countylens/contract";
@@ -27,11 +32,30 @@ import {
   viewsReadBy,
   type ExploreResult,
 } from "@countylens/query-core";
-import { bindOnce, timedQuery } from "../engine/duckdb-node.js";
+import { bindOnce, ownerAreaPublished, timedQuery } from "../engine/duckdb-node.js";
+import { isIndexUnavailable } from "../engine/explore-index.js";
 import { middleware, publicProcedure, router } from "../trpc.js";
 
 export const EXPLORE_ENGINE_ERROR = "The search could not run on the server; try again";
 export const EXPLORE_PLACE_ERROR = "place is not in the Travis County gazetteer";
+
+/** Reason for an out-of-area owner filter on a run that publishes no owner area. */
+export const OWNER_AREA_NOT_PUBLISHED = "owner area not published in this run";
+
+/** Present only when `ooa` was asked and the run carries no owner area at all. */
+export interface OwnerAreaNotice {
+  readonly status: "not_published";
+  readonly reason: "owner_area_not_published";
+  readonly message: typeof OWNER_AREA_NOT_PUBLISHED;
+}
+
+export type ExploreSearchOutput = ExploreResult & { owner_area?: OwnerAreaNotice };
+
+export const OWNER_AREA_NOTICE: OwnerAreaNotice = {
+  status: "not_published",
+  reason: "owner_area_not_published",
+  message: OWNER_AREA_NOT_PUBLISHED,
+};
 
 const { lat, lon, radiusMi, roof, openYrs, tenure } = EXPLORE_BOUNDS;
 
@@ -113,7 +137,7 @@ export const exploreRouter = router({
   search: publicProcedure
     .use(plainBadRequest)
     .input(ExploreSearchInput)
-    .query(async ({ input }): Promise<ExploreResult> => {
+    .query(async ({ input }): Promise<ExploreSearchOutput> => {
       const area = resolveArea(input.area);
       const centre = { lat: area.lat, lon: area.lon };
       const sql = exploreSearchSql({
@@ -150,7 +174,12 @@ export const exploreRouter = router({
             miles_outside: milesOutside(r, input.radius_mi),
           }));
         }
+        const ownerArea =
+          input.ooa === true && !(await ownerAreaPublished(input.manifestCid))
+            ? { owner_area: OWNER_AREA_NOTICE }
+            : {};
         return {
+          ...ownerArea,
           total_within_r: total,
           tenure_unknown: tenureUnknown,
           rows,
@@ -162,6 +191,8 @@ export const exploreRouter = router({
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
+        if (isIndexUnavailable(error))
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: error.message });
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: EXPLORE_ENGINE_ERROR });
       }
     }),
