@@ -60,9 +60,11 @@ prop AS (
   SELECT * FROM county.property
   QUALIFY row_number() OVER (PARTITION BY cid ORDER BY _part) = 1
 ),
--- Both coordinates from one geometry row: the lowest-cid geometry that has both.
+-- Both coordinates from one geometry row: the lowest-cid geometry that has both. geometry_url is the
+-- GET stamped on that row: the City of Austin address-point layer for an address_point (ADR 0003).
 geo AS (
-  SELECT pp.from_cid AS property_cid, g.latitude, g.longitude
+  SELECT pp.from_cid AS property_cid, g.latitude, g.longitude,
+         source_url(g.source_http_request) AS geometry_url
   FROM (SELECT DISTINCT from_cid, to_cid FROM county.property_has_parcel) pp
   JOIN (SELECT DISTINCT from_cid, to_cid FROM county.parcel_has_geometry) pg
     ON pg.from_cid = pp.to_cid
@@ -198,7 +200,7 @@ base AS (
     CAST(p.property_structure_built_year AS INTEGER) AS property_structure_built_year,
     geo.latitude,
     geo.longitude,
-    coordinate_source(geo.latitude, geo.longitude, NULL::DOUBLE, NULL::DOUBLE) AS coordinate_source,
+    coordinate_source(geo.latitude, geo.longitude, NULL::DOUBLE, NULL::DOUBLE, geo.geometry_url) AS coordinate_source,
     coalesce(CAST(ra.replacement_date AS VARCHAR), CAST(ra.new_date AS VARCHAR),
       sr.roof_date) AS roof_date,
     ra.replacement_date IS NOT NULL AS replacement_match,

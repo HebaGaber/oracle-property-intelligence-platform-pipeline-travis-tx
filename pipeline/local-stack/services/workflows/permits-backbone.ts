@@ -76,7 +76,7 @@ async function parcelsFor(sql: postgres.Sql, pids: readonly string[]): Promise<M
   const rows = await sql<ParcelDbRow[]>`
     SELECT request_identifier, geo_id, payload_redacted, property_structure_built_year,
            export_point_lat, export_point_lon, export_point_kind,
-           latitude, longitude, coordinate_source
+           latitude, longitude, coordinate_source, coordinate_source_url
     FROM parcels
     WHERE request_identifier IN ${sql(pids as string[])}`;
   return new Map(rows.map((r) => [r.request_identifier, r]));

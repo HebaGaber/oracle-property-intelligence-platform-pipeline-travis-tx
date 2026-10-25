@@ -28,7 +28,9 @@
     "approve-exception": "tsx travis/discovery/approve-exception.ts",
     "render-coverage": "tsx travis/discovery/render-coverage.ts",
     "backfill-amendments": "tsx travis/discovery/backfill-amendments.ts",
-    "backbone": "tsx travis/backbone/cli.ts"
+    "backbone": "tsx travis/backbone/cli.ts",
+    "fetch-address-layer": "tsx travis/gis/fetch-address-layer.ts",
+    "address-point-evidence": "tsx travis/gis/address-point-evidence.ts"
   },
   "dependencies": {
     "@dsnp/parquetjs": "^1.8.8",

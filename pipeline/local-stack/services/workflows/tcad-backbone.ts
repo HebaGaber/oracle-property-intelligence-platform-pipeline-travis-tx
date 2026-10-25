@@ -4,7 +4,7 @@
 //               (track tcad); WAITING_HUMAN is a durable promise `resolve:<source>:<attempt>`
 //   status      {status, reason?, records?, loaded?} for the CLI (exit 3 while waiting)
 //   resolve     a human's answer to the waiting promise: {attempt, action: download | abort}
-//   writeGroup  the County group (R only; geometry only for coordinate_source = gis_centroid)
+//   writeGroup  the County group (R only; geometry only for coordinate_source = gis_centroid or address_point)
 //   joinProof   the read-only 1,000-row geoID → pID proof + reverse proof
 // The Query DB is read here only (coordinates, join proof); the Loader is the only writer.
 import { readdirSync } from "node:fs";
@@ -100,7 +100,12 @@ const queryDb = lazyQueryDb();
 let client: SourceClient | null = null;
 const sourceClient = (): SourceClient => (client ??= createSourceClient({ hostSpacing: true }));
 
-type Coord = { latitude: number | null; longitude: number | null; source: "gis_centroid" | "permit_point" | "none" };
+type Coord = {
+  latitude: number | null;
+  longitude: number | null;
+  source: "gis_centroid" | "address_point" | "permit_point" | "none";
+  sourceUrl: string | null;
+};
 
 /** Undefined table / column: the GIS migration (0201) is not applied, so coordinates are unassembled. */
 const isUnassembled = (e: unknown): boolean =>
@@ -113,19 +118,19 @@ export async function coordinateRows(
   pids?: readonly string[],
 ): Promise<{ coords: Map<string, Coord>; assembled: boolean }> {
   try {
-    type CoordRow = { request_identifier: string; latitude: number | null; longitude: number | null; coordinate_source: string | null };
+    type CoordRow = { request_identifier: string; latitude: number | null; longitude: number | null; coordinate_source: string | null; coordinate_source_url: string | null };
     const rows =
       pids === undefined
         ? await sql<CoordRow[]>`
-      SELECT request_identifier, latitude, longitude, coordinate_source FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R'`
+      SELECT request_identifier, latitude, longitude, coordinate_source, coordinate_source_url FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R'`
         : await sql<CoordRow[]>`
-      SELECT request_identifier, latitude, longitude, coordinate_source FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R' AND request_identifier IN ${sql(pids as string[])}`;
+      SELECT request_identifier, latitude, longitude, coordinate_source, coordinate_source_url FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R' AND request_identifier IN ${sql(pids as string[])}`;
     return {
       assembled: true,
       coords: new Map(
         rows.map((r) => [
           r.request_identifier,
-          { latitude: r.latitude, longitude: r.longitude, source: (r.coordinate_source ?? "none") as Coord["source"] },
+          { latitude: r.latitude, longitude: r.longitude, source: (r.coordinate_source ?? "none") as Coord["source"], sourceUrl: r.coordinate_source_url },
         ]),
       ),
     };
@@ -141,7 +146,7 @@ export async function coordinateRows(
       SELECT request_identifier FROM parcels WHERE job_id = ${jobId} AND prop_type = 'R' AND request_identifier IN ${sql(pids as string[])}`;
     return {
       assembled: false,
-      coords: new Map(rows.map((r) => [r.request_identifier, { latitude: null, longitude: null, source: "none" as const }])),
+      coords: new Map(rows.map((r) => [r.request_identifier, { latitude: null, longitude: null, source: "none" as const, sourceUrl: null }])),
     };
   }
 }

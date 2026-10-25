@@ -132,6 +132,12 @@ export interface CountyTransformInput {
    * Absent means no upper bound (unit tests of the shape only).
    */
   asOf?: string;
+  /**
+   * A-11 Run 3 (ADR 0003): the GET that returned the point when it did NOT come from the TCAD
+   * export (the City of Austin address-point record). Stamped on geometry.json only; every other
+   * entity keeps the TCAD export request.
+   */
+  geometrySourceUrl?: string | null;
 }
 
 export type OwnerOutcome =
@@ -286,6 +292,9 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
   if (point) {
     files["geometry.json"] = jsonFile({
       ...base,
+      ...(input.geometrySourceUrl
+        ? { source_http_request: { method: "GET", url: input.geometrySourceUrl } }
+        : {}),
       latitude: point.latitude,
       longitude: point.longitude,
       polygon: null,

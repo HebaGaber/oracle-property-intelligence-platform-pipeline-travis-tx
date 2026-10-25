@@ -237,7 +237,7 @@ Two further notes from the pilot export:
 | `property_structure_built_year` | `INTEGER` | yes | Year the main structure was built | property.property_structure_built_year | `source_missing` |
 | `latitude` | `DOUBLE` | yes | Latitude | geometry.latitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
 | `longitude` | `DOUBLE` | yes | Longitude | geometry.longitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
-| `coordinate_source` | `VARCHAR` | no | Where the coordinates came from (`gis_centroid`, `permit_point`, `none`) | derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none | never empty |
+| `coordinate_source` | `VARCHAR` | no | Where the coordinates came from (`gis_centroid`, `address_point`, `permit_point`, `none`) | derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0003), permit address → permit_point (address not in export), else none | never empty |
 | `roof_date` | `VARCHAR` | yes | Roof date, YYYY[-MM[-DD]] | latest accepted terminal date (completion_date or permit_close_date, ≤ as_of, ≥ issue date) of a closed Roofing permit via property_has_property_improvement (Replacement, else New); else structure.roof_date via property_has_structure (TCAD built year only) | `no_roof_date` |
 | `roof_age_years` | `INTEGER` | yes | Roof age in whole years; 0 allowed | derived: whole years from roof_date to as_of (never structure.roof_age_years) | `no_roof_date` |
 | `roof_age_basis` | `VARCHAR` | no | Evidence behind roof_date (`permit`, `new_construction`, `built_year`, `unknown`) | derived (mew B.5) | never empty |
@@ -269,7 +269,7 @@ Two further notes from the pilot export:
 | `property_structure_built_year` | `INTEGER` | yes | Year the main structure was built | property.property_structure_built_year | `source_missing` |
 | `latitude` | `DOUBLE` | yes | Latitude | geometry.latitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
 | `longitude` | `DOUBLE` | yes | Longitude | geometry.longitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
-| `coordinate_source` | `VARCHAR` | no | Where the coordinates came from (`gis_centroid`, `permit_point`, `none`) | derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none | never empty |
+| `coordinate_source` | `VARCHAR` | no | Where the coordinates came from (`gis_centroid`, `address_point`, `permit_point`, `none`) | derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0003), permit address → permit_point (address not in export), else none | never empty |
 | `roof_date` | `VARCHAR` | yes | Roof date, YYYY[-MM[-DD]] | latest accepted terminal date (completion_date or permit_close_date, ≤ as_of, ≥ issue date) of a closed Roofing permit via property_has_property_improvement (Replacement, else New); else structure.roof_date via property_has_structure (TCAD built year only) | `no_roof_date` |
 | `roof_age_years` | `INTEGER` | yes | Roof age in whole years; 0 allowed | derived: whole years from roof_date to as_of (never structure.roof_age_years) | `no_roof_date` |
 | `roof_age_basis` | `VARCHAR` | no | Evidence behind roof_date (`permit`, `new_construction`, `built_year`, `unknown`) | derived (mew B.5) | never empty |

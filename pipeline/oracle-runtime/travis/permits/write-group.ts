@@ -49,7 +49,9 @@ export interface ParcelDbRow {
   /** The assembled coordinate (0201_gis.sql); the County group overrides geometry from it. */
   latitude: number | null;
   longitude: number | null;
-  coordinate_source: "gis_centroid" | "permit_point" | "none" | null;
+  coordinate_source: "gis_centroid" | "address_point" | "permit_point" | "none" | null;
+  /** parcels.coordinate_source_url: the address-point record URL (ADR 0003), else unused. */
+  coordinate_source_url?: string | null;
 }
 
 /**
@@ -134,6 +136,7 @@ export function recordAndSeedOf(parcel: ParcelDbRow): {
       latitude: parcel.latitude,
       longitude: parcel.longitude,
       source: parcel.coordinate_source ?? "none",
+      sourceUrl: parcel.coordinate_source_url ?? null,
     },
   });
   const pID = String(record.pID);

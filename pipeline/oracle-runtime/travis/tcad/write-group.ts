@@ -4,7 +4,9 @@
 // utils/batch-input.js), each holding `data/<file>` from transformTcadCounty.
 // Geometry (oracle disagreements #2, #7; plan CT-8): written only when the assembled
 // `coordinate_source = gis_centroid` (GIS feature, export point or condo building point);
-// a permit point is never written as geometry (it would read `gis_centroid` publicly). Before
+// a permit point is never written as geometry (it would read `gis_centroid` publicly). A
+// City of Austin address point (`coordinate_source = address_point`, ADR 0003) is written with its
+// own provenance URL on geometry.json, so the public source reads address_point. Before
 // the coordinates are assembled (pilot), the `real` TCAD export point stands in, rule
 // `unassembled_pilot_export_point`. Every input record is the redacted one (redact.ts): a
 // confidential owner never reaches a zip.
@@ -35,7 +37,9 @@ export interface GroupInput {
   coordinate?: {
     latitude: number | null;
     longitude: number | null;
-    source: "gis_centroid" | "permit_point" | "none";
+    source: "gis_centroid" | "address_point" | "permit_point" | "none";
+    /** parcels.coordinate_source_url; required (provenance) when source is address_point. */
+    sourceUrl?: string | null;
   };
 }
 
@@ -66,7 +70,8 @@ export function roofAgeEntryOf(row: RoofAgeEstimateRow): RoofAgeEntry {
   return { pID: row.tcad_id, roof_date: String(year), anchor: "property_built_year" };
 }
 
-export type GeometryRule = "gis_centroid" | "unassembled_pilot_export_point" | "none";
+export type GeometryRule =
+  "gis_centroid" | "address_point" | "unassembled_pilot_export_point" | "none";
 
 export interface CountyGroup {
   pID: string;
@@ -115,21 +120,38 @@ export function parsePidList(
 function geometryFor(input: Pick<GroupInput, "exportPoint" | "coordinate">): {
   point: { lat: number; lon: number } | null;
   rule: GeometryRule;
+  /** The GET to stamp on geometry.json when the point is not from the TCAD export. */
+  sourceUrl: string | null;
 } {
   const c = input.coordinate;
   if (c !== undefined) {
     if (c.source === "gis_centroid" && c.latitude !== null && c.longitude !== null) {
-      return { point: { lat: c.latitude, lon: c.longitude }, rule: "gis_centroid" };
+      return {
+        point: { lat: c.latitude, lon: c.longitude },
+        rule: "gis_centroid",
+        sourceUrl: null,
+      };
     }
-    return { point: null, rule: "none" };
+    // ADR 0003: an exact, unique City of Austin address point is publishable, and only with its
+    // own provenance URL (the public coordinate_source must not read as the TCAD export).
+    if (c.source === "address_point" && c.latitude !== null && c.longitude !== null) {
+      if (!c.sourceUrl) throw new Error("address_point coordinate has no source URL (provenance)");
+      return {
+        point: { lat: c.latitude, lon: c.longitude },
+        rule: "address_point",
+        sourceUrl: c.sourceUrl,
+      };
+    }
+    return { point: null, rule: "none", sourceUrl: null };
   }
   if (input.exportPoint !== null && input.exportPoint.kind === "real") {
     return {
       point: { lat: input.exportPoint.lat, lon: input.exportPoint.lon },
       rule: "unassembled_pilot_export_point",
+      sourceUrl: null,
     };
   }
-  return { point: null, rule: "none" };
+  return { point: null, rule: "none", sourceUrl: null };
 }
 
 /** What the shared-file inputs are built from: a GroupInput without its group bookkeeping. */
@@ -144,6 +166,8 @@ export interface SharedFilesSource {
   seed: SeedRow;
   yearBuilt: number | null;
   geometry_rule: GeometryRule;
+  /** Set only for rule address_point: stamped on geometry.json (ADR 0003). */
+  geometry_source_url: string | null;
 }
 
 /**
@@ -154,14 +178,20 @@ export interface SharedFilesSource {
  * same property CID in both archives.
  */
 export function sharedFilesInputOf(input: SharedSource): SharedFilesSource {
-  const { point, rule } = geometryFor(input);
+  const { point, rule, sourceUrl } = geometryFor(input);
   const raw = {
     ...input.record,
     geometry: point === null ? null : `[${point.lat}, ${point.lon}]`,
   };
   const record = parseTcadRecord(raw);
   const seed = buildSeedRow(record, input.geoId ?? "");
-  return { record, seed, yearBuilt: input.yearBuilt, geometry_rule: rule };
+  return {
+    record,
+    seed,
+    yearBuilt: input.yearBuilt,
+    geometry_rule: rule,
+    geometry_source_url: sourceUrl,
+  };
 }
 
 /** County files for every R input; non-R inputs are listed out_of_scope. */
@@ -178,11 +208,18 @@ export function planCountyGroup(
       out.push({ pID: input.pID, prop_type: input.propType });
       continue;
     }
-    const { record, seed, yearBuilt, geometry_rule: rule } = sharedFilesInputOf(input);
+    const {
+      record,
+      seed,
+      yearBuilt,
+      geometry_rule: rule,
+      geometry_source_url: geometrySourceUrl,
+    } = sharedFilesInputOf(input);
     const t = transformTcadCounty({
       record,
       seed,
       cids,
+      geometrySourceUrl,
       roofAge: input.roofAge ?? null,
       yearBuilt,
       ...(asOf !== undefined ? { asOf } : {}),

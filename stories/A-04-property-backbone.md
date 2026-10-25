@@ -144,7 +144,7 @@ Not a UI story. Its counts appear on `design/prototype/Coverage1440.dc.html` and
 
 ## Out of scope
 
-- Address geocoding services (no invented coordinates).
+- Address geocoding services (no invented coordinates). **Amended 2026-10-25 (PO decision, ADR 0003):** one narrow exception, an exact and unique match of the situs to the City of Austin public address-point layer may give a point (rule `address_point`, lowest priority, never over a GIS point); nothing else is ever turned into a point and no geocoding service is used.
 - The map view (not Task A scope, `docs/02-design.md` § 3).
 - Contractor identity and BBB, merges and roof age (A-07, which now includes A-08 to A-10).
 - Publication and the scheduled refresh (A-11, which now includes A-12).
@@ -166,7 +166,7 @@ PO-approved in Round 1 (answers word for word in `specs/004-property-backbone/ru
 - **D-7 confidentiality:** the JSON export has no §25.025 owner flag (full key scan) and no legacy data is on disk. Conservative A-02 rule: owner fields redacted before `validate` on accounts with any `sales[].confidentialCode` / `confidentialSale` (15,410 R); the property is loaded and counted, not subtracted; limitation "source export carries no §25.025 marker; conservative suppression on sale-confidentiality codes"; no confidential name in any output.
 - **D-4 anchors:** geoID `0208011301` is not in the export, so permit 1982-012866 BP is the documented negative (`no_tcad_geoid`, kept and counted); a second real anchor is picked in the pilot from Austin reroof permits whose `tcad_id` resolves, and logged. `0223120506` → pID 221829.
 - **D-2 GIS venue:** a new fetch-only workflow on a GitHub-hosted US runner (push-triggered on `004-property-backbone`, paths filter, `contents: read`, no secrets, egress country logged, minimal `outFields`, artifact only, never the Query DB); push 1 pilot, push 2 full; `if: false` afterwards; `docs/decisions/DEC-A-04-gis-runner.md`.
-- **D-8:** no Socrata app token. **D-9:** the frozen A-02 contract and profile win on names and classification; the oracle design wins on mechanics (all 15 disagreement rows in `agent-design.md` accepted). Never geocode; a shared geoID is never silently linked.
+- **D-8:** no Socrata app token. **D-9:** the frozen A-02 contract and profile win on names and classification; the oracle design wins on mechanics (all 15 disagreement rows in `agent-design.md` accepted). Never geocode; a shared geoID is never silently linked. **Amended 2026-10-25 (PO decision, ADR 0003):** one narrow exception, an exact and unique match of the situs to the City of Austin public address-point layer may give a point (rule `address_point`, lowest priority, never over a GIS point); nothing else is ever turned into a point and no geocoding service is used.
 - **NFR-002 numbers:** GIS concurrency ≤ 2, Austin ≤ 1 request/s, backoff 1 s base / 60 s cap / 5 attempts / full jitter, stop on the first 403 with no retry; no new TCAD download without a stop.
 
 ---

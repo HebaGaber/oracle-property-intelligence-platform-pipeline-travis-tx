@@ -107,13 +107,25 @@ export function zctaAreaRows(): { zcta: string; area_class: Exclude<AreaClass, "
   });
 }
 
+/**
+ * A-11 Run 3 (ADR 0003): a geometry whose source_http_request is a GET on this City of Austin
+ * layer is an address point; every other geometry is the TCAD/GIS point (`gis_centroid`).
+ */
+export const ADDRESS_POINT_LAYER_MARKER =
+  "services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/";
+
 export function coordinateSource(
   lat: number | null,
   lon: number | null,
   permitLat: number | null,
   permitLon: number | null,
-): "gis_centroid" | "permit_point" | "none" {
-  if (lat !== null && lon !== null) return "gis_centroid";
+  geometryUrl: string | null = null,
+): "gis_centroid" | "address_point" | "permit_point" | "none" {
+  if (lat !== null && lon !== null) {
+    return geometryUrl !== null && geometryUrl.includes(ADDRESS_POINT_LAYER_MARKER)
+      ? "address_point"
+      : "gis_centroid";
+  }
   if (permitLat !== null && permitLon !== null) return "permit_point";
   return "none";
 }
@@ -320,8 +332,10 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
       ELSE 'zip_not_zcta' END`,
   owner_is_out_of_area: `(cls) AS CASE cls
       WHEN 'in_county' THEN false WHEN 'regional' THEN true WHEN 'out_of_area' THEN true END`,
-  coordinate_source: `(lat, lon, permit_lat, permit_lon) AS CASE
-      WHEN lat IS NOT NULL AND lon IS NOT NULL THEN 'gis_centroid'
+  coordinate_source: `(lat, lon, permit_lat, permit_lon, geometry_url) AS CASE
+      WHEN lat IS NOT NULL AND lon IS NOT NULL
+        THEN CASE WHEN coalesce(contains(geometry_url, '${ADDRESS_POINT_LAYER_MARKER}'), false)
+                  THEN 'address_point' ELSE 'gis_centroid' END
       WHEN permit_lat IS NOT NULL AND permit_lon IS NOT NULL THEN 'permit_point'
       ELSE 'none' END`,
   status_class_of: `(juris, status, issue_date) AS (

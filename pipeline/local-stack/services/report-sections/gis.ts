@@ -56,6 +56,8 @@ export interface CoordinateReads {
     stats: {
       multi_feature: { pids: number; extra_features: number; rule: string };
       condo_building_point: { accounts: number; buildings: number; rule: string };
+      /** Rank 4 outcomes (ADR 0003); absent in watermarks written before Run 3. */
+      address_point?: Record<string, number | string>;
       gis_features_without_roll_account: number;
       permit_far_from_gis: number;
       interior_point: number;
@@ -121,10 +123,11 @@ export function buildCoordinatesSection(r: CoordinateReads) {
     with_point_r: r.coverage.with_point_r,
     coverage_r: r.coverage.coverage_r,
     non_land_account: r.coverage.non_land_account,
-    by_source: { gis_centroid: 0, permit_point: 0, none: 0, ...r.bySource },
+    by_source: { gis_centroid: 0, address_point: 0, permit_point: 0, none: 0, ...r.bySource },
     by_rule: r.byRule,
     gap_by_reason: r.gapByReason,
     condo_building_point: stats.condo_building_point,
+    address_point: (stats as { address_point?: unknown }).address_point ?? null,
     multi_feature: stats.multi_feature,
     gis_features_without_roll_account: stats.gis_features_without_roll_account,
     permit_far_from_gis: stats.permit_far_from_gis,

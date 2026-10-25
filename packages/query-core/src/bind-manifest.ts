@@ -49,7 +49,8 @@ export const REQUIRED_TABLES: readonly RequiredTable[] = [
   {
     group: "county",
     table: "geometry",
-    columns: { ...ENTITY, latitude: "DOUBLE", longitude: "DOUBLE" },
+    // source_http_request: the coordinate source (address_point vs gis_centroid, ADR 0003).
+    columns: { ...ENTITY, latitude: "DOUBLE", longitude: "DOUBLE", source_http_request: V },
   },
   { group: "county", table: "structure", columns: { ...ENTITY, roof_date: V } },
   {

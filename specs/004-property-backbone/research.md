@@ -42,7 +42,7 @@ Phase 0 of [plan.md](plan.md). The Technical Context has no open "NEEDS CLARIFIC
   4. `permit_point`: mode of the linked Austin permits' lat/lon at 6 decimals, tie → latest `issue_date`; Query DB only (`coordinate_source = permit_point`, `coordinate_source_url` = the permit's Socrata URL). If a GIS point exists and the permit point is > 0.5 mi away → keep GIS, `coordinate_review_flag = permit_far_from_gis` on the parcel and the permit.
   5. Else null with exactly one `coordinate_reason`: `gis_null_geometry` (feature exists, geometry null), `no_permit_point` (no feature and no permit point but a linked permit exists), `no_gis_feature` (otherwise).
   Non-R accounts: `coordinate_reason = non_land_account`, no point. A4/F4 are not assumed to be condos; the rule depends only on the shared geoID (disagreement #8).
-- **Rationale:** D-1; the 99% depends on the condo rule, not GIS paging (oracle fact 3); never geocode.
+- **Rationale:** D-1; the 99% depends on the condo rule, not GIS paging (oracle fact 3); never geocode. **Amended 2026-10-25 (PO decision, ADR 0003):** one narrow exception, an exact and unique match of the situs to the City of Austin public address-point layer may give a point (rule `address_point`, lowest priority, never over a GIS point); nothing else is ever turned into a point and no geocoding service is used.
 - **Alternatives:** nearest neighbour (invents points); Austin `condominium` flag as identity (only a hint).
 
 ## R-06 Centroid vs interior point

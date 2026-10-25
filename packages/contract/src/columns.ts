@@ -45,7 +45,7 @@ export const COLUMN_ENUMS = {
   bbb_status: ["rated", "not_found", "blocked", "not_checked"],
   status_class: ["open", "stalled", "closed"],
   owner_area_class: ["in_county", "regional", "out_of_area", "unknown"],
-  coordinate_source: ["gis_centroid", "permit_point", "none"],
+  coordinate_source: ["gis_centroid", "address_point", "permit_point", "none"],
   tenure_basis: ["sale_date", "deed_date", "unknown"],
   contractor_resolution: ["resolved", "unresolved"],
   owner_kind: ["person", "company", "unknown"],
@@ -232,7 +232,7 @@ const V_PROPERTY: readonly Column[] = [
   enumCol(
     "coordinate_source",
     false,
-    "derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none",
+    "derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0003), permit address → permit_point (address not in export), else none",
     "Where the coordinates came from",
     null,
   ),
