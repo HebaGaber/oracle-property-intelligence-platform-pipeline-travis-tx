@@ -237,7 +237,11 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       // Step 5: one item per manifest source, in manifest order.
       const items = page.getByRole("list", { name: "Sources" }).getByRole("listitem");
       await expect(items, "one list item per manifest source").toHaveCount(manifest.sources.length);
-      expect(manifest.sources.length, "A-03 publishes two sources").toBe(2);
+      // Austin and TCAD at least; Run 3 adds austin-address-points (ADR-0004) after them.
+      expect(
+        manifest.sources.length,
+        "Austin and TCAD, plus any later source",
+      ).toBeGreaterThanOrEqual(2);
 
       for (const [position, source] of manifest.sources.entries()) {
         const item = items.nth(position);
