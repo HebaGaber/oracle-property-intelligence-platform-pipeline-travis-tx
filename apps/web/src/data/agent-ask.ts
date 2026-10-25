@@ -45,6 +45,14 @@ export const AgentMatch = z.object({
 });
 export type AgentMatch = z.infer<typeof AgentMatch>;
 
+/** The one run an answer is about (contracts/agent-ask.md `run`); optional so an older server validates. */
+export const AgentRun = z.object({
+  run_id: z.string(),
+  manifest_cid: z.string(),
+  as_of: z.string(),
+});
+export type AgentRun = z.infer<typeof AgentRun>;
+
 export const AgentAskResponse = z.object({
   answer: z.string(),
   how: z.string(),
@@ -53,6 +61,7 @@ export const AgentAskResponse = z.object({
   query: z.record(z.string(), z.unknown()),
   missing: z.array(MissingEntry),
   outcome: z.enum(AGENT_OUTCOMES),
+  run: AgentRun.optional(),
   // ERR-63: observable budgets; optional so an older server still validates.
   modelCalls: z.number().optional(),
   outputTokens: z.number().optional(),

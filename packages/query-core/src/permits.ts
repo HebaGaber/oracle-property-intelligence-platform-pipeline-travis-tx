@@ -81,10 +81,10 @@ function validateStatusClass(classes: readonly string[]): void {
 
 /** The WHERE clauses and the optional distance SELECT, shared by permitsSql and
  *  permitsCountSql so the two statements always agree on which rows are in scope. */
-function build(filter: PermitsFilter): { where: string[]; distanceSelect: string } {
+function build(filter: PermitsFilter, withGeo = true): { where: string[]; distanceSelect: string } {
   const where: string[] = [];
   let distanceSelect = "";
-  if (filter.centre) {
+  if (filter.centre && withGeo) {
     const { lat, lon, miles } = filter.centre;
     const { bbox, distance, radiusM } = geoFilter(lat, lon, miles);
     where.push(
@@ -106,7 +106,18 @@ function build(filter: PermitsFilter): { where: string[]; distanceSelect: string
   return { where, distanceSelect };
 }
 
-function orderClause(sort: PermitsFilter["sort"]): string {
+/** `nearest` needs a centre (dist_m is selected only then). Without one it falls back to the
+ *  county-wide default, open days descending; callers echo the sort actually applied. */
+export function effectivePermitSort(
+  sort: PermitsFilter["sort"],
+  hasCentre: boolean,
+): NonNullable<PermitsFilter["sort"]> {
+  if (sort === "nearest") return hasCentre ? "nearest" : "open_desc";
+  return sort ?? "open_desc";
+}
+
+function orderClause(sort: PermitsFilter["sort"], hasCentre: boolean): string {
+  sort = effectivePermitSort(sort, hasCentre);
   if (sort === "nearest") return "dist_m, r.cid";
   if (sort === "issue_desc") return "r.issue_date DESC NULLS LAST, r.cid";
   return "r.open_days DESC NULLS LAST, r.cid";
@@ -123,7 +134,7 @@ FROM v_roofing_permit r
 JOIN v_property p ON p.property_cid = r.property_cid${
     where.length > 0 ? `\nWHERE ${where.join("\n  AND ")}` : ""
   }
-ORDER BY ${orderClause(filter.sort)}
+ORDER BY ${orderClause(filter.sort, filter.centre !== undefined)}
 LIMIT ${limit}`;
 }
 
@@ -134,6 +145,21 @@ export function permitsCountSql(filter: PermitsFilter = {}): string {
   return `SELECT count(*) AS n
 FROM v_roofing_permit r
 JOIN v_property p ON p.property_cid = r.property_cid${
+    where.length > 0 ? `\nWHERE ${where.join("\n  AND ")}` : ""
+  }`;
+}
+
+/** Roofing permits an area search cannot place in the radius, counted with a LEFT JOIN so they are
+ *  reported instead of silently dropped. Uses only the filters that do not depend on the property
+ *  (permit_number, status_class, open_years_min): `property_link` = permits with no matching
+ *  v_property row; `coordinates` = permits whose property row has a null latitude or longitude. */
+export function permitsUnplacedCountSql(filter: PermitsFilter = {}): string {
+  const { where } = build(filter, false);
+  return `SELECT
+  coalesce(sum(CASE WHEN p.property_cid IS NULL THEN 1 ELSE 0 END), 0) AS property_link,
+  coalesce(sum(CASE WHEN p.property_cid IS NOT NULL AND (p.latitude IS NULL OR p.longitude IS NULL) THEN 1 ELSE 0 END), 0) AS coordinates
+FROM v_roofing_permit r
+LEFT JOIN v_property p ON p.property_cid = r.property_cid${
     where.length > 0 ? `\nWHERE ${where.join("\n  AND ")}` : ""
   }`;
 }

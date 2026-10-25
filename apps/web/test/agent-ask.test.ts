@@ -36,6 +36,19 @@ describe("askAgent", () => {
     expect(init?.signal).toBe(signal);
   });
 
+  it("accepts an optional run echo and keeps it; a malformed run is refused", async () => {
+    const run = { run_id: "r1", manifest_cid: "bafyx", as_of: "2026-10-21T10:35:16.000Z" };
+    const good = vi.fn<typeof fetch>(() => reply({ result: { data: { ...ok, run } } }));
+    const out = await askAgent({ prompt: "q" }, new AbortController().signal, good);
+    expect(out.run).toEqual(run);
+    const bad = vi.fn<typeof fetch>(() =>
+      reply({ result: { data: { ...ok, run: { run_id: "r1" } } } }),
+    );
+    await expect(askAgent({ prompt: "q" }, new AbortController().signal, bad)).rejects.toThrow(
+      AgentAskError,
+    );
+  });
+
   it("raises the server's message for a tRPC error body", async () => {
     const fetchImpl = vi.fn<typeof fetch>(() => reply({ error: { message: "bad input" } }, 400));
     await expect(

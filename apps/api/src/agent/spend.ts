@@ -125,6 +125,19 @@ export async function reserveSpend(
   reservationUsd: number = SPEND_RESERVATION_USD,
   capUsd: number = DAILY_SPEND_CAP_USD,
 ): Promise<SpendStatus> {
+  return (await tryReserveSpend(ddb, tableName, now, reservationUsd, capUsd)).status;
+}
+
+/** Same as `reserveSpend`, but also says whether the reservation was actually taken (`false` =
+ *  the conditional check failed, nothing to give back). The caller needs it: a reservation that
+ *  was taken yet lands at or over the cap must be released, a refused one must not. */
+export async function tryReserveSpend(
+  ddb: DynamoDBDocumentClient,
+  tableName: string,
+  now: Date = new Date(),
+  reservationUsd: number = SPEND_RESERVATION_USD,
+  capUsd: number = DAILY_SPEND_CAP_USD,
+): Promise<{ reserved: boolean; status: SpendStatus }> {
   const date = utcDateKey(now);
   try {
     const { Attributes } = await ddb.send(
@@ -137,9 +150,11 @@ export async function reserveSpend(
         ReturnValues: "ALL_NEW",
       }),
     );
-    return statusFromItem(date, Attributes);
+    return { reserved: true, status: statusFromItem(date, Attributes) };
   } catch (error) {
-    if (isConditionalCheckFailed(error)) return readSpend(ddb, tableName, now);
+    if (isConditionalCheckFailed(error)) {
+      return { reserved: false, status: await readSpend(ddb, tableName, now) };
+    }
     throw error;
   }
 }

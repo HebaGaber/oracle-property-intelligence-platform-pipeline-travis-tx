@@ -20,7 +20,14 @@ import type { BoundRun } from "../bind-manifest.js";
 import { METRES_PER_MILE } from "../builders.js";
 import { EXPLORE_BOUNDS, exploreSearchSql } from "../explore.js";
 import type { QueryEngine, Row } from "../engine.js";
-import { DAYS_PER_YEAR, geoFilter, permitsCountSql, permitsSql } from "../permits.js";
+import {
+  DAYS_PER_YEAR,
+  effectivePermitSort,
+  geoFilter,
+  permitsCountSql,
+  permitsSql,
+  permitsUnplacedCountSql,
+} from "../permits.js";
 import * as gazetteer from "../../gazetteer/travis-places@1.0.0/index.js";
 import type { Found } from "../../gazetteer/travis-places@1.0.0/index.js";
 import {
@@ -406,24 +413,37 @@ export async function listPermits(
     });
   }
 
+  // "nearest" without an area cannot be honoured: apply, and echo, the real default sort.
+  const sort = effectivePermitSort(input.sort, centre !== undefined);
+  applied.sort = sort;
   const filter = {
     ...(centre ? { centre: { ...centre, miles: input.radius_mi as number } } : {}),
     statusClass: statusClassesFor(input.status_class as PropertyStatusClass | undefined),
     openYearsMin: input.open_years_min,
-    sort: input.sort,
+    sort,
     limit: input.limit,
   };
-  const [rawRows, total] = await Promise.all([
+  const [rawRows, total, unplaced] = await Promise.all([
     engine.all(permitsSql(filter)),
     countOf(engine, permitsCountSql(filter)),
+    // Only an area search needs a property's coordinates; county-wide never drops a permit.
+    centre ? engine.all(permitsUnplacedCountSql(filter)) : Promise.resolve([] as Row[]),
   ]);
   const rows = rawRows.map((r) => mapPermitRow(r));
   const returned = rows.length;
+  // Permits the radius could not be tested against are reported, never silently dropped
+  // ("unknown is never none found"). Only keys with a count above zero are emitted.
+  const unknownExcluded: Record<string, number> = {};
+  const propertyLink = Number(unplaced[0]?.property_link ?? 0);
+  const coordinates = Number(unplaced[0]?.coordinates ?? 0);
+  if (propertyLink > 0) unknownExcluded.property_link = propertyLink;
+  if (coordinates > 0) unknownExcluded.coordinates = coordinates;
   return envelope({
     rows,
     returned,
     total,
     emptyReason: returned === 0 ? "no_match" : null,
+    unknownExcluded,
     area: areaEcho,
     run,
     applied,

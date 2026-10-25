@@ -225,9 +225,127 @@ describe("listPermits", () => {
     expect(result.rows[0]).toMatchObject({ permit_number: "2020-000100 BP", status_raw: null });
   });
 
+  it("sort nearest with no area is not an error: deterministic open_desc order, applied.sort says so", async () => {
+    const a = await listPermits(fx.db, fx.bound, { sort: "nearest" });
+    const b = await listPermits(fx.db, fx.bound, { sort: "open_desc" });
+    expect(a.returned).toBe(2);
+    expect(a.rows.map((r) => r.permit_number)).toEqual(b.rows.map((r) => r.permit_number));
+    expect(a.applied.sort).toBe("open_desc");
+  });
+
+  it("sort nearest with an area still orders by distance and keeps applied.sort nearest", async () => {
+    const result = await listPermits(fx.db, fx.bound, {
+      area: { lat: NORTH_HALF_MILE.lat, lon: NORTH_HALF_MILE.lon },
+      radius_mi: 5,
+      sort: "nearest",
+    });
+    expect(result.applied.sort).toBe("nearest");
+    // P2 (the 2026 permit) is at the centre; P1 (the 2020 permit) is half a mile away.
+    expect(result.rows.map((r) => r.permit_number)).toEqual(["2026-000200 BP", "2020-000100 BP"]);
+  });
+
   it("county-wide (no area) returns every permit (AC-10)", async () => {
     const result = await listPermits(fx.db, fx.bound, {});
     expect(result.total).toBe(2);
+  });
+});
+
+describe("listPermits unknown_excluded (permits an area search cannot place)", () => {
+  const P4 = `ba${"a".repeat(55)}pfour`; // edge to a property absent from county.property
+  const P5 = `ba${"a".repeat(55)}pfive`; // property row, no geometry -> null lat/lon
+  const area = { lat: CENTRE.lat, lon: CENTRE.lon };
+  const withExtras: FixtureTables = {
+    ...TABLES,
+    county: {
+      ...TABLES.county,
+      property: [
+        propertyRows(P1, 1985),
+        { ...propertyRows(P2, 2020), request_identifier: "54321" },
+        propertyRows(P3, 1990),
+        propertyRows(P5, 1990),
+      ],
+    },
+    property_improvement: {
+      property_improvement: [
+        permit("pa", "2020-000100 BP", "Permitted", "2020-01-01"),
+        permit("pb", "2026-000200 BP", "Completed", "2026-04-01"),
+        permit("pc", "2021-000300 BP", "Permitted", "2021-01-01"),
+        permit("pd", "2021-000400 BP", "Permitted", "2021-02-01"),
+        permit("pe", "2022-000500 BP", "Completed", "2022-02-01"),
+      ],
+      property_has_property_improvement: [
+        edge(P1, "pa"),
+        edge(P2, "pb"),
+        edge(P4, "pc"),
+        edge(P5, "pd"),
+        edge(P5, "pe"),
+      ],
+    },
+  };
+
+  it("counts permits whose property has null coordinates (coordinates)", async () => {
+    const fx = await bindFixture(withExtras);
+    try {
+      const result = await listPermits(fx.db, fx.bound, { area, radius_mi: 5 });
+      expect(result.rows.map((r) => r.permit_number).sort()).toEqual([
+        "2020-000100 BP",
+        "2026-000200 BP",
+      ]);
+      // meta.permit (sql.generated.ts) already inner-joins county.property, so the orphan P4
+      // permit never reaches v_roofing_permit: property_link stays absent on real views.
+      expect(result.unknown_excluded).toEqual({ coordinates: 2 });
+      // Permit filters that do not depend on the property narrow the unplaced counts too.
+      const open = await listPermits(fx.db, fx.bound, {
+        area,
+        radius_mi: 5,
+        status_class: "open_or_stalled",
+      });
+      expect(open.unknown_excluded).toEqual({ coordinates: 1 });
+    } finally {
+      await fx.close();
+    }
+  });
+
+  it("reports property_link and coordinates from the anti-join counts, only when above zero", async () => {
+    const fx = await bindFixture(TABLES);
+    const fake = (counts: Row): typeof fx.db => ({
+      ...fx.db,
+      all: async (sql: string) => (/LEFT JOIN v_property/.test(sql) ? [counts] : fx.db.all(sql)),
+    });
+    try {
+      const both = await listPermits(fake({ property_link: 3, coordinates: 2 }), fx.bound, {
+        area,
+        radius_mi: 5,
+      });
+      expect(both.unknown_excluded).toEqual({ property_link: 3, coordinates: 2 });
+      const none = await listPermits(fake({ property_link: 0, coordinates: 0 }), fx.bound, {
+        area,
+        radius_mi: 5,
+      });
+      expect(none.unknown_excluded).toEqual({});
+    } finally {
+      await fx.close();
+    }
+  });
+
+  it("emits no such keys when every permit links and has coordinates", async () => {
+    const fx = await bindFixture(TABLES);
+    try {
+      const result = await listPermits(fx.db, fx.bound, { area, radius_mi: 5 });
+      expect(result.unknown_excluded).toEqual({});
+    } finally {
+      await fx.close();
+    }
+  });
+
+  it("an area-less query reports no such keys", async () => {
+    const fx = await bindFixture(withExtras);
+    try {
+      const result = await listPermits(fx.db, fx.bound, {});
+      expect(result.unknown_excluded).toEqual({});
+    } finally {
+      await fx.close();
+    }
   });
 });
 

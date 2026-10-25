@@ -129,7 +129,16 @@ export interface ResultEnvelope<Row> {
   truncated: boolean;
   /** Non-null iff returned === 0. */
   empty_reason: EmptyReason | null;
-  /** Per filtered field, how many in-scope rows were excluded because that field is null. */
+  /** What the answer could not test, never "none found". Keys:
+   *  - a property filter field (roof_age_years, tenure_years, owner_is_out_of_area; search_properties):
+   *    the in-radius rows with that field unknown, counted REGARDLESS of the other filters, so it is an
+   *    upper bound of what the filter hid, not the number lost to it alone.
+   *  - `property_link` (list_permits, area search only): roofing permits in the run, within the permit
+   *    filters that do not depend on the property (status_class, open_years_min), with NO matching
+   *    property row, so they cannot be placed in the radius at all.
+   *  - `coordinates` (list_permits, area search only): permits whose matching property has a null
+   *    latitude or longitude, so they could not be tested against the radius.
+   *  The two list_permits keys are present only when their count is above zero. */
   unknown_excluded: Record<string, number>;
   area?: AreaEcho;
   run: RunEcho;

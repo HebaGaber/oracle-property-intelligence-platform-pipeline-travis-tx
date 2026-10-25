@@ -17,8 +17,8 @@ import { generateText, stepCountIs, type LanguageModel } from "ai";
 import { z } from "zod";
 import { CidV1 } from "@countylens/contract";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
-import type { BoundRun, QueryEngine } from "@countylens/query-core";
-import { raceAbort } from "./abort.js";
+import { EXPLORE_BOUNDS, type BoundRun, type QueryEngine } from "@countylens/query-core";
+import { abortError, raceAbort } from "./abort.js";
 import { bindOnce, getEngine } from "../engine/duckdb-node.js";
 import { lazyViewEngine, type BindViews } from "../engine/lazy-views.js";
 import { createCitationRegistry, type Match } from "./citations.js";
@@ -29,7 +29,7 @@ import {
   getSpendDocumentClient,
   recordSpend,
   releaseSpend,
-  reserveSpend,
+  tryReserveSpend,
 } from "./spend.js";
 import { getModel, type EnvSource } from "./model.js";
 import { latestOf, loadRunsIndex } from "../mcp/runs-index.js";
@@ -48,21 +48,8 @@ export const SPEND_METRIC_NAME = "AiSpendUsd";
 // Contract (data-model.md § "agent.ask contract"; contracts/agent-ask.md)
 // ---------------------------------------------------------------------------------------
 
-export const AgentAskTurn = z.object({ prompt: z.string(), outcome: z.string() }).strict();
-
-/** Client-sent, never persisted server-side (AD-09). */
-export const AgentAskInput = z
-  .object({
-    prompt: z.string().trim().min(1).max(2000),
-    /** Last <=4 turns; the client resends them so "that area" resolves without a server store. */
-    turns: z.array(AgentAskTurn).max(4).optional(),
-    /** From an edited "How I read this" chip, e.g. `{ tenure_years_min: 3 }`. */
-    overrides: z.record(z.string(), z.unknown()).optional(),
-    /** Pins the run this conversation compares against. Omitted on turn 1 -> latest. */
-    manifest_cid: CidV1.optional(),
-  })
-  .strict();
-export type AgentAskInput = z.infer<typeof AgentAskInput>;
+/** Same cap as the top-level prompt: a turn is a past prompt the client resends. */
+export const MAX_PROMPT_CHARS = 2000;
 
 export const AGENT_OUTCOMES = [
   "answered",
@@ -74,6 +61,72 @@ export const AGENT_OUTCOMES = [
 ] as const;
 export const AgentOutcome = z.enum(AGENT_OUTCOMES);
 export type AgentOutcome = z.infer<typeof AgentOutcome>;
+
+export const AgentAskTurn = z
+  .object({ prompt: z.string().max(MAX_PROMPT_CHARS), outcome: AgentOutcome })
+  .strict();
+
+const bounded = (range: readonly [number, number]) =>
+  z.number().finite().min(range[0]).max(range[1]);
+
+/** The four "How I read this" chips a person can edit (ExploreAi.state.ts EDITABLE_CHIPS), with
+ *  query-core's bounds. Strict: any other key is a caller error. Only these validated numbers ever
+ *  reach the system prompt. */
+export const AgentAskOverrides = z
+  .object({
+    roof_age_years_min: bounded(EXPLORE_BOUNDS.roof),
+    radius_mi: bounded(EXPLORE_BOUNDS.radiusMi),
+    tenure_years_min: bounded(EXPLORE_BOUNDS.tenure),
+    open_years_min: bounded(EXPLORE_BOUNDS.openYrs),
+  })
+  .partial()
+  .strict();
+export type AgentAskOverrides = z.infer<typeof AgentAskOverrides>;
+
+/** Client-sent, never persisted server-side (AD-09). */
+export const AgentAskInput = z
+  .object({
+    prompt: z.string().trim().min(1).max(MAX_PROMPT_CHARS),
+    /** Last <=4 turns; the client resends them so "that area" resolves without a server store. */
+    turns: z.array(AgentAskTurn).max(4).optional(),
+    /** From an edited "How I read this" chip, e.g. `{ tenure_years_min: 3 }`. */
+    overrides: AgentAskOverrides.optional(),
+    /** Pins the run this conversation compares against. Omitted on turn 1 -> latest. */
+    manifest_cid: CidV1.optional(),
+  })
+  .strict();
+export type AgentAskInput = z.infer<typeof AgentAskInput>;
+
+/** Which run a response is about (same shape as the tools' run echo). */
+export interface RunEcho {
+  run_id: string;
+  manifest_cid: string;
+  as_of: string;
+}
+
+/** Plain-language reasons for the `unknown_excluded` keys the tools can report besides a filtered
+ *  field being null. Any other non-zero key is reported with the generic reason `unknown`. */
+const UNPLACED_REASONS: Record<string, { reason: string; sentence: (n: number) => string }> = {
+  property_link: {
+    reason: "permit has no matching property row",
+    sentence: (n) =>
+      `${n} ${n === 1 ? "permit" : "permits"} could not be placed in the radius because ${n === 1 ? "it has" : "they have"} no matching property record.`,
+  },
+  coordinates: {
+    reason: "property has no coordinates",
+    sentence: (n) =>
+      `${n} ${n === 1 ? "record" : "records"} could not be placed in the radius because the property has no coordinates.`,
+  },
+};
+
+function runEchoOf(bound: { runId: string; manifestCid: string; asOf: string }): RunEcho {
+  return { run_id: bound.runId, manifest_cid: bound.manifestCid, as_of: bound.asOf };
+}
+
+/** `2026-10-21T10:35:16.000Z` -> `2026-10-21`. */
+function asOfDate(asOf: string): string {
+  return /^\d{4}-\d{2}-\d{2}/.exec(asOf)?.[0] ?? asOf;
+}
 
 export interface AgentAskStep {
   tool: string;
@@ -89,6 +142,9 @@ export interface AgentAskResponse {
   query: Record<string, unknown>;
   missing: { field: string; reason: string }[];
   outcome: AgentOutcome;
+  /** The one run this answer is about (donphan Major 1): present on every response produced after
+   *  the run was bound, so an empty answer still names the run it searched. */
+  run?: RunEcho;
   /** ERR-63: observable budgets (AC-5). All optional so older clients stay compatible. */
   modelCalls?: number;
   outputTokens?: number;
@@ -108,11 +164,44 @@ export const MAX_OUTPUT_TOKENS = 1500;
  *  (29-30 s) layers are configured outside this module. */
 export const DEFAULT_ABORT_MS = 23_000;
 
-/** A crude per-token cost estimate for the spend counter (there is no real-time per-token
- *  billing query on either provider): $3/1,000,000 tokens, a conservative Sonnet-class estimate.
- *  Documented here, not imported from a provider SDK (constitution VI) -- this is money math,
- *  not a model call. */
-export const ESTIMATED_USD_PER_TOKEN = 0.000_003;
+/** Spend-counter price estimates (no real-time per-token billing query exists on either provider).
+ *  Documented here, not imported from a provider SDK (constitution VI): this is money math, not a
+ *  model call. List prices for a Sonnet-class model: input $3 per million tokens, output $15 per
+ *  million tokens (output is about 5x input). */
+export const ESTIMATED_USD_PER_INPUT_TOKEN = 0.000_003;
+export const ESTIMATED_USD_PER_OUTPUT_TOKEN = 0.000_015;
+
+export interface TokenUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
+/** Estimated USD for one request's usage, or undefined when the provider reported none. Input and
+ *  output are priced separately when both are known; with only a total (or a total plus one side)
+ *  the unknown remainder is priced at the OUTPUT rate, the conservative choice. */
+export function estimateCostUsd(usage: TokenUsage): number | undefined {
+  const { inputTokens, outputTokens, totalTokens } = usage;
+  if (inputTokens !== undefined && outputTokens !== undefined) {
+    return (
+      inputTokens * ESTIMATED_USD_PER_INPUT_TOKEN + outputTokens * ESTIMATED_USD_PER_OUTPUT_TOKEN
+    );
+  }
+  if (totalTokens === undefined) return undefined;
+  if (inputTokens !== undefined) {
+    return (
+      inputTokens * ESTIMATED_USD_PER_INPUT_TOKEN +
+      Math.max(totalTokens - inputTokens, 0) * ESTIMATED_USD_PER_OUTPUT_TOKEN
+    );
+  }
+  if (outputTokens !== undefined) {
+    return (
+      outputTokens * ESTIMATED_USD_PER_OUTPUT_TOKEN +
+      Math.max(totalTokens - outputTokens, 0) * ESTIMATED_USD_PER_INPUT_TOKEN
+    );
+  }
+  return totalTokens * ESTIMATED_USD_PER_OUTPUT_TOKEN;
+}
 
 function envNumber(env: EnvSource, key: string, fallback: number): number {
   const raw = env[key];
@@ -149,6 +238,7 @@ export interface ModelLoopOutput {
    *  aggregating across all of these, never from model text. */
   toolOutputs: Record<string, unknown>[];
   totalTokens?: number;
+  inputTokens?: number;
   outputTokens?: number;
   modelCalls?: number;
   /** ERR-61: true when the loop did not end in a final text answer (budget used up on tool
@@ -165,6 +255,9 @@ export interface ModelLoopParams {
   abortSignal: AbortSignal;
   maxOutputTokens: number;
   maxSteps: number;
+  /** Called each time a model call has returned (so it was billed). Lets the caller tell a
+   *  throttle on the first call (nothing billed) from one after earlier billed calls. */
+  onModelCallDone?: () => void;
 }
 
 export type RunModelLoop = (params: ModelLoopParams) => Promise<ModelLoopOutput>;
@@ -186,6 +279,7 @@ export async function defaultRunModelLoop(params: ModelLoopParams): Promise<Mode
     abortSignal: params.abortSignal,
     maxOutputTokens: params.maxOutputTokens,
     stopWhen: stepCountIs(params.maxSteps),
+    onStepFinish: () => params.onModelCallDone?.(),
     // ERR-61: the last allowed step is text-only, so the model must write its answer from the
     // results it already has instead of planning one more call.
     prepareStep: ({ stepNumber }) =>
@@ -215,6 +309,7 @@ export async function defaultRunModelLoop(params: ModelLoopParams): Promise<Mode
     modelCalls: result.steps.length,
     incomplete: result.finishReason !== "stop",
     ...(usage?.totalTokens !== undefined ? { totalTokens: usage.totalTokens } : {}),
+    ...(usage?.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
     ...(usage?.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
   };
 }
@@ -260,11 +355,18 @@ export function isAbortError(error: unknown): boolean {
   return name === "AbortError" || name === "TimeoutError";
 }
 
-/** Bedrock's `ThrottlingException` (10 req/min account-wide, CLAUDE.md) surfaces through the AI
- *  SDK as an `APICallError` with a 429 status or the provider's exception name in the message. */
+/** Model-provider throttling only (Bedrock's `ThrottlingException`, 10 req/min account-wide, or a
+ *  429 from the Gateway), as the AI SDK surfaces it. A DynamoDB throttle (spend table) is not one:
+ *  it names DynamoDB / provisioned throughput and is a plain failure. The caller also only asks
+ *  this for errors raised while the model loop runs. */
 export function isThrottleError(error: unknown): boolean {
+  const message = errorMessage(error);
+  if (
+    /dynamodb|provisioned ?throughput|requestlimitexceeded/i.test(`${errorName(error)} ${message}`)
+  )
+    return false;
   if (errorStatusCode(error) === 429) return true;
-  return /throttl|toomanyrequests/i.test(errorMessage(error));
+  return /throttlingexception|toomanyrequests|too many requests|rate exceeded/i.test(message);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -330,20 +432,57 @@ export function asksVagueDuration(question: string): boolean {
   return /\bmany years\b|\ba long time\b|\blong[- ]open\b/i.test(question);
 }
 
+/** The "many years" sentence only makes sense for open-permit questions, not owner tenure. */
+export function asksOpenPermitDuration(question: string): boolean {
+  return asksVagueDuration(question) && /\bpermits?\b|\bopen\b|\bstalled\b/i.test(question);
+}
+
+/** A BBB lookup that produced a real answer (rated / not_found / blocked), not a gap. */
+export function hasRealBbbStatus(matches: Match[]): boolean {
+  return matches.some(
+    (m) =>
+      m.bbb_status !== undefined &&
+      m.bbb_status !== "not_checked" &&
+      m.bbb_status !== "unavailable",
+  );
+}
+
+/** The sentence the deterministic permit lookup appends. "Not found in this run" is only true for a
+ *  complete, genuinely empty lookup: never when the result was truncated or the tool gave another
+ *  reason (run_not_found, out_of_scope, field_not_published, ...). Empty string = say nothing. */
+export function permitLookupFacts(asked: string, output: Record<string, unknown>): string {
+  const found = Array.isArray(output.matches) ? (output.matches as Record<string, unknown>[]) : [];
+  if (found.length > 0) {
+    return `Permit ${asked} [${String(found[0]?.n)}]: status ${String(found[0]?.status_class)}, open ${String(found[0]?.open_years ?? "unknown")} years.`;
+  }
+  const reallyAbsent =
+    output.truncated !== true &&
+    (output.empty_reason === "not_found" || output.empty_reason === "no_match");
+  return reallyAbsent ? `Permit ${asked} was not found in this run.` : "";
+}
+
 /** A permit number as printed ('YYYY-NNNNNN XX'), if the question contains one. */
 export function permitNumberIn(question: string): string | undefined {
   return /\b\d{4}-\d{6} [A-Z]{2}\b/.exec(question)?.[0];
 }
 
-function composeStructuredParts(
+export function composeStructuredParts(
   matches: Match[],
   toolOutputs: Record<string, unknown>[],
   question = "",
-): { how: string; query: Record<string, unknown>; missing: { field: string; reason: string }[] } {
+  run?: RunEcho,
+): {
+  how: string;
+  query: Record<string, unknown>;
+  missing: { field: string; reason: string }[];
+  unplacedSentences: string[];
+} {
   const envelopes = toolOutputs.filter(isEnvelopeOutput);
 
   let applied: Record<string, unknown> = {};
   let areaLabel: string | undefined;
+  let gazetteerNote: string | undefined;
+  const unplaced = new Map<string, number>();
   const missing: { field: string; reason: string }[] = [];
 
   for (const envelope of envelopes) {
@@ -351,23 +490,37 @@ function composeStructuredParts(
 
     const area = isRecord(envelope.area) ? envelope.area : undefined;
     if (typeof area?.label === "string") areaLabel = area.label;
+    // Donphan Major 3: cite the gazetteer exactly as the envelope stamps it, never a constant.
+    const gaz = isRecord(area?.gazetteer) ? area.gazetteer : undefined;
+    const src = isRecord(area?.source) ? area.source : undefined;
+    const gazSha = typeof gaz?.sha256 === "string" ? gaz.sha256 : undefined;
+    const srcSha = typeof src?.sha256 === "string" ? src.sha256 : undefined;
+    if (typeof gaz?.version === "string") {
+      gazetteerNote = `Gazetteer ${gaz.version}${gazSha !== undefined ? ` (sha256 ${gazSha.slice(0, 12)}…)` : ""}`;
+    } else if (srcSha !== undefined) {
+      gazetteerNote = `Gazetteer source (sha256 ${srcSha.slice(0, 12)}…)`;
+    }
 
     const unknownExcluded = isRecord(envelope.unknown_excluded) ? envelope.unknown_excluded : {};
     for (const [field, count] of Object.entries(unknownExcluded)) {
-      if (typeof count === "number" && count > 0) missing.push({ field, reason: "unknown" });
+      if (typeof count !== "number" || count <= 0) continue;
+      const known = UNPLACED_REASONS[field];
+      missing.push({ field, reason: known?.reason ?? "unknown" });
+      unplaced.set(field, (unplaced.get(field) ?? 0) + count);
     }
     const emptyReason = envelope.empty_reason;
     if (typeof emptyReason === "string") missing.push({ field: "result", reason: emptyReason });
     if (envelope.truncated === true) missing.push({ field: "result", reason: "truncated" });
   }
   for (const match of matches) {
+    // A real BBB lookup (rated / not_found / blocked) is an answer, not a gap.
+    const realBbb = hasRealBbbStatus([match]);
     for (const entry of match.missing) {
-      missing.push({
-        field: CONTRACT_MISSING_NAMES[entry.field] ?? entry.field,
-        reason: entry.reason,
-      });
+      const field = CONTRACT_MISSING_NAMES[entry.field] ?? entry.field;
+      if (realBbb && field === "bbb_status") continue;
+      missing.push({ field, reason: entry.reason });
     }
-    if (match.bbb_status !== undefined) {
+    if (match.bbb_status !== undefined && !realBbb) {
       missing.push({ field: "bbb_status", reason: match.bbb_status_reason ?? match.bbb_status });
     }
   }
@@ -390,7 +543,9 @@ function composeStructuredParts(
   }
 
   const howParts: string[] = [];
+  if (run !== undefined) howParts.push(`Run ${run.run_id}, as of ${asOfDate(run.as_of)}`);
   if (areaLabel !== undefined) howParts.push(areaLabel);
+  if (gazetteerNote !== undefined) howParts.push(gazetteerNote);
   for (const [key, value] of Object.entries(applied)) {
     if (key === "area" || key === "manifest_cid") continue;
     howParts.push(`${key}: ${JSON.stringify(value)}`);
@@ -402,7 +557,38 @@ function composeStructuredParts(
     howParts.push(`permits open at least ${applied.open_years_min} years`);
   }
 
-  return { how: howParts.join("; "), query: applied, missing: dedupeMissing(missing) };
+  const unplacedSentences = [...unplaced.entries()].map(([key, n]) =>
+    UNPLACED_REASONS[key] !== undefined
+      ? UNPLACED_REASONS[key].sentence(n)
+      : `${n} ${n === 1 ? "record was" : "records were"} left out because ${key.replaceAll("_", " ")} is unknown.`,
+  );
+
+  return {
+    how: howParts.join("; "),
+    query: applied,
+    missing: dedupeBbb(dedupeMissing(missing)),
+    unplacedSentences,
+  };
+}
+
+/** One `bbb_status` entry only: the specific reason a match carried (e.g. contractor_unresolved)
+ *  wins over the generic `no_lexicon_carrier`. */
+function dedupeBbb(
+  entries: { field: string; reason: string }[],
+): { field: string; reason: string }[] {
+  const bbb = entries.filter((e) => e.field === "bbb_status");
+  if (bbb.length < 2) return entries;
+  const chosen = bbb.find((e) => e.reason !== "no_lexicon_carrier") ?? bbb[0];
+  const out: { field: string; reason: string }[] = [];
+  let placed = false;
+  for (const e of entries) {
+    if (e.field !== "bbb_status") out.push(e);
+    else if (!placed && chosen !== undefined) {
+      out.push(chosen);
+      placed = true;
+    }
+  }
+  return out;
 }
 
 const FILTER_IGNORED = new Set(["limit", "sort", "manifest_cid"]);
@@ -449,6 +635,16 @@ export function describeFilterChanges(steps: AgentAskStep[], question: string): 
   return [...new Set(notes)];
 }
 
+/** Only validated numbers under the four known keys (AgentAskOverrides) are ever written out. */
+function overridesLine(overrides: AgentAskOverrides | undefined): string {
+  const parts = Object.entries(overrides ?? {})
+    .filter((entry): entry is [string, number] => typeof entry[1] === "number")
+    .map(([key, value]) => `${key}=${value}`);
+  return parts.length > 0
+    ? `The user edited these assumptions this turn: ${parts.join(", ")}.`
+    : "";
+}
+
 function buildSystemPrompt(input: AgentAskInput): string {
   return [
     "You are CountyLens's property-lead assistant for Travis County roofing leads.",
@@ -477,11 +673,11 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "published data, but still report the permit facts you found.",
     "Thresholds: tenure_years_min means owner tenure MORE THAN that many years (strictly); say",
     "'more than N years' for it. roof_age_years_min and open_years_min mean at least N years.",
+    "Say 'in this run' for coverage claims: this answer searches ONE published run; never say 'in",
+    "the published dataset' or 'in the data' as a general claim about all of Travis County.",
     "Your last step writes the final answer with no further tool calls; never end by planning a call.",
     "Be concise: this answer has a 1,500-output-token budget and at most 3 tool-calling turns.",
-    input.overrides !== undefined
-      ? `The user edited these assumptions this turn: ${JSON.stringify(input.overrides)}.`
-      : "",
+    overridesLine(input.overrides),
   ]
     .filter((line) => line.length > 0)
     .join(" ");
@@ -522,8 +718,17 @@ export interface AskDeps {
 /** T037: the only text a `failed` outcome from an unexpected error carries. */
 const FAILED_MESSAGE = "Something went wrong on our side. Try again, or use Filters instead.";
 
-function emptyResponse(outcome: AgentOutcome, answer = ""): AgentAskResponse {
-  return { answer, how: "", steps: [], matches: [], query: {}, missing: [], outcome };
+function emptyResponse(outcome: AgentOutcome, answer = "", run?: RunEcho): AgentAskResponse {
+  return {
+    answer,
+    how: "",
+    steps: [],
+    matches: [],
+    query: {},
+    missing: [],
+    outcome,
+    ...(run !== undefined ? { run } : {}),
+  };
 }
 
 /**
@@ -562,9 +767,37 @@ export async function runAgentAsk(
   const timer = setTimeout(() => controller.abort(), abortTimeoutMs);
   const signal = controller.signal;
 
-  // T048: the reservation is trued up on success and released in `finally` otherwise.
+  // Spend accounting (money safety on a public route). One state machine, settled exactly once:
+  //   "none"    nothing reserved
+  //   "held"    reserved, not yet settled
+  //   "settled" trued up, released or deliberately kept (terminal: nothing touches it again)
+  // `claim()` is the only way out of "held" and is synchronous, so the request body and the abort
+  // path can never both settle it. The reservation is RELEASED only when it is certain no model
+  // call was billed; once a call was placed (`modelMayHaveBilled`) an abort or failure KEEPS the
+  // reservation as the conservative estimate, and a normal answer trues it up to the real cost.
   let reservation = "none" as "none" | "held" | "settled";
   let reservedAt = now();
+  let modelMayHaveBilled = false;
+  let modelPhase = false; // true only while the model loop runs (errors then may be throttles)
+  let stepBilled = false;
+  let runEcho: RunEcho | undefined; // set once the run is bound
+
+  const claim = (): boolean => {
+    if (reservation !== "held") return false;
+    reservation = "settled";
+    return true;
+  };
+  /** Best effort, never throws. */
+  const release = async (): Promise<void> => {
+    if (!claim()) return;
+    try {
+      await releaseSpend(ddb, spendTableName, reservedAt, reservationUsd);
+    } catch (releaseError) {
+      agentObservability().logger.error("agent.ask could not release its spend reservation", {
+        errorName: errorName(releaseError),
+      });
+    }
+  };
 
   const execute = async (): Promise<AgentAskResponse> => {
     const model = overrides.model ?? getModel(env);
@@ -574,19 +807,32 @@ export async function runAgentAsk(
     // (which let two concurrent requests both pass a check before either's model call finished).
     // Never a half-run -- checked/reserved before any model call is placed.
     reservedAt = now();
-    const spend = await reserveSpend(ddb, spendTableName, reservedAt, reservationUsd, cap);
+    const { reserved, status: spend } = await tryReserveSpend(
+      ddb,
+      spendTableName,
+      reservedAt,
+      reservationUsd,
+      cap,
+    );
+    if (reserved) reservation = "held";
     if (spend.spentUsd >= cap) {
       agentObservability().logger.warn("agent.ask paused: daily spend cap reached", {
         spentUsd: spend.spentUsd,
         cap,
       });
+      await release(); // a taken reservation that landed at/over the cap must not leak
       return emptyResponse("paused", "Daily AI budget reached for today.");
     }
-    reservation = "held";
+    if (signal.aborted) {
+      // The abort fired while the reservation was in flight and it landed late: nothing billed.
+      await release();
+      throw abortError();
+    }
 
     const manifestCid = input.manifest_cid ?? (await resolveManifestCid(env, signal));
     const engine = await getEngineFn();
     const bound = await bindFn(manifestCid);
+    runEcho = runEchoOf(bound);
 
     const registry = createCitationRegistry();
     const tools = createAgentTools({
@@ -603,6 +849,12 @@ export async function runAgentAsk(
       ...(traceId !== undefined ? { traceId } : {}),
     });
 
+    if (signal.aborted) {
+      await release();
+      throw abortError();
+    }
+    modelMayHaveBilled = true;
+    modelPhase = true;
     const result = await runModelLoop({
       model,
       tools,
@@ -614,25 +866,38 @@ export async function runAgentAsk(
       // stop condition the default loop supports (stepCountIs): the smaller cap dominates, which
       // is <=3 model calls for this tool set (each step issues at most one tool call).
       maxSteps: Math.min(maxModelCalls, maxToolSteps),
+      onModelCallDone: () => {
+        stepBilled = true;
+      },
     });
+    modelPhase = false;
 
-    if (result.totalTokens !== undefined) {
-      // True the reservation up to the real cost (never re-incrementing model_calls -- reserveSpend
-      // already counted this call). `settled` first, so a late finally never releases it as well.
-      reservation = "settled";
-      const actualUsd = result.totalTokens * ESTIMATED_USD_PER_TOKEN;
-      const status = await recordSpend(
-        ddb,
-        spendTableName,
-        actualUsd - reservationUsd,
-        reservedAt,
-        { incrementModelCalls: false },
-      );
-      // The SpendAlarm's statistic is Maximum/5min: emit the day's running total, not the delta.
-      agentObservability().metrics.addMetric(SPEND_METRIC_NAME, MetricUnit.NoUnit, status.spentUsd);
-    } else {
-      // The model answered but reported no usage: the reservation stays as the cost estimate.
-      reservation = "settled";
+    // True the reservation up to the real cost (never re-incrementing model_calls -- reserveSpend
+    // already counted this call). Skipped when an abort already settled it (kept as the estimate).
+    // When the provider reported no usage the reservation stays as the cost estimate. A failure to
+    // record the true-up must not discard a good answer: log it and carry on.
+    const actualUsd = estimateCostUsd(result);
+    if (claim() && actualUsd !== undefined) {
+      try {
+        const status = await recordSpend(
+          ddb,
+          spendTableName,
+          actualUsd - reservationUsd,
+          reservedAt,
+          { incrementModelCalls: false },
+        );
+        // The SpendAlarm's statistic is Maximum/5min: emit the day's running total, not the delta.
+        agentObservability().metrics.addMetric(
+          SPEND_METRIC_NAME,
+          MetricUnit.NoUnit,
+          status.spentUsd,
+        );
+      } catch (spendError) {
+        agentObservability().logger.error("agent.ask could not true up its spend", {
+          errorName: errorName(spendError),
+          errorMessage: errorMessage(spendError),
+        });
+      }
     }
 
     // ERR-64: a permit number in the question is always looked up, even if the model skipped the
@@ -665,20 +930,14 @@ export async function runAgentAsk(
             summary: "deterministic permit lookup",
           },
         ];
-        const found = Array.isArray(output.matches)
-          ? (output.matches as Record<string, unknown>[])
-          : [];
-        const facts =
-          found.length > 0
-            ? `Permit ${asked} [${String(found[0]?.n)}]: status ${String(found[0]?.status_class)}, open ${String(found[0]?.open_years ?? "unknown")} years.`
-            : `Permit ${asked} was not found in this run.`;
-        result.text = `${result.text.trim()} ${facts}`;
+        const facts = permitLookupFacts(asked, output);
+        if (facts !== "") result.text = `${result.text.trim()} ${facts}`;
       }
     }
 
     const matches = registry.matches();
     const { cleaned, outOfRangeCitations, ungroundedCids } = registry.postCheck(result.text);
-    const composed = composeStructuredParts(matches, result.toolOutputs, input.prompt);
+    const composed = composeStructuredParts(matches, result.toolOutputs, input.prompt, runEcho);
     const { query } = composed;
     let { how, missing } = composed;
     const changes = describeFilterChanges(result.steps, input.prompt);
@@ -706,6 +965,7 @@ export async function runAgentAsk(
         query,
         missing: [{ field: "result", reason: "incomplete" }],
         outcome: "failed",
+        ...(runEcho !== undefined ? { run: runEcho } : {}),
         ...telemetry(modelCalls, result.outputTokens),
       };
     }
@@ -727,7 +987,7 @@ export async function runAgentAsk(
       );
     }
     const years = query.open_years_min;
-    if (asksVagueDuration(input.prompt) && typeof years === "number") {
+    if (asksOpenPermitDuration(input.prompt) && typeof years === "number") {
       const stated = new RegExp(`(at least|>=)\\s*${years}\\b`, "i");
       if (!stated.test(cleaned)) {
         extra.push(
@@ -737,6 +997,7 @@ export async function runAgentAsk(
     }
     if (
       missing.some((m) => m.field === "bbb_status") &&
+      !hasRealBbbStatus(matches) &&
       !/BBB status is not available in the published data/i.test(cleaned)
     ) {
       extra.push("BBB status is not available in the published data.");
@@ -750,6 +1011,7 @@ export async function runAgentAsk(
       );
     }
     missing = dedupeMissing(missing);
+    extra.push(...composed.unplacedSentences);
 
     agentObservability().logger.info("agent.ask answered", {
       toolSteps: result.steps.length,
@@ -766,6 +1028,7 @@ export async function runAgentAsk(
       query,
       missing,
       outcome: "answered",
+      ...(runEcho !== undefined ? { run: runEcho } : {}),
       ...telemetry(modelCalls, result.outputTokens),
     };
   };
@@ -775,11 +1038,23 @@ export async function runAgentAsk(
   } catch (error) {
     if (isAbortError(error)) {
       agentObservability().logger.warn("agent.ask timed out (23s abort)");
-      return emptyResponse("timed_out", "Took too long. Try again, or use Filters instead.");
+      return emptyResponse(
+        "timed_out",
+        "Took too long. Try again, or use Filters instead.",
+        runEcho,
+      );
     }
-    if (isThrottleError(error)) {
+    // Throttling is only a model-provider condition: a throttle-shaped error from DynamoDB, the
+    // runs index or a tool is a plain failure. A throttle before any billed step means the
+    // provider refused the first call, so nothing was billed.
+    if (modelPhase && isThrottleError(error)) {
+      if (!stepBilled) modelMayHaveBilled = false;
       agentObservability().logger.warn("agent.ask throttled by the model provider");
-      return emptyResponse("throttled", "The model is busy right now; try again in a minute.");
+      return emptyResponse(
+        "throttled",
+        "The model is busy right now; try again in a minute.",
+        runEcho,
+      );
     }
     // T037 (FR-005, contract "Never a 5xx"): any other failure (DynamoDB, runs index, engine,
     // bind, tool, ...) is a plain `failed` outcome with a fixed message; the detail goes to the
@@ -788,18 +1063,15 @@ export async function runAgentAsk(
       errorName: errorName(error),
       errorMessage: errorMessage(error),
     });
-    return emptyResponse("failed", FAILED_MESSAGE);
+    return emptyResponse("failed", FAILED_MESSAGE, runEcho);
   } finally {
     clearTimeout(timer);
-    if (reservation === "held") {
-      // T048: no model call succeeded (paused never gets here): give the reservation back.
-      try {
-        await releaseSpend(ddb, spendTableName, reservedAt, reservationUsd);
-      } catch (releaseError) {
-        agentObservability().logger.error("agent.ask could not release its spend reservation", {
-          errorName: errorName(releaseError),
-        });
-      }
+    if (modelMayHaveBilled) {
+      // A model call was placed (it may be billed, or still running after an abort): keep the
+      // reservation as the conservative cost estimate; do not release and do not adjust.
+      claim();
+    } else {
+      await release(); // certain nothing was billed: give the reservation back
     }
   }
 }

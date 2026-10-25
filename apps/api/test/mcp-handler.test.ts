@@ -42,37 +42,52 @@ beforeEach(() => {
   ssm.getParameter.mockResolvedValue(TOKEN);
 });
 
+// Each test re-imports the module and builds a server per request; under the parallel `pnpm check` that can pass 5 s.
+const SLOW_UNDER_LOAD_MS = 30_000;
+
 describe("createMcpHandler: one warm handler answers many requests", () => {
-  it("tools/list answers 200 with the six tools, every time, not only the first", async () => {
-    const handle = await freshHandler();
-    for (let i = 1; i <= 5; i++) {
-      const result = await handle(event({ jsonrpc: "2.0", id: i, method: "tools/list" }));
-      expect(result.statusCode, `request ${i}`).toBe(200);
-      const body = JSON.parse(result.body as string) as {
-        result: { tools: Array<{ name: string }> };
-      };
-      expect(body.result.tools).toHaveLength(6);
-    }
-  });
+  it(
+    "tools/list answers 200 with the six tools, every time, not only the first",
+    async () => {
+      const handle = await freshHandler();
+      for (let i = 1; i <= 5; i++) {
+        const result = await handle(event({ jsonrpc: "2.0", id: i, method: "tools/list" }));
+        expect(result.statusCode, `request ${i}`).toBe(200);
+        const body = JSON.parse(result.body as string) as {
+          result: { tools: Array<{ name: string }> };
+        };
+        expect(body.result.tools).toHaveLength(6);
+      }
+    },
+    SLOW_UNDER_LOAD_MS,
+  );
 
-  it("a wrong token is 401 and does not break the next authorised request", async () => {
-    const handle = await freshHandler();
-    const bad = await handle(
-      event({ jsonrpc: "2.0", id: 1, method: "tools/list" }, { authorization: "Bearer nope" }),
-    );
-    expect(bad.statusCode).toBe(401);
-    const good = await handle(event({ jsonrpc: "2.0", id: 2, method: "tools/list" }));
-    expect(good.statusCode).toBe(200);
-  });
+  it(
+    "a wrong token is 401 and does not break the next authorised request",
+    async () => {
+      const handle = await freshHandler();
+      const bad = await handle(
+        event({ jsonrpc: "2.0", id: 1, method: "tools/list" }, { authorization: "Bearer nope" }),
+      );
+      expect(bad.statusCode).toBe(401);
+      const good = await handle(event({ jsonrpc: "2.0", id: 2, method: "tools/list" }));
+      expect(good.statusCode).toBe(200);
+    },
+    SLOW_UNDER_LOAD_MS,
+  );
 
-  it("GET /health needs no token", async () => {
-    const handle = await freshHandler();
-    const result = await handle({
-      ...event({}),
-      rawPath: "/health",
-      headers: {},
-      requestContext: { http: { method: "GET", path: "/health" } },
-    } as unknown as APIGatewayProxyEventV2);
-    expect(result.statusCode).toBe(200);
-  });
+  it(
+    "GET /health needs no token",
+    async () => {
+      const handle = await freshHandler();
+      const result = await handle({
+        ...event({}),
+        rawPath: "/health",
+        headers: {},
+        requestContext: { http: { method: "GET", path: "/health" } },
+      } as unknown as APIGatewayProxyEventV2);
+      expect(result.statusCode).toBe(200);
+    },
+    SLOW_UNDER_LOAD_MS,
+  );
 });

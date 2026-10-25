@@ -333,6 +333,14 @@ export function ExploreAi({ onState, ask = askAgent }: ExploreAiProps): ReactEle
             )}
           </p>
 
+          {response.run === undefined ? null : (
+            <p className={styles.note} data-run="">
+              {AI_TEXTS.searchedRun} <code>{response.run.run_id}</code> · {AI_TEXTS.runAsOf}{" "}
+              {response.run.as_of.slice(0, 10)} · {AI_TEXTS.runManifest}{" "}
+              <CidDisplay cid={response.run.manifest_cid} />
+            </p>
+          )}
+
           <section className={styles.how} aria-label={AI_TEXTS.howTitle}>
             <h3 className={styles.heading}>{AI_TEXTS.howTitle}</h3>
             {response.how === "" ? null : <p className={styles.note}>{response.how}</p>}

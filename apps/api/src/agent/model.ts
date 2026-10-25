@@ -28,8 +28,9 @@ export type EnvSource = Readonly<Record<string, string | undefined>>;
  * Resolves the Vercel AI SDK model for the active provider. `AI_PROVIDER` unset or `"bedrock"`
  * (the default, per plan.md/CLAUDE.md) returns a Bedrock-backed model; `"gateway"` returns a
  * Gateway-backed model (the fallback for Claude, and the only path for embeddings). Any other
- * value throws, naming the bad value, so a typo fails at cold start rather than silently
- * defaulting to a provider nobody asked for.
+ * value throws, naming the bad value, so a typo is never silently defaulted to a provider nobody
+ * asked for. The throw happens per request (this runs inside `agent.ask`), where it is caught and
+ * returned as a `failed` outcome, not at cold start.
  */
 export function getModel(env: EnvSource = process.env): LanguageModelV4 {
   const provider = env.AI_PROVIDER ?? "bedrock";

@@ -154,5 +154,8 @@ export const AI_TEXTS = Object.freeze({
   missingTitle: "What is missing or unknown",
   sourcesTitle: "Sources",
   noMissing: "Nothing reported missing for this answer.",
+  searchedRun: "Searched run",
+  runAsOf: "as of",
+  runManifest: "manifest",
   sourceMissing: "source not in the published row",
 });

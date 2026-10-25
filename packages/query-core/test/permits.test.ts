@@ -65,6 +65,12 @@ describe("permitsSql (text)", () => {
     expect(sql).toMatch(/ORDER BY dist_m, r\.cid/);
   });
 
+  it("sort=nearest without a centre falls back to open days (no dist_m reference)", () => {
+    const sql = permitsSql({ sort: "nearest" });
+    expect(sql).not.toMatch(/dist_m/);
+    expect(sql).toMatch(/ORDER BY r\.open_days DESC NULLS LAST, r\.cid/);
+  });
+
   it("sort=issue_desc orders by issue_date desc", () => {
     expect(permitsSql({ sort: "issue_desc" })).toMatch(/ORDER BY r\.issue_date DESC/);
   });

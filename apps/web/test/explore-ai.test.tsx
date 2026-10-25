@@ -184,6 +184,28 @@ describe("How I read this chips", () => {
 });
 
 describe("Explore · AI other states", () => {
+  it("an empty answer names the one run it searched (run echo line with run id, date, manifest)", async () => {
+    const run = {
+      run_id: "travis-202609-permits-20261021t103516z",
+      manifest_cid: "bafyreirunechomanifestcidforthetestxxxxxxxxxxxxxxxxxxxxxxxxx",
+      as_of: "2026-10-21T10:35:16.000Z",
+    };
+    setup(async () => response({ matches: [], answer: "Nothing found.", run }));
+    await submit("roofs in Pflugerville");
+    expect(aiState()).toBe("no_results");
+    const line = must(document.querySelector("[data-run]"));
+    expect(line.textContent).toContain(AI_TEXTS.searchedRun);
+    expect(line.textContent).toContain(run.run_id);
+    expect(line.textContent).toContain(`${AI_TEXTS.runAsOf} 2026-10-21`);
+    expect(line.querySelector("[data-cid]")?.getAttribute("data-cid")).toBe(run.manifest_cid);
+  });
+
+  it("no run line when the server sent none (older server still validates)", async () => {
+    setup(async () => response({ matches: [], answer: "Nothing found." }));
+    await submit("roofs in Mars");
+    expect(document.querySelector("[data-run]")).toBeNull();
+  });
+
   it("no results: says so and lists what is missing", async () => {
     setup(async () =>
       response({
