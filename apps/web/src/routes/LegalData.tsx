@@ -1,8 +1,13 @@
-// Legal · Data sources (`/legal/data`; A-13 T038, AC-11, FR-011, D-8): the seven sources, each
-// with a link to its official terms or licence page and the date and HTTP status it was checked,
-// then the four access rules. Static text from content/legal.ts: no data request, no legal
-// advice. A react-router lazy route module exporting `Component`.
+// Legal · Data sources (`/legal/data`; A-13 T038, AC-11, FR-011, D-8; A-16 T050 per the
+// LegalData1440/768/390 boards): "On this page" contents, then Sources and licences (each of the
+// seven sources as a row: source, what it provides, its official terms or licence link, and the
+// date and HTTP status the link was checked), the four access rules, How to cite and Corrections.
+// Static text from content/legal.ts: no data request, no legal advice. A react-router lazy route
+// module exporting `Component`.
+import { ROUTES } from "@countylens/shared/routes";
 import type { ReactElement } from "react";
+import { Link } from "react-router";
+import { LegalLayout } from "../components/LegalLayout";
 import {
   ACCESS_RULES,
   ACCESS_RULES_HEADING,
@@ -15,40 +20,89 @@ export function Component(): ReactElement {
   return (
     <section aria-label="Legal · Data sources" data-route="legal-data" className={styles.page}>
       <h2 className={styles.title}>Legal · Data sources</h2>
-      <p className={styles.body}>
-        CountyLens publishes records collected from the seven public sources below.{" "}
-        {LEGAL_NOT_ADVICE}
-      </p>
-      <div className={styles.card}>
-        <h3 className={styles.sectionTitle}>Sources</h3>
-        <ul className={styles.list} aria-label="Data sources">
-          {LEGAL_SOURCES.map((source) => (
-            <li key={source.id} className={styles.item} data-source={source.id}>
-              <strong>{source.name}</strong>
-              <p className={styles.body}>{source.fact}</p>
-              <a
-                className={styles.link}
-                href={source.termsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {source.termsLabel}
-              </a>
-              <p className={styles.small}>
-                Page requested {source.checkedOn} · HTTP {source.checkedStatus}
+      <LegalLayout
+        current={ROUTES.legalData}
+        banner={LEGAL_NOT_ADVICE}
+        intro={
+          <p className={styles.body}>
+            CountyLens publishes records collected from the seven public sources below. Each keeps
+            its own terms or licence.
+          </p>
+        }
+        sections={[
+          {
+            id: "sources",
+            title: "Sources and licences",
+            body: (
+              <>
+                <div className={styles.sourceHead} aria-hidden="true">
+                  <span>Source</span>
+                  <span>Provides</span>
+                  <span>Licence or terms</span>
+                </div>
+                <ul className={styles.sourceRows} aria-label="Data sources">
+                  {LEGAL_SOURCES.map((source) => (
+                    <li key={source.id} className={styles.sourceRow} data-source={source.id}>
+                      <strong>{source.name}</strong>
+                      <p className={styles.body}>{source.fact}</p>
+                      <span>
+                        <a
+                          className={styles.link}
+                          href={source.termsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {source.termsLabel}
+                        </a>
+                        <span className={styles.small}>
+                          Page requested {source.checkedOn} · HTTP {source.checkedStatus}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ),
+          },
+          {
+            id: "access",
+            title: ACCESS_RULES_HEADING,
+            body: (
+              <ul className={styles.rules} aria-label={ACCESS_RULES_HEADING}>
+                {ACCESS_RULES.map((rule) => (
+                  <li key={rule}>{rule}</li>
+                ))}
+              </ul>
+            ),
+          },
+          {
+            id: "cite",
+            title: "How to cite",
+            body: (
+              <p className={styles.body}>
+                Name the source, the run and the content ID of the file you used, for example:
+                “Austin permits, run {"{run ID}"}, table CID {"{CID}"}”. Each record&apos;s
+                provenance line in Explore shows all three, and the{" "}
+                <Link className={styles.inlineLink} to={ROUTES.dataManifest}>
+                  run manifest
+                </Link>{" "}
+                lists every file with its CID.
               </p>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className={styles.card}>
-        <h3 className={styles.sectionTitle}>{ACCESS_RULES_HEADING}</h3>
-        <ul className={styles.rules} aria-label={ACCESS_RULES_HEADING}>
-          {ACCESS_RULES.map((rule) => (
-            <li key={rule}>{rule}</li>
-          ))}
-        </ul>
-      </div>
+            ),
+          },
+          {
+            id: "corrections",
+            title: "Corrections",
+            body: (
+              <p className={styles.body}>
+                A published file never changes: its content ID is its fingerprint. A correction
+                appears in a later run, which links back to the run before it, and Runs · Compare
+                shows what changed.
+              </p>
+            ),
+          },
+        ]}
+      />
     </section>
   );
 }
