@@ -184,7 +184,8 @@ export function mainControl(page: Page, path: string): Locator | string {
   return page.locator("main").getByRole(entry.role, { name: entry.name }).first();
 }
 
-const CONTROL_WAIT_MS = 15_000;
+// 90 s: the Catalog's first "N columns" control appears when its first Parquet footer has loaded, and a full-county run has 225 parts read by range (about 8 s unthrottled, longer under the 4G profile).
+const CONTROL_WAIT_MS = 90_000;
 const CLICK_MS = 5_000;
 
 /** INP of one load: click the main control once under the profile and read the slowest interaction. */

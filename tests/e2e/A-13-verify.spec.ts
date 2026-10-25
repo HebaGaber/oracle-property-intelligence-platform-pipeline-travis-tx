@@ -364,8 +364,7 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     const section = await ready(page, "data-manifest");
     const latest = section.locator(SEL.chainEntry).first();
     await expect(latest).toHaveAttribute("data-cid", oracle.manifestCid);
-    // 2–3. Copy CID → the clipboard equals the latest manifestCid.
-    await latest.getByRole("button", { name: "Copy CID", exact: true }).click();
+    await latest.getByRole("button", { name: "Copy CID", exact: true }).first().click(); // the entry's own CID; the second button copies its previous manifest
     await expect
       .poll(() => page.evaluate(() => navigator.clipboard.readText()))
       .toBe(oracle.manifestCid);
