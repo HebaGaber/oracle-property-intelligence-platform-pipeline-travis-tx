@@ -77,3 +77,7 @@ The design agents were consulted read-only before Gate G3, first on 2026-10-18 a
 | donphan (A-11 Run 2, review) | 92 | Data spot-check: 15,025 roofing permits, every property joins county (`docs/reviews/CR-A-11-donphan-fix.md`). Model/effort: Sonnet·medium |
 | audino (A-11 Run 2, step 1h and the load-time fix) | no score recorded | Permits page load-time fix: 1,234 requests / 76.7 s, then 185 / 15.0 s (bind subset), then 15 / about 8.0-8.6 s (prefetch subset + SHA-256 verification from the manifest), commit `502bfe6`. Model/effort: Sonnet·high |
 | docs (A-11 Run 2 documentation) | n/a | Evidence, test report, traceability, defect records. Model/effort: Sonnet·low |
+| oracle (A-11 Run 3, build and review) | 76 | Built the Run 3 corrections (roof date, owner names, tenure from deeds, address points, contractor names, incremental refresh) and the build run; review findings R2-R5 in `docs/reviews/CR-A-11.md` § 5, carried to A-16 item 17 |
+| donphan (A-11 Run 3, review) | 78 | Consumer view of the new fields; BBB link shape unchecked (ERR-66 open), manifest coverage notes (A-16 item 17) |
+| machamp (A-11 Run 3, review) | 78 | Publish tooling: lock race, exit codes, deferred-gateway receipts (A-16 item 17) |
+| porygon (A-11 Run 3, review) | 72 → **80** (re-review) | Duplicate delta line on the Runs page fixed; basis changes and manifest counts carried to A-16 item 17 |

@@ -1,12 +1,12 @@
 ---
-id: ERR-28
+id: ERR-62
 type: defect
 feature: FEAT-A11
 story: A-11
 test_case: Task B validation of published Run 2 (owner columns); unit pins in oracle-runtime test/transforms/owner-name.test.ts and test/transforms/tcad-county.test.ts
 ac_reference: A-11
 severity: High
-status: Open (fixed in code; published data changes only with Run 3). Documented gap, A-16 item 15
+status: Closed 2026-10-25: re-tested on Run 3 (manifest bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm): owner named for 409,389 of 441,961 properties (92.6%, Run 2: 23,556); specs/011-publish-and-runs/run3/run3-evidence.json
 found_by: Task B validation of published Run 2, for HebaGaber
 found_date: 2026-10-25
 fix_branch: 011-publish-and-runs
@@ -15,7 +15,7 @@ retest_date: pending
 closed_date: pending
 ---
 
-# ERR-28: Most individual owners are counted `owner_unparsed` and never published
+# ERR-62: Most individual owners are counted `owner_unparsed` and never published
 
 ## Brief description
 
@@ -44,4 +44,4 @@ In the published Run 2, only about 13% of properties with a dated sale have a pu
 | View change (integration) | `v_property` now reads owners through `person_has_property` / `company_has_property` (packages/query-core/views.sql, CTEs `person_link` / `company_link`), and `owner_mailing` follows the same links. `owner_name` no longer carries `no_dated_sale`; a property without an owner lists the run's owner gap reason (`owner_unparsed`, `owner_confidential`, `no_owner_record`, `needs_review`). `no_dated_sale` stays a tenure reason. A run written before Run 3 has no property edges, so its owners are still the persons and companies of the latest dated sale (the same rows keep reading; the two sources are unioned and de-duplicated). The macro `owner_missing_reason` and `ownerMissingReason()` are removed. The County transform now counts a property whose owners could not be written as `unparsed` even without a dated sale (the view relies on that count). |
 | Switch: individuals' names | PO decision on publishing individuals' names county-wide is **pending**. `OWNER_PERSONS=publish\|omit` (environment variable, default `publish`; `ownerPersonsMode()` in owner-name.ts, input `ownerPersons` of `transformTcadCounty`) leaves every person and their mailing address out without a code change; companies are unaffected. A typo throws. Omitted individuals are counted in `persons_omitted`; a property whose only owners were omitted is tallied as `suppressed`, so the view shows `owner_confidential` (withheld) until a dedicated reason exists. |
 | Re-test | Pending: needs a full County re-write, new CARs and a Run 3 manifest (PO approval for the publish). |
-| Status | Fixed in code; published data still wrong until Run 3. |
+| Status | Closed in Run 3: owner named for 409,389 of 441,961 (92.6%). |

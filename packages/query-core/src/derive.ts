@@ -172,7 +172,7 @@ export const finalDateReason = (
  * as_of − issue_date in days for open and stalled permits (≥ 0) that have no completion date;
  * otherwise null. A permit with a final_date is finished (an Expired status after completion is an
  * administrative lapse), and one with an implausible final_date (before the issue date or after
- * as_of) is a data-quality gap: neither gets an interval (ERR-29).
+ * as_of) is a data-quality gap: neither gets an interval (ERR-63).
  */
 export function openDays(
   cls: StatusClass | null,
@@ -230,7 +230,7 @@ export type OwnerGapReason =
   "owner_unparsed" | "owner_confidential" | "no_owner_record" | "needs_review";
 
 /**
- * Why a property has no owner (ERR-28: owners hang on the property, not on the sale). The export cannot tell the cases apart, so the
+ * Why a property has no owner (ERR-62: owners hang on the property, not on the sale). The export cannot tell the cases apart, so the
  * run's coverage counts decide: when exactly one of owner_unparsed / owner_confidential /
  * owner_no_record is non-zero every such row is in it; when several are, needs_review.
  */
@@ -254,7 +254,7 @@ export const ownerMissingReason = (
 
 /**
  * resolved only when the contractor company carries an official registry id. A company published
- * from the printed permit name has none (ERR-32: "as printed, unverified"), so it stays unresolved.
+ * from the printed permit name has none (ERR-66: "as printed, unverified"), so it stays unresolved.
  */
 export const contractorResolution = (registryId: string | null): "resolved" | "unresolved" =>
   registryId === null ? "unresolved" : "resolved";
@@ -336,7 +336,7 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
   roof_basis_reason:
     "(roof_date) AS CASE WHEN roof_date IS NULL THEN 'no_roof_date' ELSE 'basis_unmatched' END",
   tenure_years: "(d, as_of) AS CAST(date_sub('year', d, as_of_date(as_of)) AS INTEGER)",
-  // A-11 Run 3 (ERR-30): a latest transfer taken from a TCAD deed (transfer_source = 'deed') is
+  // A-11 Run 3 (ERR-64): a latest transfer taken from a TCAD deed (transfer_source = 'deed') is
   // deed_date; the default NULL keeps the one-argument call meaning sale_date.
   tenure_basis:
     "(d, src := NULL) AS CASE WHEN d IS NULL THEN 'unknown' WHEN src = 'deed' THEN 'deed_date' ELSE 'sale_date' END",

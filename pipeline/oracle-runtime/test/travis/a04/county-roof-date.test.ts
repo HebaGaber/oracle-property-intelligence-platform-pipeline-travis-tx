@@ -1,4 +1,4 @@
-// ERR-27: the County group must carry the roof-age ledger row into structure.roof_date.
+// ERR-61: the County group must carry the roof-age ledger row into structure.roof_date.
 // planCountyGroup once passed roofAge: null for every record, so every structure.json had a
 // null roof_date and v_property.roof_age_years was null for ~98% of properties.
 import { describe, expect, it } from "vitest";
@@ -76,7 +76,7 @@ describe("roofAgeEntryOf: only a built_year estimate is a TCAD date", () => {
   });
 });
 
-describe("planCountyGroup: structure.roof_date from the ledger (ERR-27)", () => {
+describe("planCountyGroup: structure.roof_date from the ledger (ERR-61)", () => {
   it("a built_year ledger row writes roof_date '1987'", () => {
     const plan = planCountyGroup(
       [input(9001, roofAgeEntryOf(est("9001", "built_year", 39)))],

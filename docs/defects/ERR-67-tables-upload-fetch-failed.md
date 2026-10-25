@@ -1,10 +1,10 @@
-# ERR-33: tables upload fails with "Upload failed: fetch failed"
+# ERR-67: tables upload fails with "Upload failed: fetch failed"
 
 | Field  | Value                                                                                        |
 | ------ | -------------------------------------------------------------------------------------------- |
 | Found  | 2026-10-25, Run 3 public upload (`publish-run.ts --step filebase`)                           |
 | Story  | A-11 (Run 3)                                                                                 |
-| Status | Mitigated in Run 3: elephant-cli stays the uploader; a fetch retry wrapper is loaded into it |
+| Status | Closed 2026-10-25: all 15 tables and 15 CAR uploads of Run 3 have receipts (elephant-cli with the fetch retry wrapper); the cause is a Filebase `dag/import` fault, outside this repo |
 
 ## What happened
 

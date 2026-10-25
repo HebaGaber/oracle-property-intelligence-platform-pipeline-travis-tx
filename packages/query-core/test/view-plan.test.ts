@@ -26,7 +26,7 @@ const keysFor = (views: Parameters<typeof tablesForViews>[0]): string[] =>
 /** What v_roofing_permit reads: meta.permit's three relations plus the contractor edges and companies. */
 const ROOFING_TABLES = [
   "county.property",
-  // the contractor company the permit prints (ERR-32): contractor_name_as_printed
+  // the contractor company the permit prints (ERR-66): contractor_name_as_printed
   "property_improvement.company",
   "property_improvement.property_has_property_improvement",
   "property_improvement.property_improvement",

@@ -1,4 +1,4 @@
-// A-11 Run 3 (ERR-32): the printed contractor name and the BBB SEARCH link. Pure functions; no
+// A-11 Run 3 (ERR-66): the printed contractor name and the BBB SEARCH link. Pure functions; no
 // bbb.org request is made anywhere. The URL shape is unverified until a human clicks one example.
 import { describe, expect, it } from "vitest";
 import {

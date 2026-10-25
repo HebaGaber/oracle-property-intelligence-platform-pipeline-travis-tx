@@ -1,12 +1,12 @@
 ---
-id: ERR-31
+id: ERR-65
 type: defect
 feature: FEAT-A11
 story: A-11
 test_case: Task B validation of published Run 2 (coordinates); unit pins in oracle-runtime test/travis/a11/address-point-rank.test.ts, address-points.test.ts, address-normalise.test.ts, address-point-loader.test.ts; local-stack test/tracks/address-points.test.ts; query-core test/views.fixture.test.ts and derive.test.ts
 ac_reference: A-11
 severity: High
-status: Fixed in code, County group not yet re-written or re-published
+status: Closed 2026-10-25: re-tested on Run 3 (manifest bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm): coordinates for 434,016 of 441,961 (98.2%; 43,955 from address points; Run 2: 390,061); specs/011-publish-and-runs/run3/run3-evidence.json
 found_by: Task B validation of published Run 2, for HebaGaber
 found_date: 2026-10-25
 fix_branch: 011b-run3-corrections
@@ -15,7 +15,7 @@ retest_date: pending
 closed_date: pending
 ---
 
-# ERR-31: 51,900 properties (11.7%) have no latitude or longitude, mostly condo units
+# ERR-65: 51,900 properties (11.7%) have no latitude or longitude, mostly condo units
 
 ## Brief description
 
@@ -40,4 +40,4 @@ In the published Run 2, 51,900 of 441,961 properties have no coordinates (88.26%
 | How it escaped | The A-04 coverage exception accepted the condo gap as a data limit and the A-04 rule forbade any address-to-point step, so no one evaluated an official address-point dataset until Task B measured the 11.7%. |
 | Tests that pin it | See `test_case` above: normalisation (case, suffix, directional, unit, ZIP, fraction), matching (unique, ambiguous, no match, outside county, non-Address records, no nearest), ranking (never over a centroid, an export point or a condo building point; beats a permit point; ambiguous keeps the permit fallback; non-land accounts never), `geometryFor` (provenance URL required, gis_centroid keeps the TCAD request, permit point and none write nothing), the loader (identified User-Agent, GET only, 1 request/s, backoff on 503, stop on 403, resume, restart on a layer edit, sha256 check), the migration text, the Loader kind, and the view label. |
 | Re-test | Pending: needs the loader run into the Query DB (`gis` track kind `address_points`), a coordinate re-assembly, a full County re-write, new CARs and a Run 3 manifest (PO approval for the publish). |
-| Status | Fixed in code; published data still without these coordinates until Run 3. |
+| Status | Closed in Run 3: coordinates for 434,016 of 441,961 (98.2%). |

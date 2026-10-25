@@ -1,4 +1,4 @@
-// ERR-30: v_property.tenure_basis is deed_date when the latest dated transfer is a TCAD transfer
+// ERR-64: v_property.tenure_basis is deed_date when the latest dated transfer is a TCAD transfer
 // deed (a sales_history row whose source_http_request.multiValueQueryString.transfer_source is
 // "deed"), sale_date when it is a sale, unknown with no dated transfer. is_long_tenure is true only
 // above 10 whole years from the latest transfer, whichever source it came from. Synthetic rows.
@@ -90,7 +90,7 @@ async function row(cid: string): Promise<Record<string, unknown>> {
   return r as Record<string, unknown>;
 }
 
-describe("tenure from sales and transfer deeds (ERR-30)", () => {
+describe("tenure from sales and transfer deeds (ERR-64)", () => {
   it("a sale-only account keeps sale_date", async () => {
     expect(await row(SALE_ONLY)).toMatchObject({
       tenure_basis: "sale_date",

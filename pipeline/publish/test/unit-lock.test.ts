@@ -1,4 +1,4 @@
-// Per-unit upload lock for two filebase workers (ERR-33 follow-up).
+// Per-unit upload lock for two filebase workers (ERR-67 follow-up).
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

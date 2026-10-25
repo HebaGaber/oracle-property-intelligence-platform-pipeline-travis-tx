@@ -159,7 +159,7 @@ such as InProgress) it is null and the row lists \`{field: "status_class", reaso
 \`final_date\` and \`open_days\` then also give \`needs_review\`, and a null \`improvement_status\`
 gives \`needs_review\` instead of \`enum_lacks_value\`.
 
-**Open duration (ERR-29).** \`status_class\` is the class of the source status; it does not say the
+**Open duration (ERR-63).** \`status_class\` is the class of the source status; it does not say the
 work is still going. An Austin permit with status Expired (stalled) very often has a \`final_date\`:
 the work was finished and the permit lapsed administratively. \`open_days\` (as_of − issue_date) is
 therefore counted only for an open or stalled permit with **no** \`final_date\`. A plausible
@@ -197,7 +197,7 @@ history (caveat \`partial_history\`, in the manifest).
 ## Owner
 
 The current owners are read through the property: the persons and companies linked to it by
-\`person_has_property\` and \`company_has_property\` (ERR-28), independent of any sale, so a
+\`person_has_property\` and \`company_has_property\` (ERR-62), independent of any sale, so a
 property with no dated sale still has an owner. \`owner_kind\` is \`company\` when any company is
 linked, else \`person\`, else \`unknown\`; \`owner_name\` lists the persons (by last, first name) and
 then the companies (by name), each once, separated by \`; \`. A property with no owner lists
@@ -236,7 +236,7 @@ contractor"; null with \`source_missing\` when there is no name). The link is ne
 (A-01: HTTP 403 challenge); its shape is **unverified until a human clicks one example**.
 \`contractor_company_cid\` now means the company as printed. \`contractor_name_raw\` is replaced by
 \`contractor_name_as_printed\`. Not published (still \`no_lexicon_carrier\`): \`status_raw\`,
-\`expiry_date\`. Details: \`docs/defects/ERR-32-contractor-name-and-bbb-link-missing.md\`.
+\`expiry_date\`. Details: \`docs/defects/ERR-66-contractor-name-and-bbb-link-missing.md\`.
 
 ## Manifest coverage and profiles for consumers
 

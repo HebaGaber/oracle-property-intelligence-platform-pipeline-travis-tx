@@ -13,7 +13,7 @@ supersedes: the A-04 design rule "No address is ever turned into a point" (specs
 
 ## Context
 
-In the published Run 2, 51,900 of 441,961 real-estate accounts (11.7%) have no latitude or longitude: 46,945 `no_gis_feature`, 423 `no_permit_point`, and 4,532 that have only a permit point (a permit point is correctly never written as geometry). 85.5% are state code A4 condo or townhome units: the county GIS layer draws one polygon per building and the TCAD export prints `[null, null]` for the unit (ERR-31, `specs/011-publish-and-runs/run3-gaps-investigation.md` gap 4). The A-04 rule said no address is ever turned into a point (never geocode).
+In the published Run 2, 51,900 of 441,961 real-estate accounts (11.7%) have no latitude or longitude: 46,945 `no_gis_feature`, 423 `no_permit_point`, and 4,532 that have only a permit point (a permit point is correctly never written as geometry). 85.5% are state code A4 condo or townhome units: the county GIS layer draws one polygon per building and the TCAD export prints `[null, null]` for the unit (ERR-65, `specs/011-publish-and-runs/run3-gaps-investigation.md` gap 4). The A-04 rule said no address is ever turned into a point (never geocode).
 
 The City of Austin publishes a public ArcGIS layer of address points (`LOCATION_address_points`, FeatureServer 0, 466,149 records, edited 2026-10-24). Joining a situs to it is a string equality on a house number and a street, not a geocoder: there is no nearest search, no scoring and no free-text service.
 

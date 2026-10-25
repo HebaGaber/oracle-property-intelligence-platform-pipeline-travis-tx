@@ -81,7 +81,7 @@ export const TcadRecord = z
           .loose(),
       )
       .default([]),
-    // A-11 ERR-30: the dated transfer deeds (deedType, deedDt) feed sales_history with sales[].
+    // A-11 ERR-64: the dated transfer deeds (deedType, deedDt) feed sales_history with sales[].
     deeds: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
   })
   .loose();

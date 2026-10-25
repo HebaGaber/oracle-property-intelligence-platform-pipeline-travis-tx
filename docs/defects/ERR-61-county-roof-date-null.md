@@ -1,12 +1,12 @@
 ---
-id: ERR-27
+id: ERR-61
 type: defect
 feature: FEAT-A11
 story: A-11
 test_case: Task B validation of published Run 2 (roof age); unit pins in oracle-runtime test/travis/a04/county-roof-date.test.ts and query-core test/roof-date-built-year.test.ts
 ac_reference: A-11
 severity: High
-status: Fixed in code, County group not yet re-written or re-published
+status: Closed 2026-10-25: re-tested on Run 3 (manifest bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm): roof age known for 389,528 of 441,961 properties (88.1%, Run 2: 9,510); specs/011-publish-and-runs/run3/run3-evidence.json
 found_by: Task B validation of published Run 2, for HebaGaber
 found_date: 2026-10-25
 fix_branch: 011-publish-and-runs
@@ -15,7 +15,7 @@ retest_date: pending
 closed_date: pending
 ---
 
-# ERR-27: County group writes structure.roof_date null for every property
+# ERR-61: County group writes structure.roof_date null for every property
 
 ## Brief description
 
@@ -38,4 +38,4 @@ In the published Run 2, `structure.roof_date` is null for all 441,961 structures
 | How it escaped | Transform tests passed `roofAge` fixtures directly, and the query-core fixture hand-wrote `roof_date: "1985"`. No test ran the planner or the write path with a ledger, and the full path passed null, so each layer was green while the end-to-end value was empty. |
 | Tests that pin it | oracle-runtime `test/travis/a04/county-roof-date.test.ts` (planner: built_year gives "1987", permit/unknown give null, missing row gives null, pID mismatch throws); `test/transforms/tcad-county.test.ts` (missing row warns, anchor-less row does not); local-stack `test/write-group-pids.test.ts` (one ledger query per batch, tallies, missing-table handling); query-core `test/roof-date-built-year.test.ts` (roof_date 1987, no permit gives built_year / low / as-of year minus 1987). |
 | Re-test | Pending: needs a full County re-write, new CARs and a Run 3 manifest (PO approval for the publish). |
-| Status | Fixed in code; published data still wrong until Run 3. |
+| Status | Closed in Run 3: roof age known for 389,528 of 441,961 (88.1%). |

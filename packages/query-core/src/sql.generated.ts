@@ -102,7 +102,7 @@ roof_anchor AS (
 latest_sale AS (
   SELECT psh.from_cid AS property_cid, sh.cid AS sale_cid,
          TRY_CAST(sh.ownership_transfer_date AS DATE) AS transfer_date,
-         -- ERR-30: a row built from a TCAD transfer deed carries transfer_source = deed in its
+         -- ERR-64: a row built from a TCAD transfer deed carries transfer_source = deed in its
          -- source_http_request.multiValueQueryString (the lexicon has no other carrier).
          CASE WHEN json_extract_string(sh.source_http_request,
                 '$.multiValueQueryString.transfer_source[0]') = 'deed'
@@ -114,7 +114,7 @@ latest_sale AS (
     PARTITION BY psh.from_cid
     ORDER BY TRY_CAST(sh.ownership_transfer_date AS DATE) DESC, sh.cid) = 1
 ),
--- Current owners per property (ERR-28): a person or company is an owner of a property when the
+-- Current owners per property (ERR-62): a person or company is an owner of a property when the
 -- export links them to it (person_has_property / company_has_property), whether or not the
 -- property has a dated sale. A run written before Run 3 has no such edge; its owners are the
 -- people and companies of the latest dated sale (sales_history_has_person / _company), so the
@@ -335,7 +335,7 @@ contractor AS (
   FROM property_improvement.property_improvement_has_contractor
   GROUP BY from_cid
 ),
--- The contractor company the permit PRINTS (ERR-32): company.name is "as printed, unverified"
+-- The contractor company the permit PRINTS (ERR-66): company.name is "as printed, unverified"
 -- and, with no registry id, never makes the permit resolved. Runs before Run 3 bind an empty table.
 contractor_company AS (
   SELECT cid, any_value(name) AS name, any_value(sunbiz_document_number) AS registry_id

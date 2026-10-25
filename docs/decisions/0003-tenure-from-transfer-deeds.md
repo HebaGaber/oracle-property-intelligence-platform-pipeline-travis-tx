@@ -8,7 +8,7 @@ status: Accepted (marker convention in Decision 3 confirmed by the PO on 2026-10
 date: 2026-10-25
 ---
 
-# Owner tenure from TCAD transfer deeds (A-11 Run 3, ERR-30)
+# Owner tenure from TCAD transfer deeds (A-11 Run 3, ERR-64)
 
 ## Context
 
@@ -40,7 +40,7 @@ Excluded, with the reason:
 - **Meaning not confirmed by any legend, so not guessed:** `ST`, `AD`, `DW`, `OD`, `PD`, `SD`, `DS`, `CS`, `GF`, `CN`, `AM`, `DD`, `RO`, `BS`, `MH`, `SIP`. They are small or ambiguous; any of them may be added later by a new ADR once TCAD's code table is in hand.
 - Liens, releases, easements, plats and security instruments do not appear as deed types in this export.
 
-Conservative by construction: a non-included type can only leave the tenure older than the truth, never invent a transfer. The full-export run reports how many accounts have an excluded-type deed dated after their final allowed transfer (ERR-30).
+Conservative by construction: a non-included type can only leave the tenure older than the truth, never invent a transfer. The full-export run reports how many accounts have an excluded-type deed dated after their final allowed transfer (ERR-64).
 
 ## Consequences
 

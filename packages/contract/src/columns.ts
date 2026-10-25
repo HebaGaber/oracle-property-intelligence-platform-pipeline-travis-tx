@@ -302,7 +302,7 @@ const V_PROPERTY: readonly Column[] = [
     "string",
     V,
     true,
-    "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale)",
+    "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-62; independent of any sale)",
     "Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review",
     "no_owner_record",
   ),
@@ -458,7 +458,7 @@ const V_ROOFING_PERMIT: readonly Column[] = [
   enumCol(
     "contractor_resolution",
     false,
-    "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32)",
+    "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66)",
     "Contractor identity state (AD-24)",
     null,
   ),
@@ -471,7 +471,7 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     "Contractor company as printed (unverified; resolved only with a registry id)",
     "contractor_unresolved",
   ),
-  // v1.1 (additive, ERR-32, PO 2026-10-25)
+  // v1.1 (additive, ERR-66, PO 2026-10-25)
   col(
     "contractor_name_as_printed",
     "string",
@@ -491,7 +491,7 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     "Why there is no BBB rating",
     null,
   ),
-  // v1.1 (additive, ERR-32): no BBB rating is published; the link is a search URL we build
+  // v1.1 (additive, ERR-66): no BBB rating is published; the link is a search URL we build
   col(
     "bbb_rating",
     "string",

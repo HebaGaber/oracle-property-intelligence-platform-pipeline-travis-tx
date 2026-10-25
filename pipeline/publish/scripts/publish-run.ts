@@ -169,7 +169,7 @@ async function main(): Promise<number> {
       log,
       // A second worker: PUBLISH_FILEBASE_REVERSE=1 walks the queue from the end (per-unit locks).
       reverse: process.env.PUBLISH_FILEBASE_REVERSE === "1",
-      // PUBLISH_FILEBASE_KINDS=car uploads CAR units only (tables wait for the provider; ERR-33).
+      // PUBLISH_FILEBASE_KINDS=car uploads CAR units only (tables wait for the provider; ERR-67).
       kinds: (process.env.PUBLISH_FILEBASE_KINDS ?? "").split(",").filter((k) => k !== ""),
     },
     // PUBLISH_DEFER_PINATA=1: Filebase-only readback of the carCid files (PO 2026-10-25, A-16 item 14).

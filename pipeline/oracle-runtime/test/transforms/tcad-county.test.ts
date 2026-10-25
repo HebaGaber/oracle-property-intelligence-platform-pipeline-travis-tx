@@ -230,7 +230,7 @@ describe("transformTcadCounty: provenance and links", () => {
     expect(out.counts.owner).toBe("person");
   });
 
-  it("reads an unsplit LAST FIRST name as a person (A-11, ERR-28)", () => {
+  it("reads an unsplit LAST FIRST name as a person (A-11, ERR-62)", () => {
     const out = transformTcadCounty(
       input({ pID: 100010, geoID: "0100030105", ownerName: "DOE JANE M" }),
     );
@@ -287,7 +287,7 @@ describe("transformTcadCounty: provenance and links", () => {
   });
 });
 
-describe("transformTcadCounty: OWNER_PERSONS switch (ERR-28, PO decision pending)", () => {
+describe("transformTcadCounty: OWNER_PERSONS switch (ERR-62, PO decision pending)", () => {
   const withMode = (
     ownerPersons: "publish" | "omit",
     over = { pID: 100020, geoID: "0100030105" },
@@ -421,7 +421,7 @@ describe("transformTcadCounty: roof date (TCAD-sourced anchors only, oracle F1)"
     ).toBeNull();
   });
 
-  it("a missing ledger row warns no_roof_age_ledger_row; an anchor-less row does not (ERR-27)", () => {
+  it("a missing ledger row warns no_roof_age_ledger_row; an anchor-less row does not (ERR-61)", () => {
     expect(transformTcadCounty(input(undefined, null)).counts.warnings).toContain(
       "no_roof_age_ledger_row",
     );

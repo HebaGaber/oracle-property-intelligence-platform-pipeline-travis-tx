@@ -1,12 +1,12 @@
 ---
-id: ERR-30
+id: ERR-64
 type: defect
 feature: FEAT-A11
 story: A-11
 test_case: Task B validation of published Run 2 (tenure); unit pins in oracle-runtime test/travis/a04/tenure-deeds.test.ts and test/transforms/tcad-county-deeds.test.ts; query-core test/tenure-deed-date.test.ts
 ac_reference: A-11
 severity: High
-status: Fixed in code, County group not yet re-written or re-published
+status: Closed 2026-10-25: re-tested on Run 3 (manifest bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm): tenure known for 420,411 of 441,961 (95.1%; 372,455 from deeds, 47,956 from sales; Run 2: 175,408); specs/011-publish-and-runs/run3/run3-evidence.json
 found_by: Task B validation of published Run 2, for HebaGaber
 found_date: 2026-10-25
 fix_branch: 011b-run3-corrections
@@ -15,7 +15,7 @@ retest_date: pending
 closed_date: pending
 ---
 
-# ERR-30: Tenure ignores TCAD transfer deeds (60.3% unknown, long tenure overstated)
+# ERR-64: Tenure ignores TCAD transfer deeds (60.3% unknown, long tenure overstated)
 
 ## Brief description
 

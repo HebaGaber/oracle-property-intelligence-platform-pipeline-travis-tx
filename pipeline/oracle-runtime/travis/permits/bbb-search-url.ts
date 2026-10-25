@@ -1,4 +1,4 @@
-// A-11 Run 3 (PO decisions 2026-10-25, FU-A-01, ERR-32): the contractor company name AS PRINTED on an
+// A-11 Run 3 (PO decisions 2026-10-25, FU-A-01, ERR-66): the contractor company name AS PRINTED on an
 // Austin permit (published as company.name via property_improvement_has_contractor) and a plain BBB
 // SEARCH link built from it. The published link is built IN THE VIEW (macro bbb_search_url in
 // packages/query-core/src/derive.ts, tested for parity with bbbSearchUrl below). Neither is an identity claim:

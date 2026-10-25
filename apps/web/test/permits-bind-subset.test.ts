@@ -82,7 +82,7 @@ describe("the Permits page binds only v_roofing_permit's tables", () => {
     });
   });
 
-  it("permitsPartNames: the county property part of every batch and four tables per permits batch (the printed contractor company, ERR-32), 4 + 8 of 24", () => {
+  it("permitsPartNames: the county property part of every batch and four tables per permits batch (the printed contractor company, ERR-66), 4 + 8 of 24", () => {
     const all = artifacts();
     const names = permitsPartNames({ artifacts: all });
     expect(names.sort()).toEqual(

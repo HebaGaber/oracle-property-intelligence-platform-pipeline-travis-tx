@@ -1,4 +1,4 @@
-// ERR-33: the fetch retry wrapper loaded into elephant-cli. Local HTTP server only.
+// ERR-67: the fetch retry wrapper loaded into elephant-cli. Local HTTP server only.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
@@ -61,7 +61,7 @@ function form(): FormData {
   return f;
 }
 
-describe("fetch retry wrapper (ERR-33)", () => {
+describe("fetch retry wrapper (ERR-67)", () => {
   it("retries 503 twice, then succeeds, sending the same FormData body each time", async () => {
     const s = await serve((_req, res, _body, hit) => {
       res.statusCode = hit <= 2 ? 503 : 200;

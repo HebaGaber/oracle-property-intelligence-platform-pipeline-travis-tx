@@ -1,12 +1,12 @@
 ---
-id: ERR-29
+id: ERR-63
 type: defect
 feature: FEAT-A11
 story: A-11
 test_case: Task B validation of published Run 2 (open roofing permits); unit pins in query-core test/open-days-finished.test.ts and test/derive.test.ts
 ac_reference: A-11
 severity: High
-status: Fixed in the views, no data re-export needed, Run 3 manifest not yet published
+status: Closed 2026-10-25: re-tested on Run 3 (manifest bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm): 795 permits with open days, 548 open 5+ years; finished permits no longer count; specs/011-publish-and-runs/run3/run3-evidence.json
 found_by: Task B validation of published Run 2 (docs/reviews/run3-coverage-task-b.md), for HebaGaber
 found_date: 2026-10-25
 fix_branch: 011-publish-and-runs
@@ -15,7 +15,7 @@ retest_date: pending
 closed_date: pending
 ---
 
-# ERR-29: open_days counts an interval for permits whose work was finished
+# ERR-63: open_days counts an interval for permits whose work was finished
 
 ## Brief description
 

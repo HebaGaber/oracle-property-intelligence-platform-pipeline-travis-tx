@@ -46,7 +46,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | AC-28 | Keep published bytes retrievable from the public IPFS network, not only from a private node, authenticated gateway, vendor dashboard or laptop. | A4 | FEAT-A11 | A-11 | | | | |
 | AC-29 | Publish a machine-readable JSON artifact manifest per run, listing every eligible object with `cid`, name/path, `size`, codec (file/directory), content digest, and optional `origins`. | A4 | FEAT-A11 | A-11 | | | | |
 | AC-30 | If IPNS is used, record both the IPNS name and the resolved CID for that run. | A4 | FEAT-A11 | N/A: no IPNS is used (ARD AD-03); the run chain (`previousManifestCid` + `runs/index.json`) replaces it, built in A-11 and A-12 | | | | |
-| AC-31 | On incremental republish, keep prior CIDs immutable; new data produces a new CID; run history retains previous CIDs. | A4 (A3) | FEAT-A12, FEAT-A11 | A-12, A-11 | | | | |
+| AC-31 | On incremental republish, keep prior CIDs immutable; new data produces a new CID; run history retains previous CIDs. | A4 (A3) | FEAT-A12, FEAT-A11 | A-12, A-11 | A-11: identity gate against the previous manifest | Run 3 gate: 441,961 county and 15,025 permit CIDs of Run 2 all survive, 0 moved | `docs/evidence/A-11.md` § Run 3; `specs/011-publish-and-runs/run3/run3-evidence.json`; Run 3 manifest `bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm` (`previousManifestCid` = Run 2) | |
 | AC-32 | For directory artifacts, also publish a CAR of the DAG rooted at that CID. | A4 | FEAT-A11 | A-11 | | | | |
 | AC-33 | Demonstrate each listed CID fetched from at least two independent public gateways not operated by this environment, with bytes matching the manifest size/digest. | A4 | FEAT-A11, FEAT-A13 | A-11, A-13 | A-13: FR-003, FR-003a–d, FR-016 (Verify on Pinata + Filebase, hash in the browser) | A-13-TC-005, TC-006, TC-018–TC-024 | `docs/evidence/A-13.md` (D-5, D-6: two ✓ lanes, digest equals the manifest) | |
 | AC-34 | Include the artifact manifest (and CARs) in the repository or demo packet so a third party can fetch the dataset by CID later. | A4 | FEAT-A11 | A-11 | | | | |
@@ -142,6 +142,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G5 | specs/011-publish-and-runs (spec, plan, tasks) | 2026-10-23 | PASS, `docs/gates/G5-A-11-precheck.md`; analyze 0 CRITICAL/HIGH, 1 MEDIUM fixed (F1 → T030) | Approved (HebaGaber, round 3 D-4) | 2026-10-23 07:30 |
 | G6 | testplans/A-11-test-cases.md | v1.0 | PASS, `docs/gates/G6-A-11-precheck.md`; C-05/C-09 justified exceptions (pipeline-only story) | Approved (HebaGaber, QC Lead, round 3 D-5) | 2026-10-23 07:35 |
 | G7 | A-11 (branch `011-publish-and-runs` @ `ddeba06`) | Runs 1 and 2 published, scheduler deployed disabled; reviewers donphan 92, oracle 82, machamp 80, porygon 80; CI run `40150597123` on `b1de02c` and run `40152943770` on `ddeba06` green | PASS 10/10 (`docs/gates/G7-A-11-precheck.md`, 2026-10-25); exceptions: C-04 and C-07 (`ui: false`, no Lambda trace), C-09 (one `A-16:` commit); Run 3 and the three-run immutability check are a known gap carried to A-16 items 2 and 4 | Approved (HebaGaber); merged `50f9a10` | 2026-10-25 |
+| G7 | A-11 Run 3 corrections (branch `011c-run3-integrated`) | 2026-10-25 | pre-check FAIL (6), `docs/gates/G7-A-11-run3-precheck.md`; fixes: ERR-61..67 renumbered and closed on the Run 3 numbers (ERR-66 open: BBB link check), reviewers oracle 76, donphan 78, machamp 78, porygon 80, evidence and reports updated; hosted Run 3 checks after the index step | PO decision pending | |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
 
@@ -153,3 +154,19 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | "Targeted backfill (Recommended)" | Rewrite only `parcels.payload_redacted` (493,246 rows, fingerprint equal) | `ca384d9`, `a5e0556`, `9d1e46d` | `specs/011-publish-and-runs/backfill-full.log`; `CR-A-11-machamp-fix.md` (80) |
 | "Publish roofing only (Recommended)" | 2,362 trade sub-permits dropped, 15,025 Roofing kept, 0 lost | `0cd4fe5` | `reexport-full-compare.log`; `CR-A-11-donphan-fix.md` (92) |
 | "go" | Mandatory identity gate (Run 1 refused, Run 2 PASS 15,025); manifest `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`; limitation fix; atomic index | `e2c682f`, `03a6f29`, `e42000e` | `publish-run2-dryrun.log`; `CR-A-11-porygon-fix.md` (80); published `1ff21aa` (`publish-run2*.log`); hosted live proof TBD (running) |
+
+
+## Run 3 correction (A-11, 2026-10-25)
+
+| Decision (PO) | Defect | README criterion | Evidence (Run 2 → Run 3) |
+| --- | --- | --- | --- |
+| Roof date from the built year when no roofing permit | ERR-61 | AC-11 (roof age) | roof age known 9,510 → 389,528 (88.1%) |
+| "fill the only existing owner data"; owner-name parsing yes | ERR-62 | owner fields | owner named 23,556 → 409,389 (92.6%) |
+| Open days only for open permits | ERR-63 | permit status | 795 with open days, 548 open 5+ years |
+| Deed dates for tenure (ADR-0003) | ERR-64 | AC-39 (tenure) | tenure known 175,408 → 420,411 (95.1%) |
+| Address points for condo units (ADR-0004) | ERR-65 | AC-10 (coordinates) | coordinates 390,061 → 434,016 (98.2%) |
+| Contractor names "as printed, unverified"; BBB link if blocked | ERR-66 (open: link check) | AC-38 (contractor, BBB) | 0 → 4,139 permits with a printed name |
+| Keep elephant-cli as uploader, with a network wrapper | ERR-67 | AC-21, AC-28 (IPFS) | 30/30 Filebase uploads with receipts |
+| Real incremental refresh | n/a | AC-15, AC-31 | Austin: 660 added, 9,922 changed, 0 removed; watermark from Run 2 |
+
+Evidence: `docs/evidence/A-11.md` § Run 3, `specs/011-publish-and-runs/run3/run3-evidence.json`; reviews `docs/reviews/CR-A-11.md` § 4 and § 5.

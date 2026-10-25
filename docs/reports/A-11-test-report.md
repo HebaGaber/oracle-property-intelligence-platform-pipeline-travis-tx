@@ -109,4 +109,11 @@ Live checks for Run 2 (Permits page on the hosted URL, Playwright) and CI: TBD (
 
 - **Build and URL:** commit b1de02c on `011-publish-and-runs`, CI run 40150597123 (gitleaks, workspace, oracle-runtime and the four e2e-hosted jobs green) against `https://011-publish-and-runs.d2lx0utip89u18.amplifyapp.com`.
 - **Run 2:** published as `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute` (15,025 permit rows, 0 of 10,792 unmatched by the identity gate). ERR-24, ERR-25 and ERR-26 are Closed on this run.
-- **Run 3 and the immutability check (AC-7 to AC-11 parts that need three runs):** not run. PO decision 2026-10-25: known gap, carried to A-16 items 2, 4, 15 and 16.
+- **Run 3 and the immutability check (AC-7 to AC-11 parts that need three runs):** see the Run 3 addendum below.
+
+## Addendum 2026-10-25: Run 3
+
+- **Built and published:** manifest `bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm` (285 artifacts, previous = Run 2). The identity gate passed: every Run 2 county (441,961) and permit (15,025) CID survives, none moved (`specs/011-publish-and-runs/run3/run3-evidence.json`).
+- **Data re-tests** (same queries on Run 2 and Run 3): roof age 2.2% → 88.1% (ERR-61), owner named 5.3% → 92.6% (ERR-62), tenure 39.7% → 95.1% (ERR-64), coordinates 88.3% → 98.2% (ERR-65), printed contractor names 0 → 4,139 (ERR-66), open days only for open permits (ERR-63). ERR-61 to ERR-65 and ERR-67 are Closed; ERR-66 stays Open until the BBB link is checked by hand.
+- **Hosted:** CI run 40227156140 (commit `0b32bd9`, branch preview) passed all seven e2e-hosted jobs, which still read Run 2 as the latest run. The hosted cases that show Run 3 (Runs page with three runs, Compare Run 3 with Run 2) run after the publish `index` step; their results go into the follow-up commit with the receipts and `runs/index.json`.
+
