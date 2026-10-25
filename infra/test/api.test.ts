@@ -15,6 +15,8 @@ import { fileURLToPath } from "node:url";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import type { ApiStack } from "../src/api-stack.js";
+import { AGENT_FUNCTION_NAME, MCP_FUNCTION_NAME } from "../src/api-stack.js";
+import { COUNTYLENS_DOMAIN_NAME } from "../src/cert-stack.js";
 import type { DataStack } from "../src/data-stack.js";
 import { appUnderTest } from "./helpers.js";
 
@@ -149,6 +151,16 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     );
   });
 
+  it("RUNS_INDEX_URL: the tRPC, MCP and agent Lambdas read the run index from the site, not from S3", () => {
+    const url = `https://${COUNTYLENS_DOMAIN_NAME}/runs/index.json`;
+    for (const name of ["countylens-api", MCP_FUNCTION_NAME, AGENT_FUNCTION_NAME]) {
+      template.hasResourceProperties("AWS::Lambda::Function", {
+        FunctionName: name,
+        Environment: { Variables: { RUNS_INDEX_URL: url } },
+      });
+    }
+  });
+
   it("environment: CID_COPY_BUCKET, CID_COPY_HOST, FILEBASE_GATEWAY_HOST, READPATH_PRIVATE_PREFIX and nothing secret", () => {
     const [, fn] = lambdaFunction(template);
     const env = (fn.Properties as { Environment: { Variables: Record<string, unknown> } })
@@ -197,7 +209,7 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     expect(nonMcpOrAgentLogGroups).toHaveLength(2);
   });
 
-  it("reads only ipfs/*, private/bench/* and the single key runs/index.json of the CID copy (contracts/storage.md Reader); lists private/bench/* only", () => {
+  it("reads only ipfs/* and private/bench/* of the CID copy (contracts/storage.md Reader); lists private/bench/* only", () => {
     const [, fn] = lambdaFunction(template);
     const roleLogicalId = (
       (fn.Properties as { Role: { "Fn::GetAtt": [string, string] } }).Role["Fn::GetAtt"]
@@ -224,13 +236,12 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     const [get] = gets as [Statement];
     expect(asList(get.Action)).toEqual(["s3:GetObject"]);
     const resources = Array.isArray(get.Resource) ? get.Resource : [get.Resource];
-    expect(resources).toHaveLength(3);
+    expect(resources).toHaveLength(2);
     const rendered = resources.map(json);
-    expect(rendered.some((r) => r.includes("/runs/index.json"))).toBe(true);
     expect(rendered.some((r) => r.includes("/ipfs/*"))).toBe(true);
     expect(rendered.some((r) => r.includes("/private/bench/*"))).toBe(true);
     for (const r of rendered) {
-      expect(r).toMatch(/\/(ipfs\/\*|private\/bench\/\*|runs\/index\.json)/);
+      expect(r).toMatch(/\/(ipfs\/\*|private\/bench\/\*)/);
       expect(r).not.toMatch(/"\/\*"|"\*"/);
     }
 

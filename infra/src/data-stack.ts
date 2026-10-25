@@ -272,8 +272,6 @@ export class DataStack extends Stack {
       resourceArns: [
         this.bucket.arnForObjects(`${CID_COPY_PUBLIC_PREFIX}*`),
         this.bucket.arnForObjects(`${CID_COPY_PRIVATE_BENCH_PREFIX}*`),
-        // The latest-run lookup (agent, MCP and the Help proxy when manifest_cid is omitted): one key, nothing else under runs/.
-        this.bucket.arnForObjects("runs/index.json"),
       ],
     });
     grantee.grantPrincipal.addToPrincipalPolicy(

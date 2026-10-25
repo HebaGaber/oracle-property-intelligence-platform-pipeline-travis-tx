@@ -1,25 +1,30 @@
 // T024-T026 support (A-14, G-3/G-4): a loader for the committed `runs/index.json`
-// (`RunsIndexV1`, contracts/manifest.md), used by `list_runs` and by every other tool's
-// "no manifest_cid given -> use the latest published run" default.
+// (`RunsIndexV1`, contracts/manifest.md), used by `list_runs`, by the agent's latest-run default
+// (`apps/api/src/agent/ask.ts`) and by every other tool's "no manifest_cid given -> use the
+// latest published run" default.
 //
-// Mirrors `apps/api/src/agent/ask.ts`'s `defaultResolveManifestCid` (same bucket, same key,
-// same honesty rule): when `env.CID_COPY_BUCKET` is set (the hosted MCP Lambda's env — the CDK
-// Api stack's MCP block sets it the same way it sets it for the agent Lambda), this reads
-// `runs/index.json` with one S3 GetObject from that bucket and Zod-validates it. A missing
-// bucket/key, an unreadable body, or a schema failure all throw (never a default/empty index) —
-// the MCP adapters (tools.ts) turn that into the typed `run_not_found` envelope, never a guess.
+// The index is a committed file served by the site at `/runs/index.json` (the Runs page reads it
+// same-origin); it is NOT in the CID-copy bucket (which holds only `ipfs/*`). When
+// `env.RUNS_INDEX_URL` is set (the hosted Lambdas: the CDK Api stack sets it to the site URL) this
+// does one HTTPS GET (5 s timeout), requires a 2xx JSON body and Zod-validates it. Any failure
+// (network, timeout, non-2xx, bad JSON, schema) throws -- never a default/empty index -- and the
+// MCP adapters (tools.ts) turn that into the typed `run_not_found` envelope, never a guess.
 //
-// `CID_COPY_BUCKET` unset falls back to reading a local file path (`RUNS_INDEX_PATH_ENV`,
-// default the repo-root `runs/index.json`) — the legitimate case for the local stdio build
-// (apps/api/src/mcp/stdio.ts, T027, which has no AWS credentials and reads a local export) and
+// `RUNS_INDEX_URL` unset falls back to reading a local file path (`RUNS_INDEX_PATH_ENV`, default
+// the repo-root `runs/index.json`) -- the legitimate case for the local stdio build
+// (apps/api/src/mcp/stdio.ts, T027, which has no network dependency and reads a local export) and
 // for tests.
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { RunsIndexV1 } from "@countylens/contract";
 
+/** The HTTPS URL of the site's `/runs/index.json` (hosted Lambdas). */
+export const RUNS_INDEX_URL_ENV = "RUNS_INDEX_URL";
+
+const FETCH_TIMEOUT_MS = 5_000;
+
 /** Overrides the local-file fallback's default repo-root `runs/index.json` path (the stdio
- *  build, or tests). Only consulted when `CID_COPY_BUCKET` is unset. */
+ *  build, or tests). Only consulted when `RUNS_INDEX_URL` is unset. */
 export const RUNS_INDEX_PATH_ENV = "RUNS_INDEX_PATH";
 
 /** `apps/api/src/mcp/runs-index.ts` -> repo root is four directories up. */
@@ -29,16 +34,10 @@ function defaultRunsIndexPath(): string {
 
 export type RunsIndexEnv = Readonly<Record<string, string | undefined>>;
 
-/** The same key `apps/api/src/agent/ask.ts`'s `defaultResolveManifestCid` and
- *  `apps/web/src/data/runs-index.ts` read, beside the CID copy in the same bucket. */
-const RUNS_INDEX_KEY = "runs/index.json";
-
-async function loadFromS3(bucket: string): Promise<RunsIndexV1> {
-  const s3 = new S3Client({});
-  const { Body } = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: RUNS_INDEX_KEY }));
-  if (Body === undefined) throw new Error(`${RUNS_INDEX_KEY}: empty body`);
-  const text = await Body.transformToString();
-  return RunsIndexV1.parse(JSON.parse(text));
+async function loadFromUrl(url: string): Promise<RunsIndexV1> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  if (!response.ok) throw new Error(`runs index: GET ${url} answered ${response.status}`);
+  return RunsIndexV1.parse(await response.json());
 }
 
 async function loadFromLocalFile(env: RunsIndexEnv): Promise<RunsIndexV1> {
@@ -47,12 +46,12 @@ async function loadFromLocalFile(env: RunsIndexEnv): Promise<RunsIndexV1> {
   return RunsIndexV1.parse(JSON.parse(text));
 }
 
-/** Reads and Zod-validates `runs/index.json`: from the CID-copy bucket (`CID_COPY_BUCKET` set —
- *  the hosted Lambda) or from a local file (unset — the stdio build, tests). Throws (never a
+/** Reads and Zod-validates `runs/index.json`: from the site URL (`RUNS_INDEX_URL` set -- the
+ *  hosted Lambdas) or from a local file (unset -- the stdio build, tests). Throws (never a
  *  default/empty index) on any failure. */
 export async function loadRunsIndex(env: RunsIndexEnv = process.env): Promise<RunsIndexV1> {
-  const bucket = env.CID_COPY_BUCKET;
-  return bucket !== undefined ? loadFromS3(bucket) : loadFromLocalFile(env);
+  const url = env[RUNS_INDEX_URL_ENV];
+  return url !== undefined && url !== "" ? loadFromUrl(url) : loadFromLocalFile(env);
 }
 
 export interface RunsIndexEntry {

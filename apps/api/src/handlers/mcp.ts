@@ -19,10 +19,9 @@
 // never thrown past this module: it resolves to `undefined`, and `src/mcp/tools.ts` turns that
 // into the typed `run_not_found` envelope.
 //
-// `runsIndex()` (src/mcp/runs-index.ts) reads `runs/index.json` from the CID-copy bucket
-// (`env.CID_COPY_BUCKET`, already set on this Lambda alongside the DuckDB engine's own bucket
-// env var) with one S3 GetObject — the same bucket/key `src/agent/ask.ts`'s
-// `defaultResolveManifestCid` reads for the agent Lambda. A read/parse failure here still
+// `runsIndex()` (src/mcp/runs-index.ts) reads the site's `/runs/index.json` over HTTPS
+// (`env.RUNS_INDEX_URL`, set by the CDK Api stack) -- the same loader `src/agent/ask.ts`'s
+// `defaultResolveManifestCid` uses. A read/parse failure here still
 // resolves to `undefined` from `resolveRun`, never throws past this module: `src/mcp/tools.ts`
 // turns that into the typed `run_not_found` envelope, not a guess and not a crash.
 import { correlationPaths } from "@aws-lambda-powertools/logger/correlationId";

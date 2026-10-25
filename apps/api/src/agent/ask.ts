@@ -9,14 +9,13 @@
 // text (agent-design.md § 4: "the model writes only `answer` prose and chooses tool arguments").
 //
 // Every external dependency (the DynamoDB spend client, the engine/bind functions, the
-// manifest-index S3 read, the model-loop call itself) is injectable via `AskDeps` so the four
+// latest-run index read, the model-loop call itself) is injectable via `AskDeps` so the four
 // outcomes T023 tests for (`answered`, `paused`, `throttled`, `timed_out`) are each reachable
 // through documented, reversible configuration (an env var or a constructor override) rather
 // than by hand-crafting a fake `outcome` value.
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { generateText, stepCountIs, type LanguageModel } from "ai";
 import { z } from "zod";
-import { CidV1, RunsIndexV1 } from "@countylens/contract";
+import { CidV1 } from "@countylens/contract";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { BoundRun, QueryEngine } from "@countylens/query-core";
 import { bindOnce, getEngine } from "../engine/duckdb-node.js";
@@ -30,6 +29,7 @@ import {
   reserveSpend,
 } from "./spend.js";
 import { getModel, type EnvSource } from "./model.js";
+import { latestOf, loadRunsIndex } from "../mcp/runs-index.js";
 import { createAgentTools, type AgentTools } from "./tools.js";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
@@ -200,25 +200,12 @@ export async function defaultRunModelLoop(params: ModelLoopParams): Promise<Mode
 
 export type ResolveManifestCid = (env: EnvSource) => Promise<string>;
 
-/** Reads `runs/index.json` from the published CID copy and returns the entry with the greatest
- *  `finishedAt` (same rule as apps/web/src/data/runs-index.ts's `latestRun`, re-expressed here
- *  since this Lambda has no browser `fetch` and reads the bucket directly). */
+/** Reads the site's `runs/index.json` (`loadRunsIndex`, via `RUNS_INDEX_URL`) and returns the
+ *  entry with the greatest `finishedAt` (`latestOf`). Any read/parse failure, or an empty index,
+ *  throws: it propagates as a real Lambda error, never a guessed run. */
 export async function defaultResolveManifestCid(env: EnvSource): Promise<string> {
-  const bucket = env.CID_COPY_BUCKET;
-  if (bucket === undefined) {
-    throw new Error("CID_COPY_BUCKET is not set; cannot resolve the latest run");
-  }
-  const s3 = new S3Client({});
-  const { Body } = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: "runs/index.json" }));
-  if (Body === undefined) throw new Error("runs/index.json: empty body");
-  const text = await Body.transformToString();
-  const index = RunsIndexV1.parse(JSON.parse(text));
-  const [first, ...rest] = index.runs;
-  if (first === undefined) throw new Error("runs/index.json: no published runs");
-  let latest = first;
-  for (const run of rest) {
-    if (Date.parse(run.finishedAt) >= Date.parse(latest.finishedAt)) latest = run;
-  }
+  const latest = latestOf(await loadRunsIndex(env));
+  if (latest === undefined) throw new Error("runs/index.json: no published runs");
   return latest.manifestCid;
 }
 

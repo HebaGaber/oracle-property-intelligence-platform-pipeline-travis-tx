@@ -1,17 +1,20 @@
-// A-14 T024-T026 follow-up (G-3/G-4): `apps/api/src/mcp/runs-index.ts`'s `loadRunsIndex` now
-// mirrors `apps/api/src/agent/ask.ts`'s `defaultResolveManifestCid` — the hosted MCP Lambda reads
-// `runs/index.json` with one S3 GetObject from `CID_COPY_BUCKET`, the same bucket/key the agent
-// Lambda reads, instead of a local file path that would not exist on that Lambda. The local-file
-// fallback (`RUNS_INDEX_PATH_ENV`) stays for the stdio build and for tests that don't set
-// `CID_COPY_BUCKET`. Nothing here reaches a real AWS account: S3 is mocked (aws-sdk-client-mock),
-// and the local-file case points at a temp file.
+// A-14 T024-T026 follow-up (G-3/G-4): `apps/api/src/mcp/runs-index.ts`'s `loadRunsIndex` reads
+// the site's committed `/runs/index.json` over HTTPS when `RUNS_INDEX_URL` is set (the hosted
+// Lambdas; the CID-copy bucket holds only `ipfs/*`, so there is no S3 path). The local-file
+// fallback (`RUNS_INDEX_PATH_ENV`) stays for the stdio build and for tests that don't set the URL.
+// `defaultResolveManifestCid` (agent) reuses the same loader. Nothing here touches the network:
+// global fetch is stubbed, and the local-file cases point at a temp file.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { mockClient } from "aws-sdk-client-mock";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { latestOf, loadRunsIndex, RUNS_INDEX_PATH_ENV } from "../src/mcp/runs-index.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultResolveManifestCid } from "../src/agent/ask.js";
+import {
+  latestOf,
+  loadRunsIndex,
+  RUNS_INDEX_PATH_ENV,
+  RUNS_INDEX_URL_ENV,
+} from "../src/mcp/runs-index.js";
 
 const CID1 = `ba${"a".repeat(60)}`;
 const CID2 = `ba${"b".repeat(60)}`;
@@ -24,46 +27,92 @@ const INDEX = {
   ],
 };
 
-describe("loadRunsIndex: CID_COPY_BUCKET set -> reads runs/index.json from S3", () => {
-  const s3 = mockClient(S3Client);
+const URL_ENV = { [RUNS_INDEX_URL_ENV]: "https://example.test/runs/index.json" };
+
+describe("loadRunsIndex: RUNS_INDEX_URL set -> HTTPS GET of the site's runs/index.json", () => {
+  const fetchMock = vi.fn();
 
   beforeEach(() => {
-    s3.reset();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
   });
 
-  it("GETs the same bucket/key the agent Lambda reads, and Zod-validates the result", async () => {
-    s3.on(GetObjectCommand, { Bucket: "copy-bucket", Key: "runs/index.json" }).resolves({
-      Body: { transformToString: async () => JSON.stringify(INDEX) } as unknown as never,
-    });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
-    const index = await loadRunsIndex({ CID_COPY_BUCKET: "copy-bucket" });
+  it("GETs the URL with a timeout signal and Zod-validates the result", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(INDEX), { status: 200 }));
+
+    const index = await loadRunsIndex(URL_ENV);
 
     expect(index.runs).toHaveLength(2);
     expect(latestOf(index)).toEqual({ runId: "b", manifestCid: CID2, finishedAt: "2026-06-01T00:00:00.000Z" });
-    expect(s3.calls()).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, { signal?: AbortSignal }];
+    expect(url).toBe("https://example.test/runs/index.json");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it("throws (no default/empty index) when the body is empty", async () => {
-    s3.on(GetObjectCommand, { Bucket: "copy-bucket", Key: "runs/index.json" }).resolves({});
-    await expect(loadRunsIndex({ CID_COPY_BUCKET: "copy-bucket" })).rejects.toThrow();
+  it("throws on a non-2xx answer (no default/empty index)", async () => {
+    fetchMock.mockResolvedValue(new Response("nope", { status: 404 }));
+    await expect(loadRunsIndex(URL_ENV)).rejects.toThrow(/404/);
   });
 
-  it("throws (no default/empty index) when S3 itself fails", async () => {
-    s3.on(GetObjectCommand, { Bucket: "copy-bucket", Key: "runs/index.json" }).rejects(
-      new Error("AccessDenied"),
-    );
-    await expect(loadRunsIndex({ CID_COPY_BUCKET: "copy-bucket" })).rejects.toThrow();
+  it("throws when the body is not JSON", async () => {
+    fetchMock.mockResolvedValue(new Response("<html>spa fallback</html>", { status: 200 }));
+    await expect(loadRunsIndex(URL_ENV)).rejects.toThrow();
   });
 
   it("throws when the body fails RunsIndexV1 (never silently coerced)", async () => {
-    s3.on(GetObjectCommand, { Bucket: "copy-bucket", Key: "runs/index.json" }).resolves({
-      Body: { transformToString: async () => JSON.stringify({ schema: "wrong", runs: [] }) } as unknown as never,
-    });
-    await expect(loadRunsIndex({ CID_COPY_BUCKET: "copy-bucket" })).rejects.toThrow();
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ schema: "wrong", runs: [] }), { status: 200 }));
+    await expect(loadRunsIndex(URL_ENV)).rejects.toThrow();
+  });
+
+  it("throws when the request times out / is aborted", async () => {
+    fetchMock.mockRejectedValue(new DOMException("The operation timed out.", "TimeoutError"));
+    await expect(loadRunsIndex(URL_ENV)).rejects.toThrow(/timed out/);
+  });
+
+  it("does not read the local file when the URL is set", async () => {
+    fetchMock.mockResolvedValue(new Response("x", { status: 500 }));
+    await expect(
+      loadRunsIndex({ ...URL_ENV, [RUNS_INDEX_PATH_ENV]: "/definitely/missing.json" }),
+    ).rejects.toThrow(/500/);
   });
 });
 
-describe("loadRunsIndex: CID_COPY_BUCKET unset -> local-file fallback (stdio build, tests)", () => {
+describe("defaultResolveManifestCid (agent): reuses loadRunsIndex + latestOf", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the manifest CID of the entry with the greatest finishedAt", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(INDEX), { status: 200 }));
+    await expect(defaultResolveManifestCid(URL_ENV)).resolves.toBe(CID2);
+  });
+
+  it("throws on an empty index (no guessed run)", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ schema: INDEX.schema, runs: [] }), { status: 200 }),
+    );
+    await expect(defaultResolveManifestCid(URL_ENV)).rejects.toThrow(/no published runs/);
+  });
+
+  it("propagates a fetch failure", async () => {
+    fetchMock.mockResolvedValue(new Response("", { status: 503 }));
+    await expect(defaultResolveManifestCid(URL_ENV)).rejects.toThrow(/503/);
+  });
+});
+
+describe("loadRunsIndex: RUNS_INDEX_URL unset -> local-file fallback (stdio build, tests)", () => {
   let dir: string;
 
   beforeEach(() => {
@@ -74,25 +123,13 @@ describe("loadRunsIndex: CID_COPY_BUCKET unset -> local-file fallback (stdio bui
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("reads RUNS_INDEX_PATH when CID_COPY_BUCKET is not set", async () => {
+  it("reads RUNS_INDEX_PATH when RUNS_INDEX_URL is not set", async () => {
     const path = join(dir, "index.json");
     writeFileSync(path, JSON.stringify(INDEX));
 
     const index = await loadRunsIndex({ [RUNS_INDEX_PATH_ENV]: path });
 
     expect(latestOf(index)).toEqual({ runId: "b", manifestCid: CID2, finishedAt: "2026-06-01T00:00:00.000Z" });
-  });
-
-  it("never calls S3 for the local-file path", async () => {
-    const s3 = mockClient(S3Client);
-    s3.reset();
-    const path = join(dir, "index.json");
-    writeFileSync(path, JSON.stringify(INDEX));
-
-    await loadRunsIndex({ [RUNS_INDEX_PATH_ENV]: path });
-
-    expect(s3.calls()).toHaveLength(0);
-    s3.restore();
   });
 
   it("throws when the local file is missing (no default/empty index)", async () => {

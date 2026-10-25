@@ -37,6 +37,7 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as xray from "aws-cdk-lib/aws-xray";
 import type { Construct } from "constructs";
+import { COUNTYLENS_DOMAIN_NAME } from "./cert-stack.js";
 import type { DataStack } from "./data-stack.js";
 
 /** Function name, Powertools service name and X-Ray sampling-rule service name (one identifier). */
@@ -45,6 +46,9 @@ export const API_FUNCTION_NAME = "countylens-api";
 export const API_METRICS_NAMESPACE = "CountyLens";
 /** FILEBASE_GATEWAY_HOST (plan § "Fixed texts and config keys"): the labelled fallback gateway. */
 export const FILEBASE_GATEWAY_HOST = "ipfs.filebase.io";
+
+/** The committed run index, served by the site (not in the CID-copy bucket, which holds only ipfs/*). */
+export const RUNS_INDEX_URL = `https://${COUNTYLENS_DOMAIN_NAME}/runs/index.json`;
 /** The HTTP API route prefix; the Amplify rewrite maps the site's /api/<*> onto it (same origin). */
 export const API_ROUTE_PATH = "/trpc/{proxy+}";
 /** Stage throttle (AD-11, FR-007; TC-053). */
@@ -341,6 +345,7 @@ export class ApiStack extends Stack {
       environment: {
         // apps/api/src/config.ts (Zod): the four required keys.
         CID_COPY_BUCKET: props.data.bucket.bucketName,
+        RUNS_INDEX_URL,
         CID_COPY_HOST: props.data.distribution.distributionDomainName,
         FILEBASE_GATEWAY_HOST,
         READPATH_PRIVATE_PREFIX: props.data.privateBenchPrefix,
@@ -534,6 +539,7 @@ export class ApiStack extends Stack {
       logGroup: this.mcpFunctionLogGroup,
       environment: {
         CID_COPY_BUCKET: props.data.bucket.bucketName,
+        RUNS_INDEX_URL,
         CID_COPY_HOST: props.data.distribution.distributionDomainName,
         FILEBASE_GATEWAY_HOST,
         READPATH_PRIVATE_PREFIX: props.data.privateBenchPrefix,
@@ -714,6 +720,7 @@ export class ApiStack extends Stack {
       logGroup: this.agentFunctionLogGroup,
       environment: {
         CID_COPY_BUCKET: props.data.bucket.bucketName,
+        RUNS_INDEX_URL,
         CID_COPY_HOST: props.data.distribution.distributionDomainName,
         FILEBASE_GATEWAY_HOST,
         READPATH_PRIVATE_PREFIX: props.data.privateBenchPrefix,
