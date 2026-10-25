@@ -346,9 +346,10 @@ test.describe("A-13 explorer · demo lines", () => {
     const net = recordRequests(page);
     const t0 = Date.now();
     await page.goto(exploreUrl(EXPLORE, { mode: "sql" }));
-    // 2. Wait for the progress bar to finish.
-    await expect(page.getByRole("textbox", { name: "SQL" })).toBeEditable({ timeout: 60_000 });
-    await expect(page.locator(SEL.progress)).toHaveCount(0, { timeout: 60_000 });
+    // 2. Wait for the progress bar to finish (binding the views of a full-county run takes about 97 s).
+    test.slow();
+    await expect(page.getByRole("textbox", { name: "SQL" })).toBeEditable({ timeout: 240_000 });
+    await expect(page.locator(SEL.progress)).toHaveCount(0, { timeout: 240_000 });
     await checkpoint(page, "004", 2);
     // 3–4. Type the count and Run.
     const mark = net.mark();
@@ -392,7 +393,9 @@ test.describe("A-13 explorer · demo lines", () => {
       const entry = chain.nth(i);
       await expect(entry).toHaveAttribute("data-cid", cid);
       await expect(entry.getByRole("link", { name: "Verify", exact: true })).toBeVisible();
-      await expect(entry.getByRole("button", { name: "Copy CID", exact: true })).toBeVisible();
+      await expect(
+        entry.getByRole("button", { name: "Copy CID", exact: true }).first(),
+      ).toBeVisible();
     }
     if (M.previousManifestCid === null) await expect(chain.first()).toContainText("previous: none");
     await checkpoint(page, "005", 2);

@@ -198,8 +198,10 @@ export async function setControl(control: Locator, value: string | boolean): Pro
 
 /** Opens Explore · SQL, waits for the engine, runs `sql` and returns the result locator text. */
 export async function runSql(page: Page, sql: string): Promise<void> {
+  // The first query binds every contract view of a full-county run (about 97 s on the hosted site: footers of 200 parts read by range), so the editor stays disabled that long.
+  test.slow();
   const editor = page.getByRole("textbox", { name: "SQL" });
-  await expect(editor).toBeEditable({ timeout: 60_000 });
+  await expect(editor).toBeEditable({ timeout: 240_000 });
   await editor.fill(sql);
   await page.getByRole("button", { name: "Run", exact: true }).click();
 }
@@ -207,7 +209,7 @@ export async function runSql(page: Page, sql: string): Promise<void> {
 /** The single integer of a one-row, one-column SQL result. */
 export async function sqlScalar(page: Page): Promise<number> {
   const grid = page.locator(SEL.sqlResult);
-  await expect(grid).toBeVisible({ timeout: 60_000 });
+  await expect(grid).toBeVisible({ timeout: 240_000 });
   const cells = grid.locator("tbody tr td");
   await expect(grid.locator("tbody tr")).toHaveCount(1);
   await expect(cells).toHaveCount(1);
