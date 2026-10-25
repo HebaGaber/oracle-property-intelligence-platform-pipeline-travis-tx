@@ -10,7 +10,7 @@
 
 **Story**: `stories/A-16-cost-and-admin.md` (merged from parts A-16 cost and limits + A-17 admin sign-in; Part 3 added by the PO on 2026-10-26) | **Evaluation point**: A4 (primary) · A1 · A3 · A5 · A6 | **Demo line(s)**: D-1, D-4; D-8, D-9 (Explore on the full county); D-10 to D-12 (agent and MCP on the full county)
 
-**Owner agents** (from the story front matter; used by the plan, not by this spec): design `metagross`, `machamp` · builder `metagross` (cost page, sign-in, UI, API), `machamp` (index, queue, DLQ, bridge) · reviewers `metagross`, `machamp`, `audino`, `donphan` · verify `docs/cost.md` + billing evidence; Playwright admin sign-in + Start reaches the bridge; non-admin refused; prototype parity matrix; Explore, agent and MCP answer on the full county
+**Owner agents** (from the story front matter; used by the plan, not by this spec): design `metagross`, `machamp` · builder `metagross` (cost page, sign-in, UI, API), `machamp` (index, queue, DLQ, bridge) · reviewers `metagross`, `machamp`, `audino` · verify `docs/cost.md` + billing evidence; Playwright admin sign-in + Start reaches the bridge; non-admin refused; prototype parity matrix; Explore, agent and MCP answer on the full county
 
 > Every story acceptance criterion becomes at least one FR below with the same number. No technology choices in this file; they belong in plan.md. The story names a few technologies because the architecture already fixed them (AD-12); this spec keeps to outcomes.
 
@@ -26,7 +26,7 @@ The evaluator opens the hosted Coverage page and reads, per component, what the 
 
 **Acceptance Scenarios**:
 
-1. **Given** the deployed system, **When** the billing data for the last full billed days is read, **Then** the cost document lists each component's idle cost (static hosting, functions, API, CID copy storage and CDN, on-demand table, parameters, logs, the disabled scheduler, sign-in, command queue and dead-letter queue, notifications) with the fixed monthly amount plus storage cents, cost per use and who pays, and the billing evidence image is stored with the evidence. (AC-1)
+1. **Given** the deployed system, **When** the billing data for the last full billed days (at least 3) is read, with per-use lines separated from idle lines, **Then** the cost document lists each component's idle cost (static hosting, functions, API, CID copy storage and CDN, on-demand table, parameters, logs, the disabled scheduler, sign-in, command queue and dead-letter queue, notifications) with the fixed monthly amount plus storage cents, cost per use and who pays, and the billing evidence image is stored with the evidence. (AC-1)
 2. **Given** the infrastructure definition, **When** it is synthesised, **Then** automated checks confirm the scheduler is disabled; there is no secrets vault, relational database, customer-managed key, provisioned concurrency, web firewall or hosted DNS zone; log retention is 14 days (query log 30); a $10 budget alert exists; and the region comes from configuration. (AC-2)
 3. **Given** the measurements from A-01 to A-11, **When** the source-limits document is written, **Then** every source has throughput, page size, the full-capture duration measured at full scale, rate limits, anti-bot posture and the optimisation applied. (AC-3)
 4. **Given** the hosted Coverage page, **When** the evaluator opens Cost and Limits, **Then** both sections show the same numbers as the two documents, each with its "as of" date and source. (AC-4)
