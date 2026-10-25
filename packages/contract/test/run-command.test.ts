@@ -19,7 +19,9 @@ describe("RunCommandV1", () => {
   it("rejects unknown fields (no token can ride along)", () =>
     expect(RunCommandV1.safeParse({ ...start, token: "x" }).success).toBe(false));
   it("rejects expiry before the request", () =>
-    expect(RunCommandV1.safeParse({ ...start, expiresAt: "2026-10-26T09:00:00Z" }).success).toBe(false));
+    expect(RunCommandV1.safeParse({ ...start, expiresAt: "2026-10-26T09:00:00Z" }).success).toBe(
+      false,
+    ));
   it("needs targetRunId for retry", () =>
     expect(RunCommandV1.safeParse({ ...start, action: "retry" }).success).toBe(false));
 });
