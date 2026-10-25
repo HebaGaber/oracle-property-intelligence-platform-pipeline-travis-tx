@@ -155,6 +155,16 @@ A-13 (Explorer UI and content pages) was closed on 2026-10-25 with the gaps belo
 8. **Review follow-ups from the post-merge review (`docs/reviews/CR-A-13.md`, metagross 80, audino 80), all Minor or copy:** a one-line `role="status"` note under the SQL progress bar explaining the long first query; a Retry on the SQL engine-error banner; an "unclassified table parts (N)" row in the Catalog; an accessible name and an inset focus ring for the focusable `<main>`; `scripts/ci-watch.sh` to stop on `timed_out` as well; TC-041 back to 20 timed runs and TC-004's property count derived from the Query DB oracle when they are unparked.
 7. **Hosted-test status at A-13 close:** see `docs/reports/A-13-test-report.md` (final CI run and per-case result). The cases that fail only because of items 1 to 4 stay red on purpose; they are the proof of the gap and should turn green when it is closed.
 
+## Carried forward from A-14 (known gaps to close here)
+
+A-14 (agent, AI tab and MCP server) was closed on 2026-10-25 with the gaps below, by PO decisions "Close like A-13" and "yes document it". Every one of them was measured on the hosted site.
+
+1. **Agent, AI tab and MCP data tools do not run on the full county (the main gap, same cause as A-13 item 1).** On Run 1 and Run 2 any call that reads property data ends in the Lambda timeout (agent HTTP 500 at 25 s). Proven only on the small run `travis-202609-permits-20261021t103516z` (pinned `manifest_cid`). Record: `docs/decisions/DEC-A-14-agent-mcp-full-county.md`. Closing it is the per-run Explore index of A-13 item 1; afterwards re-run G1 to G6, the AC-8 three-way comparison and the MCP checks on Run 2.
+2. **A burst above 5 rps on `/mcp` mostly answers 503, not 429 (ERR-64).** Record: `docs/decisions/DEC-A-14-mcp-burst-503.md`; test A-14-TC-021 stays red. Options: WAF rate rule, more account Lambda concurrency, or amend the contract.
+3. **Account Lambda concurrency is 10 and shared by the query API, the agent and the MCP server.** A failing or bursty caller on one can starve the others (also A-13 item 6). Review together with the stop-gap timeouts and memory (agent and MCP at 3,008 MB under AM-09).
+4. **Golden queries G1 to G4 and G6 pass on a run with zero matching rows.** They show honest empty-result behaviour, not retrieval over real rows; G4 and G6 each have one check recorded as inconclusive. Re-run on Run 2 once item 1 is closed.
+5. **Several honesty answers rest on deterministic sentences added by the server from the question's wording** (contractor not printed, BBB status not available, owner location not in the export). They are true of this data, but they are a safety net and not model reasoning; re-check them when a run publishes those fields.
+
 ## Out of scope
 
 - Enabling the scheduler or any paid plan as a default; enabling the EventBridge schedule (stays disabled, AD-15).
