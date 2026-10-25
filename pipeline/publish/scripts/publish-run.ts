@@ -167,6 +167,8 @@ async function main(): Promise<number> {
       },
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       log,
+      // A second worker: PUBLISH_FILEBASE_REVERSE=1 walks the queue from the end (per-unit locks).
+      reverse: process.env.PUBLISH_FILEBASE_REVERSE === "1",
     },
     carFiles: { loadEnv, now, log },
     manifest: { loadEnv, now, log },
