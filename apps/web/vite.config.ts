@@ -34,6 +34,11 @@ export default defineConfig(({ mode }) => ({
         undefined,
     ),
   ],
+  // amazon-cognito-identity-js (src/auth/signIn.ts, copied from Task B) expects Node's `global`,
+  // which the browser lacks; without this the admin sign-in and Activity routes crash (ERR-77).
+  define: {
+    global: "globalThis",
+  },
   build: {
     sourcemap: false,
     manifest: true,
