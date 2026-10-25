@@ -4,7 +4,7 @@ type: decision
 parent: ARD-A
 story: A-11
 title: "Owner tenure from TCAD transfer deeds (deed_date)"
-status: Accepted
+status: Accepted (marker convention in Decision 3 confirmed by the PO on 2026-10-25)
 date: 2026-10-25
 ---
 
