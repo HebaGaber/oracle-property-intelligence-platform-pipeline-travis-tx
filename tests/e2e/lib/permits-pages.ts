@@ -77,9 +77,13 @@ export async function waitForPermitRows(
   const rows = page.locator(ROW);
   const alert = page.getByRole("alert");
   const empty = page.getByText(PERMITS_TEXTS.empty, { exact: true });
+  // A-16 A11-11: the first page paints early (data-state="first-page", Next disabled); the full
+  // list and its count check follow. Callers page through every row, so wait for the full list.
+  const firstPage = page.locator('section[data-route="permits"][data-state="first-page"]');
   await expect
     .poll(
       async () => {
+        if ((await firstPage.count()) > 0) return "pending";
         if ((await rows.count()) > 0) return "rows";
         if ((await alert.count()) > 0) return "alert";
         if ((await empty.count()) > 0) return "empty";

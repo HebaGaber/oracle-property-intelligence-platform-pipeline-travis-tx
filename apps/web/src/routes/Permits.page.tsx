@@ -38,7 +38,7 @@ import { StatusPill, type StatusKind } from "../components/StatusPill";
 import { BothHostsDownError } from "../data/fetch-by-cid";
 import { RunIndexError } from "../data/runs-index";
 import { EngineStartError, PermitRowsError } from "../engine/errors";
-import type { PermitsLoaded, PermitsLoader } from "../engine/load-permits";
+import { TooLargeOnFallback, type PermitsLoaded, type PermitsLoader } from "../engine/load-permits";
 import type { PermitListRow } from "../engine/permit-list";
 import { STAGE_TEXTS } from "../engine/stages";
 import styles from "./Permits.module.css";
@@ -49,14 +49,20 @@ export type { PermitsLoaded, PermitsLoader };
 /** The Atlas compact bound: cards below it, the data table from it (FR-003, NFR-003). */
 export const TABLE_MEDIA_QUERY = "(min-width: 600px)";
 
+/** A11-11: shown under the pager while the first page is up and the rest is still loading. */
+export const FIRST_PAGE_NOTE =
+  "First page shown. The other permits and the count check against the manifest are still loading.";
+
 export type PermitsState =
   | { readonly kind: "loading"; readonly stage: string }
+  | { readonly kind: "first-page"; readonly data: PermitsLoaded }
   | { readonly kind: "ready"; readonly data: PermitsLoaded }
   | { readonly kind: "empty"; readonly runId: string; readonly manifestCid: string }
   | { readonly kind: "error"; readonly message: string };
 
 /** FR-008 / FR-009: empty only for a true manifest 0; any other mismatch is the fixed error. */
 export function resolvePermitsState(loaded: PermitsLoaded): PermitsState {
+  if (loaded.partial === true) return { kind: "first-page", data: loaded };
   const rows = loaded.rows.length;
   if (rows === 0 && loaded.permitsEmitted === 0) {
     return { kind: "empty", runId: loaded.runId, manifestCid: loaded.manifestCid };
@@ -70,6 +76,7 @@ export function resolvePermitsState(loaded: PermitsLoaded): PermitsState {
 /** The banner text of a failed load: the fixed texts where one applies, else the error's own message. */
 export function errorText(error: unknown): string {
   if (error instanceof EngineStartError) return PERMITS_TEXTS.engineFailure;
+  if (error instanceof TooLargeOnFallback) return error.message;
   if (error instanceof PermitRowsError) return PERMITS_TEXTS.rowsUnreadable;
   if (error instanceof RunIndexError) return RUN_INDEX_TEXTS[error.reason];
   if (error instanceof BothHostsDownError) return error.message;
@@ -277,10 +284,13 @@ function PermitsPager({
   page,
   total,
   onPage,
+  firstOnly,
 }: {
   readonly page: number;
   readonly total: number;
   readonly onPage: (page: number) => void;
+  /** A11-11: only the first page is loaded yet, so Next waits. */
+  readonly firstOnly?: boolean;
 }): ReactElement {
   const first = page * PERMITS_PAGE_SIZE + 1;
   const last = Math.min(total, first + PERMITS_PAGE_SIZE - 1);
@@ -308,7 +318,7 @@ function PermitsPager({
       <button
         type="button"
         className={styles.pagerButton}
-        disabled={page >= pages - 1}
+        disabled={firstOnly === true || page >= pages - 1}
         onClick={() => onPage(page + 1)}
       >
         {PERMITS_TEXTS.nextPage}
@@ -339,7 +349,10 @@ export function PermitsPage({ load }: PermitsPageProps): ReactElement {
     const report = (stage: string): void => {
       if (!signal.aborted) setState({ kind: "loading", stage });
     };
-    load(report, signal).then(
+    const first = (loaded: PermitsLoaded): void => {
+      if (!signal.aborted) setState(resolvePermitsState(loaded));
+    };
+    load(report, signal, first).then(
       (loaded) => {
         if (!signal.aborted) setState(resolvePermitsState(loaded));
       },
@@ -357,10 +370,11 @@ export function PermitsPage({ load }: PermitsPageProps): ReactElement {
     return () => controller.abort();
   }, [load, attempt]);
 
+  const shown = state.kind === "ready" || state.kind === "first-page" ? state : null;
   const visible =
-    state.kind === "ready"
-      ? state.data.rows.slice(page * PERMITS_PAGE_SIZE, (page + 1) * PERMITS_PAGE_SIZE)
-      : [];
+    shown === null
+      ? []
+      : shown.data.rows.slice(page * PERMITS_PAGE_SIZE, (page + 1) * PERMITS_PAGE_SIZE);
 
   return (
     <section
@@ -383,14 +397,24 @@ export function PermitsPage({ load }: PermitsPageProps): ReactElement {
           <CidDisplay cid={state.manifestCid} />
         </EmptyState>
       ) : null}
-      {state.kind === "ready" ? (
+      {shown !== null ? (
         <>
           <EngineLine>
-            {state.data.fallbackLabel === null ? null : (
-              <StatusPill status="warning" text={state.data.fallbackLabel} />
+            {shown.data.fallbackLabel === null ? null : (
+              <StatusPill status="warning" text={shown.data.fallbackLabel} />
             )}
           </EngineLine>
-          <PermitsPager page={page} total={state.data.rows.length} onPage={setPage} />
+          <PermitsPager
+            page={page}
+            total={shown.kind === "first-page" ? shown.data.permitsEmitted : shown.data.rows.length}
+            onPage={setPage}
+            firstOnly={shown.kind === "first-page"}
+          />
+          {shown.kind === "first-page" ? (
+            <p className={styles.range} role="status" data-first-page-note="">
+              {FIRST_PAGE_NOTE}
+            </p>
+          ) : null}
           {table ? <PermitsTable rows={visible} /> : <PermitCards rows={visible} />}
         </>
       ) : null}
