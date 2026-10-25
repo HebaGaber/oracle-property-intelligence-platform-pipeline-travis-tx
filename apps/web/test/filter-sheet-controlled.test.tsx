@@ -28,7 +28,7 @@ describe("FilterSheet optimistic controls (ERR-39)", () => {
   it("Open or stalled shows checked at once and after the pending render", async () => {
     const onPatch = vi.fn();
     sheet({}, onPatch);
-    const box = screen.getByRole("checkbox", { name: "Open or stalled" }) as HTMLInputElement;
+    const box = screen.getByRole("radio", { name: "Open or stalled" }) as HTMLInputElement;
     fireEvent.click(box);
     expect(onPatch).toHaveBeenCalledWith({ permit: "open_stalled" });
     expect(box.checked).toBe(true);
@@ -78,7 +78,7 @@ describe("FilterSheet optimistic controls (ERR-39)", () => {
     await act(async () => {});
     expect(box.checked).toBe(false);
     expect(
-      (screen.getByRole("checkbox", { name: "Open or stalled" }) as HTMLInputElement).checked,
+      (screen.getByRole("radio", { name: "Open or stalled" }) as HTMLInputElement).checked,
     ).toBe(true);
     expect((screen.getByRole("combobox", { name: "Sort" }) as HTMLSelectElement).value).toBe(
       "open_desc",
@@ -87,7 +87,7 @@ describe("FilterSheet optimistic controls (ERR-39)", () => {
 
   it("drops the optimistic value on blur when the URL never changed", async () => {
     sheet();
-    const box = screen.getByRole("checkbox", { name: "Open or stalled" }) as HTMLInputElement;
+    const box = screen.getByRole("radio", { name: "Open or stalled" }) as HTMLInputElement;
     fireEvent.click(box);
     expect(box.checked).toBe(true);
     fireEvent.blur(box);

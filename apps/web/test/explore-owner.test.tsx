@@ -132,7 +132,7 @@ describe("Tenure and out-of-area owners (AC-8, FR-008)", () => {
     await renderExplore();
     await waitFor(() => expect(api.search).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole("button", { name: "ooa78753" }));
+    fireEvent.click(screen.getByRole("button", { name: /ooa78753/ }));
     await waitFor(() =>
       expect(api.search.mock.calls.at(-1)?.[0]).toMatchObject({
         area: { place: "78753" },

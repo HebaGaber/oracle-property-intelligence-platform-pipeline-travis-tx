@@ -93,89 +93,170 @@ function Cell({
 
 const unknownRoof = (basis: string | null): boolean => basis === null || basis === "unknown";
 
-export function PropertyFields({ row }: { readonly row: ExploreRow }): ReactElement {
-  const roofUnknown = unknownRoof(row.roof_age_basis);
-  const bbb = bbbText(row.bbb_status, row.bbb_status_reason);
-  const ownerUnknown = row.owner_area_class === null || row.owner_area_class === "unknown";
-  return (
-    <dl className={styles.fields}>
-      <Cell label="Address" field="address">
-        {row.address ?? (
+/** Every field a result row shows, in board order (the table, the card and the drawer). */
+export type RowField =
+  | "address"
+  | "roof_age_years"
+  | "roof_age_basis"
+  | "roof_age_confidence"
+  | "distance"
+  | "lat_lon"
+  | "permit"
+  | "status_raw"
+  | "contractor_name"
+  | "contractor_resolution"
+  | "bbb"
+  | "tenure_years"
+  | "tenure_basis"
+  | "owner_area_class";
+
+/** The field's label, as the card and drawer show it. */
+export const FIELD_LABELS: Readonly<Record<RowField, string>> = {
+  address: "Address",
+  roof_age_years: "Roof age",
+  roof_age_basis: "Basis",
+  roof_age_confidence: "Confidence",
+  distance: "Distance",
+  lat_lon: "Lat, lon",
+  permit: "Roofing permit",
+  status_raw: "Status as printed",
+  contractor_name: "Contractor as printed",
+  contractor_resolution: "Contractor match",
+  bbb: "BBB",
+  tenure_years: "Tenure",
+  tenure_basis: "Tenure basis",
+  owner_area_class: "Owner area",
+};
+
+/** Whether the row has the field at all (permit, contractor and BBB cells exist only with data). */
+export function hasField(row: ExploreRow, field: RowField): boolean {
+  if (field === "status_raw") return row.permit !== null;
+  if (field === "contractor_name" || field === "contractor_resolution")
+    return row.contractor !== null;
+  if (field === "bbb") return bbbText(row.bbb_status, row.bbb_status_reason) !== null;
+  return true;
+}
+
+/** One field's value, or its missing reason in words (never blank). */
+export function FieldValue({
+  row,
+  field,
+}: {
+  readonly row: ExploreRow;
+  readonly field: RowField;
+}): ReactElement | null {
+  switch (field) {
+    case "address":
+      return (
+        row.address ?? (
           <Gap
             text={EXPLORE_TEXTS.noCarrier}
             reason={missingFor(row, "address")?.reason}
             field="address"
           />
-        )}
-      </Cell>
-      <Cell label="Roof age" field="roof_age_years">
-        {row.roof_age_years === null
-          ? gapFor(row, "roof_age_years", EXPLORE_TEXTS.roofUnknown)
-          : `${row.roof_age_years} yrs`}
-      </Cell>
-      <Cell label="Basis" field="roof_age_basis">
-        {roofUnknown
-          ? gapFor(row, "roof_age_basis", EXPLORE_TEXTS.roofUnknown)
-          : row.roof_age_basis}
-      </Cell>
-      <Cell label="Confidence" field="roof_age_confidence">
-        {row.roof_age_confidence ?? gapFor(row, "roof_age_confidence", EXPLORE_TEXTS.roofUnknown)}
-      </Cell>
-      <Cell label="Distance" field="distance">
-        {`${row.dist_mi} mi ${row.bearing}`}
-      </Cell>
-      <Cell label="Lat, lon" field="lat_lon">
-        {`${row.lat}, ${row.lon}`}
-      </Cell>
-      <Cell label="Roofing permit" field="permit">
-        {row.permit === null ? <span>{NO_PERMIT_TEXT}</span> : <PermitChip permit={row.permit} />}
-      </Cell>
-      {row.permit === null ? null : (
-        <Cell label="Status as printed" field="status_raw">
-          <Gap text={EXPLORE_TEXTS.noCarrier} reason={NO_CARRIER} field="permit.status_raw" />
+        )
+      );
+    case "roof_age_years":
+      return row.roof_age_years === null ? (
+        gapFor(row, "roof_age_years", EXPLORE_TEXTS.roofUnknown)
+      ) : (
+        <>{`${row.roof_age_years} yrs`}</>
+      );
+    case "roof_age_basis":
+      return unknownRoof(row.roof_age_basis) ? (
+        gapFor(row, "roof_age_basis", EXPLORE_TEXTS.roofUnknown)
+      ) : (
+        <>{row.roof_age_basis}</>
+      );
+    case "roof_age_confidence":
+      return row.roof_age_confidence === null ? (
+        gapFor(row, "roof_age_confidence", EXPLORE_TEXTS.roofUnknown)
+      ) : (
+        <>{row.roof_age_confidence}</>
+      );
+    case "distance":
+      return <>{`${row.dist_mi} mi ${row.bearing}`}</>;
+    case "lat_lon":
+      return <>{`${row.lat}, ${row.lon}`}</>;
+    case "permit":
+      return row.permit === null ? (
+        <span>{NO_PERMIT_TEXT}</span>
+      ) : (
+        <PermitChip permit={row.permit} />
+      );
+    case "status_raw":
+      return row.permit === null ? null : (
+        <Gap text={EXPLORE_TEXTS.noCarrier} reason={NO_CARRIER} field="permit.status_raw" />
+      );
+    case "contractor_name":
+      return row.contractor === null ? null : (
+        <Gap
+          text={EXPLORE_TEXTS.noCarrier}
+          reason={NO_CARRIER}
+          field="contractor.name_as_printed"
+        />
+      );
+    case "contractor_resolution":
+      return row.contractor === null ? null : (
+        <ContractorBadge resolution={row.contractor.resolution} />
+      );
+    case "bbb": {
+      const bbb = bbbText(row.bbb_status, row.bbb_status_reason);
+      if (bbb === null) return null;
+      return row.bbb_status === "not_checked" ||
+        row.bbb_status === "blocked" ||
+        row.bbb_status === "not_found" ? (
+        <Gap text={bbb} reason={`bbb_${row.bbb_status}`} field="bbb_status" />
+      ) : (
+        <>{bbb}</>
+      );
+    }
+    case "tenure_years":
+      return row.tenure_years === null ? (
+        <Gap text={EXPLORE_TEXTS.tenureUnknown} reason={missingFor(row, "tenure_years")?.reason} />
+      ) : (
+        <>{`${row.tenure_years} yrs`}</>
+      );
+    case "tenure_basis":
+      return row.tenure_basis === null ? (
+        <Gap text={EXPLORE_TEXTS.tenureUnknown} />
+      ) : (
+        <>{row.tenure_basis}</>
+      );
+    case "owner_area_class":
+      return row.owner_area_class === null || row.owner_area_class === "unknown" ? (
+        <Gap text={EXPLORE_TEXTS.ownerAreaUnknown} />
+      ) : (
+        <>{row.owner_area_class}</>
+      );
+  }
+}
+
+const CARD_FIELDS: readonly RowField[] = [
+  "address",
+  "roof_age_years",
+  "roof_age_basis",
+  "roof_age_confidence",
+  "distance",
+  "lat_lon",
+  "permit",
+  "status_raw",
+  "contractor_name",
+  "contractor_resolution",
+  "bbb",
+  "tenure_years",
+  "tenure_basis",
+  "owner_area_class",
+];
+
+export function PropertyFields({ row }: { readonly row: ExploreRow }): ReactElement {
+  return (
+    <dl className={styles.fields}>
+      {CARD_FIELDS.filter((f) => hasField(row, f)).map((field) => (
+        <Cell key={field} label={FIELD_LABELS[field]} field={field}>
+          <FieldValue row={row} field={field} />
         </Cell>
-      )}
-      {row.contractor === null ? null : (
-        <>
-          <Cell label="Contractor as printed" field="contractor_name">
-            <Gap
-              text={EXPLORE_TEXTS.noCarrier}
-              reason={NO_CARRIER}
-              field="contractor.name_as_printed"
-            />
-          </Cell>
-          <Cell label="Contractor match" field="contractor_resolution">
-            <ContractorBadge resolution={row.contractor.resolution} />
-          </Cell>
-        </>
-      )}
-      {bbb === null ? null : (
-        <Cell label="BBB" field="bbb">
-          {row.bbb_status === "not_checked" ||
-          row.bbb_status === "blocked" ||
-          row.bbb_status === "not_found" ? (
-            <Gap text={bbb} reason={`bbb_${row.bbb_status}`} field="bbb_status" />
-          ) : (
-            bbb
-          )}
-        </Cell>
-      )}
-      <Cell label="Tenure" field="tenure_years">
-        {row.tenure_years === null ? (
-          <Gap
-            text={EXPLORE_TEXTS.tenureUnknown}
-            reason={missingFor(row, "tenure_years")?.reason}
-          />
-        ) : (
-          `${row.tenure_years} yrs`
-        )}
-      </Cell>
-      <Cell label="Tenure basis" field="tenure_basis">
-        {row.tenure_basis ?? <Gap text={EXPLORE_TEXTS.tenureUnknown} />}
-      </Cell>
-      <Cell label="Owner area" field="owner_area_class">
-        {ownerUnknown ? <Gap text={EXPLORE_TEXTS.ownerAreaUnknown} /> : row.owner_area_class}
-      </Cell>
+      ))}
     </dl>
   );
 }

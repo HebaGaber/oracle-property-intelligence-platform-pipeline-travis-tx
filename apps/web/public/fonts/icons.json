@@ -2,8 +2,15 @@
   "family": "Material Symbols Rounded",
   "axes": "opsz=24, wght=400, FILL=0, GRAD=0",
   "icon_names": [
+    "add",
+    "arrow_forward",
+    "auto_awesome",
     "badge",
+    "check",
     "check_circle",
+    "chevron_left",
+    "chevron_right",
+    "close",
     "cloud_done",
     "cloud_off",
     "cloud_queue",
@@ -27,6 +34,7 @@
     "more_horiz",
     "schedule",
     "smart_toy",
+    "tune",
     "warning"
   ],
   "regenerate": "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=<comma-separated icon_names>&display=block (fetch with a modern browser User-Agent, download the woff2 URL in the response)"

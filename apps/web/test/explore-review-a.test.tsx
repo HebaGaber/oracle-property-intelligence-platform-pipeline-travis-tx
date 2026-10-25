@@ -180,7 +180,7 @@ describe("the header names the request it answers (finding 6)", () => {
     await renderExplore("?place=pflugerville&r=5");
     await waitFor(() => expect(api.search).toHaveBeenCalledTimes(1));
     // The URL moves to another place before the older answer arrives (inside the debounce).
-    fireEvent.click(screen.getByRole("button", { name: "ooa78753" }));
+    fireEvent.click(screen.getByRole("button", { name: /ooa78753/ }));
     expect(lastLocation).toContain("place=78753");
     await act(async () => release(result([0, 1])));
     await waitFor(() =>
@@ -240,8 +240,9 @@ describe("sel not in the results (finding 10)", () => {
   });
 });
 
-describe("Load more (finding 14)", () => {
-  it("fetches the next page with the same query, appends rows and announces the count", async () => {
+// A-16 T050: the board's pager replaces "Load more" (finding 14 kept: same query, next page).
+describe("Result pager (finding 14, Explore1440 board)", () => {
+  it("fetches the next page with the same query, shows it and announces the range", async () => {
     api.search.mockImplementation(async (input) =>
       (input.page ?? 0) === 0
         ? result([0, 1], { total_within_r: 4 })
@@ -251,19 +252,27 @@ describe("Load more (finding 14)", () => {
     await waitFor(() => expect(rows()).toHaveLength(2));
     const showing = (): HTMLElement | null => document.querySelector("[data-showing]");
     expect(showing()?.getAttribute("aria-live")).toBe("polite");
-    expect(showing()?.textContent).toBe("Showing the first 2 of 4");
-    fireEvent.click(screen.getByRole("button", { name: EXPLORE_TEXTS.loadMore }));
-    await waitFor(() => expect(rows()).toHaveLength(4));
+    expect(showing()?.textContent).toBe("Showing 1–2 of 4");
+    expect(
+      (screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(showing()?.textContent).toBe("Showing 3–4 of 4"));
     expect(api.search.mock.calls.at(-1)?.[0]).toMatchObject({ page: 1, roof: 15, radius_mi: 5 });
-    expect(showing()?.textContent).toBe("Showing all 4");
-    expect(screen.queryByRole("button", { name: EXPLORE_TEXTS.loadMore })).toBeNull();
-    // Every appended row keeps its provenance.
+    expect(rows()).toHaveLength(2);
+    expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    // Every row keeps its provenance.
     for (const row of rows()) expect(row.textContent).toContain("travis-test-explore");
   });
 
-  it("offers no Load more when every row is shown", async () => {
+  it("disables both page buttons when every row is on one page", async () => {
     await renderExplore("?place=pflugerville&r=5");
     await waitFor(() => expect(rows()).toHaveLength(2));
+    expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
     expect(screen.queryByRole("button", { name: EXPLORE_TEXTS.loadMore })).toBeNull();
   });
 });
