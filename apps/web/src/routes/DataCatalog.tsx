@@ -12,6 +12,7 @@ import { PAGE_TEXTS } from "@countylens/shared/texts";
 import { ROUTES, verifyPath } from "@countylens/shared/routes";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { Link } from "react-router";
+import { DataTabs } from "../components/DataTabs";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { FallbackChip } from "../components/FallbackChip";
 import { LinearProgress } from "../components/LinearProgress";
@@ -117,6 +118,16 @@ export function Component(): ReactElement {
 
   const tables = run === null ? [] : catalogTables(run.manifest);
   const unclassified = run === null ? 0 : unclassifiedParts(run.manifest, tables);
+  const [find, setFind] = useState("");
+  const needle = find.trim().toLowerCase();
+  const shownTables =
+    needle === ""
+      ? tables
+      : tables.filter((t) => {
+          if (t.table.toLowerCase().includes(needle)) return true;
+          const r = results.get(t.table);
+          return r?.kind === "ok" && r.columns.some((c) => c.name.toLowerCase().includes(needle));
+        });
   const failures = [...results.values()].flatMap((r) => (r.kind === "fail" ? [r.reason] : []));
   const allFailed = tables.length > 0 && failures.length === tables.length;
   let unavailable: string | null = null;
@@ -132,6 +143,7 @@ export function Component(): ReactElement {
       className={runsStyles.page}
     >
       <h2 className={runsStyles.title}>Data · Catalog</h2>
+      <DataTabs current="catalog" verifyCid={run === null ? null : run.manifestCid} />
       {pageState === "loading" ? (
         <>
           <LinearProgress
@@ -174,11 +186,36 @@ export function Component(): ReactElement {
               {UNCLASSIFIED_REASON}
             </p>
           ) : null}
+          <div className={styles.searchRow}>
+            <label className={styles.searchLabel} htmlFor="catalog-find">
+              Find a table or field
+            </label>
+            <input
+              id="catalog-find"
+              className={styles.search}
+              type="search"
+              placeholder="e.g. property, roof_age_years"
+              value={find}
+              onChange={(e) => setFind(e.target.value)}
+            />
+            <Link className={styles.sqlLink} to={`${ROUTES.explore}?mode=sql`}>
+              Query in SQL
+            </Link>
+          </div>
+          <p className={runsStyles.itemBody} data-views-note="">
+            In SQL and MCP use the views (v_property, v_roofing_permit, v_contractor, v_run); these
+            are the published tables they read.
+          </p>
+          {shownTables.length === 0 && tables.length > 0 ? (
+            <p className={runsStyles.itemBody} role="status">
+              No table or field matches “{find.trim()}”.
+            </p>
+          ) : null}
           {tables.length === 0 ? (
             <StatusPill status="unavailable" text="no published table in this run's manifest" />
           ) : (
             <div className={styles.tables}>
-              {tables.map((table) => (
+              {shownTables.map((table) => (
                 <TableCard
                   key={table.table}
                   table={table}
@@ -272,19 +309,27 @@ function TableCard({
         ) : (
           <details>
             <summary className={styles.columnsSummary}>{result.columns.length} columns</summary>
-            <ul className={styles.columns}>
-              {result.columns.map((column) => (
-                <li
-                  key={column.name}
-                  data-column=""
-                  data-name={column.name}
-                  data-type={column.type}
-                >
-                  <span>{column.name}</span>
-                  <span className={styles.columnType}>{column.type}</span>
-                </li>
-              ))}
-            </ul>
+            <table className={styles.fieldTable} aria-label={`Fields of ${table.table}`}>
+              <thead>
+                <tr>
+                  <th scope="col">Field</th>
+                  <th scope="col">Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.columns.map((column) => (
+                  <tr
+                    key={column.name}
+                    data-column=""
+                    data-name={column.name}
+                    data-type={column.type}
+                  >
+                    <td>{column.name}</td>
+                    <td className={styles.columnType}>{column.type}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </details>
         )}
       </div>

@@ -10,6 +10,7 @@ import type { ManifestArtifact, RunManifestV1 } from "@countylens/contract";
 import { PROGRESS_LABELS, VERIFY_TEXTS, verifyPath } from "@countylens/shared";
 import { useEffect, useState, type ReactElement } from "react";
 import { Link } from "react-router";
+import { DataTabs } from "../components/DataTabs";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
@@ -45,6 +46,10 @@ export function Component(): ReactElement {
       className={styles.page}
     >
       <h2 className={runStyles.title}>Data · Manifest</h2>
+      <DataTabs
+        current="manifest"
+        verifyCid={state.kind === "ready" ? state.run.manifestCid : null}
+      />
       {state.kind === "loading" ? (
         <>
           <LinearProgress label={PROGRESS_LABELS.runs} stageText={RUN_STAGE_TEXTS[state.stage]} />
@@ -115,14 +120,18 @@ function RunChain({
       {state.kind === "loading" ? <Skeleton variant="cards" count={1} /> : null}
       {state.kind === "error" ? <ErrorBanner message={runErrorNode(state.error)} /> : null}
       {state.kind === "ready" ? (
-        <ul className={runStyles.list} aria-label="Run chain">
-          {state.chain.map((link) => (
+        <ul className={styles.chainCards} aria-label="Run chain">
+          {state.chain.map((link, i) => (
             <li
               key={link.manifestCid}
-              className={runStyles.item}
+              className={`${styles.chainCard} ${i === 0 ? styles.chainCurrent : ""}`}
               data-chain-entry=""
               data-cid={link.manifestCid}
             >
+              <span className={styles.chainLabel}>
+                Run {state.chain.length - i}
+                {i === 0 ? <span className={styles.chainThis}> · this run</span> : null}
+              </span>
               <span className={runStyles.itemTitle}>
                 <code className={runStyles.mono}>{link.runId}</code>
                 <CidDisplay cid={link.manifestCid} />
@@ -150,6 +159,19 @@ function RunChain({
   );
 }
 
+/** Sizes as the board shows them (B, KB, MB, GB; 1 KB = 1,024 bytes); exact bytes in the title. */
+export function humanBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
 function needsCar(artifact: ManifestArtifact): boolean {
   return artifact.kind === "directory" || artifact.size > VERIFY_MAX_BYTES;
 }
@@ -167,7 +189,7 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
               <th scope="col">Name</th>
               <th scope="col">CID</th>
               <th scope="col">Codec</th>
-              <th scope="col">Size (bytes)</th>
+              <th scope="col">Size</th>
               <th scope="col">SHA-256</th>
               <th scope="col">CAR</th>
               <th scope="col">Check</th>
@@ -183,11 +205,15 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
                 <td className={styles.mono} data-codec={artifact.codec}>
                   {artifact.codec}
                 </td>
-                <td className={styles.num} data-size={artifact.size}>
-                  {artifact.size}
+                <td
+                  className={styles.num}
+                  data-size={artifact.size}
+                  title={`${artifact.size} bytes`}
+                >
+                  {humanBytes(artifact.size)}
                 </td>
-                <td className={styles.digest} data-sha256={artifact.sha256}>
-                  {artifact.sha256}
+                <td className={styles.digest} data-sha256={artifact.sha256} title={artifact.sha256}>
+                  {artifact.sha256.slice(0, 8)}…{artifact.sha256.slice(-4)}
                 </td>
                 <td>
                   {artifact.carCid === undefined ? (

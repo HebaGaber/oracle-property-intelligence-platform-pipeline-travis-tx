@@ -7,7 +7,7 @@ import { rawCid } from "@countylens/query-core";
 import { PAGE_TEXTS, ROUTES } from "@countylens/shared";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -437,5 +437,25 @@ describe("Catalog: unclassified table parts (A13-7, CR-A-13 finding 4)", () => {
     const page = await renderCatalog();
     await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
     expect(page.querySelector("[data-unclassified-parts]")).toBeNull();
+  });
+});
+
+describe("Catalog: find a table or field (A-16 T050, DataCatalog1440 board)", () => {
+  it("filters the tables by table name or by a field in their footer", async () => {
+    const page = await renderCatalog();
+    await vi.waitFor(() => expect(page.querySelectorAll("[data-rows]").length).toBe(2));
+    const names = (): (string | null)[] =>
+      [...page.querySelectorAll("[data-table]")].map((t) => t.getAttribute("data-table"));
+    const find = screen.getByLabelText("Find a table or field");
+    fireEvent.change(find, { target: { value: "improvement_type" } });
+    expect(names()).toEqual(["property_improvement.property_improvement"]);
+    fireEvent.change(find, { target: { value: "county.prop" } });
+    expect(names()).toEqual(["county.property"]);
+    fireEvent.change(find, { target: { value: "nothing_like_this" } });
+    expect(names()).toEqual([]);
+    expect(screen.getByRole("status").textContent).toContain("nothing_like_this");
+    expect(screen.getByRole("link", { name: "Query in SQL" }).getAttribute("href")).toBe(
+      "/tx/travis/explore?mode=sql",
+    );
   });
 });
