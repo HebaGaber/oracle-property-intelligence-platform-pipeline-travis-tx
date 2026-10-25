@@ -1,5 +1,5 @@
 ---
-id: ADR-0003
+id: ADR-0004
 type: decision
 parent: ARD-A
 story: A-11

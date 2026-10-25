@@ -1,4 +1,4 @@
-// A-11 Run 3 (ADR 0003): read-only evidence for the address_point rank.
+// A-11 Run 3 (ADR 0004): read-only evidence for the address_point rank.
 //   npm run address-point-evidence -- <accounts.jsonl> [<cache dir>] [<out.json>]
 // accounts.jsonl: one JSON object per R account, exported read-only from the Query DB:
 //   { request_identifier, state_cd, situs_address, latitude, longitude,

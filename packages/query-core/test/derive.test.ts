@@ -320,7 +320,7 @@ describe("coordinate_source, contractor and BBB state", () => {
   it.each([
     [30.27, -97.76, null, null, null, "gis_centroid"],
     [30.27, -97.76, null, null, TCAD, "gis_centroid"],
-    // ADR 0003: only the geometry's own source URL makes a point an address point.
+    // ADR 0004: only the geometry's own source URL makes a point an address point.
     [30.27, -97.76, null, null, ADDRESS_LAYER, "address_point"],
     // no coordinates: the URL is irrelevant
     [null, null, null, null, ADDRESS_LAYER, "none"],

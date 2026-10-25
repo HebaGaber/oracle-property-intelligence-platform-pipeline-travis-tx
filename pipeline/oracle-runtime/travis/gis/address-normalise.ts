@@ -1,4 +1,4 @@
-// A-11 Run 3 (ADR 0003, PO decision 2026-10-25): the one normalisation both sides of the
+// A-11 Run 3 (ADR 0004, PO decision 2026-10-25): the one normalisation both sides of the
 // address-point join go through. Pure; no I/O.
 //
 // A situs address (TCAD) and an address point (City of Austin LOCATION_address_points) are each

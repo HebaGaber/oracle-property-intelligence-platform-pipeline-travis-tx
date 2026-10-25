@@ -50,7 +50,7 @@ export interface ParcelDbRow {
   latitude: number | null;
   longitude: number | null;
   coordinate_source: "gis_centroid" | "address_point" | "permit_point" | "none" | null;
-  /** parcels.coordinate_source_url: the address-point record URL (ADR 0003), else unused. */
+  /** parcels.coordinate_source_url: the address-point record URL (ADR 0004), else unused. */
   coordinate_source_url?: string | null;
 }
 

@@ -105,7 +105,7 @@ const TABLES: FixtureTables = {
         request_identifier: "x",
         source_http_request: tcadRequest(),
       },
-      // ADR 0003: a point stamped with the City of Austin address-point layer
+      // ADR 0004: a point stamped with the City of Austin address-point layer
       {
         cid: "g2a",
         latitude: 30.2,
@@ -365,7 +365,7 @@ describe("coordinates from one geometry row (code-review #7)", () => {
     });
   });
 
-  it("A-11 Run 3 (ADR 0003): a geometry stamped with the City of Austin address layer reads address_point", () => {
+  it("A-11 Run 3 (ADR 0004): a geometry stamped with the City of Austin address layer reads address_point", () => {
     expect(prop(P2)).toMatchObject({
       latitude: 30.2,
       longitude: -97.2,

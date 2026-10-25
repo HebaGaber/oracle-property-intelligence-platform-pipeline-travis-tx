@@ -1,4 +1,4 @@
-// A-11 Run 3 (ADR 0003): rank 4 of the coordinate assembly and the County group geometry.
+// A-11 Run 3 (ADR 0004): rank 4 of the coordinate assembly and the County group geometry.
 // SYNTHETIC TEST INPUT only: made-up pIDs, geoIDs, addresses and points.
 import { describe, expect, it } from "vitest";
 import {

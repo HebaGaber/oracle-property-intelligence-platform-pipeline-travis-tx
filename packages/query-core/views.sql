@@ -55,7 +55,7 @@ prop AS (
   QUALIFY row_number() OVER (PARTITION BY cid ORDER BY _part) = 1
 ),
 -- Both coordinates from one geometry row: the lowest-cid geometry that has both. geometry_url is the
--- GET stamped on that row: the City of Austin address-point layer for an address_point (ADR 0003).
+-- GET stamped on that row: the City of Austin address-point layer for an address_point (ADR 0004).
 geo AS (
   SELECT pp.from_cid AS property_cid, g.latitude, g.longitude,
          source_url(g.source_http_request) AS geometry_url

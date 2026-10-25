@@ -1,4 +1,4 @@
--- A-11 Run 3 (ADR 0003, PO decision 2026-10-25): the City of Austin address-point layer as an
+-- A-11 Run 3 (ADR 0004, PO decision 2026-10-25): the City of Austin address-point layer as an
 -- internal lookup table, and the new coordinate values it allows on parcels. Internal Query DB
 -- only; nothing here is public. Written only through the Loader `gis` track (kind
 -- `address_points`), from the cache the `fetch-address-layer` command wrote (receipt + sha256).

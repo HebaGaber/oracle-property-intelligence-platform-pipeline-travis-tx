@@ -1,4 +1,4 @@
-// A-11 Run 3 (ADR 0003): the 0202_address_points migration (SQL text) and the Loader `gis` track's
+// A-11 Run 3 (ADR 0004): the 0202_address_points migration (SQL text) and the Loader `gis` track's
 // `address_points` kind, plus the assembly reading the loaded layer. Offline; every row is
 // SYNTHETIC TEST INPUT.
 import { createHash } from "node:crypto";

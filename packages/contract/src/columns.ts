@@ -232,7 +232,7 @@ const V_PROPERTY: readonly Column[] = [
   enumCol(
     "coordinate_source",
     false,
-    "derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0003), permit address → permit_point (address not in export), else none",
+    "derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0004), permit address → permit_point (address not in export), else none",
     "Where the coordinates came from",
     null,
   ),

@@ -2,7 +2,7 @@
 // TCAD account. Pure: the Loader `gis` track reads `parcels`, `parcel_geoids`, `gis_features`
 // (+ `gis_pages`) and the linked `property_improvements` rows inside its transaction, calls
 // this, and writes the result (pipeline/local-stack/services/tracks/gis.ts). No address is turned
-// into a point by a free-text lookup service, ever. ONE narrow exception (PO decision 2026-10-25, ADR 0003): rank 4
+// into a point by a free-text lookup service, ever. ONE narrow exception (PO decision 2026-10-25, ADR 0004): rank 4
 // below, an exact, unique join of the normalised situs to the City of Austin public address-point
 // layer (address-points.ts), used only when ranks 1 to 3 gave no point.
 //
@@ -18,7 +18,7 @@
 //      features on that geoID (by geoID, or by the pID of another account on it) first, else
 //      the real export points of the other accounts on it. Two or more distinct candidates →
 //      no point (never a neighbour's).
-//   4. `address_point` (PO decision 2026-10-25, ADR 0003): the situs (house number + street, unit and
+//   4. `address_point` (PO decision 2026-10-25, ADR 0004): the situs (house number + street, unit and
 //      ZIP ignored, address-normalise.ts) equals exactly ONE distinct point of the City of Austin
 //      address layer and that point lies inside the Travis County box. Lowest priority of the
 //      public ranks: never overrides a GIS point, an export point or a condo building point. Two or

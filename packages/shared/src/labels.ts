@@ -39,7 +39,7 @@ export const MISSING_REASON_LABELS = Object.freeze({
 } satisfies Record<MissingReason, string>);
 
 /**
- * A-11 Run 3 (ADR 0003): the UI wording for `coordinate_source`, one row per value of the
+ * A-11 Run 3 (ADR 0004): the UI wording for `coordinate_source`, one row per value of the
  * contract's closed list. `address_point` is the City of Austin address-point layer: an exact,
  * unique match of the situs address, a building-level point (median 24 m from the GIS point on
  * the accounts that have both). `satisfies` makes tsc fail on a missing or an unknown key.

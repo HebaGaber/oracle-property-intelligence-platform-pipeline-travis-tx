@@ -1,4 +1,4 @@
-// A-11 Run 3 (ADR 0003): the UI wording for coordinate_source covers the contract's closed list
+// A-11 Run 3 (ADR 0004): the UI wording for coordinate_source covers the contract's closed list
 // exactly, and names the City of Austin address layer for address_point.
 import { describe, expect, it } from "vitest";
 import { COLUMN_ENUMS } from "@countylens/contract";
@@ -8,7 +8,7 @@ import {
   sourceLabel,
 } from "../src/index.js";
 
-describe("coordinate_source labels (ADR 0003)", () => {
+describe("coordinate_source labels (ADR 0004)", () => {
   it("has one label per contract value and nothing else", () => {
     expect(Object.keys(COORDINATE_SOURCE_LABELS).sort()).toEqual(
       [...COLUMN_ENUMS.coordinate_source].sort(),

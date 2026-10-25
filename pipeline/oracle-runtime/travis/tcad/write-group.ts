@@ -5,7 +5,7 @@
 // Geometry (oracle disagreements #2, #7; plan CT-8): written only when the assembled
 // `coordinate_source = gis_centroid` (GIS feature, export point or condo building point);
 // a permit point is never written as geometry (it would read `gis_centroid` publicly). A
-// City of Austin address point (`coordinate_source = address_point`, ADR 0003) is written with its
+// City of Austin address point (`coordinate_source = address_point`, ADR 0004) is written with its
 // own provenance URL on geometry.json, so the public source reads address_point. Before
 // the coordinates are assembled (pilot), the `real` TCAD export point stands in, rule
 // `unassembled_pilot_export_point`. Every input record is the redacted one (redact.ts): a
@@ -132,7 +132,7 @@ function geometryFor(input: Pick<GroupInput, "exportPoint" | "coordinate">): {
         sourceUrl: null,
       };
     }
-    // ADR 0003: an exact, unique City of Austin address point is publishable, and only with its
+    // ADR 0004: an exact, unique City of Austin address point is publishable, and only with its
     // own provenance URL (the public coordinate_source must not read as the TCAD export).
     if (c.source === "address_point" && c.latitude !== null && c.longitude !== null) {
       if (!c.sourceUrl) throw new Error("address_point coordinate has no source URL (provenance)");
@@ -166,7 +166,7 @@ export interface SharedFilesSource {
   seed: SeedRow;
   yearBuilt: number | null;
   geometry_rule: GeometryRule;
-  /** Set only for rule address_point: stamped on geometry.json (ADR 0003). */
+  /** Set only for rule address_point: stamped on geometry.json (ADR 0004). */
   geometry_source_url: string | null;
 }
 

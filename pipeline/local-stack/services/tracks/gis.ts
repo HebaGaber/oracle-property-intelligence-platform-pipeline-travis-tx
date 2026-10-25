@@ -37,7 +37,7 @@ import { LoaderInputBase, type LoaderTrack, type MergeOutcome } from "../loader.
 const JobId = z.string().regex(/^travis-a04-[a-z0-9-]+$/);
 const ImportInput = LoaderInputBase.extend({ kind: z.literal("import"), artifactRunId: z.string().min(1) });
 const AssembleInput = LoaderInputBase.extend({ kind: z.literal("assemble"), tcadJobId: JobId.nullable() });
-// A-11 Run 3 (ADR 0003): kind "address_points" loads the City of Austin address-point cache
+// A-11 Run 3 (ADR 0004): kind "address_points" loads the City of Austin address-point cache
 // (artifactPath = the cache directory, artifactSha256 = the layer file's sha256 from its receipt).
 const AddressPointsInput = LoaderInputBase.extend({ kind: z.literal("address_points") });
 export const GisTrackInput = z.discriminatedUnion("kind", [
@@ -315,7 +315,7 @@ export function postgresGisStore(tx: postgres.TransactionSql): GisStore {
              WHERE request_identifier IS NOT NULL AND NOT coalesce(tombstoned, false)`,
           )
         : [];
-      // ADR 0003: the address-point rank runs only when 0202 is applied and a layer is loaded.
+      // ADR 0004: the address-point rank runs only when 0202 is applied and a layer is loaded.
       const [{ loaded } = { loaded: false }] = await tx<Array<{ loaded: boolean }>>`
         SELECT to_regclass('address_point_layer') IS NOT NULL AS loaded`;
       if (!loaded) return { parcels, geoids, features, permits };

@@ -1,4 +1,4 @@
-// A-11 Run 3 (ADR 0003): both sides of the address-point join reduce to the same key.
+// A-11 Run 3 (ADR 0004): both sides of the address-point join reduce to the same key.
 import { describe, expect, it } from "vitest";
 import {
   canonicalNumber,

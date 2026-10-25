@@ -1,4 +1,4 @@
-// A-11 Run 3 (ADR 0003): the polite, resumable loader for the City of Austin address-point
+// A-11 Run 3 (ADR 0004): the polite, resumable loader for the City of Austin address-point
 // layer. Public GETs only, through the repo's one HTTP boundary (travis/lib/source-client.ts):
 // the project User-Agent, at most 1 request/s to services.arcgis.com (HOST_POLICY), backoff
 // only on 429/5xx, one attempt and a stop on a 403 or a challenge. 2,000 records per page.

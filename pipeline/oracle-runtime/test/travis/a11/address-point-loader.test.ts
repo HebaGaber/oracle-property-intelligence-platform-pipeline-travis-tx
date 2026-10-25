@@ -1,4 +1,4 @@
-// A-11 Run 3 (ADR 0003): the address-layer loader is polite (identified User-Agent, GET only,
+// A-11 Run 3 (ADR 0004): the address-layer loader is polite (identified User-Agent, GET only,
 // spaced requests, backoff on 429/5xx, stop on 403), paged, resumable and leaves a receipt.
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";

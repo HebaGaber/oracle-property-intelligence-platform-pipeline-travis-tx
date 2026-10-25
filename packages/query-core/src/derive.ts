@@ -108,7 +108,7 @@ export function zctaAreaRows(): { zcta: string; area_class: Exclude<AreaClass, "
 }
 
 /**
- * A-11 Run 3 (ADR 0003): a geometry whose source_http_request is a GET on this City of Austin
+ * A-11 Run 3 (ADR 0004): a geometry whose source_http_request is a GET on this City of Austin
  * layer is an address point; every other geometry is the TCAD/GIS point (`gis_centroid`).
  */
 export const ADDRESS_POINT_LAYER_MARKER =

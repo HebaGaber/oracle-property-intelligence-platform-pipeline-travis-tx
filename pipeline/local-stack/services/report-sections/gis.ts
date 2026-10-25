@@ -56,7 +56,7 @@ export interface CoordinateReads {
     stats: {
       multi_feature: { pids: number; extra_features: number; rule: string };
       condo_building_point: { accounts: number; buildings: number; rule: string };
-      /** Rank 4 outcomes (ADR 0003); absent in watermarks written before Run 3. */
+      /** Rank 4 outcomes (ADR 0004); absent in watermarks written before Run 3. */
       address_point?: Record<string, number | string>;
       gis_features_without_roll_account: number;
       permit_far_from_gis: number;

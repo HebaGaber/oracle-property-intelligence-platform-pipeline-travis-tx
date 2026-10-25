@@ -133,7 +133,7 @@ export interface CountyTransformInput {
    */
   asOf?: string;
   /**
-   * A-11 Run 3 (ADR 0003): the GET that returned the point when it did NOT come from the TCAD
+   * A-11 Run 3 (ADR 0004): the GET that returned the point when it did NOT come from the TCAD
    * export (the City of Austin address-point record). Stamped on geometry.json only; every other
    * entity keeps the TCAD export request.
    */
