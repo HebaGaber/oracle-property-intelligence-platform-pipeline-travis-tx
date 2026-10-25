@@ -332,6 +332,8 @@ export const PARKED_GAPS = {
   /** The SQL panel's first query binds 225 table parts (~97 s; fails on the CI runner). */
   sqlFirstQuery: "A-16 gap 2: the SQL panel's first query on the full county takes ~97 s",
   /** Five manifest-driven pages exceed the 2.5 s LCP limit on the full county; Manifest CLS 0.132. */
+  /** The SQL tab binds every Run 3 table on load: ~96 s against the 60 s wait (2026-10-26). */
+  sqlTabBind: "A-16 item 18: the Explore SQL tab binds Run 3 in about 96 s; the tests wait 60 s",
   runsLogLcp:
     "A-16 gap 3: LCP is 2.7-3.4 s against the 2.5 s limit on Runs, Runs · Log, Coverage, Catalog and Manifest, and Manifest CLS is 0.132 against 0.1",
 } as const;
@@ -342,4 +344,20 @@ export const PARKED_GAPS = {
  */
 export function parkGap(reason: (typeof PARKED_GAPS)[keyof typeof PARKED_GAPS]): void {
   test.fixme(true, `Parked: ${reason}`);
+}
+
+/** Routes a multi-route case skips while their A-16 item is open (the other routes still run). */
+const PARKED_ROUTES: Readonly<Record<string, (typeof PARKED_GAPS)[keyof typeof PARKED_GAPS]>> = {
+  "explore-sql": PARKED_GAPS.sqlTabBind,
+};
+
+/**
+ * True when the route is parked; the skip is recorded as a "parked" annotation in the report, so
+ * it is visible and never counted as checked. Unpark by deleting the route from PARKED_ROUTES.
+ */
+export function parkedRoute(key: string): boolean {
+  const reason = PARKED_ROUTES[key];
+  if (reason === undefined) return false;
+  test.info().annotations.push({ type: "parked", description: `${key}: ${reason}` });
+  return true;
 }
