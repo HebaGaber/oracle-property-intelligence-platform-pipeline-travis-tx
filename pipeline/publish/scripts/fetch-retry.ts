@@ -22,6 +22,12 @@ export interface RetryOptions {
   tries: number;
   /** Fixed part of the per-request timeout. */
   baseTimeoutMs: number;
+  /**
+   * Floor for a Kubo `dag/import`: Filebase answers it only after pinning the imported root, which
+   * for a tables.car (a root linking every part) took more than 120 s on 2026-10-25. Kept under
+   * Node's own 300 s wait for response headers, which applies after the body is sent.
+   */
+  importTimeoutMs: number;
   /** Upload rate assumed for the size-based part of the timeout. */
   assumedBytesPerSecond: number;
   /** First backoff wait; doubles per retry, capped at maxBackoffMs. */
@@ -39,6 +45,7 @@ export function defaultOptions(env: NodeJS.ProcessEnv = process.env): RetryOptio
   return {
     tries: num(env.FETCH_RETRY_TRIES, 6),
     baseTimeoutMs: num(env.FETCH_RETRY_BASE_TIMEOUT_MS, 120_000),
+    importTimeoutMs: num(env.FETCH_RETRY_IMPORT_TIMEOUT_MS, 295_000),
     assumedBytesPerSecond: num(env.FETCH_RETRY_ASSUMED_BPS, 256 * 1024),
     firstBackoffMs: num(env.FETCH_RETRY_FIRST_BACKOFF_MS, 2_000),
     maxBackoffMs: num(env.FETCH_RETRY_MAX_BACKOFF_MS, 60_000),
@@ -95,8 +102,10 @@ export function withRetry(original: typeof fetch, options: RetryOptions): typeof
     if (request.signal || size === null || input instanceof Request) return original(input, init);
     const method = (request.method ?? "GET").toUpperCase();
     const label = where(input, method);
-    const timeoutMs =
-      options.baseTimeoutMs + Math.ceil((size / options.assumedBytesPerSecond) * 1000);
+    const sized = options.baseTimeoutMs + Math.ceil((size / options.assumedBytesPerSecond) * 1000);
+    const timeoutMs = label.endsWith("/api/v0/dag/import")
+      ? Math.max(sized, options.importTimeoutMs)
+      : sized;
     for (let attempt = 1; ; attempt += 1) {
       const started = Date.now();
       const elapsed = (): string => `${((Date.now() - started) / 1000).toFixed(1)}s`;

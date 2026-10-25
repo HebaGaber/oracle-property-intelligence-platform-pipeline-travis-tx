@@ -44,6 +44,7 @@ function options(logs: string[], over: Partial<RetryOptions> = {}): RetryOptions
   return {
     tries: 4,
     baseTimeoutMs: 2_000,
+    importTimeoutMs: 2_000,
     assumedBytesPerSecond: 1_000_000_000,
     firstBackoffMs: 1,
     maxBackoffMs: 5,
@@ -108,6 +109,21 @@ describe("fetch retry wrapper (ERR-33)", () => {
     });
     expect(await res.text()).toBe("ok");
     expect(logs[0]).toMatch(/TimeoutError/);
+  });
+
+  it("gives dag/import its longer floor instead of the base timeout", async () => {
+    const s = await serve((_req, res) => {
+      setTimeout(() => res.end("imported"), 400);
+    });
+    const logs: string[] = [];
+    const url = s.url.replace("/api/v0/add?pin=true", "/api/v0/dag/import?pin-roots=true");
+    const res = await withRetry(
+      fetch,
+      options(logs, { baseTimeoutMs: 100, importTimeoutMs: 3_000 }),
+    )(url, { method: "POST", body: form() });
+    expect(await res.text()).toBe("imported");
+    expect(s.hits()).toBe(1);
+    expect(logs).toHaveLength(0);
   });
 
   it("does not retry a 4xx other than 429", async () => {
