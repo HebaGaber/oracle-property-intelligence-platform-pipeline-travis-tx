@@ -1,7 +1,10 @@
 // A-04 T044 (FR-007…FR-010, FR-020, D-1, D-9; agent-design § 2 ranking): one coordinate per
 // TCAD account. Pure: the Loader `gis` track reads `parcels`, `parcel_geoids`, `gis_features`
 // (+ `gis_pages`) and the linked `property_improvements` rows inside its transaction, calls
-// this, and writes the result (pipeline/local-stack/services/tracks/gis.ts). No address is ever turned into a point.
+// this, and writes the result (pipeline/local-stack/services/tracks/gis.ts). No address is turned
+// into a point by a free-text lookup service, ever. ONE narrow exception (PO decision 2026-10-25, ADR 0003): rank 4
+// below, an exact, unique join of the normalised situs to the City of Austin public address-point
+// layer (address-points.ts), used only when ranks 1 to 3 gave no point.
 //
 // Rank (first that applies):
 //   1. GIS feature joined by exact-string pID (PROP_ID = pID). Only a feature WITHOUT a PROP_ID
@@ -15,23 +18,44 @@
 //      features on that geoID (by geoID, or by the pID of another account on it) first, else
 //      the real export points of the other accounts on it. Two or more distinct candidates →
 //      no point (never a neighbour's).
-//   4. `permit_point` (Query DB only, D-9): the linked Austin permits' mode point at 6
+//   4. `address_point` (PO decision 2026-10-25, ADR 0003): the situs (house number + street, unit and
+//      ZIP ignored, address-normalise.ts) equals exactly ONE distinct point of the City of Austin
+//      address layer and that point lies inside the Travis County box. Lowest priority of the
+//      public ranks: never overrides a GIS point, an export point or a condo building point. Two or
+//      more distinct points: no point, reason `address_point_ambiguous`; a point outside the
+//      county: no point, reason `address_point_outside_county`; no point at all: the usual reason.
+//      Public `address_point`; provenance = the layer record's URL, the retrieval time and the
+//      sha256 of the cached layer file.
+//   5. `permit_point` (Query DB only, D-9): the linked Austin permits' mode point at 6
 //      decimals, tie → the latest issue_date; provenance = that permit's source row.
-//   5. none, with exactly one internal reason: `gis_null_geometry` (own features all had a null
+//   6. none, with exactly one internal reason: `address_point_ambiguous`,
+//      `address_point_outside_county`, `gis_null_geometry` (own features all had a null
 //      geometry), `no_permit_point` (linked permits, none with a point), else `no_gis_feature`.
 // Non-R accounts (P, MH, MN) never get a point: `non_land_account`.
 // A permit point more than 0.5 mi from a `gis_centroid` point keeps the GIS point and flags
 // the parcel and that permit `permit_far_from_gis`.
+import type { SitusIn } from "./address-normalise.js";
+import type { AddressPointSet } from "./address-points.js";
 import type { PointMethod } from "./points.js";
 
 export const FAR_PERMIT_METERS = 0.5 * 1609.344;
 const EARTH_M = 6_371_008.8;
 
-export type CoordinateSource = "gis_centroid" | "permit_point" | "none";
+export type CoordinateSource = "gis_centroid" | "address_point" | "permit_point" | "none";
 export type CoordinateRule =
-  PointMethod | "largest_area" | "export_point" | "condo_building_point" | "permit_point";
+  | PointMethod
+  | "largest_area"
+  | "export_point"
+  | "condo_building_point"
+  | "address_point"
+  | "permit_point";
 export type CoordinateReason =
-  "no_gis_feature" | "gis_null_geometry" | "no_permit_point" | "non_land_account";
+  | "no_gis_feature"
+  | "gis_null_geometry"
+  | "no_permit_point"
+  | "non_land_account"
+  | "address_point_ambiguous"
+  | "address_point_outside_county";
 export type ReviewFlag = "permit_far_from_gis";
 
 export interface ParcelIn {
@@ -44,6 +68,8 @@ export interface ParcelIn {
   source_url: string | null;
   captured_at: string | null;
   export_sha256: string | null;
+  /** parcels.situs_address (primary situs); read only by the address_point rank. */
+  situs?: SitusIn | null;
 }
 
 /** parcel_geoids rows (several accounts per geoID). Defaults to each parcel's primary geoID. */
@@ -85,6 +111,8 @@ export interface AssemblyInput {
   features: readonly FeatureIn[];
   permits: readonly PermitIn[];
   geoids?: readonly GeoidAccountIn[];
+  /** The cached City of Austin address layer; absent: the address_point rank is skipped. */
+  addressPoints?: AddressPointSet;
 }
 
 export interface CoordinateRow {
@@ -113,6 +141,16 @@ export interface AssemblyStats {
   gap_by_reason: Partial<Record<CoordinateReason, number>>;
   multi_feature: { pids: number; extra_features: number; rule: "largest_area" };
   condo_building_point: { accounts: number; buildings: number; rule: "condo_building_point" };
+  /** Rank 4 outcomes over the accounts that reached it (no point from ranks 1 to 3). */
+  address_point: {
+    matched: number;
+    ambiguous: number;
+    outside_county: number;
+    no_match: number;
+    no_address: number;
+    unit_ignored: number;
+    rule: "address_point";
+  };
   gis_features_without_roll_account: number;
   permit_far_from_gis: number;
   interior_point: number;
@@ -249,11 +287,20 @@ export function assembleCoordinates(input: AssemblyInput): AssemblyOutput {
   const permitsById = group(input.permits, (p) => p.request_identifier);
 
   const stats: AssemblyStats = {
-    by_source: { gis_centroid: 0, permit_point: 0, none: 0 },
+    by_source: { gis_centroid: 0, address_point: 0, permit_point: 0, none: 0 },
     by_rule: {},
     gap_by_reason: {},
     multi_feature: { pids: 0, extra_features: 0, rule: "largest_area" },
     condo_building_point: { accounts: 0, buildings: 0, rule: "condo_building_point" },
+    address_point: {
+      matched: 0,
+      ambiguous: 0,
+      outside_county: 0,
+      no_match: 0,
+      no_address: 0,
+      unit_ignored: 0,
+      rule: "address_point",
+    },
     gis_features_without_roll_account: 0,
     permit_far_from_gis: 0,
     interior_point: 0,
@@ -338,8 +385,34 @@ export function assembleCoordinates(input: AssemblyInput): AssemblyOutput {
           condoBuildings.add(p.geo_id);
         }
       }
+      let addressReason: CoordinateReason | null = null;
+      if (point === null && input.addressPoints !== undefined) {
+        const m = input.addressPoints.match(p.situs);
+        const a = stats.address_point;
+        if (m.status === "unique") {
+          const prov = input.addressPoints.provenance;
+          point = {
+            lat: m.point.lat,
+            lon: m.point.lon,
+            url: m.point.url,
+            capturedAt: prov.retrievedAt,
+            sha256: prov.sha256,
+          };
+          rule = "address_point";
+          source = "address_point";
+          a.matched += 1;
+          if (m.unit_ignored !== null) a.unit_ignored += 1;
+        } else if (m.status === "ambiguous") {
+          a.ambiguous += 1;
+          addressReason = "address_point_ambiguous";
+        } else if (m.status === "outside_county") {
+          a.outside_county += 1;
+          addressReason = "address_point_outside_county";
+        } else if (m.status === "no_match") a.no_match += 1;
+        else a.no_address += 1;
+      }
       if (point !== null) {
-        source = "gis_centroid";
+        if (source !== "address_point") source = "gis_centroid";
       } else {
         point = permitPoint(permits);
         if (point !== null) {
@@ -347,11 +420,12 @@ export function assembleCoordinates(input: AssemblyInput): AssemblyOutput {
           rule = "permit_point";
         } else {
           reason =
-            own.length > 0 && own.every((f) => featurePointOf(f) === null)
+            addressReason ??
+            (own.length > 0 && own.every((f) => featurePointOf(f) === null)
               ? "gis_null_geometry"
               : permits.length > 0
                 ? "no_permit_point"
-                : "no_gis_feature";
+                : "no_gis_feature");
         }
       }
     }
