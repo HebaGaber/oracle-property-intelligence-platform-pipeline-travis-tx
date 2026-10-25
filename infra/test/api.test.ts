@@ -211,9 +211,9 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
 
   it("reads only ipfs/* and private/bench/* of the CID copy (contracts/storage.md Reader); lists private/bench/* only", () => {
     const [, fn] = lambdaFunction(template);
-    const roleLogicalId = (
-      (fn.Properties as { Role: { "Fn::GetAtt": [string, string] } }).Role["Fn::GetAtt"]
-    )[0];
+    const roleLogicalId = (fn.Properties as { Role: { "Fn::GetAtt": [string, string] } }).Role[
+      "Fn::GetAtt"
+    ][0];
     // `resources` is shadowed later in this block (the IAM statement's own Resource list, unrelated
     // pre-existing name), so this reads straight from the template rather than the describe-level
     // destructure to avoid that TDZ collision.
@@ -274,8 +274,8 @@ describe("CountyLensApi: HTTP API, throttles and the 30-day JSON access log (AD-
       Name: "countylens-api",
       ProtocolType: "HTTP",
     });
-    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route")).filter(
-      (r) => json((r.Properties as { ApiId: unknown }).ApiId).includes(`"${apiId}"`),
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route")).filter((r) =>
+      json((r.Properties as { ApiId: unknown }).ApiId).includes(`"${apiId}"`),
     );
     expect(routes.length).toBeGreaterThan(0);
     const keys = routes.map((r) => (r.Properties as { RouteKey: string }).RouteKey).sort();

@@ -465,8 +465,10 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, no GitHub OIDC (resea
       const accessGroup = [...groups.entries()].find(([key]) =>
         arn.includes(`"${key.split("/")[1]}"`),
       );
-      expect(accessGroup, `${stage.stack}/${stage.logicalId}'s access log group is in the app`)
-        .toBeDefined();
+      expect(
+        accessGroup,
+        `${stage.stack}/${stage.logicalId}'s access log group is in the app`,
+      ).toBeDefined();
       expect(accessGroup?.[1].Properties?.RetentionInDays).toBe(30);
     }
     for (const [, group] of groups) {

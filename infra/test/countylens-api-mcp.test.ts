@@ -39,14 +39,14 @@ function synthApi(): { template: Template; resources: Record<string, CfnResource
 }
 
 describe("CountyLensApi MCP resources (A-14 T010/T018): a Lambda distinct from the tRPC one", () => {
-  it("the MCP Lambda is arm64, 1,769 MB, no reserved or provisioned concurrency, and is a distinct function from countylens-api", () => {
+  it("the MCP Lambda is arm64, 3,008 MB (AM-09), no reserved or provisioned concurrency, and is a distinct function from countylens-api", () => {
     const { template, resources } = synthApi();
     template.hasResourceProperties("AWS::Lambda::Function", {
       FunctionName: MCP_FUNCTION_NAME,
       Architectures: ["arm64"],
       MemorySize: MCP_MEMORY_MB,
     });
-    expect(MCP_MEMORY_MB).toBe(1769);
+    expect(MCP_MEMORY_MB).toBe(3008);
     expect(MCP_FUNCTION_NAME).not.toBe("countylens-api");
 
     const functions = Object.values(resources).filter((r) => r.Type === "AWS::Lambda::Function");

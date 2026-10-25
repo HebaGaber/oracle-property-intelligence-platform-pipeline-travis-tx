@@ -1,6 +1,6 @@
 // A-14 T009 (write-only this pass; tasks.md "T016 ... done in a follow-up pass"). Asserts the
 // agent-owned CDK resource block of CountyLensApi (infra/src/api-stack.ts): the agent Lambda
-// (arm64, 1,769 MB per AD-27, timeout 25 s, no reserved concurrency — research.md "no reserved
+// (arm64, 3,008 MB per AD-27 as amended by AM-09, timeout 25 s, no reserved concurrency — research.md "no reserved
 // Lambda concurrency"), the spend-counter DynamoDB table (on-demand billing, data-model.md
 // "Spend counter"), and the CloudWatch alarm at 80% of the $3/day cap (agent-design.md § "ash"
 // > "Spend-cap + alarm design").
@@ -41,7 +41,7 @@ function synthApi(): { template: Template; resources: Record<string, unknown> } 
 }
 
 describe("CountyLensApi agent resources (A-14 T009/T016): Lambda, spend table, 80% alarm", () => {
-  it("the agent Lambda: arm64, 1,769 MB, 25 s timeout, no reserved or provisioned concurrency", () => {
+  it("the agent Lambda: arm64, 3,008 MB (AM-09), 25 s timeout, no reserved or provisioned concurrency", () => {
     const { template } = synthApi();
     template.hasResourceProperties("AWS::Lambda::Function", {
       FunctionName: AGENT_FUNCTION_NAME,
@@ -49,7 +49,7 @@ describe("CountyLensApi agent resources (A-14 T009/T016): Lambda, spend table, 8
       MemorySize: AGENT_MEMORY_MB,
       Timeout: AGENT_TIMEOUT_SECONDS,
     });
-    expect(AGENT_MEMORY_MB).toBe(1769);
+    expect(AGENT_MEMORY_MB).toBe(3008);
     expect(AGENT_TIMEOUT_SECONDS).toBe(Duration.seconds(25).toSeconds());
 
     // No ReservedConcurrentExecutions/ProvisionedConcurrencyConfig anywhere in the stack

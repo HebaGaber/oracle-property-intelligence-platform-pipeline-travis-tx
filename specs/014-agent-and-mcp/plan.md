@@ -20,7 +20,7 @@ Two doors onto the same published Travis County data, both reading only through 
 
 **Testing**: Vitest (unit + fixture replay over committed pilot tables, and the golden-query grader against the deployed `agent.ask`), Playwright (browser, against the hosted preview URL; `request` fixture for MCP against the hosted `/mcp`), `cdk synth` assertions.
 
-**Target Platform**: AWS Lambda (arm64, 1,769 MB) behind API Gateway HTTP API, region `eu-north-1` from `CDK_DEFAULT_REGION`; Bedrock via `eu.anthropic.claude-sonnet-4-6` inference profile (confirmed ACTIVE this run) or the Vercel AI Gateway fallback.
+**Target Platform**: AWS Lambda (arm64, 3,008 MB per AM-09) behind API Gateway HTTP API, region `eu-north-1` from `CDK_DEFAULT_REGION`; Bedrock via `eu.anthropic.claude-sonnet-4-6` inference profile (confirmed ACTIVE this run) or the Vercel AI Gateway fallback.
 
 **Project Type**: web service (monorepo: shared packages + two Lambda-backed API surfaces + one existing web app).
 

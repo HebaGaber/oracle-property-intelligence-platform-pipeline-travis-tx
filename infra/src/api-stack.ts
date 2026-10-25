@@ -71,8 +71,8 @@ export const HTTP_API_URL_PARAMETER = "/countylens/api/http-api-url";
 // are tested (infra/test/countylens-api-mcp.test.ts, T010) ahead of that.
 /** Function name, Powertools service name of the MCP Lambda (distinct from API_FUNCTION_NAME). */
 export const MCP_FUNCTION_NAME = "countylens-mcp";
-/** Lightest standard Lambda tier (1 vCPU); the MCP server runs the same engine, lighter traffic. */
-export const MCP_MEMORY_MB = 1769;
+/** Same size as the query API (AM-09): the MCP server runs the same DuckDB engine on the same full-county parts, and ran out of memory at 1,769 MB. */
+export const MCP_MEMORY_MB = API_MEMORY_MB;
 export const MCP_TIMEOUT = Duration.seconds(15);
 export const MCP_ROUTE_PATH = "/mcp";
 export const MCP_HEALTH_PATH = "/health";
@@ -94,8 +94,8 @@ export const MCP_TOKEN_PARAMETER_NAME = "/countylens/mcp/token";
 // API, not folded into either, so its blast radius and throttle stay AD-27's own.
 /** Function name, Powertools service name of the agent Lambda (distinct from the other two). */
 export const AGENT_FUNCTION_NAME = "countylens-agent";
-/** AD-27 sizing: the lightest standard tier (1 vCPU), same tier as the MCP Lambda. */
-export const AGENT_MEMORY_MB = 1769;
+/** AD-27 sizing, amended by AM-09: same as the query API, because the agent tools run the same engine (1,769 MB ran out of memory on the first hosted call). */
+export const AGENT_MEMORY_MB = API_MEMORY_MB;
 /** AD-27: 23 s in-process abort → `timed_out`, 25 s Lambda timeout (the backstop), independent
  *  of AM-06's 15 s query-API timeout (research.md "timeout layering"). */
 export const AGENT_TIMEOUT_SECONDS = 25;
