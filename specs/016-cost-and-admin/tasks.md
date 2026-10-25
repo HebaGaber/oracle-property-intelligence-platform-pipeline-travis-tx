@@ -1,0 +1,83 @@
+# Tasks: A-16 cost, admin, prototype parity, full-county index
+
+**Input**: [spec.md](spec.md), [plan.md](plan.md), [agent-design.md](agent-design.md) · **Tests**: written first in every group (constitution X) · **Test cases**: `testplans/A-16-test-cases.md`
+
+Format: `[ID] [P?] [Group] Description — files — AC / Closure ID`. `[P]` = can run in parallel with the other tasks of the same phase. Groups own disjoint files (plan.md § Project Structure, updated below); a builder never edits another group's file.
+
+**Group ownership (final):**
+- **G1 metagross · infra + API:** `infra/src/api-stack.ts`, `ops-stack.ts`, `web-stack.ts`, `config.ts`, `infra/test/*` (except `admin-queue.test.ts`), `apps/api/src/trpc.ts`, `context.ts`, `routers/admin.ts`, `routers/index.ts`, `apps/api/package.json`.
+- **G2a metagross · admin + Coverage + Runs pages:** `apps/web/src/auth/*`, `routes/AdminSignIn.tsx`, `Activity.tsx`, `Coverage*.tsx`, `Runs*.tsx`, `Runs.shared.tsx`, `data/run-loader.ts`, `content/*`, `scripts/build-cost-limits.mjs`, `packages/shared/src/routes.ts`, `routes/route-list.ts`, `tests/e2e/A-16.spec.ts`, `tests/e2e/lib/auth.ts`, `playwright.config.ts`.
+- **G2b metagross · parity on every other page + speed:** `apps/web/src/routes/{Hub,Explore*,PropertyDrawer,DataCatalog,DataManifest,DataVerify,HelpMcp,Legal*,ComingSoon,Permits*}.tsx` and their `.module.css`, shared `components/*` and shell, `engine/load-permits.ts`, `routes/ExploreSql.engine.ts`, `tests/e2e/responsive.spec.ts`, `tests/e2e/lib/a13-fixtures.ts`.
+- **G3 machamp · contract, queue, bridge, pipeline closures:** `packages/contract/src/{run-command,live-run,index}.ts`, `infra/src/admin-queue.ts`, `infra/test/admin-queue.test.ts`, `pipeline/bridge/*`, `pipeline/local-stack/scripts/run-lock.ts`, `batch-hash-validate-export.sh`, `pipeline/oracle-runtime/travis/permits/write-group.ts`, `run-manifest.ts`, `pipeline/publish/src/manifest.ts`.
+- **G4 machamp · per-run Explore index + agent/MCP read path:** `pipeline/publish/src/explore-index.ts`, `pipeline/publish/scripts/build-explore-index.ts`, `pipeline/publish/test/explore-index.test.ts`, `apps/api/src/engine/**`, `apps/api/src/routers/explore.ts`, `apps/api/src/agent/**`, `apps/api/src/mcp/**`.
+- **Me (main session):** `docs/**`, `specs/016-*/**`, `stories/A-16-*`, `docs/decisions/0001-read-path.md` amendment, `docs/architecture-constitution.md` amendment rows.
+
+---
+
+## Phase 1 · Wave 1: frozen interfaces (≈10 min, before any group builds)
+
+- [ ] T001 [G3] `RunCommandV1`, `LiveRunV1` strict Zod schemas + fixtures + tests — `packages/contract/src/run-command.ts`, `live-run.ts`, `index.ts` — AC-7, AC-9
+- [ ] T002 [P] [G1] Admin router I/O schemas (`admin.me`, `admin.run.start/stop/retry`, `admin.activity.summary`) and env-name constants (`VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_USER_POOL_CLIENT_ID`, `COUNTYLENS_ADMIN_QUEUE_URL`, `EXPLORE_INDEX_PREFIX`) and `EXPLORE_SEARCH_THROTTLE` — `apps/api/src/routers/admin.ts` (schemas only), `infra/src/config.ts` — AC-6, AC-8
+- [ ] T003 [P] [G4] Index schema + key layout `private/explore-index/<manifestCid>/` + `IndexDescriptor` Zod (manifest CID, part CIDs + SHA-256, `viewsSha256`) — `pipeline/publish/src/explore-index.ts` — AC-13
+- [ ] T004 [P] [G2a] Routes `/admin/sign-in`, `/activity` and the `cost-limits.generated.json` row schema — `packages/shared/src/routes.ts`, `apps/web/src/content/cost-limits.schema.ts` — AC-4, AC-6
+- [ ] T005 [Me] ADR-0001 read-path amendment (private derived per-run index built only from published CIDs; PO option a, 2026-10-26) — `docs/decisions/0001-read-path.md`, `docs/architecture-constitution.md` — AC-13
+
+**Checkpoint:** commit `A-16: wave 1 frozen interfaces`; all groups rebase on it.
+
+## Phase 2 · Wave 2: build in parallel (tests first)
+
+### G4 · index (critical path) — AC-13, A13-1, A13-8, A14-1, A14-4, A14-5, A14-8
+- [ ] T010 [G4] Tests: fixture run → each index file's schema equals `DESCRIBE` of the bound view; `EXCEPT ALL` parity 0; SHA mismatch and unbound batch are hard stops; existing index is a no-op — `pipeline/publish/test/explore-index.test.ts`
+- [ ] T011 [G4] Build CLI ported from Task B `BuildIndex`/`fetchPart`/`plan` (`--manifest --source cidcopy|local --upload --verify`), `index.json` written last, `If-None-Match` upload — `pipeline/publish/scripts/build-explore-index.ts`
+- [ ] T012 [G4] Tests then reader: verify `index.json` (manifest CID, `viewsSha256`), download to `/tmp`, views over `read_parquet`, single in-flight cold load, `index_not_built` / `index_stale` — `apps/api/src/engine/explore-index.ts`, `duckdb-node.ts` `bind()`
+- [ ] T013 [G4] Map `index_not_built`/`index_stale` to a typed tRPC error, agent tool error and MCP `isError` with reason; out-of-area filter returns "owner area not published in this run" — `apps/api/src/routers/explore.ts`, `agent/tools.ts`, `mcp/tools.ts`
+- [ ] T014 [G4] A14-5: structured empty outcomes (`empty_in_scope`, `field_not_published`) from tool filters/results, not question wording (Task B pattern) — `apps/api/src/agent/citations.ts`, `ask.ts`
+- [ ] T015 [P] [G4] A14-8 (part): MCP per-call deadline below the Lambda timeout; runs-index cache (60 s); A14-6 (part): distinct `run_lookup_failed` reason — `apps/api/src/mcp/*`, `apps/api/src/agent/*`
+- [ ] T016 [G4] Build + upload the Run 2 index (and Run 3 with `--source local` if its publish lands); record timings — operator step, evidence in `docs/evidence/A-16.md`
+
+### G1 · infra + API — AC-2, AC-6, AC-8, AC-10, AC-11, A13-6, A14-3
+- [ ] T020 [G1] Tests first: `infra/test/idle-cost.test.ts` (scheduler DISABLED; 0 Secrets Manager secret/RDS/KMS key/WAF/hosted zone/provisioned or reserved concurrency; log retention 14 d, access/query log 30 d; budget 10; no literal region outside `config.ts`; `AllowAdminCreateUserOnly`; queue RedrivePolicy + DLQ alarm; no queue resource policy; no SQS→Lambda event source; grep gate for DB connection strings in `apps/` + `infra/`)
+- [ ] T021 [G1] Cognito pool (self sign-up off, email alias, SRP client, no secret, `admin` group) in `CountyLensApi`; Amplify env vars — `infra/src/api-stack.ts`, `web-stack.ts`
+- [ ] T022 [G1] API timeout 29 → 15 s, memory 1,769 MB, `EXPLORE_INDEX_PREFIX` env + GetObject on `private/explore-index/*` and `live/live.json` for API/agent/MCP roles; `ANY /trpc/explore.search` route with `EXPLORE_SEARCH_THROTTLE`; Lambda p95 duration alarm → Ops topic — `api-stack.ts`, `ops-stack.ts`
+- [ ] T023 [G1] Instantiate `AdminQueue` (G3 construct) in `api-stack.ts`; API role `sqs:SendMessage` only
+- [ ] T024 [G1] Tests then `adminProcedure` (`aws-jwt-verify`, access token, `admin` group; 401 before 403; log without token); `admin.me`, `admin.run.start/stop/retry` (send `RunCommandV1`, reject while `live.json` running), `admin.runs.live`, `admin.activity.summary` (Logs Insights, 5-min cache, query strings returned) — `apps/api/src/trpc.ts`, `context.ts`, `routers/admin.ts`, `routers/index.ts`
+
+### G3 · queue + bridge + pipeline closures — AC-7, AC-9, AC-11, A11-1, A11-6, A11-10
+- [ ] T030 [G3] Tests then `AdminQueue` construct: queue (SSE-SQS, visibility 120 s, retention 15 min, wait 20 s), DLQ (maxReceiveCount 3, 14 d), DLQ alarm → topic prop — `infra/src/admin-queue.ts`, `infra/test/admin-queue.test.ts`
+- [ ] T031 [G3] Tests then bridge loop with a fake SQS client: long poll, validate, idempotency file, expiry check, reject second Start, Stop between atomic steps, `live.json` heartbeat every 30 s — `pipeline/bridge/src/{loop,idempotency,live,stop}.ts`
+- [ ] T032 [G3] Runner: AustinPermits incremental via Restate ingress (keyed by command ID) → link/re-export → permit batches → `build-run-manifest.ts` → `publish-run.ts` gated steps; `mode: dry_run` passes `--dry-run` — `pipeline/bridge/src/runner.ts` — A11-1
+- [ ] T033 [P] [G3] A11-10(b) atomic stale-lock takeover + test — `run-lock.ts`, `batch-hash-validate-export.sh`
+- [ ] T034 [P] [G3] A11-10(c) coordinate flag, A11-10(d) coverage overrides on unchanged count, A11-6 exclusion-key reconciliation + tests — `write-group.ts`, `run-manifest.ts`, `pipeline/publish/src/manifest.ts`
+- [ ] T035 [G3] Bridge README (start command, profile `assess`, kill switch) — `pipeline/bridge/README.md`
+
+### G2a · admin + Coverage + Runs pages — AC-4, AC-5, AC-6, AC-7, AC-9, AC-10, AC-12 (these pages), A13-3
+- [ ] T040 [G2a] Tests then `scripts/build-cost-limits.mjs` (prebuild): parse `docs/cost.md` + `docs/source-limits.md` → `cost-limits.generated.json`; fails on a row without a date or a zero where the doc says not available; drift test
+- [ ] T041 [G2a] Coverage · Cost and Limits sections per `Coverage{390,768,1440}` / `CoverageStates` boards: gross vs credits, as-of, source, "not available · reason", TCAD "blocked" row
+- [ ] T042 [G2a] Auth copied from Task B (`config`, `signIn`, `signOut`, `session`, `identity`, `RequireSession`), page `AdminSignIn` per `AdminSignIn*` boards ("code sent" state Justified), "Sign-in is not available right now, try later"
+- [ ] T043 [G2a] Runs admin controls per `RunsAdmin1440` (+ 768/390 by the Runs boards): Start / Stop / Retry, "Signed in as admin", states from `admin.runs.live` (Running · started, Bridge offline · command expired at, A run is already running, stopped by admin)
+- [ ] T044 [G2a] Activity page per `Activity*` / `ActivityStates` boards; each number links to its Logs Insights query
+- [ ] T045 [G2a] A13-3 LCP: run list from `runs/index.json` first, manifest after — `Runs.shared.tsx`, `data/run-loader.ts`
+- [ ] T046 [G2a] Parity fixes for Coverage, Runs, Runs · Compare, Runs · Log from the matrix
+- [ ] T047 [G2a] `tests/e2e/lib/auth.ts` (credentials from `~/.config/assessment/countylens-test.env`, `storageState` gitignored) and `tests/e2e/A-16.spec.ts` cases for AC-4..AC-10 + AC-12 (these pages)
+
+### G2b · parity on every other page + speed — AC-12, A11-9, A11-11, A11-12, A13-2, A13-7, A13-8
+- [ ] T050 [G2b] Parity fixes from `docs/evidence/A-16-prototype-parity.md`, family by family: Shell/Hub/Welcome → Explore + drawer + filters + Search → ExploreQ AI/SQL states → Data ×3 → Help MCP → Legal ×3 → Coming soon / UserSignIn; Atlas tokens and components only
+- [ ] T051 [G2b] A13-2 SQL panel: bind only the views a query names, memoised — `ExploreSql.engine.ts`; A13-7 copy items (SQL progress `role="status"` note, Retry on the engine-error banner, Catalog "unclassified table parts (N)", accessible name + inset focus ring on `<main>`)
+- [ ] T052 [G2b] A11-9 `TooLargeOnFallback` typed error + message; A11-11 first paint from the first page of parts, rest after; tighten the 60 s limit to measured p95 × 2 — `engine/load-permits.ts`, `Permits.page.tsx`, `tests/e2e/lib/perf.ts`
+- [ ] T053 [G2b] Remove `parkGap` calls once T016 is live on the preview — `tests/e2e/lib/a13-fixtures.ts`, A-14 spec skips
+
+## Phase 3 · Batches, deploy, hosted proof
+
+- [ ] T060 [Me] Batch 1 push (web parity + Coverage + docs): local CI checks (`pnpm check`, format, grep gates, stylelint, bundle gate) → push → Amplify preview → smoke on the preview
+- [ ] T061 [Me] 🛑 PO OK → laptop CDK deploy (G1 + G3 infra) → smoke every new endpoint at once (`admin.me` 401, `explore.search` on Run 2)
+- [ ] T062 [Me] ✋ PO creates the admin and a non-admin Cognito user via CLI (commands pre-filled; passwords never shown to Claude)
+- [ ] T063 [Me] Batch 2 push (admin UI/API, index read path, speed, parity rest) → preview
+- [ ] T064 [P] [Me] One review round while the preview builds: `/code-review medium` + metagross, machamp, audino in parallel → `docs/reviews/CR-A-16.md`
+- [ ] T065 [Me] Hosted Playwright suite on the preview (A-16 spec + unparked A-13/A-14 cases + responsive) and smeargle parity re-run → `docs/reports/A-16-test-report.md`, `docs/evidence/A-16-prototype-parity.md`
+- [ ] T066 [Me] Bridge live: ✋ PO starts the local stack + bridge; admin Start (`dry_run`) → SQS message ID → bridge log → Restate workflow ID → Runs page "Running"; stop bridge → expired case; DLQ alarm test email
+- [ ] T067 [Me] Fixes (ERR-72+), re-tests; `/speckit-converge` once
+- [ ] T068 [Me] Evidence `docs/evidence/A-16.md` (§ Closure = story Closure table, each row Closed + link or Exception + reason + PO decision), statuses (story Done, traceability, feature list, DEC-A-13/DEC-A-14 closed or superseded, PR body Known gaps), G7 pre-check → 🛑 G7 → merge `--no-ff` → `scripts/progress.sh` → push
+
+## Dependencies
+
+T001–T005 → everything. T030 → T023. T011 → T016 → T053, T065. T024 + T042 → T043, T044. Smeargle matrix → T046, T050. T060 needs G2a T040–T041 and G2b T050 (first families). T061 needs T020–T023, T030. T066 needs T061, T062, T031–T032.
