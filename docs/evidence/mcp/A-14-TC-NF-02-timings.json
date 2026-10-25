@@ -2,106 +2,106 @@
   "calls": [
     {
       "tool": "get_schema",
-      "status": 500,
-      "ms": 310
+      "status": 200,
+      "ms": 417
     },
     {
       "tool": "search_properties",
-      "status": 500,
-      "ms": 107
+      "status": 200,
+      "ms": 358
     },
     {
       "tool": "get_schema",
-      "status": 500,
-      "ms": 106
+      "status": 200,
+      "ms": 118
     },
     {
       "tool": "search_properties",
-      "status": 500,
-      "ms": 105
+      "status": 200,
+      "ms": 313
     },
     {
       "tool": "get_schema",
-      "status": 500,
-      "ms": 107
-    },
-    {
-      "tool": "search_properties",
-      "status": 500,
-      "ms": 147
-    },
-    {
-      "tool": "get_schema",
-      "status": 500,
-      "ms": 124
-    },
-    {
-      "tool": "search_properties",
-      "status": 500,
+      "status": 200,
       "ms": 110
     },
     {
-      "tool": "get_schema",
-      "status": 500,
-      "ms": 109
-    },
-    {
       "tool": "search_properties",
-      "status": 500,
-      "ms": 108
+      "status": 200,
+      "ms": 341
     },
     {
       "tool": "get_schema",
-      "status": 500,
-      "ms": 106
+      "status": 200,
+      "ms": 136
     },
     {
       "tool": "search_properties",
-      "status": 500,
-      "ms": 105
+      "status": 200,
+      "ms": 317
     },
     {
       "tool": "get_schema",
-      "status": 500,
-      "ms": 104
+      "status": 200,
+      "ms": 143
     },
     {
       "tool": "search_properties",
-      "status": 500,
+      "status": 200,
+      "ms": 325
+    },
+    {
+      "tool": "get_schema",
+      "status": 200,
+      "ms": 116
+    },
+    {
+      "tool": "search_properties",
+      "status": 200,
+      "ms": 356
+    },
+    {
+      "tool": "get_schema",
+      "status": 200,
+      "ms": 116
+    },
+    {
+      "tool": "search_properties",
+      "status": 200,
+      "ms": 369
+    },
+    {
+      "tool": "get_schema",
+      "status": 200,
+      "ms": 119
+    },
+    {
+      "tool": "search_properties",
+      "status": 200,
+      "ms": 415
+    },
+    {
+      "tool": "get_schema",
+      "status": 200,
       "ms": 115
     },
     {
-      "tool": "get_schema",
-      "status": 500,
-      "ms": 103
-    },
-    {
       "tool": "search_properties",
-      "status": 500,
-      "ms": 105
+      "status": 200,
+      "ms": 401
     },
     {
       "tool": "get_schema",
-      "status": 500,
-      "ms": 99
+      "status": 200,
+      "ms": 117
     },
     {
       "tool": "search_properties",
-      "status": 500,
-      "ms": 107
-    },
-    {
-      "tool": "get_schema",
-      "status": 500,
-      "ms": 101
-    },
-    {
-      "tool": "search_properties",
-      "status": 500,
-      "ms": 108
+      "status": 200,
+      "ms": 349
     }
   ],
-  "p50_ms": 107,
-  "p95_ms": 147,
-  "max_ms": 310
+  "p50_ms": 313,
+  "p95_ms": 415,
+  "max_ms": 417
 }

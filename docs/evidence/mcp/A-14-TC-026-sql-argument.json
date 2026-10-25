@@ -13,9 +13,19 @@
       }
     }
   },
-  "status": 500,
-  "ms": 311,
+  "status": 200,
+  "ms": 284,
   "body": {
-    "message": "Internal Server Error"
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "MCP error -32602: Input validation error: Invalid arguments for tool search_properties: Unrecognized key: \"sql\""
+        }
+      ],
+      "isError": true
+    },
+    "jsonrpc": "2.0",
+    "id": 7
   }
 }

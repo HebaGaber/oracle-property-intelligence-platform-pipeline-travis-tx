@@ -12,9 +12,40 @@
       }
     }
   },
-  "status": 500,
-  "ms": 305,
+  "status": 200,
+  "ms": 396,
   "body": {
-    "message": "Internal Server Error"
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"rows\":[],\"returned\":0,\"total\":0,\"truncated\":false,\"empty_reason\":\"out_of_scope\",\"unknown_excluded\":{},\"run\":{\"run_id\":\"travis-202609-permits-20261021t103516z\",\"manifest_cid\":\"bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i\",\"as_of\":\"2026-10-21T10:40:04.543Z\"},\"applied\":{\"manifest_cid\":\"bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i\",\"area\":{\"place\":\"99999\"},\"radius_mi\":5,\"sort\":\"nearest\",\"limit\":50}}"
+        }
+      ],
+      "structuredContent": {
+        "rows": [],
+        "returned": 0,
+        "total": 0,
+        "truncated": false,
+        "empty_reason": "out_of_scope",
+        "unknown_excluded": {},
+        "run": {
+          "run_id": "travis-202609-permits-20261021t103516z",
+          "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
+          "as_of": "2026-10-21T10:40:04.543Z"
+        },
+        "applied": {
+          "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
+          "area": {
+            "place": "99999"
+          },
+          "radius_mi": 5,
+          "sort": "nearest",
+          "limit": 50
+        }
+      }
+    },
+    "jsonrpc": "2.0",
+    "id": 6
   }
 }
