@@ -1,5 +1,5 @@
 // CountyLensApi assertions (A-03 T069; TC-053, TC-050 infra half, NFR-03, ARD AM-03/AM-06).
-// Rules asserted here: Lambda sizing (arm64, 3,008 MB, 15 s, DuckDB threads 4: ADR-0001 as updated
+// Rules asserted here: Lambda sizing (arm64, 3,008 MB, 29 s (A-13: 15 s before the full-county Explore search), DuckDB threads 4: ADR-0001 as updated
 // by ERR-18, pending the PO's AM-06 sizing update), AD-09
 // (HTTP API, no Function URL), AD-11 (no reserved or provisioned concurrency), AM-03 (the HTTP
 // API JSON access log is the 30-day query log; the function log group keeps 14 days), research
@@ -104,13 +104,13 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     template.resourceCountIs("AWS::Lambda::Alias", 0);
   });
 
-  it("is exactly one arm64 function: 3,008 MB (ERR-18, AM-06 sizing update), 15 s, X-Ray Active, JSON logs, SystemLogLevel WARN", () => {
+  it("is exactly one arm64 function: 3,008 MB (ERR-18, AM-06 sizing update), 29 s, X-Ray Active, JSON logs, SystemLogLevel WARN", () => {
     const [, fn] = lambdaFunction(template);
     expect(fn.Properties).toMatchObject({
       FunctionName: "countylens-api",
       Architectures: ["arm64"],
       MemorySize: 3008,
-      Timeout: 15,
+      Timeout: 29,
       TracingConfig: { Mode: "Active" },
       LoggingConfig: { LogFormat: "JSON", SystemLogLevel: "WARN" },
     });
