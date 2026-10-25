@@ -5,16 +5,42 @@ and from the AI agent, serving exactly six fixed tools over the published `contr
 There is no SQL tool and no seventh tool (P0-13) — `get_schema` is how a client learns what each
 column means without one.
 
-- Hosted: `POST https://<api-host>/mcp` (Streamable HTTP), `GET https://<api-host>/health` (no
-  auth). The exact host is the deployed `CountyLensApi` stack's HTTP API URL (see
-  `docs/evidence/A-14-mcp.md` for the value used in grading).
+- Hosted: `POST https://s7h96zfam0.execute-api.eu-north-1.amazonaws.com/mcp` (Streamable HTTP),
+  `GET https://s7h96zfam0.execute-api.eu-north-1.amazonaws.com/health` (no auth). In the rest of
+  this page `<MCP_URL>` means the first URL. It is the deployed `CountyLensApi` stack's HTTP API
+  URL (a CDK stack output).
 - Local: `apps/api/src/mcp/stdio.ts`, over stdio, for development only (see "Local development"
   below). It is never the graded demo surface.
 
-Every call except `GET /health` requires `Authorization: Bearer <token>`. **Never put a real
+Every call except `GET /health` requires `Authorization: Bearer <token>`. The token is shared
+privately by the repository owner; it is not in this repo, and this page only ever shows the
+placeholder `<token>` (or the shell variable `$MCP_TOKEN`). **Never put a real
 token in this file, in a commit, or in a screenshot** — the placeholder below is exactly that, a
 placeholder; the real value lives only in SSM (`/countylens/mcp/token`, a SecureString) and in
 whatever secret store the person running the demo keeps it in.
+
+## Which data the hosted server answers (read this before you try a data tool)
+
+The hosted server serves the published runs listed by `list_runs`. On the two full-county runs
+(Run 1 and Run 2) any tool call that reads property data (`search_properties`, `list_permits`,
+`get_property`) ends in the Lambda timeout, so the A-14 acceptance tests, the golden queries and
+the examples here pin the **small published run** with `manifest_cid`:
+
+```json
+{ "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i" }
+```
+
+That is run `travis-202609-permits-20261021t103516z`: 14 properties and 35 reroof permits (22
+open, 13 closed, 0 stalled). Many answers on it are an honest empty result with a typed
+`empty_reason`; that is the data, not a fault. Without `manifest_cid` a data tool resolves the
+latest run and, today, times out. This is the PO-approved exception
+`docs/decisions/DEC-A-14-agent-mcp-full-county.md`; a per-run index planned for A-16 is meant to
+remove it, after which the pin will no longer be needed. `list_runs`, `get_schema` and the 401
+and 403 checks are unaffected.
+
+Above 5 requests per second (burst 10) most excess calls answer a retryable `503`, some `429`
+(`docs/decisions/DEC-A-14-mcp-burst-503.md`); a single client under 5 requests per second never
+sees either.
 
 ## Claude Desktop
 
@@ -35,6 +61,21 @@ the hosted route directly. Add to `claude_desktop_config.json`:
 }
 ```
 
+The local build is the setup tested for Claude Desktop. A hosted variant, through the
+`mcp-remote` bridge, is shown below but **was not tested in this project**:
+
+```json
+{
+  "mcpServers": {
+    "countylens-hosted": {
+      "command": "npx",
+      "args": ["mcp-remote", "<MCP_URL>", "--header", "Authorization:${AUTH_HEADER}"],
+      "env": { "AUTH_HEADER": "Bearer <token>" }
+    }
+  }
+}
+```
+
 `RUNS_TABLES_DIR` is optional: without it, `search_properties`/`list_permits`/`get_property`
 answer honestly empty (no table parts to read) while `get_schema`, `list_runs`, and
 `get_coverage` work from the committed `runs/index.json`/`runs/<runId>/manifest.json` alone (see
@@ -42,12 +83,28 @@ answer honestly empty (no table parts to read) while `get_schema`, `list_runs`, 
 
 ## Claude Code
 
+Put the token in your shell first (it stays in that shell; do not paste it into a file in this
+repo), then register the server:
+
 ```bash
-claude mcp add countylens --transport http https://<api-host>/mcp \
-  --header "Authorization: Bearer <token>"
+export MCP_TOKEN="<token>"
+claude mcp add --transport http --scope local countylens <MCP_URL> --header "Authorization: Bearer $MCP_TOKEN"
 ```
 
-Or, for the local stdio build during development:
+- `--scope local` stores the server (and the header) in your own Claude Code configuration for the
+  current folder only, outside the repository. It is per folder: register it again from another
+  folder.
+- **Never use `--scope project`.** It writes a `.mcp.json` file into the repository, and the
+  header, with the token, would end up in git.
+- If `claude` is not on your PATH (for example when you only use the VS Code extension), the
+  binary is inside the extension's folder, under `~/.vscode/extensions/anthropic.claude-code-*/`
+  (look for a `claude` file in its `resources/native-binary/` folder); run it by its full path.
+- Restart Claude Code or run `/mcp` and check that `countylens` shows as connected, then ask a
+  question that needs a tool. Give the pinned `manifest_cid` above in the question or the tool
+  arguments (see "Which data the hosted server answers").
+- When you are done: `claude mcp remove countylens` and `unset MCP_TOKEN`.
+
+For the local stdio build during development (no token, no network):
 
 ```bash
 claude mcp add countylens --transport stdio -- node --import tsx apps/api/src/mcp/stdio.ts
@@ -59,11 +116,22 @@ claude mcp add countylens --transport stdio -- node --import tsx apps/api/src/mc
 npx @modelcontextprotocol/inspector
 ```
 
-Connect with:
+Open the address the command prints (it includes a one-time session token for the Inspector
+itself; that is not the CountyLens token). In the current Inspector:
 
-- Transport: **Streamable HTTP**
-- URL: `https://<api-host>/mcp`
-- Header: `Authorization: Bearer <token>`
+1. Go to **Servers**, then **Add manually**.
+2. Name: `countylens-mcp`. Transport type: **Streamable HTTP**. URL: `<MCP_URL>`.
+3. Add a header: name `Authorization`, value `Bearer <token>`.
+4. Set **Connection Type** to **Via proxy** (the Inspector's own proxy makes the call; a browser
+   cannot call `/mcp` directly because browser `Origin` headers are rejected, see below).
+5. Save and connect. The status should read **Connected**. Open **Tools**, then **List tools**
+   (six tools). Pick `search_properties` and run it with, for example,
+   `{ "area": { "place": "Pflugerville" }, "radius_mi": 5, "roof_age_years_min": 15, "limit": 25,
+   "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i" }`. On the
+   small run this returns zero rows with `empty_reason: "no_match"` and the run, gazetteer and
+   applied filters (a screenshot of exactly this is `docs/evidence/img/A-14-inspector-tools.png`).
+
+Do not take a screenshot that shows the header value.
 
 `tools/list` should return the six tools below in well under 500 ms; a wrong or missing token
 returns `401` before any row is read. A request that carries a browser `Origin` header is
