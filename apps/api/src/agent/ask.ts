@@ -620,6 +620,7 @@ export async function runAgentAsk(
         toolCallId: "deterministic-permit-lookup",
         messages: [],
         abortSignal: controller.signal,
+        context: {},
       });
       if (isRecord(output)) {
         result.toolOutputs = [...result.toolOutputs, output];
