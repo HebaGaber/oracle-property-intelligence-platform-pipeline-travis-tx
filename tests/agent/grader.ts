@@ -109,7 +109,11 @@ export async function firstStalledPermitNumber(
   return typeof row?.permit_number === "string" ? row.permit_number : null;
 }
 
-export async function propertyExists(engine: QueryEngine, bound: BoundRun, cid: string): Promise<boolean> {
+export async function propertyExists(
+  engine: QueryEngine,
+  bound: BoundRun,
+  cid: string,
+): Promise<boolean> {
   const envelope = await getProperty(engine, bound, { property_cid: cid } as GetPropertyInput);
   return envelope.returned > 0;
 }
@@ -162,7 +166,10 @@ function oracleCidSet(oracle: OracleResult): Set<string> {
 }
 
 /** 100% required: every returned CID must be in the oracle's own result set. */
-export function checkCorrectness(response: AgentAskResponse, oracle: OracleResult): CorrectnessResult {
+export function checkCorrectness(
+  response: AgentAskResponse,
+  oracle: OracleResult,
+): CorrectnessResult {
   const oracleCids = oracleCidSet(oracle);
   const matchCids = response.matches
     .flatMap((m) => [m.property_cid, m.permit_cid])
@@ -236,7 +243,34 @@ export function expectedEmptyReason(
 ): string | null | undefined {
   if (goldenEmptyReason === undefined) return undefined;
   if (goldenEmptyReason === null && oracleRowCount === 0) return oracleEmptyReason;
+  // Not evaluable on this run: the response carries no empty_reason of its own, so the golden
+  // value is only compared with what the oracle can express. A geocode oracle has no row count
+  // (G6: the out-of-scope sentence is graded by checkOutOfScope), and a run with no in-scope
+  // properties cannot exhibit `field_not_published` (G4: the disclosure is graded by
+  // must_mention and must_flag_missing). Both are reported as inconclusive, never as a pass.
+  if (goldenEmptyReason !== null && oracleRowCount === null) return undefined;
+  if (
+    goldenEmptyReason === "field_not_published" &&
+    oracleRowCount === 0 &&
+    oracleEmptyReason === "no_match"
+  ) {
+    return undefined;
+  }
   return goldenEmptyReason;
+}
+
+/** True when the golden file requires an empty_reason that this run's oracle cannot express, so
+ *  that part of the honesty check was skipped (see expectedEmptyReason). */
+export function isEmptyReasonInconclusive(
+  goldenEmptyReason: string | null | undefined,
+  oracleRowCount: number | null,
+  oracleEmptyReason: string | null,
+): boolean {
+  return (
+    goldenEmptyReason !== undefined &&
+    goldenEmptyReason !== null &&
+    expectedEmptyReason(goldenEmptyReason, oracleRowCount, oracleEmptyReason) === undefined
+  );
 }
 
 /** True when the oracle returned zero rows, so every recall/precision/groundedness pass is
@@ -338,7 +372,15 @@ export interface GoldenResultRow {
   provider?: string;
 }
 
-export function toResultRow(id: string, budget: BudgetResult, groundedness: GroundednessResult, correctness: CorrectnessResult, recall: RecallResult, honesty: HonestyResult, meta: { traceId?: string; model?: string; provider?: string } = {}): GoldenResultRow {
+export function toResultRow(
+  id: string,
+  budget: BudgetResult,
+  groundedness: GroundednessResult,
+  correctness: CorrectnessResult,
+  recall: RecallResult,
+  honesty: HonestyResult,
+  meta: { traceId?: string; model?: string; provider?: string } = {},
+): GoldenResultRow {
   return {
     id,
     durationMs: budget.durationMs,
