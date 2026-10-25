@@ -188,8 +188,14 @@ function SourceItem({
       </span>
       <span className={styles.itemBody} data-source-delta={source.name}>
         Since the previous run: {formatCount(source.added)} added · {formatCount(source.changed)}{" "}
-        changed · {formatCount(source.removed)} removed · watermark{" "}
-        <code className={styles.mono}>{source.watermark ?? "none"}</code>
+        changed · {formatCount(source.removed)} removed
+        {/* A null watermark is not invented (TC-011): no "watermark" label then. */}
+        {source.watermark === null ? null : (
+          <>
+            {" "}
+            · watermark <code className={styles.mono}>{source.watermark}</code>
+          </>
+        )}
       </span>
     </li>
   );

@@ -444,7 +444,9 @@ describe("Runs page: sources in manifest order (TC-011)", () => {
     expect(delta?.textContent).toContain("42 added · 0 changed · 0 removed");
     expect(delta?.textContent).toContain("2026-09-30");
     const tcad = within(listNamed("Sources")).getAllByRole("listitem")[1];
-    expect(tcad?.querySelector("[data-source-delta]")?.textContent).toContain("watermark none");
+    const tcadDelta = tcad?.querySelector("[data-source-delta]")?.textContent ?? "";
+    expect(tcadDelta).toContain("1234 added · 0 changed · 0 removed");
+    expect(tcadDelta).not.toContain("watermark");
   });
 });
 
