@@ -1,7 +1,7 @@
 // A-11 (machamp M4, low L2): resume, inode and lock behaviour of scripts/batch-hash-validate-export.sh,
 // run for real under bash with a fake `elephant-cli` (ELEPHANT_CLI) that records every call.
 // Local only: no network, no real data.
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -24,6 +24,7 @@ cmd="$1"; shift
 echo "$cmd $*" >>"$FAKE_LOG"
 case "$cmd" in
   hash)
+    [ -n "$FAKE_SLEEP" ] && sleep "$FAKE_SLEEP"
     src="$1"; shift
     b="$(basename "$src")"
     while [ $# -gt 0 ]; do
@@ -161,6 +162,40 @@ describe("batch-hash-validate-export.sh run lock", () => {
     expect(existsSync(`${e.out}.lock`)).toBe(false);
     rmSync(e.root, { recursive: true, force: true });
   });
+
+  it("A11-10(b): six processes racing for one stale lock: exactly one runs, the rest fail closed", async () => {
+    const e = setup();
+    const dead = spawnSync("bash", ["-c", "echo $$"], { encoding: "utf8" }).stdout.trim();
+    writeFileSync(`${e.out}.lock`, `${dead}\n`);
+    const results = await Promise.all(
+      Array.from(
+        { length: 6 },
+        () =>
+          new Promise<{ code: number | null; err: string }>((resolve) => {
+            const child = spawn("bash", [SCRIPT, e.group, e.out, "2", "1", "pfx"], {
+              env: {
+                ...process.env,
+                ELEPHANT_CLI: e.cli,
+                FAKE_LOG: e.log,
+                FAKE_FAIL_BATCH: "",
+                FAKE_SLEEP: "1",
+              },
+            });
+            let err = "";
+            child.stderr.on("data", (d: Buffer) => (err += d.toString()));
+            child.on("close", (code) => resolve({ code, err }));
+          }),
+      ),
+    );
+    expect(results.filter((r) => r.code === 0)).toHaveLength(1);
+    for (const r of results.filter((x) => x.code !== 0))
+      expect(r.err).toMatch(/in use by pid|lost the race|taking over/);
+    // the one winner hashed each batch exactly once
+    expect(hashed(e).sort()).toEqual(["b01", "b02"]);
+    expect(existsSync(`${e.out}.lock`)).toBe(false);
+    expect(existsSync(`${e.out}.lock.takeover`)).toBe(false);
+    rmSync(e.root, { recursive: true, force: true });
+  }, 30_000);
 
   it("starts when the output dir's parent does not exist yet (the lock file needs its parent)", () => {
     const e = setup();
