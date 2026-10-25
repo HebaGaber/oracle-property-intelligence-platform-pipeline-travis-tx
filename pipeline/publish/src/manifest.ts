@@ -41,6 +41,13 @@ import { PART_SIZE, PART_SIZE_BYTES, sha256File, type DataGroup } from "./sequen
  *  ahead of real provenance (research.md "Manifest builder scaling to 5 data groups"). */
 export const SOURCE_ORDER = ["austin-3syk-w9eu", "tcad-2026-certified-json"] as const;
 
+/** A-11 Run 3 (ADR 0004): the City of Austin address-point layer. An optional third source,
+ *  named only by a run that really used it (it feeds County coordinates). It always follows
+ *  SOURCE_ORDER; a run without it still lists exactly SOURCE_ORDER. */
+export const ADDRESS_POINT_SOURCE = "austin-address-points" as const;
+export const ADDRESS_POINT_LIMITATION =
+  "Public coordinates for accounts without a GIS point come from the City of Austin address-point layer only when the situs matches exactly one point on house number and street and the point lies inside the Travis County box (ADR 0004); no geocoder, nearest or fuzzy match is used, and a GIS centroid is never replaced. The layer carries no ZIP or city, so an address shared by two cities stays unmatched.";
+
 /**
  * The required coverage keys per data group (AD-05's five contractor states; data-model.md's
  * three derivations: `published_rows`, `capture_receipt`, `aggregate_match`). `checkInput`
@@ -57,6 +64,7 @@ export const GROUP_COVERAGE_KEYS: Record<
   // parcel geometry are already embedded fields inside county's per-record export — not a
   // separately counted coverage key (corrected 2026-10-23; see sequence.ts's DataGroup comment).
   county: [],
+  // (county's `parcels_published` is checked, not required, when present: see buildManifest.)
   property_improvement: [
     ["permits_emitted", "published_rows"],
     // CR-A-11-porygon finding 2: `permits_no_tcad_geoid` alone left 4 of A-04's 5
@@ -108,6 +116,8 @@ function fixedLimitation(name: string, ownersRedacted: number): string {
       return COMPTROLLER_LIMITATION;
     case SOURCE_ORDER[1]:
       return confidentialLimitation(ownersRedacted);
+    case ADDRESS_POINT_SOURCE:
+      return ADDRESS_POINT_LIMITATION;
     default:
       throw new Error(`no fixed limitation note for source ${name}`);
   }
@@ -428,9 +438,12 @@ function checkInput(input: BuildManifestInput): void {
     );
   }
   const names = input.sources.map((s) => s.name);
-  if (names.length !== SOURCE_ORDER.length || names.some((n, i) => n !== SOURCE_ORDER[i])) {
+  const expected: readonly string[] = names.includes(ADDRESS_POINT_SOURCE)
+    ? [...SOURCE_ORDER, ADDRESS_POINT_SOURCE]
+    : SOURCE_ORDER;
+  if (names.length !== expected.length || names.some((n, i) => n !== expected[i])) {
     throw new Error(
-      `sources must be exactly, in order: ${SOURCE_ORDER.join(", ")}; got ${names.join(", ") || "none"}`,
+      `sources must be exactly, in order: ${SOURCE_ORDER.join(", ")} (optionally followed by ${ADDRESS_POINT_SOURCE}); got ${names.join(", ") || "none"}`,
     );
   }
   const required = requiredCoverageKeys(input.groups.map((g) => g.group));
@@ -516,6 +529,24 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
     if (emitted.count !== published) {
       throw new Error(
         `coverage.permits_emitted.count ${emitted.count} is not the number of published property_improvement rows (${published})`,
+      );
+    }
+  }
+  // `parcels_published` (published_rows): the number of County `property` rows across all county
+  // batches. Optional so older manifests and walking-skeleton inputs stay valid, but when a
+  // county group is built and the key is given it must equal the published rows, like permits.
+  const parcels = input.coverage.parcels_published;
+  if (parcels !== undefined) {
+    const published = rows.get("county")?.property;
+    if (published === undefined)
+      throw new Error("coverage.parcels_published needs the county group's property table");
+    if (parcels.derivation !== "published_rows")
+      throw new Error(
+        `coverage.parcels_published.derivation must be "published_rows", not "${parcels.derivation}"`,
+      );
+    if (parcels.count !== published) {
+      throw new Error(
+        `coverage.parcels_published.count ${parcels.count} is not the number of published county property rows (${published})`,
       );
     }
   }

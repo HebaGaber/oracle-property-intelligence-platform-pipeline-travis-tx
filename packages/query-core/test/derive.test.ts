@@ -107,6 +107,19 @@ describe("tenure (max ownership_transfer_date; > 10 years is long)", () => {
   });
 });
 
+describe("tenure_basis with a transfer source (ERR-71)", () => {
+  it.each([
+    ["2019-07-01", "deed", "deed_date"],
+    ["2019-07-01", "sale", "sale_date"],
+    ["2019-07-01", null, "sale_date"],
+    [null, "deed", "unknown"],
+  ] as const)("date %s, source %s → %s", async (date, source, basis) => {
+    expect(d.tenureBasis(date, source)).toBe(basis);
+    const src = source === null ? "NULL::VARCHAR" : `'${source}'`;
+    expect(await sql(`tenure_basis(${lit(date, "DATE")}, ${src})`)).toBe(basis);
+  });
+});
+
 describe("owner_area_class / owner_is_out_of_area (travis-places lists)", () => {
   it.each([
     ["78753", "in_county", false],
@@ -132,16 +145,23 @@ describe("owner_area_class / owner_is_out_of_area (travis-places lists)", () => 
   });
 });
 
-describe("open_days (as_of − issue_date for open/stalled; else null with not_open; ≥ 0)", () => {
+describe("open_days (as_of − issue_date for open/stalled without final_date; else null; ≥ 0)", () => {
   it.each([
-    ["stalled", "2026-03-11", 223],
-    ["open", "2026-09-17", 33],
-    ["open", "2026-10-25", 0],
-    ["closed", "2026-09-17", null],
-    ["open", null, null],
-  ] as const)("%s issued %s → %s", async (cls, issue, expected) => {
-    expect(d.openDays(cls, issue, AS_OF)).toBe(expected);
-    expect(await sql(`open_days('${cls}', ${lit(issue, "DATE")}, ${AS_OF_SQL})`)).toBe(expected);
+    ["stalled", "2026-03-11", null, 223],
+    ["open", "2026-09-17", null, 33],
+    ["open", "2026-10-25", null, 0],
+    ["closed", "2026-09-17", null, null],
+    ["open", null, null, null],
+    // ERR-70: a finished or implausibly-dated permit gets no interval
+    ["stalled", "1984-01-01", "1985-03-11", null],
+    ["open", "2026-03-11", "2026-04-01", null],
+    ["stalled", "2026-03-11", "2026-03-01", null],
+    ["stalled", "2026-03-11", "2027-01-01", null],
+  ] as const)("%s issued %s final %s → %s", async (cls, issue, fin, expected) => {
+    expect(d.openDays(cls, issue, AS_OF, fin)).toBe(expected);
+    expect(
+      await sql(`open_days('${cls}', ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`),
+    ).toBe(expected);
   });
 });
 
@@ -192,14 +212,25 @@ describe("status_class (generated status map, scoped to the profile's jurisdicti
   });
 
   it.each([
-    ["open", "2026-09-17", "not_open"],
-    ["stalled", null, "source_missing"],
-    ["closed", "2026-09-17", "not_open"],
-    [null, "2026-09-17", "needs_review"],
-  ] as const)("open_days reason: class %s issued %s → %s", async (cls, issue, expected) => {
-    expect(d.openDaysReason(cls, issue)).toBe(expected);
-    expect(await sql(`open_days_reason(${lit(cls)}, ${lit(issue, "DATE")})`)).toBe(expected);
-  });
+    ["open", "2026-09-17", null, "not_open"],
+    ["stalled", null, null, "source_missing"],
+    ["closed", "2026-09-17", null, "not_open"],
+    [null, "2026-09-17", null, "needs_review"],
+    // ERR-70: finished (plausible final_date) is not_open; implausible is a data-quality gap
+    ["stalled", "2026-03-11", "2026-04-01", "not_open"],
+    ["stalled", "2026-03-11", "2026-03-01", "needs_review"],
+    ["open", "2026-03-11", "2027-01-01", "needs_review"],
+  ] as const)(
+    "open_days reason: class %s issued %s final %s → %s",
+    async (cls, issue, fin, expected) => {
+      expect(d.openDaysReason(cls, issue, AS_OF, fin)).toBe(expected);
+      expect(
+        await sql(
+          `open_days_reason(${lit(cls)}, ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
+        ),
+      ).toBe(expected);
+    },
+  );
 
   it.each([
     // improvement_status is null: stalled means the enum has no value for the source word
@@ -257,15 +288,6 @@ describe("owner kind, name and missing reason (code-review #2, donphan M1)", () 
       ),
     ).toBe(reason);
   });
-
-  it("an owner without a dated sale is missing for no_dated_sale, else for the gap reason", async () => {
-    expect(d.ownerMissingReason(false, "owner_unparsed")).toBe("no_dated_sale");
-    expect(d.ownerMissingReason(true, "owner_unparsed")).toBe("owner_unparsed");
-    expect(await sql(`owner_missing_reason(false, 'owner_unparsed')`)).toBe("no_dated_sale");
-    expect(await sql(`owner_missing_reason(true, 'owner_confidential')`)).toBe(
-      "owner_confidential",
-    );
-  });
 });
 
 describe("contractor edge count (donphan M4: never pick one of several)", () => {
@@ -282,29 +304,77 @@ describe("contractor edge count (donphan M4: never pick one of several)", () => 
 });
 
 describe("coordinate_source, contractor and BBB state", () => {
+  const TCAD =
+    "https://traviscad.org/wp-content/largefiles/2026%20Certified%20JSON%20SUPP%200%2007182026.zip";
+  const ADDRESS_LAYER =
+    "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/FeatureServer/0/query?objectIds=12&outFields=*&outSR=4326&f=json";
   it.each([
-    [30.27, -97.76, null, null, "gis_centroid"],
-    [null, null, 30.27, -97.76, "permit_point"],
-    [null, null, null, null, "none"],
-  ])("coords %s,%s / permit %s,%s → %s", async (lat, lon, plat, plon, expected) => {
-    expect(d.coordinateSource(lat, lon, plat, plon)).toBe(expected);
-    expect(
-      await sql(
-        `coordinate_source(${lit(lat, "DOUBLE")}, ${lit(lon, "DOUBLE")}, ${lit(plat, "DOUBLE")}, ${lit(plon, "DOUBLE")})`,
-      ),
-    ).toBe(expected);
+    [30.27, -97.76, null, null, null, "gis_centroid"],
+    [30.27, -97.76, null, null, TCAD, "gis_centroid"],
+    // ADR 0004: only the geometry's own source URL makes a point an address point.
+    [30.27, -97.76, null, null, ADDRESS_LAYER, "address_point"],
+    // no coordinates: the URL is irrelevant
+    [null, null, null, null, ADDRESS_LAYER, "none"],
+    [null, null, 30.27, -97.76, null, "permit_point"],
+    [null, null, null, null, null, "none"],
+  ])(
+    "coords %s,%s / permit %s,%s / geometry %s → %s",
+    async (lat, lon, plat, plon, url, expected) => {
+      expect(d.coordinateSource(lat, lon, plat, plon, url)).toBe(expected);
+      expect(
+        await sql(
+          `coordinate_source(${lit(lat, "DOUBLE")}, ${lit(lon, "DOUBLE")}, ${lit(plat, "DOUBLE")}, ${lit(plon, "DOUBLE")}, ${lit(url)})`,
+        ),
+      ).toBe(expected);
+    },
+  );
+
+  it("the four-argument call keeps its old meaning (no geometry URL → gis_centroid)", () => {
+    expect(d.coordinateSource(30.27, -97.76, null, null)).toBe("gis_centroid");
   });
 
   it.each([
-    ["baguqeeraexample", "resolved", "no_lexicon_carrier"],
-    [null, "unresolved", "contractor_unresolved"],
-  ] as const)("contractor %s → %s, bbb reason %s", async (cid, resolution, reason) => {
-    expect(d.contractorResolution(cid)).toBe(resolution);
-    expect(d.bbbStatus()).toBe("not_checked");
-    expect(d.bbbStatusReason(resolution)).toBe(reason);
-    expect(await sql(`contractor_resolution(${lit(cid)})`)).toBe(resolution);
-    expect(await sql(`bbb_status()`)).toBe("not_checked");
-    expect(await sql(`bbb_status_reason('${resolution}')`)).toBe(reason);
+    ["P12000012345", "resolved"],
+    [null, "unresolved"],
+  ] as const)(
+    "registry id %s → %s (a printed name alone never resolves, ERR-66)",
+    async (id, resolution) => {
+      expect(d.contractorResolution(id)).toBe(resolution);
+      expect(await sql(`contractor_resolution(${lit(id)})`)).toBe(resolution);
+    },
+  );
+
+  it.each([
+    ["Roofer A", "blocked", "bbb_blocked"],
+    [null, "not_checked", "contractor_unresolved"],
+  ] as const)("contractor name %s → bbb %s / %s", async (name, status, reason) => {
+    expect(d.bbbStatus(name)).toBe(status);
+    expect(d.bbbStatusReason(name)).toBe(reason);
+    expect(await sql(`bbb_status(${lit(name)})`)).toBe(status);
+    expect(await sql(`bbb_status_reason(${lit(name)})`)).toBe(reason);
+  });
+
+  it.each([
+    "Done Right Roofing",
+    "A&B Roofing + Sons, Inc. (O'Neil) No. 1/2",
+    "Cañón Techos Ñandú",
+    "Tilde~Under_Score-Dot.",
+    "Star * Bang ! Quote ' Paren ( )",
+    "x".repeat(300),
+    `${"Word ".repeat(40)}end`,
+    "a😀".repeat(100),
+  ])("bbb_search_url: SQL macro equals the TypeScript builder for %j", async (name) => {
+    const url = d.bbbSearchUrl(name);
+    expect(await sql(`bbb_search_url(${lit(name)})`)).toBe(url);
+    expect(url).not.toMatch(/[ '()!*]/);
+    expect(new URL(url as string).searchParams.get("find_loc")).toBe("Austin, TX");
+  });
+
+  it("bbb_search_url: no name → no link; the name is cut at 120 characters", async () => {
+    expect(d.bbbSearchUrl(null)).toBeNull();
+    expect(await sql(`bbb_search_url(${lit(null)})`)).toBeNull();
+    const text = new URL(d.bbbSearchUrl("y".repeat(500)) as string).searchParams.get("find_text");
+    expect(text).toBe("y".repeat(d.BBB_NAME_MAX));
   });
 });
 

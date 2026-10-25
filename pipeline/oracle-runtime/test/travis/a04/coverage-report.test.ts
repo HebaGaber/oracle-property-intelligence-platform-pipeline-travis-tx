@@ -166,7 +166,7 @@ describe("A-04 T045 coverage both ways (coverage-report.ts)", () => {
           "property",
         ),
         copy(
-          `SELECT 'g1' AS cid, 'p1' AS property_cid, ${e}, '221829' AS request_identifier, 30.25::DOUBLE AS latitude, -97.75::DOUBLE AS longitude`,
+          `SELECT 'g1' AS cid, 'p1' AS property_cid, ${e}, '221829' AS request_identifier, 30.25::DOUBLE AS latitude, -97.75::DOUBLE AS longitude, NULL::VARCHAR AS source_http_request`,
           "geometry",
         ),
         copy(

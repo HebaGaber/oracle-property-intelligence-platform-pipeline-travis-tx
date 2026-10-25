@@ -12,6 +12,7 @@ import {
   transformTcadCounty,
   type CountyTransformInput,
 } from "../../travis/transforms/tcad-county.js";
+import { ownerPersonsMode } from "../../travis/transforms/owner-name.js";
 import { tcadRecord } from "../fixtures/tcad-records.js";
 
 const CIDS = {
@@ -114,6 +115,7 @@ describe("transformTcadCounty: layout (oracle § A.2)", () => {
     expect(county.label).toBe("County");
     expect(Object.keys(county.relationships as Json).sort()).toEqual([
       "company_has_mailing_address",
+      "company_has_property",
       "parcel_has_geometry",
       "property_has_address",
       "property_has_parcel",
@@ -228,20 +230,106 @@ describe("transformTcadCounty: provenance and links", () => {
     expect(out.counts.owner).toBe("person");
   });
 
-  it("does not guess a person from an unsplit name", () => {
+  it("reads an unsplit LAST FIRST name as a person (A-11, ERR-69)", () => {
     const out = transformTcadCounty(
-      input({ pID: 100010, geoID: "0100030105", ownerName: "DOE JANE" }),
+      input({ pID: 100010, geoID: "0100030105", ownerName: "DOE JANE M" }),
     );
+    expect(parse(out.files, "person_1.json")).toMatchObject({
+      first_name: "Jane",
+      last_name: "Doe",
+      middle_name: "M",
+      suffix_name: null,
+    });
+    expect(out.counts).toMatchObject({ owner: "person", persons_written: 1, owners_unparsed: 0 });
+  });
+
+  it("does not guess a person from a single token", () => {
+    const out = transformTcadCounty(input({ pID: 100010, geoID: "0100030105", ownerName: "DOE" }));
     expect(Object.keys(out.files).some((n) => /^(person|company|mailing_address)_/.test(n))).toBe(
       false,
     );
     expect(out.counts.owner).toBe("unparsed");
   });
 
-  it("with no dated sale, writes no sales history and no owner", () => {
+  it("links every owner to the property, and to the latest sale when there is one", () => {
+    const out = transformTcadCounty(
+      input({ pID: 100010, geoID: "0100030105", ownerName: "DOE JANE & JOHN" }),
+    );
+    expect(parse(out.files, "person_2.json")).toMatchObject({
+      first_name: "John",
+      last_name: "Doe",
+    });
+    for (const n of [1, 2]) {
+      expect(parse(out.files, `relationship_person_has_property_${n}.json`)).toEqual({
+        from: { "/": `./person_${n}.json` },
+        to: { "/": "./property.json" },
+      });
+      expect(parse(out.files, `relationship_sales_history_has_person_${n}.json`)).toEqual({
+        from: { "/": "./sales_history_1.json" },
+        to: { "/": `./person_${n}.json` },
+      });
+    }
+    const root = parse(out.files, `${CIDS.county}.json`).relationships as Json;
+    expect(root.person_has_property).toHaveLength(2);
+    // The joint entry's printed mailing address is attached to both people.
+    expect(parse(out.files, "relationship_person_has_mailing_address_2.json")).toBeDefined();
+  });
+
+  it("with no dated sale, writes no sales history but still links the owner to the property", () => {
     const out = transformTcadCounty(input({ pID: 100011, geoID: "0100030105", saleDt: null }));
     expect(Object.keys(out.files).some((n) => n.startsWith("sales_history"))).toBe(false);
-    expect(out.counts.owner).toBe("no_dated_sale");
+    expect(Object.keys(out.files).some((n) => n.includes("sales_history_has"))).toBe(false);
+    expect(parse(out.files, "relationship_company_has_property_1.json")).toEqual({
+      from: { "/": "./company_1.json" },
+      to: { "/": "./property.json" },
+    });
+    expect(out.counts).toMatchObject({ owner: "no_dated_sale", companies_written: 1 });
+  });
+});
+
+describe("transformTcadCounty: OWNER_PERSONS switch (ERR-69, PO decision pending)", () => {
+  const withMode = (
+    ownerPersons: "publish" | "omit",
+    over = { pID: 100020, geoID: "0100030105" },
+  ) =>
+    transformTcadCounty({
+      ...input(over, "1985", "property_built_year", (raw) => {
+        owners(raw)[0] = {
+          ...owners(raw)[0],
+          name: "DOE JANE & JOHN",
+          firstName: null,
+          lastName: null,
+        };
+      }),
+      ownerPersons,
+    });
+
+  it("publish (the default) writes the individuals; omit writes no person and no person mailing address", () => {
+    const published = withMode("publish");
+    expect(published.counts).toMatchObject({ persons_written: 2, persons_omitted: 0 });
+    const omitted = withMode("omit");
+    expect(omitted.counts).toMatchObject({
+      persons_written: 0,
+      persons_omitted: 2,
+      owner: "suppressed",
+    });
+    expect(Object.keys(omitted.files).some((n) => OWNER_FILE.test(n))).toBe(false);
+    for (const text of Object.values(omitted.files)) expect(text).not.toContain("Jane");
+  });
+
+  it("leaves companies alone in omit mode", () => {
+    const out = transformTcadCounty({
+      ...input({ pID: 100021, geoID: "0100030105" }),
+      ownerPersons: "omit",
+    });
+    expect(out.counts).toMatchObject({ companies_written: 1, persons_omitted: 0 });
+    expect(out.counts.owner).not.toBe("suppressed");
+  });
+
+  it("the environment variable decides when the input does not; a typo throws", () => {
+    expect(ownerPersonsMode({})).toBe("publish");
+    expect(ownerPersonsMode({ OWNER_PERSONS: "OMIT" })).toBe("omit");
+    expect(() => ownerPersonsMode({ OWNER_PERSONS: "off" })).toThrow(/OWNER_PERSONS/);
   });
 });
 
@@ -331,6 +419,15 @@ describe("transformTcadCounty: roof date (TCAD-sourced anchors only, oracle F1)"
     expect(
       parse(transformTcadCounty(input(undefined, "1985", null)).files, "structure.json").roof_date,
     ).toBeNull();
+  });
+
+  it("a missing ledger row warns no_roof_age_ledger_row; an anchor-less row does not (ERR-68)", () => {
+    expect(transformTcadCounty(input(undefined, null)).counts.warnings).toContain(
+      "no_roof_age_ledger_row",
+    );
+    expect(transformTcadCounty(input(undefined, "1985", null)).counts.warnings).not.toContain(
+      "no_roof_age_ledger_row",
+    );
   });
 
   it("refuses a ledger row for another property", () => {

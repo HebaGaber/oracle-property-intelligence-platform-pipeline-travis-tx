@@ -9,8 +9,9 @@
 // upload, no database. The script scripts/identity-gate.ts is a thin CLI over runIdentityGate.
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { bindManifest, type QueryEngine, type Row } from "@countylens/query-core";
+import { cidOfBytes } from "./cid.js";
 
 export interface IdentityGateOptions {
   /** Path of the manifest; read when `manifestBytes` is not given. */
@@ -25,6 +26,14 @@ export interface IdentityGateOptions {
   pids?: readonly string[] | null;
   /** Never read a local part: bind every table part from the CID copy. */
   remoteOnly?: boolean;
+  /**
+   * The previous run's manifest (the one previousManifestCid names). When given, the gate also
+   * binds it in a second engine and fails unless every previous property_cid and permit_cid
+   * still exists in this run with the same request_identifier (see compareIdentity).
+   */
+  previous?: { manifestBytes: Uint8Array; root: string } | null;
+  /** Accept a changed cid when its request_identifier survives; the old -> new map is reported. */
+  allowCidMap?: boolean;
   /** Opens the query engine (AD-19: DuckDB is wired by the caller, scripts/duckdb-engine.ts). */
   openEngine: () => Promise<OpenedEngine>;
 }
@@ -45,6 +54,134 @@ export interface IdentityGateSummary {
   pids_unmatched: number;
   result: "PASS" | "FAIL";
   failures: string[];
+  /** Present when a previous manifest was compared. */
+  previous?: IdentityComparison;
+}
+
+/** The (cid, request_identifier) pairs the views expose: what Task B keys leads on. */
+export interface IdentitySet {
+  /** v_property: property_cid -> request_identifier */
+  properties: ReadonlyMap<string, string | null>;
+  /** v_roofing_permit: permit_cid -> request_identifier */
+  permits: ReadonlyMap<string, string | null>;
+}
+
+export interface IdentityComparison {
+  previous_properties: number;
+  previous_permits: number;
+  missing_properties: number;
+  missing_permits: number;
+  /** Same cid, different request_identifier. */
+  changed_identifier: number;
+  /** Missing cids whose request_identifier is present under a new cid (old -> new), first 50. */
+  remapped: number;
+  cid_map: { kind: "property" | "permit"; old: string; new: string }[];
+  /** First 20 old cids that have no successor at all. */
+  lost: string[];
+}
+
+/**
+ * Pure check: every previous cid must still exist with the same request_identifier. A missing cid
+ * is tolerated only with `allowCidMap` and only when its request_identifier exists under a new
+ * cid; the map is returned. Anything else is a failure line.
+ */
+export function compareIdentity(
+  previous: IdentitySet,
+  current: IdentitySet,
+  allowCidMap: boolean,
+): { comparison: IdentityComparison; failures: string[] } {
+  const map: IdentityComparison["cid_map"] = [];
+  const lost: string[] = [];
+  const missing = { property: 0, permit: 0 };
+  let changed = 0;
+  let remapped = 0;
+  const check = (
+    kind: "property" | "permit",
+    before: ReadonlyMap<string, string | null>,
+    after: ReadonlyMap<string, string | null>,
+  ): void => {
+    const byRid = new Map<string, string>();
+    for (const [cid, rid] of after) if (rid !== null && !byRid.has(rid)) byRid.set(rid, cid);
+    for (const [cid, rid] of before) {
+      if (!after.has(cid)) {
+        missing[kind] += 1;
+        const successor = rid === null ? undefined : byRid.get(rid);
+        if (successor !== undefined) {
+          remapped += 1;
+          if (map.length < 50) map.push({ kind, old: cid, new: successor });
+        } else if (lost.length < 20) lost.push(cid);
+        continue;
+      }
+      if (after.get(cid) !== rid) changed += 1;
+    }
+  };
+  check("property", previous.properties, current.properties);
+  check("permit", previous.permits, current.permits);
+  const comparison: IdentityComparison = {
+    previous_properties: previous.properties.size,
+    previous_permits: previous.permits.size,
+    missing_properties: missing.property,
+    missing_permits: missing.permit,
+    changed_identifier: changed,
+    remapped,
+    cid_map: map,
+    lost,
+  };
+  const failures: string[] = [];
+  const totalMissing = missing.property + missing.permit;
+  if (changed > 0)
+    failures.push(`${changed} previous cids exist with a different request_identifier`);
+  if (totalMissing > 0 && !allowCidMap)
+    failures.push(
+      `${missing.property} previous property_cids and ${missing.permit} permit_cids are missing from this run (re-hashed or dropped); pass the old -> new map explicitly (allowCidMap) or keep the records unchanged`,
+    );
+  if (totalMissing > 0 && allowCidMap && totalMissing !== remapped)
+    failures.push(
+      `${totalMissing - remapped} previous cids have no successor with the same request_identifier`,
+    );
+  return { comparison, failures };
+}
+
+/** Reads the identity pairs from a bound run (the views the app and Task B read). */
+export async function collectIdentity(engine: QueryEngine): Promise<IdentitySet> {
+  const pairs = async (sql: string): Promise<Map<string, string | null>> => {
+    const out = new Map<string, string | null>();
+    for (const r of await engine.all(sql))
+      out.set(
+        String(r["cid"]),
+        r["rid"] === null || r["rid"] === undefined ? null : String(r["rid"]),
+      );
+    return out;
+  };
+  return {
+    properties: await pairs(
+      "SELECT property_cid AS cid, request_identifier AS rid FROM v_property",
+    ),
+    permits: await pairs(
+      "SELECT permit_cid AS cid, request_identifier AS rid FROM v_roofing_permit",
+    ),
+  };
+}
+
+/**
+ * The previous manifest's bytes: runs/index.json names its run, runs/<runId>/manifest.json holds
+ * the bytes, and their CID must equal `previousManifestCid` (else it is not that manifest).
+ */
+export async function loadPreviousManifest(
+  repoRoot: string,
+  previousManifestCid: string,
+): Promise<Buffer> {
+  const index = JSON.parse(readFileSync(join(repoRoot, "runs", "index.json"), "utf8")) as {
+    runs: { runId: string; manifestCid: string }[];
+  };
+  const entry = index.runs.find((r) => r.manifestCid === previousManifestCid);
+  if (entry === undefined)
+    throw new Error(`previous manifest ${previousManifestCid} is not in runs/index.json`);
+  const bytes = readFileSync(join(repoRoot, "runs", entry.runId, "manifest.json"));
+  const cid = await cidOfBytes(bytes);
+  if (cid !== previousManifestCid)
+    throw new Error(`runs/${entry.runId}/manifest.json has CID ${cid}, not ${previousManifestCid}`);
+  return bytes;
 }
 
 export type IdentityGate = (
@@ -61,6 +198,35 @@ const sha256File = (path: string): Promise<string> =>
       .on("error", fail)
       .on("end", () => done(hash.digest("hex")));
   });
+
+/**
+ * Binds a manifest's table parts into `engine`. A local part is read only after its bytes hash to
+ * the manifest's SHA-256 (a file changed after the manifest was built must not pass the gate);
+ * otherwise a part comes from the CID copy.
+ */
+async function bindParts(
+  bytes: Buffer,
+  artifacts: { name: string; kind: string; sha256: string }[],
+  root: string,
+  copyHost: string,
+  remoteOnly: boolean,
+  engine: QueryEngine,
+  failures: string[],
+): Promise<void> {
+  const localOk = new Set<string>();
+  if (!remoteOnly) {
+    for (const a of artifacts.filter((x) => x.kind === "table")) {
+      const local = resolve(root, a.name);
+      if (!existsSync(local)) continue;
+      const digest = await sha256File(local);
+      if (digest === a.sha256) localOk.add(a.name);
+      else failures.push(`local part ${a.name} hashes to ${digest}, manifest says ${a.sha256}`);
+    }
+  }
+  const partUrl = ({ name, cid }: { name: string; cid: string }): string =>
+    localOk.has(name) ? resolve(root, name) : `https://${copyHost}/${cid}`;
+  await bindManifest(bytes, "", engine, { partUrl });
+}
 
 export async function runIdentityGate(options: IdentityGateOptions): Promise<IdentityGateSummary> {
   const { copyHost, root } = options;
@@ -80,22 +246,8 @@ export async function runIdentityGate(options: IdentityGateOptions): Promise<Ide
   const opened = await options.openEngine();
   const { engine } = opened;
   try {
-    // A local part is read only after its bytes hash to the manifest's SHA-256 (a file changed
-    // after the manifest was built must not pass the gate).
     const failures: string[] = [];
-    const localOk = new Set<string>();
-    if (!remoteOnly) {
-      for (const a of manifest.artifacts.filter((x) => x.kind === "table")) {
-        const local = resolve(root, a.name);
-        if (!existsSync(local)) continue;
-        const digest = await sha256File(local);
-        if (digest === a.sha256) localOk.add(a.name);
-        else failures.push(`local part ${a.name} hashes to ${digest}, manifest says ${a.sha256}`);
-      }
-    }
-    const partUrl = ({ name, cid }: { name: string; cid: string }): string =>
-      localOk.has(name) ? resolve(root, name) : `https://${copyHost}/${cid}`;
-    await bindManifest(bytes, "", engine, { partUrl });
+    await bindParts(bytes, manifest.artifacts, root, copyHost, remoteOnly, engine, failures);
 
     const permits = count(await engine.all("SELECT count(*) AS n FROM v_roofing_permit"));
     const joined = count(await engine.all("SELECT count(*) AS n FROM meta.permit"));
@@ -138,6 +290,35 @@ export async function runIdentityGate(options: IdentityGateOptions): Promise<Ide
     if (pidUnmatched.length > 0)
       failures.push(`pIDs not matched: ${pidUnmatched.slice(0, 20).join(",")}`);
 
+    let previousReport: IdentityComparison | undefined;
+    if (options.previous != null) {
+      const before = Buffer.from(options.previous.manifestBytes);
+      const beforeManifest = JSON.parse(before.toString("utf8")) as typeof manifest;
+      const second = await options.openEngine();
+      try {
+        const noise: string[] = [];
+        await bindParts(
+          before,
+          beforeManifest.artifacts,
+          options.previous.root,
+          copyHost,
+          remoteOnly,
+          second.engine,
+          noise,
+        );
+        failures.push(...noise.map((n) => `previous run: ${n}`));
+        const compared = compareIdentity(
+          await collectIdentity(second.engine),
+          await collectIdentity(engine),
+          options.allowCidMap === true,
+        );
+        previousReport = compared.comparison;
+        failures.push(...compared.failures);
+      } finally {
+        second.close();
+      }
+    }
+
     return {
       manifest: options.manifestPath ?? "(manifest bytes)",
       v_roofing_permit: permits,
@@ -149,6 +330,7 @@ export async function runIdentityGate(options: IdentityGateOptions): Promise<Ide
       pids_unmatched: pidUnmatched.length,
       result: failures.length === 0 ? "PASS" : "FAIL",
       failures,
+      ...(previousReport === undefined ? {} : { previous: previousReport }),
     };
   } finally {
     opened.close();

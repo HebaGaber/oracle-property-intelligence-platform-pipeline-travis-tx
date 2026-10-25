@@ -76,6 +76,15 @@ such as InProgress) it is null and the row lists `{field: "status_class", reason
 `final_date` and `open_days` then also give `needs_review`, and a null `improvement_status`
 gives `needs_review` instead of `enum_lacks_value`.
 
+**Open duration (ERR-70).** `status_class` is the class of the source status; it does not say the
+work is still going. An Austin permit with status Expired (stalled) very often has a `final_date`:
+the work was finished and the permit lapsed administratively. `open_days` (as_of − issue_date) is
+therefore counted only for an open or stalled permit with **no** `final_date`. A plausible
+`final_date` (not before `issue_date`, not after `as_of`) gives `open_days` null with reason
+`not_open`; a `final_date` before `issue_date` or after `as_of` is a data-quality gap and gives
+`open_days` null with reason `needs_review`. A long-open lead is `open_days` above the threshold;
+`is_open` still mirrors `status_class = 'open'`.
+
 **For raw-table consumers** (reading `property_improvement` Parquet without these views): a Travis
 permit whose `improvement_status` is null, whose `source_http_request` host is an Austin host
 (`data.austintexas.gov`, `abc.austintexas.gov`) and which has a `permit_issue_date` is an
@@ -104,16 +113,17 @@ history (caveat `partial_history`, in the manifest).
 
 ## Owner
 
-The current owner is read from the **latest dated sale**: the persons and companies linked to
-that `sales_history` record (an assumption: the latest dated sale is the current owner; TCAD
-`owners[]` are linked to it by the transform). `owner_kind` is `company` when any company is
+The current owners are read through the property: the persons and companies linked to it by
+`person_has_property` and `company_has_property` (ERR-69), independent of any sale, so a
+property with no dated sale still has an owner. `owner_kind` is `company` when any company is
 linked, else `person`, else `unknown`; `owner_name` lists the persons (by last, first name) and
-then the companies (by name), each once, separated by `; `. When there is no owner the reason is
-`no_dated_sale` (no dated sale to link to; linking without a sale is deferred to A-04), or for a
-dated sale without an owner `owner_unparsed`, `owner_confidential` (TCAD confidentiality flag,
-P0-15) or `no_owner_record`, read from the manifest `coverage` counts `owner_unparsed`,
-`owner_confidential` and `owner_no_record` (when more than one is non-zero the row cannot be
-told apart and lists `needs_review`).
+then the companies (by name), each once, separated by `; `. A property with no owner lists
+`owner_unparsed`, `owner_confidential` (TCAD confidentiality flag, P0-15) or `no_owner_record`,
+read from the manifest `coverage` counts `owner_unparsed`, `owner_confidential` and
+`owner_no_record` (when more than one is non-zero the row cannot be told apart and lists
+`needs_review`). `no_dated_sale` is a tenure reason only. A run written before Run 3 has no
+property-owner edges: its current owners are the persons and companies of the latest dated sale
+(the latest dated sale is the current owner), so the same rows keep reading.
 
 ## Contractor
 
@@ -122,6 +132,39 @@ told apart and lists `needs_review`).
 `unresolved` and lists `{field: "contractor_company_cid", reason: "needs_review"}`. The AD-24
 five-state totals (`contractor_resolved`, `contractor_candidate`, `contractor_ambiguous`,
 `contractor_conflicting`, `contractor_unresolved`) are in the manifest `coverage`.
+
+### v1.1 (additive): contractor as printed and BBB search link
+
+Backward compatible: every v1 column keeps its name and type; the new columns are nullable and a
+run published before Run 3 binds them as null with a reason. The permit's printed contractor
+**company** name is published as `company.name`, linked by `property_improvement_has_contractor`,
+with the permit's own request as provenance and **no** `sunbiz_document_number` (PO decision
+2026-10-25). It is **as printed, unverified**: a name is evidence, not identity, so
+`contractor_resolution` stays `unresolved` (it becomes `resolved` only when the company carries an
+official registry id, which no Austin permit prints). No person, phone or address is published; a
+permit that prints only a person name has no contractor.
+
+On `v_roofing_permit`: `contractor_name_as_printed` (the company name, null with
+`contractor_unresolved`), `bbb_status` = `blocked` with `bbb_status_reason` = `bbb_blocked` when a
+name exists (else `not_checked` / `contractor_unresolved`), `bbb_rating` always null (missing
+reason `bbb_blocked`; the UI says "BBB rating not published (BBB blocked the lookup)"), and `bbb_url`,
+a BBB **search** link built in the view from the name and the city Austin (UI text "Search BBB for this
+contractor"; null with `source_missing` when there is no name). The link is never fetched
+(A-01: HTTP 403 challenge); its shape is **unverified until a human clicks one example**.
+`contractor_company_cid` now means the company as printed. `contractor_name_raw` is replaced by
+`contractor_name_as_printed`. Not published (still `no_lexicon_carrier`): `status_raw`,
+`expiry_date`. Details: `docs/defects/ERR-66-contractor-name-and-bbb-link-missing.md`.
+
+## Manifest coverage and profiles for consumers
+
+`coverage.parcels_published` (`published_rows`) is the number of County `property` rows the run
+publishes; its `note` states the basis (real-property accounts only). The builder refuses a
+manifest whose count differs from the published county part row counts, like
+`permits_emitted`. A manifest without the key (Run 1, Run 2) is still valid: read the count from
+the tables. The `travis-places` profile names the ZIP area list that classifies
+`owner_area_class`. A manifest without it (Run 1, Run 2) means the run declared no area list: the
+view then leaves `owner_area_class` `unknown` with reason `out_of_scope` when ZIPs exist, and
+`area_list_sha256` is null. Absence means "not published for this run", never an empty list.
 
 ## Provenance and `missing`
 
@@ -156,9 +199,6 @@ These fields are **not columns** in v1. Each one appears in every row's `missing
 | `owner_mailing_state_code` | `not_in_export` | v_property | address.state_code via *_has_mailing_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column |
 | `status_raw` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | Expired is published as improvement_status null → status_class stalled (D-4a) |
 | `expiry_date` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | not published |
-| `contractor_name_raw` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | contractor_resolution unresolved; five-state totals in the manifest coverage (AD-24) |
-| `bbb_rating` | `no_lexicon_carrier` | v_roofing_permit | no business-rating class (fact_sheet has no fields) | bbb_status = not_checked with a reason |
-| `bbb_url` | `no_lexicon_carrier` | v_roofing_permit | no business-rating class (fact_sheet has no fields) | not published |
 | `description` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | the profile classifies it before export; improvement_type/action carry the result |
 | `work_class_raw` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | the profile classifies it before export; improvement_type/action carry the result |
 | `bbb_rating` | `no_lexicon_carrier` | v_contractor | no business-rating class (fact_sheet has no fields) | bbb_status = not_checked with a reason |
@@ -194,11 +234,14 @@ Two further notes from the pilot export:
 | `final_date` | `DATE` | yes | Final date (frozen alias) | property_improvement.completion_date | `not_closed` |
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
-| `open_days` | `INTEGER` | yes | Days open | derived: as_of − issue_date for open and stalled | `not_open` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review) | never empty |
-| `contractor_company_cid` | `VARCHAR` | yes | Resolved contractor company | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
-| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | always not_checked in v1 | never empty |
-| `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | contractor_unresolved if unresolved, else no_lexicon_carrier | never empty |
+| `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66) | never empty |
+| `contractor_company_cid` | `VARCHAR` | yes | Contractor company as printed (unverified; resolved only with a registry id) | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
+| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
+| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
+| `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | bbb_blocked when a contractor name is printed, else contractor_unresolved | never empty |
+| `bbb_rating` | `VARCHAR` | yes | BBB rating not published (BBB blocked the lookup) | always null: BBB blocks the lookup (A-01), no rating is published | `bbb_blocked` |
+| `bbb_url` | `VARCHAR` | yes | Search BBB for this contractor | derived: BBB search URL built from contractor_name_as_printed and city Austin; never fetched; shape unverified | `source_missing` |
 | `profile_version` | `VARCHAR` | no | Classification profile version | manifest profiles[] (travis-austin) | never empty |
 | `profile_sha256` | `VARCHAR` | no | Classification profile digest | manifest profiles[] (travis-austin) | never empty |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
@@ -217,18 +260,18 @@ Two further notes from the pilot export:
 | `property_structure_built_year` | `INTEGER` | yes | Year the main structure was built | property.property_structure_built_year | `source_missing` |
 | `latitude` | `DOUBLE` | yes | Latitude | geometry.latitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
 | `longitude` | `DOUBLE` | yes | Longitude | geometry.longitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
-| `coordinate_source` | `VARCHAR` | no | Where the coordinates came from (`gis_centroid`, `permit_point`, `none`) | derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none | never empty |
+| `coordinate_source` | `VARCHAR` | no | Where the coordinates came from (`gis_centroid`, `address_point`, `permit_point`, `none`) | derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0004), permit address → permit_point (address not in export), else none | never empty |
 | `roof_date` | `VARCHAR` | yes | Roof date, YYYY[-MM[-DD]] | latest accepted terminal date (completion_date or permit_close_date, ≤ as_of, ≥ issue date) of a closed Roofing permit via property_has_property_improvement (Replacement, else New); else structure.roof_date via property_has_structure (TCAD built year only) | `no_roof_date` |
 | `roof_age_years` | `INTEGER` | yes | Roof age in whole years; 0 allowed | derived: whole years from roof_date to as_of (never structure.roof_age_years) | `no_roof_date` |
 | `roof_age_basis` | `VARCHAR` | no | Evidence behind roof_date (`permit`, `new_construction`, `built_year`, `unknown`) | derived (mew B.5) | never empty |
 | `roof_age_confidence` | `VARCHAR` | no | Confidence of roof_age_years (`high`, `medium`, `low`, `none`) | derived (mew B.5) | never empty |
-| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | latest dated sales_history.ownership_transfer_date via property_has_sales_history | `no_dated_sale` |
+| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | latest dated sales_history.ownership_transfer_date (TCAD sale or transfer deed) via property_has_sales_history | `no_dated_sale` |
 | `tenure_years` | `INTEGER` | yes | Owner tenure | derived: whole years from last_ownership_transfer_date to as_of | `no_dated_sale` |
-| `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `unknown`) | derived: sale_date when dated, else unknown | never empty |
+| `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `deed_date`, `unknown`) | derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
-| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown | never empty |
-| `owner_name` | `VARCHAR` | yes | Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale | `no_dated_sale` |
-| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1 | never empty |
+| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown | never empty |
+| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale) | `no_owner_record` |
+| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
 | `property_source_url` | `VARCHAR` | yes | The property's uRL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
@@ -249,18 +292,18 @@ Two further notes from the pilot export:
 | `property_structure_built_year` | `INTEGER` | yes | Year the main structure was built | property.property_structure_built_year | `source_missing` |
 | `latitude` | `DOUBLE` | yes | Latitude | geometry.latitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
 | `longitude` | `DOUBLE` | yes | Longitude | geometry.longitude via property_has_parcel → parcel_has_geometry | `no_coordinates` |
-| `coordinate_source` | `VARCHAR` | no | Where the coordinates came from (`gis_centroid`, `permit_point`, `none`) | derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none | never empty |
+| `coordinate_source` | `VARCHAR` | no | Where the coordinates came from (`gis_centroid`, `address_point`, `permit_point`, `none`) | derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0004), permit address → permit_point (address not in export), else none | never empty |
 | `roof_date` | `VARCHAR` | yes | Roof date, YYYY[-MM[-DD]] | latest accepted terminal date (completion_date or permit_close_date, ≤ as_of, ≥ issue date) of a closed Roofing permit via property_has_property_improvement (Replacement, else New); else structure.roof_date via property_has_structure (TCAD built year only) | `no_roof_date` |
 | `roof_age_years` | `INTEGER` | yes | Roof age in whole years; 0 allowed | derived: whole years from roof_date to as_of (never structure.roof_age_years) | `no_roof_date` |
 | `roof_age_basis` | `VARCHAR` | no | Evidence behind roof_date (`permit`, `new_construction`, `built_year`, `unknown`) | derived (mew B.5) | never empty |
 | `roof_age_confidence` | `VARCHAR` | no | Confidence of roof_age_years (`high`, `medium`, `low`, `none`) | derived (mew B.5) | never empty |
-| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | latest dated sales_history.ownership_transfer_date via property_has_sales_history | `no_dated_sale` |
+| `last_ownership_transfer_date` | `DATE` | yes | Latest dated ownership transfer | latest dated sales_history.ownership_transfer_date (TCAD sale or transfer deed) via property_has_sales_history | `no_dated_sale` |
 | `tenure_years` | `INTEGER` | yes | Owner tenure | derived: whole years from last_ownership_transfer_date to as_of | `no_dated_sale` |
-| `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `unknown`) | derived: sale_date when dated, else unknown | never empty |
+| `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `deed_date`, `unknown`) | derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
-| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown | never empty |
-| `owner_name` | `VARCHAR` | yes | Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale | `no_dated_sale` |
-| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1 | never empty |
+| `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown | never empty |
+| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale) | `no_owner_record` |
+| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
@@ -281,6 +324,7 @@ Two further notes from the pilot export:
 | `property_cid` | `VARCHAR` | no | The permit's property | from_cid of property_has_property_improvement | never empty |
 | `jurisdiction` | `VARCHAR` | yes | Issuing jurisdiction | derived: source_http_request host → profile jurisdiction map | `needs_review` |
 | `permit_number` | `VARCHAR` | yes | Permit number as printed | property_improvement.permit_number | `source_missing` |
+| `request_identifier` | `VARCHAR` | yes | Permit request identifier: the stable key of the permit record across runs (equals permit_number in Run 2) | property_improvement.request_identifier | `source_missing` |
 | `improvement_type` | `VARCHAR` | no | Lexicon improvement type | property_improvement.improvement_type (set only by the profile) | never empty |
 | `improvement_action` | `VARCHAR` | no | Lexicon improvement action | property_improvement.improvement_action (set only by the profile) | never empty |
 | `improvement_status` | `VARCHAR` | yes | Lexicon status; null for Expired (D-4a) | property_improvement.improvement_status | `enum_lacks_value` |
@@ -290,11 +334,14 @@ Two further notes from the pilot export:
 | `final_date` | `DATE` | yes | Final date (frozen alias) | property_improvement.completion_date | `not_closed` |
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
-| `open_days` | `INTEGER` | yes | Days open | derived: as_of − issue_date for open and stalled | `not_open` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review) | never empty |
-| `contractor_company_cid` | `VARCHAR` | yes | Resolved contractor company | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
-| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | always not_checked in v1 | never empty |
-| `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | contractor_unresolved if unresolved, else no_lexicon_carrier | never empty |
+| `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66) | never empty |
+| `contractor_company_cid` | `VARCHAR` | yes | Contractor company as printed (unverified; resolved only with a registry id) | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
+| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
+| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
+| `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | bbb_blocked when a contractor name is printed, else contractor_unresolved | never empty |
+| `bbb_rating` | `VARCHAR` | yes | BBB rating not published (BBB blocked the lookup) | always null: BBB blocks the lookup (A-01), no rating is published | `bbb_blocked` |
+| `bbb_url` | `VARCHAR` | yes | Search BBB for this contractor | derived: BBB search URL built from contractor_name_as_printed and city Austin; never fetched; shape unverified | `source_missing` |
 | `profile_version` | `VARCHAR` | no | Classification profile version | manifest profiles[] (travis-austin) | never empty |
 | `profile_sha256` | `VARCHAR` | no | Classification profile digest | manifest profiles[] (travis-austin) | never empty |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
@@ -313,9 +360,9 @@ Two further notes from the pilot export:
 | --- | --- | --- | --- | --- | --- |
 | `contractor_company_cid` | `VARCHAR` | no | The company's CID | company.cid | never empty |
 | `name` | `VARCHAR` | yes | Company name | company.name | `source_missing` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (`resolved`, `unresolved`) | always resolved (reached through property_improvement_has_contractor) | never empty |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (`resolved`, `unresolved`) | derived: resolved only with an official registry id on the company; a printed-name company stays unresolved (v1.1) | never empty |
 | `identity_source` | `VARCHAR` | yes | Official identity source | derived: company.source_http_request host | `needs_review` |
-| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | always not_checked in v1 | never empty |
+| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
 | `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | as v_roofing_permit | never empty |
 | `permit_count` | `INTEGER` | no | Permits | count of property_improvement_has_contractor rows | never empty |
 | `roofing_permit_count` | `INTEGER` | no | Roofing permits | the same count limited to v_roofing_permit | never empty |

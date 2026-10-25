@@ -69,6 +69,12 @@ export interface UploadCarFileOptions {
     options: { env: NodeJS.ProcessEnv; api: string; timeoutMs: number; fetch?: FetchLike },
   ) => Promise<KuboAdded>;
   log?: (line: string) => void;
+  /**
+   * Gateways the readback must check; default both (Pinata and Filebase). PO 2026-10-25: for
+   * Run 3, Pinata's readback of large new CARs (about 59 KB/s, beyond the 300 s readback limit)
+   * is deferred to story A-16 item 14, so the step runs with Filebase only.
+   */
+  readbackGateways?: readonly string[];
 }
 
 export interface CarFileResult {
@@ -117,7 +123,11 @@ export async function uploadCarFile(
     return { target, ok: false, size, gateways: [], error: reason };
   }
   const gateways: GatewayCheck[] = [];
-  for (const gateway of READBACK_GATEWAYS) {
+  const readback = options.readbackGateways ?? READBACK_GATEWAYS;
+  for (const skipped of READBACK_GATEWAYS.filter((g) => !readback.includes(g))) {
+    log(`DEFER ${skipped}/ipfs/${target.carCid} readback deferred (A-16 item 14)`);
+  }
+  for (const gateway of readback) {
     const result = await readbackWhole(gateway, target.carCid, { size }, options.fetch);
     gateways.push(result);
     log(

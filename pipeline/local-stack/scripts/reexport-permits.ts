@@ -122,7 +122,7 @@ export async function dbDigests(
     sql<Array<Record<string, unknown> & { request_identifier: string }>>`
       SELECT request_identifier, geo_id, payload_redacted::text AS payload_redacted,
              property_structure_built_year, export_point_lat, export_point_lon, export_point_kind,
-             latitude, longitude, coordinate_source
+             latitude, longitude, coordinate_source, coordinate_source_url
       FROM parcels
       WHERE request_identifier IN ${sql(list)}`,
     sql<

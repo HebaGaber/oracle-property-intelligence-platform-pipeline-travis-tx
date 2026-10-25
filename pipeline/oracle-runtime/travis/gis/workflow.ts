@@ -6,10 +6,14 @@
 //      step (import.ts), then Loader.merge({track: "gis", kind: "import"}). An artifact without
 //      complete.json imports as `blocked` with `gis: blocked at {ts}; coverage not complete`;
 //      it is never reported complete.
+//   1b. address points (when addressPointsDir is given): Loader.merge({track: "gis",
+//      kind: "address_points"}) loads the City of Austin layer cache (ADR 0004) before assembly.
 //   2. assemble (when asked): Loader.merge({track: "gis", kind: "assemble"}) ranks one
 //      coordinate per account (assemble-coordinates.ts). Re-run after `permits --link`.
 // The Restate SDK is imported type-only (one runtime instance, in local-stack).
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type * as Restate from "@restatedev/restate-sdk";
 import { z } from "zod";
 import { inspectArtifact, type ImportDetail } from "./import.js";
@@ -22,6 +26,11 @@ export const GisImportRequest = z
     assemble: z.boolean(),
     /** Limit assembly to one TCAD job's parcels (null = every parcel). */
     tcadJobId: JobId.nullable(),
+    /**
+     * A-11 Run 3 (ADR 0004): the cache directory written by `fetch-address-layer`. When given, the
+     * layer is loaded into the Query DB (Loader gis track, kind address_points) before assembly.
+     */
+    addressPointsDir: z.string().min(1).nullable().default(null),
   })
   .strict();
 export type GisImportRequest = z.infer<typeof GisImportRequest>;
@@ -41,6 +50,12 @@ export type GisMergeInput =
       artifactPath: string;
       artifactSha256: string;
       tcadJobId: string | null;
+    }
+  | {
+      kind: "address_points";
+      jobId: string;
+      artifactPath: string;
+      artifactSha256: string;
     };
 
 export interface GisImportDeps {
@@ -62,6 +77,12 @@ export interface GisImportResult {
     limitation: string | null;
     pages: number;
     sourceCount: number | null;
+    rowsWritten: number;
+    skipped: boolean;
+  };
+  addressPoints: null | {
+    sha256: string;
+    recordCount: number;
     rowsWritten: number;
     skipped: boolean;
   };
@@ -97,8 +118,10 @@ export function createGisImport(restate: typeof Restate, deps: GisImportDeps) {
       throw new restate.TerminalError("GisImport.run: {artifactDir, assemble, tcadJobId} required");
     }
     const req = parsed.data;
-    if (req.artifactDir === null && !req.assemble) {
-      throw new restate.TerminalError("GisImport.run: nothing to do (no artifact, no assemble)");
+    if (req.artifactDir === null && !req.assemble && req.addressPointsDir === null) {
+      throw new restate.TerminalError(
+        "GisImport.run: nothing to do (no artifact, no address points, no assemble)",
+      );
     }
     let gis: GisImportResult["gis"] = null;
     if (req.artifactDir !== null) {
@@ -131,6 +154,31 @@ export function createGisImport(restate: typeof Restate, deps: GisImportDeps) {
       const { root: _root, ...rest } = s;
       gis = { ...rest, rowsWritten: m.rowsWritten, skipped: m.skipped };
     }
+    let addressPoints: GisImportResult["addressPoints"] = null;
+    if (req.addressPointsDir !== null) {
+      const dir = req.addressPointsDir;
+      const r = await ctx.run("inspect-address-layer", () => {
+        try {
+          const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8")) as {
+            sha256?: unknown;
+            record_count?: unknown;
+          };
+          if (typeof receipt.sha256 !== "string" || typeof receipt.record_count !== "number")
+            throw new Error("address layer receipt.json has no sha256 or record_count");
+          return { sha256: receipt.sha256, recordCount: receipt.record_count };
+        } catch (error) {
+          // a missing or malformed cache is a human matter, never retried
+          throw new restate.TerminalError(error instanceof Error ? error.message : String(error));
+        }
+      });
+      const m = await deps.merge(ctx, {
+        kind: "address_points",
+        jobId,
+        artifactPath: dir,
+        artifactSha256: r.sha256,
+      });
+      addressPoints = { ...r, rowsWritten: m.rowsWritten, skipped: m.skipped };
+    }
     let assembled: GisImportResult["assembled"] = null;
     if (req.assemble) {
       const m = await deps.merge(ctx, {
@@ -142,6 +190,6 @@ export function createGisImport(restate: typeof Restate, deps: GisImportDeps) {
       });
       assembled = { rowsWritten: m.rowsWritten, skipped: m.skipped };
     }
-    return { jobId, gis, assembled };
+    return { jobId, gis, addressPoints, assembled };
   }
 }

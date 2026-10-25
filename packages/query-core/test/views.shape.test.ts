@@ -18,7 +18,7 @@ import { RELATIONSHIP, classColumns } from "./helpers/fixture-export.js";
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const MANIFEST = join(ROOT, "contract/v1/pilot-manifest.json");
 
-/** What this synthetic export emits. person, sales_history_has_person, the contractor edge and the
+/** What this synthetic export emits. person, sales_history_has_person, person_has_property, the contractor edge and the
  *  permit-group company are left out on purpose, as in the pilot. */
 const EMITTED: Record<string, Record<string, [string, string][]>> = {
   county: {
@@ -96,6 +96,7 @@ describe("views shape (T057)", () => {
     expect(absent).toEqual(
       expect.arrayContaining([
         "county.person",
+        "county.person_has_property",
         "county.sales_history_has_person",
         "property_improvement.property_improvement_has_contractor",
         "property_improvement.company",

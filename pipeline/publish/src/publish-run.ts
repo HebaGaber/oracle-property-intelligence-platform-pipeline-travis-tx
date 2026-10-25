@@ -25,6 +25,8 @@ import {
   createReadStream,
   existsSync,
   mkdirSync,
+  openSync,
+  closeSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -389,6 +391,50 @@ export interface FilebaseStepDeps {
   sleep: (ms: number) => Promise<void>;
   log: (line: string) => void;
   attempts?: number;
+  /** Walk the pending units from the end: a second worker started with this never meets the first early. */
+  reverse?: boolean;
+  /** Upload only these unit kinds (for example only "car" while the provider's dag/import of tables hangs). */
+  kinds?: readonly string[];
+}
+
+/** Whether a unit of `kind` is uploaded by a worker limited to `kinds` (no limit when empty). */
+export function unitSelected(kind: string, kinds: readonly string[] | undefined): boolean {
+  return kinds === undefined || kinds.length === 0 || kinds.includes(kind);
+}
+
+/**
+ * Takes the per-unit upload lock (`<receipt>.lock`, holding the owner's pid) so two filebase workers
+ * never upload the same unit. A lock whose pid is no longer alive is stale and is taken over.
+ * Returns a release function, or undefined when another live worker holds the unit.
+ */
+export function tryUnitLock(
+  lockPath: string,
+  pid: number = process.pid,
+  alive: (pid: number) => boolean = processAlive,
+): (() => void) | undefined {
+  for (let tries = 0; tries < 2; tries += 1) {
+    try {
+      const fd = openSync(lockPath, "wx");
+      writeFileSync(fd, String(pid));
+      closeSync(fd);
+      return () => rmSync(lockPath, { force: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const owner = Number(readFileSync(lockPath, "utf8").trim());
+      if (Number.isInteger(owner) && owner > 0 && owner !== pid && alive(owner)) return undefined;
+      rmSync(lockPath, { force: true });
+    }
+  }
+  return undefined;
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
 }
 
 function filebaseStep(deps: FilebaseStepDeps): StepImpl {
@@ -421,51 +467,71 @@ function filebaseStep(deps: FilebaseStepDeps): StepImpl {
       const env = deps.loadEnv();
       const secrets = secretValues(env);
       const units = new Map(uploadUnits(ctx.manifest).map((u) => [u.id, u]));
-      for (const item of pending) {
+      const order = deps.reverse === true ? [...pending].reverse() : pending;
+      for (const item of order) {
         const unit = units.get(item.id);
         if (unit === undefined) throw new Error(`no upload unit ${item.id}`);
+        if (!unitSelected(unit.kind, deps.kinds)) {
+          deps.log(`skip ${unit.id} (this worker uploads only ${(deps.kinds ?? []).join(", ")})`);
+          continue;
+        }
         const final = join(ctx.receiptsDir, `${unit.id}.json`);
         const partial = `${final}.partial`;
         mkdirSync(ctx.receiptsDir, { recursive: true });
-        const input = join(ctx.repoRoot, unit.artifact.name);
-        if (!existsSync(input)) throw new Error(`${unit.id}: ${unit.artifact.name} does not exist`);
-        let done = false;
-        for (let attempt = 1; attempt <= attempts && !done; attempt += 1) {
-          rmSync(partial, { force: true });
-          deps.log(`uploading ${unit.id} (attempt ${attempt}/${attempts})`);
-          let result: CliResult | undefined;
-          let failure = "";
-          try {
-            result = await deps.runCli(
-              ["upload", input, "--api", FILEBASE_RPC_API, "--output-json", partial],
-              env,
-            );
-          } catch (error) {
-            failure = message(error);
-          }
-          if (result !== undefined && result.code === 0 && existsSync(partial)) {
-            const receipt = scanOne(partial);
-            if (receipt === undefined)
-              throw new Error(`${unit.id}: upload wrote no usable --output-json receipt`);
-            // A wrong root is not transient: fail now, keep nothing.
-            try {
-              assertReceiptMatches(unit, receipt);
-            } catch (error) {
-              rmSync(partial, { force: true });
-              throw error;
-            }
-            renameSync(partial, final);
-            deps.log(`done ${unit.id} -> ${rel(ctx, final)}`);
-            done = true;
-            break;
-          }
-          if (result !== undefined)
-            failure = `exit ${result.code}: ${(result.stderr || result.stdout).trim().slice(-300)}`;
-          deps.log(redact(`failed ${unit.id}: ${failure}`, secrets));
-          if (attempt < attempts) await deps.sleep(Math.min(5_000 * 2 ** (attempt - 1), 120_000));
+        // Another worker may have finished this unit since the plan was made.
+        if (scanUploadReceipts(ctx.receiptsRoot).some((r) => sameCid(r.root, unit.artifact.cid))) {
+          deps.log(`skip ${unit.id} (a receipt now records this CID)`);
+          continue;
         }
-        rmSync(partial, { force: true });
-        if (!done) throw new Error(`${unit.id}: upload failed after ${attempts} attempts`);
+        const release = tryUnitLock(`${final}.lock`);
+        if (release === undefined) {
+          deps.log(`skip ${unit.id} (another worker is uploading it)`);
+          continue;
+        }
+        try {
+          const input = join(ctx.repoRoot, unit.artifact.name);
+          if (!existsSync(input))
+            throw new Error(`${unit.id}: ${unit.artifact.name} does not exist`);
+          let done = false;
+          for (let attempt = 1; attempt <= attempts && !done; attempt += 1) {
+            rmSync(partial, { force: true });
+            deps.log(`uploading ${unit.id} (attempt ${attempt}/${attempts})`);
+            let result: CliResult | undefined;
+            let failure = "";
+            try {
+              result = await deps.runCli(
+                ["upload", input, "--api", FILEBASE_RPC_API, "--output-json", partial],
+                env,
+              );
+            } catch (error) {
+              failure = message(error);
+            }
+            if (result !== undefined && result.code === 0 && existsSync(partial)) {
+              const receipt = scanOne(partial);
+              if (receipt === undefined)
+                throw new Error(`${unit.id}: upload wrote no usable --output-json receipt`);
+              // A wrong root is not transient: fail now, keep nothing.
+              try {
+                assertReceiptMatches(unit, receipt);
+              } catch (error) {
+                rmSync(partial, { force: true });
+                throw error;
+              }
+              renameSync(partial, final);
+              deps.log(`done ${unit.id} -> ${rel(ctx, final)}`);
+              done = true;
+              break;
+            }
+            if (result !== undefined)
+              failure = `exit ${result.code}: ${(result.stderr || result.stdout).trim().slice(-300)}`;
+            deps.log(redact(`failed ${unit.id}: ${failure}`, secrets));
+            if (attempt < attempts) await deps.sleep(Math.min(5_000 * 2 ** (attempt - 1), 120_000));
+          }
+          rmSync(partial, { force: true });
+          if (!done) throw new Error(`${unit.id}: upload failed after ${attempts} attempts`);
+        } finally {
+          release();
+        }
       }
     },
   };
@@ -490,6 +556,14 @@ export interface CarFilesStepDeps {
   add?: UploadCarFileOptions["add"];
   now: () => Date;
   log: (line: string) => void;
+  /** Readback gateways for the carCid files; default both (see UploadCarFileOptions). */
+  readbackGateways?: readonly string[];
+  /**
+   * Skip the "already served?" gateway probe before uploading. Both gateways hang on a CID they
+   * do not hold, so for a new run the probe only costs time; the upload is idempotent (same bytes,
+   * same CID) and the local receipts still skip finished files.
+   */
+  skipProbe?: boolean;
 }
 
 function carFileId(ctx: PublishContext, target: CarFileTarget): string {
@@ -522,7 +596,7 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
           items.push({ id, action: "skip", reason: `receipt ${rel(ctx, local)}` });
           continue;
         }
-        if (probe) {
+        if (probe && deps.skipProbe !== true) {
           const checks = await probeBothGateways(target.carCid, size, deps.fetch);
           if (gatewaysAgree(checks)) {
             items.push({
@@ -546,7 +620,12 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
         items.push({
           id,
           action: "run",
-          reason: probe ? "not confirmed by the gateways" : "no local receipt (not probed offline)",
+          reason:
+            deps.skipProbe === true
+              ? "no local receipt (gateway probe skipped)"
+              : probe
+                ? "not confirmed by the gateways"
+                : "no local receipt (not probed offline)",
         });
       }
       return items;
@@ -561,6 +640,9 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
         if (target === undefined) throw new Error(`no carCid target ${item.id}`);
         const result = await uploadCarFile(target, {
           env,
+          ...(deps.readbackGateways === undefined
+            ? {}
+            : { readbackGateways: deps.readbackGateways }),
           log: (line) => deps.log(`  ${item.id}: ${line}`),
           ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
           ...(deps.add === undefined ? {} : { add: deps.add }),

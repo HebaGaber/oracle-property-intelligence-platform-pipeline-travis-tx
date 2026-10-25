@@ -275,6 +275,11 @@ describe("transformAustinPropertyImprovement", () => {
           { "/": "./relationship_property_has_property_improvement_1.json" },
           { "/": "./relationship_property_has_property_improvement_2.json" },
         ],
+        // the fixture permits print "ACME ROOFING LLC" (ERR-66: published as company.name)
+        property_improvement_has_contractor: [
+          { "/": "./relationship_property_improvement_has_contractor_1.json" },
+          { "/": "./relationship_property_improvement_has_contractor_2.json" },
+        ],
       },
     });
     expect(parse(out.files, "relationship_property_has_property_improvement_1.json")).toEqual({
@@ -283,7 +288,7 @@ describe("transformAustinPropertyImprovement", () => {
     });
   });
 
-  it("writes no description, work class, status word, expiry or contractor name", () => {
+  it("writes no description, work class, status word or expiry on the permit record (the contractor is a separate company file, ERR-66)", () => {
     const out = transformAustinPropertyImprovement(
       setup([capture("2026-100001 BP"), capture("2026-034767 BP", { status_current: "Expired" })]),
     );

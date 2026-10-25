@@ -155,7 +155,7 @@ Planar maths in EPSG:4326 is fine at parcel scale. Both methods publish as `gis_
 | 4 | `permit_point`: the property's linked Austin permits, mode point at 6 decimal places, tie broken by latest `issue_date` | `permit_point`, Query DB only until fact 4 is fixed (disagreement #2) |
 | 5 | null with internal reason `no_gis_feature` / `gis_null_geometry` / `no_permit_point` | publicly `no_coordinates` |
 
-Never geocode an address.
+Never geocode an address. **Amended 2026-10-25 (PO decision, ADR 0004):** one narrow exception, an exact and unique match of the situs to the City of Austin public address-point layer may give a point (rule `address_point`, lowest priority, never over a GIS point); nothing else is ever turned into a point and no geocoding service is used.
 
 **Count and gap.** The GIS count (373,683 in A-01, re-measured) and its gap to N are computed with the pure function from G-FIX. Page count, duration and rows per second go into evidence for `docs/source-limits.md`. Freshness comes from `lastEditDate`.
 

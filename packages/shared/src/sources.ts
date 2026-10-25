@@ -3,6 +3,8 @@
 export const SOURCE_LABELS = Object.freeze({
   "austin-3syk-w9eu": "City of Austin Issued Construction Permits (3syk-w9eu)",
   "tcad-2026-certified-json": "TCAD 2026 certified export",
+  // A-11 Run 3 (ADR 0004): the one source an address point comes from.
+  "austin-address-points": "City of Austin address points (LOCATION_address_points)",
 });
 export type SourceName = keyof typeof SOURCE_LABELS;
 

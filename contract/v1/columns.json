@@ -82,11 +82,12 @@
         "nullable": false,
         "enum": [
           "gis_centroid",
+          "address_point",
           "permit_point",
           "none"
         ],
         "meaning": "Where the coordinates came from",
-        "source": "derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none",
+        "source": "derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0004), permit address → permit_point (address not in export), else none",
         "missingReason": null
       },
       {
@@ -143,7 +144,7 @@
         "kind": "date",
         "nullable": true,
         "meaning": "Latest dated ownership transfer",
-        "source": "latest dated sales_history.ownership_transfer_date via property_has_sales_history",
+        "source": "latest dated sales_history.ownership_transfer_date (TCAD sale or transfer deed) via property_has_sales_history",
         "missingReason": "no_dated_sale"
       },
       {
@@ -162,10 +163,11 @@
         "nullable": false,
         "enum": [
           "sale_date",
+          "deed_date",
           "unknown"
         ],
         "meaning": "Evidence behind tenure_years",
-        "source": "derived: sale_date when dated, else unknown",
+        "source": "derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown",
         "missingReason": null
       },
       {
@@ -188,7 +190,7 @@
           "unknown"
         ],
         "meaning": "Owner kind",
-        "source": "derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown",
+        "source": "derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown",
         "missingReason": null
       },
       {
@@ -196,9 +198,9 @@
         "type": "VARCHAR",
         "kind": "string",
         "nullable": true,
-        "meaning": "Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review",
-        "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale",
-        "missingReason": "no_dated_sale"
+        "meaning": "Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review",
+        "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale)",
+        "missingReason": "no_owner_record"
       },
       {
         "name": "owner_area_class",
@@ -212,7 +214,7 @@
           "unknown"
         ],
         "meaning": "Owner mailing area class",
-        "source": "derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1",
+        "source": "derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2)",
         "missingReason": null
       },
       {
@@ -353,6 +355,15 @@
         "missingReason": "source_missing"
       },
       {
+        "name": "request_identifier",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Permit request identifier: the stable key of the permit record across runs (equals permit_number in Run 2)",
+        "source": "property_improvement.request_identifier",
+        "missingReason": "source_missing"
+      },
+      {
         "name": "improvement_type",
         "type": "VARCHAR",
         "kind": "string",
@@ -443,8 +454,8 @@
         "type": "INTEGER",
         "kind": "integer",
         "nullable": true,
-        "meaning": "Days open",
-        "source": "derived: as_of − issue_date for open and stalled",
+        "meaning": "Days open (never counted for a finished permit)",
+        "source": "derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review)",
         "missingReason": "not_open"
       },
       {
@@ -457,7 +468,7 @@
           "unresolved"
         ],
         "meaning": "Contractor identity state (AD-24)",
-        "source": "derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review)",
+        "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66)",
         "missingReason": null
       },
       {
@@ -465,8 +476,17 @@
         "type": "VARCHAR",
         "kind": "cid",
         "nullable": true,
-        "meaning": "Resolved contractor company",
+        "meaning": "Contractor company as printed (unverified; resolved only with a registry id)",
         "source": "to_cid of the only property_improvement_has_contractor edge",
+        "missingReason": "contractor_unresolved"
+      },
+      {
+        "name": "contractor_name_as_printed",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Contractor as printed on the permit (unverified)",
+        "source": "company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity)",
         "missingReason": "contractor_unresolved"
       },
       {
@@ -481,7 +501,7 @@
           "not_checked"
         ],
         "meaning": "BBB lookup state",
-        "source": "always not_checked in v1",
+        "source": "blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked",
         "missingReason": null
       },
       {
@@ -490,8 +510,26 @@
         "kind": "string",
         "nullable": true,
         "meaning": "Why there is no BBB rating",
-        "source": "contractor_unresolved if unresolved, else no_lexicon_carrier",
+        "source": "bbb_blocked when a contractor name is printed, else contractor_unresolved",
         "missingReason": null
+      },
+      {
+        "name": "bbb_rating",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "BBB rating not published (BBB blocked the lookup)",
+        "source": "always null: BBB blocks the lookup (A-01), no rating is published",
+        "missingReason": "bbb_blocked"
+      },
+      {
+        "name": "bbb_url",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Search BBB for this contractor",
+        "source": "derived: BBB search URL built from contractor_name_as_printed and city Austin; never fetched; shape unverified",
+        "missingReason": "source_missing"
       },
       {
         "name": "profile_version",
@@ -622,7 +660,7 @@
           "unresolved"
         ],
         "meaning": "Contractor identity state",
-        "source": "always resolved (reached through property_improvement_has_contractor)",
+        "source": "derived: resolved only with an official registry id on the company; a printed-name company stays unresolved (v1.1)",
         "missingReason": null
       },
       {
@@ -646,7 +684,7 @@
           "not_checked"
         ],
         "meaning": "BBB lookup state",
-        "source": "always not_checked in v1",
+        "source": "blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked",
         "missingReason": null
       },
       {
@@ -1015,8 +1053,8 @@
       "type": "INTEGER",
       "kind": "integer",
       "nullable": true,
-      "meaning": "Days open",
-      "source": "derived: as_of − issue_date for open and stalled",
+      "meaning": "Days open (never counted for a finished permit)",
+      "source": "derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review)",
       "missingReason": "not_open"
     },
     {
@@ -1029,7 +1067,7 @@
         "unresolved"
       ],
       "meaning": "Contractor identity state (AD-24)",
-      "source": "derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review)",
+      "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66)",
       "missingReason": null
     },
     {
@@ -1037,8 +1075,17 @@
       "type": "VARCHAR",
       "kind": "cid",
       "nullable": true,
-      "meaning": "Resolved contractor company",
+      "meaning": "Contractor company as printed (unverified; resolved only with a registry id)",
       "source": "to_cid of the only property_improvement_has_contractor edge",
+      "missingReason": "contractor_unresolved"
+    },
+    {
+      "name": "contractor_name_as_printed",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "Contractor as printed on the permit (unverified)",
+      "source": "company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity)",
       "missingReason": "contractor_unresolved"
     },
     {
@@ -1053,7 +1100,7 @@
         "not_checked"
       ],
       "meaning": "BBB lookup state",
-      "source": "always not_checked in v1",
+      "source": "blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked",
       "missingReason": null
     },
     {
@@ -1062,8 +1109,26 @@
       "kind": "string",
       "nullable": true,
       "meaning": "Why there is no BBB rating",
-      "source": "contractor_unresolved if unresolved, else no_lexicon_carrier",
+      "source": "bbb_blocked when a contractor name is printed, else contractor_unresolved",
       "missingReason": null
+    },
+    {
+      "name": "bbb_rating",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "BBB rating not published (BBB blocked the lookup)",
+      "source": "always null: BBB blocks the lookup (A-01), no rating is published",
+      "missingReason": "bbb_blocked"
+    },
+    {
+      "name": "bbb_url",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "Search BBB for this contractor",
+      "source": "derived: BBB search URL built from contractor_name_as_printed and city Austin; never fetched; shape unverified",
+      "missingReason": "source_missing"
     },
     {
       "name": "profile_version",
@@ -1234,11 +1299,12 @@
       "nullable": false,
       "enum": [
         "gis_centroid",
+        "address_point",
         "permit_point",
         "none"
       ],
       "meaning": "Where the coordinates came from",
-      "source": "derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none",
+      "source": "derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0004), permit address → permit_point (address not in export), else none",
       "missingReason": null
     },
     {
@@ -1295,7 +1361,7 @@
       "kind": "date",
       "nullable": true,
       "meaning": "Latest dated ownership transfer",
-      "source": "latest dated sales_history.ownership_transfer_date via property_has_sales_history",
+      "source": "latest dated sales_history.ownership_transfer_date (TCAD sale or transfer deed) via property_has_sales_history",
       "missingReason": "no_dated_sale"
     },
     {
@@ -1314,10 +1380,11 @@
       "nullable": false,
       "enum": [
         "sale_date",
+        "deed_date",
         "unknown"
       ],
       "meaning": "Evidence behind tenure_years",
-      "source": "derived: sale_date when dated, else unknown",
+      "source": "derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown",
       "missingReason": null
     },
     {
@@ -1340,7 +1407,7 @@
         "unknown"
       ],
       "meaning": "Owner kind",
-      "source": "derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown",
+      "source": "derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown",
       "missingReason": null
     },
     {
@@ -1348,9 +1415,9 @@
       "type": "VARCHAR",
       "kind": "string",
       "nullable": true,
-      "meaning": "Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review",
-      "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale",
-      "missingReason": "no_dated_sale"
+      "meaning": "Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review",
+      "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale)",
+      "missingReason": "no_owner_record"
     },
     {
       "name": "owner_area_class",
@@ -1364,7 +1431,7 @@
         "unknown"
       ],
       "meaning": "Owner mailing area class",
-      "source": "derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1",
+      "source": "derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2)",
       "missingReason": null
     },
     {

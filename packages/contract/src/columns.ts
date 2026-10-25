@@ -45,8 +45,8 @@ export const COLUMN_ENUMS = {
   bbb_status: ["rated", "not_found", "blocked", "not_checked"],
   status_class: ["open", "stalled", "closed"],
   owner_area_class: ["in_county", "regional", "out_of_area", "unknown"],
-  coordinate_source: ["gis_centroid", "permit_point", "none"],
-  tenure_basis: ["sale_date", "unknown"],
+  coordinate_source: ["gis_centroid", "address_point", "permit_point", "none"],
+  tenure_basis: ["sale_date", "deed_date", "unknown"],
   contractor_resolution: ["resolved", "unresolved"],
   owner_kind: ["person", "company", "unknown"],
 } as const satisfies Record<string, readonly string[]>;
@@ -232,7 +232,7 @@ const V_PROPERTY: readonly Column[] = [
   enumCol(
     "coordinate_source",
     false,
-    "derived: geometry → gis_centroid, permit address → permit_point (address not in export), else none",
+    "derived: geometry → gis_centroid, or address_point when geometry.source_http_request is the City of Austin address-point layer (ADR 0004), permit address → permit_point (address not in export), else none",
     "Where the coordinates came from",
     null,
   ),
@@ -261,7 +261,7 @@ const V_PROPERTY: readonly Column[] = [
     "date",
     "DATE",
     true,
-    "latest dated sales_history.ownership_transfer_date via property_has_sales_history",
+    "latest dated sales_history.ownership_transfer_date (TCAD sale or transfer deed) via property_has_sales_history",
     "Latest dated ownership transfer",
     "no_dated_sale",
   ),
@@ -277,7 +277,7 @@ const V_PROPERTY: readonly Column[] = [
   enumCol(
     "tenure_basis",
     false,
-    "derived: sale_date when dated, else unknown",
+    "derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown",
     "Evidence behind tenure_years",
     null,
   ),
@@ -293,7 +293,7 @@ const V_PROPERTY: readonly Column[] = [
   enumCol(
     "owner_kind",
     false,
-    "derived from sales_history_has_person/_company on the latest dated sale: company when any company, else person, else unknown",
+    "derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown",
     "Owner kind",
     null,
   ),
@@ -302,14 +302,14 @@ const V_PROPERTY: readonly Column[] = [
     "string",
     V,
     true,
-    "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, on the latest dated sale",
-    "Owner display name; reason no_dated_sale, owner_unparsed, owner_confidential, no_owner_record or needs_review",
-    "no_dated_sale",
+    "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale)",
+    "Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review",
+    "no_owner_record",
   ),
   enumCol(
     "owner_area_class",
     false,
-    "derived: mailing ZIP against the travis-places area lists; the ZIP is not in the export (ADR-0002), so unknown in v1",
+    "derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2)",
     "Owner mailing area class",
     null,
   ),
@@ -334,7 +334,8 @@ const V_PROPERTY: readonly Column[] = [
   ...PROVENANCE_COLUMNS,
 ];
 
-const BBB_SOURCE = "always not_checked in v1";
+const BBB_SOURCE =
+  "blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked";
 
 const V_ROOFING_PERMIT: readonly Column[] = [
   col("permit_cid", "cid", V, false, "property_improvement.cid", "The permit's CID", null),
@@ -363,6 +364,15 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     true,
     "property_improvement.permit_number",
     "Permit number as printed",
+    "source_missing",
+  ),
+  col(
+    "request_identifier",
+    "string",
+    V,
+    true,
+    "property_improvement.request_identifier",
+    "Permit request identifier: the stable key of the permit record across runs (equals permit_number in Run 2)",
     "source_missing",
   ),
   col(
@@ -441,14 +451,14 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     "integer",
     "INTEGER",
     true,
-    "derived: as_of − issue_date for open and stalled",
-    "Days open",
+    "derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review)",
+    "Days open (never counted for a finished permit)",
     "not_open",
   ),
   enumCol(
     "contractor_resolution",
     false,
-    "derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review)",
+    "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66)",
     "Contractor identity state (AD-24)",
     null,
   ),
@@ -458,7 +468,17 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     V,
     true,
     "to_cid of the only property_improvement_has_contractor edge",
-    "Resolved contractor company",
+    "Contractor company as printed (unverified; resolved only with a registry id)",
+    "contractor_unresolved",
+  ),
+  // v1.1 (additive, ERR-66, PO 2026-10-25)
+  col(
+    "contractor_name_as_printed",
+    "string",
+    V,
+    true,
+    "company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity)",
+    "Contractor as printed on the permit (unverified)",
     "contractor_unresolved",
   ),
   enumCol("bbb_status", false, BBB_SOURCE, "BBB lookup state", null),
@@ -467,9 +487,28 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     "string",
     V,
     true,
-    "contractor_unresolved if unresolved, else no_lexicon_carrier",
+    "bbb_blocked when a contractor name is printed, else contractor_unresolved",
     "Why there is no BBB rating",
     null,
+  ),
+  // v1.1 (additive, ERR-66): no BBB rating is published; the link is a search URL we build
+  col(
+    "bbb_rating",
+    "string",
+    V,
+    true,
+    "always null: BBB blocks the lookup (A-01), no rating is published",
+    "BBB rating not published (BBB blocked the lookup)",
+    "bbb_blocked",
+  ),
+  col(
+    "bbb_url",
+    "string",
+    V,
+    true,
+    "derived: BBB search URL built from contractor_name_as_printed and city Austin; never fetched; shape unverified",
+    "Search BBB for this contractor",
+    "source_missing",
   ),
   col(
     "profile_version",
@@ -498,7 +537,7 @@ const V_CONTRACTOR: readonly Column[] = [
   enumCol(
     "contractor_resolution",
     false,
-    "always resolved (reached through property_improvement_has_contractor)",
+    "derived: resolved only with an official registry id on the company; a printed-name company stays unresolved (v1.1)",
     "Contractor identity state",
     null,
   ),
@@ -721,25 +760,6 @@ export const UNCARRIED = {
       fallback: "not published",
     },
     {
-      field: "contractor_name_raw",
-      reason: "no_lexicon_carrier",
-      carrier: NO_PERMIT_CARRIER,
-      fallback:
-        "contractor_resolution unresolved; five-state totals in the manifest coverage (AD-24)",
-    },
-    {
-      field: "bbb_rating",
-      reason: "no_lexicon_carrier",
-      carrier: "no business-rating class (fact_sheet has no fields)",
-      fallback: "bbb_status = not_checked with a reason",
-    },
-    {
-      field: "bbb_url",
-      reason: "no_lexicon_carrier",
-      carrier: "no business-rating class (fact_sheet has no fields)",
-      fallback: "not published",
-    },
-    {
       field: "description",
       reason: "no_lexicon_carrier",
       carrier: NO_PERMIT_CARRIER,
@@ -781,7 +801,9 @@ const PROVENANCE_NAMES = new Set(PROVENANCE_COLUMNS.map((c) => c.name));
  * run_id, manifest_cid and as_of, which equal the permit's.
  */
 export const SAMPLE_COLUMNS: readonly Column[] = [
-  ...V_ROOFING_PERMIT,
+  // The property's request_identifier keeps the plain name in the sample; the permit's equals
+  // permit_number in Run 2 and is left out of the 20-row sample.
+  ...V_ROOFING_PERMIT.filter((c) => c.name !== "request_identifier"),
   ...V_PROPERTY.filter((c) => c.name !== "property_cid" && !PROVENANCE_NAMES.has(c.name)),
   ...PROVENANCE_COLUMNS.filter((c) => !SAMPLE_SHARED.has(c.name)).map((c) => ({
     ...c,

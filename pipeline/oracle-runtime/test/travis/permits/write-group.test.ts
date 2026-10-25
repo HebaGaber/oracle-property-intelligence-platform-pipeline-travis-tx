@@ -242,6 +242,84 @@ describe("planPropertyImprovementGroup", () => {
   });
 });
 
+describe("printed contractor company (ERR-66, PO decision 2026-10-25)", () => {
+  function planOne(over: Record<string, string | null>, n = "2026-100001 BP") {
+    const plan = planPropertyImprovementGroup(
+      [{ parcel: parcelRow(100008, "0100030105"), permits: [permitRow(100008, n, over)] }],
+      CIDS,
+      STUB,
+    );
+    return plan.groups[0]?.files ?? {};
+  }
+  const read = (files: Record<string, string>, name: string) =>
+    JSON.parse(files[name] as string) as Record<string, unknown>;
+
+  it("writes company.name as printed (markers stripped), provenance of the permit, no registry id", () => {
+    const files = planOne({
+      contractor_company_name: " Done Right Roofing**MAIN** ",
+      contractor_phone: "5125550100",
+      contractor_city: "Round Rock",
+      contractor_address1: "1 Main St",
+      contractor_full_name: "Pat Person",
+    });
+    expect(read(files, "company_1.json")).toEqual({
+      source_http_request: {
+        method: "GET",
+        url: AUSTIN_DATASET_URL,
+        multiValueQueryString: { permit_number: ["2026-100001 BP"] },
+      },
+      request_identifier: "2026-100001 BP",
+      name: "Done Right Roofing",
+      sunbiz_document_number: null,
+    });
+    expect(read(files, "relationship_property_improvement_has_contractor_1.json")).toEqual({
+      from: { "/": "./property_improvement_1.json" },
+      to: { "/": "./company_1.json" },
+    });
+    const root = read(files, `${CIDS.propertyImprovement}.json`) as {
+      relationships: Record<string, unknown[]>;
+    };
+    expect(root.relationships.property_improvement_has_contractor).toEqual([
+      { "/": "./relationship_property_improvement_has_contractor_1.json" },
+    ]);
+    // no phone, address, city, person or BBB text anywhere; no person/license files
+    const all = Object.values(files).join("\n");
+    expect(all).not.toMatch(/5125550100|Main St|Round Rock|Pat Person|bbb/i);
+    expect(Object.keys(files).some((f) => /^(person|license)/.test(f))).toBe(false);
+  });
+
+  it("writes no contractor for a placeholder, an empty name or a person-only permit", () => {
+    for (const name of ["N/A", "OWNER", "SELF", "", "   ", null]) {
+      const files = planOne({ contractor_company_name: name, contractor_full_name: "Pat Person" });
+      expect(Object.keys(files).some((f) => /company|contractor/.test(f))).toBe(false);
+      const root = read(files, `${CIDS.propertyImprovement}.json`) as {
+        relationships: Record<string, unknown>;
+      };
+      expect(root.relationships).not.toHaveProperty("property_improvement_has_contractor");
+    }
+  });
+
+  it("numbers one company per emitted permit, in permit order", () => {
+    const plan = planPropertyImprovementGroup(
+      [
+        {
+          parcel: parcelRow(100008, "0100030105"),
+          permits: [
+            permitRow(100008, "2026-200002 BP", { contractor_company_name: "Beta Roofing" }),
+            permitRow(100008, "2026-100001 BP", { contractor_company_name: "Alpha Roofing" }),
+          ],
+        },
+      ],
+      CIDS,
+      STUB,
+    );
+    const files = plan.groups[0]?.files ?? {};
+    expect(read(files, "company_1.json").name).toBe("Alpha Roofing");
+    expect(read(files, "company_2.json").name).toBe("Beta Roofing");
+    expect(plan.groups[0]?.counts.contractor_companies_printed).toBe(2);
+  });
+});
+
 describe("writePropertyImprovementGroupFiles", () => {
   it("writes each group's files as plain files under <dir>/<pID>/data/<file>, no zip", () => {
     const plan = planPropertyImprovementGroup(

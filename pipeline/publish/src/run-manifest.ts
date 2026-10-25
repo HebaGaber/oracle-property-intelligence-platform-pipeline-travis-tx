@@ -13,18 +13,28 @@
 //   - the carried contractor/permit-link coverage keys must still be true: if the number of
 //     published permits differs from the base's, the caller must supply those keys explicitly.
 // The output bytes are `built.bytes` (RFC 8785 JCS) written verbatim, never re-serialized.
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
-import { RunManifestV1, type CoverageCount } from "@countylens/contract";
+import { RunManifestV1, type CoverageCount, type ManifestProfile } from "@countylens/contract";
+import { GAZETTEER_SHA256 } from "@countylens/query-core";
 import { cidOfBytes } from "./cid.js";
 import {
   buildManifest,
   manifestGroupInputsFromBatches,
+  ADDRESS_POINT_SOURCE,
   type BuildManifestInput,
   type BuiltManifest,
   type ManifestGroupInput,
 } from "./manifest.js";
+import {
+  austinSourceInput,
+  checkFactsAgainstBase,
+  parseAustinFacts,
+  unchangedSourceInput,
+  type AustinIncrementalFacts,
+} from "./incremental/austin-run.js";
 import { parseRunsIndex } from "./runs-index.js";
 
 export const DEFAULT_BASE_MANIFEST = "runs/travis-full-run1-20261023/manifest.json";
@@ -34,8 +44,21 @@ export const PILOT_MANIFEST_PATH = "specs/011-publish-and-runs/pilot/manifest.js
 /** Run 1's draft marker; it describes a pre-publish draft and must not travel into a published run. */
 const DRAFT_LIMITATION_PREFIX = "DRAFT for Stage 6";
 
+/** The basis of coverage.parcels_published: which accounts the County group publishes. */
+export const PARCELS_BASIS =
+  "County `property` rows of the TCAD 2026 certified export: real-property (R) accounts only; accounts of other property types are not published";
+
 export const CORRECTION_NOTE =
   "Correction run, no new source capture: the Property Improvement group's shared property files were rebuilt so that each permit's property CID equals its County property CID (the previous run's did not join, so none of its permits linked to a County property). The County group's batches are reused unchanged from the previous run.";
+
+/** The travis-places gazetteer: a static in-repo reference list (Census ZCTA-county relationship
+ *  file), not a captured source. A full-county run names it so a consumer can classify owner
+ *  mailing ZIPs (owner_area_class) with the exact list the run was built against. */
+export const GAZETTEER_PROFILE_ENTRY = {
+  name: "travis-places",
+  version: "1.0.0",
+  path: "packages/query-core/gazetteer/travis-places@1.0.0",
+} as const;
 
 const Cid = z.string().min(1);
 const Dir = z.string().min(1);
@@ -69,7 +92,22 @@ export const RunManifestConfig = z
       .optional(),
     /** Linked-permit total for the A-16 #6 reconciliation (unpublished; see buildManifest). */
     linkedPermits: z.number().int().nonnegative().optional(),
-    correctionNote: z.string().min(1).default(CORRECTION_NOTE),
+    /** Run 1's Run 2 default; an incremental run states its own note instead (see below). */
+    correctionNote: z.string().min(1).optional(),
+    /**
+     * An incremental run (Run 3): the facts file written by
+     * pipeline/local-stack/scripts/incremental-facts.ts for the Austin permits source. With it
+     * the Austin source gets the new watermark, the real delta and the new capture-time total;
+     * every other source keeps its facts with delta 0 and the reason "source unchanged,
+     * watermark X". `austinReceipt` must then be the receipt file written beside the facts.
+     */
+    austinFacts: Dir.optional(),
+    /**
+     * Run 3 (ADR 0004): a receipt file for the City of Austin address-point layer used for
+     * County coordinates: `{captured_at, records, sha256, layer_last_edit_date, layer_url}`.
+     * It adds the optional third source `austin-address-points`.
+     */
+    addressPointsReceipt: Dir.optional(),
   })
   .strict();
 export type RunManifestConfig = z.input<typeof RunManifestConfig>;
@@ -86,6 +124,82 @@ export function restatePermitRows(
 ): string {
   if (baseRows === undefined || baseRows === rows) return limitation;
   return limitation.split(`(${baseRows} rows)`).join(`(${rows} rows)`);
+}
+
+const AddressPointReceipt = z
+  .object({
+    captured_at: z.string().min(1),
+    records: z.number().int().nonnegative(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    layer_last_edit_date: z.string().min(1),
+    layer_url: z.string().url(),
+  })
+  .loose();
+
+/** The address-point source of a run: first listed, so everything in it is new (added = records). */
+export function addressPointSourceInput(
+  receiptPath: string,
+): BuildManifestInput["sources"][number] {
+  const r = AddressPointReceipt.parse(JSON.parse(readFileSync(receiptPath, "utf8")));
+  return {
+    name: ADDRESS_POINT_SOURCE,
+    url: r.layer_url,
+    watermark: r.layer_last_edit_date,
+    receipts: receiptPath,
+    limitations: [
+      `Layer snapshot sha256 ${r.sha256}; ${r.records} records; layer last edited ${r.layer_last_edit_date}`,
+    ],
+    delta: { added: r.records, changed: 0, removed: 0 },
+  };
+}
+
+/** The correction run's note, however it was worded when that run was published. */
+const CORRECTION_NOTE_PREFIX = "Correction run, no new source capture";
+const INCREMENTAL_NOTE_PREFIX = "Incremental refresh of the Austin permits source";
+
+/** Source limitations an earlier incremental run added; they describe that run, not the source. */
+const RUN_SCOPED_SOURCE_LIMITATIONS = [
+  "Incremental run:",
+  "Row count reconciliation:",
+  "source unchanged, watermark",
+  "source bulk re-stamp; delta by content digest",
+  "removals not checked:",
+];
+
+/** A base source's limitations without the ones a previous incremental run attached to itself. */
+export function carriedSourceLimitations(limitations: readonly string[]): string[] {
+  return limitations.filter((l) => !RUN_SCOPED_SOURCE_LIMITATIONS.some((p) => l.startsWith(p)));
+}
+
+/** The run-level limitation of an incremental run: what was refreshed, from which watermark. */
+export function incrementalRunNote(f: AustinIncrementalFacts): string {
+  return (
+    `Incremental refresh of the Austin permits source (watermark ${f.watermarkUsed} to ${f.watermarkNew}): ` +
+    `added ${f.delta.added}, changed ${f.delta.changed}, removed ${f.delta.removed} permits by content digest. ` +
+    `Groups listed here were rebuilt from the Query DB after the merge; their previous CIDs stay fetchable.`
+  );
+}
+
+const PERMIT_LINK_NOTES: Record<string, string> = {
+  permits_no_tcad_geoid:
+    "Query DB property_improvements.unmatched_reason='no_tcad_geoid', request_identifier IS NULL, all captured Austin permits",
+  permits_no_tcad_id: "unmatched_reason='no_tcad_id'",
+  permits_ambiguous_geoid: "unmatched_reason='ambiguous_geoid'",
+  permits_address_unmatched: "unmatched_reason='address_unmatched'",
+  permits_ambiguous_address: "unmatched_reason='ambiguous_address'",
+};
+
+/** The five permit-link exclusion counts of an incremental run, as coverage overrides. */
+function permitLinkCoverage(f: AustinIncrementalFacts): Record<string, CoverageCount> {
+  const out: Record<string, CoverageCount> = {};
+  for (const [key, note] of Object.entries(PERMIT_LINK_NOTES)) {
+    out[key] = {
+      count: f.permitLink[key as keyof typeof f.permitLink],
+      derivation: "aggregate_match",
+      note,
+    };
+  }
+  return out;
 }
 
 function resolvePath(repoRoot: string, path: string): string {
@@ -116,8 +230,11 @@ function ownersRedactedOf(base: RunManifestV1): number {
   return Number(n);
 }
 
-/** Sum of `tables.property_improvement.rows` over the permits batches' export summaries. */
-function publishedPermitRows(groups: readonly ManifestGroupInput[]): {
+/** Sum of `tables.<table>.rows` over a group's batches' export summaries. */
+function publishedRows(
+  groups: readonly ManifestGroupInput[],
+  table: string,
+): {
   total: number;
   perBatch: string;
 } {
@@ -125,9 +242,8 @@ function publishedPermitRows(groups: readonly ManifestGroupInput[]): {
     const summary = JSON.parse(readFileSync(g.tablesExportJson, "utf8")) as {
       tables?: Record<string, { rows?: number }>;
     };
-    const n = summary.tables?.property_improvement?.rows;
-    if (typeof n !== "number")
-      throw new Error(`${g.tablesExportJson} has no tables.property_improvement.rows`);
+    const n = summary.tables?.[table]?.rows;
+    if (typeof n !== "number") throw new Error(`${g.tablesExportJson} has no tables.${table}.rows`);
     return n;
   });
   const perBatch = groups
@@ -136,10 +252,28 @@ function publishedPermitRows(groups: readonly ManifestGroupInput[]): {
   return { total: rows.reduce((a, b) => a + b, 0), perBatch };
 }
 
+/** The base run's profiles plus travis-places when the base names none (a base profile is kept). */
+export function withGazetteerProfile(
+  profiles: readonly ManifestProfile[],
+  gitCommit: string,
+): ManifestProfile[] {
+  if (profiles.some((p) => p.name === GAZETTEER_PROFILE_ENTRY.name)) return [...profiles];
+  return [...profiles, { ...GAZETTEER_PROFILE_ENTRY, sha256: GAZETTEER_SHA256, gitCommit }];
+}
+
 export interface BuildRunManifestDeps {
   repoRoot: string;
   /** Injectable for tests; defaults to buildManifest's own `git status` gate. */
   workTreeStatus?: (repoRoot: string) => string;
+  /** Injectable for tests; the short commit stamped on a profile this module adds. */
+  gitCommit?: (repoRoot: string) => string;
+}
+
+function shortCommit(repoRoot: string): string {
+  return execFileSync("git", ["rev-parse", "--short=7", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).trim();
 }
 
 /**
@@ -163,6 +297,20 @@ export async function buildRunManifest(
   }
   if (config.runId === base.runId) throw new Error(`runId ${config.runId} is the base run's id`);
 
+  // An incremental run (Run 3): the Austin source's real delta, watermark and total.
+  const facts =
+    config.austinFacts === undefined
+      ? null
+      : parseAustinFacts(
+          JSON.parse(readFileSync(resolvePath(repoRoot, config.austinFacts), "utf8")),
+        );
+  if (facts !== null) {
+    const austin = base.sources.find((s) => s.name.startsWith("austin-3"));
+    if (austin === undefined) throw new Error("the base manifest has no Austin source");
+    checkFactsAgainstBase(facts, austin);
+  }
+  const linkedPermits = config.linkedPermits ?? facts?.permitLink.linkedPermits;
+
   const countyDir = resolvePath(repoRoot, config.countyDir);
   const permitsDir = resolvePath(repoRoot, config.permitsDir);
   const countyBatches = config.countyBatches ?? discoverBatches(countyDir, "travis-county");
@@ -181,12 +329,17 @@ export async function buildRunManifest(
   });
 
   // Coverage: carried from the base, `permits_emitted` recomputed from the permits tables.
-  const emitted = publishedPermitRows(permitsGroups);
+  const emitted = publishedRows(permitsGroups, "property_improvement");
+  const parcels = publishedRows(countyGroups, "property");
   const baseEmitted = base.coverage.permits_emitted?.count;
-  const overrides = config.coverageOverrides ?? {};
+  // Facts-derived permit-link totals first; an explicit coverageOverrides entry wins.
+  const overrides: Record<string, CoverageCount> = {
+    ...(facts === null ? {} : permitLinkCoverage(facts)),
+    ...((config.coverageOverrides ?? {}) as Record<string, CoverageCount>),
+  };
   if (emitted.total !== baseEmitted) {
     const stale = Object.keys(base.coverage).filter(
-      (k) => k !== "permits_emitted" && !(k in overrides),
+      (k) => k !== "permits_emitted" && k !== "parcels_published" && !(k in overrides),
     );
     if (stale.length > 0) {
       throw new Error(
@@ -207,8 +360,16 @@ export async function buildRunManifest(
       derivation: "published_rows",
       note: `${emitted.perBatch}, ${noteSuffix}`,
     },
+    // The County group's published property rows; buildManifest() refuses a different count.
+    parcels_published: {
+      count: parcels.total,
+      derivation: "published_rows",
+      note: `${parcels.perBatch}, ${PARCELS_BASIS}`,
+    },
   };
 
+  // The address-point source belongs to the run that used the layer; it is never carried over.
+  const baseSources = base.sources.filter((s) => s.name !== ADDRESS_POINT_SOURCE);
   const receiptFor = (name: string): string =>
     resolvePath(repoRoot, name.startsWith("austin") ? config.austinReceipt : config.tcadReceipt);
   const input: BuildManifestInput = {
@@ -221,33 +382,74 @@ export async function buildRunManifest(
     previousManifestCid: config.previousManifestCid,
     runDir: repoRoot,
     groups: [...countyGroups, ...permitsGroups],
-    sources: base.sources.map((s) => ({
-      name: s.name,
-      url: s.url,
-      watermark: s.watermark,
-      receipts: receiptFor(s.name),
-      limitations: [...s.limitations],
-      // No new capture: nothing added, changed or removed since the base run.
-      delta: { added: 0, changed: 0, removed: 0 },
-    })),
-    profiles: base.profiles,
+    sources: [
+      ...baseSources.map((s) => {
+        if (facts === null) {
+          return {
+            name: s.name,
+            url: s.url,
+            watermark: s.watermark,
+            receipts: receiptFor(s.name),
+            limitations: [...s.limitations],
+            // No new capture: nothing added, changed or removed since the base run.
+            delta: { added: 0, changed: 0, removed: 0 },
+          };
+        }
+        const carried = {
+          name: s.name,
+          url: s.url,
+          receipts: receiptFor(s.name),
+          limitations: carriedSourceLimitations(s.limitations),
+        };
+        return s.name.startsWith("austin")
+          ? austinSourceInput(facts, carried)
+          : unchangedSourceInput({ ...carried, watermark: s.watermark });
+      }),
+      ...(config.addressPointsReceipt === undefined
+        ? []
+        : [addressPointSourceInput(resolvePath(repoRoot, config.addressPointsReceipt))]),
+    ],
+    profiles: withGazetteerProfile(base.profiles, (deps.gitCommit ?? shortCommit)(repoRoot)),
     coverage,
     ownersRedacted: ownersRedactedOf(base),
     limitations: [
       ...base.limitations
         .filter((l) => !l.startsWith(DRAFT_LIMITATION_PREFIX))
+        // an incremental run is not a correction run: drop the earlier run's own notes
+        .filter(
+          (l) =>
+            facts === null ||
+            (!l.startsWith(CORRECTION_NOTE_PREFIX) && !l.startsWith(INCREMENTAL_NOTE_PREFIX)),
+        )
         .map((l) => restatePermitRows(l, baseEmitted, emitted.total)),
-      config.correctionNote,
+      config.correctionNote ?? (facts === null ? CORRECTION_NOTE : incrementalRunNote(facts)),
     ],
     repoRoot,
-    ...(config.linkedPermits === undefined ? {} : { linkedPermits: config.linkedPermits }),
+    ...(linkedPermits === undefined ? {} : { linkedPermits }),
     ...(deps.workTreeStatus === undefined ? {} : { workTreeStatus: deps.workTreeStatus }),
   };
 
   const built = await buildManifest(input);
-  // No new capture: the source facts must come out exactly as the base recorded them.
+  // The source facts must come out exactly as the base recorded them, except the Austin source
+  // of an incremental run, which must carry the facts' new watermark, total and delta.
   for (const [i, s] of built.manifest.sources.entries()) {
-    const b = base.sources[i];
+    if (s.name === ADDRESS_POINT_SOURCE) continue;
+    const b = baseSources[i];
+    if (facts !== null && s.name.startsWith("austin")) {
+      if (
+        s.watermark !== facts.watermarkNew ||
+        s.records !== facts.totalAfter ||
+        s.captured_at !== facts.capturedAt ||
+        s.added !== facts.delta.added ||
+        s.changed !== facts.delta.changed ||
+        s.removed !== facts.delta.removed
+      ) {
+        throw new Error(
+          `source ${s.name}: the receipt file does not match the incremental facts (watermark, total, captured_at or delta); regenerate both with incremental-facts.ts`,
+        );
+      }
+      continue;
+    }
     if (
       b === undefined ||
       s.watermark !== b.watermark ||

@@ -81,6 +81,8 @@ export const TcadRecord = z
           .loose(),
       )
       .default([]),
+    // A-11 ERR-71: the dated transfer deeds (deedType, deedDt) feed sales_history with sales[].
+    deeds: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
   })
   .loose();
 export type TcadRecord = z.infer<typeof TcadRecord>;

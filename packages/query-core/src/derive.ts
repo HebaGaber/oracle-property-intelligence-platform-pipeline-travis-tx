@@ -82,8 +82,11 @@ export const roofBasisReason = (roofDate: string | null): "no_roof_date" | "basi
 export const tenureYears = (date: string | null, asOf: string): number | null =>
   date === null ? null : completedYears(date, asOf);
 
-export const tenureBasis = (date: string | null): "sale_date" | "unknown" =>
-  date === null ? "unknown" : "sale_date";
+export const tenureBasis = (
+  date: string | null,
+  source: "sale" | "deed" | null = null,
+): "sale_date" | "deed_date" | "unknown" =>
+  date === null ? "unknown" : source === "deed" ? "deed_date" : "sale_date";
 
 /** More than 10 years; null (never "long") when the tenure is unknown. */
 export const isLongTenure = (years: number | null): boolean | null =>
@@ -104,13 +107,25 @@ export function zctaAreaRows(): { zcta: string; area_class: Exclude<AreaClass, "
   });
 }
 
+/**
+ * A-11 Run 3 (ADR 0004): a geometry whose source_http_request is a GET on this City of Austin
+ * layer is an address point; every other geometry is the TCAD/GIS point (`gis_centroid`).
+ */
+export const ADDRESS_POINT_LAYER_MARKER =
+  "services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/";
+
 export function coordinateSource(
   lat: number | null,
   lon: number | null,
   permitLat: number | null,
   permitLon: number | null,
-): "gis_centroid" | "permit_point" | "none" {
-  if (lat !== null && lon !== null) return "gis_centroid";
+  geometryUrl: string | null = null,
+): "gis_centroid" | "address_point" | "permit_point" | "none" {
+  if (lat !== null && lon !== null) {
+    return geometryUrl !== null && geometryUrl.includes(ADDRESS_POINT_LAYER_MARKER)
+      ? "address_point"
+      : "gis_centroid";
+  }
   if (permitLat !== null && permitLon !== null) return "permit_point";
   return "none";
 }
@@ -153,28 +168,41 @@ export const finalDateReason = (
 ): "not_closed" | "source_missing" | "needs_review" =>
   cls === null ? "needs_review" : cls === "closed" ? "source_missing" : "not_closed";
 
-/** as_of − issue_date in days for open and stalled permits (≥ 0); otherwise null. */
+/**
+ * as_of − issue_date in days for open and stalled permits (≥ 0) that have no completion date;
+ * otherwise null. A permit with a final_date is finished (an Expired status after completion is an
+ * administrative lapse), and one with an implausible final_date (before the issue date or after
+ * as_of) is a data-quality gap: neither gets an interval (ERR-70).
+ */
 export function openDays(
   cls: StatusClass | null,
   issueDate: string | null,
   asOf: string,
+  finalDate: string | null = null,
 ): number | null {
-  if ((cls !== "open" && cls !== "stalled") || issueDate === null) return null;
+  if ((cls !== "open" && cls !== "stalled") || issueDate === null || finalDate !== null)
+    return null;
   const [y, m, d] = utcDate(asOf);
   const days = (Date.UTC(y, m - 1, d) - Date.parse(`${issueDate}T00:00:00Z`)) / 86_400_000;
   return Math.max(0, days);
 }
 
-/** Why open_days is empty. */
+/** Why open_days is empty: not_open (closed, or finished with a plausible final_date),
+ *  source_missing (no issue date), needs_review (no class, or an implausible final_date). */
 export const openDaysReason = (
   cls: StatusClass | null,
   issueDate: string | null,
-): "not_open" | "source_missing" | "needs_review" =>
-  cls === null
-    ? "needs_review"
-    : (cls === "open" || cls === "stalled") && issueDate === null
-      ? "source_missing"
-      : "not_open";
+  asOf: string | null = null,
+  finalDate: string | null = null,
+): "not_open" | "source_missing" | "needs_review" => {
+  if (cls === null) return "needs_review";
+  if (cls !== "open" && cls !== "stalled") return "not_open";
+  if (issueDate === null) return "source_missing";
+  if (finalDate === null) return "not_open";
+  return asOf !== null && terminalDateAccepted(finalDate, issueDate, asOf)
+    ? "not_open"
+    : "needs_review";
+};
 
 /** Why a published improvement_status is null: stalled means the carrier exists but its enum has
  *  no value for the source word (Expired); otherwise the null is unexplained. */
@@ -194,7 +222,7 @@ export function terminalDateAccepted(
   return date <= asOfDay && (issueDate === null || date >= issueDate);
 }
 
-/** Owner kind on the latest dated sale: company when any company, else person, else unknown. */
+/** Owner kind of the property's current owners (person_has_property / company_has_property): company when any company, else person, else unknown. */
 export const ownerKind = (persons: number, companies: number): "person" | "company" | "unknown" =>
   companies > 0 ? "company" : persons > 0 ? "person" : "unknown";
 
@@ -202,7 +230,7 @@ export type OwnerGapReason =
   "owner_unparsed" | "owner_confidential" | "no_owner_record" | "needs_review";
 
 /**
- * Why a property with a dated sale has no owner. The export cannot tell the cases apart, so the
+ * Why a property has no owner (ERR-69: owners hang on the property, not on the sale). The export cannot tell the cases apart, so the
  * run's coverage counts decide: when exactly one of owner_unparsed / owner_confidential /
  * owner_no_record is non-zero every such row is in it; when several are, needs_review.
  */
@@ -224,8 +252,12 @@ export const ownerMissingReason = (
   gap: OwnerGapReason,
 ): OwnerGapReason | "no_dated_sale" => (hasDatedSale ? gap : "no_dated_sale");
 
-export const contractorResolution = (companyCid: string | null): "resolved" | "unresolved" =>
-  companyCid === null ? "unresolved" : "resolved";
+/**
+ * resolved only when the contractor company carries an official registry id. A company published
+ * from the printed permit name has none (ERR-66: "as printed, unverified"), so it stays unresolved.
+ */
+export const contractorResolution = (registryId: string | null): "resolved" | "unresolved" =>
+  registryId === null ? "unresolved" : "resolved";
 
 /** The company CID only when the permit has exactly one contractor edge (never pick one). */
 export const soleContractor = (edges: number, minCid: string | null): string | null =>
@@ -235,13 +267,30 @@ export const soleContractor = (edges: number, minCid: string | null): string | n
 export const contractorMissingReason = (edges: number): "contractor_unresolved" | "needs_review" =>
   edges > 1 ? "needs_review" : "contractor_unresolved";
 
-/** v1 never looks up BBB (no lexicon carrier for a rating). */
-export const bbbStatus = (): "not_checked" => "not_checked";
+/** BBB is never contacted (A-01: 403 challenge). A printed name means the lookup is blocked. */
+export const bbbStatus = (name: string | null): "blocked" | "not_checked" =>
+  name === null ? "not_checked" : "blocked";
 
-export const bbbStatusReason = (
-  resolution: "resolved" | "unresolved",
-): "no_lexicon_carrier" | "contractor_unresolved" =>
-  resolution === "resolved" ? "no_lexicon_carrier" : "contractor_unresolved";
+export const bbbStatusReason = (name: string | null): "bbb_blocked" | "contractor_unresolved" =>
+  name === null ? "contractor_unresolved" : "bbb_blocked";
+
+/** Longest printed name that goes into a BBB search link (code points). */
+export const BBB_NAME_MAX = 120;
+
+/**
+ * The BBB SEARCH link for a printed contractor name (never fetched). The city is the permit
+ * authority's, because the company record has none. URL shape UNVERIFIED: a human must click one
+ * example before it ships. Mirrors the SQL macro bbb_search_url and travis/permits/bbb-search-url.ts.
+ */
+export const bbbSearchUrl = (name: string | null): string | null =>
+  name === null
+    ? null
+    : "https://www.bbb.org/search?find_country=USA&find_text=" +
+      encodeURIComponent(Array.from(name).slice(0, BBB_NAME_MAX).join("").trimEnd()).replace(
+        /[!'()*]/g,
+        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+      ) +
+      "&find_loc=Austin%2C%20TX&find_type=Category";
 
 interface HttpRequest {
   url?: string;
@@ -287,13 +336,27 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
   roof_basis_reason:
     "(roof_date) AS CASE WHEN roof_date IS NULL THEN 'no_roof_date' ELSE 'basis_unmatched' END",
   tenure_years: "(d, as_of) AS CAST(date_sub('year', d, as_of_date(as_of)) AS INTEGER)",
-  tenure_basis: "(d) AS CASE WHEN d IS NULL THEN 'unknown' ELSE 'sale_date' END",
+  // A-11 Run 3 (ERR-71): a latest transfer taken from a TCAD deed (transfer_source = 'deed') is
+  // deed_date; the default NULL keeps the one-argument call meaning sale_date.
+  tenure_basis:
+    "(d, src := NULL) AS CASE WHEN d IS NULL THEN 'unknown' WHEN src = 'deed' THEN 'deed_date' ELSE 'sale_date' END",
   is_long_tenure: "(years) AS years > 10",
   owner_area_class: "(zcta_class) AS coalesce(zcta_class, 'unknown')",
+  // Why an owner's area class is unknown: no owner, no mailing edge, a run whose export carries no
+  // mailing ZIP, a run that named no area list, a missing ZIP, or a ZIP that is not a ZCTA.
+  owner_area_reason: `(kind, owner_reason, n_mailing, n_zip, zips_emitted, lookup_loaded) AS CASE
+      WHEN kind = 'unknown' THEN coalesce(owner_reason, 'no_owner_record')
+      WHEN coalesce(n_mailing, 0) = 0 THEN 'no_mailing_address'
+      WHEN NOT zips_emitted THEN 'not_in_export'
+      WHEN NOT lookup_loaded THEN 'out_of_scope'
+      WHEN n_zip = 0 THEN 'no_mailing_address'
+      ELSE 'zip_not_zcta' END`,
   owner_is_out_of_area: `(cls) AS CASE cls
       WHEN 'in_county' THEN false WHEN 'regional' THEN true WHEN 'out_of_area' THEN true END`,
-  coordinate_source: `(lat, lon, permit_lat, permit_lon) AS CASE
-      WHEN lat IS NOT NULL AND lon IS NOT NULL THEN 'gis_centroid'
+  coordinate_source: `(lat, lon, permit_lat, permit_lon, geometry_url) AS CASE
+      WHEN lat IS NOT NULL AND lon IS NOT NULL
+        THEN CASE WHEN coalesce(contains(geometry_url, '${ADDRESS_POINT_LAYER_MARKER}'), false)
+                  THEN 'address_point' ELSE 'gis_centroid' END
       WHEN permit_lat IS NOT NULL AND permit_lon IS NOT NULL THEN 'permit_point'
       ELSE 'none' END`,
   status_class_of: `(juris, status, issue_date) AS (
@@ -304,11 +367,13 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
   is_open: "(cls) AS coalesce(cls = 'open', false)",
   final_date_reason: `(cls) AS CASE WHEN cls IS NULL THEN 'needs_review'
       WHEN cls = 'closed' THEN 'source_missing' ELSE 'not_closed' END`,
-  open_days: `(cls, issue_date, as_of) AS CASE
-      WHEN cls IN ('open', 'stalled') AND issue_date IS NOT NULL
+  open_days: `(cls, issue_date, as_of, final_date) AS CASE
+      WHEN cls IN ('open', 'stalled') AND issue_date IS NOT NULL AND final_date IS NULL
       THEN CAST(greatest(as_of_date(as_of) - issue_date, 0) AS INTEGER) END`,
-  open_days_reason: `(cls, issue_date) AS CASE WHEN cls IS NULL THEN 'needs_review'
+  open_days_reason: `(cls, issue_date, as_of, final_date) AS CASE WHEN cls IS NULL THEN 'needs_review'
       WHEN cls IN ('open', 'stalled') AND issue_date IS NULL THEN 'source_missing'
+      WHEN cls IN ('open', 'stalled') AND final_date IS NOT NULL
+        AND NOT terminal_date_accepted(final_date, issue_date, as_of) THEN 'needs_review'
       ELSE 'not_open' END`,
   status_missing_reason:
     "(cls) AS CASE WHEN cls = 'stalled' THEN 'enum_lacks_value' ELSE 'needs_review' END",
@@ -322,16 +387,19 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
       WHEN coalesce(u, 0) > 0 THEN 'owner_unparsed'
       WHEN coalesce(c, 0) > 0 THEN 'owner_confidential'
       ELSE 'no_owner_record' END`,
-  owner_missing_reason:
-    "(has_dated_sale, gap) AS CASE WHEN has_dated_sale THEN gap ELSE 'no_dated_sale' END",
   contractor_resolution:
-    "(company_cid) AS CASE WHEN company_cid IS NULL THEN 'unresolved' ELSE 'resolved' END",
+    "(registry_id) AS CASE WHEN registry_id IS NULL THEN 'unresolved' ELSE 'resolved' END",
   sole_contractor: "(edges, min_cid) AS CASE WHEN edges = 1 THEN min_cid END",
   contractor_missing_reason:
     "(edges) AS CASE WHEN edges > 1 THEN 'needs_review' ELSE 'contractor_unresolved' END",
-  bbb_status: "() AS 'not_checked'",
+  bbb_status: "(name) AS CASE WHEN name IS NULL THEN 'not_checked' ELSE 'blocked' END",
   bbb_status_reason:
-    "(resolution) AS CASE WHEN resolution = 'resolved' THEN 'no_lexicon_carrier' ELSE 'contractor_unresolved' END",
+    "(name) AS CASE WHEN name IS NULL THEN 'contractor_unresolved' ELSE 'bbb_blocked' END",
+  bbb_search_url: `(name) AS CASE WHEN name IS NULL THEN NULL
+      ELSE 'https://www.bbb.org/search?find_country=USA&find_text='
+        || replace(replace(replace(replace(replace(url_encode(rtrim(left(name, 120))),
+             '!', '%21'), '''', '%27'), '(', '%28'), ')', '%29'), '*', '%2A')
+        || '&find_loc=Austin%2C%20TX&find_type=Category' END`,
   source_url: `(req) AS json_extract_string(req, '$.url') || coalesce('?' || nullif(array_to_string(
       flatten(list_transform(
         coalesce(json_keys(req, '$.multiValueQueryString'), []::VARCHAR[]),

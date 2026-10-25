@@ -170,17 +170,17 @@ describe("permitsSql over a bound fixture (DuckDB)", () => {
     ]);
   });
 
-  it("status_raw and contractor.name_as_printed have no column (no lexicon carrier): missing carries the reason", async () => {
+  it("status_raw has no column (no lexicon carrier): missing carries the reason; the contractor name is carried since contract v1.1", async () => {
     const rows = await fx.rows(
       `SELECT missing FROM v_roofing_permit WHERE permit_number = '2020-000100 BP'`,
     );
     const missing = rows[0]?.missing as { field: string; reason: string }[];
     expect(missing).toEqual(
-      expect.arrayContaining([
-        { field: "status_raw", reason: "no_lexicon_carrier" },
-        { field: "contractor_name_raw", reason: "no_lexicon_carrier" },
-      ]),
+      expect.arrayContaining([{ field: "status_raw", reason: "no_lexicon_carrier" }]),
     );
+    // Contract v1.1 (A-11 Run 3, ERR-66): contractor_name_raw became contractor_name_as_printed,
+    // published "as printed, unverified"; it is reported missing only when a permit has none.
+    expect(missing.some((m) => m.field === "contractor_name_raw")).toBe(false);
   });
 
   it("a 1-mile radius keeps the centre and the 0.5 mi permit, excludes the 3 mi one", async () => {

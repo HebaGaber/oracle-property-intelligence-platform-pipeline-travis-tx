@@ -124,7 +124,7 @@ export function ownerCoverage(outcomes: Record<string, number>): Coverage {
     owner_confidential: {
       count: n("suppressed"),
       derivation: "capture_receipt",
-      note: "owner name and mailing withheld: owners[]/sales[] confidentialCode, sales[] confidentialSale, or an unmodeled confid* key (P0-15)",
+      note: "owner name and mailing withheld: owners[]/sales[] confidentialCode, sales[] confidentialSale, or an unmodeled confid* key (P0-15), or individuals left out by OWNER_PERSONS=omit",
     },
     owner_no_record: {
       count: n("none"),

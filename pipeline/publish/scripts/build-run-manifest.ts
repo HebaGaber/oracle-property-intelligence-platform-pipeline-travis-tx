@@ -17,6 +17,8 @@
 // Other flags: --county-batches 1-10, --permits-batches 1-2 (default: every batch found),
 // --base <manifest> (default Run 1's), --austin-receipt, --tcad-receipt, --out (pilot only),
 // --linked-permits N (Run 1: 2007514; A-16 #6 check: five exclusions + N must equal the Austin records),
+// --austin-facts <file> (an incremental run: the facts file written by incremental-facts.ts, with
+// --austin-receipt <the receipt beside it> and --base <the previous run's manifest>),
 // --overwrite (replace an existing manifest with different bytes; refused once indexed).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -60,6 +62,7 @@ async function main(): Promise<number> {
       base: { type: "string" },
       "austin-receipt": { type: "string" },
       "tcad-receipt": { type: "string" },
+      "austin-facts": { type: "string" },
       "linked-permits": { type: "string" },
       out: { type: "string" },
       pilot: { type: "boolean", default: false },
@@ -83,6 +86,7 @@ async function main(): Promise<number> {
     baseManifest: values.base,
     austinReceipt: values["austin-receipt"],
     tcadReceipt: values["tcad-receipt"],
+    austinFacts: values["austin-facts"],
     linkedPermits:
       values["linked-permits"] === undefined ? undefined : Number(values["linked-permits"]),
   };
@@ -100,7 +104,9 @@ async function main(): Promise<number> {
     pilot: values.pilot,
     ...(values.out === undefined ? {} : { out: values.out }),
   });
-  requireLinkedPermits(config as RunManifestConfig, values.pilot);
+  // An incremental run takes its linked-permit total from the facts file; the builder cross-checks it.
+  if (config.austinFacts === undefined)
+    requireLinkedPermits(config as RunManifestConfig, values.pilot);
   const built = await buildRunManifest(config as RunManifestConfig, { repoRoot: REPO_ROOT });
   // built.bytes are the exact JCS bytes the manifest CID names; never re-serialize them.
   const outcome = writeManifestBytes(outPath, built, values.overwrite);

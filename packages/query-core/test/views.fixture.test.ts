@@ -45,6 +45,12 @@ function permit(
   };
 }
 
+const ADDRESS_POINT_REQUEST = JSON.stringify({
+  method: "GET",
+  url: "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/FeatureServer/0/query",
+  multiValueQueryString: { objectIds: ["77"], outFields: ["*"], outSR: ["4326"], f: ["json"] },
+});
+
 const P1 = "baguqeeraprop1";
 const P2 = "baguqeeraprop2";
 const P3 = "baguqeeraprop3";
@@ -75,18 +81,39 @@ const TABLES: FixtureTables = {
       propertyRows(P2, 1990),
       { ...propertyRows(P3, 1970), source_http_request: null },
     ],
-    property_has_parcel: [edge(P1, "parcel1")],
+    property_has_parcel: [edge(P1, "parcel1"), edge(P2, "parcel2")],
     parcel_has_geometry: [
       edge("parcel1", "g1a"),
       edge("parcel1", "g1b"),
       edge("parcel1", "g1c"),
       edge("parcel1", "g1d"),
+      edge("parcel2", "g2a"),
     ],
     geometry: [
       { cid: "g1a", latitude: 30.0, longitude: null, request_identifier: "x" },
       { cid: "g1b", latitude: null, longitude: -97.0, request_identifier: "x" },
-      { cid: "g1c", latitude: 30.3, longitude: -97.3, request_identifier: "x" },
-      { cid: "g1d", latitude: 30.4, longitude: -97.4, request_identifier: "x" },
+      {
+        cid: "g1c",
+        latitude: 30.3,
+        longitude: -97.3,
+        request_identifier: "x",
+        source_http_request: tcadRequest(),
+      },
+      {
+        cid: "g1d",
+        latitude: 30.4,
+        longitude: -97.4,
+        request_identifier: "x",
+        source_http_request: tcadRequest(),
+      },
+      // ADR 0004: a point stamped with the City of Austin address-point layer
+      {
+        cid: "g2a",
+        latitude: 30.2,
+        longitude: -97.2,
+        request_identifier: "x",
+        source_http_request: ADDRESS_POINT_REQUEST,
+      },
     ],
     property_has_structure: [edge(P1, "s1"), edge(P2, "s2"), edge(P3, "s3")],
     structure: [
@@ -100,13 +127,14 @@ const TABLES: FixtureTables = {
       { cid: "sh1", ownership_transfer_date: "2015-07-07", request_identifier: "x" },
       { cid: "sh3", ownership_transfer_date: "2010-02-02", request_identifier: "x" },
     ],
-    sales_history_has_person: [edge("sh1", "pe1"), edge("sh1", "pe2"), edge("sh0", "pe3")],
+    // ERR-69: owners hang on the property. pe3 owns a property with no dated sale at all.
+    person_has_property: [edge("pe1", P1), edge("pe2", P1), edge("pe3", P2)],
     person: [
       { cid: "pe1", first_name: "Ann", last_name: "Zed", request_identifier: "x" },
       { cid: "pe2", first_name: "Bob", last_name: "Young", request_identifier: "x" },
       { cid: "pe3", first_name: "Old", last_name: "Owner", request_identifier: "x" },
     ],
-    sales_history_has_company: [edge("sh1", "co1"), edge("sh1", "co2")],
+    company_has_property: [edge("co1", P1), edge("co2", P1)],
     company: [
       { cid: "co1", name: "Zeta LLC", request_identifier: "x" },
       { cid: "co2", name: "Alpha Inc", request_identifier: "x" },
@@ -130,10 +158,22 @@ const TABLES: FixtureTables = {
       ],
       [edge(P2, "pa")],
     ],
-    property_improvement_has_contractor: [edge("pa", "cA"), edge("pa", "cB"), edge("pc", "cA")],
+    property_improvement_has_contractor: [
+      edge("pa", "cA"),
+      edge("pa", "cB"),
+      edge("pc", "cA"),
+      edge("pj", "cC"),
+    ],
     company: [
       { cid: "cA", name: "Roofer A", source_http_request: austinRequest("x") },
       { cid: "cB", name: "Roofer B", source_http_request: austinRequest("x") },
+      // "A&B Roofing" prints an ampersand; cC carries a registry id (a future official match)
+      {
+        cid: "cC",
+        name: "A&B Roofing (O'Neil)",
+        sunbiz_document_number: "P12000012345",
+        source_http_request: austinRequest("x"),
+      },
     ],
   },
 };
@@ -227,11 +267,41 @@ describe("one row per permit and per edge (code-review #3)", () => {
 });
 
 describe("contractor edges (donphan M4)", () => {
-  it("exactly one edge → resolved with that company", () => {
+  it("exactly one edge → that company, as printed and unverified, so still unresolved (ERR-66)", () => {
     expect(pmt("pc")).toMatchObject({
-      contractor_resolution: "resolved",
+      contractor_resolution: "unresolved",
       contractor_company_cid: "cA",
+      contractor_name_as_printed: "Roofer A",
+      bbb_status: "blocked",
+      bbb_status_reason: "bbb_blocked",
+      bbb_rating: null,
+      bbb_url:
+        "https://www.bbb.org/search?find_country=USA&find_text=Roofer%20A&find_loc=Austin%2C%20TX&find_type=Category",
     });
+    expect(reasonOf(pmt("pc"), "bbb_rating")).toBe("bbb_blocked");
+    expect(reasonOf(pmt("pc"), "contractor_name_as_printed")).toBeUndefined();
+    expect(reasonOf(pmt("pc"), "bbb_url")).toBeUndefined();
+  });
+
+  it("a company with an official registry id is resolved; the link encodes ampersands and quotes", () => {
+    expect(pmt("pj")).toMatchObject({
+      contractor_resolution: "resolved",
+      contractor_name_as_printed: "A&B Roofing (O'Neil)",
+    });
+    expect(pmt("pj")?.bbb_url).toContain("find_text=A%26B%20Roofing%20%28O%27Neil%29&");
+  });
+
+  it("no contractor name → no link, not_checked, name and url missing with their reasons", () => {
+    expect(pmt("pf")).toMatchObject({
+      contractor_name_as_printed: null,
+      bbb_url: null,
+      bbb_rating: null,
+      bbb_status: "not_checked",
+      bbb_status_reason: "contractor_unresolved",
+    });
+    expect(reasonOf(pmt("pf"), "contractor_name_as_printed")).toBe("contractor_unresolved");
+    expect(reasonOf(pmt("pf"), "bbb_url")).toBe("source_missing");
+    expect(reasonOf(pmt("pf"), "bbb_rating")).toBe("contractor_unresolved");
   });
 
   it("two edges → unresolved, no company picked, needs_review", () => {
@@ -249,7 +319,7 @@ describe("contractor edges (donphan M4)", () => {
 });
 
 describe("owner (code-review #2, donphan M1)", () => {
-  it("2 persons + 2 companies on the latest sale: company, each name once, persons then companies", () => {
+  it("2 persons + 2 companies on the property: company, each name once, persons then companies", () => {
     expect(prop(P1)).toMatchObject({
       owner_kind: "company",
       owner_name: "Bob Young; Ann Zed; Alpha Inc; Zeta LLC",
@@ -257,13 +327,17 @@ describe("owner (code-review #2, donphan M1)", () => {
     });
   });
 
-  it("no dated sale → owner missing for no_dated_sale", () => {
-    expect(prop(P2)).toMatchObject({ owner_kind: "unknown", owner_name: null });
-    expect(reasonOf(prop(P2), "owner_name")).toBe("no_dated_sale");
-    expect(reasonOf(prop(P2), "owner_kind")).toBe("no_dated_sale");
+  it("no dated sale does not hide the owner; tenure keeps its own no_dated_sale reason", () => {
+    expect(prop(P2)).toMatchObject({
+      owner_kind: "person",
+      owner_name: "Old Owner",
+      last_ownership_transfer_date: null,
+    });
+    expect(reasonOf(prop(P2), "owner_name")).toBeUndefined();
+    expect(reasonOf(prop(P2), "tenure_years")).toBe("no_dated_sale");
   });
 
-  it("a dated sale without an owner and no gap counts → no_owner_record", () => {
+  it("a property without an owner and no gap counts → no_owner_record", () => {
     expect(reasonOf(prop(P3), "owner_name")).toBe("no_owner_record");
   });
 
@@ -272,7 +346,7 @@ describe("owner (code-review #2, donphan M1)", () => {
     [{ owner_confidential: 1 }, "owner_confidential"],
     [{ owner_no_record: 2 }, "no_owner_record"],
     [{ owner_unparsed: 1, owner_confidential: 1 }, "needs_review"],
-  ] as const)("coverage %o → %s for a dated sale without an owner", async (counts, reason) => {
+  ] as const)("coverage %o → %s for a property without an owner", async (counts, reason) => {
     const f = await bindFixture(TABLES, (m) => {
       withoutOwnerCounts(m);
       for (const [k, n] of Object.entries(counts))
@@ -288,6 +362,38 @@ describe("owner (code-review #2, donphan M1)", () => {
   });
 });
 
+describe("owners of a run written before Run 3 (sale edges only, no property edges)", () => {
+  it("the persons and companies of the latest dated sale still read as the owners", async () => {
+    const {
+      person_has_property: _p,
+      company_has_property: _c,
+      ...legacy
+    } = TABLES.county as Record<string, unknown>;
+    const f = await bindFixture(
+      {
+        ...TABLES,
+        county: {
+          ...legacy,
+          sales_history_has_person: [edge("sh3", "pe1"), edge("sh0", "pe3")],
+          sales_history_has_company: [edge("sh3", "co1")],
+        },
+      } as typeof TABLES,
+      withoutOwnerCounts,
+    );
+    try {
+      const rows = await f.rows(
+        `SELECT property_cid, owner_kind, owner_name FROM v_property WHERE property_cid IN ('${P1}', '${P3}')`,
+      );
+      const by = (cid: string) => rows.find((r) => r.property_cid === cid);
+      // P3: its latest sale (sh3) has Ann Zed and Zeta LLC. P1: only the older sale sh0 has an owner.
+      expect(by(P3)).toMatchObject({ owner_kind: "company", owner_name: "Ann Zed; Zeta LLC" });
+      expect(by(P1)?.owner_name).toBeNull();
+    } finally {
+      f.close();
+    }
+  });
+});
+
 describe("coordinates from one geometry row (code-review #7)", () => {
   it("takes both coordinates from the lowest-cid geometry with both present", () => {
     expect(prop(P1)).toMatchObject({
@@ -295,6 +401,19 @@ describe("coordinates from one geometry row (code-review #7)", () => {
       longitude: -97.3,
       coordinate_source: "gis_centroid",
     });
+  });
+
+  it("A-11 Run 3 (ADR 0004): a geometry stamped with the City of Austin address layer reads address_point", () => {
+    expect(prop(P2)).toMatchObject({
+      latitude: 30.2,
+      longitude: -97.2,
+      coordinate_source: "address_point",
+    });
+  });
+
+  it("a property with no geometry reads none with no_coordinates", () => {
+    expect(prop(P3)).toMatchObject({ latitude: null, coordinate_source: "none" });
+    expect(reasonOf(prop(P3), "coordinate_source")).toBe("no_coordinates");
   });
 });
 
@@ -305,7 +424,7 @@ describe("source_url fallback (code-review #6)", () => {
     for (const r of [...props, ...permits]) expect(reasonOf(r, "source_url")).toBeUndefined();
     const contractors = fx.rows("SELECT missing FROM v_contractor");
     return contractors.then((rows) => {
-      expect(rows.length).toBe(2);
+      expect(rows.length).toBe(3);
       for (const r of rows) expect(reasonOf(r, "source_url")).toBeUndefined();
     });
   });
@@ -336,7 +455,8 @@ describe("manifest digests (code-review #8, oracle F5)", () => {
           // "unknown" + missing-reason pair a real gap already renders (never a raw crash).
           expect(r["area_list_sha256"]).toBeNull();
           expect(r["owner_area_class"]).toBe("unknown");
-          expect(reasonOf(r, "owner_area_class")).toBe("not_in_export");
+          // The fixture's owners have no mailing address edge and no ZIP lookup is loaded.
+          expect(reasonOf(r, "owner_area_class")).toBeDefined();
         }
       } finally {
         fixture.close();

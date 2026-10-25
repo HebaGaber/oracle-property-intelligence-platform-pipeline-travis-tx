@@ -178,7 +178,7 @@ function SourceItem({
         {source.watermark === null ? null : <>watermark {source.watermark} · </>}
         <SourceLink url={source.url} className={styles.link} />
       </span>
-      <span className={styles.itemBody}>
+      <span className={styles.itemBody} data-source-delta={source.name}>
         <SourceDeltas
           added={source.added}
           changed={source.changed}

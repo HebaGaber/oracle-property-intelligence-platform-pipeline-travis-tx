@@ -7,10 +7,20 @@ import { describe, expect, it } from "vitest";
 import { RunManifestV1 } from "@countylens/contract";
 import { cidOfBytes, cidOfFile } from "../src/cid.js";
 import { jcsBytes } from "../src/jcs.js";
-import { assertPermitLinkReconciliation } from "../src/manifest.js";
+import { GAZETTEER_SHA256 } from "@countylens/query-core";
+import {
+  assertPermitLinkReconciliation,
+  buildManifest,
+  manifestGroupInputsFromBatches,
+} from "../src/manifest.js";
 import {
   CORRECTION_NOTE,
+  DEFAULT_AUSTIN_RECEIPT,
+  DEFAULT_TCAD_RECEIPT,
+  GAZETTEER_PROFILE_ENTRY,
+  PARCELS_BASIS,
   buildRunManifest,
+  withGazetteerProfile,
   discoverBatches,
   manifestOutputPath,
   requireLinkedPermits,
@@ -37,7 +47,111 @@ function config(f: RunFixture, extra: Partial<RunManifestConfig> = {}): RunManif
     ...extra,
   };
 }
-const deps = (f: RunFixture) => ({ repoRoot: f.root, workTreeStatus: NOT_YET_PUBLISHED });
+const deps = (f: RunFixture) => ({
+  repoRoot: f.root,
+  workTreeStatus: NOT_YET_PUBLISHED,
+  gitCommit: () => "abc1234",
+});
+
+describe("coverage.parcels_published (task B gap 6)", () => {
+  it("carries the County group's published property rows with their basis", async () => {
+    const f = await runFixture();
+    const { manifest: m } = await buildRunManifest(config(f), deps(f));
+    expect(m.coverage.parcels_published).toEqual({
+      count: 11,
+      derivation: "published_rows",
+      note: `b01 5 + b02 6, ${PARCELS_BASIS}`,
+    });
+  });
+
+  it("is recomputed when the base already has it, even if the permit count changes", async () => {
+    const f = await runFixture([3, 4]);
+    const { manifest: m } = await buildRunManifest(config(f), deps(f));
+    const again = withGazetteerProfile(m.profiles, "abc1234");
+    expect(again).toEqual(m.profiles); // travis-places is added once, never duplicated
+  });
+
+  const countyOnly = (f: RunFixture) =>
+    manifestGroupInputsFromBatches({
+      group: "county",
+      dir: f.countyDir,
+      carPrefix: "travis-county",
+      batches: [1, 2],
+    });
+  const base = async (f: RunFixture) => {
+    const { manifest } = await buildRunManifest(config(f), deps(f));
+    return {
+      runId: "travis-county-only-test",
+      county: manifest.county,
+      state: manifest.state,
+      fips: manifest.fips,
+      startedAt: manifest.startedAt,
+      finishedAt: manifest.finishedAt,
+      previousManifestCid: null,
+      runDir: f.root,
+      groups: countyOnly(f),
+      sources: manifest.sources.map((s) => ({
+        name: s.name,
+        url: s.url,
+        watermark: s.watermark,
+        receipts: join(
+          f.root,
+          s.name.startsWith("austin") ? DEFAULT_AUSTIN_RECEIPT : DEFAULT_TCAD_RECEIPT,
+        ),
+        limitations: [],
+        delta: { added: 0, changed: 0, removed: 0 },
+      })),
+      profiles: manifest.profiles,
+      ownersRedacted: 0,
+      limitations: [],
+      workTreeStatus: NOT_YET_PUBLISHED,
+    };
+  };
+
+  it("buildManifest refuses a count that differs from the published county property rows", async () => {
+    const f = await runFixture();
+    const input = await base(f);
+    await expect(
+      buildManifest({
+        ...input,
+        coverage: { parcels_published: { count: 999, derivation: "published_rows" } },
+      }),
+    ).rejects.toThrow(
+      /parcels_published\.count 999 is not the number of published county property rows \(11\)/,
+    );
+  });
+
+  it("buildManifest refuses another derivation and a run with no county group", async () => {
+    const f = await runFixture();
+    const input = await base(f);
+    await expect(
+      buildManifest({
+        ...input,
+        coverage: { parcels_published: { count: 11, derivation: "capture_receipt" } },
+      }),
+    ).rejects.toThrow(/derivation must be "published_rows"/);
+    await expect(
+      buildManifest({
+        ...input,
+        groups: [],
+        coverage: { parcels_published: { count: 11, derivation: "published_rows" } },
+      }),
+    ).rejects.toThrow(/needs the county group's property table/);
+  });
+
+  it("an older manifest without the key is still valid, and a matching count builds", async () => {
+    const f = await runFixture();
+    const input = await base(f);
+    const legacy = await buildManifest({ ...input, coverage: {} });
+    expect(RunManifestV1.safeParse(legacy.manifest).success).toBe(true);
+    expect(legacy.manifest.coverage.parcels_published).toBeUndefined();
+    const ok = await buildManifest({
+      ...input,
+      coverage: { parcels_published: { count: 11, derivation: "published_rows" } },
+    });
+    expect(ok.manifest.coverage.parcels_published?.count).toBe(11);
+  });
+});
 
 describe("buildRunManifest", () => {
   it("chains to the base run, reuses the county artifacts unchanged and rebuilds the permits ones", async () => {
@@ -74,7 +188,11 @@ describe("buildRunManifest", () => {
       expect([s.added, s.changed, s.removed]).toEqual([0, 0, 0]);
       expect(s.limitations).toEqual(b?.limitations);
     }
-    expect(m.profiles).toEqual(base.profiles);
+    // The base names no travis-places; a full-county run adds it (static in-repo list), last.
+    expect(m.profiles.slice(0, base.profiles.length)).toEqual(base.profiles);
+    expect(m.profiles.slice(base.profiles.length)).toEqual([
+      { ...GAZETTEER_PROFILE_ENTRY, sha256: GAZETTEER_SHA256, gitCommit: "abc1234" },
+    ]);
     expect(m.coverage.permits_no_tcad_geoid).toEqual(base.coverage.permits_no_tcad_geoid);
     expect(m.coverage.permits_emitted?.count).toBe(7);
     expect(m.coverage.permits_emitted?.note).toBe(
@@ -116,7 +234,11 @@ describe("buildRunManifest", () => {
   it("runs buildManifest's own checks: a dirty tree fails", async () => {
     const f = await runFixture();
     await expect(
-      buildRunManifest(config(f), { repoRoot: f.root, workTreeStatus: () => " M file" }),
+      buildRunManifest(config(f), {
+        repoRoot: f.root,
+        workTreeStatus: () => " M file",
+        gitCommit: () => "abc1234",
+      }),
     ).rejects.toThrow(/working tree is dirty/);
   });
 
@@ -153,6 +275,60 @@ describe("buildRunManifest", () => {
       deps(f),
     );
     expect(built.manifest.coverage.permits_emitted?.count).toBe(2);
+  });
+});
+
+describe("address-point source (Run 3, ADR 0004)", () => {
+  const receipt = {
+    captured_at: "2026-10-25T08:28:56.200Z",
+    records: 466149,
+    sha256: "4".repeat(64),
+    layer_last_edit_date: "2026-10-24T04:31:08.027Z",
+    layer_url:
+      "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/FeatureServer/0",
+  };
+
+  it("lists the layer as a third source with its sha256, edit date and a first-seen delta", async () => {
+    const f = await runFixture();
+    const path = join(f.root, "address-points-receipt.json");
+    writeFileSync(path, JSON.stringify(receipt));
+    const { manifest: m } = await buildRunManifest(
+      config(f, { addressPointsReceipt: path }),
+      deps(f),
+    );
+    expect(m.sources.map((s) => s.name)).toEqual([
+      "austin-3syk-w9eu",
+      "tcad-2026-certified-json",
+      "austin-address-points",
+    ]);
+    const a = m.sources[2];
+    expect(a).toMatchObject({
+      watermark: receipt.layer_last_edit_date,
+      captured_at: receipt.captured_at,
+      records: 466149,
+      added: 466149,
+      changed: 0,
+      removed: 0,
+    });
+    expect(a?.limitations.join(" ")).toContain(receipt.sha256);
+    // the first two sources are exactly what they were without the layer
+    const plain = (await buildRunManifest(config(f), deps(f))).manifest;
+    expect(m.sources.slice(0, 2)).toEqual(plain.sources);
+  });
+
+  it("a run without the receipt lists exactly the two original sources", async () => {
+    const f = await runFixture();
+    const { manifest: m } = await buildRunManifest(config(f), deps(f));
+    expect(m.sources).toHaveLength(2);
+  });
+
+  it("refuses a receipt without a valid sha256", async () => {
+    const f = await runFixture();
+    const path = join(f.root, "bad-receipt.json");
+    writeFileSync(path, JSON.stringify({ ...receipt, sha256: "nope" }));
+    await expect(
+      buildRunManifest(config(f, { addressPointsReceipt: path }), deps(f)),
+    ).rejects.toThrow();
   });
 });
 

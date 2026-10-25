@@ -19,6 +19,14 @@ import {
   type PermitFlag,
 } from "../../../oracle-runtime/travis/gis/assemble-coordinates.js";
 import {
+  readAddressLayerCache,
+  type AddressLayerReceipt,
+} from "../../../oracle-runtime/travis/gis/address-point-loader.js";
+import {
+  buildAddressPointSet,
+  type AddressPointRecord,
+} from "../../../oracle-runtime/travis/gis/address-points.js";
+import {
   GIS_SOURCE_KEY,
   inspectArtifact,
   readFeatures,
@@ -29,7 +37,14 @@ import { LoaderInputBase, type LoaderTrack, type MergeOutcome } from "../loader.
 const JobId = z.string().regex(/^travis-a04-[a-z0-9-]+$/);
 const ImportInput = LoaderInputBase.extend({ kind: z.literal("import"), artifactRunId: z.string().min(1) });
 const AssembleInput = LoaderInputBase.extend({ kind: z.literal("assemble"), tcadJobId: JobId.nullable() });
-export const GisTrackInput = z.discriminatedUnion("kind", [ImportInput, AssembleInput]);
+// A-11 Run 3 (ADR 0004): kind "address_points" loads the City of Austin address-point cache
+// (artifactPath = the cache directory, artifactSha256 = the layer file's sha256 from its receipt).
+const AddressPointsInput = LoaderInputBase.extend({ kind: z.literal("address_points") });
+export const GisTrackInput = z.discriminatedUnion("kind", [
+  ImportInput,
+  AssembleInput,
+  AddressPointsInput,
+]);
 export type GisTrackInput = z.infer<typeof GisTrackInput>;
 
 const BATCH = 4000;
@@ -83,6 +98,8 @@ export interface GisStore {
   upsertFeatures(rows: FeatureRow[]): Promise<number>;
   addLimitation(row: LimitationRow): Promise<void>;
   readAssembly(tcadJobId: string | null): Promise<Omit<AssemblyInput, "jobId">>;
+  /** Replace the address_points table (one capture at a time) and record which capture it is. */
+  replaceAddressPoints(records: AddressPointRecord[], receipt: AddressLayerReceipt): Promise<number>;
   writeCoordinates(rows: CoordinateRow[]): Promise<number>;
   flagPermits(rows: PermitFlag[]): Promise<number>;
 }
@@ -99,6 +116,27 @@ export async function mergeGis(store: GisStore, input: GisTrackInput): Promise<M
       watermark: {
         sourceKey: "coords_assembly",
         value: { job_id: input.jobId, tcad_job_id: input.tcadJobId, parcels: out.rows.length, stats: out.stats },
+      },
+    };
+  }
+
+  if (input.kind === "address_points") {
+    const cache = readAddressLayerCache(input.artifactPath);
+    if (cache.receipt.sha256 !== input.artifactSha256) {
+      throw new Error("gis track: address-point cache sha256 differs from the one inspected");
+    }
+    const written = await store.replaceAddressPoints(cache.records, cache.receipt);
+    return {
+      rowsWritten: written,
+      watermark: {
+        sourceKey: "address_points",
+        value: {
+          layer_url: cache.receipt.layer_url,
+          retrieved_at: cache.receipt.retrieved_at,
+          record_count: cache.receipt.record_count,
+          sha256: cache.receipt.sha256,
+          layer_last_edit_date: cache.receipt.layer_last_edit_date,
+        },
       },
     };
   }
@@ -251,7 +289,8 @@ export function postgresGisStore(tx: postgres.TransactionSql): GisStore {
     async readAssembly(tcadJobId) {
       const parcels = await tx.unsafe<AssemblyInput["parcels"][number][]>(
         `SELECT request_identifier, geo_id, prop_type, export_point_lat, export_point_lon, export_point_kind,
-                source_url, ${ISO("captured_at")} AS captured_at, export_sha256
+                source_url, ${ISO("captured_at")} AS captured_at, export_sha256,
+                situs_address AS situs
          FROM parcels ${tcadJobId === null ? "" : "WHERE job_id = $1"}`,
         tcadJobId === null ? [] : [tcadJobId],
       );
@@ -276,7 +315,47 @@ export function postgresGisStore(tx: postgres.TransactionSql): GisStore {
              WHERE request_identifier IS NOT NULL AND NOT coalesce(tombstoned, false)`,
           )
         : [];
-      return { parcels, geoids, features, permits };
+      // ADR 0004: the address-point rank runs only when 0202 is applied and a layer is loaded.
+      const [{ loaded } = { loaded: false }] = await tx<Array<{ loaded: boolean }>>`
+        SELECT to_regclass('address_point_layer') IS NOT NULL AS loaded`;
+      if (!loaded) return { parcels, geoids, features, permits };
+      const [layer] = await tx<
+        Array<{ layer_url: string; retrieved_at: string; sha256: string }>
+      >`SELECT layer_url,
+               to_char(retrieved_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS retrieved_at,
+               sha256
+        FROM address_point_layer`;
+      if (layer === undefined) return { parcels, geoids, features, permits };
+      const points = await tx<AddressPointRecord[]>`
+        SELECT object_id::float8 AS object_id, place_id::float8 AS place_id, address::float8 AS address,
+               full_street_name, address_fraction, address_suffix, address_type::float8 AS address_type,
+               lat, lon
+        FROM address_points`;
+      return {
+        parcels,
+        geoids,
+        features,
+        permits,
+        addressPoints: buildAddressPointSet(points, {
+          layerUrl: layer.layer_url,
+          retrievedAt: layer.retrieved_at,
+          sha256: layer.sha256,
+        }),
+      };
+    },
+    async replaceAddressPoints(records, receipt) {
+      await tx`DELETE FROM address_points`;
+      let n = 0;
+      for (let i = 0; i < records.length; i += BATCH) {
+        const r = await tx`INSERT INTO address_points ${tx(records.slice(i, i + BATCH))}`;
+        n += count(r);
+      }
+      await tx`DELETE FROM address_point_layer`;
+      await tx`
+        INSERT INTO address_point_layer (layer_url, retrieved_at, record_count, source_count, sha256, layer_last_edit_date)
+        VALUES (${receipt.layer_url}, ${receipt.retrieved_at}::timestamptz, ${receipt.record_count},
+                ${receipt.source_count}, ${receipt.sha256}, ${receipt.layer_last_edit_date}::timestamptz)`;
+      return n;
     },
     async writeCoordinates(rows) {
       let n = 0;

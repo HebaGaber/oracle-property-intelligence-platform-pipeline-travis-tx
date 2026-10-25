@@ -6,8 +6,13 @@
 //                          a permit-anchored roof date is never written here (oracle F1): it is
 //                          derived in the view from the published Austin permit rows
 //                          (Roofing + Replacement, closed → completion_date / permit_close_date)
-//   sales_history_N.json ← sales[] with a saleDt, oldest first (ownership_transfer_date only)
-//   person_N / company_N + mailing_address_N ← current owners[], linked to the latest dated sale
+//   sales_history_N.json ← dated transfers, oldest first, one per day (ownership_transfer_date
+//                          only): sales[] with a saleDt plus the allow-listed transfer deeds in
+//                          deeds[] (tcad/tenure.ts transferEventsOf, ADR 0003). A deed row says
+//                          so in source_http_request.multiValueQueryString.transfer_source.
+//   person_N / company_N + mailing_address_N ← current owners[]; each is linked to the property
+//                          (person_has_property / company_has_property) and, when the property has
+//                          a dated sale, to the latest one. Names are read by owner-name.ts (A-11)
 //   <County schema CID>.json
 // Rules: every entity carries source_http_request (the bulk export GET, no headers) and
 // request_identifier (pID as printed); relationships are only {from, to} relative links;
@@ -28,6 +33,15 @@ import {
   type TcadRecord,
 } from "./shared-seed.js";
 import type { DataGroupCids } from "./lexicon-manifest.js";
+import {
+  ownerPersonsMode,
+  parseOwner,
+  type OwnerPersonsMode,
+  type ParsedPerson,
+} from "./owner-name.js";
+import { transferEventsOf } from "../tcad/tenure.js";
+
+export { ENTITY_NAME, PERSON_NAME } from "./owner-name.js";
 
 /** structure properties the lexicon lists as non-optional; written null (no TCAD source in A-02). */
 const STRUCTURE_NULL_FIELDS = [
@@ -76,12 +90,6 @@ const STRUCTURE_NULL_FIELDS = [
   "window_screen_material",
 ] as const;
 
-/** Entity words that make an unsplit owner name a company (never a person guess). */
-export const ENTITY_NAME =
-  /\b(LLC|L\.L\.C\.?|INC|INCORPORATED|CORP|CORPORATION|CO|COMPANY|LP|L\.P\.|LTD|LLP|PLLC|TRUST|TRUSTEES?|PARTNERSHIP|PARTNERS|ASSOCIATION|ASSN|BANK|CHURCH|HOLDINGS|PROPERTIES|INVESTMENTS|FUND|FOUNDATION|ISD|CITY OF|COUNTY OF|STATE OF)\b/;
-
-export const PERSON_NAME = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
-
 export interface RoofAgeEntry {
   pID: string;
   roof_date: string | null;
@@ -124,6 +132,23 @@ export interface CountyTransformInput {
    * A-02 reading of propertyProfile[0].imprvActualYearBuilt is kept.
    */
   yearBuilt?: number | null;
+  /**
+   * The run's as_of date (YYYY-MM-DD): no sale or deed after it is written as a transfer.
+   * Absent means no upper bound (unit tests of the shape only).
+   */
+  asOf?: string;
+  /**
+   * A-11 Run 3 (ADR 0004): the GET that returned the point when it did NOT come from the TCAD
+   * export (the City of Austin address-point record). Stamped on geometry.json only; every other
+   * entity keeps the TCAD export request.
+   */
+  geometrySourceUrl?: string | null;
+  /**
+   * Whether individuals' names are written (ERR-69; PO decision pending). Default: the
+   * OWNER_PERSONS environment variable, itself defaulting to "publish". "omit" writes no person
+   * and no person mailing address; the property then reads as owner_confidential (withheld).
+   */
+  ownerPersons?: OwnerPersonsMode;
 }
 
 export type OwnerOutcome =
@@ -133,8 +158,17 @@ export interface CountyTransformCounts {
   owner: OwnerOutcome;
   confidential: boolean;
   confidential_basis: string[];
+  /** Dated transfers written as sales_history rows (sales plus deeds). */
   sales_dated: number;
+  /** Of sales_dated, the rows taken from a transfer deed (no sale on that day). */
+  transfers_from_deeds: number;
   owners_unparsed: number;
+  /** Owner entries whose second named party could not be read with certainty (first one kept). */
+  owners_co_owner_skipped: number;
+  persons_written: number;
+  /** Individuals left out because ownerPersons is "omit". */
+  persons_omitted: number;
+  companies_written: number;
   /** Mailing addresses written in the `unnormalized_address` form (a component broke a pattern). */
   mailing_address_fallback: number;
   warnings: string[];
@@ -150,18 +184,6 @@ export interface CountyTransformOutput {
 
 const nonEmpty = (v: string | null | undefined): boolean =>
   typeof v === "string" && v.trim() !== "";
-
-function titleCase(word: string): string {
-  return word
-    .toLowerCase()
-    .replace(/(^|[ \-',.])([a-z])/g, (_m, sep: string, ch: string) => `${sep}${ch.toUpperCase()}`);
-}
-
-function saleDate(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const m = /^(\d{4}-\d{2}-\d{2})/.exec(value);
-  return m ? (m[1] as string) : null;
-}
 
 type Owner = TcadRecord["owners"][number];
 
@@ -283,6 +305,9 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
   if (point) {
     files["geometry.json"] = jsonFile({
       ...base,
+      ...(input.geometrySourceUrl
+        ? { source_http_request: requestOf(input.geometrySourceUrl) }
+        : {}),
       latitude: point.latitude,
       longitude: point.longitude,
       polygon: null,
@@ -303,13 +328,20 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
     relationship("relationship_property_has_structure.json", "property.json", "structure.json"),
   );
 
-  const dated = record.sales
-    .map((s) => ({ id: s.saleID ?? 0, date: saleDate(s.saleDt) }))
-    .filter((s): s is { id: number; date: string } => s.date !== null)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  const dated = transferEventsOf(record.sales, record.deeds ?? [], input.asOf ?? null);
+  const deedBase = {
+    ...base,
+    source_http_request: {
+      ...TCAD_EXPORT_REQUEST,
+      multiValueQueryString: { transfer_source: ["deed"] },
+    },
+  };
   dated.forEach((s, i) => {
     const name = `sales_history_${i + 1}.json`;
-    files[name] = jsonFile({ ...base, ownership_transfer_date: s.date });
+    files[name] = jsonFile({
+      ...(s.source === "deed" ? deedBase : base),
+      ownership_transfer_date: s.date,
+    });
     many(
       "property_has_sales_history",
       relationship(`relationship_property_has_sales_history_${i + 1}.json`, "property.json", name),
@@ -329,75 +361,125 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
 
   let owner: OwnerOutcome = "none";
   let unparsed = 0;
+  let skippedCoOwners = 0;
   let mailingFallback = 0;
+  let personsWritten = 0;
+  let personsOmitted = 0;
+  const personsMode = input.ownerPersons ?? ownerPersonsMode();
+  let companiesWritten = 0;
   if (confidential) owner = "suppressed";
-  else if (record.owners.length > 0 && dated.length === 0) owner = "no_dated_sale";
   else if (record.owners.length > 0) {
-    const latest = `sales_history_${dated.length}.json`;
+    // The owners are written either way (A-11): every one is linked to the property, and to the
+    // latest dated sale too when there is one. Without a dated sale the outcome stays
+    // "no_dated_sale" so the receipts keep counting properties whose owner the sales view cannot reach.
+    const latest = dated.length > 0 ? `sales_history_${dated.length}.json` : null;
     const kinds = new Set<"person" | "company">();
     let persons = 0;
     let companies = 0;
-    for (const o of record.owners) {
-      const first = titleCase((o.firstName ?? "").trim());
-      const last = titleCase((o.lastName ?? "").trim());
-      const name = (o.name ?? "").trim();
-      let entity: string;
-      if (
-        nonEmpty(o.firstName) &&
-        nonEmpty(o.lastName) &&
-        PERSON_NAME.test(first) &&
-        PERSON_NAME.test(last)
-      ) {
-        persons += 1;
-        entity = `person_${persons}.json`;
-        files[entity] = jsonFile({
-          ...base,
-          first_name: first,
-          last_name: last,
-          middle_name: null,
-          prefix_name: null,
-          suffix_name: null,
-          birth_date: null,
-          us_citizenship_status: null,
-          veteran_status: null,
-        });
+    let mailings = 0;
+    const personFile = (p: ParsedPerson): string => {
+      persons += 1;
+      const entity = `person_${persons}.json`;
+      files[entity] = jsonFile({
+        ...base,
+        first_name: p.first_name,
+        last_name: p.last_name,
+        middle_name: p.middle_name,
+        prefix_name: null,
+        suffix_name: p.suffix_name,
+        birth_date: null,
+        us_citizenship_status: null,
+        veteran_status: null,
+      });
+      if (latest !== null) {
         many(
           "sales_history_has_person",
           relationship(`relationship_sales_history_has_person_${persons}.json`, latest, entity),
         );
-        kinds.add("person");
-      } else if (name !== "" && ENTITY_NAME.test(name)) {
+      }
+      many(
+        "person_has_property",
+        relationship(`relationship_person_has_property_${persons}.json`, entity, "property.json"),
+      );
+      kinds.add("person");
+      return entity;
+    };
+    for (const o of record.owners) {
+      const secondary = (o as Record<string, unknown>).nameSecondary;
+      const parsed = parseOwner({
+        name: o.name,
+        nameSecondary: typeof secondary === "string" ? secondary : null,
+        firstName: o.firstName,
+        lastName: o.lastName,
+      });
+      const entities: string[] = [];
+      if (parsed.kind === "people" && personsMode === "omit") {
+        personsOmitted += parsed.people.length;
+        continue;
+      }
+      if (parsed.kind === "people") {
+        for (const p of parsed.people) entities.push(personFile(p));
+        if (parsed.skippedCoOwner) skippedCoOwners += 1;
+      } else if (parsed.kind === "company") {
         companies += 1;
-        entity = `company_${companies}.json`;
-        files[entity] = jsonFile({ ...base, name, sunbiz_document_number: null });
+        const entity = `company_${companies}.json`;
+        files[entity] = jsonFile({ ...base, name: parsed.name, sunbiz_document_number: null });
+        if (latest !== null) {
+          many(
+            "sales_history_has_company",
+            relationship(
+              `relationship_sales_history_has_company_${companies}.json`,
+              latest,
+              entity,
+            ),
+          );
+        }
         many(
-          "sales_history_has_company",
-          relationship(`relationship_sales_history_has_company_${companies}.json`, latest, entity),
+          "company_has_property",
+          relationship(
+            `relationship_company_has_property_${companies}.json`,
+            entity,
+            "property.json",
+          ),
         );
         kinds.add("company");
+        entities.push(entity);
       } else {
         unparsed += 1;
         continue;
       }
+      // One mailing address per owner entity (a joint entry's people share the printed address).
       const mailing = mailingAddress(o, base);
       if (mailing) {
-        if (mailing.fallback) mailingFallback += 1;
-        const n = persons + companies;
-        const addr = `mailing_address_${n}.json`;
-        files[addr] = jsonFile(mailing.address);
-        const kind = entity.startsWith("person_") ? "person" : "company";
-        many(
-          `${kind}_has_mailing_address`,
-          relationship(`relationship_${kind}_has_mailing_address_${n}.json`, entity, addr),
-        );
+        for (const entity of entities) {
+          if (mailing.fallback) mailingFallback += 1;
+          const kind = entity.startsWith("person_") ? "person" : "company";
+          mailings += 1;
+          const n = mailings;
+          const addr = `mailing_address_${n}.json`;
+          files[addr] = jsonFile(mailing.address);
+          many(
+            `${kind}_has_mailing_address`,
+            relationship(`relationship_${kind}_has_mailing_address_${n}.json`, entity, addr),
+          );
+        }
       }
     }
+    personsWritten = persons;
+    companiesWritten = companies;
+    // Nothing written: withheld by policy (persons omitted, nothing unparsed) or unparsed. The
+    // view reads owners through the property edges, so a property whose owners could not be
+    // written is counted for what it is whether or not it has a dated sale.
     owner =
       kinds.size === 0
-        ? "unparsed"
-        : kinds.size === 2
-          ? "mixed"
-          : ([...kinds][0] as "person" | "company");
+        ? personsOmitted > 0 && unparsed === 0
+          ? "suppressed"
+          : "unparsed"
+        : dated.length === 0
+          ? "no_dated_sale"
+          : kinds.size === 2
+            ? "mixed"
+            : ([...kinds][0] as "person" | "company");
   }
 
   const ordered = Object.fromEntries(
@@ -419,9 +501,33 @@ export function transformTcadCounty(input: CountyTransformInput): CountyTransfor
       confidential,
       confidential_basis: basis,
       sales_dated: dated.length,
+      transfers_from_deeds: dated.filter((e) => e.source === "deed").length,
       owners_unparsed: unparsed,
+      owners_co_owner_skipped: skippedCoOwners,
+      persons_written: personsWritten,
+      persons_omitted: personsOmitted,
+      companies_written: companiesWritten,
       mailing_address_fallback: mailingFallback,
       warnings,
     },
+  };
+}
+
+/**
+ * A GET the lexicon accepts: `url` is the bare path (its pattern forbids `?` and `&`), the query
+ * parameters go in `multiValueQueryString` (elephant-cli validate rejects a query in `url`).
+ */
+export function requestOf(full: string): {
+  method: "GET";
+  url: string;
+  multiValueQueryString?: Record<string, string[]>;
+} {
+  const u = new URL(full);
+  const params: Record<string, string[]> = {};
+  for (const [k, v] of u.searchParams) (params[k] ??= []).push(v);
+  return {
+    method: "GET",
+    url: `${u.origin}${u.pathname}`,
+    ...(Object.keys(params).length > 0 ? { multiValueQueryString: params } : {}),
   };
 }

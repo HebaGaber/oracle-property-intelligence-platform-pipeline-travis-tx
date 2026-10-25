@@ -159,6 +159,15 @@ such as InProgress) it is null and the row lists \`{field: "status_class", reaso
 \`final_date\` and \`open_days\` then also give \`needs_review\`, and a null \`improvement_status\`
 gives \`needs_review\` instead of \`enum_lacks_value\`.
 
+**Open duration (ERR-70).** \`status_class\` is the class of the source status; it does not say the
+work is still going. An Austin permit with status Expired (stalled) very often has a \`final_date\`:
+the work was finished and the permit lapsed administratively. \`open_days\` (as_of − issue_date) is
+therefore counted only for an open or stalled permit with **no** \`final_date\`. A plausible
+\`final_date\` (not before \`issue_date\`, not after \`as_of\`) gives \`open_days\` null with reason
+\`not_open\`; a \`final_date\` before \`issue_date\` or after \`as_of\` is a data-quality gap and gives
+\`open_days\` null with reason \`needs_review\`. A long-open lead is \`open_days\` above the threshold;
+\`is_open\` still mirrors \`status_class = 'open'\`.
+
 **For raw-table consumers** (reading \`property_improvement\` Parquet without these views): a Travis
 permit whose \`improvement_status\` is null, whose \`source_http_request\` host is an Austin host
 (\`data.austintexas.gov\`, \`abc.austintexas.gov\`) and which has a \`permit_issue_date\` is an
@@ -187,16 +196,17 @@ history (caveat \`partial_history\`, in the manifest).
 
 ## Owner
 
-The current owner is read from the **latest dated sale**: the persons and companies linked to
-that \`sales_history\` record (an assumption: the latest dated sale is the current owner; TCAD
-\`owners[]\` are linked to it by the transform). \`owner_kind\` is \`company\` when any company is
+The current owners are read through the property: the persons and companies linked to it by
+\`person_has_property\` and \`company_has_property\` (ERR-69), independent of any sale, so a
+property with no dated sale still has an owner. \`owner_kind\` is \`company\` when any company is
 linked, else \`person\`, else \`unknown\`; \`owner_name\` lists the persons (by last, first name) and
-then the companies (by name), each once, separated by \`; \`. When there is no owner the reason is
-\`no_dated_sale\` (no dated sale to link to; linking without a sale is deferred to A-04), or for a
-dated sale without an owner \`owner_unparsed\`, \`owner_confidential\` (TCAD confidentiality flag,
-P0-15) or \`no_owner_record\`, read from the manifest \`coverage\` counts \`owner_unparsed\`,
-\`owner_confidential\` and \`owner_no_record\` (when more than one is non-zero the row cannot be
-told apart and lists \`needs_review\`).
+then the companies (by name), each once, separated by \`; \`. A property with no owner lists
+\`owner_unparsed\`, \`owner_confidential\` (TCAD confidentiality flag, P0-15) or \`no_owner_record\`,
+read from the manifest \`coverage\` counts \`owner_unparsed\`, \`owner_confidential\` and
+\`owner_no_record\` (when more than one is non-zero the row cannot be told apart and lists
+\`needs_review\`). \`no_dated_sale\` is a tenure reason only. A run written before Run 3 has no
+property-owner edges: its current owners are the persons and companies of the latest dated sale
+(the latest dated sale is the current owner), so the same rows keep reading.
 
 ## Contractor
 
@@ -205,6 +215,39 @@ told apart and lists \`needs_review\`).
 \`unresolved\` and lists \`{field: "contractor_company_cid", reason: "needs_review"}\`. The AD-24
 five-state totals (\`contractor_resolved\`, \`contractor_candidate\`, \`contractor_ambiguous\`,
 \`contractor_conflicting\`, \`contractor_unresolved\`) are in the manifest \`coverage\`.
+
+### v1.1 (additive): contractor as printed and BBB search link
+
+Backward compatible: every v1 column keeps its name and type; the new columns are nullable and a
+run published before Run 3 binds them as null with a reason. The permit's printed contractor
+**company** name is published as \`company.name\`, linked by \`property_improvement_has_contractor\`,
+with the permit's own request as provenance and **no** \`sunbiz_document_number\` (PO decision
+2026-10-25). It is **as printed, unverified**: a name is evidence, not identity, so
+\`contractor_resolution\` stays \`unresolved\` (it becomes \`resolved\` only when the company carries an
+official registry id, which no Austin permit prints). No person, phone or address is published; a
+permit that prints only a person name has no contractor.
+
+On \`v_roofing_permit\`: \`contractor_name_as_printed\` (the company name, null with
+\`contractor_unresolved\`), \`bbb_status\` = \`blocked\` with \`bbb_status_reason\` = \`bbb_blocked\` when a
+name exists (else \`not_checked\` / \`contractor_unresolved\`), \`bbb_rating\` always null (missing
+reason \`bbb_blocked\`; the UI says "BBB rating not published (BBB blocked the lookup)"), and \`bbb_url\`,
+a BBB **search** link built in the view from the name and the city Austin (UI text "Search BBB for this
+contractor"; null with \`source_missing\` when there is no name). The link is never fetched
+(A-01: HTTP 403 challenge); its shape is **unverified until a human clicks one example**.
+\`contractor_company_cid\` now means the company as printed. \`contractor_name_raw\` is replaced by
+\`contractor_name_as_printed\`. Not published (still \`no_lexicon_carrier\`): \`status_raw\`,
+\`expiry_date\`. Details: \`docs/defects/ERR-66-contractor-name-and-bbb-link-missing.md\`.
+
+## Manifest coverage and profiles for consumers
+
+\`coverage.parcels_published\` (\`published_rows\`) is the number of County \`property\` rows the run
+publishes; its \`note\` states the basis (real-property accounts only). The builder refuses a
+manifest whose count differs from the published county part row counts, like
+\`permits_emitted\`. A manifest without the key (Run 1, Run 2) is still valid: read the count from
+the tables. The \`travis-places\` profile names the ZIP area list that classifies
+\`owner_area_class\`. A manifest without it (Run 1, Run 2) means the run declared no area list: the
+view then leaves \`owner_area_class\` \`unknown\` with reason \`out_of_scope\` when ZIPs exist, and
+\`area_list_sha256\` is null. Absence means "not published for this run", never an empty list.
 
 ## Provenance and \`missing\`
 

@@ -57,6 +57,7 @@ const EXPECTED: Record<ViewName, string[]> = {
     "property_cid",
     "jurisdiction",
     "permit_number",
+    "request_identifier",
     "improvement_type",
     "improvement_action",
     "improvement_status",
@@ -69,8 +70,11 @@ const EXPECTED: Record<ViewName, string[]> = {
     "open_days",
     "contractor_resolution",
     "contractor_company_cid",
+    "contractor_name_as_printed",
     "bbb_status",
     "bbb_status_reason",
+    "bbb_rating",
+    "bbb_url",
     "profile_version",
     "profile_sha256",
     ...PROVENANCE,
@@ -133,12 +137,12 @@ describe("columns", () => {
 
   it("has no v1 column for an uncarried field (D-4c)", () => {
     const all = Object.values(VIEWS).flatMap((cols) => cols.map((c) => c.name));
+    // v1.1 (ERR-66) made bbb_rating and bbb_url columns of v_roofing_permit, and
+    // contractor_name_raw became contractor_name_as_printed; the rest still have no carrier.
     for (const banned of [
       "status_raw",
       "expiry_date",
       "contractor_name_raw",
-      "bbb_rating",
-      "bbb_url",
       "description",
       "work_class_raw",
     ]) {
@@ -167,9 +171,6 @@ describe("columns", () => {
     expect(UNCARRIED.v_roofing_permit.map((u) => u.field)).toEqual([
       "status_raw",
       "expiry_date",
-      "contractor_name_raw",
-      "bbb_rating",
-      "bbb_url",
       "description",
       "work_class_raw",
     ]);
@@ -177,15 +178,17 @@ describe("columns", () => {
       expect(u.fallback.length, u.field).toBeGreaterThan(0);
       expect(u.carrier.length, u.field).toBeGreaterThan(0);
     }
-    const all = Object.values(VIEWS).flatMap((cols) => cols.map((c) => c.name));
-    for (const u of Object.values(UNCARRIED).flat()) expect(all).not.toContain(u.field);
+    for (const [view, fields] of Object.entries(UNCARRIED)) {
+      const names = VIEWS[view as keyof typeof VIEWS].map((c) => c.name);
+      for (const u of fields) expect(names, `${view}.${u.field}`).not.toContain(u.field);
+    }
   });
 
   it("the sample row is a permit row plus its property's columns, property provenance prefixed", () => {
     const names = SAMPLE_COLUMNS.map((c) => c.name);
-    expect(names.slice(0, columnNames("v_roofing_permit").length)).toEqual(
-      columnNames("v_roofing_permit"),
-    );
+    // the property's request_identifier keeps the plain name; the permit's is not sampled
+    const permitCols = columnNames("v_roofing_permit").filter((n) => n !== "request_identifier");
+    expect(names.slice(0, permitCols.length)).toEqual(permitCols);
     expect(names).toContain("roof_age_years");
     expect(names).toContain(`${SAMPLE_PROPERTY_PREFIX}source_url`);
     expect(names).toContain(`${SAMPLE_PROPERTY_PREFIX}missing`);
@@ -220,8 +223,8 @@ describe("columns", () => {
       bbb_status: ["rated", "not_found", "blocked", "not_checked"],
       status_class: ["open", "stalled", "closed"],
       owner_area_class: ["in_county", "regional", "out_of_area", "unknown"],
-      coordinate_source: ["gis_centroid", "permit_point", "none"],
-      tenure_basis: ["sale_date", "unknown"],
+      coordinate_source: ["gis_centroid", "address_point", "permit_point", "none"],
+      tenure_basis: ["sale_date", "deed_date", "unknown"],
       contractor_resolution: ["resolved", "unresolved"],
       owner_kind: ["person", "company", "unknown"],
     });
@@ -251,6 +254,7 @@ describe("row schemas (generated from columns.ts)", () => {
     property_cid: DAG,
     jurisdiction: "austin",
     permit_number: "2026-034767 BP",
+    request_identifier: "2026-034767 BP",
     improvement_type: "Roofing",
     improvement_action: "Replacement",
     improvement_status: null,
@@ -263,8 +267,11 @@ describe("row schemas (generated from columns.ts)", () => {
     open_days: 224,
     contractor_resolution: "unresolved",
     contractor_company_cid: null,
+    contractor_name_as_printed: null,
     bbb_status: "not_checked",
     bbb_status_reason: "contractor_unresolved",
+    bbb_rating: null,
+    bbb_url: null,
     profile_version: "travis-austin@1.0.0",
     profile_sha256: "b".repeat(64),
     ...provenance,
@@ -357,9 +364,9 @@ describe("row schemas (generated from columns.ts)", () => {
     expect(schema?.safeParse(null).success).toBe(false);
   });
 
-  it("owner_name is missing for no_dated_sale first (the other owner reasons are per row)", () => {
+  it("owner_name is missing for no_owner_record first (the other owner reasons are per row; no_dated_sale is a tenure reason only)", () => {
     const col = VIEWS.v_property.find((c) => c.name === "owner_name");
-    expect(col?.missingReason).toBe("no_dated_sale");
+    expect(col?.missingReason).toBe("no_owner_record");
   });
 
   it("builds a schema for every view", () => {

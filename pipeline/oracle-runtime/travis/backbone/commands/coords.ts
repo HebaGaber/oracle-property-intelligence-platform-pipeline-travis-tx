@@ -3,6 +3,9 @@
 //   coords --gis-artifact <dir> [--job <tcadJobId>]   GisImport: import the US-runner artifact
 //                                                     (offline), then assemble coordinates
 //   coords --assemble-only [--job <tcadJobId>]        GisImport: assemble only (after permits --link)
+//   coords --address-points <cacheDir> --assemble-only [--job <tcadJobId>]
+//                                                     load the City of Austin address-point layer
+//                                                     cache (npm run fetch-address-layer), then assemble
 //   coords --coverage --tables <dir> [--job <id>]     coverage both ways (coverage-report.ts), read-only
 //
 // Exit 2 when the artifact has no complete.json (`gis: blocked at {ts}; coverage not complete`).
@@ -20,11 +23,16 @@ const Args = z
   .object({
     gisArtifact: z.string().min(1).optional(),
     assembleOnly: z.literal(true).optional(),
+    addressPoints: z.string().min(1).optional(),
     coverage: z.literal(true).optional(),
     tables: z.string().min(1).optional(),
     job: JobId.optional(),
   })
   .strict()
+  .refine((a) => a.addressPoints === undefined || a.assembleOnly === true, {
+    message: "--address-points goes with --assemble-only (the points are used by the assembly)",
+    path: ["addressPoints"],
+  })
   .refine(
     (a) =>
       [a.gisArtifact !== undefined, a.assembleOnly === true, a.coverage === true].filter(Boolean)
@@ -58,6 +66,7 @@ export const command: BackboneCommand<Args> = {
     const body = {
       artifactDir: a.gisArtifact === undefined ? null : resolve(a.gisArtifact),
       assemble: true,
+      addressPointsDir: a.addressPoints === undefined ? null : resolve(a.addressPoints),
       tcadJobId: a.job ?? null,
     };
     const result = await ctx.ingress.call<GisImportResult>("GisImport", "run", body, jobId);
@@ -67,6 +76,10 @@ export const command: BackboneCommand<Args> = {
       );
       if (result.gis.limitation !== null) ctx.print(result.gis.limitation);
     }
+    if (result.addressPoints !== null)
+      ctx.print(
+        `address points: sha256=${result.addressPoints.sha256} records=${result.addressPoints.recordCount} rows_written=${result.addressPoints.rowsWritten} skipped=${result.addressPoints.skipped}`,
+      );
     if (result.assembled !== null)
       ctx.print(`coordinates: rows_written=${result.assembled.rowsWritten}`);
     return { jobId, exitCode: result.gis?.status === "blocked" ? 2 : 0 };

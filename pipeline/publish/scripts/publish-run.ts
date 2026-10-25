@@ -42,7 +42,7 @@ import {
   resolveCidCopyBucket,
 } from "../src/cid-copy.js";
 import { FILEBASE_ENV_FILE, parseEnvFile } from "../src/cli.js";
-import { runIdentityGate } from "../src/identity-gate.js";
+import { loadPreviousManifest, runIdentityGate } from "../src/identity-gate.js";
 import { openDuckDbEngine } from "./duckdb-engine.js";
 import {
   createPublishSteps,
@@ -54,7 +54,7 @@ import {
   type GhRelease,
   type PublishArgs,
 } from "../src/publish-run.js";
-import { filebaseEnvProblem, spawnRunner } from "../src/sequence.js";
+import { FILEBASE_GATEWAY, filebaseEnvProblem, spawnRunner } from "../src/sequence.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const DEFAULT_CLI = join(
@@ -135,8 +135,20 @@ async function main(): Promise<number> {
     gate: {
       // Read-only. Local parts count only when their SHA-256 matches the manifest; remote-only
       // (gate-remote) binds every part from the CID copy, the bytes the app reads.
-      run: (c, { remoteOnly }) =>
+      // A run with a previousManifestCid also proves every previous property_cid and permit_cid
+      // still exists with the same request_identifier (Task B leads key on them).
+      run: async (c, { remoteOnly }) =>
         runIdentityGate({
+          previous:
+            c.pilot || c.manifest.previousManifestCid === null
+              ? null
+              : {
+                  manifestBytes: await loadPreviousManifest(
+                    c.repoRoot,
+                    c.manifest.previousManifestCid,
+                  ),
+                  root: c.repoRoot,
+                },
           openEngine: openDuckDbEngine,
           manifestBytes: c.manifestBytes,
           manifestPath: c.manifestPath,
@@ -155,8 +167,20 @@ async function main(): Promise<number> {
       },
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       log,
+      // A second worker: PUBLISH_FILEBASE_REVERSE=1 walks the queue from the end (per-unit locks).
+      reverse: process.env.PUBLISH_FILEBASE_REVERSE === "1",
+      // PUBLISH_FILEBASE_KINDS=car uploads CAR units only (tables wait for the provider; ERR-67).
+      kinds: (process.env.PUBLISH_FILEBASE_KINDS ?? "").split(",").filter((k) => k !== ""),
     },
-    carFiles: { loadEnv, now, log },
+    // PUBLISH_DEFER_PINATA=1: Filebase-only readback of the carCid files (PO 2026-10-25, A-16 item 14).
+    carFiles: {
+      loadEnv,
+      now,
+      log,
+      ...(process.env.PUBLISH_DEFER_PINATA === "1" ? { readbackGateways: [FILEBASE_GATEWAY] } : {}),
+      // PUBLISH_CARFILES_NO_PROBE=1: upload without the "already served?" probe (gateways hang on new CIDs).
+      skipProbe: process.env.PUBLISH_CARFILES_NO_PROBE === "1",
+    },
     manifest: { loadEnv, now, log },
     cidCopy: {
       now,

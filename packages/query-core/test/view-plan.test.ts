@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { REQUIRED_TABLES, tablesForViews, type BindOptions } from "../src/bind-manifest.js";
 import { listRoofingPermitsSql, radiusSql, roofAgeSql, runSummarySql } from "../src/builders.js";
 import { sampleSql } from "../src/sample.js";
-import { CONTRACT_VIEWS, VIEW_STATEMENTS, viewsReadBy } from "../src/view-plan.js";
+import { CONTRACT_VIEWS, VIEW_STATEMENTS, planViews, viewsReadBy } from "../src/view-plan.js";
 import { VIEWS_SQL } from "../src/sql.js";
 import {
   AUSTIN_URL,
@@ -23,9 +23,11 @@ const key = (t: { group: string; table: string }): string => `${t.group}.${t.tab
 const keysFor = (views: Parameters<typeof tablesForViews>[0]): string[] =>
   tablesForViews(views).map(key).sort();
 
-/** What v_roofing_permit reads: meta.permit's three relations plus the contractor edges. */
+/** What v_roofing_permit reads: meta.permit's three relations plus the contractor edges and companies. */
 const ROOFING_TABLES = [
   "county.property",
+  // the contractor company the permit prints (ERR-66): contractor_name_as_printed
+  "property_improvement.company",
   "property_improvement.property_has_property_improvement",
   "property_improvement.property_improvement",
   "property_improvement.property_improvement_has_contractor",
@@ -77,21 +79,23 @@ describe("view plan (ERR-19)", () => {
     expect(viewsReadBy("SELECT 1")).toEqual([]);
   });
 
-  it("runs.summary (v_roofing_permit + v_run) needs 4 of the 16 required tables", () => {
+  it("runs.summary (v_roofing_permit + v_run) needs 5 of the 16 required tables", () => {
     expect(keysFor(viewsReadBy(runSummarySql()))).toEqual(ROOFING_TABLES);
     expect(keysFor(["v_run"])).toEqual([]);
-    expect(keysFor(["v_contractor"])).toEqual(
-      [...ROOFING_TABLES, "property_improvement.company"].sort(),
-    );
+    expect(keysFor(["v_contractor"])).toEqual([...ROOFING_TABLES].sort());
   });
 
   it("v_property needs every county table plus meta.permit's, and all four views need exactly REQUIRED_TABLES", () => {
     expect(keysFor(["v_property"])).toEqual(
       [
         "county.company",
+        "county.company_has_mailing_address",
+        "county.company_has_property",
         "county.geometry",
         "county.parcel_has_geometry",
         "county.person",
+        "county.person_has_mailing_address",
+        "county.person_has_property",
         "county.property",
         "county.property_has_parcel",
         "county.property_has_sales_history",
@@ -105,6 +109,9 @@ describe("view plan (ERR-19)", () => {
       ].sort(),
     );
     expect(keysFor(CONTRACT_VIEWS)).toEqual(REQUIRED_TABLES.map(key).sort());
+    // county.address is read through meta.address_zip: planned, but deliberately not required.
+    expect(planViews(["v_property"]).tables.has("county.address")).toBe(true);
+    expect(planViews(["v_roofing_permit"]).tables.has("county.address")).toBe(false);
   });
 });
 
@@ -193,6 +200,7 @@ describe("bindManifest({ views }) over real DuckDB (ERR-19)", () => {
     expect(summaryParts.sort()).toEqual(
       [
         "tables/county/property/part-00000.parquet",
+        "tables/property_improvement/company/part-00000.parquet",
         "tables/property_improvement/property_has_property_improvement/part-00000.parquet",
         "tables/property_improvement/property_improvement/part-00000.parquet",
         "tables/property_improvement/property_improvement_has_contractor/part-00000.parquet",
@@ -211,7 +219,6 @@ describe("bindManifest({ views }) over real DuckDB (ERR-19)", () => {
     for (const absent of [
       "county.geometry",
       "county.address",
-      "property_improvement.company",
       "main.v_property",
       "main.v_contractor",
     ])

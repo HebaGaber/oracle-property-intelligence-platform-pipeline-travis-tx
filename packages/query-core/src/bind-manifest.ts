@@ -49,10 +49,15 @@ export const REQUIRED_TABLES: readonly RequiredTable[] = [
   {
     group: "county",
     table: "geometry",
-    columns: { ...ENTITY, latitude: "DOUBLE", longitude: "DOUBLE" },
+    // source_http_request: the coordinate source (address_point vs gis_centroid, ADR 0004).
+    columns: { ...ENTITY, latitude: "DOUBLE", longitude: "DOUBLE", source_http_request: V },
   },
   { group: "county", table: "structure", columns: { ...ENTITY, roof_date: V } },
-  { group: "county", table: "sales_history", columns: { ...ENTITY, ownership_transfer_date: V } },
+  {
+    group: "county",
+    table: "sales_history",
+    columns: { ...ENTITY, ownership_transfer_date: V, source_http_request: V },
+  },
   { group: "county", table: "person", columns: { ...ENTITY, first_name: V, last_name: V } },
   { group: "county", table: "company", columns: { ...ENTITY, name: V } },
   edge("county", "property_has_parcel"),
@@ -61,6 +66,12 @@ export const REQUIRED_TABLES: readonly RequiredTable[] = [
   edge("county", "property_has_sales_history"),
   edge("county", "sales_history_has_person"),
   edge("county", "sales_history_has_company"),
+  // ERR-69: owners hang on the property (current owners), not only on the latest sale. A run
+  // written before Run 3 has no such edge; it binds as an empty typed relation.
+  edge("county", "person_has_property"),
+  edge("county", "company_has_property"),
+  edge("county", "person_has_mailing_address"),
+  edge("county", "company_has_mailing_address"),
   {
     group: "property_improvement",
     table: "property_improvement",
@@ -82,7 +93,7 @@ export const REQUIRED_TABLES: readonly RequiredTable[] = [
   {
     group: "property_improvement",
     table: "company",
-    columns: { ...ENTITY, name: V, source_http_request: V },
+    columns: { ...ENTITY, name: V, sunbiz_document_number: V, source_http_request: V },
   },
 ];
 
@@ -433,6 +444,23 @@ export async function bindManifest(
       `CREATE OR REPLACE TABLE ${r.group}.${r.table} (${[...cols, "_part VARCHAR"].join(", ")})`,
     );
     tables.push({ group: r.group, table: r.table, emitted: false, parts: [] });
+  }
+
+  // meta.address_zip: the mailing ZIP of every address, from county.address.postal_code when the
+  // export carries that column (it does not yet), else an empty relation, so views.sql never
+  // names a column that may not exist.
+  // address is a top-level oneOf: export-tables emits identity columns only (ADR-0002 R7), so
+  // it is deliberately not a REQUIRED_TABLE (its absence or shape never fails a bind).
+  if (wanted("county.address")) {
+    const cols = emitted.has("county.address")
+      ? await engine.all("DESCRIBE SELECT * FROM county.address")
+      : [];
+    const hasZip = cols.some((c) => String(c.column_name) === "postal_code");
+    await engine.run(
+      hasZip
+        ? `CREATE OR REPLACE TABLE meta.address_zip AS SELECT cid, CAST(any_value(postal_code) AS VARCHAR) AS postal_code FROM county.address GROUP BY cid`
+        : "CREATE OR REPLACE TABLE meta.address_zip (cid VARCHAR, postal_code VARCHAR)",
+    );
   }
 
   const views = plan === undefined ? VIEWS_SQL : plan.statements.map((s) => s.sql).join("\n");

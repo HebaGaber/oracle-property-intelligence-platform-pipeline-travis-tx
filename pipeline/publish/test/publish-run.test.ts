@@ -54,7 +54,7 @@ async function realContext(
       countyDir: f.countyDir,
       permitsDir: f.permitsV2,
     },
-    { repoRoot: f.root, workTreeStatus: NOT_YET_PUBLISHED },
+    { repoRoot: f.root, workTreeStatus: NOT_YET_PUBLISHED, gitCommit: () => "abc1234" },
   );
   const path = opts.pilot
     ? join(f.root, "specs/011-publish-and-runs/pilot/manifest.json")
@@ -577,6 +577,24 @@ describe("car-files and manifest steps (probe / adopt)", () => {
     expect(report.steps.at(-1)?.items.length).toBe(
       ctx.manifest.artifacts.filter((a) => a.carCid !== undefined).length,
     );
+  });
+
+  it("skipProbe uploads without asking the gateways first", async () => {
+    const { ctx } = await realContext();
+    const fetchSpy = vi.fn();
+    const h = harness(ctx, { fetch: fetchSpy as unknown as FetchLike });
+    h.deps.carFiles.skipProbe = true;
+    const report = await runPublish({
+      ctx,
+      impls: createPublishSteps(h.deps),
+      dryRun: true,
+      probe: true,
+      step: "car-files",
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const items = report.steps.at(-1)?.items ?? [];
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.action === "run" && /probe skipped/.test(i.reason))).toBe(true);
   });
 
   it("--probe finds files both gateways already serve at the manifest size and skips them", async () => {

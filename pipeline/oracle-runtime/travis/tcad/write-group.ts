@@ -4,7 +4,9 @@
 // utils/batch-input.js), each holding `data/<file>` from transformTcadCounty.
 // Geometry (oracle disagreements #2, #7; plan CT-8): written only when the assembled
 // `coordinate_source = gis_centroid` (GIS feature, export point or condo building point);
-// a permit point is never written as geometry (it would read `gis_centroid` publicly). Before
+// a permit point is never written as geometry (it would read `gis_centroid` publicly). A
+// City of Austin address point (`coordinate_source = address_point`, ADR 0004) is written with its
+// own provenance URL on geometry.json, so the public source reads address_point. Before
 // the coordinates are assembled (pilot), the `real` TCAD export point stands in, rule
 // `unassembled_pilot_export_point`. Every input record is the redacted one (redact.ts): a
 // confidential owner never reaches a zip.
@@ -14,7 +16,7 @@ import { deflateRawSync } from "node:zlib";
 import { buildSeedRow } from "../pilot/build-seed.js";
 import type { DataGroupCids } from "../transforms/lexicon-manifest.js";
 import { parseTcadRecord, type SeedRow, type TcadRecord } from "../transforms/shared-seed.js";
-import { transformTcadCounty } from "../transforms/tcad-county.js";
+import { transformTcadCounty, type RoofAgeEntry } from "../transforms/tcad-county.js";
 import type { PropType } from "./account-class.js";
 import type { ExportPointKind } from "./export-point.js";
 
@@ -25,16 +27,51 @@ export interface GroupInput {
   /** The redacted export record. */
   record: Record<string, unknown>;
   yearBuilt: number | null;
+  /**
+   * The property's roof-age ledger row (roofAgeEntryOf), or null/absent when the ledger has
+   * none (the transform then warns no_roof_age_ledger_row and writes roof_date null).
+   */
+  roofAge?: RoofAgeEntry | null;
   exportPoint: { lat: number; lon: number; kind: ExportPointKind } | null;
   /** The assembled coordinate (parcels.coordinate_*), absent before `coords`. */
   coordinate?: {
     latitude: number | null;
     longitude: number | null;
-    source: "gis_centroid" | "permit_point" | "none";
+    source: "gis_centroid" | "address_point" | "permit_point" | "none";
+    /** parcels.coordinate_source_url; required (provenance) when source is address_point. */
+    sourceUrl?: string | null;
   };
 }
 
-export type GeometryRule = "gis_centroid" | "unassembled_pilot_export_point" | "none";
+/** One row of the Query DB roof_age_estimates table (written by the roof-age run). */
+export interface RoofAgeEstimateRow {
+  tcad_id: string;
+  roof_age_basis: "permit" | "new_construction" | "built_year" | "unknown";
+  /** Whole years; null iff basis is unknown. */
+  roof_age_years: number | string | null;
+  /** The estimate's as-of date, YYYY-MM-DD. */
+  as_of_date: string;
+}
+
+/**
+ * The transform's ledger entry for one estimate. Only a built_year basis is a TCAD-sourced
+ * value: its roof_date is the built year as "YYYY" (as-of year minus the estimated age, the
+ * same year the estimator anchored on). A permit, new-construction or unknown basis yields no
+ * TCAD date: a permit date comes from the permit join, never from a TCAD request (oracle F1).
+ */
+export function roofAgeEntryOf(row: RoofAgeEstimateRow): RoofAgeEntry {
+  if (row.roof_age_basis !== "built_year" || row.roof_age_years === null) {
+    return { pID: row.tcad_id, roof_date: null, anchor: null };
+  }
+  const year = Number(row.as_of_date.slice(0, 4)) - Number(row.roof_age_years);
+  if (!Number.isInteger(year) || year < 1000 || year > 9999) {
+    throw new Error(`roof-age estimate for ${row.tcad_id} gives built year ${year}`);
+  }
+  return { pID: row.tcad_id, roof_date: String(year), anchor: "property_built_year" };
+}
+
+export type GeometryRule =
+  "gis_centroid" | "address_point" | "unassembled_pilot_export_point" | "none";
 
 export interface CountyGroup {
   pID: string;
@@ -44,6 +81,16 @@ export interface CountyGroup {
   geometry_rule: GeometryRule;
   /** Mailing addresses written in the `unnormalized_address` form (tcad-county.ts). */
   mailing_address_fallback: number;
+  /** Owner entries by outcome (tcad-county.ts counts), summed into the writeGroup tally. */
+  owners: OwnerTally;
+}
+
+/** What the owner reader did with one property's owners[] (A-11, ERR-69). */
+export interface OwnerTally {
+  persons: number;
+  companies: number;
+  unparsed: number;
+  co_owner_skipped: number;
 }
 
 export interface GroupPlan {
@@ -73,21 +120,38 @@ export function parsePidList(
 function geometryFor(input: Pick<GroupInput, "exportPoint" | "coordinate">): {
   point: { lat: number; lon: number } | null;
   rule: GeometryRule;
+  /** The GET to stamp on geometry.json when the point is not from the TCAD export. */
+  sourceUrl: string | null;
 } {
   const c = input.coordinate;
   if (c !== undefined) {
     if (c.source === "gis_centroid" && c.latitude !== null && c.longitude !== null) {
-      return { point: { lat: c.latitude, lon: c.longitude }, rule: "gis_centroid" };
+      return {
+        point: { lat: c.latitude, lon: c.longitude },
+        rule: "gis_centroid",
+        sourceUrl: null,
+      };
     }
-    return { point: null, rule: "none" };
+    // ADR 0004: an exact, unique City of Austin address point is publishable, and only with its
+    // own provenance URL (the public coordinate_source must not read as the TCAD export).
+    if (c.source === "address_point" && c.latitude !== null && c.longitude !== null) {
+      if (!c.sourceUrl) throw new Error("address_point coordinate has no source URL (provenance)");
+      return {
+        point: { lat: c.latitude, lon: c.longitude },
+        rule: "address_point",
+        sourceUrl: c.sourceUrl,
+      };
+    }
+    return { point: null, rule: "none", sourceUrl: null };
   }
   if (input.exportPoint !== null && input.exportPoint.kind === "real") {
     return {
       point: { lat: input.exportPoint.lat, lon: input.exportPoint.lon },
       rule: "unassembled_pilot_export_point",
+      sourceUrl: null,
     };
   }
-  return { point: null, rule: "none" };
+  return { point: null, rule: "none", sourceUrl: null };
 }
 
 /** What the shared-file inputs are built from: a GroupInput without its group bookkeeping. */
@@ -102,6 +166,8 @@ export interface SharedFilesSource {
   seed: SeedRow;
   yearBuilt: number | null;
   geometry_rule: GeometryRule;
+  /** Set only for rule address_point: stamped on geometry.json (ADR 0004). */
+  geometry_source_url: string | null;
 }
 
 /**
@@ -112,18 +178,29 @@ export interface SharedFilesSource {
  * same property CID in both archives.
  */
 export function sharedFilesInputOf(input: SharedSource): SharedFilesSource {
-  const { point, rule } = geometryFor(input);
+  const { point, rule, sourceUrl } = geometryFor(input);
   const raw = {
     ...input.record,
     geometry: point === null ? null : `[${point.lat}, ${point.lon}]`,
   };
   const record = parseTcadRecord(raw);
   const seed = buildSeedRow(record, input.geoId ?? "");
-  return { record, seed, yearBuilt: input.yearBuilt, geometry_rule: rule };
+  return {
+    record,
+    seed,
+    yearBuilt: input.yearBuilt,
+    geometry_rule: rule,
+    geometry_source_url: sourceUrl,
+  };
 }
 
 /** County files for every R input; non-R inputs are listed out_of_scope. */
-export function planCountyGroup(inputs: readonly GroupInput[], cids: DataGroupCids): GroupPlan {
+export function planCountyGroup(
+  inputs: readonly GroupInput[],
+  cids: DataGroupCids,
+  /** The run's as_of date: no transfer dated after it is written (ERR-71). */
+  asOf?: string,
+): GroupPlan {
   const groups: CountyGroup[] = [];
   const out: GroupPlan["out_of_scope"] = [];
   for (const input of inputs) {
@@ -131,13 +208,21 @@ export function planCountyGroup(inputs: readonly GroupInput[], cids: DataGroupCi
       out.push({ pID: input.pID, prop_type: input.propType });
       continue;
     }
-    const { record, seed, yearBuilt, geometry_rule: rule } = sharedFilesInputOf(input);
+    const {
+      record,
+      seed,
+      yearBuilt,
+      geometry_rule: rule,
+      geometry_source_url: geometrySourceUrl,
+    } = sharedFilesInputOf(input);
     const t = transformTcadCounty({
       record,
       seed,
       cids,
-      roofAge: null,
+      geometrySourceUrl,
+      roofAge: input.roofAge ?? null,
       yearBuilt,
+      ...(asOf !== undefined ? { asOf } : {}),
     });
     groups.push({
       pID: t.pID,
@@ -145,6 +230,12 @@ export function planCountyGroup(inputs: readonly GroupInput[], cids: DataGroupCi
       files: t.files,
       geometry_rule: rule,
       mailing_address_fallback: t.counts.mailing_address_fallback,
+      owners: {
+        persons: t.counts.persons_written,
+        companies: t.counts.companies_written,
+        unparsed: t.counts.owners_unparsed,
+        co_owner_skipped: t.counts.owners_co_owner_skipped,
+      },
     });
   }
   return { groups, out_of_scope: out };
@@ -177,7 +268,7 @@ export const COUNTY_FIELD_MAP: Readonly<
     present: (f) => "structure.json" in f,
   },
   sale_date: {
-    source: "sales[].saleDt",
+    source: "sales[].saleDt and transfer deeds[].deedDt",
     present: (f) => Object.keys(f).some((n) => /^sales_history_\d+\.json$/.test(n)),
   },
   geometry: {

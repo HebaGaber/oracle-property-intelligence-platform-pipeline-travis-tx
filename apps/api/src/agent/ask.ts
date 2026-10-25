@@ -409,6 +409,8 @@ function isEnvelopeOutput(
  *  must_flag_missing) for fields the row-level `missing` reports under their column names. */
 const CONTRACT_MISSING_NAMES: Record<string, string> = {
   contractor_name_raw: "contractor.name_as_printed",
+  // Contract v1.1 (A-11 Run 3): the view reports the printed name under its new column name.
+  contractor_name_as_printed: "contractor.name_as_printed",
   bbb_rating: "bbb_status",
 };
 

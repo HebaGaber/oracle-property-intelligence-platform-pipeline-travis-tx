@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type postgres from "postgres";
-import { coordinateRows, writeGroupWith } from "../services/workflows/tcad-backbone.js";
+import { coordinateRows, roofAgeLedgerFor, writeGroupWith } from "../services/workflows/tcad-backbone.js";
 import { a04Record } from "../../oracle-runtime/test/fixtures/a04/tcad/export.js";
 import { sha256Text, type ExportRecordText } from "../../oracle-runtime/travis/tcad/export-stream.js";
 
@@ -33,8 +33,15 @@ const rec = (pID: number, i: number): ExportRecordText => {
   return { ordinal: i, text: t, sha256: sha256Text(t), bytes: Buffer.byteLength(t) };
 };
 
+// roof_age_estimates rows for the fixture pIDs: built_year, permit, and no row at all.
+const LEDGER = [
+  { tcad_id: "7001", roof_age_basis: "built_year", roof_age_years: 39, as_of_date: "2026-10-22" },
+  { tcad_id: "7002", roof_age_basis: "permit", roof_age_years: 2, as_of_date: "2026-10-22" },
+];
+
 const store = () =>
   fake((text) => {
+    if (text.includes("roof_age_estimates")) return LEDGER;
     if (text.includes("coordinate_source")) {
       return PIDS.map((p) => ({
         request_identifier: String(p),
@@ -63,6 +70,9 @@ describe("writeGroupWith", () => {
     expect(out.zips).toBe(3);
     expect(readdirSync(dir).sort()).toEqual(["7001.zip", "7002.zip", "7003.zip"]);
     expect(out.mailing_address_fallback).toBe(0);
+    // A-11: the owner reader tally covers every owner entry of the three records
+    const o = out.owners;
+    expect(o.persons + o.companies + o.unparsed).toBeGreaterThanOrEqual(3);
     expect(out).not.toHaveProperty("missing_pids");
   });
 
@@ -91,6 +101,41 @@ describe("writeGroupWith", () => {
     };
     const out = await writeGroupWith(d, JOB);
     expect(out.mailing_address_fallback).toBe(1);
+  });
+});
+
+describe("roof-age ledger in the County group", () => {
+  it("reads the ledger once per batch and counts built-year, no-date and missing rows", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "grp-"));
+    const f = store();
+    const out = await writeGroupWith(deps(f.sql, dir), JOB);
+    expect(f.queries.filter((q) => q.includes("roof_age_estimates"))).toHaveLength(1);
+    expect(out.roof_age).toEqual({
+      built_year: 1,
+      no_tcad_date: 1,
+      missing_ledger_row: 1,
+      ledger_table_missing: false,
+    });
+  });
+
+  it("maps a built_year row to a YYYY entry and every other basis to no TCAD date", async () => {
+    const f = fake(() => LEDGER);
+    const { available, entries } = await roofAgeLedgerFor(f.sql, ["7001", "7002", "7003"]);
+    expect(available).toBe(true);
+    expect(entries.get("7001")).toEqual({ pID: "7001", roof_date: "1987", anchor: "property_built_year" });
+    expect(entries.get("7002")).toEqual({ pID: "7002", roof_date: null, anchor: null });
+    expect(entries.has("7003")).toBe(false);
+  });
+
+  it("reports a database without the table and rethrows any other error", async () => {
+    const missing = fake(() => {
+      throw Object.assign(new Error("no table"), { code: "42P01" });
+    });
+    expect((await roofAgeLedgerFor(missing.sql, ["1"])).available).toBe(false);
+    const broken = fake(() => {
+      throw Object.assign(new Error("down"), { code: "57P01" });
+    });
+    await expect(roofAgeLedgerFor(broken.sql, ["1"])).rejects.toThrow("down");
   });
 });
 
