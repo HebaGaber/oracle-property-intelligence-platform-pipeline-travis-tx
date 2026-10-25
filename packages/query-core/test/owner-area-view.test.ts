@@ -1,6 +1,6 @@
 // A-11 Run 3 (task B gap 2): v_property.owner_area_class from the owners' mailing addresses.
 // Current owners = the persons/companies linked to the property (person_has_property /
-// company_has_property, ERR-28; no sale needed); their address is reached
+// company_has_property, ERR-69; no sale needed); their address is reached
 // through person_has_mailing_address / company_has_mailing_address; address.postal_code (when an
 // export carries it) is looked up in the travis-places ZCTA list. Rows are synthetic fixtures.
 import { afterAll, describe, expect, it } from "vitest";

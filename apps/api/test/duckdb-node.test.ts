@@ -16,7 +16,7 @@ import {
   EXTENSION_DIRECTORY_NAME,
   extensionDirectory,
 } from "../src/engine/duckdb-node.js";
-import { PRESIGN_EXPIRES_S } from "../src/s3-read.js";
+import { PRESIGN_EXPIRES_S } from "../src/engine/s3-read.js";
 import { rowSchema } from "@countylens/contract";
 import { viewRowFixtures } from "../../../packages/contract/test/helpers/view-row-literals.js";
 

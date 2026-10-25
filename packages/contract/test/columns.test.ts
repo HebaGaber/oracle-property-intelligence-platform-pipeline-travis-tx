@@ -141,7 +141,7 @@ describe("columns", () => {
 
   it("has no v1 column for an uncarried field (D-4c)", () => {
     const all = Object.values(VIEWS).flatMap((cols) => cols.map((c) => c.name));
-    // v1.1 (ERR-32) made bbb_rating and bbb_url columns of v_roofing_permit, and
+    // v1.1 (ERR-66) made bbb_rating and bbb_url columns of v_roofing_permit, and
     // contractor_name_raw became contractor_name_as_printed; the rest still have no carrier.
     for (const banned of [
       "status_raw",

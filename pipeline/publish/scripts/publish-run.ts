@@ -169,7 +169,7 @@ async function main(): Promise<number> {
       log,
       // A second worker: PUBLISH_FILEBASE_REVERSE=1 walks the queue from the end (per-unit locks).
       reverse: process.env.PUBLISH_FILEBASE_REVERSE === "1",
-      // PUBLISH_FILEBASE_KINDS=car uploads CAR units only (tables wait for the provider; ERR-33).
+      // PUBLISH_FILEBASE_KINDS=car uploads CAR units only (tables wait for the provider; ERR-67).
       kinds: (process.env.PUBLISH_FILEBASE_KINDS ?? "").split(",").filter((k) => k !== ""),
     },
     // PUBLISH_DEFER_PINATA=1: Filebase-only readback of the carCid files (PO 2026-10-25, A-16 item 14).
@@ -180,6 +180,8 @@ async function main(): Promise<number> {
       ...(process.env.PUBLISH_DEFER_PINATA === "1" ? { readbackGateways: [FILEBASE_GATEWAY] } : {}),
       // PUBLISH_CARFILES_NO_PROBE=1: upload without the "already served?" probe (gateways hang on new CIDs).
       skipProbe: process.env.PUBLISH_CARFILES_NO_PROBE === "1",
+      // PUBLISH_CARFILES_PRESENT_ONLY=1: upload only the CAR files already fetched (cloud runner).
+      presentOnly: process.env.PUBLISH_CARFILES_PRESENT_ONLY === "1",
     },
     manifest: { loadEnv, now, log },
     cidCopy: {

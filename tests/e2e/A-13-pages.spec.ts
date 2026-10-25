@@ -9,7 +9,14 @@
 // the branch (noteBranch).
 import { createRequire } from "node:module";
 import type { Locator, Page, Route } from "@playwright/test";
-import { PAGE_TEXTS, ROUTES, comingSoonPath, sourceLabel, verifyPath } from "@countylens/shared";
+import {
+  MCP_TRY_TEXTS,
+  PAGE_TEXTS,
+  ROUTES,
+  comingSoonPath,
+  sourceLabel,
+  verifyPath,
+} from "@countylens/shared";
 import { cidTokens, fetchManifestFromPinata, pinataManifestUrl } from "./lib/a13.js";
 import {
   checkpoint,
@@ -243,11 +250,16 @@ test.describe("A-13 pages · Help MCP", { tag: "@a13-pages" }, () => {
     }
     // At least search_properties shows a real schema now.
     await expect(section.locator("[data-schema]").first(), "one real schema").toBeVisible();
-    // 3. Click "Try a tool" → the fixed not-available line, no sample response.
+    // 3. Click "Try a tool" → since A-14 (T034) it runs the read-only tool through the server
+    // proxy: the status line must show the running text and then a real outcome (rows, an empty
+    // reason or an honest error), never a sample. A-14-TC-027b covers the proxy in detail.
     await section.getByRole("button", { name: /^Try /i }).first().click();
-    await expect(section.getByRole("status")).toHaveText(PAGE_TEXTS.mcpNotAvailable);
-    const code = (await section.locator("pre, code").allInnerTexts()).join("\n");
-    expect(code, "no sample JSON response").not.toMatch(/"(?:result|rows|properties|count)"\s*:/);
+    const status = section.getByRole("status");
+    await expect(status, "a status line appears for the tool call").toBeVisible();
+    await expect(status, "a real outcome, not the running text").not.toHaveText(
+      MCP_TRY_TEXTS.running,
+      { timeout: 40_000 },
+    );
     await checkpoint(page, "042", 3);
   });
 });

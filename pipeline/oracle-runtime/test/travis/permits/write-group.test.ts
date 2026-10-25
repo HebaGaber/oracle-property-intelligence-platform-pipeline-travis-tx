@@ -242,7 +242,7 @@ describe("planPropertyImprovementGroup", () => {
   });
 });
 
-describe("printed contractor company (ERR-32, PO decision 2026-10-25)", () => {
+describe("printed contractor company (ERR-66, PO decision 2026-10-25)", () => {
   function planOne(over: Record<string, string | null>, n = "2026-100001 BP") {
     const plan = planPropertyImprovementGroup(
       [{ parcel: parcelRow(100008, "0100030105"), permits: [permitRow(100008, n, over)] }],

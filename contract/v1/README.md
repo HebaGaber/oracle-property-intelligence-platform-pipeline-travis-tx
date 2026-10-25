@@ -76,7 +76,7 @@ such as InProgress) it is null and the row lists `{field: "status_class", reason
 `final_date` and `open_days` then also give `needs_review`, and a null `improvement_status`
 gives `needs_review` instead of `enum_lacks_value`.
 
-**Open duration (ERR-29).** `status_class` is the class of the source status; it does not say the
+**Open duration (ERR-70).** `status_class` is the class of the source status; it does not say the
 work is still going. An Austin permit with status Expired (stalled) very often has a `final_date`:
 the work was finished and the permit lapsed administratively. `open_days` (as_of − issue_date) is
 therefore counted only for an open or stalled permit with **no** `final_date`. A plausible
@@ -114,7 +114,7 @@ history (caveat `partial_history`, in the manifest).
 ## Owner
 
 The current owners are read through the property: the persons and companies linked to it by
-`person_has_property` and `company_has_property` (ERR-28), independent of any sale, so a
+`person_has_property` and `company_has_property` (ERR-69), independent of any sale, so a
 property with no dated sale still has an owner. `owner_kind` is `company` when any company is
 linked, else `person`, else `unknown`; `owner_name` lists the persons (by last, first name) and
 then the companies (by name), each once, separated by `; `. A property with no owner lists
@@ -157,7 +157,7 @@ contractor"; null with `source_missing` when there is no name). The link is neve
 (A-01: HTTP 403 challenge); its shape is **unverified until a human clicks one example**.
 `contractor_company_cid` now means the company as printed. `contractor_name_raw` is replaced by
 `contractor_name_as_printed`. Not published (still `no_lexicon_carrier`): `status_raw`,
-`expiry_date`. Details: `docs/defects/ERR-32-contractor-name-and-bbb-link-missing.md`.
+`expiry_date`. Details: `docs/defects/ERR-66-contractor-name-and-bbb-link-missing.md`.
 
 ### v1.2 (additive): property address and owner mailing ZIP
 
@@ -252,7 +252,7 @@ Two further notes from the pilot export:
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
 | `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32) | never empty |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66) | never empty |
 | `contractor_company_cid` | `VARCHAR` | yes | Contractor company as printed (unverified; resolved only with a registry id) | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
 | `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the contractor the permit prints (the company, else the contractor person, ERR-72), AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
 | `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
@@ -287,7 +287,7 @@ Two further notes from the pilot export:
 | `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `deed_date`, `unknown`) | derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
 | `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown | never empty |
-| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale) | `no_owner_record` |
+| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale) | `no_owner_record` |
 | `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
@@ -322,7 +322,7 @@ Two further notes from the pilot export:
 | `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `deed_date`, `unknown`) | derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
 | `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown | never empty |
-| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale) | `no_owner_record` |
+| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale) | `no_owner_record` |
 | `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
@@ -358,7 +358,7 @@ Two further notes from the pilot export:
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
 | `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32) | never empty |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66) | never empty |
 | `contractor_company_cid` | `VARCHAR` | yes | Contractor company as printed (unverified; resolved only with a registry id) | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
 | `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the contractor the permit prints (the company, else the contractor person, ERR-72), AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
 | `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |

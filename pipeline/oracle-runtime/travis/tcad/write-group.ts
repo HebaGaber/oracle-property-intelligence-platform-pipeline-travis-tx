@@ -85,7 +85,7 @@ export interface CountyGroup {
   owners: OwnerTally;
 }
 
-/** What the owner reader did with one property's owners[] (A-11, ERR-28). */
+/** What the owner reader did with one property's owners[] (A-11, ERR-69). */
 export interface OwnerTally {
   persons: number;
   companies: number;
@@ -198,7 +198,7 @@ export function sharedFilesInputOf(input: SharedSource): SharedFilesSource {
 export function planCountyGroup(
   inputs: readonly GroupInput[],
   cids: DataGroupCids,
-  /** The run's as_of date: no transfer dated after it is written (ERR-30). */
+  /** The run's as_of date: no transfer dated after it is written (ERR-71). */
   asOf?: string,
 ): GroupPlan {
   const groups: CountyGroup[] = [];

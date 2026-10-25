@@ -58,6 +58,7 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
     ...base,
     github: config.github,
     httpApiUrl: api.httpApiUrl,
+    agentApiUrl: api.agentHttpApi.apiEndpoint,
     cidCopyHost: data.distribution.distributionDomainName,
     description:
       "CountyLens web: Amplify Hosting app and branches for apps/web; /api/<*> rewritten to the HTTP API.",

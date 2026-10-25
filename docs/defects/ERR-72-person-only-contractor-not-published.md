@@ -19,11 +19,11 @@ closed_date: pending
 
 ## Brief description
 
-In Run 3, 4,139 of the 15,025 published roofing permits name a contractor. Task B asked whether the other 10,886 lack a name in the Austin source or lose it in the join. Counted from the Query DB on 2026-10-26: 10,470 print no contractor at all (10,436 of them were issued before 2000; Austin's legacy records list none), and **416 print a contractor person (`contractor_full_name`) but no company**. ERR-32 published only `contractor_company_name`, so those 416 showed "contractor not published".
+In Run 3, 4,139 of the 15,025 published roofing permits name a contractor. Task B asked whether the other 10,886 lack a name in the Austin source or lose it in the join. Counted from the Query DB on 2026-10-26: 10,470 print no contractor at all (10,436 of them were issued before 2000; Austin's legacy records list none), and **416 print a contractor person (`contractor_full_name`) but no company**. ERR-66 published only `contractor_company_name`, so those 416 showed "contractor not published".
 
 ## Decision
 
-PO (HebaGaber), 2026-10-26: publish the person-only name "as printed". The lexicon links a permit's contractor to a **company** only (`property_improvement_has_contractor` → `property_improvement_to_company`), so the name goes into `company.name`, with the permit's own request as provenance and no `sunbiz_document_number`, exactly like a printed company. This overrides the ERR-32 rule "a person-only contractor is not published". A printed company always wins over the person name. `company.name` can therefore hold an individual's name.
+PO (HebaGaber), 2026-10-26: publish the person-only name "as printed". The lexicon links a permit's contractor to a **company** only (`property_improvement_has_contractor` → `property_improvement_to_company`), so the name goes into `company.name`, with the permit's own request as provenance and no `sunbiz_document_number`, exactly like a printed company. This overrides the ERR-66 rule "a person-only contractor is not published". A printed company always wins over the person name. `company.name` can therefore hold an individual's name.
 
 ## Fix
 

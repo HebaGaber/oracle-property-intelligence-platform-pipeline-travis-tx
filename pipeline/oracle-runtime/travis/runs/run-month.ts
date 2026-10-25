@@ -163,7 +163,7 @@ export function ownerCoverage(outcomes: Record<string, number>): Coverage {
     owner_no_dated_sale: {
       count: n("no_dated_sale"),
       derivation: "capture_receipt",
-      note: "owners[] present but no dated sale; the owners are linked to the property all the same (ERR-28)",
+      note: "owners[] present but no dated sale; the owners are linked to the property all the same (ERR-69)",
     },
     owner_unparsed: {
       count: n("unparsed"),

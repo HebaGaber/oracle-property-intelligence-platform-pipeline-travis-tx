@@ -48,6 +48,11 @@ export const GITHUB_TOKEN_PARAMETER_ID = "GitHubAccessToken";
 /** Rewrite (200) of the API under the site's own origin; Target is `${httpApiUrl}/<*>`. */
 export const API_REWRITE_SOURCE = "/api/<*>";
 /**
+ * The agent is its own HTTP API (a separate Lambda, A-14 AD-27), so `/api/agent/<*>` is rewritten
+ * to it, ahead of the general API rule; the Target keeps the `/agent/` prefix its route expects.
+ */
+export const AGENT_REWRITE_SOURCE = "/api/agent/<*>";
+/**
  * Amplify's SPA fallback in regex form: a path with no extension, or an extension outside the
  * list, is served as /index.html (200) for the client-side router. Every static type the build
  * emits is listed so a missing asset is a real 404, never a silent index.html.
@@ -73,6 +78,8 @@ export interface WebStackProps extends StackProps {
    * (`https://{id}.execute-api.{region}.amazonaws.com`). Missing → warning, no /api rule.
    */
   readonly httpApiUrl?: string;
+  /** The agent HTTP API invoke URL from CountyLensApi (A-14), without a trailing slash. Missing → no agent rule. */
+  readonly agentApiUrl?: string;
   /** CloudFront domain of the CID copy from CountyLensData (CID_COPY_HOST). Missing → warning. */
   readonly cidCopyHost?: string;
   /** Public IPFS gateway host used as the labelled fallback (FILEBASE_GATEWAY_HOST). */
@@ -195,6 +202,13 @@ export class WebStack extends Stack {
         HTTP_API_URL_NOT_WIRED_WARNING,
       );
     } else {
+      if (props.agentApiUrl !== undefined) {
+        customRules.push({
+          source: AGENT_REWRITE_SOURCE,
+          target: `${props.agentApiUrl}/agent/<*>`,
+          status: "200",
+        });
+      }
       customRules.push({
         source: API_REWRITE_SOURCE,
         target: `${props.httpApiUrl}/<*>`,

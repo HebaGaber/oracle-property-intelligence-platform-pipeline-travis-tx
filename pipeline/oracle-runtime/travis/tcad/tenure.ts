@@ -1,4 +1,4 @@
-// A-04 T023 (AC-4, FR-004), A-11 Run 3 (ERR-30, docs/decisions/0003-tenure-from-transfer-deeds.md):
+// A-04 T023 (AC-4, FR-004), A-11 Run 3 (ERR-71, docs/decisions/0003-tenure-from-transfer-deeds.md):
 // ownership tenure from the latest dated TRANSFER, taken from `sales[].saleDt` and from the
 // allow-listed transfer deeds in `deeds[]`, whichever is later.
 // `as_of` is the run's finishedAt date (RunContext.asOf), never now() inside the derivation.

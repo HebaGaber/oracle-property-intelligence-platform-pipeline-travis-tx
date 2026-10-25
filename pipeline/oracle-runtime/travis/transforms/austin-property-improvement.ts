@@ -18,7 +18,7 @@
 // Written fields are only lexicon properties of the live `property_improvement` class
 // (additionalProperties false). The source description, work class, status word, expiry
 // have no carrier (ADR-0002) and are never written. The printed contractor COMPANY name is the
-// exception (ERR-32, PO 2026-10-25): company.name via property_improvement_has_contractor.
+// exception (ERR-66, PO 2026-10-25): company.name via property_improvement_has_contractor.
 // `contractor_type` is required by the class and written null: the permit's category
 // of contractor is not established here.
 //
@@ -260,7 +260,7 @@ export interface PropertyImprovementCounts {
   by_skip: Partial<Record<SkipReason, number>>;
   /** Emitted permits only, by A-07's five-state verdict (AD-24's manifest-coverage rollup). */
   by_contractor_state: Partial<Record<ResolverState, number>>;
-  /** Emitted permits whose printed contractor name is published as company.name (ERR-32, ERR-72). */
+  /** Emitted permits whose printed contractor name is published as company.name (ERR-66, ERR-72). */
   contractor_companies_printed: number;
   /** Of those, permits that print only a contractor person, published as company.name (ERR-72). */
   contractor_persons_printed: number;
@@ -337,7 +337,7 @@ export function transformAustinPropertyImprovement(
       permit_issue_date: l.issue_date,
       completion_date: l.completed_date,
     });
-    // PO decision 2026-10-25 (ERR-32): the company the permit PRINTS, "as printed, unverified".
+    // PO decision 2026-10-25 (ERR-66): the company the permit PRINTS, "as printed, unverified".
     // A company record linked by property_improvement_has_contractor, with the permit's own request
     // as provenance and NO sunbiz_document_number: a name is evidence, not identity, so
     // contractor_resolution stays unresolved (never a registry id from a name match). No phone or

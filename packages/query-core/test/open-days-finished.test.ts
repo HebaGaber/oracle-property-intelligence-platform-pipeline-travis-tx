@@ -1,4 +1,4 @@
-// ERR-29, query side: open_days is an interval for a job that is still running. An open or
+// ERR-70, query side: open_days is an interval for a job that is still running. An open or
 // stalled permit (an Expired permit is stalled) that carries a final_date is finished, so it gets
 // no interval (reason not_open); a final_date before the issue date or after as_of is a
 // data-quality gap (reason needs_review). v_roofing_permit also carries request_identifier.
@@ -83,7 +83,7 @@ beforeAll(async () => {
 });
 afterAll(() => fx.close());
 
-describe("open_days for finished permits (ERR-29)", () => {
+describe("open_days for finished permits (ERR-70)", () => {
   it("a stalled or open permit with a plausible final_date has no interval and keeps its class", () => {
     for (const n of ["x1", "x3"]) {
       expect(row(n)?.open_days, n).toBeNull();

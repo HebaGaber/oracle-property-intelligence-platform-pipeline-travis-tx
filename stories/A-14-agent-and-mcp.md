@@ -11,7 +11,7 @@ priority: P1
 moscow: Must
 branch: 014-agent-and-mcp
 spec: specs/014-agent-and-mcp/
-depends_on: [A-02, A-03]
+depends_on: [A-02, A-03, A-11, A-13]
 size_days: 1.5
 agents:
   design: [alakazam, ash, oracle]
@@ -20,11 +20,12 @@ agents:
   verify: "golden queries G1–G6 on the deployed agent; MCP Inspector on the hosted /mcp; `donphan` answers through it"
 skills: [build-rag-systems, build-ai-agents, deploy-open-data-mcp, use-elephant-mcp, responsive-design-tests, apply-engineering-guidelines]
 ui: true
-status: Draft
+status: Done
 gate: G4
-qc_testability_signoff: false
+qc_testability_signoff: true
 created: 2026-10-19
 merged: 2026-10-21
+ready: 2026-10-22
 ---
 
 # A-14 Answer roofing-lead questions through a source-backed agent and an MCP server
@@ -35,7 +36,7 @@ merged: 2026-10-21
 | Evaluation point | A6 (primary) · A2 |
 | Demo line(s) | D-10 (roofs > 15 years within 5 mi of a city), D-11 (long-open permits near that area, with contractor), D-12 (MCP-ready) |
 | Agents | design `alakazam`, `ash`, `oracle` · builder `alakazam` (retrieval), `ash` (agent runtime and AI tab), `oracle` (MCP server) · reviewers `alakazam`, `ash`, `oracle`, `donphan` · verify golden queries G1–G6, MCP Inspector on the hosted `/mcp`, `donphan` answers through it (source: [AGENT-MAP.md](../../assessment-guide/AGENT-MAP.md) § 4) |
-| Depends on | A-02, A-03 (full-county answers need the A-11 tables; the AI tab and the demo area need A-13) |
+| Depends on | A-02, A-03 (direct); A-11, A-13 (implicit, added at G4: full-county answers need the A-11 tables; the AI tab and the demo area need A-13) |
 | Size | 1.5 days |
 | Branch | `014-agent-and-mcp`, merged into `feature/oracle-pipeline` |
 
@@ -156,15 +157,15 @@ MCP server (from A-15)
 
 | # | Criterion | Status |
 | --- | --- | --- |
-| G4-1 | Front matter complete (parent FEAT, eval point, branch, priority, **agents and skills from AGENT-MAP.md**) | ☐ |
-| G4-2 | "As a / I want / So that" stated, with an independent test | ☐ |
-| G4-3 | Every AC is Given / When / Then, and its testable box is ticked | ☐ |
-| G4-4 | One scale AC and one missing-data or error AC | ☐ |
-| G4-5 | At least two edge cases | ☐ |
-| G4-6 | Every requirement traces to an AC; NFRs have thresholds | ☐ |
-| G4-7 | Prototype screen linked (UI stories) | ☐ |
-| G4-8 | Dependencies done, or stubbed with **real** sample data | ☐ |
-| G4-9 | No `[NEEDS CLARIFICATION]` left | ☐ |
-| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☐ |
+| G4-1 | Front matter complete (parent FEAT, eval point, branch, priority, **agents and skills from AGENT-MAP.md**) | ☑ |
+| G4-2 | "As a / I want / So that" stated, with an independent test | ☑ |
+| G4-3 | Every AC is Given / When / Then, and its testable box is ticked | ☑ |
+| G4-4 | One scale AC and one missing-data or error AC | ☑ |
+| G4-5 | At least two edge cases | ☑ |
+| G4-6 | Every requirement traces to an AC; NFRs have thresholds | ☑ |
+| G4-7 | Prototype screen linked (UI stories) | ☑ |
+| G4-8 | Dependencies done, or stubbed with **real** sample data | ☑ A-02, A-03 done and merged; A-11, A-13 added to `depends_on` 2026-10-22 (D-1) — A-11 `status: Draft` (blocked on A-07), A-13 `status: Done` but merge waits on A-11 per `PARALLEL-RUN.md` wave 5. Build/unit-test now on A-02/A-03; full-county answers, AC-8, AI-tab wiring and G7 wait |
+| G4-9 | No `[NEEDS CLARIFICATION]` left | ☑ |
+| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ See `docs/gates/G4-A-14-precheck.md` |
 
-**Decision:** ☐ Ready ☐ Returned, reason: {…} · {date}
+**Decision:** ☑ Ready ☐ Returned, reason: {…} · 2026-10-22

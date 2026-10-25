@@ -1,4 +1,4 @@
-// A-11 (ERR-28): turn one TCAD owners[] entry into lexicon people or a company, or leave it
+// A-11 (ERR-69): turn one TCAD owners[] entry into lexicon people or a company, or leave it
 // unparsed. TCAD prints an individual as "LAST FIRST [MIDDLE] [SUFFIX] [& OTHER]" and, for most
 // entries, leaves firstName / lastName null. The parser is deliberately conservative: a wrong
 // person name is worse than an unparsed one, so anything it cannot read with certainty (single
@@ -449,7 +449,7 @@ export function parseOwner(owner: OwnerNameFields): ParsedOwner {
 
 /**
  * Whether individuals' names are written to the County group. The PO decision on publishing
- * individuals' names county-wide is pending (ERR-28); until it lands the default is `publish`.
+ * individuals' names county-wide is pending (ERR-69); until it lands the default is `publish`.
  * `omit` leaves every person (and their mailing address) out without a code change; companies
  * are unaffected. Read from the OWNER_PERSONS environment variable; any other value throws, so a
  * typo can never silently publish names.

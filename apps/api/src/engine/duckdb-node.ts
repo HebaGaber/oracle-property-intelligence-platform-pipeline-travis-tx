@@ -29,7 +29,7 @@ import {
   type QueryEngine,
   type Row,
 } from "@countylens/query-core";
-import { PRESIGN_EXPIRES_S, getManifest, localPart, presignPart } from "../s3-read.js";
+import { PRESIGN_EXPIRES_S, getManifest, localPart, presignPart } from "./s3-read.js";
 import { openDuckDb, type DuckDbEngine } from "./duckdb-instance.js";
 
 /** ERR-18 (AM-06 sizing update for the PO; ADR-0001 sized 2 threads at 1,769 MB): four threads

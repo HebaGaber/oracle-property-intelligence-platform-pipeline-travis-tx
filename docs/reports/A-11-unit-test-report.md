@@ -71,3 +71,22 @@ A-11's own new test files, each confirmed to fail before the corresponding imple
 | Root workspace Prettier step (latent, never reached by the one real CI run) | 17 pre-existing unformatted files | Fixed: `prettier --write`, no logic change (commit `8e70fd6`) |
 | `scripts/grep-gates.sh` query-db gate (latent, never reached by the one real CI run) | A new ban-detection test spelling out "postgres", and two legitimate architecture-decision comments in `scheduler-stack.ts` | Fixed: per-file allowlist entry + `grep-gates:allow` with a reason on the two comment lines (commit `5e4f080`) |
 | `@countylens/web#test` (apps/web) | Observed intermittently (1 of 3 local full-`pnpm turbo` runs) failing on `test/app-shell.test.tsx`'s "redirects / to /runs" case, cause consistent with a `screen.findByRole` default-timeout flake under the same full-graph CPU contention pattern as the verify-manifest issue above. Reproduces 0/2 times when run in isolation (`pnpm turbo run test --filter=@countylens/web`, 166/166 both times) or filtered with 2 other tasks (166/166). Not touched by any A-11 change (apps/web is outside this story's scope) | Not fixed this pass: confirmed pre-existing, environment-dependent, and not reproduced in the real GitHub Actions CI run (`40087427236`'s `workspace` job, which runs this same suite, passed). Flagged here for visibility, not filed as a defect, since it never failed in the real CI environment this gate cares about |
+
+## Addendum 2026-10-25: Run 3 corrections
+
+Branch `011c-run3-integrated`, run locally on the head of this commit (the feature branch is merged into it). CI run 40227156140 on `0b32bd9` passed every job (workspace, gitleaks, oracle-runtime, and the seven e2e-hosted jobs).
+
+| Package | Result |
+| --- | --- |
+| pipeline/publish | 397 passed (new: fetch-retry 9, unit-lock 6, car-files deferral 2, car-files probe skip 1) |
+| pipeline/oracle-runtime | 1,270 passed / 2 skipped (owner-name parser 63, deed tenure, address points, contractor name and BBB link) |
+| packages/query-core | 336 passed / 8 skipped (roof date from built year, tenure from deeds, open days for finished permits) |
+| packages/contract | 58 passed (contract v1.1, 58 columns) |
+| packages/shared | 44 passed |
+| pipeline/local-stack | 237 passed / 9 skipped |
+| apps/web | 505 passed / 3 skipped |
+| apps/api | 166 passed |
+| scripts | 104 passed |
+
+Typecheck (`tsc -b`), ESLint and both Prettier checks are clean. Coverage of the changed packages was not measured in this round; the new modules each have their own test file (listed above).
+

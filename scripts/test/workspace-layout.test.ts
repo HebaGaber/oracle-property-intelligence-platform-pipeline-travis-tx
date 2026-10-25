@@ -111,6 +111,7 @@ describe("pnpm-workspace.yaml (plan § Project Structure)", () => {
       "apps/*",
       "infra",
       "tests/e2e",
+      "tests/agent",
     ]);
     expect(members).not.toContain("pipeline/oracle-runtime");
   });

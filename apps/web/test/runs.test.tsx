@@ -436,16 +436,21 @@ describe("Runs page: sources in manifest order (TC-011)", () => {
     expect(within(tcad).getByRole("link").getAttribute("href")).toBe(source1.url);
   });
 
-  it("shows each source's added, changed and removed counts and its watermark (A-11 Run 3)", async () => {
+  it("shows each source's delta line once and its watermark once (A-11 Run 3)", async () => {
     await renderRuns();
     await findCard();
     const austin = within(listNamed("Sources")).getAllByRole("listitem")[0];
     const delta = austin?.querySelector('[data-source-delta="austin-3syk-w9eu"]');
-    expect(delta?.textContent).toContain("42 added · 0 changed · 0 removed");
-    expect(delta?.textContent).toContain("2026-09-30");
+    // This fixture is a first run, so the one delta line says so (counts vs a previous run: tests below).
+    expect(delta?.textContent).toContain(RUNS_TEXTS.firstRun);
+    // The watermark is on the line above, once (porygon review: no duplicate delta line).
+    expect(austin?.textContent).toContain("2026-09-30");
+    expect(austin?.textContent?.match(/watermark/g)?.length).toBe(1);
+    expect(austin?.querySelectorAll("[data-source-delta]").length).toBe(1);
+    expect(austin?.textContent).not.toContain("Since the previous run");
     const tcad = within(listNamed("Sources")).getAllByRole("listitem")[1];
     const tcadDelta = tcad?.querySelector("[data-source-delta]")?.textContent ?? "";
-    expect(tcadDelta).toContain("1234 added · 0 changed · 0 removed");
+    expect(tcadDelta).toContain(RUNS_TEXTS.firstRun);
     expect(tcadDelta).not.toContain("watermark");
   });
 });

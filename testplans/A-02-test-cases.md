@@ -308,7 +308,7 @@ Every case starts with: **Open** a terminal at the repository root and run `git 
 - **Steps:**
   1. Step 0. **Run** `pnpm vitest run -t "A-02-TC-018"`. It reads the `v_roofing_permit` row with `permit_number = '2026-029405 BP'`.
 - **Expected result:**
-  - `improvement_status` is null, never `Completed` or `Cancelled`; `status_class = 'stalled'`; `open_days` = `as_of − issue_date` ≥ 0 when the permit has no `final_date`; with a plausible `final_date` it is null with reason `not_open`, and with a `final_date` before `issue_date` or after `as_of` it is null with reason `needs_review` (ERR-29; pinned by query-core `test/open-days-finished.test.ts` and `test/derive.test.ts`).
+  - `improvement_status` is null, never `Completed` or `Cancelled`; `status_class = 'stalled'`; `open_days` = `as_of − issue_date` ≥ 0 when the permit has no `final_date`; with a plausible `final_date` it is null with reason `not_open`, and with a `final_date` before `issue_date` or after `as_of` it is null with reason `needs_review` (ERR-70; pinned by query-core `test/open-days-finished.test.ts` and `test/derive.test.ts`).
   - `missing` contains `{field: "status_raw", reason: "no_lexicon_carrier"}` and `{field: "expiry_date", reason: "no_lexicon_carrier"}`.
   - `source_url` is the Socrata record URL showing "Expired".
   - The same holds for all 3 published Expired pilot permits.
@@ -368,7 +368,7 @@ Every case starts with: **Open** a terminal at the repository root and run `git 
   - Every `v_roofing_permit` row has `bbb_status = 'not_checked'` and `bbb_status_reason` ∈ {`contractor_unresolved`, `no_lexicon_carrier`}.
   - The contractor reads "not published · no lexicon carrier" (reason `no_lexicon_carrier`).
   - A property without a dated sale has `tenure_basis = 'unknown'` and `is_long_tenure` null with reason `no_dated_sale`. It is never "long tenure".
-  - A closed permit has `open_days` null with reason `not_open`; so does an open or stalled permit with a plausible `final_date` (ERR-29).
+  - A closed permit has `open_days` null with reason `not_open`; so does an open or stalled permit with a plausible `final_date` (ERR-70).
 
 ### A-02-TC-025: Sample file has exactly 20 rows (happy path)
 

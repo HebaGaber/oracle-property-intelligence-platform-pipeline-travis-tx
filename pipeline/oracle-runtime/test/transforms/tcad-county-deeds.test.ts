@@ -1,4 +1,4 @@
-// A-11 Run 3 (ERR-30): the County transform writes sales_history rows for allow-listed transfer
+// A-11 Run 3 (ERR-71): the County transform writes sales_history rows for allow-listed transfer
 // deeds as well as sales, one per day, and links the current owner to the latest. Synthetic input.
 import { describe, expect, it } from "vitest";
 import { buildSeedRow } from "../../travis/pilot/build-seed.js";
@@ -47,7 +47,7 @@ const historyFiles = (files: Record<string, string>): string[] =>
     .filter((n) => /^sales_history_\d+\.json$/.test(n))
     .sort((a, b) => parseInt(a.slice(14), 10) - parseInt(b.slice(14), 10));
 
-describe("transformTcadCounty: transfer deeds as dated transfers (ERR-30)", () => {
+describe("transformTcadCounty: transfer deeds as dated transfers (ERR-71)", () => {
   it("an account with no sale gets a sales_history row from its transfer deed", () => {
     const out = run(null, [deed(1, "WD", "2019-07-01 00:00:00")]);
     expect(historyFiles(out.files)).toEqual(["sales_history_1.json"]);

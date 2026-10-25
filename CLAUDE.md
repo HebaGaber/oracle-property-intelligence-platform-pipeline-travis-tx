@@ -17,6 +17,7 @@ The user is a technical product manager. Explain steps in plain language, say wh
 - Feature branch: `feature/oracle-pipeline`. PR from `{fork}:feature/oracle-pipeline` to `prismteam-ai/oracle-property-intelligence-platform-pipeline-travis-tx:main`. Never commit to `main`, never merge the PR.
 - Each story has its own branch `NNN-slug` (listed in AGENT-MAP.md), created by `/speckit-specify`. Merge it back with `git merge --no-ff` only after its G7 pre-check passes and the user approves, then run `bash scripts/progress.sh`.
 - Commit messages start with the story ID: `A-03: ...`.
+- Never write `#` followed by a number in commit messages, PR text or GitHub comments (write `F-8` or "finding 8"). This repo is a fork of `prismteam-ai/oracle-property-intelligence-platform-pipeline-travis-tx`, so GitHub links `#9` to PR or issue #9 there, often another candidate's submission, and the link cannot be removed after the push.
 - Hosted runtime: `https://countylens.{domain}`, plus Amplify branch previews for story branches. localhost is never evidence.
 
 ## Rules

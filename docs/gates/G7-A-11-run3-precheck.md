@@ -28,9 +28,22 @@ This is an AI pre-check. It reports gaps only; the PO decides.
 
 ## Fix list (by impact on the assessment score)
 
-1. **C-05 defect numbers and closure.** Renumber the Run 3 defects to the next free numbers (ERR-61 to ERR-67) and update every reference (code comments, ADRs, A-16, CR-A-11, tests, run-log). Close each one with its re-test: the P8 bind numbers and the published manifest CID now, and the hosted result after the index step.
+1. **C-05 defect numbers and closure.** Renumber the Run 3 defects to the next free numbers (ERR-65 to ERR-71) and update every reference (code comments, ADRs, A-16, CR-A-11, tests, run-log). Close each one with its re-test: the P8 bind numbers and the published manifest CID now, and the hosted result after the index step.
 2. **C-04 hosted results.** Let CI 40226814868 finish. After the `index` step, redeploy the preview and run the hosted Playwright cases that cover Run 3 (Runs page shows Run 3 with its sources and deltas, Permits page, manifest by CID on two gateways). Record each result with the build sha.
 3. **C-03 reviewer scores.** Have the A-11 reviewer agents score the Run 3 commits (75 or more). Either fix or explicitly accept the two "fix before Run 3" findings in CR-A-11.
 4. **C-07 evidence.** Add a "Run 3" section to `docs/evidence/A-11.md`: manifest CID, gateway checks, the headline counts, a Runs-page screenshot showing Run 3, and the CI run and trace id. Replace the "closed without Run 3" sentence.
 5. **C-02 unit report.** Add a Run 3 addendum to `docs/reports/A-11-unit-test-report.md` with the suite counts above, the CI run once green, and coverage of the changed packages.
 6. **C-08 traceability.** Add rows for the Run 3 fixes against their README criteria in `docs/traceability.md`, and the Run 3 agents in `docs/kit-usage.md`.
+
+## Re-check after the fixes (2026-10-25, branch head after the fix commit)
+
+| Check | Result | What changed |
+| --- | --- | --- |
+| C-02 | PASS | Run 3 addendum in `docs/reports/A-11-unit-test-report.md`; all suites green; CI run 40227156140 passed every job. Coverage not measured (noted). |
+| C-03 | PASS | Reviewer scores in `docs/reviews/CR-A-11.md` § 5: oracle 76, donphan 78, machamp 78, porygon 72 → 80 after its High finding was fixed. No open Critical; other findings carried to A-16 item 17. |
+| C-04 | FAIL (waits for publish) | Hosted Run 3 cases need the `index` step (expected about 06:00 Cairo, 2026-10-26). |
+| C-05 | PASS | Renumbered ERR-65 to ERR-71. ERR-65 and ERR-68 to ERR-71 and ERR-67 Closed with the Run 3 numbers; ERR-66 Open as a documented gap (BBB link needs one manual check; A-16 item 17). |
+| C-07 | FAIL (waits for publish) | Run 3 section in `docs/evidence/A-11.md` with manifest CID, gate result and counts; the Runs-page screenshot showing Run 3 needs the `index` step. Trace id: same documented exception as A-11. |
+| C-08 | PASS | Run 3 rows in `docs/traceability.md` (AC-31, Run 3 correction table, gate log) and `docs/kit-usage.md`. |
+
+Verdict now: FAIL (2), both waiting on the publish index step. The PO decides whether to merge now with these two recorded as open.

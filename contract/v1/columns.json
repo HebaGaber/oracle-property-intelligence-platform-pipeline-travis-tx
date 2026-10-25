@@ -199,7 +199,7 @@
         "kind": "string",
         "nullable": true,
         "meaning": "Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review",
-        "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale)",
+        "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale)",
         "missingReason": "no_owner_record"
       },
       {
@@ -495,7 +495,7 @@
           "unresolved"
         ],
         "meaning": "Contractor identity state (AD-24)",
-        "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32)",
+        "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66)",
         "missingReason": null
       },
       {
@@ -1094,7 +1094,7 @@
         "unresolved"
       ],
       "meaning": "Contractor identity state (AD-24)",
-      "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32)",
+      "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66)",
       "missingReason": null
     },
     {
@@ -1443,7 +1443,7 @@
       "kind": "string",
       "nullable": true,
       "meaning": "Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review",
-      "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale)",
+      "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale)",
       "missingReason": "no_owner_record"
     },
     {

@@ -1,4 +1,4 @@
-// A-11 Run 3 (ERR-30): tenure from the later of the latest sale and the latest allow-listed
+// A-11 Run 3 (ERR-71): tenure from the later of the latest sale and the latest allow-listed
 // transfer deed. Synthetic input, no real owner or parcel.
 import { describe, expect, it } from "vitest";
 import { TRANSFER_DEED_TYPES, tenureOf, transferEventsOf } from "../../../travis/tcad/tenure.js";
@@ -84,7 +84,7 @@ describe("transferEventsOf", () => {
   });
 });
 
-describe("tenureOf with deeds (ERR-30)", () => {
+describe("tenureOf with deeds (ERR-71)", () => {
   it("no sale but a transfer deed → deed_date basis, tenure from the deed", () => {
     const t = tenureOf([], AS_OF, [deed(1, "WD", "2019-07-01 00:00:00")]);
     expect(t).toMatchObject({

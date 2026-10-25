@@ -1,4 +1,4 @@
-// A-11 (ERR-28): the owner-name reader. Every row is a name as TCAD prints it. A wrong person
+// A-11 (ERR-69): the owner-name reader. Every row is a name as TCAD prints it. A wrong person
 // name is worse than an unparsed one, so the table is as much about what must stay unparsed.
 import { describe, expect, it } from "vitest";
 import { ENTITY_NAME, parseOwner } from "../../travis/transforms/owner-name.js";
@@ -209,7 +209,7 @@ const CASES: Case[] = [
   { name: "SMITH JOHN 2ND", want: "unparsed" },
 ];
 
-describe("parseOwner (A-11, ERR-28)", () => {
+describe("parseOwner (A-11, ERR-69)", () => {
   it.each(CASES.map((c) => [c.name || "(empty)", c] as const))("%s", (_label, c) => {
     const got = parseOwner({
       name: c.name,

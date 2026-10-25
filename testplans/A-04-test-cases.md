@@ -586,7 +586,7 @@ Every case's step 0 is: **in a terminal at the repo root, run `git rev-parse --a
 #### A-04-TC-034: Condo unit with no polygon → exact, unique City of Austin address point, `address_point` (edge, ADR 0004, A-11 Run 3)
 
 - **Priority / tags:** P1 · `@edge` · **read-only**
-- **Maps to:** AC-8, FR-008, FR-010, D-1 · A-11 Run 3 gap 4 (ERR-31)
+- **Maps to:** AC-8, FR-008, FR-010, D-1 · A-11 Run 3 gap 4 (ERR-65)
 - **Steps:**
   1. **Run** `(cd pipeline/oracle-runtime && npx vitest run test/travis/a11)` (synthetic input: normalisation, unique / ambiguous / outside-county / no-match / no-address matching, never over a GIS centroid, an export point or a condo building point, `geometryFor`, the loader's politeness).
   2. **Run** `(cd pipeline/local-stack && npx vitest run test/tracks/address-points.test.ts)`.

@@ -107,7 +107,7 @@ describe("tenure (max ownership_transfer_date; > 10 years is long)", () => {
   });
 });
 
-describe("tenure_basis with a transfer source (ERR-30)", () => {
+describe("tenure_basis with a transfer source (ERR-71)", () => {
   it.each([
     ["2019-07-01", "deed", "deed_date"],
     ["2019-07-01", "sale", "sale_date"],
@@ -152,7 +152,7 @@ describe("open_days (as_of − issue_date for open/stalled without final_date; e
     ["open", "2026-10-25", null, 0],
     ["closed", "2026-09-17", null, null],
     ["open", null, null, null],
-    // ERR-29: a finished or implausibly-dated permit gets no interval
+    // ERR-70: a finished or implausibly-dated permit gets no interval
     ["stalled", "1984-01-01", "1985-03-11", null],
     ["open", "2026-03-11", "2026-04-01", null],
     ["stalled", "2026-03-11", "2026-03-01", null],
@@ -216,7 +216,7 @@ describe("status_class (generated status map, scoped to the profile's jurisdicti
     ["stalled", null, null, "source_missing"],
     ["closed", "2026-09-17", null, "not_open"],
     [null, "2026-09-17", null, "needs_review"],
-    // ERR-29: finished (plausible final_date) is not_open; implausible is a data-quality gap
+    // ERR-70: finished (plausible final_date) is not_open; implausible is a data-quality gap
     ["stalled", "2026-03-11", "2026-04-01", "not_open"],
     ["stalled", "2026-03-11", "2026-03-01", "needs_review"],
     ["open", "2026-03-11", "2027-01-01", "needs_review"],
@@ -337,7 +337,7 @@ describe("coordinate_source, contractor and BBB state", () => {
     ["P12000012345", "resolved"],
     [null, "unresolved"],
   ] as const)(
-    "registry id %s → %s (a printed name alone never resolves, ERR-32)",
+    "registry id %s → %s (a printed name alone never resolves, ERR-66)",
     async (id, resolution) => {
       expect(d.contractorResolution(id)).toBe(resolution);
       expect(await sql(`contractor_resolution(${lit(id)})`)).toBe(resolution);

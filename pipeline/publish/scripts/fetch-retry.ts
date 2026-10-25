@@ -1,4 +1,4 @@
-// A-11 Run 3 (ERR-33): a fetch retry wrapper loaded into elephant-cli, which stays the uploader.
+// A-11 Run 3 (ERR-67): a fetch retry wrapper loaded into elephant-cli, which stays the uploader.
 //
 //   NODE_OPTIONS="--import tsx --import <abs path>/pipeline/publish/scripts/fetch-retry.ts"
 //

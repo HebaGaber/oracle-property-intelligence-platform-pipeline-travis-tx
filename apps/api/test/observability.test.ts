@@ -78,7 +78,7 @@ vi.mock("../src/engine/duckdb-node.js", () => ({
   query: vi.fn(async (sql: string) => H.engine.all(sql)),
 }));
 
-vi.mock("../src/s3-read.js", () => ({
+vi.mock("../src/engine/s3-read.js", () => ({
   getManifest: vi.fn(async () => {
     throw new Error("getManifest is not used by these tests");
   }),

@@ -144,7 +144,7 @@ export interface CountyTransformInput {
    */
   geometrySourceUrl?: string | null;
   /**
-   * Whether individuals' names are written (ERR-28; PO decision pending). Default: the
+   * Whether individuals' names are written (ERR-69; PO decision pending). Default: the
    * OWNER_PERSONS environment variable, itself defaulting to "publish". "omit" writes no person
    * and no person mailing address; the property then reads as owner_confidential (withheld).
    */

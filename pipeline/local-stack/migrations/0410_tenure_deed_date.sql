@@ -1,4 +1,4 @@
--- A-11 Run 3 (ERR-30, docs/decisions/0003-tenure-from-transfer-deeds.md): parcels.tenure_basis
+-- A-11 Run 3 (ERR-71, docs/decisions/0003-tenure-from-transfer-deeds.md): parcels.tenure_basis
 -- gains `deed_date` for an account whose latest dated transfer is a TCAD transfer deed.
 -- Added after 0101_tcad was applied (migrations are append-only). The multi-column rule that
 -- ties `unknown` to null tenure columns is unchanged and needs no edit.

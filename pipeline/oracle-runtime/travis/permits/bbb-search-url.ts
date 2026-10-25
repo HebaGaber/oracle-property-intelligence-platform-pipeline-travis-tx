@@ -1,4 +1,4 @@
-// A-11 Run 3 (PO decisions 2026-10-25, FU-A-01, ERR-32): the contractor company name AS PRINTED on an
+// A-11 Run 3 (PO decisions 2026-10-25, FU-A-01, ERR-66): the contractor company name AS PRINTED on an
 // Austin permit (published as company.name via property_improvement_has_contractor) and a plain BBB
 // SEARCH link built from it. The published link is built IN THE VIEW (macro bbb_search_url in
 // packages/query-core/src/derive.ts, tested for parity with bbbSearchUrl below). Neither is an identity claim:
@@ -8,9 +8,9 @@
 //     Cloudflare challenge). The BBB rating therefore stays missing, with bbb_status = 'blocked'
 //     and bbb_status_reason = 'bbb_blocked'.
 //
-// URL SHAPE IS UNVERIFIED. The search URL below is BBB's public search page as we understand it;
-// no automated request was made to check it. A human must click one example in a browser before
-// any link ships. If BBB's shape differs, only BBB_SEARCH_BASE and `bbbSearchUrl` change.
+// URL SHAPE CHECKED BY HAND (PO, 2026-10-26, ERR-66): with find_type=Category BBB listed only
+// category ads; without it the exact business was found. No automated request is ever made to BBB.
+// If BBB's shape changes, only BBB_SEARCH_BASE and `bbbSearchUrl` change.
 //
 // Pure functions, no I/O.
 
@@ -94,7 +94,7 @@ function limitName(name: string): string {
 /**
  * The BBB search link for a printed contractor name and city, or null when the name is empty or a
  * placeholder. City falls back to DEFAULT_BBB_CITY; the state is always TX (Austin permits).
- * UNVERIFIED shape: a human must click one example before it ships.
+ * Shape checked by hand (PO, 2026-10-26).
  */
 export function bbbSearchUrl(
   name: string | null | undefined,
@@ -107,7 +107,6 @@ export function bbbSearchUrl(
   return (
     `${BBB_SEARCH_BASE}?find_country=USA` +
     `&find_text=${encodeValue(printed)}` +
-    `&find_loc=${encodeValue(`${place}, TX`)}` +
-    `&find_type=Category`
+    `&find_loc=${encodeValue(`${place}, TX`)}`
   );
 }
