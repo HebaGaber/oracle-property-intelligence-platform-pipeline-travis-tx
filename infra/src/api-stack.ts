@@ -750,6 +750,16 @@ export class ApiStack extends Stack {
         actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
         resources: [
           `arn:${this.partition}:bedrock:${this.region}:${this.account}:inference-profile/${BEDROCK_INFERENCE_PROFILE_ID}`,
+        ],
+      }),
+    );
+    // The condition key exists only on the foundation-model request, so it cannot share a
+    // statement with the profile resource (that combination matches nothing and is denied).
+    this.agentFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "InvokeBedrockSonnetModelViaProfile",
+        actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+        resources: [
           `arn:${this.partition}:bedrock:*::foundation-model/${BEDROCK_FOUNDATION_MODEL_ID}`,
         ],
         conditions: {

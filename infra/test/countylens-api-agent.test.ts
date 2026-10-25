@@ -96,17 +96,23 @@ describe("CountyLensApi agent Bedrock grant (found on the first hosted call: the
           .PolicyDocument.Statement,
     );
     const bedrock = statements.filter((s) => JSON.stringify(s.Action).includes("bedrock:"));
-    expect(bedrock).toHaveLength(1);
-    const [statement] = bedrock as [Record<string, unknown>];
-    expect(statement.Effect).toBe("Allow");
-    expect(statement.Action).toEqual([
-      "bedrock:InvokeModel",
-      "bedrock:InvokeModelWithResponseStream",
-    ]);
-    const text = JSON.stringify(statement);
-    expect(text).toContain("inference-profile/eu.anthropic.claude-sonnet-4-6");
-    expect(text).toContain("foundation-model/anthropic.claude-sonnet-4-6");
-    expect(text).toContain("bedrock:InferenceProfileArn");
-    expect(text).not.toMatch(/"Resource":"\*"/);
+    // Two statements: the profile carries no condition (the key is absent on that request), the
+    // foundation model carries the InferenceProfileArn condition.
+    expect(bedrock).toHaveLength(2);
+    for (const s of bedrock) {
+      expect(s.Effect).toBe("Allow");
+      expect(s.Action).toEqual(["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]);
+      expect(JSON.stringify(s)).not.toMatch(/"Resource":"\*"/);
+    }
+    const profile = bedrock.find((s) => JSON.stringify(s.Resource).includes("inference-profile/"));
+    const model = bedrock.find((s) => JSON.stringify(s.Resource).includes("foundation-model/"));
+    expect(JSON.stringify(profile?.Resource)).toContain(
+      "inference-profile/eu.anthropic.claude-sonnet-4-6",
+    );
+    expect(profile?.Condition).toBeUndefined();
+    expect(JSON.stringify(model?.Resource)).toContain(
+      "foundation-model/anthropic.claude-sonnet-4-6",
+    );
+    expect(JSON.stringify(model?.Condition)).toContain("bedrock:InferenceProfileArn");
   });
 });
