@@ -6,12 +6,12 @@ story: A-11
 test_case: A-03-TC-032, TC-033, TC-034
 ac_reference: A-11
 severity: High
-status: Fixed, closure pending hosted re-test
+status: Closed
 found_by: QC test runner (Claude), for HebaGaber
 found_date: 2026-10-24
 fix_branch: 011-publish-and-runs
 fix_commit: `502bfe6`
-retest_date: pending
+retest_date: 2026-10-25 (hosted CI run 40150597123, commit b1de02c: e2e-hosted isolated, site, permits and manifest all green)
 closed_date: pending
 ---
 

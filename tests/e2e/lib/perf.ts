@@ -50,8 +50,17 @@ export const LIMITS = {
   apiColdStartMs: 3_000,
 } as const;
 
-/** Timed runs per query (warm-up rule, test plan § 3: one untimed warm-up precedes them). */
+/** Timed runs per query on the pilot and in the operator benchmark (test plan § 3: one untimed warm-up precedes them). */
 export const TIMED_RUNS = 20;
+
+/**
+ * The hosted CI 'isolated' job runs on a 60-minute budget and every Permits load at full-county
+ * scale takes 45-90 s, so the hosted perf cases take a VERY SMALL sample (PO 2026-10-25):
+ * TC-NF-01 two cold first loads, TC-NF-02 five timed reloads after one warm-up. The 20-run
+ * rule stays the operator benchmark (TC-NF-05 and docs/decisions/0001-read-path.md).
+ */
+export const FIRST_LOAD_SAMPLES = 2;
+export const QUERY_SAMPLE_RUNS = 5;
 
 /**
  * How long a non-perf case waits for the full-county Permits page to show rows: 3 × the

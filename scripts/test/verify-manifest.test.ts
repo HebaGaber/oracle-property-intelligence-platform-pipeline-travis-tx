@@ -24,6 +24,7 @@ import {
   refusedGatewayText,
   resumeKey,
   retryDelayMs,
+  selectSample,
   verifyManifest,
   type ManifestArtifactLike,
 } from "../verify-manifest.js";
@@ -184,6 +185,28 @@ describe("the fixed gateway allowlist (P0-14)", () => {
     ]) {
       expect(() => assertAllowedGateways([other])).toThrow(refusedGatewayText(other));
     }
+  });
+});
+
+describe("--sample selection", () => {
+  const artifact = (name: string, kind: string, size: number): ManifestArtifactLike => ({
+    name,
+    kind,
+    size,
+    cid: `cid-${name}`,
+    sha256: "0".repeat(64),
+  });
+
+  it("picks the smallest table and the smallest CAR, by size then name", () => {
+    const all = [
+      artifact("t/b", "table", 10),
+      artifact("t/a", "table", 10),
+      artifact("t/c", "table", 5000),
+      artifact("c/big", "car", 9000),
+      artifact("c/small", "car", 100),
+      artifact("d/root", "directory", 3),
+    ];
+    expect(selectSample(all).map((a) => a.name)).toEqual(["t/a", "c/small"]);
   });
 });
 

@@ -6,12 +6,12 @@ story: A-11
 test_case: A-03-TC-020–TC-031, TC-012, TC-013, TC-NF-01–03 (hosted, `tests/e2e/permits.spec.ts`, `runs.spec.ts`, `perf.spec.ts`) and the pre-publish identity gate
 ac_reference: A-11
 severity: Critical
-status: Fixed, closure pending hosted re-test
+status: Closed
 found_by: QC test runner (Claude), for HebaGaber
 found_date: 2026-10-24
 fix_branch: 011-publish-and-runs
 fix_commit: `75a0eaf`, `1fc994a`
-retest_date: pending
+retest_date: 2026-10-25 (hosted CI run 40150597123, commit b1de02c: e2e-hosted isolated, site, permits and manifest all green)
 closed_date: pending
 ---
 

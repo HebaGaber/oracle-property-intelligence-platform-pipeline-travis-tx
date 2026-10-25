@@ -20,7 +20,7 @@ agents:
   verify: "`verify-manifest` on 2 gateways (Run 1); immutability check after Run 3"
 skills: [use-oracle, build-batch-workflows, durable-workflow-builder, monitoring-oracle-ingestion, unify-metrics, apply-engineering-guidelines]
 ui: false
-status: Ready
+status: Done
 gate: G4
 qc_testability_signoff: true
 created: 2026-10-19

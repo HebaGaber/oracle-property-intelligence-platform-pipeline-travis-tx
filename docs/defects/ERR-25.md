@@ -6,12 +6,12 @@ story: A-11
 test_case: A-03-TC-020 and TC-012 (FR-009 count checks, hosted) and the pre-publish identity gate (v_roofing_permit = permits_emitted)
 ac_reference: A-11
 severity: High
-status: Fixed, closure pending hosted re-test
+status: Closed
 found_by: QC test runner (Claude), for HebaGaber
 found_date: 2026-10-24
 fix_branch: 011-publish-and-runs
 fix_commit: `0cd4fe5`
-retest_date: pending
+retest_date: 2026-10-25 (hosted CI run 40150597123, commit b1de02c: e2e-hosted isolated, site, permits and manifest all green)
 closed_date: pending
 ---
 
