@@ -1,8 +1,8 @@
 npm notice run countylens@0.0.0 npx
 npm notice run 'tsx' pipeline/publish/scripts/publish-run.ts --manifest runs/travis-full-run3-1-20261025/manifest.json --run-id travis-full-run3-1-20261025 --dry-run --copy-host d2xsqoqv09bd0q.cloudfront.net
-run travis-full-run3-1-20261025  manifest bafkreiae3kzxqnbf6fhf6gqqq7waic4xeltzy5u35ob5x4w2af5ycelbtu  mode dry-run
+run travis-full-run3-1-20261025  manifest bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai  mode dry-run
 [gate] checked: 0 skip, 1 to run
-  RUN  gate  (no identity gate PASS receipt for manifest bafkreiae3kzxqnbf6fhf6gqqq7waic4xeltzy5u35ob5x4w2af5ycelbtu)
+  RUN  gate  (no identity gate PASS receipt for manifest bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai)
   gate PASS (v_roofing_permit 15025, meta.permit 15025, permits_emitted 15025, 0 of 10792 permit-side properties are not county properties)
 [filebase] would-run: 10 skip, 20 to run
   skip county-b01-car  (receipt specs/011-publish-and-runs/upload-receipts/travis-full-run3-20261025/county-b01-car.json records this CID)
@@ -71,7 +71,7 @@ run travis-full-run3-1-20261025  manifest bafkreiae3kzxqnbf6fhf6gqqq7waic4xeltzy
 [cid-copy] would-run: 0 skip, 1 to run
   RUN  cid-copy  (no receipt (the copy is idempotent: each object is HEAD-checked first))
 [gate-remote] would-run: 0 skip, 1 to run
-  RUN  gate-remote  (no remote-only (CID copy) identity gate PASS receipt for manifest bafkreiae3kzxqnbf6fhf6gqqq7waic4xeltzy5u35ob5x4w2af5ycelbtu)
+  RUN  gate-remote  (no remote-only (CID copy) identity gate PASS receipt for manifest bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai)
   gate not run yet: runs after cid-copy writes the CID copy
 [release] would-run: 0 skip, 1 to run
   RUN  release  (no local receipt (not probed offline))
