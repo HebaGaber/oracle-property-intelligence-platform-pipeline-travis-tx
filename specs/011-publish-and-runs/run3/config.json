@@ -1,7 +1,7 @@
 {
   "runId": "travis-full-run3-20261025",
   "startedAt": "2026-10-25T07:36:00.000Z",
-  "finishedAt": "2026-10-25T12:43:18Z",
+  "finishedAt": "2026-10-25T12:44:21Z",
   "previousManifestCid": "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute",
   "baseManifest": "runs/travis-full-run2-20261024/manifest.json",
   "countyDir": "pipeline/data/runs/travis-a11-county-run3-20261025/publish-run3/county-batched",
