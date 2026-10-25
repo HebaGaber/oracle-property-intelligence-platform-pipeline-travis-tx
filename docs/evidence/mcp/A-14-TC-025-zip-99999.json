@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "tools/call",
+    "params": {
+      "name": "search_properties",
+      "arguments": {
+        "area": {
+          "place": "99999"
+        },
+        "radius_mi": 5,
+        "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i"
+      }
+    }
+  },
+  "status": 500,
+  "ms": 305,
+  "body": {
+    "message": "Internal Server Error"
+  }
+}

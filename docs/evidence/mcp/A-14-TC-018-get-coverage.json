@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "tools/call",
+    "params": {
+      "name": "get_coverage",
+      "arguments": {
+        "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i"
+      }
+    }
+  },
+  "status": 500,
+  "ms": 312,
+  "body": {
+    "message": "Internal Server Error"
+  }
+}

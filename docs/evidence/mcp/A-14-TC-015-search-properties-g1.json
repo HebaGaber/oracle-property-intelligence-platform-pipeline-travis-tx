@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "tools/call",
+    "params": {
+      "name": "search_properties",
+      "arguments": {
+        "area": {
+          "place": "Pflugerville"
+        },
+        "radius_mi": 5,
+        "roof_age_years_min": 15,
+        "limit": 1000,
+        "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i"
+      }
+    }
+  },
+  "status": 500,
+  "ms": 334,
+  "body": {
+    "message": "Internal Server Error"
+  }
+}

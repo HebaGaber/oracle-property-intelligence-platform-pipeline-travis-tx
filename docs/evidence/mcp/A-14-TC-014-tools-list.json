@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "tools/list",
+    "params": null
+  },
+  "status": 500,
+  "ms": 122,
+  "body": {
+    "message": "Internal Server Error"
+  }
+}

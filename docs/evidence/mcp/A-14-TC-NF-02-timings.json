@@ -1,0 +1,107 @@
+{
+  "calls": [
+    {
+      "tool": "get_schema",
+      "status": 500,
+      "ms": 310
+    },
+    {
+      "tool": "search_properties",
+      "status": 500,
+      "ms": 107
+    },
+    {
+      "tool": "get_schema",
+      "status": 500,
+      "ms": 106
+    },
+    {
+      "tool": "search_properties",
+      "status": 500,
+      "ms": 105
+    },
+    {
+      "tool": "get_schema",
+      "status": 500,
+      "ms": 107
+    },
+    {
+      "tool": "search_properties",
+      "status": 500,
+      "ms": 147
+    },
+    {
+      "tool": "get_schema",
+      "status": 500,
+      "ms": 124
+    },
+    {
+      "tool": "search_properties",
+      "status": 500,
+      "ms": 110
+    },
+    {
+      "tool": "get_schema",
+      "status": 500,
+      "ms": 109
+    },
+    {
+      "tool": "search_properties",
+      "status": 500,
+      "ms": 108
+    },
+    {
+      "tool": "get_schema",
+      "status": 500,
+      "ms": 106
+    },
+    {
+      "tool": "search_properties",
+      "status": 500,
+      "ms": 105
+    },
+    {
+      "tool": "get_schema",
+      "status": 500,
+      "ms": 104
+    },
+    {
+      "tool": "search_properties",
+      "status": 500,
+      "ms": 115
+    },
+    {
+      "tool": "get_schema",
+      "status": 500,
+      "ms": 103
+    },
+    {
+      "tool": "search_properties",
+      "status": 500,
+      "ms": 105
+    },
+    {
+      "tool": "get_schema",
+      "status": 500,
+      "ms": 99
+    },
+    {
+      "tool": "search_properties",
+      "status": 500,
+      "ms": 107
+    },
+    {
+      "tool": "get_schema",
+      "status": 500,
+      "ms": 101
+    },
+    {
+      "tool": "search_properties",
+      "status": 500,
+      "ms": 108
+    }
+  ],
+  "p50_ms": 107,
+  "p95_ms": 147,
+  "max_ms": 310
+}

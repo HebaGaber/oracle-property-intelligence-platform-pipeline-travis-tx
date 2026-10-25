@@ -132,7 +132,6 @@ export type McpEventHandler = (
  *  DuckDB, S3, or SSM. */
 export function createMcpHandler(options: McpHandlerOptions): McpEventHandler {
   const obs = options.obs ?? createMcpObservability();
-  const server = buildMcpServer(options.deps, obs);
 
   return async function handleMcpEvent(
     event: APIGatewayProxyEventV2,
@@ -162,11 +161,19 @@ export function createMcpHandler(options: McpHandlerOptions): McpEventHandler {
     // sessionIdGenerator omitted (not set to undefined: exactOptionalPropertyTypes treats those
     // differently) -> stateless mode, per the option's own doc: "If not provided, session
     // management is disabled."
+    // One server and one transport per request: the SDK allows a single transport per server, so a
+    // server shared across requests answers the first call and fails every later one on a warm
+    // Lambda ("Already connected to a transport").
+    const server = buildMcpServer(options.deps, obs);
     const transport = new WebStandardStreamableHTTPServerTransport({
       enableJsonResponse: true,
     });
-    await server.connect(transport);
-    const response = await transport.handleRequest(eventToRequest(event));
-    return responseToResult(response);
+    try {
+      await server.connect(transport);
+      const response = await transport.handleRequest(eventToRequest(event));
+      return await responseToResult(response);
+    } finally {
+      await server.close();
+    }
   };
 }

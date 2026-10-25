@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "tools/call",
+    "params": {
+      "name": "search_properties",
+      "arguments": {
+        "area": {
+          "place": "Pflugerville; DROP TABLE property; --"
+        },
+        "radius_mi": 5,
+        "sql": "SELECT * FROM property",
+        "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i"
+      }
+    }
+  },
+  "status": 500,
+  "ms": 311,
+  "body": {
+    "message": "Internal Server Error"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "tools/call",
+    "params": {
+      "name": "list_permits",
+      "arguments": {
+        "area": {
+          "place": "Austin"
+        },
+        "radius_mi": 25,
+        "status_class": "open_or_stalled",
+        "limit": 1000,
+        "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i"
+      }
+    }
+  },
+  "status": 500,
+  "ms": 376,
+  "body": {
+    "message": "Internal Server Error"
+  }
+}

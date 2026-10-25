@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "tools/call",
+    "params": {
+      "name": "list_permits",
+      "arguments": {
+        "permit_number": "0000-000000 XX",
+        "manifest_cid": "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i"
+      }
+    }
+  },
+  "status": 500,
+  "ms": 299,
+  "body": {
+    "message": "Internal Server Error"
+  }
+}
