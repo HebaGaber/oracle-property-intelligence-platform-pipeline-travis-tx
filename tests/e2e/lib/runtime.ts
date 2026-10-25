@@ -245,7 +245,11 @@ export async function readPublishedRun(page: Page): Promise<PublishedRun> {
   await cidElement.waitFor({ state: "visible", timeout: 60_000 });
   const manifestCid = await cidElement.getAttribute("data-cid");
   if (!manifestCid) throw new Error("the run card's manifest CID element has no data-cid");
-  await page.getByText(latest.runId).first().waitFor({ state: "visible", timeout: 30_000 });
+  await page
+    .getByText(latest.runId)
+    .filter({ visible: true })
+    .first()
+    .waitFor({ state: "visible", timeout: 30_000 });
   const fetched = await fetchManifest(manifestCid);
   if (fetched.manifest.runId !== latest.runId) {
     throw new Error(
