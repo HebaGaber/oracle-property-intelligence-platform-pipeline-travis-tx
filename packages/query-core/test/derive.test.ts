@@ -232,6 +232,17 @@ describe("status_class (generated status map, scoped to the profile's jurisdicti
     },
   );
 
+  it("A11-16: open_days_reason has no as-of default, so it cannot disagree with the SQL macro", () => {
+    // @ts-expect-error asOf is required: a call without it must not compile
+    const withoutAsOf = (): unknown => d.openDaysReason("stalled", "2026-03-11");
+    expect(typeof withoutAsOf).toBe("function");
+    // a finished permit with a plausible final date is not_open for any as-of on or after it
+    expect(d.openDaysReason("stalled", "2026-03-11", "2026-10-26", "2026-04-01")).toBe("not_open");
+    expect(d.openDaysReason("stalled", "2026-03-11", "2026-03-15", "2026-04-01")).toBe(
+      "needs_review",
+    );
+  });
+
   it.each([
     // improvement_status is null: stalled means the enum has no value for the source word
     // (Expired); otherwise the null is unexplained (needs_review).

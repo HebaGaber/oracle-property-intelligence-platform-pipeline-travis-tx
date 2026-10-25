@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 import type { QueryEngine } from "@countylens/query-core";
 import { cidOfBytes } from "../src/cid.js";
 import {
+  BIND_TIMEOUT_MS_DEFAULT,
+  withDeadline,
   collectIdentity,
   compareIdentity,
   loadPreviousManifest,
@@ -31,6 +33,29 @@ const RUN2 = set(
     ["m2", "1985-000001 BP"],
   ],
 );
+
+describe("withDeadline (A11-16: no untimed remote bind)", () => {
+  it("passes the result through and clears its timer", async () => {
+    await expect(withDeadline(Promise.resolve(7), 1000, "x")).resolves.toBe(7);
+  });
+
+  it("rejects naming what timed out when the work never settles", async () => {
+    await expect(
+      withDeadline(new Promise<never>(() => {}), 20, "binding the manifest"),
+    ).rejects.toThrow("binding the manifest timed out after 20 ms");
+  });
+
+  it("propagates the work's own rejection", async () => {
+    await expect(withDeadline(Promise.reject(new Error("boom")), 1000, "x")).rejects.toThrow(
+      "boom",
+    );
+  });
+
+  it("the default bind deadline is finite", () => {
+    expect(BIND_TIMEOUT_MS_DEFAULT).toBeGreaterThan(0);
+    expect(Number.isFinite(BIND_TIMEOUT_MS_DEFAULT)).toBe(true);
+  });
+});
 
 describe("compareIdentity", () => {
   it("passes on an identical set and when Run 3 only adds records", () => {
