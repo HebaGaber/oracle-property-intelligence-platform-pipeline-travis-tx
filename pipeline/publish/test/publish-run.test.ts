@@ -30,6 +30,7 @@ import {
 } from "../src/publish-run.js";
 import { buildRunManifest, writeManifestBytes } from "../src/run-manifest.js";
 import { appendRun, emptyRunsIndex, runsIndexBytes } from "../src/runs-index.js";
+import { TablesUploadFatal } from "../src/tables-upload.js";
 import {
   BASE_RUN_ID,
   NOT_YET_PUBLISHED,
@@ -549,6 +550,55 @@ describe("filebase step", () => {
     expect(failed.ok).toBe(false);
     expect(failed.steps.at(-1)?.error).toMatch(/failed after 3 attempts/);
     expect(bad.cli).toHaveBeenCalledTimes(3);
+  });
+
+  it("sends tables units through the resilient uploader and stops at once on a fatal error", async () => {
+    const { ctx } = await realContext();
+    const h = harness(ctx);
+    const seen: string[] = [];
+    h.deps.filebase.uploadTables = async ({ input, statePath }) => {
+      seen.push(input);
+      expect(statePath).toMatch(/\.parts\.state$/);
+      const unit = uploadUnits(ctx.manifest).find(
+        (u) => join(ctx.repoRoot, u.artifact.name) === input,
+      );
+      return {
+        api: "https://rpc.filebase.io",
+        root: unit?.artifact.cid ?? "",
+        countyRoot: unit?.carCid ?? "",
+        parts: 1,
+        gatewayUrl: "x",
+        uploadedAt: "2026-10-25T00:00:00.000Z",
+      };
+    };
+    const ok = await runPublish({
+      ctx,
+      impls: createPublishSteps(h.deps),
+      dryRun: false,
+      step: "filebase",
+    });
+    expect(ok.ok).toBe(true);
+    expect(seen.length).toBe(uploadUnits(ctx.manifest).filter((u) => u.kind === "tables").length);
+    expect(h.cli).toHaveBeenCalledTimes(
+      uploadUnits(ctx.manifest).filter((u) => u.kind === "car").length,
+    );
+
+    const { ctx: ctx2 } = await realContext();
+    const bad = harness(ctx2);
+    let calls = 0;
+    bad.deps.filebase.uploadTables = async () => {
+      calls += 1;
+      throw new TablesUploadFatal("add returned X for p but the index records Y; not retried");
+    };
+    const failed = await runPublish({
+      ctx: ctx2,
+      impls: createPublishSteps(bad.deps),
+      dryRun: false,
+      step: "filebase",
+    });
+    expect(failed.ok).toBe(false);
+    expect(failed.steps.at(-1)?.error).toMatch(/not retried/);
+    expect(calls).toBe(1);
   });
 });
 
