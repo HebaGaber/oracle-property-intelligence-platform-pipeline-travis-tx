@@ -189,7 +189,7 @@ export function AppShell(): ReactElement {
           <MoreSheet onClose={closeMore} />
         </>
       ) : null}
-      <main className={styles.main} onScroll={onScroll} inert={moreOpen}>
+      <main className={styles.main} onScroll={onScroll} inert={moreOpen} tabIndex={0}>
         {inCounty ? <CountySelect /> : null}
         <Outlet />
       </main>
