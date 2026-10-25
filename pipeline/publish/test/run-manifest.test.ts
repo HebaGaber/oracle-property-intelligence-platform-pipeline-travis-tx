@@ -278,6 +278,60 @@ describe("buildRunManifest", () => {
   });
 });
 
+describe("address-point source (Run 3, ADR 0004)", () => {
+  const receipt = {
+    captured_at: "2026-10-25T08:28:56.200Z",
+    records: 466149,
+    sha256: "4".repeat(64),
+    layer_last_edit_date: "2026-10-24T04:31:08.027Z",
+    layer_url:
+      "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/FeatureServer/0",
+  };
+
+  it("lists the layer as a third source with its sha256, edit date and a first-seen delta", async () => {
+    const f = await runFixture();
+    const path = join(f.root, "address-points-receipt.json");
+    writeFileSync(path, JSON.stringify(receipt));
+    const { manifest: m } = await buildRunManifest(
+      config(f, { addressPointsReceipt: path }),
+      deps(f),
+    );
+    expect(m.sources.map((s) => s.name)).toEqual([
+      "austin-3syk-w9eu",
+      "tcad-2026-certified-json",
+      "austin-address-points",
+    ]);
+    const a = m.sources[2];
+    expect(a).toMatchObject({
+      watermark: receipt.layer_last_edit_date,
+      captured_at: receipt.captured_at,
+      records: 466149,
+      added: 466149,
+      changed: 0,
+      removed: 0,
+    });
+    expect(a?.limitations.join(" ")).toContain(receipt.sha256);
+    // the first two sources are exactly what they were without the layer
+    const plain = (await buildRunManifest(config(f), deps(f))).manifest;
+    expect(m.sources.slice(0, 2)).toEqual(plain.sources);
+  });
+
+  it("a run without the receipt lists exactly the two original sources", async () => {
+    const f = await runFixture();
+    const { manifest: m } = await buildRunManifest(config(f), deps(f));
+    expect(m.sources).toHaveLength(2);
+  });
+
+  it("refuses a receipt without a valid sha256", async () => {
+    const f = await runFixture();
+    const path = join(f.root, "bad-receipt.json");
+    writeFileSync(path, JSON.stringify({ ...receipt, sha256: "nope" }));
+    await expect(
+      buildRunManifest(config(f, { addressPointsReceipt: path }), deps(f)),
+    ).rejects.toThrow();
+  });
+});
+
 describe("requireLinkedPermits", () => {
   it("refuses a real run without the linked-permit total", () => {
     expect(() => requireLinkedPermits({}, false)).toThrow(/--linked-permits/);

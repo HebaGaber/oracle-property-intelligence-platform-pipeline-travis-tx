@@ -23,6 +23,7 @@ import { cidOfBytes } from "./cid.js";
 import {
   buildManifest,
   manifestGroupInputsFromBatches,
+  ADDRESS_POINT_SOURCE,
   type BuildManifestInput,
   type BuiltManifest,
   type ManifestGroupInput,
@@ -101,6 +102,12 @@ export const RunManifestConfig = z
      * watermark X". `austinReceipt` must then be the receipt file written beside the facts.
      */
     austinFacts: Dir.optional(),
+    /**
+     * Run 3 (ADR 0004): a receipt file for the City of Austin address-point layer used for
+     * County coordinates: `{captured_at, records, sha256, layer_last_edit_date, layer_url}`.
+     * It adds the optional third source `austin-address-points`.
+     */
+    addressPointsReceipt: Dir.optional(),
   })
   .strict();
 export type RunManifestConfig = z.input<typeof RunManifestConfig>;
@@ -117,6 +124,33 @@ export function restatePermitRows(
 ): string {
   if (baseRows === undefined || baseRows === rows) return limitation;
   return limitation.split(`(${baseRows} rows)`).join(`(${rows} rows)`);
+}
+
+const AddressPointReceipt = z
+  .object({
+    captured_at: z.string().min(1),
+    records: z.number().int().nonnegative(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    layer_last_edit_date: z.string().min(1),
+    layer_url: z.string().url(),
+  })
+  .loose();
+
+/** The address-point source of a run: first listed, so everything in it is new (added = records). */
+export function addressPointSourceInput(
+  receiptPath: string,
+): BuildManifestInput["sources"][number] {
+  const r = AddressPointReceipt.parse(JSON.parse(readFileSync(receiptPath, "utf8")));
+  return {
+    name: ADDRESS_POINT_SOURCE,
+    url: r.layer_url,
+    watermark: r.layer_last_edit_date,
+    receipts: receiptPath,
+    limitations: [
+      `Layer snapshot sha256 ${r.sha256}; ${r.records} records; layer last edited ${r.layer_last_edit_date}`,
+    ],
+    delta: { added: r.records, changed: 0, removed: 0 },
+  };
 }
 
 const INCREMENTAL_NOTE_PREFIX = "Incremental refresh of the Austin permits source";
@@ -269,7 +303,7 @@ export async function buildRunManifest(
           JSON.parse(readFileSync(resolvePath(repoRoot, config.austinFacts), "utf8")),
         );
   if (facts !== null) {
-    const austin = base.sources.find((s) => s.name.startsWith("austin"));
+    const austin = base.sources.find((s) => s.name.startsWith("austin-3"));
     if (austin === undefined) throw new Error("the base manifest has no Austin source");
     checkFactsAgainstBase(facts, austin);
   }
@@ -332,6 +366,8 @@ export async function buildRunManifest(
     },
   };
 
+  // The address-point source belongs to the run that used the layer; it is never carried over.
+  const baseSources = base.sources.filter((s) => s.name !== ADDRESS_POINT_SOURCE);
   const receiptFor = (name: string): string =>
     resolvePath(repoRoot, name.startsWith("austin") ? config.austinReceipt : config.tcadReceipt);
   const input: BuildManifestInput = {
@@ -344,28 +380,33 @@ export async function buildRunManifest(
     previousManifestCid: config.previousManifestCid,
     runDir: repoRoot,
     groups: [...countyGroups, ...permitsGroups],
-    sources: base.sources.map((s) => {
-      if (facts === null) {
-        return {
+    sources: [
+      ...baseSources.map((s) => {
+        if (facts === null) {
+          return {
+            name: s.name,
+            url: s.url,
+            watermark: s.watermark,
+            receipts: receiptFor(s.name),
+            limitations: [...s.limitations],
+            // No new capture: nothing added, changed or removed since the base run.
+            delta: { added: 0, changed: 0, removed: 0 },
+          };
+        }
+        const carried = {
           name: s.name,
           url: s.url,
-          watermark: s.watermark,
           receipts: receiptFor(s.name),
-          limitations: [...s.limitations],
-          // No new capture: nothing added, changed or removed since the base run.
-          delta: { added: 0, changed: 0, removed: 0 },
+          limitations: carriedSourceLimitations(s.limitations),
         };
-      }
-      const carried = {
-        name: s.name,
-        url: s.url,
-        receipts: receiptFor(s.name),
-        limitations: carriedSourceLimitations(s.limitations),
-      };
-      return s.name.startsWith("austin")
-        ? austinSourceInput(facts, carried)
-        : unchangedSourceInput({ ...carried, watermark: s.watermark });
-    }),
+        return s.name.startsWith("austin")
+          ? austinSourceInput(facts, carried)
+          : unchangedSourceInput({ ...carried, watermark: s.watermark });
+      }),
+      ...(config.addressPointsReceipt === undefined
+        ? []
+        : [addressPointSourceInput(resolvePath(repoRoot, config.addressPointsReceipt))]),
+    ],
     profiles: withGazetteerProfile(base.profiles, (deps.gitCommit ?? shortCommit)(repoRoot)),
     coverage,
     ownersRedacted: ownersRedactedOf(base),
@@ -389,7 +430,8 @@ export async function buildRunManifest(
   // The source facts must come out exactly as the base recorded them, except the Austin source
   // of an incremental run, which must carry the facts' new watermark, total and delta.
   for (const [i, s] of built.manifest.sources.entries()) {
-    const b = base.sources[i];
+    if (s.name === ADDRESS_POINT_SOURCE) continue;
+    const b = baseSources[i];
     if (facts !== null && s.name.startsWith("austin")) {
       if (
         s.watermark !== facts.watermarkNew ||
