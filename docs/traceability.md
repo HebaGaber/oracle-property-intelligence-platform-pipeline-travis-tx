@@ -151,6 +151,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G7 | A-11 Run 3 corrections (branch `011c-run3-integrated`) | 2026-10-25 | pre-check FAIL (6), `docs/gates/G7-A-11-run3-precheck.md`; fixes: ERR-65..71 renumbered and closed on the Run 3 numbers (ERR-66 open: BBB link check), reviewers oracle 76, donphan 78, machamp 78, porygon 80, evidence and reports updated; hosted Run 3 checks after the index step | Merged on PO approval 2026-10-25 ("if ci is green merge"); the 2 hosted checks stay open until the index step | |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
+| G4 | stories/A-16-cost-and-admin.md | rev 2 (2026-10-26) | FAIL (4) → FAIL (1, C-11 pending PO) → PASS 11/11, `docs/gates/G4-A-16-precheck.md`; PO exceptions: sizing (Part 3 added), AC-1 billed-days window, AC-6 email + password from Task B | Ready (HebaGaber) | 2026-10-26 |
 
 ## Run 2 correction (A-11, 2026-10-24)
 
