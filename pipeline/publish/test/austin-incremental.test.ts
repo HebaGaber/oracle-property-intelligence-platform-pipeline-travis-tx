@@ -199,7 +199,7 @@ function config(f: RunFixture, extra: Partial<RunManifestConfig> = {}): RunManif
     finishedAt: "2026-10-26T04:00:00.000Z",
     previousManifestCid: f.baseCid,
     countyDir: f.countyDir,
-    permitsDir: f.permitsV2,
+    permitsDir: f.permitsV1,
     austinFacts: "specs/011-publish-and-runs/run3/austin-facts.json",
     austinReceipt: "specs/011-publish-and-runs/run3/austin-receipt.json",
     ...extra,
@@ -284,6 +284,69 @@ describe("buildRunManifest, incremental (Run 3)", () => {
       JSON.stringify({ captured_at: "2026-10-26T01:30:00.000Z", records: 2381000 }),
     );
     await expect(buildRunManifest(config(f), deps(f))).rejects.toThrow(/reconciliation failed/);
+  });
+
+  it("A11-10(d): same permit count, different exclusions: the facts' numbers replace the base's, other keys carry", async () => {
+    const f = await runFixture();
+    writeFacts(
+      f,
+      facts({
+        permitLink: {
+          ...facts().permitLink,
+          // the base manifest recorded 100 / 20 / 30 / 40 / 5; this refresh sees different totals
+          permits_no_tcad_geoid: 130,
+          permits_no_tcad_id: 15,
+          permits_ambiguous_geoid: 30,
+          permits_address_unmatched: 33,
+          permits_ambiguous_address: 0,
+          linkedPermits: 2381886 - (130 + 15 + 30 + 33 + 0),
+        },
+      }),
+    );
+    // permitsV1 are the base's own batches: the published permit rows are unchanged
+    const { manifest: m } = await buildRunManifest(config(f), deps(f));
+    expect(m.coverage.permits_emitted?.count).toBe(7); // unchanged count
+    expect(m.coverage.permits_no_tcad_geoid?.count).toBe(130);
+    expect(m.coverage.permits_no_tcad_id?.count).toBe(15);
+    expect(m.coverage.permits_address_unmatched?.count).toBe(33);
+    expect(m.coverage.permits_ambiguous_address?.count).toBe(0);
+    // the keys about the published rows are still the base's, because those rows did not change
+    expect(m.coverage.contractor_unresolved?.count).toBe(7);
+  });
+
+  it("A11-6: an exclusion override that breaks the sum is refused with the numbers", async () => {
+    const f = await runFixture();
+    writeFacts(f, facts());
+    await expect(
+      buildRunManifest(
+        config(f, {
+          coverageOverrides: {
+            permits_no_tcad_geoid: { count: 111, derivation: "aggregate_match" },
+          },
+        }),
+        deps(f),
+      ),
+    ).rejects.toThrow(/permit link reconciliation failed: excluded .*permits_no_tcad_geoid 111/);
+  });
+
+  it("A11-10(d): same count but a rebuilt permits group in an incremental run needs explicit coverage", async () => {
+    const f = await runFixture();
+    writeFacts(f, facts());
+    await expect(buildRunManifest(config(f, { permitsDir: f.permitsV2 }), deps(f))).rejects.toThrow(
+      /rebuilt in an incremental run.*Supply coverageOverrides for: .*contractor_unresolved/s,
+    );
+    const supplied = await buildRunManifest(
+      config(f, {
+        permitsDir: f.permitsV2,
+        coverageOverrides: {
+          contractor_resolved: { count: 0, derivation: "aggregate_match" },
+          contractor_candidate: { count: 0, derivation: "aggregate_match" },
+          contractor_unresolved: { count: 7, derivation: "aggregate_match" },
+        },
+      }),
+      deps(f),
+    );
+    expect(supplied.manifest.coverage.permits_emitted?.count).toBe(7);
   });
 
   it("without facts a follow-up run is still the no-capture correction run (delta 0, same watermark)", async () => {
