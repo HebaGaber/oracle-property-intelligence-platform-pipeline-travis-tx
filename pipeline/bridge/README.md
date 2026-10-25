@@ -32,6 +32,11 @@ After the first successful `publish` run the bridge remembers the last two value
 `BRIDGE_MANIFEST_CONFIG` (a `build-run-manifest.ts --config` file with `coverageOverrides`),
 `RESTATE_INGRESS_URL` (default `http://localhost:8080`).
 
+If the manifest step fails with "Supply coverageOverrides for: contractor_..., permits_trade_sub_permit",
+the incremental refresh changed the published permit rows, so the carried coverage keys no longer
+apply (A11-10d). Write the new counts into a `--config` file, set `BRIDGE_MANIFEST_CONFIG` to it,
+restart the bridge and send Retry; finished steps are not repeated.
+
 The first line printed is `bridge up (profile assess); polling <queue>`. live.json now shows the
 bridge online; the Runs page flips from "Bridge offline" within about a minute.
 

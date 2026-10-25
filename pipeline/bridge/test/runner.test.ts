@@ -148,9 +148,7 @@ describe("runner (dry_run)", () => {
     expect(must(h.restateCalls[0]).key).toBe(
       `austin-3syk-w9eu-${must(h.restateCalls[0]).jobId.replace("travis-a04-permits-", "")}`,
     );
-    expect(must(h.restateCalls[0]).jobId).toContain(
-      "123456781234423482348123456789012".slice(0, 12),
-    );
+    expect(must(h.restateCalls[0]).jobId).toBe("travis-a04-permits-incremental-2026102612345678");
 
     const publish = h.calls.filter((s) => cmdLine(s).includes("publish-run.ts"));
     expect(publish).toHaveLength(1);
@@ -247,6 +245,71 @@ describe("runner (publish)", () => {
     const out = await h.runner(command({ mode: "publish" }));
     expect(out.outcome).toBe("stopped");
     expect(h.calls).toHaveLength(0);
+  });
+});
+
+describe("retry resumes the run it names", () => {
+  it("skips the finished steps (no second capture, no second pre-link facts) and finishes the rest", async () => {
+    const c = command({ mode: "dry_run", commandId: "12345678-1234-4234-8234-123456789012" });
+    const runId = runIdFor(c, new Date(T0));
+    let breakBatches = true;
+    const h = harness({
+      failOn: (s) => (breakBatches && cmdLine(s).includes("batch-hash-validate-export") ? 3 : 0),
+    });
+    h.files.writeText(`${REPO}/pipeline/data/bridge/work/${runId}/affected-pids.txt`, "p2\n");
+    const first = await h.runner(c);
+    expect(first).toMatchObject({ outcome: "failed" });
+    expect(h.restateCalls).toHaveLength(1);
+
+    breakBatches = false;
+    h.calls.length = 0;
+    const retry = command({
+      action: "retry",
+      window: null,
+      targetRunId: runId,
+      mode: "dry_run",
+    });
+    const second = await h.runner(retry);
+    expect(second).toEqual({ outcome: "succeeded", runId });
+    // the 35 minute capture and the link-order-sensitive steps did not run again
+    expect(h.restateCalls).toHaveLength(1);
+    const lines = h.calls.map(cmdLine);
+    expect(lines.some((l) => l.includes("pre-link"))).toBe(false);
+    expect(lines.some((l) => l.includes("permits --link"))).toBe(false);
+    expect(lines.some((l) => l.includes("scripts/reexport-permits.ts"))).toBe(false);
+    // the failed step and everything after it ran
+    expect(lines.some((l) => l.includes("batch-hash-validate-export"))).toBe(true);
+    expect(lines.some((l) => l.includes("build-run-manifest.ts"))).toBe(true);
+    expect(lines.some((l) => l.includes("publish-run.ts") && l.includes("--dry-run"))).toBe(true);
+    // the manifest keeps the original start time
+    expect(lines.find((l) => l.includes("build-run-manifest.ts"))).toContain(
+      "--started-at 2026-10-26T10:00:00.000Z",
+    );
+  });
+
+  it("refuses a retry that names no bridge run, or one of the other mode", async () => {
+    const h = harness();
+    const bad = await h.runner(
+      command({
+        action: "retry",
+        window: null,
+        targetRunId: "travis-full-run2-20261024",
+        mode: "dry_run",
+      }),
+    );
+    expect(bad).toMatchObject({ outcome: "failed", runId: null });
+    expect((bad as { reason: string }).reason).toMatch(/not a dry_run run the bridge started/);
+    const wrongMode = await h.runner(
+      command({
+        action: "retry",
+        window: null,
+        targetRunId: "travis-dryrun-20261026-12345678",
+        mode: "publish",
+      }),
+    );
+    expect(wrongMode).toMatchObject({ outcome: "failed" });
+    expect(h.calls).toHaveLength(0);
+    expect(h.restateCalls).toHaveLength(0);
   });
 });
 

@@ -94,12 +94,31 @@ export function createRunner(deps: RunnerDeps): CommandRunner {
   const localStack = `${c.repoRoot}/pipeline/local-stack`;
 
   return async (cmd: RunCommandV1): Promise<RunOutcome> => {
-    const startedAt = deps.now();
-    const runId = runIdFor(cmd, startedAt);
+    // Retry resumes the run it names (same run id, work folder, permits job and Restate workflow);
+    // progress.json lists the steps already finished, so none of them (a 35 minute capture, the
+    // pre-link facts that must precede the link) runs twice.
+    let runId: string;
+    if (cmd.action === "retry") {
+      const target = cmd.targetRunId ?? "";
+      const wanted = cmd.mode === "dry_run" ? "dryrun" : "incr";
+      if (!new RegExp(`^travis-${wanted}-\\d{8}-[0-9a-f]{8}$`).test(target))
+        return {
+          outcome: "failed",
+          runId: null,
+          reason: `retry names ${target || "no run"}, which is not a ${cmd.mode} run the bridge started`,
+        };
+      runId = target;
+    } else {
+      runId = runIdFor(cmd, deps.now());
+    }
     const workDir = `${c.bridgeDir}/work/${runId}`;
-    // The Restate job id must match /^travis-a04-[a-z0-9-]+$/; derived from the command ID so a
-    // redelivered or retried command attaches to the same durable workflow instead of a new one.
-    const jobId = `travis-a04-permits-incremental-${cmd.commandId.replace(/-/g, "").slice(0, 12).toLowerCase()}`;
+    const progressPath = `${workDir}/progress.json`;
+    const progress = readProgress(progressPath);
+    const startedAt = progress === undefined ? deps.now() : new Date(progress.startedAt);
+    const done = new Set(progress?.done ?? []);
+    // The Restate job id must match /^travis-a04-[a-z0-9-]+$/; derived from the run id so a retry
+    // attaches to the same durable workflow instead of starting a new capture.
+    const jobId = `travis-a04-permits-incremental-${runId.replace(/^travis-(incr|dryrun)-/, "").replace(/-/g, "")}`;
     const key = `austin-3syk-w9eu-${jobId.replace(/^travis-a04-permits-/, "")}`;
     const permitsJob = `travis-a11-permits-${runId}`;
     const permitsDir = `${c.dataRunsDir}/${permitsJob}`;
@@ -318,6 +337,18 @@ export function createRunner(deps: RunnerDeps): CommandRunner {
           }))),
     ];
 
+    function readProgress(path: string): { startedAt: string; done: string[] } | undefined {
+      const text = files.readText(path);
+      if (text === undefined) return undefined;
+      try {
+        const parsed = JSON.parse(text) as { startedAt?: unknown; done?: unknown };
+        if (typeof parsed.startedAt !== "string" || !Array.isArray(parsed.done)) return undefined;
+        return { startedAt: parsed.startedAt, done: parsed.done.map(String) };
+      } catch {
+        return undefined;
+      }
+    }
+
     function readState(): State {
       const text = files.readText(`${c.bridgeDir}/state.json`);
       if (text === undefined) return {};
@@ -330,11 +361,23 @@ export function createRunner(deps: RunnerDeps): CommandRunner {
 
     try {
       for (const step of steps) {
+        // preflight only reads state, so it always runs; every other finished step is skipped
+        if (step.name !== "preflight" && done.has(step.name)) {
+          log(`run ${runId}: step ${step.name} already done, skipping`);
+          continue;
+        }
         stop.checkpoint(step.name);
         deps.onStep?.(step.name);
         await live.update({ runId, step: step.name });
         log(`run ${runId}: step ${step.name}`);
         await step.run();
+        if (step.name !== "preflight") {
+          done.add(step.name);
+          files.writeText(
+            progressPath,
+            `${JSON.stringify({ startedAt: startedAt.toISOString(), done: [...done] }, null, 2)}\n`,
+          );
+        }
       }
       if (cmd.mode === "publish") {
         files.writeText(

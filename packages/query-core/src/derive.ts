@@ -188,20 +188,19 @@ export function openDays(
 }
 
 /** Why open_days is empty: not_open (closed, or finished with a plausible final_date),
- *  source_missing (no issue date), needs_review (no class, or an implausible final_date). */
+ *  source_missing (no issue date), needs_review (no class, or an implausible final_date).
+ *  `asOf` is required (A11-16): without it a finished permit could disagree with the SQL macro. */
 export const openDaysReason = (
   cls: StatusClass | null,
   issueDate: string | null,
-  asOf: string | null = null,
+  asOf: string,
   finalDate: string | null = null,
 ): "not_open" | "source_missing" | "needs_review" => {
   if (cls === null) return "needs_review";
   if (cls !== "open" && cls !== "stalled") return "not_open";
   if (issueDate === null) return "source_missing";
   if (finalDate === null) return "not_open";
-  return asOf !== null && terminalDateAccepted(finalDate, issueDate, asOf)
-    ? "not_open"
-    : "needs_review";
+  return terminalDateAccepted(finalDate, issueDate, asOf) ? "not_open" : "needs_review";
 };
 
 /** Why a published improvement_status is null: stalled means the carrier exists but its enum has
