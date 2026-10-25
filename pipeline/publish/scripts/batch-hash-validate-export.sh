@@ -39,6 +39,8 @@ PYTHON="${PYTHON:-python3}"
 # it or inside any hashed directory) and holds the owner's PID. A lock whose PID is gone is stale
 # and is taken over; a live owner makes this run refuse to start.
 LOCK="${OUT_DIR%/}.lock"
+# The lock sits next to OUT_DIR, so its parent must exist before the first run (A-11 Run 3 fix).
+mkdir -p "$(dirname "$LOCK")"
 acquire_lock() {
   local owner
   if (set -C; echo "$$" >"$LOCK") 2>/dev/null; then return 0; fi

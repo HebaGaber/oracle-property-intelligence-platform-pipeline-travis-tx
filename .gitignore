@@ -41,3 +41,4 @@ apps/web/public/runs/
 # A-11 Run 3: logs and pid files (never commit)
 specs/011-publish-and-runs/run3/logs/
 specs/011-publish-and-runs/run3/*.pid
+elephant-cli*.log

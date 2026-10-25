@@ -161,4 +161,14 @@ describe("batch-hash-validate-export.sh run lock", () => {
     expect(existsSync(`${e.out}.lock`)).toBe(false);
     rmSync(e.root, { recursive: true, force: true });
   });
+
+  it("starts when the output dir's parent does not exist yet (the lock file needs its parent)", () => {
+    const e = setup();
+    const deep = { ...e, out: join(e.root, "new-parent", "out") };
+    const r = run(deep);
+    expect(r.code).toBe(0);
+    expect(r.err).not.toMatch(/lost the race/);
+    expect(existsSync(`${deep.out}.lock`)).toBe(false);
+    rmSync(e.root, { recursive: true, force: true });
+  });
 });
