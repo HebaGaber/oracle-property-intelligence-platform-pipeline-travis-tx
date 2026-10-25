@@ -56,12 +56,7 @@ function artifacts(): RunManifestV1["artifacts"] {
       ),
     ),
     ...["b01", "b02"].flatMap((b) =>
-      PERMIT_TABLES.map((t) =>
-        part(
-          `run/permits-batched/tables/${b}/${t}/part-00000.parquet`,
-          t === "company" ? 6 * MB : MB,
-        ),
-      ),
+      PERMIT_TABLES.map((t) => part(`run/permits-batched/tables/${b}/${t}/part-00000.parquet`, MB)),
     ),
     { kind: "car", name: "car/x.car", cid: cid("car"), size: 99 * MB, sha256: "0".repeat(64) },
   ] as unknown as RunManifestV1["artifacts"];
@@ -87,7 +82,7 @@ describe("the Permits page binds only v_roofing_permit's tables", () => {
     });
   });
 
-  it("permitsPartNames: the county property part of every batch and three tables per permits batch, 4 + 6 of 28", () => {
+  it("permitsPartNames: the county property part of every batch and four tables per permits batch (the printed contractor company, ERR-32), 4 + 8 of 24", () => {
     const all = artifacts();
     const names = permitsPartNames({ artifacts: all });
     expect(names.sort()).toEqual(
@@ -98,6 +93,7 @@ describe("the Permits page binds only v_roofing_permit's tables", () => {
             "property_improvement",
             "property_has_property_improvement",
             "property_improvement_has_contractor",
+            "company",
           ].map((t) => `run/permits-batched/tables/${b}/${t}/part-00000.parquet`),
         ),
       ].sort(),
@@ -123,7 +119,7 @@ describe("createPermitsLoader fetches and registers only the Permits tables' par
   };
   const urls = readPathUrls({ cidCopyHost: "copy.test", filebaseGatewayHost: "gateway.test" });
 
-  it("prefetches 10 of 24 parts from the CID copy, and binds with the registered names", async () => {
+  it("prefetches 12 of 24 parts from the CID copy, and binds with the registered names", async () => {
     const all = artifacts();
     const manifest = {
       runId: "test-run",
@@ -174,8 +170,8 @@ describe("createPermitsLoader fetches and registers only the Permits tables' par
     });
     await load(() => undefined, new AbortController().signal);
     expect(fetchedNames.sort()).toEqual(permitsPartNames({ artifacts: all }).sort());
-    expect(fetchedNames).toHaveLength(10);
-    expect(registered).toHaveLength(10);
+    expect(fetchedNames).toHaveLength(12);
+    expect(registered).toHaveLength(12);
     expect(engineModule.bindRun).toHaveBeenCalledTimes(1);
   });
 

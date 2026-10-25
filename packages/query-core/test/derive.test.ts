@@ -147,9 +147,7 @@ describe("open_days (as_of − issue_date for open/stalled without final_date; e
   ] as const)("%s issued %s final %s → %s", async (cls, issue, fin, expected) => {
     expect(d.openDays(cls, issue, AS_OF, fin)).toBe(expected);
     expect(
-      await sql(
-        `open_days('${cls}', ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
-      ),
+      await sql(`open_days('${cls}', ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`),
     ).toBe(expected);
   });
 });
@@ -209,14 +207,17 @@ describe("status_class (generated status map, scoped to the profile's jurisdicti
     ["stalled", "2026-03-11", "2026-04-01", "not_open"],
     ["stalled", "2026-03-11", "2026-03-01", "needs_review"],
     ["open", "2026-03-11", "2027-01-01", "needs_review"],
-  ] as const)("open_days reason: class %s issued %s final %s → %s", async (cls, issue, fin, expected) => {
-    expect(d.openDaysReason(cls, issue, AS_OF, fin)).toBe(expected);
-    expect(
-      await sql(
-        `open_days_reason(${lit(cls)}, ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
-      ),
-    ).toBe(expected);
-  });
+  ] as const)(
+    "open_days reason: class %s issued %s final %s → %s",
+    async (cls, issue, fin, expected) => {
+      expect(d.openDaysReason(cls, issue, AS_OF, fin)).toBe(expected);
+      expect(
+        await sql(
+          `open_days_reason(${lit(cls)}, ${lit(issue, "DATE")}, ${AS_OF_SQL}, ${lit(fin, "DATE")})`,
+        ),
+      ).toBe(expected);
+    },
+  );
 
   it.each([
     // improvement_status is null: stalled means the enum has no value for the source word
@@ -313,15 +314,47 @@ describe("coordinate_source, contractor and BBB state", () => {
   });
 
   it.each([
-    ["baguqeeraexample", "resolved", "no_lexicon_carrier"],
-    [null, "unresolved", "contractor_unresolved"],
-  ] as const)("contractor %s → %s, bbb reason %s", async (cid, resolution, reason) => {
-    expect(d.contractorResolution(cid)).toBe(resolution);
-    expect(d.bbbStatus()).toBe("not_checked");
-    expect(d.bbbStatusReason(resolution)).toBe(reason);
-    expect(await sql(`contractor_resolution(${lit(cid)})`)).toBe(resolution);
-    expect(await sql(`bbb_status()`)).toBe("not_checked");
-    expect(await sql(`bbb_status_reason('${resolution}')`)).toBe(reason);
+    ["P12000012345", "resolved"],
+    [null, "unresolved"],
+  ] as const)(
+    "registry id %s → %s (a printed name alone never resolves, ERR-32)",
+    async (id, resolution) => {
+      expect(d.contractorResolution(id)).toBe(resolution);
+      expect(await sql(`contractor_resolution(${lit(id)})`)).toBe(resolution);
+    },
+  );
+
+  it.each([
+    ["Roofer A", "blocked", "bbb_blocked"],
+    [null, "not_checked", "contractor_unresolved"],
+  ] as const)("contractor name %s → bbb %s / %s", async (name, status, reason) => {
+    expect(d.bbbStatus(name)).toBe(status);
+    expect(d.bbbStatusReason(name)).toBe(reason);
+    expect(await sql(`bbb_status(${lit(name)})`)).toBe(status);
+    expect(await sql(`bbb_status_reason(${lit(name)})`)).toBe(reason);
+  });
+
+  it.each([
+    "Done Right Roofing",
+    "A&B Roofing + Sons, Inc. (O'Neil) No. 1/2",
+    "Cañón Techos Ñandú",
+    "Tilde~Under_Score-Dot.",
+    "Star * Bang ! Quote ' Paren ( )",
+    "x".repeat(300),
+    `${"Word ".repeat(40)}end`,
+    "a😀".repeat(100),
+  ])("bbb_search_url: SQL macro equals the TypeScript builder for %j", async (name) => {
+    const url = d.bbbSearchUrl(name);
+    expect(await sql(`bbb_search_url(${lit(name)})`)).toBe(url);
+    expect(url).not.toMatch(/[ '()!*]/);
+    expect(new URL(url as string).searchParams.get("find_loc")).toBe("Austin, TX");
+  });
+
+  it("bbb_search_url: no name → no link; the name is cut at 120 characters", async () => {
+    expect(d.bbbSearchUrl(null)).toBeNull();
+    expect(await sql(`bbb_search_url(${lit(null)})`)).toBeNull();
+    const text = new URL(d.bbbSearchUrl("y".repeat(500)) as string).searchParams.get("find_text");
+    expect(text).toBe("y".repeat(d.BBB_NAME_MAX));
   });
 });
 

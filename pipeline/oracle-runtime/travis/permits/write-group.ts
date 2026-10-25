@@ -22,7 +22,6 @@ import type { ExportPointKind } from "../tcad/export-point.js";
 import { sharedFilesInputOf } from "../tcad/write-group.js";
 import type { DataGroupCids } from "../transforms/lexicon-manifest.js";
 import type { SeedRow, TcadRecord } from "../transforms/shared-seed.js";
-import { printedContractorOf, type PrintedContractor } from "./bbb-search-url.js";
 import {
   AUSTIN_DATASET_URL,
   transformAustinPropertyImprovement,
@@ -152,13 +151,6 @@ export interface PlannedPropertyImprovementGroup {
   dir: string;
   files: Record<string, string>;
   counts: PropertyImprovementCounts;
-  /**
-   * A-11 Run 3: the contractor name as printed (unverified), city, raw status, expiry date and the
-   * BBB search link, one entry per EMITTED permit, keyed by permit number. INTERNAL: never written
-   * into the group files, because the live lexicon has no carrier for these fields (ADR-0002,
-   * FR-001; docs/defects/ERR-32). It is ready for the carrier once a lexicon property exists.
-   */
-  printed_contractors: Record<string, PrintedContractor>;
 }
 
 export interface PropertyImprovementGroupPlan {
@@ -202,20 +194,7 @@ export function planPropertyImprovementGroup(
       empty.push(out.pID);
       continue;
     }
-    const printed_contractors: Record<string, PrintedContractor> = {};
-    for (const row of out.ledger) {
-      if (!row.emitted) continue;
-      const source = input.permits.find((p) => p.permit_number === row.permit_number)?.payload;
-      if (source !== undefined)
-        printed_contractors[row.permit_number] = printedContractorOf(source);
-    }
-    groups.push({
-      pID: out.pID,
-      dir: out.dir,
-      files: out.files,
-      counts: out.counts,
-      printed_contractors,
-    });
+    groups.push({ pID: out.pID, dir: out.dir, files: out.files, counts: out.counts });
   }
   return { groups, empty };
 }

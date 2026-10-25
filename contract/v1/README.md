@@ -132,17 +132,27 @@ told apart and lists `needs_review`).
 five-state totals (`contractor_resolved`, `contractor_candidate`, `contractor_ambiguous`,
 `contractor_conflicting`, `contractor_unresolved`) are in the manifest `coverage`.
 
-### Planned for v1.1: printed contractor name and BBB search link (blocked, ERR-32)
+### v1.1 (additive): contractor as printed and BBB search link
 
-PO decisions 2026-10-25 (FU-A-01): publish the contractor name **as printed, unverified** (never as
-a `company` record) and, where BBB blocks the lookup, a plain BBB **search** link built from the
-printed name and city. Planned additive v1.1 columns on `v_roofing_permit`:
-`contractor_name_as_printed`, `contractor_city`, `bbb_url`, plus `bbb_status = blocked` with
-`bbb_status_reason = bbb_blocked`; `contractor_resolution` stays `unresolved`. **Not in v1 and not
-frozen yet:** the live lexicon has no property that can carry them (verified against the live
-manifest on 2026-10-25, ADR-0002 verdicts 1, 4 and 5), and `export-tables` emits only lexicon class
-properties, so no side table can be produced. Until a carrier exists these fields stay in `missing`
-with `no_lexicon_carrier`. Details and options: `docs/defects/ERR-32-contractor-name-and-bbb-link-missing.md`.
+Backward compatible: every v1 column keeps its name and type; the new columns are nullable and a
+run published before Run 3 binds them as null with a reason. The permit's printed contractor
+**company** name is published as `company.name`, linked by `property_improvement_has_contractor`,
+with the permit's own request as provenance and **no** `sunbiz_document_number` (PO decision
+2026-10-25). It is **as printed, unverified**: a name is evidence, not identity, so
+`contractor_resolution` stays `unresolved` (it becomes `resolved` only when the company carries an
+official registry id, which no Austin permit prints). No person, phone or address is published; a
+permit that prints only a person name has no contractor.
+
+On `v_roofing_permit`: `contractor_name_as_printed` (the company name, null with
+`contractor_unresolved`), `bbb_status` = `blocked` with `bbb_status_reason` = `bbb_blocked` when a
+name exists (else `not_checked` / `contractor_unresolved`), `bbb_rating` always null (missing
+reason `bbb_blocked`; the UI says "BBB rating not published (BBB blocked the lookup)"), and `bbb_url`,
+a BBB **search** link built in the view from the name and the city Austin (UI text "Search BBB for this
+contractor"; null with `source_missing` when there is no name). The link is never fetched
+(A-01: HTTP 403 challenge); its shape is **unverified until a human clicks one example**.
+`contractor_company_cid` now means the company as printed. `contractor_name_raw` is replaced by
+`contractor_name_as_printed`. Not published (still `no_lexicon_carrier`): `status_raw`,
+`expiry_date`. Details: `docs/defects/ERR-32-contractor-name-and-bbb-link-missing.md`.
 
 ## Manifest coverage and profiles for consumers
 
@@ -188,9 +198,6 @@ These fields are **not columns** in v1. Each one appears in every row's `missing
 | `owner_mailing_state_code` | `not_in_export` | v_property | address.state_code via *_has_mailing_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column |
 | `status_raw` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | Expired is published as improvement_status null → status_class stalled (D-4a) |
 | `expiry_date` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | not published |
-| `contractor_name_raw` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | contractor_resolution unresolved; five-state totals in the manifest coverage (AD-24) |
-| `bbb_rating` | `no_lexicon_carrier` | v_roofing_permit | no business-rating class (fact_sheet has no fields) | bbb_status = not_checked with a reason |
-| `bbb_url` | `no_lexicon_carrier` | v_roofing_permit | no business-rating class (fact_sheet has no fields) | not published |
 | `description` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | the profile classifies it before export; improvement_type/action carry the result |
 | `work_class_raw` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | the profile classifies it before export; improvement_type/action carry the result |
 | `bbb_rating` | `no_lexicon_carrier` | v_contractor | no business-rating class (fact_sheet has no fields) | bbb_status = not_checked with a reason |
@@ -227,10 +234,13 @@ Two further notes from the pilot export:
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
 | `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review) | never empty |
-| `contractor_company_cid` | `VARCHAR` | yes | Resolved contractor company | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
-| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | always not_checked in v1 | never empty |
-| `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | contractor_unresolved if unresolved, else no_lexicon_carrier | never empty |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32) | never empty |
+| `contractor_company_cid` | `VARCHAR` | yes | Contractor company as printed (unverified; resolved only with a registry id) | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
+| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
+| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
+| `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | bbb_blocked when a contractor name is printed, else contractor_unresolved | never empty |
+| `bbb_rating` | `VARCHAR` | yes | BBB rating not published (BBB blocked the lookup) | always null: BBB blocks the lookup (A-01), no rating is published | `bbb_blocked` |
+| `bbb_url` | `VARCHAR` | yes | Search BBB for this contractor | derived: BBB search URL built from contractor_name_as_printed and city Austin; never fetched; shape unverified | `source_missing` |
 | `profile_version` | `VARCHAR` | no | Classification profile version | manifest profiles[] (travis-austin) | never empty |
 | `profile_sha256` | `VARCHAR` | no | Classification profile digest | manifest profiles[] (travis-austin) | never empty |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
@@ -324,10 +334,13 @@ Two further notes from the pilot export:
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
 | `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review) | never empty |
-| `contractor_company_cid` | `VARCHAR` | yes | Resolved contractor company | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
-| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | always not_checked in v1 | never empty |
-| `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | contractor_unresolved if unresolved, else no_lexicon_carrier | never empty |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32) | never empty |
+| `contractor_company_cid` | `VARCHAR` | yes | Contractor company as printed (unverified; resolved only with a registry id) | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
+| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
+| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
+| `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | bbb_blocked when a contractor name is printed, else contractor_unresolved | never empty |
+| `bbb_rating` | `VARCHAR` | yes | BBB rating not published (BBB blocked the lookup) | always null: BBB blocks the lookup (A-01), no rating is published | `bbb_blocked` |
+| `bbb_url` | `VARCHAR` | yes | Search BBB for this contractor | derived: BBB search URL built from contractor_name_as_printed and city Austin; never fetched; shape unverified | `source_missing` |
 | `profile_version` | `VARCHAR` | no | Classification profile version | manifest profiles[] (travis-austin) | never empty |
 | `profile_sha256` | `VARCHAR` | no | Classification profile digest | manifest profiles[] (travis-austin) | never empty |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
@@ -346,9 +359,9 @@ Two further notes from the pilot export:
 | --- | --- | --- | --- | --- | --- |
 | `contractor_company_cid` | `VARCHAR` | no | The company's CID | company.cid | never empty |
 | `name` | `VARCHAR` | yes | Company name | company.name | `source_missing` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (`resolved`, `unresolved`) | always resolved (reached through property_improvement_has_contractor) | never empty |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (`resolved`, `unresolved`) | derived: resolved only with an official registry id on the company; a printed-name company stays unresolved (v1.1) | never empty |
 | `identity_source` | `VARCHAR` | yes | Official identity source | derived: company.source_http_request host | `needs_review` |
-| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | always not_checked in v1 | never empty |
+| `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
 | `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | as v_roofing_permit | never empty |
 | `permit_count` | `INTEGER` | no | Permits | count of property_improvement_has_contractor rows | never empty |
 | `roofing_permit_count` | `INTEGER` | no | Roofing permits | the same count limited to v_roofing_permit | never empty |

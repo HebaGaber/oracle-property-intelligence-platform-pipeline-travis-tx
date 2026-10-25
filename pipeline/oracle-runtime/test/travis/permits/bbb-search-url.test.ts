@@ -7,7 +7,7 @@ import {
   bbbSearchUrl,
   cleanPrinted,
   isPlaceholderName,
-  printedContractorOf,
+  publishedContractorName,
 } from "../../../travis/permits/bbb-search-url.js";
 
 function params(url: string): URLSearchParams {
@@ -39,7 +39,7 @@ describe("bbbSearchUrl", () => {
     expect(params(url).get("find_text")).toBe("Cañón Techos Ñandú");
   });
 
-  it("drops clerk markers from the search text only, keeping the printed name as printed", () => {
+  it("drops clerk markers from the search text", () => {
     expect(
       params(bbbSearchUrl("Sam Stewart Custom Homes, Inc***DO NOT USE***", "Austin") as string).get(
         "find_text",
@@ -51,10 +51,6 @@ describe("bbbSearchUrl", () => {
       ).get("find_text"),
     ).toBe("Valdez Remodeling & Weatherization Inc.");
     expect(bbbSearchUrl("***DO NOT USE***", "Austin")).toBeNull();
-    expect(
-      printedContractorOf({ permit_number: "x", contractor_company_name: "Acme Roofing**MAIN**" })
-        .contractor_name_as_printed,
-    ).toBe("Acme Roofing**MAIN**");
   });
 
   it("trims and collapses whitespace", () => {
@@ -129,56 +125,18 @@ describe("cleanPrinted / isPlaceholderName", () => {
   });
 });
 
-describe("printedContractorOf", () => {
-  it("returns the name as printed (trimmed), city, raw status, expiry date and a blocked BBB link", () => {
-    const out = printedContractorOf({
-      permit_number: "2019-000001 BP",
-      contractor_company_name: "  Done Right Roofing ",
-      contractor_city: "Round Rock",
-      contractor_full_name: "Pat Person",
-      contractor_phone: "5125550100",
-      contractor_address1: "1 Main St",
-      status_current: "Expired",
-      expiresdate: "2020-03-04T00:00:00.000",
-    });
-    expect(out).toEqual({
-      contractor_name_as_printed: "Done Right Roofing",
-      contractor_city: "Round Rock",
-      permit_status_raw: "Expired",
-      permit_expiry_date: "2020-03-04",
-      bbb_url: expect.stringContaining("find_text=Done%20Right%20Roofing"),
-      bbb_status: "blocked",
-      bbb_status_reason: "bbb_blocked",
-    });
-    // no phone, person name or street address is carried
-    expect(JSON.stringify(out)).not.toMatch(/5125550100|Pat Person|Main St/);
+describe("publishedContractorName", () => {
+  it("publishes the printed company name trimmed and without clerk markers", () => {
+    expect(publishedContractorName("  Done Right Roofing ")).toBe("Done Right Roofing");
+    expect(publishedContractorName("Acme Roofing**MAIN**")).toBe("Acme Roofing");
+    expect(publishedContractorName("Sam Stewart Custom Homes, Inc***DO NOT USE***")).toBe(
+      "Sam Stewart Custom Homes, Inc",
+    );
+    expect(publishedContractorName("A&B Roofing")).toBe("A&B Roofing");
   });
 
-  it("gives no name, no link and not_checked when the company name is empty or a placeholder", () => {
-    for (const name of [undefined, null, "", "N/A", "OWNER"]) {
-      const out = printedContractorOf({
-        permit_number: "x",
-        contractor_company_name: name,
-        contractor_city: "Austin",
-        contractor_full_name: "Only A Person",
-        status_current: "Final",
-      });
-      expect(out.contractor_name_as_printed).toBeNull();
-      expect(out.contractor_city).toBeNull();
-      expect(out.bbb_url).toBeNull();
-      expect(out.bbb_status).toBe("not_checked");
-      expect(out.bbb_status_reason).toBe("contractor_unresolved");
-      expect(out.permit_status_raw).toBe("Final");
-    }
-  });
-
-  it("keeps the expiry date null unless the source prints a date", () => {
-    expect(
-      printedContractorOf({ permit_number: "x", expiresdate: "garbage" }).permit_expiry_date,
-    ).toBeNull();
-    expect(printedContractorOf({ permit_number: "x" }).permit_expiry_date).toBeNull();
-    expect(
-      printedContractorOf({ permit_number: "x", expiresdate: "2021-07-01" }).permit_expiry_date,
-    ).toBe("2021-07-01");
+  it("is null for empty, placeholder and marker-only values", () => {
+    for (const v of [undefined, null, "", "  ", "N/A", "OWNER", "self", "***DO NOT USE***", "**"])
+      expect(publishedContractorName(v)).toBeNull();
   });
 });

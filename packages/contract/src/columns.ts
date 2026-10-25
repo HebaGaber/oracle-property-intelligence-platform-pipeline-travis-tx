@@ -334,7 +334,8 @@ const V_PROPERTY: readonly Column[] = [
   ...PROVENANCE_COLUMNS,
 ];
 
-const BBB_SOURCE = "always not_checked in v1";
+const BBB_SOURCE =
+  "blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked";
 
 const V_ROOFING_PERMIT: readonly Column[] = [
   col("permit_cid", "cid", V, false, "property_improvement.cid", "The permit's CID", null),
@@ -457,7 +458,7 @@ const V_ROOFING_PERMIT: readonly Column[] = [
   enumCol(
     "contractor_resolution",
     false,
-    "derived: resolved iff exactly one property_improvement_has_contractor edge exists; several edges → unresolved (needs_review)",
+    "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32)",
     "Contractor identity state (AD-24)",
     null,
   ),
@@ -467,7 +468,17 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     V,
     true,
     "to_cid of the only property_improvement_has_contractor edge",
-    "Resolved contractor company",
+    "Contractor company as printed (unverified; resolved only with a registry id)",
+    "contractor_unresolved",
+  ),
+  // v1.1 (additive, ERR-32, PO 2026-10-25)
+  col(
+    "contractor_name_as_printed",
+    "string",
+    V,
+    true,
+    "company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity)",
+    "Contractor as printed on the permit (unverified)",
     "contractor_unresolved",
   ),
   enumCol("bbb_status", false, BBB_SOURCE, "BBB lookup state", null),
@@ -476,9 +487,28 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     "string",
     V,
     true,
-    "contractor_unresolved if unresolved, else no_lexicon_carrier",
+    "bbb_blocked when a contractor name is printed, else contractor_unresolved",
     "Why there is no BBB rating",
     null,
+  ),
+  // v1.1 (additive, ERR-32): no BBB rating is published; the link is a search URL we build
+  col(
+    "bbb_rating",
+    "string",
+    V,
+    true,
+    "always null: BBB blocks the lookup (A-01), no rating is published",
+    "BBB rating not published (BBB blocked the lookup)",
+    "bbb_blocked",
+  ),
+  col(
+    "bbb_url",
+    "string",
+    V,
+    true,
+    "derived: BBB search URL built from contractor_name_as_printed and city Austin; never fetched; shape unverified",
+    "Search BBB for this contractor",
+    "source_missing",
   ),
   col(
     "profile_version",
@@ -507,7 +537,7 @@ const V_CONTRACTOR: readonly Column[] = [
   enumCol(
     "contractor_resolution",
     false,
-    "always resolved (reached through property_improvement_has_contractor)",
+    "derived: resolved only with an official registry id on the company; a printed-name company stays unresolved (v1.1)",
     "Contractor identity state",
     null,
   ),
@@ -727,25 +757,6 @@ export const UNCARRIED = {
       field: "expiry_date",
       reason: "no_lexicon_carrier",
       carrier: NO_PERMIT_CARRIER,
-      fallback: "not published",
-    },
-    {
-      field: "contractor_name_raw",
-      reason: "no_lexicon_carrier",
-      carrier: NO_PERMIT_CARRIER,
-      fallback:
-        "contractor_resolution unresolved; five-state totals in the manifest coverage (AD-24)",
-    },
-    {
-      field: "bbb_rating",
-      reason: "no_lexicon_carrier",
-      carrier: "no business-rating class (fact_sheet has no fields)",
-      fallback: "bbb_status = not_checked with a reason",
-    },
-    {
-      field: "bbb_url",
-      reason: "no_lexicon_carrier",
-      carrier: "no business-rating class (fact_sheet has no fields)",
       fallback: "not published",
     },
     {

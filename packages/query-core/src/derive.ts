@@ -237,8 +237,12 @@ export const ownerMissingReason = (
   gap: OwnerGapReason,
 ): OwnerGapReason | "no_dated_sale" => (hasDatedSale ? gap : "no_dated_sale");
 
-export const contractorResolution = (companyCid: string | null): "resolved" | "unresolved" =>
-  companyCid === null ? "unresolved" : "resolved";
+/**
+ * resolved only when the contractor company carries an official registry id. A company published
+ * from the printed permit name has none (ERR-32: "as printed, unverified"), so it stays unresolved.
+ */
+export const contractorResolution = (registryId: string | null): "resolved" | "unresolved" =>
+  registryId === null ? "unresolved" : "resolved";
 
 /** The company CID only when the permit has exactly one contractor edge (never pick one). */
 export const soleContractor = (edges: number, minCid: string | null): string | null =>
@@ -248,13 +252,30 @@ export const soleContractor = (edges: number, minCid: string | null): string | n
 export const contractorMissingReason = (edges: number): "contractor_unresolved" | "needs_review" =>
   edges > 1 ? "needs_review" : "contractor_unresolved";
 
-/** v1 never looks up BBB (no lexicon carrier for a rating). */
-export const bbbStatus = (): "not_checked" => "not_checked";
+/** BBB is never contacted (A-01: 403 challenge). A printed name means the lookup is blocked. */
+export const bbbStatus = (name: string | null): "blocked" | "not_checked" =>
+  name === null ? "not_checked" : "blocked";
 
-export const bbbStatusReason = (
-  resolution: "resolved" | "unresolved",
-): "no_lexicon_carrier" | "contractor_unresolved" =>
-  resolution === "resolved" ? "no_lexicon_carrier" : "contractor_unresolved";
+export const bbbStatusReason = (name: string | null): "bbb_blocked" | "contractor_unresolved" =>
+  name === null ? "contractor_unresolved" : "bbb_blocked";
+
+/** Longest printed name that goes into a BBB search link (code points). */
+export const BBB_NAME_MAX = 120;
+
+/**
+ * The BBB SEARCH link for a printed contractor name (never fetched). The city is the permit
+ * authority's, because the company record has none. URL shape UNVERIFIED: a human must click one
+ * example before it ships. Mirrors the SQL macro bbb_search_url and travis/permits/bbb-search-url.ts.
+ */
+export const bbbSearchUrl = (name: string | null): string | null =>
+  name === null
+    ? null
+    : "https://www.bbb.org/search?find_country=USA&find_text=" +
+      encodeURIComponent(Array.from(name).slice(0, BBB_NAME_MAX).join("").trimEnd()).replace(
+        /[!'()*]/g,
+        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+      ) +
+      "&find_loc=Austin%2C%20TX&find_type=Category";
 
 interface HttpRequest {
   url?: string;
@@ -349,13 +370,18 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
   owner_missing_reason:
     "(has_dated_sale, gap) AS CASE WHEN has_dated_sale THEN gap ELSE 'no_dated_sale' END",
   contractor_resolution:
-    "(company_cid) AS CASE WHEN company_cid IS NULL THEN 'unresolved' ELSE 'resolved' END",
+    "(registry_id) AS CASE WHEN registry_id IS NULL THEN 'unresolved' ELSE 'resolved' END",
   sole_contractor: "(edges, min_cid) AS CASE WHEN edges = 1 THEN min_cid END",
   contractor_missing_reason:
     "(edges) AS CASE WHEN edges > 1 THEN 'needs_review' ELSE 'contractor_unresolved' END",
-  bbb_status: "() AS 'not_checked'",
+  bbb_status: "(name) AS CASE WHEN name IS NULL THEN 'not_checked' ELSE 'blocked' END",
   bbb_status_reason:
-    "(resolution) AS CASE WHEN resolution = 'resolved' THEN 'no_lexicon_carrier' ELSE 'contractor_unresolved' END",
+    "(name) AS CASE WHEN name IS NULL THEN 'contractor_unresolved' ELSE 'bbb_blocked' END",
+  bbb_search_url: `(name) AS CASE WHEN name IS NULL THEN NULL
+      ELSE 'https://www.bbb.org/search?find_country=USA&find_text='
+        || replace(replace(replace(replace(replace(url_encode(rtrim(left(name, 120))),
+             '!', '%21'), '''', '%27'), '(', '%28'), ')', '%29'), '*', '%2A')
+        || '&find_loc=Austin%2C%20TX&find_type=Category' END`,
   source_url: `(req) AS json_extract_string(req, '$.url') || coalesce('?' || nullif(array_to_string(
       flatten(list_transform(
         coalesce(json_keys(req, '$.multiValueQueryString'), []::VARCHAR[]),

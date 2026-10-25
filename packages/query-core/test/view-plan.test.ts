@@ -23,9 +23,11 @@ const key = (t: { group: string; table: string }): string => `${t.group}.${t.tab
 const keysFor = (views: Parameters<typeof tablesForViews>[0]): string[] =>
   tablesForViews(views).map(key).sort();
 
-/** What v_roofing_permit reads: meta.permit's three relations plus the contractor edges. */
+/** What v_roofing_permit reads: meta.permit's three relations plus the contractor edges and companies. */
 const ROOFING_TABLES = [
   "county.property",
+  // the contractor company the permit prints (ERR-32): contractor_name_as_printed
+  "property_improvement.company",
   "property_improvement.property_has_property_improvement",
   "property_improvement.property_improvement",
   "property_improvement.property_improvement_has_contractor",
@@ -77,12 +79,10 @@ describe("view plan (ERR-19)", () => {
     expect(viewsReadBy("SELECT 1")).toEqual([]);
   });
 
-  it("runs.summary (v_roofing_permit + v_run) needs 4 of the 16 required tables", () => {
+  it("runs.summary (v_roofing_permit + v_run) needs 5 of the 16 required tables", () => {
     expect(keysFor(viewsReadBy(runSummarySql()))).toEqual(ROOFING_TABLES);
     expect(keysFor(["v_run"])).toEqual([]);
-    expect(keysFor(["v_contractor"])).toEqual(
-      [...ROOFING_TABLES, "property_improvement.company"].sort(),
-    );
+    expect(keysFor(["v_contractor"])).toEqual([...ROOFING_TABLES].sort());
   });
 
   it("v_property needs every county table plus meta.permit's, and all four views need exactly REQUIRED_TABLES", () => {
@@ -198,6 +198,7 @@ describe("bindManifest({ views }) over real DuckDB (ERR-19)", () => {
     expect(summaryParts.sort()).toEqual(
       [
         "tables/county/property/part-00000.parquet",
+        "tables/property_improvement/company/part-00000.parquet",
         "tables/property_improvement/property_has_property_improvement/part-00000.parquet",
         "tables/property_improvement/property_improvement/part-00000.parquet",
         "tables/property_improvement/property_improvement_has_contractor/part-00000.parquet",
@@ -216,7 +217,6 @@ describe("bindManifest({ views }) over real DuckDB (ERR-19)", () => {
     for (const absent of [
       "county.geometry",
       "county.address",
-      "property_improvement.company",
       "main.v_property",
       "main.v_contractor",
     ])

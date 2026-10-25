@@ -17,7 +17,8 @@
 //
 // Written fields are only lexicon properties of the live `property_improvement` class
 // (additionalProperties false). The source description, work class, status word, expiry
-// and contractor name have no carrier (ADR-0002) and are never written.
+// have no carrier (ADR-0002) and are never written. The printed contractor COMPANY name is the
+// exception (ERR-32, PO 2026-10-25): company.name via property_improvement_has_contractor.
 // `contractor_type` is required by the class and written null: the permit's category
 // of contractor is not established here.
 //
@@ -34,6 +35,7 @@ import {
   type RegistryRecord,
   type ResolverState,
 } from "../identity/resolver.js";
+import { publishedContractorName } from "../permits/bbb-search-url.js";
 import { LIVE_CROSSWALK, type CrosswalkIndex } from "../identity/crosswalk.js";
 import {
   buildSharedFiles,
@@ -258,6 +260,8 @@ export interface PropertyImprovementCounts {
   by_skip: Partial<Record<SkipReason, number>>;
   /** Emitted permits only, by A-07's five-state verdict (AD-24's manifest-coverage rollup). */
   by_contractor_state: Partial<Record<ResolverState, number>>;
+  /** Emitted permits whose printed company name is published as company.name (ERR-32). */
+  contractor_companies_printed: number;
 }
 
 export interface PropertyImprovementOutput {
@@ -286,9 +290,11 @@ export function transformAustinPropertyImprovement(
     by_class: {},
     by_skip: {},
     by_contractor_state: {},
+    contractor_companies_printed: 0,
   };
   const permitFiles: Record<string, string> = {};
   const links: { "/": string }[] = [];
+  const contractorLinks: { "/": string }[] = [];
   input.permits.forEach((capture, i) => {
     const l = ledger[i] as ClassificationLedgerRow;
     if (!l.emitted) {
@@ -328,6 +334,29 @@ export function transformAustinPropertyImprovement(
       permit_issue_date: l.issue_date,
       completion_date: l.completed_date,
     });
+    // PO decision 2026-10-25 (ERR-32): the company the permit PRINTS, "as printed, unverified".
+    // A company record linked by property_improvement_has_contractor, with the permit's own request
+    // as provenance and NO sunbiz_document_number: a name is evidence, not identity, so
+    // contractor_resolution stays unresolved (never a registry id from a name match). No person,
+    // phone or address is written, and a person-only contractor is not published.
+    const printedName = publishedContractorName(capture.row.contractor_company_name);
+    if (printedName !== null) {
+      const company = `company_${n}.json`;
+      permitFiles[company] = jsonFile({
+        source_http_request: {
+          method: "GET",
+          url: AUSTIN_DATASET_URL,
+          multiValueQueryString: { permit_number: [l.permit_number] },
+        },
+        request_identifier: l.permit_number,
+        name: printedName,
+        sunbiz_document_number: null,
+      });
+      const crel = `relationship_property_improvement_has_contractor_${n}.json`;
+      permitFiles[crel] = jsonFile({ from: link(name), to: link(company) });
+      contractorLinks.push(link(crel));
+      counts.contractor_companies_printed += 1;
+    }
     const rel = `relationship_property_has_property_improvement_${n}.json`;
     permitFiles[rel] = jsonFile({ from: link("property.json"), to: link(name) });
     links.push(link(rel));
@@ -346,7 +375,12 @@ export function transformAustinPropertyImprovement(
           ...permitFiles,
           [`${input.cids.propertyImprovement}.json`]: jsonFile({
             label: "Property Improvement",
-            relationships: { property_has_property_improvement: links },
+            relationships: {
+              property_has_property_improvement: links,
+              ...(contractorLinks.length > 0
+                ? { property_improvement_has_contractor: contractorLinks }
+                : {}),
+            },
           }),
         };
   return { pID, dir: `${pID}/data`, files, counts, ledger };

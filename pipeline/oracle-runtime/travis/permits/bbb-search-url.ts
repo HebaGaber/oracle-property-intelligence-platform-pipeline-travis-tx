@@ -1,8 +1,9 @@
-// A-11 Run 3 (PO decisions 2026-10-25, FU-A-01): the contractor name AS PRINTED on an Austin permit
-// and a plain BBB SEARCH link built from it. Neither is an identity claim:
-//   - the printed name is evidence, "as printed, unverified"; it is never a `company` record, and
-//     contractor_resolution stays 'unresolved' (Oracle rule: do not persist a contractor copied
-//     from the permit);
+// A-11 Run 3 (PO decisions 2026-10-25, FU-A-01, ERR-32): the contractor company name AS PRINTED on an
+// Austin permit (published as company.name via property_improvement_has_contractor) and a plain BBB
+// SEARCH link built from it. The published link is built IN THE VIEW (macro bbb_search_url in
+// packages/query-core/src/derive.ts, tested for parity with bbbSearchUrl below). Neither is an identity claim:
+//   - the printed name is evidence, "as printed, unverified": the company record carries no
+//     registry id (sunbiz_document_number null), so contractor_resolution stays 'unresolved';
 //   - the link is a string we build. This module never requests bbb.org (A-01 receipts: HTTP 403
 //     Cloudflare challenge). The BBB rating therefore stays missing, with bbb_status = 'blocked'
 //     and bbb_status_reason = 'bbb_blocked'.
@@ -74,21 +75,20 @@ function encodeValue(value: string): string {
 }
 
 /**
- * Austin clerks append markers such as "**MAIN**" or "***DO NOT USE***" to a printed name. They are
- * not part of the business name, so the SEARCH text drops them; the published printed name keeps
- * them verbatim ("as printed").
+ * The contractor company name as it is PUBLISHED (company.name, "as printed, unverified"): trimmed,
+ * whitespace collapsed, and without the clerk markers Austin appends, such as "**MAIN**" or
+ * "***DO NOT USE***" (they are not part of the business name). Null for empty and placeholder names.
  */
-function searchText(name: string): string {
-  return (cleanPrinted(name.replace(/\*+[^*]*\*+/g, " ").replace(/\*/g, " ")) ?? "").trim();
+export function publishedContractorName(value: string | null | undefined): string | null {
+  const text = cleanPrinted(
+    (cleanPrinted(value) ?? "").replace(/\*+[^*]*\*+/g, " ").replace(/\*/g, " "),
+  );
+  return text === null || isPlaceholderName(text) ? null : text;
 }
 
-/** Cut a name to MAX_NAME_CHARS code points, at a word boundary when one is near. */
+/** Cut a name to MAX_NAME_CHARS code points (the SQL macro bbb_search_url does the same). */
 function limitName(name: string): string {
-  const points = Array.from(name);
-  if (points.length <= MAX_NAME_CHARS) return name;
-  const head = points.slice(0, MAX_NAME_CHARS).join("");
-  const space = head.lastIndexOf(" ");
-  return (space > MAX_NAME_CHARS / 2 ? head.slice(0, space) : head).trim();
+  return Array.from(name).slice(0, MAX_NAME_CHARS).join("").trimEnd();
 }
 
 /**
@@ -100,9 +100,8 @@ export function bbbSearchUrl(
   name: string | null | undefined,
   city: string | null | undefined,
 ): string | null {
-  if (isPlaceholderName(name)) return null;
-  const text = searchText(name as string);
-  if (isPlaceholderName(text)) return null;
+  const text = publishedContractorName(name);
+  if (text === null) return null;
   const printed = limitName(text);
   const place = cleanPrinted(city) ?? DEFAULT_BBB_CITY;
   return (
@@ -111,53 +110,4 @@ export function bbbSearchUrl(
     `&find_loc=${encodeValue(`${place}, TX`)}` +
     `&find_type=Category`
   );
-}
-
-/** The permit fields this module reads (Austin 3syk-w9eu, as stored in permit_source_rows.payload). */
-export type PrintedContractorSource = Readonly<Record<string, string | null | undefined>>;
-
-/** The BBB part of a row: v1.1 columns bbb_url, bbb_status, bbb_status_reason. */
-export interface BbbSearchFields {
-  bbb_url: string | null;
-  bbb_status: "blocked" | "not_checked";
-  /** 'bbb_blocked' when a link exists, 'contractor_unresolved' when there is no printed name. */
-  bbb_status_reason: "bbb_blocked" | "contractor_unresolved";
-}
-
-/**
- * What the permit prints about its contractor, as printed and unverified. No phone, no person
- * name (a private individual), no street address: only the company name, city, the source's own
- * status word and expiry date.
- */
-export interface PrintedContractor extends BbbSearchFields {
-  contractor_name_as_printed: string | null;
-  contractor_city: string | null;
-  /** Austin `status_current` verbatim (trimmed), for example "Expired". */
-  permit_status_raw: string | null;
-  /** Austin `expiresdate`, the date part (YYYY-MM-DD). */
-  permit_expiry_date: string | null;
-}
-
-function datePart(value: string | null | undefined): string | null {
-  const s = cleanPrinted(value);
-  if (s === null) return null;
-  const m = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/.exec(s);
-  return m ? (m[1] as string) : null;
-}
-
-/** Reads one stored Austin permit payload; never throws, never invents a value. */
-export function printedContractorOf(row: PrintedContractorSource): PrintedContractor {
-  const raw = row.contractor_company_name;
-  const name = isPlaceholderName(raw) ? null : cleanPrinted(raw);
-  const city = name === null ? null : cleanPrinted(row.contractor_city);
-  const url = bbbSearchUrl(name, city);
-  return {
-    contractor_name_as_printed: name,
-    contractor_city: city,
-    permit_status_raw: cleanPrinted(row.status_current),
-    permit_expiry_date: datePart(row.expiresdate),
-    bbb_url: url,
-    bbb_status: url === null ? "not_checked" : "blocked",
-    bbb_status_reason: url === null ? "contractor_unresolved" : "bbb_blocked",
-  };
 }

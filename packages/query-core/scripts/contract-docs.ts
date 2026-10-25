@@ -215,17 +215,27 @@ told apart and lists \`needs_review\`).
 five-state totals (\`contractor_resolved\`, \`contractor_candidate\`, \`contractor_ambiguous\`,
 \`contractor_conflicting\`, \`contractor_unresolved\`) are in the manifest \`coverage\`.
 
-### Planned for v1.1: printed contractor name and BBB search link (blocked, ERR-32)
+### v1.1 (additive): contractor as printed and BBB search link
 
-PO decisions 2026-10-25 (FU-A-01): publish the contractor name **as printed, unverified** (never as
-a \`company\` record) and, where BBB blocks the lookup, a plain BBB **search** link built from the
-printed name and city. Planned additive v1.1 columns on \`v_roofing_permit\`:
-\`contractor_name_as_printed\`, \`contractor_city\`, \`bbb_url\`, plus \`bbb_status = blocked\` with
-\`bbb_status_reason = bbb_blocked\`; \`contractor_resolution\` stays \`unresolved\`. **Not in v1 and not
-frozen yet:** the live lexicon has no property that can carry them (verified against the live
-manifest on 2026-10-25, ADR-0002 verdicts 1, 4 and 5), and \`export-tables\` emits only lexicon class
-properties, so no side table can be produced. Until a carrier exists these fields stay in \`missing\`
-with \`no_lexicon_carrier\`. Details and options: \`docs/defects/ERR-32-contractor-name-and-bbb-link-missing.md\`.
+Backward compatible: every v1 column keeps its name and type; the new columns are nullable and a
+run published before Run 3 binds them as null with a reason. The permit's printed contractor
+**company** name is published as \`company.name\`, linked by \`property_improvement_has_contractor\`,
+with the permit's own request as provenance and **no** \`sunbiz_document_number\` (PO decision
+2026-10-25). It is **as printed, unverified**: a name is evidence, not identity, so
+\`contractor_resolution\` stays \`unresolved\` (it becomes \`resolved\` only when the company carries an
+official registry id, which no Austin permit prints). No person, phone or address is published; a
+permit that prints only a person name has no contractor.
+
+On \`v_roofing_permit\`: \`contractor_name_as_printed\` (the company name, null with
+\`contractor_unresolved\`), \`bbb_status\` = \`blocked\` with \`bbb_status_reason\` = \`bbb_blocked\` when a
+name exists (else \`not_checked\` / \`contractor_unresolved\`), \`bbb_rating\` always null (missing
+reason \`bbb_blocked\`; the UI says "BBB rating not published (BBB blocked the lookup)"), and \`bbb_url\`,
+a BBB **search** link built in the view from the name and the city Austin (UI text "Search BBB for this
+contractor"; null with \`source_missing\` when there is no name). The link is never fetched
+(A-01: HTTP 403 challenge); its shape is **unverified until a human clicks one example**.
+\`contractor_company_cid\` now means the company as printed. \`contractor_name_raw\` is replaced by
+\`contractor_name_as_printed\`. Not published (still \`no_lexicon_carrier\`): \`status_raw\`,
+\`expiry_date\`. Details: \`docs/defects/ERR-32-contractor-name-and-bbb-link-missing.md\`.
 
 ## Manifest coverage and profiles for consumers
 
