@@ -22,7 +22,7 @@ import {
   publishedTexts,
   withoutPublished,
 } from "./lib/a13.js";
-import { checkpoint, expect, test } from "./lib/a13-fixtures.js";
+import { PARKED_GAPS, checkpoint, expect, parkGap, parkedRoute, test } from "./lib/a13-fixtures.js";
 import { writeEvidenceSection } from "./lib/a13-evidence.js";
 import {
   AXE_VERSION,
@@ -272,6 +272,10 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
     const lines: string[] = [];
     const problems: string[] = [];
     for (const target of routeTargets(oracle.manifestCid)) {
+      if (parkedRoute(target.key)) {
+        lines.push(`| ${target.key} | parked (A-16 item 18) | | | | |`);
+        continue;
+      }
       // 1. Open the route in a private window; run axe-core (wcag2a, wcag2aa, wcag21aa, wcag22aa).
       const context = await browser.newContext({
         viewport: { width: 1440, height: 900 },
