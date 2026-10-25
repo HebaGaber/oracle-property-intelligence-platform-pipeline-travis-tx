@@ -41,7 +41,7 @@ function synthApi(): { template: Template; resources: Record<string, unknown> } 
 }
 
 describe("CountyLensApi agent resources (A-14 T009/T016): Lambda, spend table, 80% alarm", () => {
-  it("the agent Lambda: arm64, 3,008 MB (AM-09), 25 s timeout, no reserved or provisioned concurrency", () => {
+  it("the agent Lambda: arm64, 1,769 MB (A-16), 25 s timeout, no reserved or provisioned concurrency", () => {
     const { template } = synthApi();
     template.hasResourceProperties("AWS::Lambda::Function", {
       FunctionName: AGENT_FUNCTION_NAME,
@@ -49,7 +49,7 @@ describe("CountyLensApi agent resources (A-14 T009/T016): Lambda, spend table, 8
       MemorySize: AGENT_MEMORY_MB,
       Timeout: AGENT_TIMEOUT_SECONDS,
     });
-    expect(AGENT_MEMORY_MB).toBe(3008);
+    expect(AGENT_MEMORY_MB).toBe(1769); // A-16: on the per-run Explore index
     expect(AGENT_TIMEOUT_SECONDS).toBe(Duration.seconds(25).toSeconds());
 
     // No ReservedConcurrentExecutions/ProvisionedConcurrencyConfig anywhere in the stack
@@ -82,6 +82,18 @@ describe("CountyLensApi agent resources (A-14 T009/T016): Lambda, spend table, 8
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       Threshold: SPEND_ALARM_THRESHOLD_USD,
       ComparisonOperator: "GreaterThanOrEqualToThreshold",
+    });
+  });
+
+  it("A-16 T025 (A14-3): the 80% spend alarm notifies the Ops topic countylens-alerts on ALARM and OK", () => {
+    const { template } = synthApi();
+    const topicArn = Match.objectLike({
+      "Fn::Join": Match.arrayWith([Match.arrayWith([":countylens-alerts"])]),
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      Threshold: SPEND_ALARM_THRESHOLD_USD,
+      AlarmActions: [topicArn],
+      OKActions: [topicArn],
     });
   });
 });

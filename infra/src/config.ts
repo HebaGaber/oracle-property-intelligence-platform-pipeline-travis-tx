@@ -10,6 +10,37 @@ import { z } from "zod";
 export const PROJECT_NAME = "oracle-travis" as const;
 export const PROJECT_TAG_KEY = "project_name" as const;
 
+// --- A-16 frozen names (specs/016-cost-and-admin/contracts/frozen-interfaces.md, T002) ---
+
+/** Environment variable names shared by infra (writer) and the web/API code (readers). */
+export const ENV_NAMES = {
+  /** Amplify build env (web, G2a): the Cognito user pool and its SRP app client. */
+  webUserPoolId: "VITE_COGNITO_USER_POOL_ID",
+  webUserPoolClientId: "VITE_COGNITO_USER_POOL_CLIENT_ID",
+  /** API Lambda env: the admin command queue (SendMessage only). */
+  adminQueueUrl: "COUNTYLENS_ADMIN_QUEUE_URL",
+  /** API Lambda env: the pool and client the access-token verifier checks. */
+  userPoolId: "COUNTYLENS_USER_POOL_ID",
+  userPoolClientId: "COUNTYLENS_USER_POOL_CLIENT_ID",
+  /** API, agent and MCP Lambda env: the per-run Explore index prefix (G4 reader). */
+  exploreIndexPrefix: "EXPLORE_INDEX_PREFIX",
+  /** API Lambda env: the bridge's live status object (read-only). */
+  liveStatusKey: "LIVE_STATUS_KEY",
+  /** API Lambda env: the query log group `admin.activity.summary` reads (Logs Insights). */
+  queryLogGroup: "COUNTYLENS_QUERY_LOG_GROUP",
+} as const;
+
+/** `s3://<CID-copy bucket>/private/explore-index/<manifestCid>/…` (ADR-0001 amendment, AC-13). */
+export const EXPLORE_INDEX_PREFIX = "private/explore-index/";
+/** `s3://<CID-copy bucket>/live/live.json`: written by the laptop bridge only (AC-7, AC-9). */
+export const LIVE_STATUS_KEY = "live/live.json";
+/** The one Cognito group whose members may call admin.* (AC-6, AC-8). */
+export const ADMIN_GROUP_NAME = "admin";
+/** Route-level throttle on `ANY /trpc/explore.search` (A13-6, A14-3). */
+export const EXPLORE_SEARCH_THROTTLE = { rateLimit: 3, burstLimit: 6 } as const;
+/** The Ops SNS topic name; CountyLensApi imports it by ARN so no Api → Ops reference exists. */
+export const ALERTS_TOPIC_NAME = "countylens-alerts";
+
 export const CONTEXT_KEYS = {
   githubRepository: "countylens:githubRepository",
   githubRef: "countylens:githubRef",

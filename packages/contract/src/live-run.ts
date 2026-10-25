@@ -8,7 +8,14 @@ export const LIVE_RUN_SCHEMA = "oracle-travis-live-run.v1";
 /** The Runs page shows "Bridge offline" when bridgeSeenAt is older than this. */
 export const BRIDGE_STALE_MS = 3 * 60 * 1000;
 
-export const LiveRunState = z.enum(["idle", "running", "stopping", "stopped", "failed", "succeeded"]);
+export const LiveRunState = z.enum([
+  "idle",
+  "running",
+  "stopping",
+  "stopped",
+  "failed",
+  "succeeded",
+]);
 export const LastCommandOutcome = z.enum([
   "accepted",
   "rejected_active_run",

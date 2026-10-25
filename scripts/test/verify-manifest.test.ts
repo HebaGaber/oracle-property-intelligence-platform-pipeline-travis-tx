@@ -16,10 +16,12 @@ import { cidOfBytes } from "../../pipeline/publish/src/cid.js";
 import { jcsBytes } from "../../pipeline/publish/src/jcs.js";
 import {
   ALL_VERIFIED_TEXT,
+  EXIT_SAMPLE_ONLY,
   GATEWAYS,
   MAX_ATTEMPTS,
   STREAM_THRESHOLD_BYTES,
   assertAllowedGateways,
+  exitCodeFor,
   parseResumeLog,
   refusedGatewayText,
   resumeKey,
@@ -27,6 +29,7 @@ import {
   selectSample,
   verifyManifest,
   type ManifestArtifactLike,
+  type VerifyReport,
 } from "../verify-manifest.js";
 
 const RUN_ID = "travis-202609-reroof-20261021t1530z";
@@ -207,6 +210,32 @@ describe("--sample selection", () => {
       artifact("d/root", "directory", 3),
     ];
     expect(selectSample(all).map((a) => a.name)).toEqual(["t/a", "c/small"]);
+  });
+});
+
+describe("exit code (A11-16)", () => {
+  const report = (over: Partial<VerifyReport>): VerifyReport => ({
+    ok: true,
+    manifestPath: "m.json",
+    manifestCid: "cid",
+    gateways: [...GATEWAYS],
+    manifest: [],
+    artifacts: [],
+    ...over,
+  });
+
+  it("a full verification that passes exits 0", () => {
+    expect(exitCodeFor(report({}))).toBe(0);
+  });
+
+  it("a sample that passes is not a full verification: exit 3, never 0", () => {
+    expect(exitCodeFor(report({ sample: { checked: 2, total: 240 } }))).toBe(EXIT_SAMPLE_ONLY);
+    expect(EXIT_SAMPLE_ONLY).toBe(3);
+  });
+
+  it("any failure exits 1, sample or not", () => {
+    expect(exitCodeFor(report({ ok: false }))).toBe(1);
+    expect(exitCodeFor(report({ ok: false, sample: { checked: 2, total: 240 } }))).toBe(1);
   });
 });
 

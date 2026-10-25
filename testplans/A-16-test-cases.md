@@ -410,7 +410,7 @@ Part 1 shows on the hosted Coverage page what CountyLens costs while idle and ho
 - **Steps:**
   1. **Open** `{RUNTIME_URL}/admin` in a private window. → Admin sign-in page shows an Email field, a Password field and a "Sign in" button.
   2. **Type** `${ADMIN_TEST_EMAIL}` and `${ADMIN_TEST_PASSWORD}` (read from the local env file) and **click** "Sign in". → Browser lands on Runs.
-  3. **Open** `{RUNTIME_URL}/admin/activity`. → Summary shows questions per day, p95 latency, failures by outcome.
+  3. **Open** `{RUNTIME_URL}/activity`. → Summary shows questions per day, p95 latency, failures by outcome.
   4. **Click** a number. → It opens or reveals the Logs Insights query that produced it.
   5. **Reload**. → Served from the 5-minute cache.
 - **Expected result:** All three metrics render; every number has a query link.
@@ -588,9 +588,9 @@ Part 1 shows on the hosted Coverage page what CountyLens costs while idle and ho
 - **Priority / tags:** P2 · `@parity @responsive`
 - **Maps to:** AC-12, FR-011, NFR-002
 - **Preconditions:** Parity matrix `docs/evidence/A-16-prototype-parity.md` filled for this family.
-- **Test data:** Board files `design/prototype/Activity*.dc.html` (every state listed there); light theme; placeholder numbers on the boards are not compared. Routes: `/admin/activity`.
+- **Test data:** Board files `design/prototype/Activity*.dc.html` (every state listed there); light theme; placeholder numbers on the boards are not compared. Routes: `/activity`.
 - **Steps:**
-  1. Open `{RUNTIME_URL}/admin/activity` in a private window. Admin pages: sign in first as in A-16-TC-010.
+  1. Open `{RUNTIME_URL}/activity` in a private window. Admin pages: sign in first as in A-16-TC-010.
   2. **Set** the viewport to 390 px wide. → Layout, section order, components, labels match the board's 390 state.
   3. **Set** 768 px, then 1440 px. → Same check against the 768 and 1440 boards.
   4. **Reach** each other state on the board (empty, error, loading, populated as listed). → Each matches.

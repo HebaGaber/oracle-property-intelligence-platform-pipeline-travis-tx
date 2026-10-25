@@ -1,5 +1,5 @@
 // CountyLensApi assertions (A-03 T069; TC-053, TC-050 infra half, NFR-03, ARD AM-03/AM-06).
-// Rules asserted here: Lambda sizing (arm64, 3,008 MB, 29 s (A-13: 15 s before the full-county Explore search), DuckDB threads 4: ADR-0001 as updated
+// Rules asserted here: Lambda sizing (arm64, 1,769 MB, 15 s since A-16 (A-13's 29 s / ERR-18's 3,008 MB were stop-gaps), DuckDB threads 4: ADR-0001 as updated
 // by ERR-18, pending the PO's AM-06 sizing update), AD-09
 // (HTTP API, no Function URL), AD-11 (no reserved or provisioned concurrency), AM-03 (the HTTP
 // API JSON access log is the 30-day query log; the function log group keeps 14 days), research
@@ -133,13 +133,13 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     template.resourceCountIs("AWS::Lambda::Alias", 0);
   });
 
-  it("is exactly one arm64 function: 3,008 MB (ERR-18, AM-06 sizing update), 29 s, X-Ray Active, JSON logs, SystemLogLevel WARN", () => {
+  it("is exactly one arm64 function: 1,769 MB, 15 s (A-16, A13-6), X-Ray Active, JSON logs, SystemLogLevel WARN", () => {
     const [, fn] = lambdaFunction(template);
     expect(fn.Properties).toMatchObject({
       FunctionName: "countylens-api",
       Architectures: ["arm64"],
-      MemorySize: 3008,
-      Timeout: 29,
+      MemorySize: 1769,
+      Timeout: 15,
       TracingConfig: { Mode: "Active" },
       LoggingConfig: { LogFormat: "JSON", SystemLogLevel: "WARN" },
     });
@@ -209,7 +209,7 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     expect(nonMcpOrAgentLogGroups).toHaveLength(2);
   });
 
-  it("reads only ipfs/* and private/bench/* of the CID copy (contracts/storage.md Reader); lists private/bench/* only", () => {
+  it("reads only ipfs/*, private/bench/*, private/explore-index/* and live/live.json of the CID copy (contracts/storage.md Reader, A-16); lists private/bench/* only", () => {
     const [, fn] = lambdaFunction(template);
     const roleLogicalId = (fn.Properties as { Role: { "Fn::GetAtt": [string, string] } }).Role[
       "Fn::GetAtt"
@@ -236,12 +236,16 @@ describe("CountyLensApi: the tRPC Lambda (ADR-0001 sizing, AM-06)", () => {
     const [get] = gets as [Statement];
     expect(asList(get.Action)).toEqual(["s3:GetObject"]);
     const resources = Array.isArray(get.Resource) ? get.Resource : [get.Resource];
-    expect(resources).toHaveLength(2);
+    expect(resources).toHaveLength(4);
     const rendered = resources.map(json);
     expect(rendered.some((r) => r.includes("/ipfs/*"))).toBe(true);
     expect(rendered.some((r) => r.includes("/private/bench/*"))).toBe(true);
+    expect(rendered.some((r) => r.includes("/private/explore-index/*"))).toBe(true);
+    expect(rendered.some((r) => r.includes('/live/live.json"'))).toBe(true);
     for (const r of rendered) {
-      expect(r).toMatch(/\/(ipfs\/\*|private\/bench\/\*)/);
+      expect(r).toMatch(
+        /\/(ipfs\/\*|private\/bench\/\*|private\/explore-index\/\*|live\/live\.json")/,
+      );
       expect(r).not.toMatch(/"\/\*"|"\*"/);
     }
 
@@ -279,7 +283,8 @@ describe("CountyLensApi: HTTP API, throttles and the 30-day JSON access log (AD-
     );
     expect(routes.length).toBeGreaterThan(0);
     const keys = routes.map((r) => (r.Properties as { RouteKey: string }).RouteKey).sort();
-    expect(keys).toEqual(["GET /trpc/{proxy+}", "POST /trpc/{proxy+}"]);
+    // A-16: explore.search has its own route key so it can carry a route-level throttle.
+    expect(keys).toEqual(["ANY /trpc/explore.search", "GET /trpc/{proxy+}", "POST /trpc/{proxy+}"]);
     for (const r of routes) {
       expect((r.Properties as { AuthorizationType?: string }).AuthorizationType ?? "NONE").toBe(
         "NONE",
@@ -298,7 +303,7 @@ describe("CountyLensApi: HTTP API, throttles and the 30-day JSON access log (AD-
     const permissions = Object.values(template.findResources("AWS::Lambda::Permission")).filter(
       (p) => json(p.Properties?.SourceArn).includes("/trpc/"),
     );
-    expect(permissions).toHaveLength(2);
+    expect(permissions).toHaveLength(3);
     for (const permission of permissions) {
       expect(permission.Properties?.Principal).toBe("apigateway.amazonaws.com");
       expect(json(permission.Properties?.SourceArn)).toContain("execute-api");
@@ -323,6 +328,10 @@ describe("CountyLensApi: HTTP API, throttles and the 30-day JSON access log (AD-
     expect(stage.Properties?.DefaultRouteSettings).toMatchObject({
       ThrottlingRateLimit: 10,
       ThrottlingBurstLimit: 20,
+    });
+    // A-16 (A13-6, A14-3): explore.search is throttled tighter, on its own route key only.
+    expect(stage.Properties?.RouteSettings).toEqual({
+      "ANY /trpc/explore.search": { ThrottlingRateLimit: 3, ThrottlingBurstLimit: 6 },
     });
   });
 

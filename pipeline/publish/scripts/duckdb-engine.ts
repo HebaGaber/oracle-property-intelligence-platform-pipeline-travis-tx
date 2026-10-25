@@ -8,6 +8,8 @@ export async function openDuckDbEngine(): Promise<OpenedEngine> {
   const db = await DuckDBInstance.create(":memory:");
   const conn = await db.connect();
   await conn.run("LOAD parquet; LOAD httpfs; LOAD json; LOAD icu; SET TimeZone = 'UTC'");
+  // A11-16: every remote part read has an explicit timeout (seconds) and a bounded retry count.
+  await conn.run("SET http_timeout = 120; SET http_retries = 3");
   const engine: QueryEngine = {
     run: async (sql) => {
       await conn.run(sql);

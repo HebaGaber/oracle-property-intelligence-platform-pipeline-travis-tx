@@ -133,11 +133,11 @@ describe("Runs · Log", () => {
   it("lists every event of every run, ascending by time, each with its run ID", async () => {
     install();
     const page = await renderLog();
-    await within(page).findByRole("list", { name: "Run events" });
+    await within(page).findByRole("table", { name: "Run events" });
     expect(page.getAttribute("data-state")).toBe("ready");
     const expected = runEvents(runs.map((r) => r.manifest));
     expect(expected).toHaveLength(7);
-    const items = page.querySelectorAll<HTMLElement>("li[data-event]");
+    const items = page.querySelectorAll<HTMLElement>("tr[data-event]");
     expect([...items].map((li) => li.getAttribute("data-time"))).toEqual(
       expected.map((e) => e.time),
     );
@@ -153,7 +153,7 @@ describe("Runs · Log", () => {
   it("names the captured source and shows the run's limitations on its finish event", async () => {
     install();
     const page = await renderLog();
-    await within(page).findByRole("list", { name: "Run events" });
+    await within(page).findByRole("table", { name: "Run events" });
     expect(
       within(page).getAllByText(SOURCE_LABELS["austin-3syk-w9eu"], { exact: false }).length,
     ).toBe(1);
@@ -177,7 +177,7 @@ describe("Runs · Log", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/Run index unavailable · /);
     expect(page.getAttribute("data-state")).toBe("error");
-    expect(page.querySelectorAll("li[data-event]")).toHaveLength(0);
+    expect(page.querySelectorAll("tr[data-event]")).toHaveLength(0);
   });
 
   it("one unreadable manifest names its CID, and the other runs still list", async () => {
@@ -186,7 +186,7 @@ describe("Runs · Log", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/Manifest unavailable · /);
     expect(alert.querySelector(`[data-cid="${runs[1]?.cid}"]`)).not.toBeNull();
-    const items = page.querySelectorAll("li[data-event]");
+    const items = page.querySelectorAll("tr[data-event]");
     expect(items).toHaveLength(runEvents([(runs[0] as Run).manifest]).length);
   });
 });

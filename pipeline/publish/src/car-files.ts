@@ -82,7 +82,33 @@ export interface CarFileResult {
   ok: boolean;
   size?: number;
   gateways: GatewayCheck[];
+  /**
+   * A11-17 R4: gateways this run did NOT read back (PUBLISH_DEFER_PINATA). Written into the
+   * receipt, so a later run that must check them does not mistake the receipt for a full one.
+   */
+  deferredGateways: string[];
   error?: string;
+}
+
+/**
+ * True when a carCid-file receipt already covers every gateway this run must read back. A receipt
+ * with `deferredGateways` covers only the gateways it did check; an older receipt without the
+ * field is judged by the gateways it recorded; one with neither covers nothing.
+ */
+export function receiptCoversGateways(
+  receipt: {
+    deferredGateways?: readonly string[] | undefined;
+    gateways?: readonly { gateway: string }[] | undefined;
+  },
+  required: readonly string[],
+): boolean {
+  if (Array.isArray(receipt.deferredGateways))
+    return required.every((g) => !(receipt.deferredGateways as readonly string[]).includes(g));
+  if (Array.isArray(receipt.gateways)) {
+    const checked = receipt.gateways.map((g) => g.gateway);
+    return required.every((g) => checked.includes(g));
+  }
+  return false;
 }
 
 function message(error: unknown): string {
@@ -101,7 +127,13 @@ export async function uploadCarFile(
   const safe = (text: string): string => redact(text, secretValues(options.env));
   if (!existsSync(target.path)) {
     log(`FAIL  local file missing: ${target.path}`);
-    return { target, ok: false, gateways: [], error: `local file missing: ${target.path}` };
+    return {
+      target,
+      ok: false,
+      gateways: [],
+      deferredGateways: [],
+      error: `local file missing: ${target.path}`,
+    };
   }
   // County/permit CARs run tens to hundreds of MB; the Kubo RPC `add` of a plain file has been
   // observed to need more than KUBO_ADD_TIMEOUT_MS's default for a file over ~50 MB (a 232 MB CAR
@@ -120,11 +152,12 @@ export async function uploadCarFile(
   } catch (error) {
     const reason = safe(`kubo add: ${message(error)}`);
     log(`FAIL  ${reason}`);
-    return { target, ok: false, size, gateways: [], error: reason };
+    return { target, ok: false, size, gateways: [], deferredGateways: [], error: reason };
   }
   const gateways: GatewayCheck[] = [];
   const readback = options.readbackGateways ?? READBACK_GATEWAYS;
-  for (const skipped of READBACK_GATEWAYS.filter((g) => !readback.includes(g))) {
+  const deferredGateways = READBACK_GATEWAYS.filter((g) => !readback.includes(g));
+  for (const skipped of deferredGateways) {
     log(`DEFER ${skipped}/ipfs/${target.carCid} readback deferred (A-16 item 14)`);
   }
   for (const gateway of readback) {
@@ -142,6 +175,7 @@ export async function uploadCarFile(
     ok,
     size,
     gateways,
+    deferredGateways: [...deferredGateways],
     ...(ok ? {} : { error: "gateway readback did not match" }),
   };
 }

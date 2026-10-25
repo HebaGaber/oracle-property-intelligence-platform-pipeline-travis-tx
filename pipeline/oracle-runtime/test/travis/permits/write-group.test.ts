@@ -133,6 +133,25 @@ describe("recordAndSeedOf", () => {
     expect(recordAndSeedOf(permitPoint).record.geometry).toBeNull();
   });
 
+  it("A11-10(c): a parcel whose coordinates were never assembled keeps its real export point, as the County writer does", () => {
+    const unassembled = {
+      ...parcelRow(100008, "0100030105"),
+      latitude: null,
+      longitude: null,
+      coordinate_source: null,
+    };
+    // County rule when the GIS migration is not applied: no coordinate is passed, so a real
+    // TCAD export point stands in (rule unassembled_pilot_export_point).
+    expect(recordAndSeedOf(unassembled).record.geometry).toBe("[30.2545186553, -97.7620645363]");
+    // An assembled parcel with no usable coordinate (source "none") stays empty: the County
+    // writer passes source none, never the export point.
+    const assembledNone = { ...unassembled, coordinate_source: "none" as const };
+    expect(recordAndSeedOf(assembledNone).record.geometry).toBeNull();
+    // An export point of unknown kind never becomes geometry in either state.
+    const unknownKind = { ...unassembled, export_point_kind: null };
+    expect(recordAndSeedOf(unknownKind).record.geometry).toBeNull();
+  });
+
   it("carries the recorded year built into property.json, not the profile year", () => {
     const row = { ...parcelRow(100008, "0100030105"), property_structure_built_year: 1962 };
     expect(recordAndSeedOf(row).yearBuilt).toBe(1962);

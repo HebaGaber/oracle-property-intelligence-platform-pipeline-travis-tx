@@ -35,7 +35,11 @@ export const RunCommandV1 = z
       ctx.addIssue({ code: "custom", path: ["targetRunId"], message: "retry needs targetRunId" });
     }
     if (Date.parse(c.expiresAt) <= Date.parse(c.requestedAt)) {
-      ctx.addIssue({ code: "custom", path: ["expiresAt"], message: "expiresAt must be after requestedAt" });
+      ctx.addIssue({
+        code: "custom",
+        path: ["expiresAt"],
+        message: "expiresAt must be after requestedAt",
+      });
     }
   });
 export type RunCommandV1 = z.infer<typeof RunCommandV1>;

@@ -18,7 +18,7 @@ import { Annotations, CfnOutput, CfnParameter, Stack, type StackProps } from "aw
 import * as amplify from "aws-cdk-lib/aws-amplify";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import type { Construct } from "constructs";
-import { CONTEXT_KEYS, type InfraConfig } from "./config.js";
+import { CONTEXT_KEYS, ENV_NAMES, type InfraConfig } from "./config.js";
 
 /** Amplify app name (console and `aws amplify list-apps`). */
 export const AMPLIFY_APP_NAME = "countylens-web";
@@ -86,6 +86,8 @@ export interface WebStackProps extends StackProps {
   readonly filebaseGatewayHost?: string;
   /** Independent IPFS gateway host for Verify (PINATA_GATEWAY_HOST, A-13 AM-01). */
   readonly pinataGatewayHost?: string;
+  /** A-16 (AC-6): the admin user pool and SRP client from CountyLensApi. Missing → no admin sign-in vars. */
+  readonly cognito?: { readonly userPoolId: string; readonly userPoolClientId: string };
 }
 
 /** A site link from context: "" when unset or blank, else an https:// URL (anything else fails synth). */
@@ -191,6 +193,13 @@ export class WebStack extends Stack {
     });
     for (const [name, key] of Object.entries(SITE_LINK_CONTEXT_KEYS)) {
       environmentVariables.push({ name, value: siteLinkFromContext(this, key) });
+    }
+    // A-16 (AC-6): public identifiers only (a pool id and a secretless SRP client id).
+    if (props.cognito !== undefined) {
+      environmentVariables.push(
+        { name: ENV_NAMES.webUserPoolId, value: props.cognito.userPoolId },
+        { name: ENV_NAMES.webUserPoolClientId, value: props.cognito.userPoolClientId },
+      );
     }
 
     // Rules apply top-down: the API rewrite must come before the SPA fallback, whose regex would

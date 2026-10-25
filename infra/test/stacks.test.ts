@@ -508,8 +508,51 @@ describe("CountyLensOps: alarms → SNS email, $10 budget, no GitHub OIDC (resea
     expect(readFileSync(join(infraRoot, "cdk.json"), "utf8")).not.toMatch(emailLiteral);
   });
 
+  it("A-16 (A13-6, A14-3): p95 duration ≥ 12 s and account ConcurrentExecutions ≥ 8, each ALARM + OK → the topic, notBreaching", () => {
+    const [topicId] = Object.keys(ops.findResources("AWS::SNS::Topic"));
+    const byName = (name: string) =>
+      Object.values(ops.findResources("AWS::CloudWatch::Alarm")).find(
+        (a) => a.Properties?.AlarmName === name,
+      )?.Properties;
+    expect(byName("countylens-api-duration-p95")).toMatchObject({
+      Namespace: "AWS/Lambda",
+      MetricName: "Duration",
+      ExtendedStatistic: "p95",
+      Period: 300,
+      EvaluationPeriods: 1,
+      Threshold: 12000,
+      ComparisonOperator: "GreaterThanOrEqualToThreshold",
+      TreatMissingData: "notBreaching",
+      AlarmActions: [{ Ref: topicId }],
+      OKActions: [{ Ref: topicId }],
+    });
+    expect(json(byName("countylens-api-duration-p95")?.Dimensions)).toContain("CountyLensApi");
+    const concurrency = byName("countylens-account-concurrency");
+    expect(concurrency).toMatchObject({
+      Namespace: "AWS/Lambda",
+      MetricName: "ConcurrentExecutions",
+      Statistic: "Maximum",
+      Period: 60,
+      Threshold: 8,
+      ComparisonOperator: "GreaterThanOrEqualToThreshold",
+      TreatMissingData: "notBreaching",
+      AlarmActions: [{ Ref: topicId }],
+      OKActions: [{ Ref: topicId }],
+    });
+    // Account-wide: no FunctionName dimension.
+    expect(concurrency?.Dimensions).toBeUndefined();
+  });
+
   it("A-03-TC-052: three alarms (Lambda Errors ≥ 1 / 5 min, Throttles ≥ 1, HTTP API 5xx ≥ 1), each ALARM + OK → the topic, notBreaching", () => {
-    const alarms = Object.values(ops.findResources("AWS::CloudWatch::Alarm"));
+    const all = Object.values(ops.findResources("AWS::CloudWatch::Alarm"));
+    // Five in Ops since A-16 (duration and concurrency asserted above); the free tier allows 10.
+    expect(all).toHaveLength(5);
+    const alarms = all.filter(
+      (a) =>
+        !["countylens-api-duration-p95", "countylens-account-concurrency"].includes(
+          a.Properties?.AlarmName as string,
+        ),
+    );
     expect(alarms).toHaveLength(3);
     const [topicId] = Object.keys(ops.findResources("AWS::SNS::Topic"));
     const metrics = alarms

@@ -12,6 +12,8 @@ import { defaultResolveManifestCid } from "../src/agent/ask.js";
 import {
   latestOf,
   loadRunsIndex,
+  resetRunsIndexCache,
+  RUNS_INDEX_CACHE_MS,
   RUNS_INDEX_PATH_ENV,
   RUNS_INDEX_URL_ENV,
 } from "../src/mcp/runs-index.js";
@@ -33,12 +35,29 @@ describe("loadRunsIndex: RUNS_INDEX_URL set -> HTTPS GET of the site's runs/inde
   const fetchMock = vi.fn();
 
   beforeEach(() => {
+    resetRunsIndexCache();
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("A14-8: a fetched index is reused for RUNS_INDEX_CACHE_MS (60 s); a failure is never cached", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    fetchMock.mockRejectedValueOnce(new Error("network down"));
+    await expect(loadRunsIndex(URL_ENV)).rejects.toThrow("network down");
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(INDEX), { status: 200 }));
+    await loadRunsIndex(URL_ENV);
+    await loadRunsIndex(URL_ENV);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(RUNS_INDEX_CACHE_MS).toBe(60_000);
+    vi.setSystemTime(Date.now() + RUNS_INDEX_CACHE_MS + 1);
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(INDEX), { status: 200 }));
+    await loadRunsIndex(URL_ENV);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("GETs the URL with a timeout signal and Zod-validates the result", async () => {
@@ -92,6 +111,7 @@ describe("defaultResolveManifestCid (agent): reuses loadRunsIndex + latestOf", (
   const fetchMock = vi.fn();
 
   beforeEach(() => {
+    resetRunsIndexCache();
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
   });

@@ -63,6 +63,13 @@ export const ROUTE_LIST: readonly RouteEntry[] = Object.freeze([
   { path: ROUTES.comingSoon, title: "Coming soon", part: 2, load: () => import("./ComingSoon") },
   { path: OTHER_COUNTY_PATH, title: "Other county", part: 2, load: () => import("./ComingSoon") },
   { path: ROUTES.permits, title: "Permits", part: "A-03", load: () => import("./Permits") },
+  {
+    path: ROUTES.adminSignIn,
+    title: "Admin sign-in",
+    part: 2,
+    load: () => import("./AdminSignIn"),
+  },
+  { path: ROUTES.activity, title: "Activity", part: 2, load: () => import("./Activity") },
 ]);
 
 /** The pages the More sheet lists besides the Coming soon items. */
