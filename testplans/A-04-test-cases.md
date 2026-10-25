@@ -131,7 +131,7 @@ Placeholders: `{JOB_ID}` = the TCAD job (pilot or full) from the last line `job_
 
 ### 3.4 Names (from `data-model.md`)
 
-- Published-view names come from `contract/v1/columns.json`: `v_property.request_identifier` (TCAD pID as printed, P0-5), `latitude`, `longitude`, `coordinate_source` ∈ {`gis_centroid`, `permit_point`, `none`}, `tenure_basis` ∈ {`sale_date`, `unknown`}, `is_long_tenure`, `roof_age_basis`, `owner_area_class`, `owner_is_out_of_area`, `area_list_sha256`; reasons from `missingReasons` (`no_dated_sale`, `no_coordinates`, `owner_confidential`, `source_missing`, `needs_review`, `not_open`, `not_in_export`, `out_of_scope`, …).
+- Published-view names come from `contract/v1/columns.json`: `v_property.request_identifier` (TCAD pID as printed, P0-5), `latitude`, `longitude`, `coordinate_source` ∈ {`gis_centroid`, `permit_point`, `none`}, `tenure_basis` ∈ {`sale_date`, `deed_date`, `unknown`}, `is_long_tenure`, `roof_age_basis`, `owner_area_class`, `owner_is_out_of_area`, `area_list_sha256`; reasons from `missingReasons` (`no_dated_sale`, `no_coordinates`, `owner_confidential`, `source_missing`, `needs_review`, `not_open`, `not_in_export`, `out_of_scope`, …).
 - **D-9:** the internal reasons and the `permit_point` fallback are asserted **only in the Query DB**; in public rows they surface as `no_coordinates` / `needs_review` / `out_of_scope` / `not_in_export`.
 - Query DB tables: `parcels`, `parcel_geoids`, `property_structures`, `roll_reconciliation`, `gis_pages`, `gis_features`, `permit_source_rows`, `property_improvements`, `backbone_runs`, `capture_receipts`, `watermarks`, `source_tombstones`, `source_limitations`, `loader_merges`.
 - Closed lists the cases read:
@@ -144,7 +144,7 @@ Placeholders: `{JOB_ID}` = the TCAD job (pilot or full) from the last line `job_
 | `parcels.owner_missing_reason`                                                   | `owner_confidential`, `no_dated_sale`, `no_owner_record`, `owner_unparsed`                                                       |
 | `parcels.year_built_rule`                                                        | `profile_main`, `largest_main_improvement`, `none`                                                                               |
 | `parcels.roof_age_basis` / `roof_age_reason`                                     | `unknown` / `no_roof_date`                                                                                                       |
-| `parcels.tenure_basis` / `tenure_missing_reason`                                 | `sale_date`, `unknown` / `no_dated_sale`                                                                                         |
+| `parcels.tenure_basis` / `tenure_missing_reason`                                 | `sale_date`, `deed_date`, `unknown` / `no_dated_sale`                                                                                       |
 | `parcels.owner_area_class`                                                       | `in_county`, `regional`, `out_of_area`, `unknown`                                                                                |
 | `parcels.owner_area_evidence`                                                    | `travis_zcta`, `regional_zcta`, `us_zcta_outside`, `foreign_mailing`, `no_zip`, `zip_not_zcta`                                   |
 | `parcels.coordinate_rule`                                                        | `centroid`, `interior_point`, `centroid_outside_polygon`, `largest_area`, `export_point`, `condo_building_point`, `permit_point` |
