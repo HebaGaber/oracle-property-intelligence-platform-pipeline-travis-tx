@@ -107,7 +107,8 @@ describe("Permits paging (table)", () => {
     expect(first?.textContent).toContain("TEST-000401");
     fireEvent.click(prev());
     expect(range().textContent).toBe("Showing 201–400 of 450");
-  });
+    // Three pages of 200 rows render in jsdom: about 5 s on a slow CI runner, so give it room.
+  }, 30_000);
 
   it("with 200 or fewer rows the pager shows and both buttons are disabled", async () => {
     await renderReady(37);
