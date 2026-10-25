@@ -453,7 +453,8 @@ test.describe("A-13 explorer · demo lines", () => {
       await expect(
         section.locator(`a[data-previous-cid="${oracle.M.previousManifestCid ?? ""}"]`),
       ).toBeVisible();
-      await expect(section.locator(`a[data-previous-cid]`).first()).toHaveAttribute(
+      // Each column links its own previous run; read run n's column (since Run 3, run n-1 has one too).
+      await expect(cols.nth(1).locator(`a[data-previous-cid]`)).toHaveAttribute(
         "href",
         new RegExp(prev.manifestCid),
       );
