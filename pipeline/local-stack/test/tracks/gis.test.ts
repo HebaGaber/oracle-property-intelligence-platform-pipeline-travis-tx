@@ -88,6 +88,7 @@ function memoryStore(seed: Partial<Awaited<ReturnType<GisStore["readAssembly"]>>
     readAssembly: async () => ({ parcels: [], geoids: [], features: [], permits: [], ...seed }),
     writeCoordinates: async (rows) => (s.coordinates.push(...rows), rows.length),
     flagPermits: async (rows) => (s.flags.push(...rows), rows.length),
+    replaceAddressPoints: async (records) => records.length,
   };
   return { store, s };
 }
@@ -270,7 +271,7 @@ describe("A-04 T044 Loader gis track: assemble", () => {
     expect(s.coordinates[1]).toMatchObject({ coordinate_reason: "non_land_account" });
     expect(s.flags).toEqual([{ permit_number: "F", issuing_jurisdiction: "austin", coordinate_review_flag: "permit_far_from_gis" }]);
     expect(out.watermark).toMatchObject({ sourceKey: "coords_assembly" });
-    expect((out.watermark?.value as { stats: { by_source: Record<string, number> } }).stats.by_source).toEqual({ gis_centroid: 1, permit_point: 0, none: 1 });
+    expect((out.watermark?.value as { stats: { by_source: Record<string, number> } }).stats.by_source).toEqual({ gis_centroid: 1, address_point: 0, permit_point: 0, none: 1 });
     expect(s.runs[0]).toMatchObject({ job_id: "travis-a04-coords-202610220600", status: "complete" });
   });
 });
