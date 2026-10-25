@@ -4,7 +4,7 @@
 // provenance line in the Source column and a Details button. Row click, Enter or Space selects
 // the property (opens the drawer). Shown from 840 px; the cards (ResultRow) below. Render-only.
 import type { ExploreRow } from "@countylens/query-core";
-import type { KeyboardEvent, MouseEvent, ReactElement } from "react";
+import type { MouseEvent, ReactElement } from "react";
 import { CidDisplay } from "./CidDisplay";
 import { FieldValue, RowProvenance, hasField, type RowField } from "./ResultRow";
 import styles from "./ResultTable.module.css";
@@ -81,21 +81,12 @@ function Row({
     if ((event.target as Element).closest("a, button") !== null) return;
     select();
   };
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
-    if (event.target !== event.currentTarget) return;
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      select();
-    }
-  };
   return (
     <tr
       className={selected ? `${styles.row} ${styles.selected}` : styles.row}
       data-result-row=""
       data-property-cid={row.property_cid}
-      tabIndex={0}
       onClick={onClick}
-      onKeyDown={onKeyDown}
     >
       <td className={styles.num}>{n}</td>
       {COLUMNS.map((c) => {

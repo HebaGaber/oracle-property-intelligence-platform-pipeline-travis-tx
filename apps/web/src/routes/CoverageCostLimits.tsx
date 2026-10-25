@@ -48,18 +48,22 @@ export function SourceSpeed(): ReactElement {
         </p>
       </div>
       <div className={runsStyles.tableWrap}>
-        <table className={`${runsStyles.table} ${styles.stack}`} aria-label="Source limits">
-          <thead>
-            <tr>
-              <th>Source</th>
-              <th>Access and page size</th>
-              <th>Throughput</th>
-              <th>Rate limit</th>
-              <th>Full capture</th>
-              <th>Constraints</th>
+        <table
+          role="table"
+          className={`${runsStyles.table} ${styles.stack}`}
+          aria-label="Source limits"
+        >
+          <thead role="rowgroup">
+            <tr role="row">
+              <th role="columnheader">Source</th>
+              <th role="columnheader">Access and page size</th>
+              <th role="columnheader">Throughput</th>
+              <th role="columnheader">Rate limit</th>
+              <th role="columnheader">Full capture</th>
+              <th role="columnheader">Constraints</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody role="rowgroup">
             {limits.rows.map((row) => (
               <LimitTableRow key={row.source} row={row} />
             ))}
@@ -76,22 +80,29 @@ export function SourceSpeed(): ReactElement {
       <h4 className={runsStyles.sectionTitle}>Publication and read path</h4>
       <div className={runsStyles.tableWrap}>
         <table
+          role="table"
           className={`${runsStyles.table} ${styles.stack}`}
           aria-label="Publication and read path"
         >
-          <thead>
-            <tr>
-              <th>Step</th>
-              <th>Measured</th>
-              <th>Limit and effect</th>
+          <thead role="rowgroup">
+            <tr role="row">
+              <th role="columnheader">Step</th>
+              <th role="columnheader">Measured</th>
+              <th role="columnheader">Limit and effect</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody role="rowgroup">
             {limits.readPath.map((row) => (
-              <tr key={row.step} data-path-step={row.step}>
-                <td data-label="Step">{row.step}</td>
-                <td data-label="Measured">{row.measured}</td>
-                <td data-label="Limit and effect">{row.limit}</td>
+              <tr role="row" key={row.step} data-path-step={row.step}>
+                <td role="cell" data-label="Step">
+                  {row.step}
+                </td>
+                <td role="cell" data-label="Measured">
+                  {row.measured}
+                </td>
+                <td role="cell" data-label="Limit and effect">
+                  {row.limit}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -103,10 +114,14 @@ export function SourceSpeed(): ReactElement {
 
 function LimitTableRow({ row }: { readonly row: LimitRow }): ReactElement {
   return (
-    <tr data-limit-source={row.source} data-status={row.status}>
-      <td data-label="Source">{row.source}</td>
-      <td data-label="Access and page size">{row.pageSize}</td>
-      <td data-label="Throughput" className={runsStyles.num}>
+    <tr role="row" data-limit-source={row.source} data-status={row.status}>
+      <td role="cell" data-label="Source">
+        {row.source}
+      </td>
+      <td role="cell" data-label="Access and page size">
+        {row.pageSize}
+      </td>
+      <td role="cell" data-label="Throughput" className={runsStyles.num}>
         {row.status === "blocked" ? (
           <StatusPill status="error" icon="block" text="Blocked" />
         ) : row.status === "not_measured" ? (
@@ -125,11 +140,13 @@ function LimitTableRow({ row }: { readonly row: LimitRow }): ReactElement {
           </span>
         ) : null}
       </td>
-      <td data-label="Rate limit">{row.rateLimit}</td>
-      <td data-label="Full capture" className={runsStyles.num}>
+      <td role="cell" data-label="Rate limit">
+        {row.rateLimit}
+      </td>
+      <td role="cell" data-label="Full capture" className={runsStyles.num}>
         {row.fullCapture}
       </td>
-      <td data-label="Constraints">
+      <td role="cell" data-label="Constraints">
         {row.antiBot}
         {row.optimisation === null ? null : (
           <span className={runsStyles.helper}> · Applied: {row.optimisation}</span>
@@ -212,19 +229,20 @@ export function CostSection(): ReactElement {
       </div>
       <div className={runsStyles.tableWrap}>
         <table
+          role="table"
           className={`${runsStyles.table} ${styles.stack}`}
           aria-label="Deployed resources and idle cost"
         >
-          <thead>
-            <tr>
-              <th>Deployed resource</th>
-              <th>Fixed (idle) per month</th>
-              <th>Per use</th>
-              <th>Who pays per use</th>
-              <th>Seen in the bill</th>
+          <thead role="rowgroup">
+            <tr role="row">
+              <th role="columnheader">Deployed resource</th>
+              <th role="columnheader">Fixed (idle) per month</th>
+              <th role="columnheader">Per use</th>
+              <th role="columnheader">Who pays per use</th>
+              <th role="columnheader">Seen in the bill</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody role="rowgroup">
             {cost.rows.map((row) => (
               <CostTableRow key={row.component} row={row} />
             ))}
@@ -245,9 +263,11 @@ export function CostSection(): ReactElement {
 function CostTableRow({ row }: { readonly row: CostRow }): ReactElement {
   const filebase = row.idle === null;
   return (
-    <tr data-cost-row={row.component}>
-      <td data-label="Deployed resource">{row.component}</td>
-      <td data-label="Fixed (idle) per month">
+    <tr role="row" data-cost-row={row.component}>
+      <td role="cell" data-label="Deployed resource">
+        {row.component}
+      </td>
+      <td role="cell" data-label="Fixed (idle) per month">
         {filebase ? (
           <StatusPill
             status="unavailable"
@@ -258,9 +278,15 @@ function CostTableRow({ row }: { readonly row: CostRow }): ReactElement {
           row.idle
         )}
       </td>
-      <td data-label="Per use">{row.perUse}</td>
-      <td data-label="Who pays per use">{row.whoPays}</td>
-      <td data-label="Seen in the bill">{row.seenInBill}</td>
+      <td role="cell" data-label="Per use">
+        {row.perUse}
+      </td>
+      <td role="cell" data-label="Who pays per use">
+        {row.whoPays}
+      </td>
+      <td role="cell" data-label="Seen in the bill">
+        {row.seenInBill}
+      </td>
     </tr>
   );
 }

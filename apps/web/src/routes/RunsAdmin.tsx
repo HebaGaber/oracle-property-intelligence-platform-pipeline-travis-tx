@@ -183,6 +183,8 @@ export function AdminActions({ access, liveState, refresh }: AdminActionsProps):
       setMessage(ADMIN_TEXTS.alreadyRunning);
       return;
     }
+    // A real Start publishes a new public run whose CIDs never change: ask once (review minor).
+    if (!dryRun && !window.confirm(ADMIN_TEXTS.confirmPublish)) return;
     act(() => adminApi.start(dryRun ? "dry_run" : "publish"));
   };
 

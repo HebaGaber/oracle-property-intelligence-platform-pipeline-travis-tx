@@ -92,6 +92,8 @@ export const ADMIN_TEXTS = Object.freeze({
   signedOut: "Your session ended. Sign in again.",
   notAdmin: "This account is not an admin.",
   unavailable: "The admin service did not answer. Try again in a moment.",
+  confirmPublish:
+    "Start a real run? It publishes a new public run by CID, and published CIDs never change. Tick Dry run to rehearse without uploading.",
 });
 
 function adminTrpc(): AdminTrpc {

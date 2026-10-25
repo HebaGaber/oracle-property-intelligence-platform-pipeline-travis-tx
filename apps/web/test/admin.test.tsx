@@ -306,6 +306,19 @@ async function renderActions(
 }
 
 describe("AdminActions (TC-010, TC-013, TC-014)", () => {
+  beforeEach(() => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+  });
+
+  it("asks before a real publish and sends nothing when the admin cancels", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    mocks.start.mockClear();
+    await renderActions(live({ state: "idle" }));
+    fireEvent.click(screen.getByRole("button", { name: /start run/i }));
+    expect(window.confirm).toHaveBeenCalled();
+    expect(mocks.start).not.toHaveBeenCalled();
+  });
+
   it("shows 'Signed in as admin' and Start, Stop, Retry", async () => {
     await renderActions(live({}));
     expect(screen.getByText("Signed in as admin")).toBeDefined();

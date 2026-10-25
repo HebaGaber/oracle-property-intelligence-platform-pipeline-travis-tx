@@ -54,7 +54,11 @@ export function consoleHref(url: string): string | undefined {
   }
 }
 
-const csvCell = (value: string): string => `"${value.replaceAll('"', '""')}"`;
+/** Quoted CSV cell; a leading = + - @ (or tab / CR) is prefixed with ' so spreadsheets never run it. */
+const csvCell = (value: string): string => {
+  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return `"${safe.replaceAll('"', '""')}"`;
+};
 
 function toCsv(summary: ActivitySummary): string {
   const head = ["Metric", "Value", "Query"].map(csvCell).join(",");
@@ -194,39 +198,41 @@ function Summary({ summary }: { readonly summary: ActivitySummary }): ReactEleme
             </span>
           </div>
         ) : null}
-        <ul className={styles.metrics} aria-label="Activity metrics">
-          {summary.metrics.map((metric) => {
-            const href = consoleHref(metric.consoleUrl);
-            const shown = formatValue(metric.value, metric.unit);
-            return (
-              <li key={metric.id} className={runsStyles.tile} data-metric={metric.id}>
-                <span className={runsStyles.tileLabel}>{metric.label}</span>
-                {metric.value === null ? (
-                  <StatusPill
-                    status="unavailable"
-                    text="Not available · the Logs Insights query returned no value"
-                  />
-                ) : href === undefined ? (
-                  <b className={runsStyles.tileBig}>{shown}</b>
-                ) : (
-                  <a
-                    className={`${runsStyles.tileBig} ${styles.metricLink}`}
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={`${metric.label}: ${shown}. Open the Logs Insights query`}
-                  >
-                    {shown}
-                  </a>
-                )}
-                <details className={styles.query}>
-                  <summary>Show the query</summary>
-                  <pre className={styles.pre}>{metric.query}</pre>
-                </details>
-              </li>
-            );
-          })}
-        </ul>
+        {empty ? null : (
+          <ul className={styles.metrics} aria-label="Activity metrics">
+            {summary.metrics.map((metric) => {
+              const href = consoleHref(metric.consoleUrl);
+              const shown = formatValue(metric.value, metric.unit);
+              return (
+                <li key={metric.id} className={runsStyles.tile} data-metric={metric.id}>
+                  <span className={runsStyles.tileLabel}>{metric.label}</span>
+                  {metric.value === null ? (
+                    <StatusPill
+                      status="unavailable"
+                      text="Not available · the Logs Insights query returned no value"
+                    />
+                  ) : href === undefined ? (
+                    <b className={runsStyles.tileBig}>{shown}</b>
+                  ) : (
+                    <a
+                      className={`${runsStyles.tileBig} ${styles.metricLink}`}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`${metric.label}: ${shown}. Open the Logs Insights query`}
+                    >
+                      {shown}
+                    </a>
+                  )}
+                  <details className={styles.query}>
+                    <summary>Show the query</summary>
+                    <pre className={styles.pre}>{metric.query}</pre>
+                  </details>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
       <section className={runsStyles.card} aria-labelledby="day-heading" data-per-day="">
         <h3 id="day-heading" className={runsStyles.sectionTitle}>
