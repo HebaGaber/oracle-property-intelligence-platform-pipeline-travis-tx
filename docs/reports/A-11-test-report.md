@@ -104,3 +104,9 @@ Permits page load time (`vite preview`, dev measurement): 1,234 requests / 76.7 
 Hosted cases TC-032, TC-033 and TC-034 (`fallback.spec.ts`, A-03 cases) are marked `test.fixme` (A-16 item #7: client-side CID check cannot verify table parts over 256 KiB), so any other hosted failure turns CI red. They are not counted as passing.
 
 Live checks for Run 2 (Permits page on the hosted URL, Playwright) and CI: TBD (running).
+
+## Addendum 2026-10-25: Run 2 results and the Run 3 gap
+
+- **Build and URL:** commit b1de02c on `011-publish-and-runs`, CI run 40150597123 (gitleaks, workspace, oracle-runtime and the four e2e-hosted jobs green) against `https://011-publish-and-runs.d2lx0utip89u18.amplifyapp.com`.
+- **Run 2:** published as `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute` (15,025 permit rows, 0 of 10,792 unmatched by the identity gate). ERR-24, ERR-25 and ERR-26 are Closed on this run.
+- **Run 3 and the immutability check:** not run. PO decision 2026-10-25: known gap, carried to A-16 items 2 and 4.
