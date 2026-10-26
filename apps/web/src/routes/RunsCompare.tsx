@@ -6,9 +6,20 @@
 // `previousManifestCid` link and its per-source deltas, and the old-manifest check: a plain GET
 // of run a's manifest on Pinata and on Filebase (data/run-chain, never the CID copy); "old
 // manifest still resolves on Pinata and Filebase" appears only after both answered with bytes of
-// that CID. A react-router lazy route module.
+// that CID. Layout (A-16 F3, board RunsCompare1440/768/390): previous and current cards side by
+// side from 1024 px, the change table (compact per-source blocks below 600 px), then Immutability
+// checks beside the old-manifest check. Justified: the board's third "CAR available" card is
+// folded into each card's CAR link, the "CAR available" chip and "Directory CAR" (bundle budget).
+// A react-router lazy route module.
 import type { RunManifestV1 } from "@countylens/contract";
-import { PROGRESS_LABELS, ROUTES, RUNS_TEXTS, verifyPath } from "@countylens/shared";
+import {
+  PROGRESS_LABELS,
+  ROUTES,
+  RUNS_TEXTS,
+  isSourceName,
+  sourceLabel,
+  verifyPath,
+} from "@countylens/shared";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
 import { Icon } from "../components/Icon";
@@ -19,7 +30,8 @@ import { LinearProgress } from "../components/LinearProgress";
 import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
 import type { ReadSource } from "../data/fetch-by-cid";
-import { formatCount, utcTimestamp } from "../data/format";
+import { formatCount } from "../data/format";
+import { formatUtc } from "../components/Provenance";
 import {
   checkManifestResolves,
   oldManifestResolvesText,
@@ -81,11 +93,6 @@ export function Component(): ReactElement {
         <ErrorBanner message={runErrorNode(state.error)} onRetry={retry} />
       ) : null}
       {state.kind === "ready" ? (
-        <p className={styles.itemBody} data-run-numbering="">
-          {RUNS_TEXTS.numbering}
-        </p>
-      ) : null}
-      {state.kind === "ready" ? (
         <ComparePair
           entries={runsByFinish(state.run.index)}
           a={params.get("a")}
@@ -112,11 +119,16 @@ function ComparePair({
   const ea = valid ? entries[an - 1] : undefined;
   const eb = valid ? entries[bn - 1] : undefined;
   const header = (
-    <CompareHeader
-      entries={entries}
-      a={ea === undefined ? null : an}
-      b={eb === undefined ? null : bn}
-    />
+    <>
+      <CompareHeader
+        entries={entries}
+        a={ea === undefined ? null : an}
+        b={eb === undefined ? null : bn}
+      />
+      <p className={styles.helperText} data-run-numbering="">
+        {RUNS_TEXTS.numbering}
+      </p>
+    </>
   );
 
   if (ea === undefined || eb === undefined) {
@@ -176,38 +188,34 @@ function CompareHeader({
     </option>
   ));
   return (
-    <div className={styles.compareHead}>
-      <Link className={styles.textLink} to={ROUTES.runs} aria-label="Back to runs">
-        <Icon name="arrow_back" size="medium" />
-      </Link>
-      <h2 className={styles.pageTitle}>
-        {a === null || b === null ? "Runs · Compare" : `Run ${b} vs Run ${a}`}
-      </h2>
+    <div className={styles.compareTop}>
+      <div className={styles.compareTitle}>
+        <Link className={styles.textLink} to={ROUTES.runs} aria-label="Back to runs">
+          <Icon name="arrow_back" size="medium" />
+        </Link>
+        <h2 className={styles.pageTitle}>
+          {a === null || b === null ? "Runs · Compare" : `Run ${b} vs Run ${a}`}
+        </h2>
+      </div>
       {entries.length >= 2 ? (
-        <span className={styles.chips}>
-          <label className={styles.selectLabel}>
-            <span>Run</span>
-            <select
-              className={styles.select}
-              value={b ?? entries.length}
-              onChange={(e) => choose("b", e.target.value)}
-              aria-label="Newer run"
-            >
-              {options}
-            </select>
-          </label>
-          <span>vs</span>
-          <label className={styles.selectLabel}>
-            <span>Run</span>
-            <select
-              className={styles.select}
-              value={a ?? entries.length - 1}
-              onChange={(e) => choose("a", e.target.value)}
-              aria-label="Older run"
-            >
-              {options}
-            </select>
-          </label>
+        <span>
+          <select
+            className={styles.select}
+            value={b ?? entries.length}
+            onChange={(e) => choose("b", e.target.value)}
+            aria-label="Newer run"
+          >
+            {options}
+          </select>
+          <span className={styles.selectLabel}>vs</span>
+          <select
+            className={styles.select}
+            value={a ?? entries.length - 1}
+            onChange={(e) => choose("a", e.target.value)}
+            aria-label="Older run"
+          >
+            {options}
+          </select>
         </span>
       ) : null}
     </div>
@@ -254,41 +262,55 @@ function TwoRuns({
   if (state.kind === "error") return <ErrorBanner message={runErrorNode(state.error)} />;
   return (
     <>
-      <div className={styles.page}>
-        <RunColumn run={state.a} />
-        <RunColumn run={state.b} />
+      {/* Board RunsCompare1440: previous and current side by side (the CAR card is folded into the CAR links and checks). */}
+      <div>
+        <RunColumn run={state.a} role="previous" />
+        <RunColumn run={state.b} role="current" />
       </div>
       <ChangeTable a={state.a} b={state.b} />
-      <ImmutabilityChecks a={state.a} b={state.b} />
-      <OldManifestCheck cid={state.a.entry.manifestCid} />
+      <div>
+        <ImmutabilityChecks a={state.a} b={state.b} />
+        <OldManifestCheck cid={state.a.entry.manifestCid} />
+      </div>
     </>
   );
 }
 
-function RunColumn({ run }: { readonly run: ComparedRun }): ReactElement {
+/** MB or GB (1 MB = 2^20 bytes) as on the board; the exact bytes stay in `data-total-size`. */
+const humanSize = (bytes: number): string =>
+  bytes >= 2 ** 30 ? `${(bytes / 2 ** 30).toFixed(2)} GB` : `${(bytes / 2 ** 20).toFixed(1)} MB`;
+
+/** `bafk…vlfm`: the short form CidDisplay uses, for a CID shown as link text. */
+const shortCid = (cid: string): string => `${cid.slice(0, 4)}…${cid.slice(-4)}`;
+
+function RunColumn({
+  run,
+  role,
+}: {
+  readonly run: ComparedRun;
+  readonly role: "previous" | "current";
+}): ReactElement {
   const { manifest, entry } = run;
   const titleId = `compare-run-${run.n}`;
   const totalSize = manifest.artifacts.reduce((sum, a) => sum + a.size, 0);
   const car = manifest.artifacts.find((a) => a.kind === "car");
   return (
-    <article
-      className={styles.card}
-      aria-labelledby={titleId}
-      data-compare-run={run.n}
-      data-cid={entry.manifestCid}
-    >
+    <article aria-labelledby={titleId} data-compare-run={run.n} data-cid={entry.manifestCid}>
       <header className={styles.header}>
-        <h3 id={titleId} className={styles.title}>
-          Run {run.n} · {manifest.runId}
+        <h3 id={titleId} className={styles.cardTitle}>
+          Run {run.n} · {role}
         </h3>
         <FallbackChip source={run.source} />
       </header>
-      <p className={styles.itemBody}>
+      <span>{manifest.runId}</span>
+      <p>
+        {formatUtc(manifest.startedAt)} – {formatUtc(manifest.finishedAt)} UTC
+      </p>
+      <p>
         Manifest <CidDisplay cid={entry.manifestCid} />
       </p>
-      <p className={styles.times}>Finished {utcTimestamp(manifest.finishedAt)} UTC</p>
-      <p className={styles.itemBody}>
-        Previous manifest:{" "}
+      <p>
+        Previous{" "}
         {manifest.previousManifestCid === null ? (
           <span>{RUNS_TEXTS.firstRun}</span>
         ) : (
@@ -296,44 +318,50 @@ function RunColumn({ run }: { readonly run: ComparedRun }): ReactElement {
             className={styles.link}
             to={verifyPath(manifest.previousManifestCid)}
             data-previous-cid={manifest.previousManifestCid}
+            title={manifest.previousManifestCid}
           >
-            {manifest.previousManifestCid}
+            {shortCid(manifest.previousManifestCid)}
           </Link>
         )}
       </p>
-      <p className={styles.itemBody}>
-        Artifacts: {manifest.artifacts.length} ·{" "}
-        <span data-total-size={totalSize}>{totalSize} bytes in total</span>
+      <p>
+        {manifest.artifacts.length} files ·{" "}
+        <span data-total-size={totalSize}>{humanSize(totalSize)} in total</span>
         {car === undefined ? null : (
           <>
             {" · "}
             <Link className={styles.link} to={verifyPath(car.cid)} data-car-link={car.cid}>
-              CAR {car.name}
+              CAR
             </Link>
           </>
         )}
       </p>
-      <ul className={styles.list} aria-label={`Sources of run ${run.n}`}>
-        {manifest.sources.map((source) => (
-          <li key={source.name} className={styles.item} data-source={source.name}>
-            <span className={styles.itemTitle}>
-              <code className={styles.mono}>{source.name}</code>
-            </span>
-            <span className={styles.itemBody}>
-              {source.records} records ·{" "}
-              <SourceDeltas
-                added={source.added}
-                changed={source.changed}
-                removed={source.removed}
-                firstRun={manifest.previousManifestCid === null}
-              />
-            </span>
-          </li>
-        ))}
-      </ul>
+      <details>
+        <summary>Sources ({manifest.sources.length})</summary>
+        <ul className={styles.list} aria-label={`Sources of run ${run.n}`}>
+          {manifest.sources.map((source) => (
+            <li key={source.name} className={styles.item} data-source={source.name}>
+              <span className={styles.itemTitle}>
+                <code className={styles.mono}>{source.name}</code>
+              </span>
+              <span className={styles.itemBody}>
+                {formatCount(source.records)} records ·{" "}
+                <SourceDeltas
+                  added={source.added}
+                  changed={source.changed}
+                  removed={source.removed}
+                  firstRun={manifest.previousManifestCid === null}
+                />
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
     </article>
   );
 }
+
+const sourceName = (name: string): string => (isSourceName(name) ? sourceLabel(name) : name);
 
 /** Per-source records and deltas, then how many files kept, changed or gained a CID. */
 function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRun }): ReactElement {
@@ -352,7 +380,7 @@ function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRu
   ).length;
   return (
     <section className={styles.card} aria-labelledby="changed-table-heading" data-change-table="">
-      <h3 id="changed-table-heading" className={styles.sectionTitle}>
+      <h3 id="changed-table-heading" className={styles.cardTitle}>
         What changed, per source and artifact
       </h3>
       <div className={styles.tableWrap}>
@@ -373,7 +401,10 @@ function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRu
               return (
                 <tr key={source.name} data-change-source={source.name}>
                   <td data-label="Source">
-                    <code className={styles.mono}>{source.name}</code>
+                    <span>
+                      <span>{sourceName(source.name)}</span>
+                      <code>{source.name}</code>
+                    </span>
                   </td>
                   <td data-label={`Run ${a.n}`} className={styles.num}>
                     {prev === undefined ? "not in this run" : formatCount(prev.records)}
@@ -382,13 +413,13 @@ function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRu
                     {formatCount(source.records)}
                   </td>
                   <td data-label="Added" className={styles.num}>
-                    +{source.added}
+                    +{formatCount(source.added)}
                   </td>
                   <td data-label="Changed" className={styles.num}>
-                    ~{source.changed}
+                    ~{formatCount(source.changed)}
                   </td>
                   <td data-label="Removed" className={styles.num}>
-                    −{source.removed}
+                    −{formatCount(source.removed)}
                   </td>
                 </tr>
               );
@@ -396,10 +427,13 @@ function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRu
           </tbody>
         </table>
       </div>
-      <p className={styles.itemBody} data-artifact-cids="">
-        Files by name: {same} kept the same CID, {changed} changed CID, {added} are new in Run {b.n}
-        , {removed} are not in Run {b.n}. An unchanged file keeps the same CID, so a changed CID
-        always means changed bytes.
+      <p className={styles.provenance} data-artifact-cids="">
+        <Icon name="info" size="small" />
+        <span>
+          Files by name: {same} kept the same CID, {changed} changed CID, {added} are new in Run{" "}
+          {b.n}, {removed} are not in Run {b.n}. An unchanged file keeps the same CID, so a changed
+          CID always means changed bytes.
+        </span>
       </p>
     </section>
   );
@@ -430,7 +464,7 @@ function ImmutabilityChecks({
   ];
   return (
     <section className={styles.card} aria-labelledby="checks-heading" data-immutability="">
-      <h3 id="checks-heading" className={styles.sectionTitle}>
+      <h3 id="checks-heading" className={styles.cardTitle}>
         Immutability checks
       </h3>
       <div className={styles.chips}>
@@ -489,11 +523,15 @@ function OldManifestCheck({ cid }: { readonly cid: string }): ReactElement {
   const text = oldManifestResolvesText(resolves);
   return (
     <section className={styles.card} aria-labelledby="old-manifest-heading">
-      <h3 id="old-manifest-heading" className={styles.sectionTitle}>
+      <h3 id="old-manifest-heading" className={styles.cardTitle}>
         Old manifest on the public gateways
       </h3>
-      {text === null ? null : <StatusPill status="verified" text={text} />}
-      {failure === null ? null : <StatusPill status="error" text={failure} />}
+      {text === null && failure === null ? null : (
+        <div className={styles.chips}>
+          {text === null ? null : <StatusPill status="verified" text={text} />}
+          {failure === null ? null : <StatusPill status="error" text={failure} />}
+        </div>
+      )}
       <ul className={styles.list}>
         {(["pinata", "filebase"] as const).map((gateway) => (
           <li
