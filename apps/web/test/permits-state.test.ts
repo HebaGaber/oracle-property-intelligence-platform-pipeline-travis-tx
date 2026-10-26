@@ -24,6 +24,7 @@ import { RunIndexError } from "../src/data/runs-index";
 import { EngineStartError } from "../src/engine/errors";
 import { parsePermitRows, type PermitListRow } from "../src/engine/permit-list";
 import {
+  NO_CONTRACTOR_PRINTED,
   PermitsPage,
   STAGE_TEXTS,
   TABLE_MEDIA_QUERY,
@@ -315,8 +316,14 @@ describe("ready (FR-003, TC-020…025): the single page of permits with provenan
     expect(within(unresolved).getByText(MISSING_REASON_LABELS.contractor_unresolved)).toBeTruthy();
     expect(within(unresolved).getByText(MISSING_REASON_LABELS.no_lexicon_carrier)).toBeTruthy();
 
+    // contractor_company_cid source_missing: the permit printed none, so the pill says that and
+    // never "unresolved" (A-16 data audit row 8).
     const notPrinted = contractor(1);
     expect(within(notPrinted).getByText(CONTRACTOR_NOT_PRINTED_LABEL)).toBeTruthy();
+    const notPrintedPill = notPrinted.querySelector("[data-status]:not([data-reason])");
+    expect(notPrintedPill?.textContent?.trim()).toBe(NO_CONTRACTOR_PRINTED);
+    expect(notPrintedPill?.getAttribute("data-status")).toBe("unavailable");
+    expect(within(notPrinted).queryByText("unresolved")).toBeNull();
 
     const resolved = contractor(2);
     const okPill = resolved.querySelector("[data-status]");
