@@ -754,8 +754,8 @@ describe("A-16 Runs page: board sections, LCP and the signed-out view", () => {
       }),
     );
     await renderRuns();
-    const list = await screen.findByRole("list", { name: "Runs, newest first" });
-    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    const picker = await screen.findByRole("combobox", { name: "Run" });
+    expect(within(picker).getAllByRole("option")).toHaveLength(1);
     const section = document.querySelector('[data-route="runs"]');
     expect(section?.getAttribute("data-state")).toBe("loading");
     expect(document.querySelector("[data-sync-status]")).not.toBeNull();
@@ -883,10 +883,9 @@ describe("A-16 Runs page: the Run menu switches the shown run (PO note)", () => 
     document.querySelector("[data-shown-run]")?.getAttribute("data-shown-run");
   const title = async (): Promise<string> =>
     (await screen.findByRole("article")).querySelector("#run-title")?.textContent ?? "";
-  const current = (): string | null =>
-    document
-      .querySelector('[data-run-list] a[aria-current="true"]')
-      ?.getAttribute("data-choose-run") ?? null;
+  // The run picker is a dropdown (PO 2026-10-26, RunSelect): its value is the shown run ID.
+  const picker = (): HTMLSelectElement => screen.getByRole("combobox", { name: "Run" });
+  const current = (): string | null => picker().value || null;
 
   it("shows the latest run by default and marks it in the menu", async () => {
     await renderAt("/runs");
@@ -899,10 +898,16 @@ describe("A-16 Runs page: the Run menu switches the shown run (PO note)", () => 
   it("switches the card, sources, events and What changed to the chosen run and keeps ?run= in sync", async () => {
     await renderAt("/runs");
     expect(await title()).toBe(runs.newer.runId);
-    const list = screen.getByRole("list", { name: "Runs, newest first" });
-    const choice = within(list).getByRole("link", { name: /^Run 1 ·/ });
-    expect(choice.getAttribute("href")).toBe(`/runs?run=${runs.older.runId}`);
-    fireEvent.click(choice);
+    // Newest first, "Run N · Mon D, YYYY", the latest marked.
+    expect([...picker().options].map((o) => o.textContent)).toEqual([
+      "Run 2 · Oct 24, 2026 · latest",
+      expect.stringMatching(/^Run 1 · [A-Z][a-z]{2} \d{1,2}, \d{4}$/),
+    ]);
+    expect([...picker().options].map((o) => o.getAttribute("data-run-id"))).toEqual([
+      runs.newer.runId,
+      runs.older.runId,
+    ]);
+    fireEvent.change(picker(), { target: { value: runs.older.runId } });
     await waitFor(() => expect(lastSearch).toBe(`?run=${runs.older.runId}`));
     await waitFor(() => expect(shownRun()).toBe(runs.older.runId));
     expect(await title()).toBe(runs.older.runId);
@@ -919,7 +924,7 @@ describe("A-16 Runs page: the Run menu switches the shown run (PO note)", () => 
     expect(document.querySelector("[data-county-coverage]")?.textContent).toMatch(/^Not shown/);
 
     // Back to the latest: the run parameter is dropped.
-    fireEvent.click(within(list).getByRole("link", { name: /^Run 2 ·/ }));
+    fireEvent.change(picker(), { target: { value: runs.newer.runId } });
     await waitFor(() => expect(lastSearch).toBe(""));
     await waitFor(() => expect(shownRun()).toBe(runs.newer.runId));
     expect(current()).toBe(runs.newer.runId);
@@ -929,7 +934,7 @@ describe("A-16 Runs page: the Run menu switches the shown run (PO note)", () => 
     await renderAt(`/runs?run=${runs.older.runId}`);
     expect(await title()).toBe(runs.older.runId);
     expect(current()).toBe(runs.older.runId);
-    expect(document.querySelector("[data-run-list] summary")?.textContent).toContain("Run 1 ·");
+    expect(picker().selectedOptions[0]?.textContent).toMatch(/^Run 1 ·/);
   });
 
   it("shows the latest run and says why when ?run= names no run in the index", async () => {

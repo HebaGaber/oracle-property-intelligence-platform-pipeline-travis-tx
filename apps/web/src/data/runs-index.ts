@@ -85,3 +85,21 @@ export function runsByFinish(index: RunsIndexV1): RunsIndexEntry[] {
 export function runNumbers(index: RunsIndexV1): ReadonlyMap<string, number> {
   return new Map(runsByFinish(index).map((run, i) => [run.runId, i + 1]));
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** `Oct 25, 2026` (UTC) for an ISO instant; the instant itself when it does not parse. */
+export function runDate(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  const d = new Date(ms);
+  return `${MONTHS[d.getUTCMonth()] ?? ""} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
+
+/**
+ * A run in a run picker (PO 2026-10-26: a run list with only the run and its date is a dropdown):
+ * `Run 4 · Oct 25, 2026`, its number from the `runsByFinish` order.
+ */
+export function runOptionLabel(number: number, finishedAt: string): string {
+  return `Run ${number} · ${runDate(finishedAt)}`;
+}

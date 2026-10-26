@@ -446,6 +446,46 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
     });
   });
 
+  // A-16 PO rule 2026-10-26: a run list with only run + date is a dropdown (RunSelect). The Run
+  // picker lists every indexed run newest first; choosing the oldest sets `?run=` and the run card
+  // shows that run; choosing the latest drops the parameter again.
+  test.describe("A-16 Runs: the Run dropdown switches the shown run", () => {
+    test("run dropdown drives ?run= and the run card", async ({ page }) => {
+      const index = (await (await page.request.get("/runs/index.json")).json()) as {
+        runs: { runId: string; finishedAt: string }[];
+      };
+      const byFinish = [...index.runs].sort(
+        (a, b) => Date.parse(a.finishedAt) - Date.parse(b.finishedAt),
+      );
+      const oldest = byFinish[0];
+      const latest = byFinish[byFinish.length - 1];
+      test.skip(oldest === undefined || latest === undefined || byFinish.length < 2, "one run");
+      if (oldest === undefined || latest === undefined) return;
+
+      await page.goto("/runs");
+      const picker = page.getByRole("combobox", { name: "Run", exact: true });
+      await expect(picker).toBeVisible({ timeout: 60_000 });
+      await expect(runCard(page, latest.runId)).toBeVisible({ timeout: 60_000 });
+      const ids = await picker
+        .locator("option")
+        .evaluateAll((options) => options.map((o) => o.getAttribute("data-run-id")));
+      expect(ids, "every run, newest first").toEqual(byFinish.map((r) => r.runId).reverse());
+      await expect(picker).toHaveValue(latest.runId);
+      expect(await picker.locator("option").first().textContent()).toMatch(
+        /^Run \d+ · [A-Z][a-z]{2} \d{1,2}, \d{4} · latest$/,
+      );
+
+      await picker.selectOption(oldest.runId);
+      await expect(page).toHaveURL(new RegExp(`[?&]run=${oldest.runId}`));
+      await expect(runCard(page, oldest.runId)).toBeVisible({ timeout: 60_000 });
+      await expect(picker).toHaveValue(oldest.runId);
+
+      await picker.selectOption(latest.runId);
+      await expect(page).not.toHaveURL(/[?&]run=/);
+      await expect(runCard(page, latest.runId)).toBeVisible({ timeout: 60_000 });
+    });
+  });
+
   test.describe("A-03-TC-061 Evidence names the hosted URL used (edge)", () => {
     test("@scenario:A-03-TC-061", async () => {
       const testInfo = test.info();

@@ -115,7 +115,11 @@ export function Component(): ReactElement {
             </>
           ) : null}
           {chip.kind === "ready" ? (
-            <StatusPill status="info" icon="history" text={chip.text} />
+            // Hub boards: the run as an outlined chip with the cloud-done glyph (not a tonal pill).
+            <span className={styles.runChip} data-run-chip="">
+              <Icon name="cloud_done" size="small" />
+              <span>{chip.text}</span>
+            </span>
           ) : null}
           {chip.kind === "error" ? (
             <span role="alert" className={styles.errorChip}>
