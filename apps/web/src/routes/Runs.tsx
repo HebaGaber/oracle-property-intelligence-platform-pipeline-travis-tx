@@ -427,9 +427,12 @@ function PipelineSteps({
  */
 /**
  * The sources this run captured itself (label review 2026-10-26): a capture time at or after the
- * run's start. The others were carried over unchanged from an earlier run.
+ * run's start (the first run: all of them). The others were carried over unchanged from an earlier
+ * run; the Runs log reads the same split from the earlier manifests (run-events.ts).
  */
 function fetchedIn(manifest: RunManifestV1): readonly ManifestSource[] {
+  // The first run fetched everything, even what it captured before its recorded start.
+  if (manifest.previousManifestCid === null) return manifest.sources;
   const start = Date.parse(manifest.startedAt);
   return manifest.sources.filter((s) => Date.parse(s.captured_at) >= start);
 }

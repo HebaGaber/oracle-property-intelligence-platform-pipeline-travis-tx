@@ -151,11 +151,10 @@ describe("run-chain", () => {
 });
 
 describe("run-events", () => {
-  it("one started, one captured per source fetched in the run and one finished event, with limitations", () => {
+  it("one started, one captured per source and one finished event per run, with limitations", () => {
     const events = runEvents([MANIFEST]);
-    const own = MANIFEST.sources.filter(
-      (s) => Date.parse(s.captured_at) >= Date.parse(MANIFEST.startedAt),
-    );
+    // A run with no earlier run owns every capture, even one before its recorded start.
+    const own = MANIFEST.sources;
     expect(events).toHaveLength(own.length + 2);
     expect(events.find((e) => e.kind === "started")).toEqual({
       time: MANIFEST.startedAt,
@@ -177,19 +176,20 @@ describe("run-events", () => {
       });
   });
 
-  it("leaves out a source carried over from an earlier run (captured before this run started)", () => {
-    const [kept, ...rest] = MANIFEST.sources;
-    if (kept === undefined) throw new Error("fixture has no source");
-    const run = {
+  it("leaves out a capture an earlier run already holds (carried over: same source, same time)", () => {
+    const [fresh, ...rest] = MANIFEST.sources;
+    if (fresh === undefined) throw new Error("fixture has no source");
+    const later = {
       ...MANIFEST,
-      startedAt: "2026-10-26T10:47:00.000Z",
-      sources: [
-        { ...kept, captured_at: "2026-10-26T11:32:51.992Z" },
-        ...rest.map((s) => ({ ...s, captured_at: "2026-10-22T05:48:41.000Z" })),
-      ],
+      runId: "travis-next-run",
+      startedAt: "2026-11-01T00:00:00.000Z",
+      finishedAt: "2026-11-01T01:00:00.000Z",
+      sources: [{ ...fresh, captured_at: "2026-11-01T00:30:00.000Z" }, ...rest],
     };
-    const captured = runEvents([run]).filter((e) => e.kind === "captured");
-    expect(captured.map((e) => e.source)).toEqual([kept.name]);
+    const captured = runEvents([later, MANIFEST]).flatMap((e) =>
+      e.kind === "captured" && e.runId === later.runId ? [e.source] : [],
+    );
+    expect(captured).toEqual([fresh.name]);
   });
 
   it("is time-ordered across runs, whatever order the manifests come in", () => {

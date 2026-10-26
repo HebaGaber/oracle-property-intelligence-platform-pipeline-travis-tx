@@ -514,22 +514,34 @@ test.describe("A-13 pages · Catalog, Legal, Runs log", { tag: "@a13-pages" }, (
     const expected: Ev[] = [];
     const limitations = new Map<string, string[]>();
     const sourceLabels: string[] = [];
+    // A capture an earlier run already holds (same source, same time) was carried over: it is that
+    // run's event, not this one's (label review 2026-10-26).
+    const seen = new Set<string>();
+    const loaded = [];
     for (const entry of oracle.runs) {
-      const fetched =
+      loaded.push(
         entry.manifestCid === oracle.manifestCid
           ? { manifest: oracle.M, bytes: oracle.manifestBytes }
-          : await fetchManifestFromPinata(entry.manifestCid);
+          : await fetchManifestFromPinata(entry.manifestCid),
+      );
+    }
+    loaded.sort((x, y) => Date.parse(x.manifest.startedAt) - Date.parse(y.manifest.startedAt));
+    for (const fetched of loaded) {
       const m = fetched.manifest;
       expected.push({ runId: m.runId, kind: "started", at: Date.parse(m.startedAt), source: "" });
       for (const s of m.sources) {
-        expected.push({
-          runId: m.runId,
-          kind: "captured",
-          at: Date.parse(s.captured_at),
-          source: "",
-        });
+        const capture = `${s.name}|${s.captured_at}`;
+        if (!seen.has(capture)) {
+          expected.push({
+            runId: m.runId,
+            kind: "captured",
+            at: Date.parse(s.captured_at),
+            source: "",
+          });
+        }
         sourceLabels.push(sourceLabel(s.name));
       }
+      for (const s of m.sources) seen.add(`${s.name}|${s.captured_at}`);
       expected.push({ runId: m.runId, kind: "finished", at: Date.parse(m.finishedAt), source: "" });
       limitations.set(m.runId, m.limitations);
       const raw = JSON.parse(new TextDecoder().decode(fetched.bytes)) as {
