@@ -702,6 +702,9 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "the published dataset' or 'in the data' as a general claim about all of Travis County.",
     "Your last step writes the final answer with no further tool calls; never end by planning a call.",
     "Be concise: this answer has a 1,500-output-token budget and at most 3 tool-calling turns.",
+    "List at most 10 properties or permits in the answer, each with its address and [n] citation;",
+    "the page shows every returned row under the answer, so say how many matched and that the",
+    "rest are listed below. Never write a table longer than 10 rows.",
     overridesLine(input.overrides),
   ]
     .filter((line) => line.length > 0)
