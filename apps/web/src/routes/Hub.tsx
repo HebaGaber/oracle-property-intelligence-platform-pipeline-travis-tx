@@ -171,7 +171,7 @@ export function Component(): ReactElement {
             </div>
             <p className={styles.cardBody}>
               Find properties by area, roof age, permits and owner location. Ask in plain English or
-              SQL, and check where each value came from.
+              use the filters, and check where each value came from.
             </p>
             <Checks items={COUNTYLENS_CHECKS} />
           </div>
