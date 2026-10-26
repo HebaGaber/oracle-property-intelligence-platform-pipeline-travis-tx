@@ -2,6 +2,7 @@
 // writes from the Query DB) becomes the manifest's Austin `sources[]` entry with the new
 // watermark, the real digest-based delta and the new capture-time total; every other source keeps
 // its facts with delta 0 and the reason "source unchanged, watermark X" (AC-7, AC-11).
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -19,6 +20,7 @@ import {
 import {
   buildRunManifest,
   carriedSourceLimitations,
+  notRecapturedLimitation,
   type RunManifestConfig,
 } from "../src/run-manifest.js";
 import { NOT_YET_PUBLISHED, put, runFixture, type RunFixture } from "./support/run-fixture.js";
@@ -53,6 +55,15 @@ function facts(extra: Partial<AustinIncrementalFacts> = {}): AustinIncrementalFa
     ...extra,
   };
 }
+
+const LAYER_RECEIPT = {
+  captured_at: "2026-10-25T08:28:56.200Z",
+  records: 466149,
+  sha256: "4".repeat(64),
+  layer_last_edit_date: "2026-10-24T04:31:08.027Z",
+  layer_url:
+    "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/LOCATION_address_points/FeatureServer/0",
+};
 
 const AUSTIN = {
   name: "austin-3syk-w9eu",
@@ -169,6 +180,8 @@ describe("austin facts", () => {
         "source bulk re-stamp; delta by content digest",
         "Row count reconciliation: z",
         "removals not checked: w",
+        "No new capture since Run 3 (r3): these are Run 3's source facts",
+        notRecapturedLimitation("travis-full-run3-1-20261025", "2026-10-24T04:31:08.027Z"),
       ]),
     ).toEqual(["Comptroller baseline not loaded (A-07)"]);
   });
@@ -347,6 +360,68 @@ describe("buildRunManifest, incremental (Run 3)", () => {
       deps(f),
     );
     expect(supplied.manifest.coverage.permits_emitted?.count).toBe(7);
+  });
+
+  it("Run 4: carries the layer source with delta 0 and drops the correction run's per-run Austin note", async () => {
+    const f = await runFixture();
+    const layer = join(f.root, "address-points-receipt.json");
+    writeFileSync(layer, JSON.stringify(LAYER_RECEIPT));
+    // The base is a Run 3.1-style correction run: no capture, the layer listed, and its own
+    // "No new capture since" note on the Austin source.
+    const correction = await buildRunManifest(
+      {
+        runId: "travis-full-run3-1-20261025",
+        startedAt: "2026-10-25T21:00:00.000Z",
+        finishedAt: "2026-10-25T23:00:00.000Z",
+        previousManifestCid: f.baseCid,
+        countyDir: f.countyDir,
+        permitsDir: f.permitsV1,
+        addressPointsReceipt: layer,
+        sourceLimitations: {
+          "austin-3syk-w9eu": ["No new capture since Run 3 (r3): these are Run 3's source facts"],
+        },
+      },
+      deps(f),
+    );
+    put(join(f.root, "runs/travis-full-run3-1-20261025/manifest.json"), correction.bytes);
+    writeFacts(f, facts());
+    const { manifest: m } = await buildRunManifest(
+      config(f, {
+        baseManifest: "runs/travis-full-run3-1-20261025/manifest.json",
+        previousManifestCid: correction.cid,
+        addressPointsReceipt: layer,
+        carryAddressPoints: true,
+      }),
+      deps(f),
+    );
+    expect(m.sources.map((s) => s.name)).toEqual([
+      "austin-3syk-w9eu",
+      "tcad-2026-certified-json",
+      "austin-address-points",
+    ]);
+    const before = correction.manifest.sources[2];
+    expect(m.sources[2]).toMatchObject({
+      watermark: before?.watermark,
+      records: before?.records,
+      captured_at: before?.captured_at,
+      added: 0,
+      changed: 0,
+      removed: 0,
+    });
+    expect(m.sources[2]?.limitations).toEqual([
+      ...(before?.limitations ?? []),
+      notRecapturedLimitation("travis-full-run3-1-20261025", before?.watermark ?? null),
+    ]);
+    const austin = m.sources[0];
+    expect(austin).toMatchObject({ watermark: W1, added: 660, changed: 3, removed: 0 });
+    expect(austin?.limitations.join("\n")).not.toMatch(/No new capture since/);
+  });
+
+  it("a run with new facts but without carryAddressPoints still leaves the layer out", async () => {
+    const f = await runFixture();
+    writeFacts(f, facts());
+    const { manifest: m } = await buildRunManifest(config(f), deps(f));
+    expect(m.sources.map((s) => s.name)).not.toContain("austin-address-points");
   });
 
   it("without facts a follow-up run is still the no-capture correction run (delta 0, same watermark)", async () => {

@@ -108,9 +108,10 @@ export const RunManifestConfig = z
     /** Replaces the Austin source's "Comptroller baseline not loaded" note (ERR-73). */
     registryNote: z.string().min(1).optional(),
     /**
-     * A correction run that reuses the base run's County artifacts (Run 3.1): the base's
+     * A run that reuses the base run's County artifacts (Run 3.1, Run 4): the base's
      * address-point source is carried like the other sources (delta 0, its limitations kept),
-     * because the reused coordinates still come from it. Needs `addressPointsReceipt`.
+     * because the reused coordinates still come from it. In an incremental run it also states
+     * that it was carried without a new capture. Needs `addressPointsReceipt`.
      */
     carryAddressPoints: z.boolean().optional(),
     /**
@@ -182,13 +183,27 @@ export function addressPointSourceInput(
 const CORRECTION_NOTE_PREFIX = "Correction run, no new source capture";
 const INCREMENTAL_NOTE_PREFIX = "Incremental refresh of the Austin permits source";
 
-/** Source limitations an earlier incremental run added; they describe that run, not the source. */
+/** A source an incremental run still uses but did not capture again (carryAddressPoints). */
+const NOT_RECAPTURED_PREFIX = "Not re-captured in this run:";
+
+/** The note of a carried source: carried, not checked (unlike "source unchanged" for TCAD). */
+export function notRecapturedLimitation(baseRunId: string, watermark: string | null): string {
+  return `${NOT_RECAPTURED_PREFIX} carried from ${baseRunId} (watermark ${watermark ?? "none"})`;
+}
+
+/**
+ * Source limitations an earlier run added; they describe that run, not the source. Dropped in an
+ * incremental run, which states its own. "No new capture since" is a correction run's note on the
+ * Austin source (Run 3.1's sourceLimitations); a run with its own capture makes it false.
+ */
 const RUN_SCOPED_SOURCE_LIMITATIONS = [
   "Incremental run:",
   "Row count reconciliation:",
   "source unchanged, watermark",
   "source bulk re-stamp; delta by content digest",
   "removals not checked:",
+  "No new capture since",
+  NOT_RECAPTURED_PREFIX,
 ];
 
 /** A base source's limitations without the ones a previous incremental run attached to itself. */
@@ -405,7 +420,6 @@ export async function buildRunManifest(
   // The address-point source belongs to the run that used the layer; it is never carried over.
   const carryPoints = config.carryAddressPoints === true;
   if (carryPoints) {
-    if (facts !== null) throw new Error("carryAddressPoints is for a run with no new capture");
     if (config.addressPointsReceipt === undefined)
       throw new Error("carryAddressPoints needs addressPointsReceipt");
     if (!base.sources.some((s) => s.name === ADDRESS_POINT_SOURCE))
@@ -486,6 +500,14 @@ export async function buildRunManifest(
           receipts: receiptFor(s.name),
           limitations: carriedSourceLimitations(s.limitations),
         };
+        if (s.name === ADDRESS_POINT_SOURCE) {
+          return {
+            ...carried,
+            watermark: s.watermark,
+            limitations: [...carried.limitations, notRecapturedLimitation(base.runId, s.watermark)],
+            delta: { added: 0, changed: 0, removed: 0 },
+          };
+        }
         return s.name.startsWith("austin")
           ? austinSourceInput(facts, carried)
           : unchangedSourceInput({ ...carried, watermark: s.watermark });
@@ -518,11 +540,12 @@ export async function buildRunManifest(
 
   const built = await buildManifest(input);
   // The source facts must come out exactly as the base recorded them, except the Austin source
-  // of an incremental run, which must carry the facts' new watermark, total and delta.
+  // of an incremental run, which must carry the facts' new watermark, total and delta. A layer
+  // source first listed by this run has nothing to compare; a carried one must match its base.
   for (const [i, s] of built.manifest.sources.entries()) {
-    if (s.name === ADDRESS_POINT_SOURCE) continue;
+    if (s.name === ADDRESS_POINT_SOURCE && !carryPoints) continue;
     const b = baseSources[i];
-    if (facts !== null && s.name.startsWith("austin")) {
+    if (facts !== null && s.name.startsWith("austin") && s.name !== ADDRESS_POINT_SOURCE) {
       if (
         s.watermark !== facts.watermarkNew ||
         s.records !== facts.totalAfter ||
