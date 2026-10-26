@@ -160,7 +160,11 @@ async function expectKindTable(row: Locator, M: A13Oracle["M"]): Promise<void> {
   const cid = await chip.locator(SEL.cid).first().getAttribute("data-cid");
   expect(cid !== null && artifactCids(M).has(cid), `table ${table} CID ${cid} in M`).toBe(true);
   expect(
-    M.artifacts.some((a) => a.name.startsWith(`tables/${table}`)),
+    // `{group}/{table}`: a pilot part is `tables/<group>/<table>/…`, a full-county part
+    // `…/tables/<bNN>/<table>/…`, so match the table folder (its CID is checked above).
+    M.artifacts.some(
+      (a) => a.kind === "table" && a.name.split("/").at(-2) === table.split("/").at(-1),
+    ),
     `table ${table} in M`,
   ).toBe(true);
 }

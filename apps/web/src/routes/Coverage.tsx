@@ -24,6 +24,7 @@ import {
   ROUTES,
   verifyPath,
 } from "@countylens/shared";
+import { resolveBatchGroups } from "@countylens/query-core";
 import type { ReactElement } from "react";
 import { Link } from "react-router";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -252,9 +253,20 @@ function KpiTiles({
   );
 }
 
+/**
+ * The parts of `{group}/{table}`. A part's table is its parent folder and its group the one
+ * query-core resolves for its export batch (the rule parquet-meta's `catalogTables` and
+ * data-groups use), so the pilot's `tables/<group>/<table>/<part>` and a full-county run's
+ * `…/tables/<bNN>/<table>/<part>` both match (data audit 2026-10-26, row 6).
+ */
 function tableParts(manifest: RunManifestV1, table: string): ManifestArtifact[] {
-  const prefix = `tables/${table}/`;
-  return manifest.artifacts.filter((a) => a.kind === "table" && a.name.startsWith(prefix));
+  const parts = manifest.artifacts.filter((a) => a.kind === "table");
+  const groups = resolveBatchGroups(parts.map((a) => a.name));
+  return parts.filter((a) => {
+    const segs = a.name.split("/");
+    const group = groups.get(segs.slice(0, -2).join("/"));
+    return group !== undefined && group !== null && `${group}/${segs.at(-2) ?? ""}` === table;
+  });
 }
 
 // A-16 PO note 2026-10-26: one compact card per kind. Each coverage key is one line (label and
