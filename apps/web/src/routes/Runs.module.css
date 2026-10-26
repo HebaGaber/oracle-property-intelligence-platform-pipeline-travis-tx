@@ -299,153 +299,21 @@
   line-height: var(--md-sys-typescale-label-large-line-height);
 }
 
-/* The Run menu: an outlined disclosure listing every run (board "rsel"). */
-.runMenu {
-  position: relative;
-  box-sizing: border-box;
-  justify-self: start;
-  width: 100%;
-  max-width: calc(var(--space-10) * 7);
-  border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-surface);
-  padding: 0 var(--space-2) 0 var(--space-3);
-}
-
-.runMenu[open] {
-  border-color: var(--md-sys-color-primary);
-}
-
-.runMenuSummary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: calc(var(--space-9) + var(--space-2));
-  cursor: pointer;
-  list-style: none;
-  font-family: var(--md-sys-typescale-title-medium-font);
-  font-size: var(--md-sys-typescale-title-medium-size);
-  font-weight: var(--md-sys-typescale-title-medium-weight);
-  line-height: var(--md-sys-typescale-title-medium-line-height);
-}
-
-.runMenuSummary::-webkit-details-marker {
-  display: none;
-}
-
-/* Two lines like the board: "Run N · date · latest" over the finish time and run ID. */
-.runMenuSummary > span:nth-child(2) {
-  display: grid;
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.runMenuSummary > span:nth-child(2) > span + span {
-  overflow: hidden;
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-body-small-font);
-  font-size: var(--md-sys-typescale-body-small-size);
-  font-weight: var(--md-sys-typescale-body-small-weight);
-  line-height: var(--md-sys-typescale-body-small-line-height);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The open menu floats over the page (board "rsel-menu"), so opening it moves nothing. */
-.runMenu > div {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  left: 0;
-  z-index: 40;
-  box-sizing: border-box;
-  display: grid;
-  gap: var(--space-2);
-  width: 100%;
-  max-height: calc(var(--space-10) * 7);
-  overflow: auto;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-surface-container);
-  box-shadow: var(--md-sys-elevation-level2);
-}
-
-.runMenuSummary:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
-  outline-offset: 2px;
-}
-
-.runMenuList {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.runMenuItem {
-  display: grid;
-  gap: 0;
-  padding: var(--space-1) 0 var(--space-2);
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-}
-
-/* The shown run (A-16 PO note): a secondary-container band and a check before its label. */
-.runMenuItemCurrent {
-  padding-inline: var(--space-2);
-  border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container);
-}
-
-/* A run's choice link: a 48 px target, the run label in the body text colour. */
-.runMenuChoice {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  box-sizing: border-box;
-  min-height: var(--space-9);
-  color: inherit;
-  text-decoration: none;
-}
-
-/* The check of the shown run, or an empty slot of the same width for the others. */
-.runMenuChoice > span {
-  display: inline-flex;
-  flex: none;
-  width: var(--space-6);
-}
-
-/* Run ID, finish time and manifest CID under the choice, indented to the label. */
-.runMenuItem > span {
-  display: grid;
-  gap: 0;
-  padding-left: var(--space-7);
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-body-small-font);
-  font-size: var(--md-sys-typescale-body-small-size);
-  line-height: var(--md-sys-typescale-body-small-line-height);
-  overflow-wrap: anywhere;
-}
-
-.runMenuItem > span > span:last-child {
+/* The run picker (RunSelect) with the shown run's pill, finish time and run ID beside it. */
+.runPick {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0 var(--space-2);
+  gap: var(--space-2) var(--space-3);
 }
 
-/* A source limitation reads as one line of text with its source ID after it. */
-[data-limitation-source] {
-  display: block;
-}
-
-.runMenuChoice:hover b {
-  text-decoration: underline;
-}
-
-.runMenuChoice:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
-  outline-offset: 2px;
+.runPick > span:last-child {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Key / value rows (Atlas kv): label on the left, value on the right from 600 px. */

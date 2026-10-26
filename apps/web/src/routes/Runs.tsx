@@ -37,9 +37,10 @@ import {
   verifyPath,
   type CoverageLabelKey,
 } from "@countylens/shared";
-import { useRef, type ReactElement } from "react";
-import { Link, useSearchParams } from "react-router";
+import { type ReactElement } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { ComingSoonEntries } from "../components/ComingSoonEntry";
+import { RunSelect } from "../components/RunSelect";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
@@ -178,8 +179,9 @@ function PendingSections({
 }
 
 /**
- * The Run menu of the board: every run, newest first, with its manifest CID (from the index).
- * Each run's title links to `?run=<runId>`; the shown run is marked (`aria-current`, a check).
+ * The run picker (PO 2026-10-26: run + date only → a dropdown, RunSelect): every run newest
+ * first, the shown one selected. A choice sets `?run=<runId>` (none for the latest). Beside it, the
+ * shown run's publication pill, finish time and run ID.
  */
 function RunList({
   entries,
@@ -188,84 +190,27 @@ function RunList({
   readonly entries: readonly RunsIndexEntry[];
   readonly currentId: string | undefined;
 }): ReactElement {
-  const newestFirst = entries.map((entry, i) => ({ entry, number: i + 1 })).reverse();
-  const latestId = newestFirst[0]?.entry.runId;
-  const shown = newestFirst.find(({ entry }) => entry.runId === currentId) ?? newestFirst[0];
-  const menu = useRef<HTMLDetailsElement>(null);
-  // The router follows the link (so open-in-new-tab works); the menu closes on the choice.
-  const close = (): void => {
-    if (menu.current !== null) menu.current.open = false;
-  };
+  const navigate = useNavigate();
+  const latestId = entries[entries.length - 1]?.runId;
+  const shown = entries.find((entry) => entry.runId === currentId) ?? entries[entries.length - 1];
   return (
-    <details
-      ref={menu}
-      className={styles.runMenu}
-      data-run-list=""
-      // The menu floats over the page (board "rsel-menu"): focus leaving it or Escape closes it.
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.open = false;
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") e.currentTarget.open = false;
-      }}
-    >
-      <summary className={styles.runMenuSummary} data-current-run={shown?.entry.runId ?? ""}>
-        <Icon name="history" size="medium" />
-        <span>
-          <span>
-            {shown === undefined
-              ? "No runs yet"
-              : `${runLabel(shown.number, shown.entry.finishedAt)}${
-                  shown.entry.runId === latestId ? " · latest" : ""
-                }`}
-          </span>
-          {shown === undefined ? null : (
-            <span>
-              {formatUtc(shown.entry.finishedAt)} UTC · {shown.entry.runId}
-            </span>
-          )}
+    <div className={styles.runPick} data-run-list="" data-current-run={shown?.runId ?? ""}>
+      <RunSelect
+        runs={entries}
+        value={shown?.runId ?? null}
+        label="Run"
+        hideLabel
+        onChange={(runId) => {
+          if (runId !== null) void navigate({ search: runSearch(runId, latestId) });
+        }}
+      />
+      {shown === undefined ? null : (
+        <span className={styles.itemBody}>
+          <StatusPill status="info" icon="cloud_done" text="Published" />
+          {formatUtc(shown.finishedAt)} UTC · <span className={styles.mono}>{shown.runId}</span>
         </span>
-        <StatusPill status="info" icon="cloud_done" text="Published" />
-        <Icon name="arrow_drop_down" size="medium" />
-      </summary>
-      <div>
-        <ul className={styles.runMenuList} aria-label="Runs, newest first">
-          {newestFirst.map(({ entry, number }) => (
-            <li
-              key={entry.manifestCid}
-              className={`${styles.runMenuItem} ${entry.runId === shown?.entry.runId ? styles.runMenuItemCurrent : ""}`}
-              data-run-id={entry.runId}
-            >
-              <Link
-                className={styles.runMenuChoice}
-                to={{ search: runSearch(entry.runId, latestId) }}
-                aria-current={entry.runId === shown?.entry.runId ? "true" : undefined}
-                onClick={close}
-                data-choose-run={entry.runId}
-              >
-                <span>
-                  {entry.runId === shown?.entry.runId ? <Icon name="check" size="medium" /> : null}
-                </span>
-                <b>
-                  {runLabel(number, entry.finishedAt)}
-                  {entry.runId === latestId ? " · latest" : ""}
-                </b>
-              </Link>
-              <span>
-                <code className={styles.mono}>{entry.runId}</code>
-                <span>
-                  Manifest <CidDisplay cid={entry.manifestCid} />
-                  <Link className={styles.link} to={verifyPath(entry.manifestCid)}>
-                    Verify
-                  </Link>
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className={styles.itemBody}>{RUNS_TEXTS.numbering}</p>
-      </div>
-    </details>
+      )}
+    </div>
   );
 }
 
