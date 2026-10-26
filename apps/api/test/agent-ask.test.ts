@@ -669,7 +669,7 @@ describe("ERR-61..63 follow-up: golden G2/G4/G5 deterministic rules", () => {
       { prompt: "Who is the contractor on the oldest roof permit?" },
       baseDeps({ runModelLoop: loop }),
     );
-    expect(result.answer).toMatch(/contractor name is not printed/);
+    expect(result.answer).toMatch(/prints none on the City record \(contractor not printed\)/);
     expect(result.missing.map((m) => m.field)).toContain("contractor.name_as_printed");
   });
 

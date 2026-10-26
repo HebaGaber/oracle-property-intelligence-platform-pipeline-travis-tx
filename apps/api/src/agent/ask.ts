@@ -720,6 +720,8 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "the page shows every returned row under the answer, so say how many matched and that the",
     "rest are listed below. Never write a table longer than 10 rows. Keep the whole answer under",
     "250 words: one line with the count, at most 10 short rows, then one line of caveats.",
+    "In the caveat line, count and cite only the rows you listed above it: never cite a row number",
+    "you did not list, and when you give a count of listed rows, it must equal the citations named.",
     overridesLine(input.overrides),
   ]
     .filter((line) => line.length > 0)
@@ -1077,8 +1079,10 @@ export async function runAgentAsk(
       missing.some((m) => m.field === "contractor.name_as_printed") &&
       !/contractor not printed|no_lexicon_carrier/i.test(cleaned)
     ) {
+      // Self-assessment 2026-10-26: true whether some or all listed permits lack a contractor (the
+      // old wording followed a list of named contractors and read as if none had one).
       extra.push(
-        "The contractor name is not printed in the published source (contractor not printed).",
+        "A permit listed without a contractor prints none on the City record (contractor not printed).",
       );
     }
     if (asksAddress(input.prompt) && !/address not in the published export/i.test(cleaned))
