@@ -301,12 +301,15 @@ const CARD_FIELDS: readonly RowField[] = [
 export function PropertyFields({
   row,
   fields = CARD_FIELDS,
+  rows = false,
 }: {
   readonly row: ExploreRow;
   readonly fields?: readonly RowField[];
+  /** Task B drawer rows: label left, value right (PropertyDetail permitFields). */
+  readonly rows?: boolean;
 }): ReactElement {
   return (
-    <dl className={styles.fields}>
+    <dl className={rows ? `${styles.fields} ${styles.rows}` : styles.fields}>
       {fields
         .filter((f) => hasField(row, f))
         .map((field) => (
