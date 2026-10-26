@@ -59,14 +59,23 @@ describe("G1 · app bar (Shell1440, Welcome390)", () => {
     );
   });
 
-  it("keeps the Other counties entry as a 48 px icon link with its full accessible name", async () => {
+  it("has no Other counties link in the bar; the More sheet lists it (PO 2026-10-26)", async () => {
     stubFetch(null);
     await renderAt("/tx/travis/explore");
     const bar = screen.getAllByRole("banner")[0] as HTMLElement;
-    const entry = within(bar).getByRole("link", { name: /Other counties and states/ });
-    expect(entry.getAttribute("href")).toBe("/soon/other-counties");
-    expect(entry.getAttribute("data-coming-soon-entry")).toBe("other-counties");
-    expect(entry.textContent).toContain(PAGE_TEXTS.comingSoon);
+    expect(bar.querySelector('a[href="/soon/other-counties"]')).toBeNull();
+    expect(bar.textContent).not.toContain("Other counties");
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Primary" })).getByRole("button", {
+        name: "More",
+      }),
+    );
+    const sheet = screen.getByRole("dialog", { name: "More" });
+    expect(
+      within(sheet)
+        .getByRole("link", { name: /Other counties and states/ })
+        .getAttribute("href"),
+    ).toBe("/soon/other-counties");
   });
 
   it("Apps lists CountyLens (current) and Roofing CRM as not deployed without a crmUrl", async () => {

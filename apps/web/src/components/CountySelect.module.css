@@ -63,31 +63,6 @@
   display: none;
 }
 
-/* Other counties and states (Coming soon): a 48 px icon link next to the chip, from 600 px. */
-.entry {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  min-width: var(--space-9);
-  min-height: var(--space-9);
-  border-radius: var(--md-sys-shape-corner-full);
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.entry:hover {
-  background: color-mix(
-    in srgb,
-    var(--md-sys-color-on-surface) calc(var(--md-sys-state-hover-opacity) * 100%),
-    transparent
-  );
-}
-
-.entry:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
-  outline-offset: 2px;
-}
-
 /* The Travis-only message floats under the chip as an inverse-surface snackbar (Atlas § 7). */
 .message {
   position: absolute;
@@ -130,9 +105,5 @@
     right: var(--space-2);
     display: inline-flex;
     pointer-events: none;
-  }
-
-  .entry {
-    display: inline-flex;
   }
 }

@@ -38,14 +38,13 @@ describe("CountySelect", () => {
     expect(select.value).toBe("travis");
   });
 
-  it("links to the Coming soon item Other counties and states", () => {
+  it("has no Other counties link next to the chip (Shell boards; PO 2026-10-26: it is in More)", () => {
     render(
       <MemoryRouter>
         <CountySelect />
       </MemoryRouter>,
     );
-    const link = screen.getByRole("link", { name: /Other counties and states/ });
-    expect(link.getAttribute("href")).toBe("/soon/other-counties");
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });
 
