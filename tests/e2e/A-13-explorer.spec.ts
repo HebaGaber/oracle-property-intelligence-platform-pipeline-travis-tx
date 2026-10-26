@@ -40,6 +40,7 @@ import {
   SEL,
   chipYears,
   expectedBbbText,
+  expectedContractorText,
   exploreUrl,
   fallbackText,
   isBlankCell,
@@ -126,7 +127,9 @@ async function expectRowFields(
   }
   if (data !== undefined) {
     if (data.address === null) {
-      await expect(row.locator(SEL.field("address")).first()).toHaveText(EXPLORE_TEXTS.noCarrier);
+      await expect(row.locator(SEL.field("address")).first()).toHaveText(
+        EXPLORE_TEXTS.addressNotInExport,
+      );
     }
     await expect(row.locator(SEL.field("distance")).first()).toContainText(data.bearing);
     await expect(row.locator(SEL.field("distance")).first()).toContainText("mi");
@@ -524,11 +527,13 @@ test.describe("A-13 explorer · demo lines", () => {
       if (x === null) continue;
       expect([EXPLORE_TEXTS.stalledNoCarrier(x), EXPLORE_TEXTS.openNoCarrier(x)]).toContain(text);
     }
-    for (const cell of await page
-      .locator(SEL.resultRow)
-      .locator(SEL.field("contractor_name"))
-      .all()) {
-      await expect(cell).toHaveText(EXPLORE_TEXTS.noCarrier);
+    for (const r of result.rows) {
+      if (r.contractor === null) continue;
+      await expect(
+        page
+          .locator(`${SEL.resultRow}[data-property-cid="${r.property_cid}"]`)
+          .locator(SEL.field("contractor_name")),
+      ).toHaveText(expectedContractorText(r));
     }
     // 5. The open-permit section.
     const open = result.rows.filter((r) => r.permit?.status_class === "open");
@@ -1027,7 +1032,9 @@ test.describe("A-13 explorer · filters and property", () => {
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
     // 3. Contractor name (no carrier) and the resolution badge.
-    await expect(drawer.locator(SEL.field("contractor_name"))).toHaveText(EXPLORE_TEXTS.noCarrier);
+    await expect(drawer.locator(SEL.field("contractor_name"))).toHaveText(
+      expectedContractorText(withPermit),
+    );
     await expect(drawer.locator(SEL.contractorBadge)).toHaveAttribute(
       "data-contractor-resolution",
       withPermit.contractor?.resolution ?? "unresolved",
@@ -1069,7 +1076,9 @@ test.describe("A-13 explorer · filters and property", () => {
         seen.add("roof_basis_unknown");
       }
       if (data.contractor !== null) {
-        await expect(row.locator(SEL.field("contractor_name"))).toHaveText(EXPLORE_TEXTS.noCarrier);
+        await expect(row.locator(SEL.field("contractor_name"))).toHaveText(
+          expectedContractorText(data),
+        );
         seen.add("contractor_not_printed");
       }
       const bbb = expectedBbbText(data.bbb_status, data.bbb_status_reason);
@@ -1128,11 +1137,15 @@ test.describe("A-13 explorer · filters and property", () => {
     await page.locator(`${SEL.resultRow}[data-property-cid="${row.property_cid}"]`).click();
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
-    // 3. Each no-carrier field shows the exact text.
-    for (const field of ["status_raw", "contractor_name"]) {
-      if (field === "status_raw" && row.permit === null) continue;
-      if (field === "contractor_name" && row.contractor === null) continue;
-      await expect(drawer.locator(SEL.field(field))).toHaveText(EXPLORE_TEXTS.noCarrier);
+    // 3. The no-carrier field shows the exact text; the contractor its printed name or why not
+    // (A-16 data audit #1: the name has a carrier and Run 3 publishes it).
+    if (row.permit !== null) {
+      await expect(drawer.locator(SEL.field("status_raw"))).toHaveText(EXPLORE_TEXTS.noCarrier);
+    }
+    if (row.contractor !== null) {
+      await expect(drawer.locator(SEL.field("contractor_name"))).toHaveText(
+        expectedContractorText(row),
+      );
     }
     for (const el of await drawer.locator('[data-reason="no_lexicon_carrier"]').all()) {
       await expect(el).toHaveText(EXPLORE_TEXTS.noCarrier);

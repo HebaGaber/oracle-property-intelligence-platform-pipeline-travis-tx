@@ -81,7 +81,10 @@ export const EXPLORE_TEXTS = Object.freeze({
   milesOutside: (miles: number): string => `+${miles} mi`,
   roofUnknown: "roof age unknown · no permit, new-construction or built-year record",
   bbbNotChecked: (reason: string): string => `BBB not checked · ${reason}`,
-  bbbBlocked: "BBB blocked · 403 challenge, not harvested",
+  // A-16 data audit (2026-10-26, #1, #9, #18): the real reasons, not a blanket "no carrier".
+  bbbBlocked: "BBB blocks automated lookups; not checked",
+  addressNotInExport: "Address not in the published export",
+  contractorNotPrinted: "No contractor printed on this permit",
   bbbNotFound: "BBB: no profile found",
   tenureUnknown: "tenure unknown · no dated sale on record",
   ownerAreaUnknown: "owner area unknown · mailing address not in the published export",

@@ -72,7 +72,9 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
     expect(EXPLORE_TEXTS.bbbNotChecked("contractor_unresolved")).toBe(
       "BBB not checked · contractor_unresolved",
     );
-    expect(EXPLORE_TEXTS.bbbBlocked).toBe("BBB blocked · 403 challenge, not harvested");
+    expect(EXPLORE_TEXTS.bbbBlocked).toBe("BBB blocks automated lookups; not checked");
+    expect(EXPLORE_TEXTS.addressNotInExport).toBe("Address not in the published export");
+    expect(EXPLORE_TEXTS.contractorNotPrinted).toBe("No contractor printed on this permit");
     expect(EXPLORE_TEXTS.bbbNotFound).toBe("BBB: no profile found");
     expect(EXPLORE_TEXTS.tenureUnknown).toBe("tenure unknown · no dated sale on record");
     expect(EXPLORE_TEXTS.ownerAreaUnknown).toBe(

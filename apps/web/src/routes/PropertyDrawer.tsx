@@ -91,8 +91,9 @@ export function PropertyDrawer({ row, onClose }: PropertyDrawerProps): ReactElem
             {row.address ?? "Property"} <CidDisplay cid={row.property_cid} />
           </h3>
           {row.address === null ? (
+            // Audit #18: no situs text or TCAD account in the Run 3 export, so the title is the CID.
             <p className={styles.engine} data-address-reason="">
-              Address: {EXPLORE_TEXTS.noCarrier}
+              {EXPLORE_TEXTS.addressNotInExport}
             </p>
           ) : null}
         </div>
@@ -214,8 +215,11 @@ const ROOF_FIELDS: readonly RowField[] = [
 const SECTIONS: readonly { readonly title: string; readonly fields: readonly RowField[] }[] = [
   {
     title: "Permit",
-    fields: ["permit", "status_raw", "contractor_name", "contractor_resolution", "bbb"],
+    fields: ["permit", "status_raw", "contractor_name", "contractor_resolution", "bbb", "bbb_link"],
   },
-  { title: "Owner", fields: ["tenure_years", "tenure_basis", "owner_area_class"] },
+  {
+    title: "Owner",
+    fields: ["owner_name", "last_transfer", "tenure_years", "tenure_basis", "owner_area_class"],
+  },
   { title: "Location", fields: ["address", "distance", "lat_lon"] },
 ];
