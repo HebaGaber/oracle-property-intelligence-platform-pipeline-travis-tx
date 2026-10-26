@@ -167,6 +167,23 @@ describe("Explore · Filters search and header (AC-4, FR-004, FR-006a)", () => {
     expect(section?.getAttribute("data-view")).toBe("list");
   });
 
+  it("keeps the A-13 tab contract: only the Explore mode tabs are tabs (TC-073)", async () => {
+    await renderExplore("?place=pflugerville&r=5&roof=15");
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0));
+    // The scan clicks every tab in turn; a mode switch unmounts the results, so a results-view
+    // tab would vanish mid-loop. Every tab must sit in the "Explore mode" tablist.
+    const modes = screen.getByRole("tablist", { name: "Explore mode" });
+    for (const tab of screen.getAllByRole("tab")) expect(modes.contains(tab)).toBe(true);
+    const view = screen.getByRole("group", { name: "Results view" });
+    const matches = within(view).getByRole("button", { name: /^Matches/ });
+    expect(matches.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      within(view)
+        .getByRole("button", { name: /^Close/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
   it("shows the gazetteer label for the place and offers it as an option while typing", async () => {
     await renderExplore("?place=pflugerville&r=5&roof=15");
     const label = resolvePlace("Pflugerville");

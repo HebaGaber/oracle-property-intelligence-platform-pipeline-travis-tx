@@ -67,7 +67,10 @@ describe("chips, blanks and stacks", () => {
     expect(chipYears(EXPLORE_TEXTS.stalledNoCarrier(22.6))).toBe(22.6);
     expect(chipYears(EXPLORE_TEXTS.openNoCarrier(5))).toBe(5);
     expect(chipYears("Final")).toBeNull();
-    expect(openYears(8254)).toBe(22.6);
+    // 8254 / 365.25 = 22.598…: one decimal, rounded down (explore-search contract).
+    expect(openYears(8254)).toBe(22.5);
+    // A TC-031-like case: 16,309 days is 44.65… years; the chip shows 44.6, never 44.7.
+    expect(openYears(16309)).toBe(44.6);
   });
 
   it("turns templates into anchored patterns", () => {
