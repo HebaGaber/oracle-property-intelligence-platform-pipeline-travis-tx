@@ -54,10 +54,15 @@ const A14_SHARDS = {
 } as const;
 // A-16: the admin cases sign in against Cognito and some need the operator's bridge; the Cost and
 // Limits cases read the docs. Each runs alone in its own project; a case without credentials (or
-// without the bridge) skips with a stated reason and is never reported as passed.
+// without the bridge) skips with a stated reason and is never reported as passed. `a16-county`
+// times Explore on the full county, asks the agent for real (two Bedrock calls) and calls the MCP
+// endpoint (skips without MCP_URL/MCP_TOKEN); `a16-closure` checks the closure docs and the parked
+// tests (no browser page). Like the a14 projects, none of these is in the CI e2e matrix.
 const A16_SHARDS = {
   "a16-admin": "A-16-admin.spec.ts",
   "a16-cost": "A-16-cost.spec.ts",
+  "a16-county": "A-16-county.spec.ts",
+  "a16-closure": "A-16-closure.spec.ts",
 } as const;
 // One report and output folder per CI phase, so the second invocation never clears the first.
 const phase = process.env.PW_PHASE ?? "all";

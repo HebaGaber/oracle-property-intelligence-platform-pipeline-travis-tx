@@ -209,6 +209,105 @@ describe("buildRunManifest", () => {
     expect(CORRECTION_NOTE).toMatch(/each permit's property CID equals its County property CID/);
   });
 
+  it("a correction run can drop carried notes by prefix and replace a source's limitations (ERR-73)", async () => {
+    const f = await runFixture();
+    const base = RunManifestV1.parse(JSON.parse(Buffer.from(f.baseBytes).toString("utf8")));
+    const first = base.sources[0];
+    if (first === undefined) throw new Error("fixture has no source");
+    const { manifest: m } = await buildRunManifest(
+      config(f, {
+        dropLimitationPrefixes: ["county published_rows"],
+        sourceLimitations: { [first.name]: ["one GET per permit"] },
+        registryNote: "Comptroller registry loaded 2026-10-22",
+        // the carried fixed note is replaced, never listed next to the registry note
+        correctionNote: "Run 3.1 note",
+      }),
+      deps(f),
+    );
+    expect(m.limitations).toEqual(["Run 3.1 note"]);
+    expect(m.sources[0]?.limitations).toEqual([
+      "one GET per permit",
+      "Comptroller registry loaded 2026-10-22",
+    ]);
+    expect(m.sources.slice(1).map((s) => s.limitations)).toEqual(
+      base.sources.slice(1).map((s) => s.limitations),
+    );
+  });
+
+  it("refuses a dropLimitationPrefixes entry that matches no carried note", async () => {
+    const f = await runFixture();
+    await expect(
+      buildRunManifest(config(f, { dropLimitationPrefixes: ["Incremental refreshh"] }), deps(f)),
+    ).rejects.toThrow(/Incremental refreshh/);
+  });
+
+  it("checks contractor_* coverage against the contractor-coverage report (ERR-73)", async () => {
+    const f = await runFixture();
+    const path = join(f.root, "contractor-coverage.json");
+    const byState = { resolved: 0, candidate: 2, ambiguous: 0, conflicting: 1, unresolved: 4 };
+    writeFileSync(path, JSON.stringify({ permits: 7, byState }));
+    const overrides = (counts: Record<string, number>) =>
+      Object.fromEntries(
+        Object.entries(counts).map(([k, n]) => [
+          `contractor_${k}`,
+          { count: n, derivation: "aggregate_match" as const },
+        ]),
+      );
+    const ok = await buildRunManifest(
+      config(f, { contractorCoverage: path, coverageOverrides: overrides(byState) }),
+      deps(f),
+    );
+    expect(ok.manifest.coverage.contractor_conflicting?.count).toBe(1);
+    await expect(
+      buildRunManifest(
+        config(f, {
+          contractorCoverage: path,
+          coverageOverrides: overrides({ ...byState, candidate: 3 }),
+        }),
+        deps(f),
+      ),
+    ).rejects.toThrow(/contractor_candidate is 3 but contractorCoverage says 2/);
+    writeFileSync(path, JSON.stringify({ permits: 8, byState }));
+    await expect(
+      buildRunManifest(
+        config(f, { contractorCoverage: path, coverageOverrides: overrides(byState) }),
+        deps(f),
+      ),
+    ).rejects.toThrow(/states sum to 7, not its 8 permits/);
+    writeFileSync(path, JSON.stringify({ permits: 8, byState: { ...byState, unresolved: 5 } }));
+    await expect(
+      buildRunManifest(
+        config(f, { contractorCoverage: path, coverageOverrides: overrides(byState) }),
+        deps(f),
+      ),
+    ).rejects.toThrow(/8 permits but 7 are published/);
+    writeFileSync(path, JSON.stringify({ permits: 7, byState: { resolved: 0, unresolved: 7 } }));
+    await expect(
+      buildRunManifest(
+        config(f, { contractorCoverage: path, coverageOverrides: overrides(byState) }),
+        deps(f),
+      ),
+    ).rejects.toThrow(/no count for: candidate, ambiguous, conflicting/);
+  });
+
+  it("registryNote replaces a carried 'baseline not loaded' note, never lists both", async () => {
+    const f = await runFixture();
+    const { manifest: m } = await buildRunManifest(
+      config(f, { registryNote: "Comptroller registry loaded 2026-10-22 (342333 rows, x)" }),
+      deps(f),
+    );
+    const austin = m.sources[0]?.limitations ?? [];
+    expect(austin).not.toContain("Comptroller baseline not loaded (A-07)");
+    expect(austin.filter((l) => l.startsWith("Comptroller registry loaded"))).toHaveLength(1);
+  });
+
+  it("refuses sourceLimitations for a source the base does not carry", async () => {
+    const f = await runFixture();
+    await expect(
+      buildRunManifest(config(f, { sourceLimitations: { "no-such-source": ["x"] } }), deps(f)),
+    ).rejects.toThrow(/no-such-source/);
+  });
+
   it("returns exact JCS bytes whose raw-leaves CID is the manifest CID", async () => {
     const f = await runFixture();
     const built = await buildRunManifest(config(f), deps(f));
@@ -314,6 +413,44 @@ describe("address-point source (Run 3, ADR 0004)", () => {
     // the first two sources are exactly what they were without the layer
     const plain = (await buildRunManifest(config(f), deps(f))).manifest;
     expect(m.sources.slice(0, 2)).toEqual(plain.sources);
+  });
+
+  it("a correction run carries the base's layer source with delta 0 (Run 3.1, carryAddressPoints)", async () => {
+    const f = await runFixture();
+    const path = join(f.root, "address-points-receipt.json");
+    writeFileSync(path, JSON.stringify(receipt));
+    const run3 = await buildRunManifest(config(f, { addressPointsReceipt: path }), deps(f));
+    put(join(f.root, "runs", "travis-full-run2-20261024", "manifest.json"), run3.bytes);
+    const { manifest: m } = await buildRunManifest(
+      config(f, {
+        runId: "travis-full-run3-1-20261025",
+        baseManifest: "runs/travis-full-run2-20261024/manifest.json",
+        previousManifestCid: run3.cid,
+        addressPointsReceipt: path,
+        carryAddressPoints: true,
+      }),
+      deps(f),
+    );
+    expect(m.sources.map((s) => s.name)).toEqual([
+      "austin-3syk-w9eu",
+      "tcad-2026-certified-json",
+      "austin-address-points",
+    ]);
+    const a = m.sources[2];
+    expect(a).toMatchObject({
+      watermark: receipt.layer_last_edit_date,
+      added: 0,
+      changed: 0,
+      removed: 0,
+    });
+    expect(a?.limitations).toEqual(run3.manifest.sources[2]?.limitations);
+  });
+
+  it("carryAddressPoints refuses a run without the receipt", async () => {
+    const f = await runFixture();
+    await expect(
+      buildRunManifest(config(f, { carryAddressPoints: true }), deps(f)),
+    ).rejects.toThrow(/addressPointsReceipt/);
   });
 
   it("a run without the receipt lists exactly the two original sources", async () => {

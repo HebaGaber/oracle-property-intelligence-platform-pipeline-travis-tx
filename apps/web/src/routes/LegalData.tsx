@@ -16,11 +16,19 @@ import {
 } from "../content/legal";
 import styles from "./LegalData.module.css";
 
+// The board's "licences checked" line, from the dates the terms pages were requested.
+const CHECKED_ON = LEGAL_SOURCES.map((s) => s.checkedOn)
+  .sort()
+  .at(-1);
+
 export function Component(): ReactElement {
   return (
     <section aria-label="Legal · Data sources" data-route="legal-data" className={styles.page}>
       <LegalLayout
-        title="Legal · Data sources"
+        title="Data use and licences"
+        {...(CHECKED_ON === undefined
+          ? {}
+          : { meta: `Terms and licence pages last checked ${CHECKED_ON}` })}
         measure="wide"
         current={ROUTES.legalData}
         banner={LEGAL_NOT_ADVICE}
@@ -44,9 +52,9 @@ export function Component(): ReactElement {
                 <ul className={styles.sourceRows} aria-label="Data sources">
                   {LEGAL_SOURCES.map((source) => (
                     <li key={source.id} className={styles.sourceRow} data-source={source.id}>
-                      <strong>{source.name}</strong>
-                      <p className={styles.body}>{source.fact}</p>
-                      <span>
+                      <span className={styles.sourceName}>{source.name}</span>
+                      <p className={styles.cell}>{source.fact}</p>
+                      <span className={styles.licence}>
                         <a
                           className={styles.link}
                           href={source.termsUrl}

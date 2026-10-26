@@ -18,6 +18,7 @@ import { COLUMN_ENUMS, UNCARRIED, VIEWS } from "@countylens/contract";
 import { z } from "zod";
 import type { BoundRun } from "../bind-manifest.js";
 import { METRES_PER_MILE } from "../builders.js";
+import { withContractorGaps } from "../contractor-gaps.js";
 import { EXPLORE_BOUNDS, exploreSearchSql } from "../explore.js";
 import type { QueryEngine, Row } from "../engine.js";
 import {
@@ -341,7 +342,17 @@ export async function searchProperties(
       }),
     );
     const blockingFields = relaxable.filter((_, i) => (relaxedCounts[i] ?? 0) > 0);
-    emptyReason = blockingFields.length === 1 ? "field_not_published" : "no_match";
+    const [blocking] = blockingFields;
+    if (blockingFields.length !== 1 || blocking?.field === undefined) emptyReason = "no_match";
+    else {
+      // A-16 (PO audit item 11): "not published" is a claim about the RUN. When other rows of the
+      // run carry the field, only these rows lack it: field_unknown (their own null reasons apply).
+      const published = await countOf(
+        engine,
+        `SELECT count(${blocking.field}) AS n FROM v_property`,
+      );
+      emptyReason = published === 0 ? "field_not_published" : "field_unknown";
+    }
   }
 
   return envelope({
@@ -364,16 +375,20 @@ function toMiles(distM: unknown): number | undefined {
 // listPermits
 // ---------------------------------------------------------------------------------------
 
-function mapPermitRow(row: Row): Row {
+function mapPermitRow(raw: Row): Row {
+  // A-16: "no contractor printed" reads source_missing even on an index built before the fix.
+  const row = withContractorGaps(raw);
   const openDays = row.open_days;
   const distM = row.dist_m;
   return {
     ...row,
     status_raw: null,
     contractor: {
-      name_as_printed: null,
+      // Contract v1.1: the printed name (unverified); null with the row's missing reason.
+      name_as_printed: row.contractor_name_as_printed ?? null,
       resolution: row.contractor_resolution,
       company_cid: row.contractor_company_cid,
+      bbb_url: row.bbb_url ?? null,
     },
     open_years: typeof openDays === "number" ? Number((openDays / DAYS_PER_YEAR).toFixed(2)) : null,
     dist_mi: toMiles(distM),
@@ -551,9 +566,25 @@ export function getSchema(rawInput: z.input<typeof GetSchemaInput> = {}): {
       missingReason: c.missingReason,
     })),
   }));
-  const uncarried = input.view
-    ? { [input.view]: (UNCARRIED as Record<string, unknown>)[input.view] ?? [] }
-    : UNCARRIED;
+  // A-16: each not_in_export entry carries the product's plain wording for MCP clients.
+  const withText = (entries: readonly { field: string; reason: string }[]) =>
+    entries.map((e) =>
+      e.reason === "not_in_export"
+        ? {
+            ...e,
+            reason_text:
+              /address|city_name|postal_code$/.test(e.field) && !e.field.startsWith("owner_")
+                ? "Address not in the published export"
+                : "Not in the published export",
+          }
+        : e,
+    );
+  const all = Object.fromEntries(
+    Object.entries(UNCARRIED as Record<string, readonly { field: string; reason: string }[]>).map(
+      ([view, entries]) => [view, withText(entries)],
+    ),
+  );
+  const uncarried = input.view ? { [input.view]: all[input.view] ?? [] } : all;
   const tool_inputs = Object.fromEntries(
     Object.entries(TOOL_SCHEMAS).map(([name, schema]) => [name, z.toJSONSchema(schema)]),
   );

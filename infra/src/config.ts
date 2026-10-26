@@ -30,8 +30,14 @@ export const ENV_NAMES = {
   queryLogGroup: "COUNTYLENS_QUERY_LOG_GROUP",
 } as const;
 
-/** `s3://<CID-copy bucket>/private/explore-index/<manifestCid>/…` (ADR-0001 amendment, AC-13). */
-export const EXPLORE_INDEX_PREFIX = "private/explore-index/";
+/** Root of every Explore index version; the read grant covers it (ADR-0001 amendment, AC-13). */
+export const EXPLORE_INDEX_ROOT = "private/explore-index/";
+/**
+ * The index version the Lambdas read: `<root><views version>/<manifestCid>/…`. A change to the
+ * contract views changes `viewsSha256`, and indexes are never overwritten, so each views version
+ * gets its own folder (v1.2: contract v1.2, Run 3.1).
+ */
+export const EXPLORE_INDEX_PREFIX = `${EXPLORE_INDEX_ROOT}v1.2/`;
 /** `s3://<CID-copy bucket>/live/live.json`: written by the laptop bridge only (AC-7, AC-9). */
 export const LIVE_STATUS_KEY = "live/live.json";
 /** The one Cognito group whose members may call admin.* (AC-6, AC-8). */

@@ -36,12 +36,17 @@ const DAY = /\d{4}-\d{2}-\d{2}/g;
 
 /** A cell as display text: markdown markers and links removed, whitespace collapsed. */
 export function clean(cell) {
-  return cell
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/\*\*/g, "")
-    .replace(/`/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    cell
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/\*\*/g, "")
+      .replace(/`/g, "")
+      // Internal story IDs (A-01, A-13 …) stay in the docs, never on the page.
+      .replace(/\s*\(A-\d{2}[^)]*\)/g, "")
+      .replace(/\bA-\d{2}\b\s*/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 /** Every pipe table of a markdown text: { header, rows } with raw (unstripped) cells. */

@@ -24,6 +24,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatUtc } from "../src/components/Provenance";
 import { BOTH_HOSTS_DOWN_TEXT } from "../src/data/fetch-by-cid";
 
 const COPY_HOST = "copy.example.test";
@@ -337,8 +338,16 @@ describe("Runs page: the run card (TC-010)", () => {
     expect(within(card).getByRole("heading", { level: 2 }).textContent).toBe(
       fixture.manifest.runId,
     );
-    expect(card.textContent).toContain(`Started ${fixture.manifest.startedAt} UTC`);
-    expect(card.textContent).toContain(`Finished ${fixture.manifest.finishedAt} UTC`);
+    // G2 board round: the instant reads like the board (no T…Z) in a <time datetime={ISO}>.
+    for (const [word, iso] of [
+      ["Started", fixture.manifest.startedAt],
+      ["Finished", fixture.manifest.finishedAt],
+    ] as const) {
+      expect(card.textContent).toContain(`${word} ${formatUtc(iso)} UTC`);
+      expect(card.querySelector(`time[datetime="${iso}"]`)?.textContent).toBe(
+        `${formatUtc(iso)} UTC`,
+      );
+    }
   });
 
   it("shows the manifest CID in data-cid with a middle-truncated text and a copy button that copies the full CID", async () => {
@@ -421,7 +430,8 @@ describe("Runs page: sources in manifest order (TC-011)", () => {
 
     expect(within(austin).getByText(SOURCE_LABELS["austin-3syk-w9eu"])).toBeDefined();
     expect(austin.textContent).toContain(`${source0.records} records`);
-    expect(austin.textContent).toContain(`collected ${source0.captured_at} UTC`);
+    expect(austin.textContent).toContain(`collected ${formatUtc(source0.captured_at)} UTC`);
+    expect(austin.querySelector(`time[datetime="${source0.captured_at}"]`)).not.toBeNull();
     // TC-002 step 3: the source's watermark is shown, labelled, as published.
     expect(source0.watermark).not.toBeNull();
     expect(austin.textContent).toContain(`watermark ${source0.watermark}`);
@@ -744,8 +754,8 @@ describe("A-16 Runs page: board sections, LCP and the signed-out view", () => {
       }),
     );
     await renderRuns();
-    const list = await screen.findByRole("list", { name: "Runs, newest first" });
-    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    const picker = await screen.findByRole("combobox", { name: "Run" });
+    expect(within(picker).getAllByRole("option")).toHaveLength(1);
     const section = document.querySelector('[data-route="runs"]');
     expect(section?.getAttribute("data-state")).toBe("loading");
     expect(document.querySelector("[data-sync-status]")).not.toBeNull();
@@ -757,13 +767,15 @@ describe("A-16 Runs page: board sections, LCP and the signed-out view", () => {
     await renderRuns();
     await findCard();
     expect(screen.getByRole("heading", { level: 2, name: "Pipeline runs" })).toBeDefined();
+    // DOM order: the run card comes right after Sync status so its manifest CID is the page's
+    // first provenance line (A-03-TC-NF-03); from 600 px CSS `order` shows it last (board order).
     const order = [
       "[data-run-list]",
       "[data-sync-status]",
+      "article",
       "[data-pipeline-steps]",
       "[data-latest-events]",
       "[data-what-changed]",
-      "article",
     ].map((selector) => document.querySelector(selector));
     for (const el of order) expect(el).not.toBeNull();
     for (let i = 1; i < order.length; i += 1) {
@@ -873,10 +885,9 @@ describe("A-16 Runs page: the Run menu switches the shown run (PO note)", () => 
     document.querySelector("[data-shown-run]")?.getAttribute("data-shown-run");
   const title = async (): Promise<string> =>
     (await screen.findByRole("article")).querySelector("#run-title")?.textContent ?? "";
-  const current = (): string | null =>
-    document
-      .querySelector('[data-run-list] a[aria-current="true"]')
-      ?.getAttribute("data-choose-run") ?? null;
+  // The run picker is a dropdown (PO 2026-10-26, RunSelect): its value is the shown run ID.
+  const picker = (): HTMLSelectElement => screen.getByRole("combobox", { name: "Run" });
+  const current = (): string | null => picker().value || null;
 
   it("shows the latest run by default and marks it in the menu", async () => {
     await renderAt("/runs");
@@ -889,10 +900,16 @@ describe("A-16 Runs page: the Run menu switches the shown run (PO note)", () => 
   it("switches the card, sources, events and What changed to the chosen run and keeps ?run= in sync", async () => {
     await renderAt("/runs");
     expect(await title()).toBe(runs.newer.runId);
-    const list = screen.getByRole("list", { name: "Runs, newest first" });
-    const choice = within(list).getByRole("link", { name: /^Run 1 ·/ });
-    expect(choice.getAttribute("href")).toBe(`/runs?run=${runs.older.runId}`);
-    fireEvent.click(choice);
+    // Newest first, "Run N · Mon D, YYYY", the latest marked.
+    expect([...picker().options].map((o) => o.textContent)).toEqual([
+      "Run 2 · Oct 24, 2026 · latest",
+      expect.stringMatching(/^Run 1 · [A-Z][a-z]{2} \d{1,2}, \d{4}$/),
+    ]);
+    expect([...picker().options].map((o) => o.getAttribute("data-run-id"))).toEqual([
+      runs.newer.runId,
+      runs.older.runId,
+    ]);
+    fireEvent.change(picker(), { target: { value: runs.older.runId } });
     await waitFor(() => expect(lastSearch).toBe(`?run=${runs.older.runId}`));
     await waitFor(() => expect(shownRun()).toBe(runs.older.runId));
     expect(await title()).toBe(runs.older.runId);
@@ -909,7 +926,7 @@ describe("A-16 Runs page: the Run menu switches the shown run (PO note)", () => 
     expect(document.querySelector("[data-county-coverage]")?.textContent).toMatch(/^Not shown/);
 
     // Back to the latest: the run parameter is dropped.
-    fireEvent.click(within(list).getByRole("link", { name: /^Run 2 ·/ }));
+    fireEvent.change(picker(), { target: { value: runs.newer.runId } });
     await waitFor(() => expect(lastSearch).toBe(""));
     await waitFor(() => expect(shownRun()).toBe(runs.newer.runId));
     expect(current()).toBe(runs.newer.runId);
@@ -919,7 +936,7 @@ describe("A-16 Runs page: the Run menu switches the shown run (PO note)", () => 
     await renderAt(`/runs?run=${runs.older.runId}`);
     expect(await title()).toBe(runs.older.runId);
     expect(current()).toBe(runs.older.runId);
-    expect(document.querySelector("[data-run-list] summary")?.textContent).toContain("Run 1 ·");
+    expect(picker().selectedOptions[0]?.textContent).toMatch(/^Run 1 ·/);
   });
 
   it("shows the latest run and says why when ?run= names no run in the index", async () => {

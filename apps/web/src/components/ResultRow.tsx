@@ -10,7 +10,12 @@
 // Every value comes from the explore.search row. Render-only.
 import { MISSING_REASONS, type MissingReason as Reason } from "@countylens/contract";
 import type { ExploreRow, MissingEntry } from "@countylens/query-core";
-import { EXPLORE_TEXTS, missingLabel } from "@countylens/shared";
+import {
+  BBB_SEARCH_LINK_LABEL,
+  EXPLORE_TEXTS,
+  MISSING_REASON_LABELS,
+  missingLabel,
+} from "@countylens/shared";
 import {
   useState,
   type KeyboardEvent,
@@ -121,6 +126,34 @@ function Cell({
 
 const unknownRoof = (basis: string | null): boolean => basis === null || basis === "unknown";
 
+/**
+ * A-16 data audit (#2, #9, #15, #16): optional fields the Explore row carries once the query-core
+ * row mapping adds them. Read defensively: absent (an older API) means "not in this row yet", null
+ * means the run has no value and the row's `missing` entry says why.
+ */
+interface RowExtras {
+  readonly year_built?: number | null;
+  readonly owner_name?: string | null;
+  readonly last_ownership_transfer_date?: string | null;
+  readonly bbb_url?: string | null;
+  readonly contractor_name_as_printed?: string | null;
+}
+const extras = (row: ExploreRow): RowExtras => row as ExploreRow & RowExtras;
+
+/** The contractor name as printed on the permit, wherever the row carries it. */
+function printedName(row: ExploreRow): string | null {
+  const nested = (row.contractor as { name_as_printed?: string | null } | null)?.name_as_printed;
+  const onPermit = (row.permit as { contractor_name_as_printed?: string | null } | null)
+    ?.contractor_name_as_printed;
+  return nested ?? onPermit ?? extras(row).contractor_name_as_printed ?? null;
+}
+
+/** The BBB search link (built from the printed name), wherever the row carries it. */
+function bbbUrl(row: ExploreRow): string | null {
+  const onPermit = (row.permit as { bbb_url?: string | null } | null)?.bbb_url;
+  return onPermit ?? extras(row).bbb_url ?? null;
+}
+
 /** Every field a result row shows, in board order (the table, the card and the drawer). */
 export type RowField =
   | "address"
@@ -134,6 +167,9 @@ export type RowField =
   | "contractor_name"
   | "contractor_resolution"
   | "bbb"
+  | "bbb_link"
+  | "owner_name"
+  | "last_transfer"
   | "tenure_years"
   | "tenure_basis"
   | "owner_area_class";
@@ -151,6 +187,9 @@ export const FIELD_LABELS: Readonly<Record<RowField, string>> = {
   contractor_name: "Contractor as printed",
   contractor_resolution: "Contractor match",
   bbb: "BBB",
+  bbb_link: "BBB search",
+  owner_name: "Owner",
+  last_transfer: "Last sale or deed",
   tenure_years: "Tenure",
   tenure_basis: "Tenure basis",
   owner_area_class: "Owner area",
@@ -162,7 +201,16 @@ export function hasField(row: ExploreRow, field: RowField): boolean {
   if (field === "contractor_name" || field === "contractor_resolution")
     return row.contractor !== null;
   if (field === "bbb") return bbbText(row.bbb_status, row.bbb_status_reason) !== null;
+  if (field === "bbb_link") return bbbUrl(row) !== null;
+  if (field === "owner_name") return "owner_name" in row;
+  if (field === "last_transfer") return "last_ownership_transfer_date" in row;
   return true;
+}
+
+/** A row's own missing-reason label for a field ("No owner record on the TCAD account"), or null. */
+function reasonLabel(row: ExploreRow, field: string): string | null {
+  const entry = missingFor(row, field);
+  return entry !== undefined && isReason(entry.reason) ? missingLabel(field, entry.reason) : null;
 }
 
 /** One field's value, or its missing reason in words (never blank). */
@@ -177,10 +225,11 @@ export function FieldValue({
     case "address":
       return (
         row.address ?? (
+          // Audit #18: the carrier exists; the run's export omits the situs text.
           <Gap
-            text={EXPLORE_TEXTS.noCarrier}
+            text={EXPLORE_TEXTS.addressNotInExport}
             short="No address"
-            reason={missingFor(row, "address")?.reason}
+            reason={missingFor(row, "address")?.reason ?? "not_in_export"}
             field="address"
           />
         )
@@ -195,8 +244,12 @@ export function FieldValue({
       return unknownRoof(row.roof_age_basis) ? (
         gapFor(row, "roof_age_basis")
       ) : row.roof_age_basis === "built_year" ? (
-        // Task B B-03: the roof dates from the building (the index carries no year number).
-        <span title="built_year">Year built (no reroof permit found)</span>
+        // Task B B-03 / audit #15: the roof dates from the building, with its year when carried.
+        <span title="built_year">
+          {typeof extras(row).year_built === "number"
+            ? `Year built ${String(extras(row).year_built)} (no reroof permit found)`
+            : "Year built (no reroof permit found)"}
+        </span>
       ) : (
         <>{row.roof_age_basis}</>
       );
@@ -226,15 +279,55 @@ export function FieldValue({
           field="permit.status_raw"
         />
       );
-    case "contractor_name":
-      return row.contractor === null ? null : (
+    case "contractor_name": {
+      // Audit #1: the printed name when the permit has one (unverified), else why it is empty.
+      if (row.contractor === null) return null;
+      const name = printedName(row);
+      return name !== null ? (
+        <span title={EXPLORE_TEXTS.asPrinted}>{name}</span>
+      ) : (
         <Gap
-          text={EXPLORE_TEXTS.noCarrier}
-          short="Name not published"
-          reason={NO_CARRIER}
+          text={EXPLORE_TEXTS.contractorNotPrinted}
+          short="No contractor printed"
+          reason="source_missing"
           field="contractor.name_as_printed"
         />
       );
+    }
+    case "bbb_link": {
+      const href = safeHttpUrl(bbbUrl(row) ?? "");
+      return href === undefined ? null : (
+        <a href={href} target="_blank" rel="noopener noreferrer">
+          {BBB_SEARCH_LINK_LABEL}
+        </a>
+      );
+    }
+    case "owner_name": {
+      const owner = extras(row).owner_name;
+      return typeof owner === "string" ? (
+        <>{owner}</>
+      ) : (
+        <Gap
+          text={reasonLabel(row, "owner_name") ?? MISSING_REASON_LABELS.no_owner_record}
+          short="No owner record"
+          reason={missingFor(row, "owner_name")?.reason ?? "no_owner_record"}
+          field="owner_name"
+        />
+      );
+    }
+    case "last_transfer": {
+      const date = extras(row).last_ownership_transfer_date;
+      return typeof date === "string" ? (
+        <>{date.slice(0, 10)}</>
+      ) : (
+        <Gap
+          text={MISSING_REASON_LABELS.no_dated_sale}
+          short="No dated sale"
+          reason="no_dated_sale"
+          field="last_ownership_transfer_date"
+        />
+      );
+    }
     case "contractor_resolution":
       return row.contractor === null ? null : (
         <ContractorBadge resolution={row.contractor.resolution} />
@@ -263,7 +356,7 @@ export function FieldValue({
           reason={missingFor(row, "tenure_years")?.reason}
         />
       ) : (
-        <>{`Owned ${row.tenure_years} yrs`}</>
+        <>{row.tenure_years < 1 ? "Owned < 1 yr" : `Owned ${row.tenure_years} yrs`}</>
       );
     case "tenure_basis":
       return row.tenure_basis === null ? (
@@ -292,6 +385,9 @@ const CARD_FIELDS: readonly RowField[] = [
   "contractor_name",
   "contractor_resolution",
   "bbb",
+  "bbb_link",
+  "owner_name",
+  "last_transfer",
   "tenure_years",
   "tenure_basis",
   "owner_area_class",
@@ -301,12 +397,15 @@ const CARD_FIELDS: readonly RowField[] = [
 export function PropertyFields({
   row,
   fields = CARD_FIELDS,
+  rows = false,
 }: {
   readonly row: ExploreRow;
   readonly fields?: readonly RowField[];
+  /** Task B drawer rows: label left, value right (PropertyDetail permitFields). */
+  readonly rows?: boolean;
 }): ReactElement {
   return (
-    <dl className={styles.fields}>
+    <dl className={rows ? `${styles.fields} ${styles.rows}` : styles.fields}>
       {fields
         .filter((f) => hasField(row, f))
         .map((field) => (
@@ -497,16 +596,24 @@ export function ResultRow({
       onClick={onClick}
       onKeyDown={onKeyDown}
     >
+      {/* Task B listing order (B-03 ResultRow): title (id, then why there is no address),
+          distance, Open details, expand; then the roof and confidence pills, the permit chip,
+          owned years and owner area; then the short provenance. */}
       <header className={styles.head}>
         <h4 id={titleId} className={styles.title}>
-          <span data-field="address">
-            <FieldValue row={row} field="address" />
-          </span>{" "}
-          <code className={styles.mono} title={row.property_cid}>
-            {truncateCid(row.property_cid)}
-          </code>
+          <span className={styles.titleStack}>
+            <span className={styles.titleMain}>
+              Property{" "}
+              <code className={styles.mono} title={row.property_cid}>
+                {truncateCid(row.property_cid)}
+              </code>
+            </span>
+            <span className={styles.titleSub} data-field="address">
+              <FieldValue row={row} field="address" />
+            </span>
+          </span>
         </h4>
-        <span className={styles.meta} data-field="distance">
+        <span className={styles.distance} data-field="distance">
           <FieldValue row={row} field="distance" />
         </span>
         {onSelect === undefined ? null : (
@@ -515,6 +622,7 @@ export function ResultRow({
             className={styles.iconButton}
             onClick={select}
             aria-label={`Details, property ${row.property_cid}`}
+            title="Open the property"
           >
             <Icon name="info" />
           </button>
@@ -524,35 +632,67 @@ export function ResultRow({
           className={styles.iconButton}
           aria-expanded={open}
           aria-controls={`${titleId}-more`}
-          aria-label="All fields"
+          aria-label={open ? "Collapse details" : "Expand details"}
+          title={open ? "Show less" : "Show more"}
           onClick={() => setOpen((o) => !o)}
         >
           <Icon name="arrow_drop_down" />
         </button>
       </header>
       <div className={styles.chips}>
-        <span className={styles.roof}>
-          <Icon name="roofing" size="small" />
+        {row.roof_age_years === null ? (
           <span data-field="roof_age_years">
             <FieldValue row={row} field="roof_age_years" />
           </span>
-          <span aria-hidden="true">·</span>
+        ) : (
+          <span className={`${styles.pill} ${styles.pillInfo}`}>
+            <Icon name="roofing" size="small" />
+            Roof{" "}
+            <span data-field="roof_age_years">
+              <FieldValue row={row} field="roof_age_years" />
+            </span>
+          </span>
+        )}
+        {row.roof_age_confidence === null ? (
           <span data-field="roof_age_confidence">
             <FieldValue row={row} field="roof_age_confidence" />
           </span>
-        </span>
+        ) : (
+          <span
+            className={`${styles.pill} ${row.roof_age_confidence === "high" ? styles.pillHigh : styles.pillWarn}`}
+          >
+            Confidence{" "}
+            <span data-field="roof_age_confidence">
+              <FieldValue row={row} field="roof_age_confidence" />
+            </span>
+          </span>
+        )}
         <span className={styles.meta} data-field="permit">
           <FieldValue row={row} field="permit" />
         </span>
+        {/* Final review: year built and owner on the card when the row carries them (the
+            drawer's Owner and Roof sections hold the fields with their reasons). */}
+        {typeof extras(row).year_built === "number" ? (
+          <span className={styles.meta}>{`Year built ${String(extras(row).year_built)}`}</span>
+        ) : null}
+        {typeof extras(row).owner_name === "string" ? (
+          <span className={styles.meta}>{extras(row).owner_name}</span>
+        ) : null}
         <span className={styles.meta} data-field="tenure_years">
           <FieldValue row={row} field="tenure_years" />
         </span>
+        {row.owner_area_class !== null && /out/i.test(row.owner_area_class) ? (
+          <StatusPill status="warning" icon="flight" text="Out-of-area owner" />
+        ) : null}
       </div>
+      <CompactProvenance row={row} />
       <div id={`${titleId}-more`} className={styles.more} hidden={!open}>
+        <p className={styles.cidLine}>
+          Property <CidDisplay cid={row.property_cid} />
+        </p>
         <PropertyFields row={row} fields={MORE_FIELDS} />
         <MissingSummary row={row} />
       </div>
-      <CompactProvenance row={row} />
     </article>
   );
 }

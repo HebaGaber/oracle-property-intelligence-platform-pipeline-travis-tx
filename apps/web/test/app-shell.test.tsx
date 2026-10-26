@@ -75,7 +75,8 @@ describe("app shell routes (A-13 T015: every route of contracts/ui-routes.md, la
       const route =
         entry.path === "/"
           ? children.find((r) => r.index === true)
-          : children.find((r) => `/${r.path ?? ""}` === entry.path);
+          : // `/data/verify/:cid?`: the CID segment is optional (a bare URL opens the latest).
+            children.find((r) => `/${(r.path ?? "").replace(/\?$/, "")}` === entry.path);
       expect(route, `route ${entry.path}`).toBeDefined();
       expect(typeof route?.lazy, `${entry.path}.lazy`).toBe("function");
       expect(route?.element, `${entry.path}.element`).toBeUndefined();
@@ -319,7 +320,6 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
       "AI-user sign-in",
       "Saved searches",
       "Similar properties",
-      "SQL checks",
       "Pipeline diagram and Gantt",
       "Area matrix",
       "Timeline scrubber",

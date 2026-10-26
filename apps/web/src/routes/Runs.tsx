@@ -37,9 +37,10 @@ import {
   verifyPath,
   type CoverageLabelKey,
 } from "@countylens/shared";
-import { useRef, type ReactElement } from "react";
-import { Link, useSearchParams } from "react-router";
+import { type ReactElement } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { ComingSoonEntries } from "../components/ComingSoonEntry";
+import { RunSelect } from "../components/RunSelect";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
@@ -49,18 +50,25 @@ import { LinearProgress } from "../components/LinearProgress";
 import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
 import { useAdminAccess, useLiveRun } from "../auth/useAdmin";
-import { formatCount, utcTimestamp } from "../data/format";
+import { formatCount } from "../data/format";
 import { RUN_STAGE_TEXTS, type LoadedRun, type SelectedRun } from "../data/run-loader";
 import { dataGroupItems, type DataGroupItem } from "../data/data-groups";
 import { runEvents, type RunEvent } from "../data/run-events";
-import { RUNS_INDEX_PATH, runsByFinish, type RunsIndexEntry } from "../data/runs-index";
+import {
+  RUNS_INDEX_PATH,
+  runName,
+  runNumbers,
+  runsByFinish,
+  type RunNumber,
+  type RunsIndexEntry,
+} from "../data/runs-index";
 import { serverCheckText, useServerCheck } from "../data/server-check";
 import { AdminActions, NotAdminNote } from "./RunsAdmin";
 import {
   eventLabel,
   runErrorNode,
   runLabel,
-  ShareBar,
+  ChangeBar,
   SourceDeltas,
   useRun,
   type RunPageState,
@@ -104,7 +112,7 @@ export function Component(): ReactElement {
         {latest === undefined ? null : (
           <SyncStatus
             latest={latest}
-            number={entries.length}
+            number={index === undefined ? null : (runNumbers(index).get(latest.runId) ?? null)}
             run={selected?.isLatest === false ? "earlier" : run}
             adminSlot={
               access.kind === "admin" ? (
@@ -145,6 +153,10 @@ export function Component(): ReactElement {
         <ComingSoonEntries ids={["pipeline-diagram", "timeline-scrubber"]} />
       ) : (
         <div className={styles.cardGrid} data-shown-run={run.entry.runId}>
+          {/* The run card is first in the DOM: its provenance line (the manifest CID) is the
+              page's first CID and sits inside the first phone screen (A-03-TC-NF-03). From 600 px
+              CSS `order` shows it last, as on the boards. */}
+          <RunCard run={run} selected={selected} />
           <PipelineSteps
             manifest={run.manifest}
             manifestCid={run.manifestCid}
@@ -155,7 +167,6 @@ export function Component(): ReactElement {
             <LatestEvents manifest={run.manifest} />
           </div>
           <WhatChanged run={run} number={selected.number} />
-          <RunCard run={run} selected={selected} />
         </div>
       )}
       {state.kind === "loading" && latest === undefined ? (
@@ -171,15 +182,16 @@ function PendingSections({
   readonly state: Extract<RunPageState, { kind: "loading" }>;
 }): ReactElement {
   return (
-    <div data-pending-manifest="" aria-label={RUN_STAGE_TEXTS[state.stage]}>
+    <div data-pending-manifest="" role="status" aria-label={RUN_STAGE_TEXTS[state.stage]}>
       <Skeleton variant="cards" count={1} />
     </div>
   );
 }
 
 /**
- * The Run menu of the board: every run, newest first, with its manifest CID (from the index).
- * Each run's title links to `?run=<runId>`; the shown run is marked (`aria-current`, a check).
+ * The run picker (PO 2026-10-26: run + date only → a dropdown, RunSelect): every run newest
+ * first, the shown one selected. A choice sets `?run=<runId>` (none for the latest). Beside it, the
+ * shown run's publication pill, finish time and run ID.
  */
 function RunList({
   entries,
@@ -188,84 +200,32 @@ function RunList({
   readonly entries: readonly RunsIndexEntry[];
   readonly currentId: string | undefined;
 }): ReactElement {
-  const newestFirst = entries.map((entry, i) => ({ entry, number: i + 1 })).reverse();
-  const latestId = newestFirst[0]?.entry.runId;
-  const shown = newestFirst.find(({ entry }) => entry.runId === currentId) ?? newestFirst[0];
-  const menu = useRef<HTMLDetailsElement>(null);
-  // The router follows the link (so open-in-new-tab works); the menu closes on the choice.
-  const close = (): void => {
-    if (menu.current !== null) menu.current.open = false;
-  };
+  const navigate = useNavigate();
+  const latestId = entries[entries.length - 1]?.runId;
+  const shown = entries.find((entry) => entry.runId === currentId) ?? entries[entries.length - 1];
   return (
-    <details
-      ref={menu}
-      className={styles.runMenu}
-      data-run-list=""
-      // The menu floats over the page (board "rsel-menu"): focus leaving it or Escape closes it.
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.open = false;
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") e.currentTarget.open = false;
-      }}
-    >
-      <summary className={styles.runMenuSummary} data-current-run={shown?.entry.runId ?? ""}>
-        <Icon name="history" size="medium" />
-        <span>
-          <span>
-            {shown === undefined
-              ? "No runs yet"
-              : `${runLabel(shown.number, shown.entry.finishedAt)}${
-                  shown.entry.runId === latestId ? " · latest" : ""
-                }`}
+    // Board "rsel": one outlined card, done glyph, the run (dropdown) over its finish time and run
+    // ID, the publication pill on the right.
+    <div className={styles.runPick} data-run-list="" data-current-run={shown?.runId ?? ""}>
+      <Icon name="check_circle" size="medium" />
+      <span>
+        <RunSelect
+          runs={entries}
+          value={shown?.runId ?? null}
+          label="Run"
+          hideLabel
+          onChange={(runId) => {
+            if (runId !== null) void navigate({ search: runSearch(runId, latestId) });
+          }}
+        />
+        {shown === undefined ? null : (
+          <span title={shown.runId}>
+            {formatUtc(shown.finishedAt)} UTC · {shown.runId}
           </span>
-          {shown === undefined ? null : (
-            <span>
-              {formatUtc(shown.entry.finishedAt)} UTC · {shown.entry.runId}
-            </span>
-          )}
-        </span>
-        <StatusPill status="info" icon="cloud_done" text="Published" />
-        <Icon name="arrow_drop_down" size="medium" />
-      </summary>
-      <div>
-        <ul className={styles.runMenuList} aria-label="Runs, newest first">
-          {newestFirst.map(({ entry, number }) => (
-            <li
-              key={entry.manifestCid}
-              className={`${styles.runMenuItem} ${entry.runId === shown?.entry.runId ? styles.runMenuItemCurrent : ""}`}
-              data-run-id={entry.runId}
-            >
-              <Link
-                className={styles.runMenuChoice}
-                to={{ search: runSearch(entry.runId, latestId) }}
-                aria-current={entry.runId === shown?.entry.runId ? "true" : undefined}
-                onClick={close}
-                data-choose-run={entry.runId}
-              >
-                <span>
-                  {entry.runId === shown?.entry.runId ? <Icon name="check" size="medium" /> : null}
-                </span>
-                <b>
-                  {runLabel(number, entry.finishedAt)}
-                  {entry.runId === latestId ? " · latest" : ""}
-                </b>
-              </Link>
-              <span>
-                <code className={styles.mono}>{entry.runId}</code>
-                <span>
-                  Manifest <CidDisplay cid={entry.manifestCid} />
-                  <Link className={styles.link} to={verifyPath(entry.manifestCid)}>
-                    Verify
-                  </Link>
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className={styles.itemBody}>{RUNS_TEXTS.numbering}</p>
-      </div>
-    </details>
+        )}
+      </span>
+      <StatusPill status="info" icon="cloud_done" text="Published" />
+    </div>
   );
 }
 
@@ -287,7 +247,7 @@ function SyncStatus({
   adminSlot,
 }: {
   readonly latest: RunsIndexEntry;
-  readonly number: number;
+  readonly number: RunNumber;
   /** The latest run once read; "earlier" while the page shows an earlier run's manifest. */
   readonly run: LoadedRun | "earlier" | undefined;
   readonly adminSlot: ReactElement;
@@ -428,7 +388,48 @@ function PipelineSteps({
           </li>
         ))}
       </ol>
+      <FetchStrip sources={manifest.sources} />
     </section>
+  );
+}
+
+/**
+ * Board strip under the pipeline ("Austin permits · Done · Start · End · Records · Log"), adapted
+ * to what the manifest holds: the fetch step as a whole, its first and last capture time and the
+ * records it fetched, with a link to the full log.
+ */
+function FetchStrip({ sources }: { readonly sources: readonly ManifestSource[] }): ReactElement {
+  const times = sources.map((s) => s.captured_at).sort((a, b) => Date.parse(a) - Date.parse(b));
+  const first = times[0];
+  const last = times[times.length - 1];
+  const records = sources.reduce((total, s) => total + s.records, 0);
+  return (
+    <div className={styles.fetchStrip} data-fetch-strip="">
+      <Icon name="check_circle" size="medium" />
+      <span>
+        <b>Fetch sources · Done</b>
+        <br />
+        {sources.length} sources, each captured once; the manifest keeps one time per source
+      </span>
+      <dl>
+        <div>
+          <dt>First capture</dt>
+          <dd>{first === undefined ? "—" : `${formatUtc(first)} UTC`}</dd>
+        </div>
+        <div>
+          <dt>Last capture</dt>
+          <dd>{last === undefined ? "—" : `${formatUtc(last)} UTC`}</dd>
+        </div>
+        <div>
+          <dt>Records</dt>
+          <dd>{formatCount(records)}</dd>
+        </div>
+      </dl>
+      <Link className={styles.textLink} to={ROUTES.runsLog}>
+        <Icon name="description" size="medium" />
+        Log
+      </Link>
+    </div>
   );
 }
 
@@ -493,10 +494,18 @@ function WhatChanged({
   number,
 }: {
   readonly run: LoadedRun;
-  readonly number: number;
+  readonly number: RunNumber;
 }): ReactElement {
   const { manifest, manifestCid } = run;
   const first = manifest.previousManifestCid === null;
+  // The previous run by its manifest CID, named by the one rule (the pilot slice is unnumbered).
+  const previous = run.index.runs.find((r) => r.manifestCid === manifest.previousManifestCid);
+  const previousNumber =
+    previous === undefined ? null : (runNumbers(run.index).get(previous.runId) ?? null);
+  const name = runName(number);
+  const previousName = previous === undefined ? "the previous run" : runName(previousNumber);
+  // Compare takes numbered runs only (RUNS_TEXTS.numbering).
+  const comparable = !first && number !== null && previousNumber !== null;
   const scale = Math.max(1, ...manifest.sources.map((s) => s.added + s.changed + s.removed));
   const sum = (key: "added" | "changed" | "removed"): number =>
     manifest.sources.reduce((total, s) => total + s[key], 0);
@@ -513,30 +522,53 @@ function WhatChanged({
       <div className={styles.cardHead}>
         <div>
           <h3 id="changed-heading" className={styles.cardTitle}>
-            What Run {number} changed
+            What {name} changed
           </h3>
           <p className={styles.helperText}>
-            {first ? RUNS_TEXTS.firstRun : `Counted against Run ${number - 1}'s manifest.`}
+            {first ? RUNS_TEXTS.firstRun : `Counted against ${previousName}'s manifest.`}
           </p>
         </div>
-        {first ? null : (
+        {!comparable ? null : (
           <Link
             className={styles.textLink}
-            to={`${ROUTES.runsCompare}?a=${number - 1}&b=${number}`}
+            to={`${ROUTES.runsCompare}?a=${previousNumber}&b=${number}`}
           >
             <Icon name="compare_arrows" size="medium" />
-            Compare Run {number} with Run {number - 1}
+            Compare {name} with {previousName}
           </Link>
         )}
       </div>
       <div>
         <div>
           {first ? null : (
-            <p className={styles.itemBody}>
-              Changes in Run {number} vs Run {number - 1} · <b data-total-changes="">{total}</b>{" "}
-              records · added <b>{formatCount(added)}</b> · changed <b>{formatCount(changed)}</b> ·
-              removed <b>{formatCount(removed)}</b>
-            </p>
+            <>
+              <p className={styles.itemBody}>
+                Changes in {name} vs {previousName} · <b data-total-changes="">{total}</b> records
+              </p>
+              <ChangeBar
+                added={added}
+                changed={changed}
+                removed={removed}
+                scale={total}
+                label={`${added} added, ${changed} changed, ${removed} removed`}
+              />
+              <ul className={styles.legend} aria-label="Changes by kind">
+                {(
+                  [
+                    ["added", "Added", added],
+                    ["changed", "Changed", changed],
+                    ["removed", "Removed", removed],
+                  ] as const
+                ).map(([tone, name, value]) => (
+                  <li key={tone} data-legend={tone}>
+                    <svg viewBox="0 0 1 1" aria-hidden="true">
+                      <rect className={styles[`fill_${tone}`]} width={1} height={1} />
+                    </svg>
+                    {name} <b>{formatCount(value)}</b>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
           <div data-cid-boxes="">
             <div>
@@ -576,26 +608,13 @@ function WhatChanged({
                   <span className={styles.helper}>{RUNS_TEXTS.firstRun}</span>
                 ) : (
                   <>
-                    <span className={styles.stack} role="group" aria-label={changeAria(source)}>
-                      <ShareBar
-                        tone="added"
-                        value={source.added}
-                        max={scale}
-                        label={`${source.added} added`}
-                      />
-                      <ShareBar
-                        tone="changed"
-                        value={source.changed}
-                        max={scale}
-                        label={`${source.changed} changed`}
-                      />
-                      <ShareBar
-                        tone="removed"
-                        value={source.removed}
-                        max={scale}
-                        label={`${source.removed} removed`}
-                      />
-                    </span>
+                    <ChangeBar
+                      added={source.added}
+                      changed={source.changed}
+                      removed={source.removed}
+                      scale={scale}
+                      label={changeAria(source)}
+                    />
                     <span className={styles.count}>
                       +{source.added} / ~{source.changed} / −{source.removed}
                     </span>
@@ -639,7 +658,7 @@ function RunCard({
         <FallbackChip source={read.source} />
       </header>
       <div>
-        <p className={styles.times} data-run-number={selected.number}>
+        <p className={styles.times} data-run-number={selected.number ?? "pilot"}>
           {runLabel(selected.number, run.entry.finishedAt)} ·{" "}
           {selected.isLatest ? "the latest run" : "an earlier run (choose another in the Run menu)"}
         </p>
@@ -650,8 +669,8 @@ function RunCard({
           </span>
         </p>
         <p className={styles.times}>
-          Started {utcTimestamp(manifest.startedAt)} UTC · Finished{" "}
-          {utcTimestamp(manifest.finishedAt)} UTC
+          Started <UtcTime iso={manifest.startedAt} /> · Finished{" "}
+          <UtcTime iso={manifest.finishedAt} />
         </p>
         <div className={styles.state}>
           <StatusPill status="info" icon="schedule" text={PUBLICATION_STATE_TEXT} />
@@ -728,6 +747,14 @@ function RunCard({
   );
 }
 
+/**
+ * An instant as the board prints it (`2026-10-25 07:36:00 UTC`, review: no `T…000Z`); the
+ * `<time datetime>` keeps the manifest's own ISO value for tests and assistive tech.
+ */
+function UtcTime({ iso }: { readonly iso: string }): ReactElement {
+  return <time dateTime={iso}>{formatUtc(iso)} UTC</time>;
+}
+
 /** § 7 List item, two lines: the display name (+ manifest id), then records · collected · link. */
 function SourceItem({
   source,
@@ -743,7 +770,7 @@ function SourceItem({
         <code className={styles.mono}>{source.name}</code>
       </span>
       <span className={styles.itemBody}>
-        {formatCount(source.records)} records · collected {utcTimestamp(source.captured_at)} UTC ·{" "}
+        {formatCount(source.records)} records · collected <UtcTime iso={source.captured_at} /> ·{" "}
         {source.watermark === null ? null : <>watermark {source.watermark} · </>}
         <SourceLink url={source.url} className={styles.link} />
       </span>

@@ -39,6 +39,9 @@ export interface Match {
   open_days?: number;
   status_class?: string;
   contractor_resolution?: string;
+  /** A-16: the contractor name as printed on the permit (unverified) and its BBB search link. */
+  contractor_name_as_printed?: string;
+  bbb_url?: string;
   bbb_status?: string;
   bbb_status_reason?: string;
   missing: { field: string; reason: string }[];
@@ -88,6 +91,8 @@ function toMatch(n: number, row: CitationRow): Match {
   const openDays = optionalNumber(row.open_days);
   const statusClass = optionalString(row.status_class);
   const contractorResolution = optionalString(row.contractor_resolution);
+  const contractorName = optionalString(row.contractor_name_as_printed);
+  const bbbUrl = optionalString(row.bbb_url);
   const bbbStatus = optionalString(row.bbb_status);
   const bbbStatusReason = optionalString(row.bbb_status_reason);
   return {
@@ -108,6 +113,8 @@ function toMatch(n: number, row: CitationRow): Match {
     ...(openDays !== undefined ? { open_days: openDays } : {}),
     ...(statusClass !== undefined ? { status_class: statusClass } : {}),
     ...(contractorResolution !== undefined ? { contractor_resolution: contractorResolution } : {}),
+    ...(contractorName !== undefined ? { contractor_name_as_printed: contractorName } : {}),
+    ...(bbbUrl !== undefined ? { bbb_url: bbbUrl } : {}),
     ...(bbbStatus !== undefined ? { bbb_status: bbbStatus } : {}),
     ...(bbbStatusReason !== undefined ? { bbb_status_reason: bbbStatusReason } : {}),
     missing,
@@ -182,6 +189,7 @@ export function createCitationRegistry(): CitationRegistry {
 export const EMPTY_OUTCOMES = [
   "empty_in_scope",
   "field_not_published",
+  "field_unknown",
   "out_of_scope",
   "not_found",
   "run_not_found",
@@ -197,6 +205,7 @@ const OUTCOME_PRIORITY: readonly EmptyOutcome[] = [
   "run_not_found",
   "out_of_scope",
   "field_not_published",
+  "field_unknown",
   "not_found",
   "empty_in_scope",
 ];
@@ -226,6 +235,7 @@ export function emptyOutcomeOf(
     const reason = output.empty_reason;
     if (
       reason === "field_not_published" ||
+      reason === "field_unknown" ||
       reason === "out_of_scope" ||
       reason === "not_found" ||
       reason === "run_not_found"
@@ -241,6 +251,8 @@ export const EMPTY_OUTCOME_SENTENCES: Readonly<Record<EmptyOutcome, string>> = {
   empty_in_scope: "No records in this run match these filters in the searched area.",
   field_not_published:
     "No records can be returned: a field this search filters on is not published in this run.",
+  field_unknown:
+    "No records match: a field this search filters on is unknown for the records in the searched area (other records in this run have it).",
   out_of_scope: "That place is outside Travis County, which is the only county in this run.",
   not_found: "No record with that identifier is in this run.",
   run_not_found: "That run is not in the published runs list.",
@@ -248,12 +260,14 @@ export const EMPTY_OUTCOME_SENTENCES: Readonly<Record<EmptyOutcome, string>> = {
   index_stale: "The search index for this run is out of date, so it cannot be searched.",
 };
 
-/** Fields the published export does not carry, with the contract reason (columns.ts UNCARRIED).
+/** Fields the agent declares it cannot answer, with the contract reason. A-16: BBB status IS
+ *  published (blocked when a name is printed, else not_checked); BBB blocks automated lookups, so
+ *  no rating exists and the reason is bbb_blocked, never no_lexicon_carrier.
  *  The contractor's printed name is published since contract v1.1 (`contractor_name_as_printed`,
  *  4,139 of 15,025 Run 3 permits), so it is no longer declared unpublished (ERR-78). */
 export const UNPUBLISHED_FIELDS = {
   owner_is_out_of_area: "not_in_export",
-  bbb_status: "no_lexicon_carrier",
+  bbb_status: "bbb_blocked",
 } as const;
 export type UnpublishedField = keyof typeof UNPUBLISHED_FIELDS;
 
@@ -277,4 +291,58 @@ export function unpublishedFromTools(
       out.push({ field: "owner_is_out_of_area", reason: UNPUBLISHED_FIELDS.owner_is_out_of_area });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------------------
+// A-16 final review: the answer is prose for people. One wording for the address gap (the
+// product's "Address not in the published export", reason not_in_export) and plain labels, never
+// raw field names, in every sentence the user reads.
+// ---------------------------------------------------------------------------------------
+
+export const ADDRESS_NOT_PUBLISHED_TEXT = "Address not in the published export";
+
+/** Plain labels for the field names a tool result or the model may put in prose. */
+export const FIELD_LABELS: Readonly<Record<string, string>> = {
+  "contractor.name_as_printed": "contractor name",
+  contractor_name_as_printed: "contractor name",
+  contractor_company_cid: "contractor company",
+  contractor_resolution: "contractor match",
+  owner_is_out_of_area: "owner lives outside the area",
+  owner_area_class: "owner area",
+  year_built: "year built",
+  property_structure_built_year: "year built",
+  roof_age_years: "roof age",
+  roof_age_basis: "roof age basis",
+  tenure_years: "owner tenure",
+  last_ownership_transfer_date: "last sale or deed date",
+  owner_name: "owner name",
+  bbb_status: "BBB status",
+  bbb_status_reason: "BBB status reason",
+  bbb_rating: "BBB rating",
+  bbb_url: "BBB search link",
+  open_days: "days open",
+  open_years: "years open",
+  status_class: "permit status",
+  unnormalized_address: "address",
+};
+
+/** The plain label of a field name (dots and underscores to spaces when it has no label). */
+export function fieldLabel(field: string): string {
+  return FIELD_LABELS[field] ?? field.replaceAll(".", " ").replaceAll("_", " ");
+}
+
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const RAW_FIELD_RE = new RegExp(
+  `\`?\\b(${Object.keys(FIELD_LABELS)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRe)
+    .join("|")})\\b\`?`,
+  "g",
+);
+
+/** The answer with raw field names replaced by labels and the address wording unified. */
+export function plainWording(answer: string): string {
+  return answer
+    .replace(RAW_FIELD_RE, (_m: string, field: string) => fieldLabel(field))
+    .replace(/not included in the published tables/gi, "not in the published export");
 }

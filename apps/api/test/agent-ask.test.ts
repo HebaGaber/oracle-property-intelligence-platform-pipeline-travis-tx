@@ -402,7 +402,7 @@ const EMPTY_ENVELOPE = (applied: Record<string, unknown>, extra: Record<string, 
 const DECLARED = (...fields: string[]) => ({
   unpublished: fields.map((field) => ({
     field,
-    reason: field === "owner_is_out_of_area" ? "not_in_export" : "no_lexicon_carrier",
+    reason: field === "owner_is_out_of_area" ? "not_in_export" : "bbb_blocked",
   })),
 });
 const DECLARE_STEP = (...fields: string[]) => ({
@@ -711,7 +711,8 @@ describe("ERR-61..63 follow-up: golden G2/G4/G5 deterministic rules", () => {
     expect(calls.some((q) => q.includes("2024-123456 BP"))).toBe(true);
     expect(result.steps.map((s) => s.tool)).toContain("searchRoofingPermits");
     expect(result.answer).toContain("2024-123456 BP");
-    expect(result.answer).toMatch(/BBB status is not available in the published data/);
+    expect(result.answer).toMatch(/BBB blocks automated lookups/);
+    expect(result.answer).not.toMatch(/not available in the published data/);
     expect(result.missing.map((m) => m.field)).toContain("bbb_status");
     expect(result.outcome).toBe("answered");
   });
@@ -1254,7 +1255,7 @@ describe("final review (donphan): run echo, gazetteer, BBB and unplaced-record r
     expect(gap.missing).toEqual([{ field: "bbb_status", reason: "contractor_unresolved" }]);
   });
 
-  it("bbb_status is listed once: the match's specific reason wins over no_lexicon_carrier", () => {
+  it("bbb_status is listed once: the match's specific reason wins over the generic bbb_blocked", () => {
     const specific = composeStructuredParts(
       [match({ bbb_status: "not_checked", bbb_status_reason: "contractor_unresolved" })],
       [DECLARED("contractor.name_as_printed", "bbb_status")],
@@ -1264,7 +1265,7 @@ describe("final review (donphan): run echo, gazetteer, BBB and unplaced-record r
     ]);
     const generic = composeStructuredParts([], [DECLARED("bbb_status")]);
     expect(generic.missing.filter((m) => m.field === "bbb_status")).toEqual([
-      { field: "bbb_status", reason: "no_lexicon_carrier" },
+      { field: "bbb_status", reason: "bbb_blocked" },
     ]);
   });
 
@@ -1307,8 +1308,8 @@ describe("final review (donphan): run echo, gazetteer, BBB and unplaced-record r
       }),
     );
     expect(result.missing).toContainEqual({ field: "tenure_years", reason: "unknown" });
-    expect(result.answer).toContain("2 records were left out because tenure years is unknown.");
-    expect(result.answer).not.toMatch(/roof age years/);
+    expect(result.answer).toContain("2 records were left out because owner tenure is unknown.");
+    expect(result.answer).not.toMatch(/roof age is unknown/);
   });
 });
 
@@ -1371,5 +1372,55 @@ describe("A-16: index and run-lookup failures are typed; empty answers carry a s
       field: "owner_is_out_of_area",
       reason: "not_in_export",
     });
+  });
+});
+
+// A-16 final review: one wording for the address gap, and no raw field names in prose.
+describe("A-16 plain wording in the answer", () => {
+  const answerFor = async (
+    text: string,
+    prompt = INPUT.prompt,
+    toolOutputs: Record<string, unknown>[] = [],
+  ) =>
+    runAgentAsk(
+      { ...INPUT, prompt },
+      baseDeps({
+        runModelLoop: async () => ({ text, steps: [], toolOutputs, totalTokens: 10 }),
+      }),
+    );
+
+  it("an address question gets the product wording, never 'Not included in the published tables'", async () => {
+    const result = await answerFor(
+      "The street address is Not included in the published tables.",
+      "What is the street address of this property?",
+    );
+    expect(result.answer).not.toMatch(/published tables/i);
+    expect(result.answer).toContain("Address not in the published export");
+  });
+
+  it("raw field names in the model's prose become plain labels", async () => {
+    const result = await answerFor(
+      "Permit 1 has `contractor.name_as_printed` empty; owner_is_out_of_area is unknown; year_built is 1980.",
+    );
+    for (const raw of ["contractor.name_as_printed", "owner_is_out_of_area", "year_built"])
+      expect(result.answer).not.toContain(raw);
+    expect(result.answer).toContain("contractor name");
+    expect(result.answer).toContain("year built");
+  });
+
+  it("server-added sentences use labels for unknown_excluded keys", async () => {
+    const result = await answerFor("Nothing matched.", INPUT.prompt, [
+      {
+        rows: [],
+        returned: 0,
+        total: 0,
+        truncated: false,
+        empty_reason: "no_match",
+        unknown_excluded: { tenure_years: 3 },
+        applied: { radius_mi: 1, tenure_years_min: 5 },
+      },
+    ]);
+    expect(result.answer).not.toContain("tenure years is unknown");
+    expect(result.answer).toContain("owner tenure is unknown");
   });
 });

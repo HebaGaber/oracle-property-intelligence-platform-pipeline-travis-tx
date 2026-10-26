@@ -40,6 +40,7 @@ import {
   SEL,
   chipYears,
   expectedBbbText,
+  expectedContractorText,
   exploreUrl,
   fallbackText,
   isBlankCell,
@@ -110,6 +111,9 @@ async function expectRowFields(
   data: ExploreRowShape | undefined,
   oracle: A13Oracle,
 ): Promise<void> {
+  // A-16 (Task B listing): a result card keeps basis and lat/lon behind "Expand details".
+  const expand = row.getByRole("button", { name: "Expand details" });
+  if ((await expand.count()) > 0) await expand.click();
   for (const field of [
     "address",
     "roof_age_years",
@@ -124,7 +128,9 @@ async function expectRowFields(
   }
   if (data !== undefined) {
     if (data.address === null) {
-      await expect(row.locator(SEL.field("address")).first()).toHaveText(EXPLORE_TEXTS.noCarrier);
+      await expect(row.locator(SEL.field("address")).first()).toHaveText(
+        EXPLORE_TEXTS.addressNotInExport,
+      );
     }
     await expect(row.locator(SEL.field("distance")).first()).toContainText(data.bearing);
     await expect(row.locator(SEL.field("distance")).first()).toContainText("mi");
@@ -155,7 +161,11 @@ async function expectKindTable(row: Locator, M: A13Oracle["M"]): Promise<void> {
   const cid = await chip.locator(SEL.cid).first().getAttribute("data-cid");
   expect(cid !== null && artifactCids(M).has(cid), `table ${table} CID ${cid} in M`).toBe(true);
   expect(
-    M.artifacts.some((a) => a.name.startsWith(`tables/${table}`)),
+    // `{group}/{table}`: a pilot part is `tables/<group>/<table>/…`, a full-county part
+    // `…/tables/<bNN>/<table>/…`, so match the table folder (its CID is checked above).
+    M.artifacts.some(
+      (a) => a.kind === "table" && a.name.split("/").at(-2) === table.split("/").at(-1),
+    ),
     `table ${table} in M`,
   ).toBe(true);
 }
@@ -392,10 +402,11 @@ test.describe("A-13 explorer · demo lines", () => {
 
   test(scenario("007"), async ({ page, oracle }) => {
     noteBranch(oracle);
-    const { runs, n } = oracle;
-    if (runs.length >= 2) {
-      const prev = runs[n - 2];
-      const last = runs[n - 1];
+    // Compare speaks run numbers: the numbered runs (no pilot slice), Run N = numbered[N-1].
+    const { numbered, n } = oracle;
+    if (numbered.length >= 2) {
+      const prev = numbered[n - 2];
+      const last = numbered[n - 1];
       if (prev === undefined || last === undefined) throw new Error("run index out of order");
       // 1. Compare n-1 with n.
       await page.goto(`${ROUTES.runsCompare}?a=${n - 1}&b=${n}`);
@@ -522,11 +533,13 @@ test.describe("A-13 explorer · demo lines", () => {
       if (x === null) continue;
       expect([EXPLORE_TEXTS.stalledNoCarrier(x), EXPLORE_TEXTS.openNoCarrier(x)]).toContain(text);
     }
-    for (const cell of await page
-      .locator(SEL.resultRow)
-      .locator(SEL.field("contractor_name"))
-      .all()) {
-      await expect(cell).toHaveText(EXPLORE_TEXTS.noCarrier);
+    for (const r of result.rows) {
+      if (r.contractor === null) continue;
+      await expect(
+        page
+          .locator(`${SEL.resultRow}[data-property-cid="${r.property_cid}"]`)
+          .locator(SEL.field("contractor_name")),
+      ).toHaveText(expectedContractorText(r));
     }
     // 5. The open-permit section.
     const open = result.rows.filter((r) => r.permit?.status_class === "open");
@@ -660,9 +673,10 @@ test.describe("A-13 explorer · runs and compare", () => {
   });
 
   test(scenario("014"), async ({ page, oracle }) => {
-    const first = oracle.runs[0];
-    if (first === undefined) throw new Error("runs/index.json lists no runs");
-    // 1. Serve the index with only its first (real) entry.
+    // Run 1, the first numbered run (the pilot slice has no number, so Compare cannot name it).
+    const first = oracle.numbered[0];
+    if (first === undefined) throw new Error("runs/index.json lists no numbered runs");
+    // 1. Serve the index with only Run 1 (a real entry).
     await page.route("**/runs/index.json*", async (route) => {
       const res = await route.fetch();
       const body = (await res.json()) as { runs: unknown[] };
@@ -687,9 +701,9 @@ test.describe("A-13 explorer · runs and compare", () => {
 
   test(scenario("015"), async ({ page, oracle }) => {
     noteBranch(oracle);
-    test.skip(oracle.runs.length < 2, "1 run published");
+    test.skip(oracle.numbered.length < 2, "1 numbered run published");
     const { n } = oracle;
-    const old = oracle.runs[n - 2]?.manifestCid ?? "";
+    const old = oracle.numbered[n - 2]?.manifestCid ?? "";
     const net = recordRequests(page);
     // 1. orbitor (an independent gateway, AM-10) answers 504 for the old manifest.
     await page.route(`https://${ORBITOR()}/ipfs/${old}*`, (route) =>
@@ -827,7 +841,12 @@ test.describe("A-13 explorer · filters and property", () => {
     const rows = page.locator(SEL.resultRow);
     await expect(rows).toHaveCount(result.rows.length);
     expect(result.rows.length, "today's run returns rows in the wide area").toBeGreaterThan(0);
-    // 2–3. Every row's cells and provenance.
+    // A-16 (PO 2026-10-26): 20 rows a page; the line under them names the whole total.
+    expect(result.rows.length).toBeLessThanOrEqual(20);
+    await expect(page.locator("[data-showing]")).toHaveText(
+      `Showing 1–${result.rows.length.toLocaleString("en-US")} of ${result.total_within_r.toLocaleString("en-US")}`,
+    );
+    // 2–3. Every row's cells and provenance (the current page).
     const data = byCid(result);
     for (const row of await rows.all()) {
       const cid = (await row.getAttribute("data-property-cid")) ?? "";
@@ -1020,7 +1039,9 @@ test.describe("A-13 explorer · filters and property", () => {
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
     // 3. Contractor name (no carrier) and the resolution badge.
-    await expect(drawer.locator(SEL.field("contractor_name"))).toHaveText(EXPLORE_TEXTS.noCarrier);
+    await expect(drawer.locator(SEL.field("contractor_name"))).toHaveText(
+      expectedContractorText(withPermit),
+    );
     await expect(drawer.locator(SEL.contractorBadge)).toHaveAttribute(
       "data-contractor-resolution",
       withPermit.contractor?.resolution ?? "unresolved",
@@ -1062,7 +1083,9 @@ test.describe("A-13 explorer · filters and property", () => {
         seen.add("roof_basis_unknown");
       }
       if (data.contractor !== null) {
-        await expect(row.locator(SEL.field("contractor_name"))).toHaveText(EXPLORE_TEXTS.noCarrier);
+        await expect(row.locator(SEL.field("contractor_name"))).toHaveText(
+          expectedContractorText(data),
+        );
         seen.add("contractor_not_printed");
       }
       const bbb = expectedBbbText(data.bbb_status, data.bbb_status_reason);
@@ -1121,11 +1144,15 @@ test.describe("A-13 explorer · filters and property", () => {
     await page.locator(`${SEL.resultRow}[data-property-cid="${row.property_cid}"]`).click();
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
-    // 3. Each no-carrier field shows the exact text.
-    for (const field of ["status_raw", "contractor_name"]) {
-      if (field === "status_raw" && row.permit === null) continue;
-      if (field === "contractor_name" && row.contractor === null) continue;
-      await expect(drawer.locator(SEL.field(field))).toHaveText(EXPLORE_TEXTS.noCarrier);
+    // 3. The no-carrier field shows the exact text; the contractor its printed name or why not
+    // (A-16 data audit #1: the name has a carrier and Run 3 publishes it).
+    if (row.permit !== null) {
+      await expect(drawer.locator(SEL.field("status_raw"))).toHaveText(EXPLORE_TEXTS.noCarrier);
+    }
+    if (row.contractor !== null) {
+      await expect(drawer.locator(SEL.field("contractor_name"))).toHaveText(
+        expectedContractorText(row),
+      );
     }
     for (const el of await drawer.locator('[data-reason="no_lexicon_carrier"]').all()) {
       await expect(el).toHaveText(EXPLORE_TEXTS.noCarrier);

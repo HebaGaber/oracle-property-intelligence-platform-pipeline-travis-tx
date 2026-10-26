@@ -5,7 +5,8 @@ import { comingSoonItems, median, routeTargets } from "./a13-routes.js";
 describe("Coming soon items", () => {
   it("lists the PO's items with one sentence each and exactly one unlinked item", () => {
     const items = comingSoonItems();
-    expect(items.length).toBeGreaterThanOrEqual(11);
+    // 10 since A-16: "SQL checks" was removed with the SQL tab (PO decision).
+    expect(items.length).toBeGreaterThanOrEqual(10);
     expect(items.filter((i) => !i.linked).map((i) => i.id)).toEqual(["ai-user-sign-in"]);
     for (const item of items) expect(item.sentence).toMatch(/^[^.!?]+[.!?]$/);
   });

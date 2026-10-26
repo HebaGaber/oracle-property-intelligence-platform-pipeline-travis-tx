@@ -32,7 +32,8 @@ export const INDEX_JSON = "index.json";
 /** Cost gate default: stop before fetching more than this from the CID copy (design § 1). */
 export const DEFAULT_MAX_FETCH_GB = 2;
 
-const PREFIX = /^private\/[a-z0-9-]+\/$/;
+/** `private/<name>/` plus an optional views-version folder (`v1.2/`); nothing else. */
+const PREFIX = /^private\/[a-z0-9-]+\/(?:v[0-9]+(?:\.[0-9]+)*\/)?$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 
 /** SHA-256 hex of the view SQL the index was materialised with (query-core VIEWS_SQL). */
@@ -50,7 +51,7 @@ export interface IndexKeys {
  *  and anything but a base32 CIDv1, so no key can escape the private prefix. */
 export function indexKeys(prefix: string, manifestCid: string): IndexKeys {
   if (!PREFIX.test(prefix))
-    throw new Error(`explore index prefix ${prefix} is not private/<name>/`);
+    throw new Error(`explore index prefix ${prefix} is not private/<name>/[v<version>/]`);
   const cid = CidV1.parse(manifestCid);
   const root = `${prefix}${cid}/`;
   const files = Object.fromEntries(

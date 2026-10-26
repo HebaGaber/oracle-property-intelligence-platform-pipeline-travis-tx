@@ -2,6 +2,7 @@
 // the scripts (plan.md § Project Structure). Browser-safe: no node: imports, no env reads.
 export {
   ADDRESS_POINT_PROVENANCE_TEXT,
+  BBB_SEARCH_LINK_LABEL,
   COORDINATE_SOURCE_LABELS,
   CONTRACTOR_NOT_PRINTED_LABEL,
   COVERAGE_LABELS,

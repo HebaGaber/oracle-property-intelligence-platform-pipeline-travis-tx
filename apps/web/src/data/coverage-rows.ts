@@ -2,7 +2,7 @@
 // manifest `coverage` key with its count, derivation and note, read only from the manifest. An
 // unknown key is tolerated (labelled by its key), never thrown on. Denominators are coverage keys
 // `source_total:{source}` (the A-11 input); a source without one shows "denominator not in this
-// run's manifest · A-01 source {name}" and no number. Collection time is the source's captured_at.
+// run's manifest · source {name}" and no number. Collection time is the source's captured_at.
 import type { RunManifestV1 } from "@countylens/contract";
 import { safeHttpUrl } from "./safe-url";
 import {

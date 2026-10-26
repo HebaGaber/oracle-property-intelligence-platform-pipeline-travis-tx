@@ -361,3 +361,241 @@
   gap: var(--space-1);
   min-width: 0;
 }
+
+/* ---- A-16 style pass (PO 2026-10-26 06:25, boards Coverage1440/768/390) ---- */
+
+/* Page head: title and intro on the left, the run button and Download CSV on the right; the
+   actions wrap under the intro below 840 px. */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  min-width: 0;
+}
+
+.head > div:first-child {
+  flex: 1 1 calc(var(--space-10) * 6);
+  min-width: 0;
+}
+
+.headActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Atlas outlined button, 48 px target: Download CSV (the run is the shared RunSelect). */
+.outlined {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--space-9);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.outlined:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.outlined:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+/* KPI "Counted from": the Published pill with the run id beside it. */
+.pillLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Loaded vs total: board header (label-medium, on-surface-variant, no fill, rule below). */
+.flat th {
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: var(--md-sys-typescale-label-medium-weight);
+}
+
+.flat td {
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+  vertical-align: middle;
+}
+
+/* Data cell: the row's status icon, then the source name (title-small). */
+.dataCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.dataCell b {
+  min-width: 0;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  overflow-wrap: anywhere;
+}
+
+/* Board "Missing" swatch and "No source" cell: hatched, never a filled share. */
+.hatchBar,
+.hatchPanel {
+  background-color: var(--md-sys-color-surface-container-high);
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--md-sys-color-outline-variant) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+.hatchBar {
+  display: block;
+  height: var(--space-2);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+}
+
+.hatchPanel {
+  display: grid;
+  place-items: center;
+  min-height: calc(var(--space-10) * 3);
+  padding: var(--space-4);
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+/* Cost tiles (board "Last bill" and "Budget alert"): filled, no outline. */
+.costTiles > div {
+  border-color: transparent;
+  background: var(--md-sys-color-surface-container);
+}
+
+/* Source speed: the board's header band and outlined table frame. */
+[data-section="source-limits"] > div:nth-child(2) {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+}
+
+/* Cost from 840 px: the board's resource list (one column, two from 1200 px). Each row is a
+   small grid: the name (and the doc's parenthetical) with the per-use line under it on the left,
+   the fixed figure and the Details toggle on the right; who pays and the bill line show, with
+   their labels, only when Details is open. The element stays a table with one row per resource. */
+@media (min-width: 840px) {
+  .costList,
+  .costList tbody {
+    display: block;
+  }
+
+  .costList thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .costList tbody {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: var(--space-7);
+  }
+
+  .costList tr {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    grid-template-areas:
+      "name fixed"
+      "use toggle"
+      "who who"
+      "seen seen";
+    align-items: start;
+    gap: 0 var(--space-4);
+    padding: var(--space-2) 0;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .costList td {
+    padding: 0;
+    border-top: 0;
+  }
+
+  .costList td:nth-child(1) {
+    grid-area: name;
+  }
+
+  .costList td:nth-child(2) {
+    grid-area: fixed;
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .costList td:nth-child(3) {
+    grid-area: use;
+    color: var(--md-sys-color-on-surface-variant);
+    font-family: var(--md-sys-typescale-body-small-font);
+    font-size: var(--md-sys-typescale-body-small-size);
+    line-height: var(--md-sys-typescale-body-small-line-height);
+  }
+
+  .costList td:nth-child(4) {
+    grid-area: who;
+  }
+
+  .costList td:nth-child(5) {
+    grid-area: seen;
+  }
+
+  .costList td:nth-child(6) {
+    grid-area: toggle;
+  }
+
+  .costList tr:not(:has(details[open])) td:is(:nth-child(4), :nth-child(5)) {
+    display: none;
+  }
+
+  .costList td:is(:nth-child(4), :nth-child(5)) {
+    padding-top: var(--space-2);
+  }
+
+  .costList td:is(:nth-child(4), :nth-child(5))::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--md-sys-color-on-surface-variant);
+    font-family: var(--md-sys-typescale-label-medium-font);
+    font-size: var(--md-sys-typescale-label-medium-size);
+    line-height: var(--md-sys-typescale-label-medium-line-height);
+  }
+
+  /* Fixed and per-use lines stay short in the list (two lines) until Details opens the row. */
+  .costList td:is(:nth-child(2), :nth-child(3)) > div {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+}
+
+@media (min-width: 1200px) {
+  .costList tbody {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

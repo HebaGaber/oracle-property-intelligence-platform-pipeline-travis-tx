@@ -13,6 +13,10 @@
   font: inherit;
 }
 
+.sortUp [data-icon] {
+  transform: rotate(180deg);
+}
+
 .sort:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
@@ -126,11 +130,10 @@ table.log td {
   line-height: var(--md-sys-typescale-body-small-line-height);
 }
 
-/* Compact and medium widths up to 839 px (D-6, review B-4): each event is a small card, so Count and
-   Status are never hidden behind a sideways scroll at 768 (real run IDs and source names are longer
-   than the board samples). The card shows time and status on top, then run, event, source and
-   count. The table roles stay for assistive tech; the header row is visually hidden. */
-@media (max-width: 839px) {
+/* Compact widths below 600 px (D-6; board 390 stacks the log): each event is a small card. The
+   card shows time and status on top, then run, event, source and count. The table roles stay for
+   assistive tech; the header row is visually hidden. */
+@media (max-width: 599px) {
   .log thead {
     position: absolute;
     width: 1px;
@@ -195,6 +198,68 @@ table.log td {
 
   .log td:nth-child(6) {
     grid-area: status;
+  }
+
+  .runId {
+    max-width: 100%;
+  }
+}
+
+/* Medium widths 600–1023 px (board RunsLog768, review B-4): the six columns stay a table, but each
+   row is a grid with fixed shares (Task B's list-row pattern), so cells wrap inside their column
+   and Count and Status are never pushed behind a sideways scroll. */
+@media (min-width: 600px) and (max-width: 1023px) {
+  .log,
+  .log thead,
+  .log tbody {
+    display: block;
+  }
+
+  .log tr {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 1.6fr) minmax(0, 0.9fr)
+      minmax(0, 1.4fr);
+    gap: 0 var(--space-2);
+    align-items: start;
+    padding-inline: var(--space-2);
+  }
+
+  .log thead tr {
+    background: var(--md-sys-color-surface-container-high);
+  }
+
+  .log tbody tr {
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .log th,
+  .log td,
+  .log td:nth-child(2),
+  .log td:nth-child(3) {
+    min-width: 0;
+    padding-inline: 0;
+    border-top: 0;
+    white-space: normal;
+  }
+
+  /* Date over time, as on the board; the pill may take two lines ("Done with limitations"). */
+  .log td:first-child,
+  .log td:last-child,
+  .log td:last-child > * {
+    white-space: normal;
+  }
+
+  /* Icons are ligature glyphs: they never wrap. */
+  .log [data-icon] {
+    white-space: nowrap;
+  }
+
+  /* "Limitations (4)" may wrap in the narrow Event column; the 48 px target stays. */
+  .log summary {
+    box-sizing: border-box;
+    padding-block: var(--space-3);
+    line-height: var(--md-sys-typescale-label-large-line-height);
   }
 
   .runId {

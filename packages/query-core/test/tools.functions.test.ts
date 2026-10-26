@@ -206,6 +206,100 @@ describe("searchProperties: field_not_published vs no_match (review F1)", () => 
   });
 });
 
+// A-16 (PO audit item 11): "not published" is a run-level claim. A field that only the rows in
+// the searched area lack (roof age is published for other properties of the run) is field_unknown,
+// never field_not_published; owner_is_out_of_area, null on every row of the run, stays
+// field_not_published.
+describe("searchProperties: field_unknown vs field_not_published (A-16)", () => {
+  const near = [`ba${"a".repeat(55)}uone`, `ba${"a".repeat(55)}utwo`];
+  const FAR = `ba${"a".repeat(55)}ufar`;
+  const tables: FixtureTables = {
+    county: {
+      property: [...near.map((cid) => propertyRows(cid, null)), propertyRows(FAR, 1985)],
+      property_has_parcel: [...near, FAR].map((cid, i) => edge(cid, `upc${i}`)),
+      parcel_has_geometry: [...near, FAR].map((_, i) => edge(`upc${i}`, `ug${i}`)),
+      geometry: [
+        geometry("ug0", CENTRE),
+        geometry("ug1", CENTRE),
+        geometry("ug2", EAST_THREE_MILES),
+      ],
+      property_has_structure: [edge(FAR, "us")],
+      structure: [{ cid: "us", roof_date: "1985" }],
+    },
+  };
+  let fx: Fixture;
+  beforeAll(async () => {
+    fx = await bindFixture(tables);
+  });
+  afterAll(() => fx.close());
+
+  it("roof age unknown only in the searched area -> field_unknown", async () => {
+    const result = await searchProperties(fx.db, fx.bound, {
+      area: { lat: CENTRE.lat, lon: CENTRE.lon },
+      radius_mi: 1,
+      roof_age_years_min: 15,
+      limit: 1000,
+    });
+    expect(result.returned).toBe(0);
+    expect(result.unknown_excluded.roof_age_years).toBe(2);
+    expect(result.empty_reason).toBe("field_unknown");
+  });
+
+  it("owner_is_out_of_area null on every row of the run -> field_not_published", async () => {
+    const result = await searchProperties(fx.db, fx.bound, {
+      area: { lat: CENTRE.lat, lon: CENTRE.lon },
+      radius_mi: 1,
+      owner_is_out_of_area: true,
+      limit: 1000,
+    });
+    expect(result.empty_reason).toBe("field_not_published");
+  });
+});
+
+// A-16 (audit items 3, 8): the permit's printed contractor name is carried in the nested
+// `contractor` object; a permit that prints none says source_missing, not contractor_unresolved.
+describe("listPermits contractor fields (A-16)", () => {
+  const tables: FixtureTables = {
+    ...TABLES,
+    property_improvement: {
+      ...TABLES.property_improvement,
+      property_improvement_has_contractor: [edge("pa", "cA")],
+      company: [{ cid: "cA", name: "Roofer A", source_http_request: austinRequest("x") }],
+    },
+  };
+  let fx: Fixture;
+  beforeAll(async () => {
+    fx = await bindFixture(tables);
+  });
+  afterAll(() => fx.close());
+
+  it("a printed name is in contractor.name_as_printed and the row keeps bbb_url", async () => {
+    const result = await listPermits(fx.db, fx.bound, { permit_number: "2020-000100 BP" });
+    const row = result.rows[0] as Row;
+    expect(row.contractor).toMatchObject({ name_as_printed: "Roofer A", company_cid: "cA" });
+    expect(row.contractor_name_as_printed).toBe("Roofer A");
+    expect(String(row.bbb_url)).toContain("find_text=Roofer%20A");
+    expect(row.bbb_status_reason).toBe("bbb_blocked");
+  });
+
+  it("no printed contractor -> source_missing on the name, company, rating and BBB reason", async () => {
+    const result = await listPermits(fx.db, fx.bound, { permit_number: "2026-000200 BP" });
+    const row = result.rows[0] as Row;
+    expect((row.contractor as unknown as Row).name_as_printed).toBeNull();
+    expect(row.bbb_status_reason).toBe("source_missing");
+    const missing = row.missing as unknown as { field: string; reason: string }[];
+    for (const field of ["contractor_name_as_printed", "contractor_company_cid", "bbb_rating"])
+      expect(missing).toContainEqual({ field, reason: "source_missing" });
+    expect(missing.some((m) => m.reason === "contractor_unresolved")).toBe(false);
+  });
+
+  it("getProperty's permits carry the same contractor fields", async () => {
+    const result = await getProperty(fx.db, fx.bound, { property_cid: P1 });
+    const permits = (result.rows[0] as Row).permits as unknown as Row[];
+    expect(permits[0]?.contractor).toMatchObject({ name_as_printed: "Roofer A" });
+  });
+});
+
 describe("listPermits", () => {
   let fx: Fixture;
   beforeAll(async () => {
@@ -435,5 +529,15 @@ describe("getSchema", () => {
       "listRuns",
       "getSchema",
     ]);
+  });
+});
+
+describe("getSchema reason texts (A-16, contract v1.2)", () => {
+  it("address and mailing ZIP are carried in v1.2, so they are no longer listed as uncarried", () => {
+    const result = getSchema({ view: "v_property" });
+    const entries = (result.uncarried as Record<string, { field: string; reason_text?: string }[]>)
+      .v_property;
+    expect(entries?.find((e) => e.field === "unnormalized_address")).toBeUndefined();
+    expect(entries?.find((e) => e.field === "owner_mailing_postal_code")).toBeUndefined();
   });
 });

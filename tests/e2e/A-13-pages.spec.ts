@@ -102,7 +102,7 @@ test.describe("A-13 pages · Hub", { tag: "@a13-pages" }, () => {
     // 3. The Roofing CRM card: "Coming soon · Not deployed yet", disabled button, no href.
     await expectCrmNotDeployed(page);
     // 4. The chip: "Run {n} · {YYYY-MM-DD HH:mm} UTC" from runs/index.json.
-    const chipText = PAGE_TEXTS.hubChip(oracle.n, oracle.latest.finishedAt);
+    const chipText = PAGE_TEXTS.hubChip(`Run ${oracle.n}`, oracle.latest.finishedAt);
     const chip = page.getByText(chipText, { exact: true });
     await expect(chip).toBeVisible();
     await checkpoint(page, "001", 4);

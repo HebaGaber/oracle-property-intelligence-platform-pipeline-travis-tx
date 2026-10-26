@@ -234,8 +234,10 @@ for (const viewport of [
       await expect(costSection(page)).toBeVisible();
       await expect(limitsSection(page)).toBeVisible();
       // Below 840 px the tables stack as labelled blocks (no table header row).
-      const headerVisible = await limitsSection(page).locator("thead").first().isVisible();
-      expect(headerVisible).toBe(viewport.width >= 840);
+      // The header is visually hidden (1 px, clipped) but kept for screen readers, so measure it.
+      const headerBox = await limitsSection(page).locator("thead").first().boundingBox();
+      const headerShown = headerBox !== null && headerBox.width > 1 && headerBox.height > 1;
+      expect(headerShown).toBe(viewport.width >= 840);
       await checkpoint(page, "TC-NF-02", `coverage-${viewport.width}`);
     });
   });

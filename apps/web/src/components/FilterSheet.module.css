@@ -179,11 +179,15 @@
 }
 
 /* A-16 T050 (Explore1440 board): panel header, chip rows, segmented permit, suggestions, footer. */
+/* Explore · Filters board (13.png): the "Filters · query" header sits on its own row, ruled off
+   from the controls. */
 .panelTitle {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin: 0;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
   color: var(--md-sys-color-on-surface);
   font-family: var(--md-sys-typescale-title-medium-font);
   font-size: var(--md-sys-typescale-title-medium-size);

@@ -5,7 +5,7 @@
 // - run-events: startedAt, each sources[].captured_at, finishedAt + limitations, time-ordered
 //   across runs;
 // - coverage-rows: unknown keys tolerated; a missing `source_total:{source}` key gives
-//   "denominator not in this run's manifest · A-01 source {name}";
+//   "denominator not in this run's manifest · source {name}";
 // - site-links: https only, an invalid or empty value is hidden;
 // - parquet-meta: columns, types and rows from a real Parquet footer read by Range;
 // - verify-lane: the data-model state machine (✓ only when size and digest match; 429 and
@@ -298,9 +298,9 @@ describe("parquet-meta", () => {
     const footer = await readParquetFooter("https://copy.host.test/part", PARQUET.length, {
       fetch: rangeFetch(ranges),
     });
-    // Oracle: DuckDB read_parquet over the same file gives count(*) = 20 and 58 columns (contract v1.1, A-11 Run 3).
+    // Oracle: DuckDB read_parquet over the same file gives count(*) = 20 and 61 columns (contract v1.2, A-11 Run 3.1).
     expect(footer.rows).toBe(20);
-    expect(footer.columns).toHaveLength(58);
+    expect(footer.columns).toHaveLength(61);
     expect(footer.columns.map((c) => c.name)).toEqual(
       expect.arrayContaining(["permit_number", "property_cid", "manifest_cid"]),
     );

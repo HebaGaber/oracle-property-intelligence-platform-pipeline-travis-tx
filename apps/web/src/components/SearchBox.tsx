@@ -121,7 +121,18 @@ export function SearchBox({
         onKeyDown={onKeyDown}
       />
       <div className={styles.popup} hidden={!expanded}>
-        {empty ? <p className={styles.note}>Try</p> : null}
+        {/* EmptyHints / SearchStates boards: before typing, and a text with no exact match. */}
+        {empty ? (
+          <p className={styles.note}>
+            <strong className={styles.label}>Search the whole county</strong> · try a town, ZIP,
+            permit number or a plain question
+          </p>
+        ) : options.every((o) => o.kind === "ask") ? (
+          <p className={styles.note} data-search-empty="">
+            <strong className={styles.label}>{`No exact match for “${text.trim()}”`}</strong> ·
+            check the spelling, or ask the helper instead
+          </p>
+        ) : null}
         <ul
           id={`${uid}-list`}
           role="listbox"

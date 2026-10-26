@@ -303,7 +303,8 @@ describe("owner kind, name and missing reason (code-review #2, donphan M1)", () 
 
 describe("contractor edge count (donphan M4: never pick one of several)", () => {
   it.each([
-    [0, null, null, "contractor_unresolved"],
+    // A-16: no edge means the permit printed no contractor (source_missing), nothing failed to match.
+    [0, null, null, "source_missing"],
     [1, "baguqeeraone", "baguqeeraone", "contractor_unresolved"],
     [2, "baguqeeraone", null, "needs_review"],
   ] as const)("%s edge(s), min cid %s → company %s, reason %s", async (n, cid, company, reason) => {
@@ -357,7 +358,7 @@ describe("coordinate_source, contractor and BBB state", () => {
 
   it.each([
     ["Roofer A", "blocked", "bbb_blocked"],
-    [null, "not_checked", "contractor_unresolved"],
+    [null, "not_checked", "source_missing"],
   ] as const)("contractor name %s → bbb %s / %s", async (name, status, reason) => {
     expect(d.bbbStatus(name)).toBe(status);
     expect(d.bbbStatusReason(name)).toBe(reason);

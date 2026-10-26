@@ -12,7 +12,7 @@ export function Component(): ReactElement {
   return (
     <section aria-label="Legal · Terms" data-route="legal-terms" className={styles.page}>
       <LegalLayout
-        title="Legal · Terms"
+        title="Terms"
         current={ROUTES.legalTerms}
         banner="These terms describe how CountyLens may be used. They are not legal advice."
         sections={[

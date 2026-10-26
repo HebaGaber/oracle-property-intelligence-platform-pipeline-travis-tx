@@ -26,7 +26,14 @@ import {
   type RunStage,
   type SelectedRun,
 } from "../data/run-loader";
-import { RUNS_INDEX_PATH, RunIndexError, loadRunsIndex, runIndexText } from "../data/runs-index";
+import {
+  RUNS_INDEX_PATH,
+  RunIndexError,
+  loadRunsIndex,
+  runIndexText,
+  runName,
+  type RunNumber,
+} from "../data/runs-index";
 
 export { RUN_STAGE_TEXTS };
 
@@ -236,6 +243,57 @@ export function ShareBar({
   );
 }
 
+/**
+ * Board "What Run N changed": one bar split into added, changed and removed, its length the share
+ * of `scale` (one scale for the whole run). An SVG whose segment widths are attributes in viewBox
+ * units, so no inline style is needed; `label` is its accessible name.
+ */
+export function ChangeBar({
+  added,
+  changed,
+  removed,
+  scale,
+  label,
+}: {
+  readonly added: number;
+  readonly changed: number;
+  readonly removed: number;
+  readonly scale: number;
+  readonly label: string;
+}): ReactElement {
+  const max = Math.max(1, scale, added + changed + removed);
+  const parts: readonly [BarTone, number][] = [
+    ["added", Math.max(0, added)],
+    ["changed", Math.max(0, changed)],
+    ["removed", Math.max(0, removed)],
+  ];
+  let x = 0;
+  return (
+    <svg
+      className={styles.changeBar}
+      viewBox={`0 0 ${max} 1`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={label}
+    >
+      {parts.map(([tone, value]) => {
+        const at = x;
+        x += value;
+        return value === 0 ? null : (
+          <rect
+            key={tone}
+            className={styles[`fill_${tone}`]}
+            x={at}
+            y={0}
+            width={value}
+            height={1}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** `Oct 24` (UTC) for an ISO instant; the instant itself when it does not parse. */
@@ -247,12 +305,12 @@ export function shortDay(iso: string): string {
 }
 
 /**
- * `Run 3 · Oct 24` (parity matrix R7): the run's 1-based number in `runs/index.json` order (the
- * numbering contract, RUNS_TEXTS.numbering) and its finish day in UTC. The run ID stays visible
+ * `Run 3 · Oct 24` or `Pilot slice · Oct 21` (parity matrix R7): the run's name from the one rule
+ * (runName, runNumbers; RUNS_TEXTS.numbering) and its finish day in UTC. The run ID stays visible
  * beside it where the page has room.
  */
-export function runLabel(number: number, finishedAt: string): string {
-  return `Run ${number} · ${shortDay(finishedAt)}`;
+export function runLabel(number: RunNumber, finishedAt: string): string {
+  return `${runName(number)} · ${shortDay(finishedAt)}`;
 }
 
 /** The Log and Latest events wording of a manifest-derived event. */

@@ -25,6 +25,8 @@ export const EMPTY_REASONS = [
   "not_found",
   "no_match",
   "field_not_published",
+  // A-16: the filtered field is published in the run but unknown for the rows searched.
+  "field_unknown",
   "run_not_found",
 ] as const;
 export const EmptyReason = z.enum(EMPTY_REASONS);

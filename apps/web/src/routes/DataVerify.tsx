@@ -9,9 +9,9 @@
 // banner, never an empty lane. The manifest read shows the fallback chip when Filebase served
 // it; the lanes are unaffected. A react-router lazy route module.
 import type { RunManifestV1 } from "@countylens/contract";
-import { PROGRESS_LABELS, VERIFY_TEXTS, type ReadPathUrls } from "@countylens/shared";
+import { PROGRESS_LABELS, VERIFY_TEXTS, verifyPath, type ReadPathUrls } from "@countylens/shared";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
-import { useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 import { DataTabs } from "../components/DataTabs";
 import { CidDisplay } from "../components/CidDisplay";
 import { ComingSoonEntries } from "../components/ComingSoonEntry";
@@ -129,6 +129,10 @@ async function findCid(run: LoadedRun, cid: string, signal: AbortSignal): Promis
 export function Component(): ReactElement {
   const { cid = "" } = useParams();
   const { state, retry } = useLatestRun();
+  // A bare /data/verify verifies the latest run manifest (hosted review B-6).
+  if (cid === "" && state.kind === "ready") {
+    return <Navigate to={verifyPath(state.run.manifestCid)} replace />;
+  }
   return (
     <section
       aria-label="Data · Verify"
@@ -136,9 +140,8 @@ export function Component(): ReactElement {
       data-state={state.kind}
       className={styles.page}
     >
-      <h2 className={runStyles.title}>Data · Verify</h2>
+      <h2 className={styles.pageTitle}>Data</h2>
       <DataTabs current="verify" verifyCid={null} />
-      <ComingSoonEntries ids={["gateway-race"]} />
       {state.kind === "loading" ? (
         <>
           <LinearProgress label={PROGRESS_LABELS.runs} stageText={RUN_STAGE_TEXTS[state.stage]} />
@@ -149,6 +152,9 @@ export function Component(): ReactElement {
         <ErrorBanner message={runErrorNode(state.error)} onRetry={retry} />
       ) : null}
       {state.kind === "ready" ? <VerifyView key={cid} run={state.run} cid={cid} /> : null}
+      {/* A-16 style pass: the board opens on the file and its lanes; the Coming soon entry
+          for the gateway race follows them. */}
+      <ComingSoonEntries ids={["gateway-race"]} />
     </section>
   );
 }
@@ -186,21 +192,25 @@ function VerifyView({ run, cid }: { readonly run: LoadedRun; readonly cid: strin
 
   return (
     <>
-      <div className={runStyles.header}>
-        <span className={runStyles.itemBody}>Manifest read for run {run.manifest.runId}</span>
-        <FallbackChip source={run.read.source} />
-      </div>
       {state.kind === "finding" ? <Skeleton variant="cards" count={2} /> : null}
       {state.kind === "error" ? <ErrorBanner message={state.message} /> : null}
       {state.kind === "found" ? (
         <>
-          <article className={runStyles.card} aria-labelledby="verify-target">
-            <h3 id="verify-target" className={runStyles.sectionTitle}>
-              <code className={runStyles.mono}>{state.found.name}</code>
+          {/* Board DataVerify1440: the file card (name, then CID · size · codec · digest). */}
+          <article
+            className={`${styles.tableCard} ${styles.targetCard}`}
+            aria-labelledby="verify-target"
+          >
+            <h3 id="verify-target" className={styles.cardTitle}>
+              {state.found.name}
             </h3>
-            <p className={runStyles.itemBody}>
-              <CidDisplay cid={state.found.target.cid} /> · codec {state.found.target.codec} ·{" "}
-              {state.found.target.size} bytes
+            <p className={`${runStyles.itemBody} ${styles.targetLine}`}>
+              CID <CidDisplay cid={state.found.target.cid} /> ·{" "}
+              {state.found.target.size.toLocaleString("en-US")} bytes · codec{" "}
+              {state.found.target.codec} · expected SHA-256{" "}
+              <span className={styles.mono} title={state.found.target.sha256}>
+                {state.found.target.sha256.slice(0, 8)}…{state.found.target.sha256.slice(-4)}
+              </span>
             </p>
             <Provenance>
               Manifest <CidDisplay cid={state.found.manifestCid} /> · run {state.found.runId}
@@ -210,6 +220,11 @@ function VerifyView({ run, cid }: { readonly run: LoadedRun; readonly cid: strin
           <StoredOn />
         </>
       ) : null}
+      {/* The manifest read (and the fallback chip) as the board's note under the lanes. */}
+      <div className={`${runStyles.header} ${runStyles.itemBody}`}>
+        <span>Manifest read for run {run.manifest.runId}</span>
+        <FallbackChip source={run.read.source} />
+      </div>
     </>
   );
 }

@@ -24,8 +24,10 @@ import {
   ROUTES,
   verifyPath,
 } from "@countylens/shared";
+import { resolveBatchGroups } from "@countylens/query-core";
 import type { ReactElement } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
+import { RunSelect } from "../components/RunSelect";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
@@ -40,8 +42,9 @@ import {
   denominatorRows,
   type CoverageRow,
 } from "../data/coverage-rows";
-import { formatCount } from "../data/format";
+
 import type { LoadedRun } from "../data/run-loader";
+import { runNumbers, type RunNumber } from "../data/runs-index";
 import {
   COVERAGE_KINDS,
   COVERAGE_KIND_MISSING,
@@ -54,11 +57,17 @@ import {
 } from "./Coverage.kinds";
 import { CostSection, SourceSpeed } from "./CoverageCostLimits";
 import costStyles from "./CoverageCostLimits.module.css";
-import { RUN_STAGE_TEXTS, ShareBar, runErrorNode, runLabel, useLatestRun } from "./Runs.shared";
+import { RUN_STAGE_TEXTS, ShareBar, runErrorNode, runLabel, useRun } from "./Runs.shared";
 import styles from "./Runs.module.css";
 
+/** Coverage counts with en-US thousands separators (review 2026-10-26; the tests parse grouping). */
+const groupedCount = (count: number): string => count.toLocaleString("en-US");
+
 export function Component(): ReactElement {
-  const { state, retry } = useLatestRun();
+  // The shared run dropdown (PO rule): `?run=` picks a run, none means the latest.
+  const [params, setParams] = useSearchParams();
+  const { state, retry } = useRun(params.get("run"));
+  const choose = (runId: string | null): void => setParams(runId === null ? {} : { run: runId });
   return (
     <section
       aria-label="Coverage"
@@ -66,12 +75,16 @@ export function Component(): ReactElement {
       data-state={state.kind}
       className={styles.page}
     >
-      <div className={styles.pageHead}>
-        <h2 className={styles.pageTitle}>Coverage</h2>
-        <p className={styles.intro}>
-          How much of each source is loaded, measured against that source&apos;s own total, and
-          where in the county it reaches. Every count has its date and run.
-        </p>
+      {/* Board Coverage1440: title and intro on the left, the run and Download CSV on the right. */}
+      <div className={costStyles.head}>
+        <div className={styles.pageHead}>
+          <h2 className={styles.pageTitle}>Coverage</h2>
+          <p className={styles.intro}>
+            How much of each source is loaded, measured against that source&apos;s own total, and
+            where in the county it reaches. Every count has its date and run.
+          </p>
+        </div>
+        {state.kind === "ready" ? <HeadActions run={state.run} onRun={choose} /> : null}
       </div>
       {state.kind === "loading" ? (
         <>
@@ -94,12 +107,9 @@ export function Component(): ReactElement {
   );
 }
 
-function runNumber(run: LoadedRun): number {
-  const sorted = [...run.index.runs].sort(
-    (a, b) => Date.parse(a.finishedAt) - Date.parse(b.finishedAt),
-  );
-  const at = sorted.findIndex((r) => r.manifestCid === run.manifestCid);
-  return at === -1 ? sorted.length : at + 1;
+/** The shown run's number by the one rule (runNumbers; `null` for the pilot slice). */
+function runNumber(run: LoadedRun): RunNumber {
+  return runNumbers(run.index).get(run.entry.runId) ?? null;
 }
 
 const csvCell = (value: string): string => `"${value.replaceAll('"', '""')}"`;
@@ -114,18 +124,18 @@ function coverageCsv(rows: readonly CoverageRow[], runId: string): string {
   return [head, ...lines].join("\n");
 }
 
-function CoverageCards({ run }: { readonly run: LoadedRun }): ReactElement {
-  const { manifest, manifestCid, read } = run;
-  const rows = coverageRows(manifest);
-  const byKind = new Map<string, CoverageRow[]>();
-  for (const row of rows) {
-    const id = kindOf(row.key).id;
-    byKind.set(id, [...(byKind.get(id) ?? []), row]);
-  }
-  const kinds = [...COVERAGE_KINDS, ...(byKind.has(OTHER_KIND.id) ? [OTHER_KIND] : [])];
-  const number = runNumber(run);
+function HeadActions({
+  run,
+  onRun,
+}: {
+  readonly run: LoadedRun;
+  readonly onRun: (runId: string | null) => void;
+}): ReactElement {
+  const { manifest, read } = run;
   const download = (): void => {
-    const blob = new Blob([coverageCsv(rows, manifest.runId)], { type: "text/csv" });
+    const blob = new Blob([coverageCsv(coverageRows(manifest), manifest.runId)], {
+      type: "text/csv",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -134,18 +144,35 @@ function CoverageCards({ run }: { readonly run: LoadedRun }): ReactElement {
     URL.revokeObjectURL(url);
   };
   return (
+    <div className={costStyles.headActions}>
+      <FallbackChip source={read.source} />
+      <RunSelect
+        runs={run.index.runs}
+        value={run.entry.runId}
+        onChange={onRun}
+        label="Run"
+        hideLabel
+      />
+      <button type="button" className={costStyles.outlined} onClick={download}>
+        <Icon name="download" size="medium" />
+        Download CSV
+      </button>
+    </div>
+  );
+}
+
+function CoverageCards({ run }: { readonly run: LoadedRun }): ReactElement {
+  const { manifest, manifestCid } = run;
+  const rows = coverageRows(manifest);
+  const byKind = new Map<string, CoverageRow[]>();
+  for (const row of rows) {
+    const id = kindOf(row.key).id;
+    byKind.set(id, [...(byKind.get(id) ?? []), row]);
+  }
+  const kinds = [...COVERAGE_KINDS, ...(byKind.has(OTHER_KIND.id) ? [OTHER_KIND] : [])];
+  const number = runNumber(run);
+  return (
     <>
-      <div className={styles.header}>
-        <Link className={styles.chip} to={ROUTES.runs}>
-          {runLabel(number, manifest.finishedAt)} · current
-        </Link>
-        <span className={styles.itemBody}>Run {manifest.runId}</span>
-        <FallbackChip source={read.source} />
-        <button type="button" className={styles.chip} onClick={download}>
-          <Icon name="download" size="small" />
-          Download CSV
-        </button>
-      </div>
       <KpiTiles run={run} kinds={kinds} byKind={byKind} number={number} />
       <LoadedVsTotal manifest={manifest} manifestCid={manifestCid} />
       <h3 className={styles.sectionTitle}>Counts by record kind</h3>
@@ -178,7 +205,7 @@ function KpiTiles({
   readonly run: LoadedRun;
   readonly kinds: readonly CoverageKind[];
   readonly byKind: ReadonlyMap<string, readonly CoverageRow[]>;
-  readonly number: number;
+  readonly number: RunNumber;
 }): ReactElement {
   const { manifest } = run;
   const listed = kinds.filter((k) => k.id !== OTHER_KIND.id);
@@ -211,7 +238,7 @@ function KpiTiles({
       </div>
       <div className={styles.tile} data-tile="loaded">
         <span className={styles.tileLabel}>Records loaded</span>
-        <b className={styles.tileBig}>{formatCount(loaded)}</b>
+        <b className={styles.tileBig}>{groupedCount(loaded)}</b>
         {share === null ? (
           <StatusPill
             status="unavailable"
@@ -225,7 +252,7 @@ function KpiTiles({
               label={`${share.toFixed(1)} percent of the sources' own totals`}
             />
             <span className={styles.tileLabel}>
-              {formatCount(loadedOfTotals)} of {formatCount(totalSum)} in the sources&apos; own
+              {groupedCount(loadedOfTotals)} of {groupedCount(totalSum)} in the sources&apos; own
               totals · {share.toFixed(1)}% ({withTotal.length} of {manifest.sources.length} sources
               have a total)
             </span>
@@ -243,7 +270,12 @@ function KpiTiles({
       <div className={styles.tile} data-tile="counted-from">
         <span className={styles.tileLabel}>Counted from</span>
         <b className={styles.tileBig}>{runLabel(number, manifest.finishedAt)}</b>
-        <StatusPill status="info" icon="cloud_done" text="Published" />
+        <span className={costStyles.pillLine}>
+          <StatusPill status="info" icon="cloud_done" text="Published" />
+          <span className={styles.tileLabel}>
+            <code className={styles.mono}>{manifest.runId}</code>
+          </span>
+        </span>
         <Link className={styles.textLink} to={ROUTES.runs}>
           Open the run
         </Link>
@@ -252,9 +284,20 @@ function KpiTiles({
   );
 }
 
+/**
+ * The parts of `{group}/{table}`. A part's table is its parent folder and its group the one
+ * query-core resolves for its export batch (the rule parquet-meta's `catalogTables` and
+ * data-groups use), so the pilot's `tables/<group>/<table>/<part>` and a full-county run's
+ * `…/tables/<bNN>/<table>/<part>` both match (data audit 2026-10-26, row 6).
+ */
 function tableParts(manifest: RunManifestV1, table: string): ManifestArtifact[] {
-  const prefix = `tables/${table}/`;
-  return manifest.artifacts.filter((a) => a.kind === "table" && a.name.startsWith(prefix));
+  const parts = manifest.artifacts.filter((a) => a.kind === "table");
+  const groups = resolveBatchGroups(parts.map((a) => a.name));
+  return parts.filter((a) => {
+    const segs = a.name.split("/");
+    const group = groups.get(segs.slice(0, -2).join("/"));
+    return group !== undefined && group !== null && `${group}/${segs.at(-2) ?? ""}` === table;
+  });
 }
 
 // A-16 PO note 2026-10-26: one compact card per kind. Each coverage key is one line (label and
@@ -296,7 +339,7 @@ function KindCard({
             <li key={row.key} data-coverage-key={row.key}>
               <span>{row.label === row.key ? keyWords(row.key) : row.label}</span>
               <span className={styles.count} data-count={row.count}>
-                {formatCount(row.count)}
+                {groupedCount(row.count)}
               </span>
               <span>
                 <span>{row.derivationLabel}</span>
@@ -380,7 +423,7 @@ function denominatorNode(
   }
   return (
     <>
-      Denominator <span data-denominator-value={total.count}>{formatCount(total.count)}</span> ·{" "}
+      Denominator <span data-denominator-value={total.count}>{groupedCount(total.count)}</span> ·{" "}
       {DERIVATION_LABELS[total.derivation]}
       {source === undefined ? null : (
         <>
@@ -418,7 +461,7 @@ function LoadedVsTotal({
       </div>
       <div className={styles.tableWrap}>
         <table
-          className={`${styles.table} ${costStyles.stack}`}
+          className={`${styles.table} ${costStyles.stack} ${costStyles.flat}`}
           aria-label="Loaded vs source total"
         >
           <thead>
@@ -438,19 +481,35 @@ function LoadedVsTotal({
               return (
                 <tr key={row.source} data-denominator={row.source}>
                   <td data-label="Data">
-                    <code className={styles.mono}>{row.source}</code>
+                    <span className={costStyles.dataCell}>
+                      <Icon
+                        name={
+                          share === null
+                            ? "do_not_disturb_on"
+                            : share >= 100
+                              ? "check_circle"
+                              : "warning"
+                        }
+                        size="medium"
+                      />
+                      <b>{row.source}</b>
+                    </span>
                   </td>
                   <td data-label="Loaded" className={styles.num} data-loaded={loaded}>
-                    {formatCount(loaded)}
+                    {groupedCount(loaded)}
                   </td>
                   <td data-label="Out of the source's own total">
                     <div className={costStyles.totalCell}>
                       {row.count === null ? (
-                        <StatusPill status="unavailable" text={row.missingText ?? ""} />
+                        <>
+                          {/* Board "Missing" swatch: a hatched, empty bar, never a 0 %. */}
+                          <span className={costStyles.hatchBar} aria-hidden="true" />
+                          <StatusPill status="unavailable" text={row.missingText ?? ""} />
+                        </>
                       ) : (
                         <>
                           <span className={styles.count} data-count={row.count}>
-                            {formatCount(row.count)}
+                            {groupedCount(row.count)}
                           </span>
                           {share === null ? null : (
                             <ShareBar
@@ -490,13 +549,21 @@ function LoadedVsTotal({
 function AreaCard(): ReactElement {
   return (
     <section className={styles.card} aria-labelledby="area-heading" data-section="by-area">
-      <h3 id="area-heading" className={styles.sectionTitle}>
-        Coverage by area
-      </h3>
-      <StatusPill
-        status="unavailable"
-        text="Not available · the run manifest carries no per-area counts, so the area grid is not drawn"
-      />
+      <div>
+        <h3 id="area-heading" className={styles.sectionTitle}>
+          Coverage by area
+        </h3>
+        <p className={styles.helperText}>
+          Share of each area&apos;s parcels or records that have the data.
+        </p>
+      </div>
+      {/* Board "No source" cell treatment: a hatched panel holding the reason; no grid is drawn. */}
+      <div className={costStyles.hatchPanel}>
+        <StatusPill
+          status="unavailable"
+          text="Not available · the run manifest carries no per-area counts, so the area grid is not drawn"
+        />
+      </div>
     </section>
   );
 }

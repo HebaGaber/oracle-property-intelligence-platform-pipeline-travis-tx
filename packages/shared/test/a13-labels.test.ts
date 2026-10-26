@@ -99,7 +99,9 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
     expect(EXPLORE_TEXTS.bbbNotChecked("contractor_unresolved")).toBe(
       "BBB not checked · contractor_unresolved",
     );
-    expect(EXPLORE_TEXTS.bbbBlocked).toBe("BBB blocked · 403 challenge, not harvested");
+    expect(EXPLORE_TEXTS.bbbBlocked).toBe("BBB blocks automated lookups; not checked");
+    expect(EXPLORE_TEXTS.addressNotInExport).toBe("Address not in the published export");
+    expect(EXPLORE_TEXTS.contractorNotPrinted).toBe("No contractor printed on this permit");
     expect(EXPLORE_TEXTS.bbbNotFound).toBe("BBB: no profile found");
     expect(EXPLORE_TEXTS.tenureUnknown).toBe("tenure unknown · no dated sale on record");
     expect(EXPLORE_TEXTS.ownerAreaUnknown).toBe(
@@ -110,14 +112,16 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
   it("Coverage, Catalog, Hub, Coming soon, county, Help · MCP", () => {
     expect(COVERAGE_TEXTS.denominatorMissing).toBe("denominator not in this run's manifest");
     expect(COVERAGE_TEXTS.denominatorMissingFor("tcad-2026-certified-json")).toBe(
-      "denominator not in this run's manifest · A-01 source tcad-2026-certified-json",
+      "denominator not in this run's manifest · source tcad-2026-certified-json",
     );
     expect(PAGE_TEXTS.comingSoonNotDeployed).toBe("Coming soon · Not deployed yet");
     expect(PAGE_TEXTS.comingSoon).toBe("Coming soon");
     expect(PAGE_TEXTS.travisOnly).toBe("CountyLens has data for Travis County, TX only");
     expect(PAGE_TEXTS.catalogUnavailable("HTTP 503")).toBe("Catalog unavailable · HTTP 503");
     expect(PAGE_TEXTS.tableExportMissing).toBe("table export not in this run's manifest");
-    expect(PAGE_TEXTS.hubChip(1, "2026-10-21T10:40:04.543Z")).toBe("Run 1 · 2026-10-21 10:40 UTC");
+    expect(PAGE_TEXTS.hubChip("Run 1", "2026-10-21T10:40:04.543Z")).toBe(
+      "Run 1 · 2026-10-21 10:40 UTC",
+    );
     // A-14 T034: the "not available" text is gone; Try a tool has real states (MCP_TRY_TEXTS).
     expect("mcpNotAvailable" in PAGE_TEXTS).toBe(false);
   });
@@ -165,6 +169,7 @@ describe("A-13 routes and URL parameters (contracts/ui-routes.md)", () => {
         "mode",
         "place",
         "view",
+        "page",
       ].sort(),
     );
     expect(EXPLORE_URL_PARAMS).not.toContain("z");

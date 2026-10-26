@@ -74,9 +74,9 @@ describe("Property drawer (FR-004b, FR-005, TC-030, TC-032, TC-034)", () => {
     expect(drawer.getAttribute("data-property-cid")).toBe(row.property_cid);
     const field = (f: string): string | null | undefined =>
       drawer.querySelector(`[data-field="${f}"]`)?.textContent;
-    expect(field("address")).toBe(EXPLORE_TEXTS.noCarrier);
+    expect(field("address")).toBe(EXPLORE_TEXTS.addressNotInExport);
     expect(field("status_raw")).toBe(EXPLORE_TEXTS.noCarrier);
-    expect(field("contractor_name")).toBe(EXPLORE_TEXTS.noCarrier);
+    expect(field("contractor_name")).toBe(EXPLORE_TEXTS.contractorNotPrinted);
     expect(field("bbb")).toBe(EXPLORE_TEXTS.bbbNotChecked("not run for this county"));
     expect(field("tenure_years")).toBe(EXPLORE_TEXTS.tenureUnknown);
     expect(field("owner_area_class")).toBe(EXPLORE_TEXTS.ownerAreaUnknown);
@@ -108,7 +108,7 @@ describe("Property drawer (FR-004b, FR-005, TC-030, TC-032, TC-034)", () => {
     );
     const drawer = screen.getByRole("dialog");
     expect(drawer.querySelector("[data-address-reason]")?.textContent).toContain(
-      EXPLORE_TEXTS.noCarrier,
+      EXPLORE_TEXTS.addressNotInExport,
     );
     expect(drawer.querySelector("[data-drawer-chips] [data-permit-chip]")).not.toBeNull();
     expect(drawer.querySelector("[data-street-view]")?.textContent).toContain(
@@ -123,6 +123,50 @@ describe("Property drawer (FR-004b, FR-005, TC-030, TC-032, TC-034)", () => {
       row.provenance.table_cid,
     );
     expect(screen.getByRole("button", { name: /Show in the list/ })).toBeDefined();
+  });
+
+  // A-16 data audit (#1, #9, #15, #16): values the row mapping carries are shown, not a reason.
+  it("shows the printed contractor, the BBB search link, year built, owner and transfer date", () => {
+    const rich = {
+      ...row,
+      roof_age_basis: "built_year",
+      year_built: 1964,
+      owner_name: "SMITH JOHN",
+      last_ownership_transfer_date: "2014-06-02",
+      permit: { ...row.permit, bbb_url: "https://www.bbb.org/search?find_text=ACME" },
+      contractor: { name_as_printed: "ACME ROOFING", resolution: "unresolved", company_cid: null },
+    } as unknown as ExploreRow;
+    render(
+      <MemoryRouter>
+        <PropertyDrawer row={rich} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    const drawer = screen.getByRole("dialog");
+    const field = (f: string): string | null | undefined =>
+      drawer.querySelector(`[data-field="${f}"]`)?.textContent;
+    expect(field("contractor_name")).toBe("ACME ROOFING");
+    expect(field("roof_age_basis")).toBe("Year built 1964 (no reroof permit found)");
+    expect(field("owner_name")).toBe("SMITH JOHN");
+    expect(field("last_transfer")).toBe("2014-06-02");
+    expect(
+      screen.getByRole("link", { name: "Search BBB for this contractor" }).getAttribute("href"),
+    ).toBe("https://www.bbb.org/search?find_text=ACME");
+  });
+
+  it("names the reason when the owner name is null", () => {
+    const noOwner = {
+      ...row,
+      owner_name: null,
+      missing: [...row.missing, { field: "owner_name", reason: "no_owner_record" }],
+    } as unknown as ExploreRow;
+    render(
+      <MemoryRouter>
+        <PropertyDrawer row={noOwner} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("dialog").querySelector('[data-field="owner_name"]')?.textContent).toBe(
+      "No owner record on the TCAD account",
+    );
   });
 
   it("closes through its Close button", () => {

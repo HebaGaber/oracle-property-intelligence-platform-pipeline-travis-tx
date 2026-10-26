@@ -15,7 +15,7 @@ export function Component(): ReactElement {
   return (
     <section aria-label="Legal · Privacy" data-route="legal-privacy" className={styles.page}>
       <LegalLayout
-        title="Legal · Privacy"
+        title="Privacy"
         current={ROUTES.legalPrivacy}
         banner="This page describes what CountyLens records and keeps. It is not legal advice."
         sections={[

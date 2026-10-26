@@ -171,6 +171,8 @@ async function main(): Promise<number> {
       reverse: process.env.PUBLISH_FILEBASE_REVERSE === "1",
       // PUBLISH_FILEBASE_KINDS=car uploads CAR units only (tables wait for the provider; ERR-67).
       kinds: (process.env.PUBLISH_FILEBASE_KINDS ?? "").split(",").filter((k) => k !== ""),
+      // PUBLISH_FILEBASE_UNITS=county-b05-tables,permits-b01-car,...: one runner of a split job (Run 3.1).
+      units: (process.env.PUBLISH_FILEBASE_UNITS ?? "").split(",").filter((k) => k !== ""),
     },
     // PUBLISH_DEFER_PINATA=1: Filebase-only readback of the carCid files (PO 2026-10-25, A-16 item 14).
     carFiles: {

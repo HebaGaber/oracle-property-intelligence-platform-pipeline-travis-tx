@@ -11,6 +11,7 @@ import {
   fetchA13RunsIndex,
   fetchManifestFromPinata,
   latestRunEntry,
+  numberedRunsByFinishedAt,
   runNumber,
   runsByFinishedAt,
   type OracleManifest,
@@ -32,8 +33,10 @@ export interface A13Oracle {
   readonly index: RunsIndexV1;
   /** Index entries in `finishedAt` order (oldest first). */
   readonly runs: readonly RunsIndexEntry[];
+  /** The numbered runs (no pilot slice) in `finishedAt` order: Run N is entry N-1. */
+  readonly numbered: readonly RunsIndexEntry[];
   readonly latest: RunsIndexEntry;
-  /** Run {n} of the latest run (1-based `finishedAt` order). */
+  /** Run {n} of the latest run (the numbered runs' 1-based `finishedAt` order). */
   readonly n: number;
   readonly manifestCid: string;
   /** The latest manifest `M`, fetched by CID from Pinata and hash-checked. */
@@ -52,12 +55,15 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
     async ({}, use) => {
       const index = await fetchA13RunsIndex();
       const latest = latestRunEntry(index);
+      const n = runNumber(index, latest.runId);
+      if (n === null) throw new Error(`the latest run ${latest.runId} is the pilot slice`);
       const fetched: OracleManifest = await fetchManifestFromPinata(latest.manifestCid);
       await use({
         index,
         runs: runsByFinishedAt(index),
+        numbered: numberedRunsByFinishedAt(index),
         latest,
-        n: runNumber(index, latest.runId),
+        n,
         manifestCid: latest.manifestCid,
         M: fetched.manifest,
         manifestBytes: fetched.bytes,

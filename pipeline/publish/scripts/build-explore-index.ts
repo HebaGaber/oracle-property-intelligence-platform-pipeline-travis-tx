@@ -99,6 +99,8 @@ export interface BuildOptions {
   readonly copyHost?: string | undefined;
   readonly maxFetchGb?: number | undefined;
   readonly rebuild?: boolean | undefined;
+  /** The S3 prefix the index keys are written for (default `private/explore-index/`). */
+  readonly prefix?: string | undefined;
   readonly threads?: number | undefined;
   readonly memoryLimit?: string | undefined;
   readonly gitSha?: string | undefined;
@@ -340,7 +342,9 @@ export async function buildExploreIndex(
       JSON.parse(readFileSync(join(finalDir, INDEX_JSON), "utf8")),
     );
     const problems = checkSourceParts(descriptor.sourceParts, manifest);
+    const wantKeys = indexKeys(options.prefix ?? EXPLORE_INDEX_PREFIX, cid);
     if (
+      EXPLORE_INDEX_VIEWS.some((v) => descriptor.files[v].key !== wantKeys.files[v]) ||
       descriptor.manifestCid !== cid ||
       descriptor.viewsSha256 !== viewsSha256() ||
       problems.length > 0
@@ -411,7 +415,7 @@ export async function buildExploreIndex(
       roofingWithoutPropertyRow: rawRoofing - roofingCids,
     };
     const files = {} as Record<ContractView, IndexFile>;
-    const keys = indexKeys(EXPLORE_INDEX_PREFIX, cid);
+    const keys = indexKeys(options.prefix ?? EXPLORE_INDEX_PREFIX, cid);
     for (const v of EXPLORE_INDEX_VIEWS) {
       const file = join(buildDir, `${v}.parquet`);
       const order = COPY_ORDER[v];
@@ -636,6 +640,7 @@ async function main(argv: string[]): Promise<void> {
     copyHost: values["copy-host"] ?? process.env.CID_COPY_HOST,
     maxFetchGb: values["max-fetch-gb"] === undefined ? undefined : Number(values["max-fetch-gb"]),
     rebuild: values.rebuild,
+    prefix: values.prefix,
   };
   const built = await buildExploreIndex(options);
   const d = built.descriptor;

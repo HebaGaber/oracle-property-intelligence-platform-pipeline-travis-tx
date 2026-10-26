@@ -132,7 +132,7 @@ export function Component(): ReactElement {
       className={runsStyles.page}
     >
       <div className={styles.head}>
-        <div className={runsStyles.pageHead}>
+        <div className={`${runsStyles.pageHead} ${styles.titleRow}`}>
           <h2 className={runsStyles.pageTitle}>Activity</h2>
           <p className={runsStyles.provenance}>
             <Icon name="shield_lock" size="small" />
@@ -208,11 +208,18 @@ function Summary({ summary }: { readonly summary: ActivitySummary }): ReactEleme
         </div>
         {empty ? (
           <div className={styles.empty} data-activity-empty="">
-            <b>Not enough activity yet</b>
+            <span className={styles.emptyIcon}>
+              <Icon name="monitoring" size="large" />
+            </span>
+            <b className={styles.emptyTitle}>Not enough activity yet</b>
             <span>
               The summary appears once the query log holds questions. Nothing is counted as zero
               until a query has run: an empty log is shown as empty, not as a measured result.
             </span>
+            <Link className={styles.tonal} to={ROUTES.explore}>
+              <Icon name="map" size="medium" />
+              Start a search
+            </Link>
           </div>
         ) : null}
         {empty ? null : (

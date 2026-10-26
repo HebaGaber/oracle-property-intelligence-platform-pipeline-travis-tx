@@ -23,8 +23,9 @@ export const RUNS_TEXTS = Object.freeze({
   oldManifestResolves: "old manifest still resolves on Pinata and orbitor",
   /** Compare with one run, and the delta column of a first run. */
   firstRun: "first run · nothing to compare against",
-  /** The numbering contract of `a`/`b` on Compare and of the Hub chip: run n = the n-th entry of runs/index.json ordered by finishedAt (1-based). */
-  numbering: "Run n is the n-th entry of runs/index.json, ordered by finish time",
+  /** The numbering contract of `a`/`b` on Compare, the Hub chip and every "Run N" (PO 2026-10-26): the non-pilot runs of runs/index.json numbered 1..n by finishedAt; A-03's pilot slice is listed but never numbered. */
+  numbering:
+    "Run n is the n-th full-county run in runs/index.json, by finish time; the first small test slice is listed as Pilot slice and not numbered",
   indexUnavailable: (reason: string): string => `Run index unavailable · ${reason}`,
   manifestUnavailable: (cid: string, reason: string): string =>
     `Manifest unavailable · ${cid} · ${reason}`,
@@ -86,10 +87,12 @@ export const VERIFY_TEXTS = Object.freeze({
 
 /** Explore · Filters, the result rows, permits, owners and the SQL panel. */
 export const EXPLORE_TEXTS = Object.freeze({
+  // Counts carry thousands separators (final review: "68,527", not "68527").
   header: (n: number, r: number, place: string, years: number): string =>
-    `${n} within ${r} mi of ${place} · roof ≥ ${years} yrs`,
+    `${n.toLocaleString("en-US")} within ${r} mi of ${place} · roof ≥ ${years} yrs`,
   /** The header of a search without a roof filter: same wording, no roof clause. */
-  headerNoRoof: (n: number, r: number, place: string): string => `${n} within ${r} mi of ${place}`,
+  headerNoRoof: (n: number, r: number, place: string): string =>
+    `${n.toLocaleString("en-US")} within ${r} mi of ${place}`,
   /** A BAD_REQUEST from explore.search (never the validator's JSON dump). */
   filtersOutOfRange: "Those filters are out of range · check radius, roof age and open years",
   /** `sel` names a property that the current results do not contain. */
@@ -109,7 +112,7 @@ export const EXPLORE_TEXTS = Object.freeze({
   asPrinted: "as printed on permit",
   noCarrier: "not published · no lexicon carrier",
   noOpenPermits: "no open roofing permits in this radius on the current run",
-  tenureUnknownCount: (n: number): string => `tenure unknown: ${n}`,
+  tenureUnknownCount: (n: number): string => `tenure unknown: ${n.toLocaleString("en-US")}`,
   engineBrowser: "DuckDB-WASM in your browser · read-only",
   engineServer: "DuckDB on the server · same views",
   zeroResults: (r: number, k: number): string =>
@@ -117,7 +120,10 @@ export const EXPLORE_TEXTS = Object.freeze({
   milesOutside: (miles: number): string => `+${miles} mi`,
   roofUnknown: "roof age unknown · no permit, new-construction or built-year record",
   bbbNotChecked: (reason: string): string => `BBB not checked · ${reason}`,
-  bbbBlocked: "BBB blocked · 403 challenge, not harvested",
+  // A-16 data audit (2026-10-26, #1, #9, #18): the real reasons, not a blanket "no carrier".
+  bbbBlocked: "BBB blocks automated lookups; not checked",
+  addressNotInExport: "Address not in the published export",
+  contractorNotPrinted: "No contractor printed on this permit",
   bbbNotFound: "BBB: no profile found",
   tenureUnknown: "tenure unknown · no dated sale on record",
   ownerAreaUnknown: "owner area unknown · mailing address not in the published export",
@@ -129,7 +135,7 @@ export const COVERAGE_TEXTS = Object.freeze({
   kindAbsent: "not in this run's coverage section",
   denominatorMissing: "denominator not in this run's manifest",
   denominatorMissingFor: (source: string): string =>
-    `denominator not in this run's manifest · A-01 source ${source}`,
+    `denominator not in this run's manifest · source ${source}`,
 });
 
 /** Hub, Catalog, Coming soon, county selector and Help · MCP. */
@@ -139,8 +145,8 @@ export const PAGE_TEXTS = Object.freeze({
   travisOnly: "CountyLens has data for Travis County, TX only",
   catalogUnavailable: (reason: string): string => `Catalog unavailable · ${reason}`,
   tableExportMissing: "table export not in this run's manifest",
-  /** "Run {n} · {finishedAt as YYYY-MM-DD HH:mm UTC}"; n is the 1-based index position. */
-  hubChip: (n: number, finishedAt: string): string => `Run ${n} · ${utcMinute(finishedAt)}`,
+  /** "{Run N | Pilot slice} · {finishedAt as YYYY-MM-DD HH:mm UTC}"; the name follows RUNS_TEXTS.numbering. */
+  hubChip: (name: string, finishedAt: string): string => `${name} · ${utcMinute(finishedAt)}`,
 });
 
 /** Help · MCP "Try a tool" (A-14 T034): fixed wording of every state. */

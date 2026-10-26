@@ -72,7 +72,9 @@ export function Component(): ReactElement {
           </button>
         ))}
       </div>
-      <ComingSoonEntries ids={["builder-mode", "saved-searches", "area-matrix"]} />
+      <ComingSoonEntries
+        ids={["builder-mode", "saved-searches", "area-matrix", "other-counties"]}
+      />
       {mode === "ai" ? (
         <Suspense fallback={<LinearProgress label={LOADING_AI} stageText={LOADING_AI} />}>
           <ExploreAi onState={onState} />
