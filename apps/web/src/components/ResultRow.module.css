@@ -273,3 +273,27 @@
 .iconButton[aria-expanded="true"] > span {
   transform: rotate(180deg);
 }
+
+/* Task B PropertyDetail rows (drawer): the label on the left, the value on the right; wraps on a
+   phone. */
+.fields.rows {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.rows .cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.rows .label {
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+}
+
+.rows .value {
+  text-align: right;
+}

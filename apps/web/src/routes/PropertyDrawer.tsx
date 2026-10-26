@@ -155,7 +155,7 @@ export function PropertyDrawer({ row, onClose }: PropertyDrawerProps): ReactElem
 
       <section className={styles.drawerSection} aria-label="Roof">
         <h4 className={styles.sectionTitle}>Roof</h4>
-        <PropertyFields row={row} fields={ROOF_FIELDS} />
+        <PropertyFields row={row} fields={ROOF_FIELDS} rows />
         <p className={styles.engine}>Evidence chain</p>
         <ol className={styles.chain} data-evidence-chain="">
           <li>
@@ -182,12 +182,20 @@ export function PropertyDrawer({ row, onClose }: PropertyDrawerProps): ReactElem
       {SECTIONS.map((s) => (
         <section key={s.title} className={styles.drawerSection} aria-label={s.title}>
           <h4 className={styles.sectionTitle}>{s.title}</h4>
-          <PropertyFields row={row} fields={s.fields} />
+          <PropertyFields row={row} fields={s.fields} rows />
         </section>
       ))}
+      {/* Task B PropertyDetail: "Not published" lists the gaps, then the metadata / provenance. */}
+      <section className={styles.drawerSection} aria-label="Not published">
+        <h4 className={styles.sectionTitle}>Not published</h4>
+        {row.missing.length === 0 ? (
+          <p className={styles.engine}>Every field of this property is published in this run.</p>
+        ) : (
+          <MissingSummary row={row} />
+        )}
+      </section>
       <section className={styles.drawerSection} aria-label="Metadata">
         <h4 className={styles.sectionTitle}>Metadata</h4>
-        <MissingSummary row={row} />
         <RowProvenance row={row} />
       </section>
       <ComingSoonEntries ids={["street-view", "similar-properties"]} />

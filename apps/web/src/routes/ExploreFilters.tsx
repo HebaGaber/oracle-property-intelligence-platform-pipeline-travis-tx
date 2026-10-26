@@ -10,7 +10,11 @@
 // below), a pager over the server's pages instead of "Load more", "{n} properties match" in the
 // filter panel and the first-visit "What can I ask?" card. Not a route module: Explore.tsx
 // mounts it.
-import type { ExploreResult, ExploreRow } from "@countylens/query-core/explore";
+import {
+  EXPLORE_BOUNDS,
+  type ExploreResult,
+  type ExploreRow,
+} from "@countylens/query-core/explore";
 import { resolvePlace, searchPlaces, type ResolvedPlace } from "@countylens/query-core/places";
 import { EXPLORE_TEXTS } from "@countylens/shared";
 import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
@@ -289,6 +293,7 @@ export function ExploreFilters({
             page={page}
             pageRows={pageRows}
             onPage={goTo}
+            onWiden={(r) => patch({ r: String(r) })}
             onSelect={select}
             selected={query.sel}
           />
@@ -323,6 +328,7 @@ function Results({
   page,
   pageRows,
   onPage,
+  onWiden,
   onSelect,
   selected,
 }: {
@@ -333,6 +339,7 @@ function Results({
   readonly page: number;
   readonly pageRows: readonly ExploreRow[];
   readonly onPage: (page: number) => void;
+  readonly onWiden: (radiusMi: number) => void;
   readonly onSelect: (cid: string) => void;
   readonly selected: string | null;
 }): ReactElement {
@@ -386,9 +393,21 @@ function Results({
       </div>
       {noOpen ? <p className={styles.empty}>{EXPLORE_TEXTS.noOpenPermits}</p> : null}
       {zero ? (
-        <p className={styles.empty}>
-          {EXPLORE_TEXTS.zeroResults(request.radius_mi, data.close_matches.length)}
-        </p>
+        <>
+          <p className={styles.empty}>
+            {EXPLORE_TEXTS.zeroResults(request.radius_mi, data.close_matches.length)}
+          </p>
+          {/* EmptyHints board: one next step, "Widen to {r + 2} mi" (within the radius bound). */}
+          {request.radius_mi < EXPLORE_BOUNDS.radiusMi[1] ? (
+            <button
+              type="button"
+              className={styles.resultTab}
+              onClick={() => onWiden(Math.min(EXPLORE_BOUNDS.radiusMi[1], request.radius_mi + 2))}
+            >
+              {`Widen to ${String(Math.min(EXPLORE_BOUNDS.radiusMi[1], request.radius_mi + 2))} mi`}
+            </button>
+          ) : null}
+        </>
       ) : null}
       {tab === "close" ? (
         data.close_matches.length === 0 ? (
