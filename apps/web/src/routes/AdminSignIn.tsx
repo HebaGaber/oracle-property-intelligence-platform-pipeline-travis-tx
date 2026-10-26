@@ -6,7 +6,8 @@
 // now, try later"). Parity, Justified: the board's email-code steps (Code, Expired, "Send a new
 // code") do not exist because there is no code step; a successful sign-in goes straight to Runs
 // (TC-010) instead of the board's "Signed in as an admin. Go to Runs" screen. A react-router lazy
-// route module: it exports `Component` and nothing else.
+// route module: it exports `Component` and nothing else. Fields and the Show password toggle copy
+// Task B's sign-in (48 px fields and targets) inside the board's card.
 import { ROUTES } from "@countylens/shared/routes";
 import { useState, type FormEvent, type ReactElement } from "react";
 import { Link, useNavigate } from "react-router";
@@ -40,6 +41,7 @@ export function Component(): ReactElement {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [tried, setTried] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
   const signedIn = loadSession() !== undefined;
@@ -118,19 +120,35 @@ export function Component(): ReactElement {
               {SIGN_IN_TEXTS.emailRequired}
             </span>
           ) : null}
-          <label className={styles.field}>
-            <span>Password</span>
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              aria-invalid={passwordBad}
-              aria-describedby={passwordBad ? "as-password-err" : undefined}
-              disabled={busy}
-            />
-          </label>
+          <div className={styles.field}>
+            <label htmlFor="as-password">Password</label>
+            <span className={styles.passwordWrap}>
+              <input
+                id="as-password"
+                type={showPassword ? "text" : "password"}
+                name="password"
+                autoComplete="current-password"
+                className={styles.passwordInput}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                aria-invalid={passwordBad}
+                aria-describedby={passwordBad ? "as-password-err" : undefined}
+                disabled={busy}
+              />
+              {/* Task B's toggle: a constant name; its pressed state says whether the value shows.
+                  The word "Show" stands in for Task B's eye glyph, which the icon subset lacks. */}
+              <button
+                type="button"
+                className={styles.toggle}
+                aria-label="Show password"
+                aria-pressed={showPassword}
+                aria-controls="as-password"
+                onClick={() => setShowPassword((shown) => !shown)}
+              >
+                Show
+              </button>
+            </span>
+          </div>
           {passwordBad ? (
             <span id="as-password-err" role="alert" className={styles.fieldError}>
               <Icon name="error" size="small" />
@@ -162,7 +180,7 @@ export function Component(): ReactElement {
         </form>
         <p className={styles.provenance}>
           <Icon name="lock" size="small" />
-          <span>
+          <span className={styles.provenanceText}>
             Only users on the admin list can run anything (Cognito email and password, no self
             sign-up). Admin sits at the end of the main navigation.
           </span>

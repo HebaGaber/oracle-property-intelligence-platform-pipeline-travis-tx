@@ -6,14 +6,33 @@
   min-width: 0;
 }
 
+/* Prose: body-medium on compact (the 390 board), body-large from 600 px (768 and 1440 boards). */
 .body {
   margin: 0;
   color: var(--md-sys-color-on-surface);
-  font-family: var(--md-sys-typescale-body-large-font);
-  font-size: var(--md-sys-typescale-body-large-size);
-  line-height: var(--md-sys-typescale-body-large-line-height);
-  letter-spacing: var(--md-sys-typescale-body-large-tracking);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
   overflow-wrap: anywhere;
+}
+
+/* A table cell: body-medium at every width (the board's dense table). */
+.cell {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  overflow-wrap: anywhere;
+}
+
+/* The source name: title-small on the 390 board's stacked rows, a plain cell in the table. */
+.sourceName {
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
 }
 
 .small {
@@ -31,24 +50,33 @@
   gap: var(--space-2);
   margin: 0;
   padding-left: var(--space-5);
-  font-family: var(--md-sys-typescale-body-large-font);
-  font-size: var(--md-sys-typescale-body-large-size);
-  line-height: var(--md-sys-typescale-body-large-line-height);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
 }
 
-/* Sources and licences (LegalData boards): one outlined surface. Below 840 px each source is a
-   stacked row in a card (the 390 board's list); from 840 px a table with a filled header row
-   (Source · Provides · Licence or terms), as on the 768 and 1440 boards. */
+@media (min-width: 600px) {
+  .body,
+  .rules {
+    font-family: var(--md-sys-typescale-body-large-font);
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: var(--md-sys-typescale-body-large-line-height);
+  }
+}
+
+/* Sources and licences (LegalData boards): one outlined surface, medium corners. Below 600 px
+   each source is a stacked row in a card (the 390 board's list); from 600 px a dense table with a
+   filled header row (Source · Provides · Licence or terms), as on the 768 and 1440 boards. */
 .sourceTable {
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-large);
+  border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface-container-lowest);
 }
 
 .sourceHead {
   display: none;
-  padding: var(--space-4);
-  border-radius: var(--md-sys-shape-corner-large) var(--md-sys-shape-corner-large) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium) 0 0;
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface);
   font-family: var(--md-sys-typescale-title-small-font);
@@ -76,7 +104,7 @@
   border-top: 0;
 }
 
-.sourceRow > span {
+.licence {
   display: grid;
 }
 
@@ -84,11 +112,18 @@
   color: var(--md-sys-color-primary);
 }
 
-@media (min-width: 840px) {
+@media (min-width: 600px) {
   .sourceHead,
   .sourceRow {
     grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
     gap: var(--space-4);
+  }
+
+  .sourceName {
+    font-family: var(--md-sys-typescale-body-medium-font);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    font-weight: var(--md-sys-typescale-body-medium-weight);
+    line-height: var(--md-sys-typescale-body-medium-line-height);
   }
 
   .sourceHead {
@@ -107,10 +142,9 @@
   min-width: var(--space-9);
   min-height: var(--space-9);
   color: var(--md-sys-color-primary);
-  font-family: var(--md-sys-typescale-label-large-font);
-  font-size: var(--md-sys-typescale-label-large-size);
-  font-weight: var(--md-sys-typescale-label-large-weight);
-  line-height: var(--md-sys-typescale-label-large-line-height);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
   overflow-wrap: anywhere;
 }
 
