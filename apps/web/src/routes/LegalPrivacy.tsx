@@ -86,8 +86,8 @@ export function Component(): ReactElement {
             title: "Your choices",
             body: (
               <p className={styles.body}>
-                Filters and SQL work without the AI helper, and SQL runs entirely in your browser.
-                Clearing this site's storage in your browser removes what it kept.
+                Filters work without the AI helper and run entirely in your browser. Clearing this
+                site's storage in your browser removes what it kept.
               </p>
             ),
           },

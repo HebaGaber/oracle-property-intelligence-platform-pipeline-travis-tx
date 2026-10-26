@@ -138,8 +138,8 @@ export function Component(): ReactElement {
             <Icon name="shield_lock" size="small" />
             <span>
               Admins only · server-side events from CloudWatch Logs Insights over the query log: AI
-              questions and MCP calls · kept 30 days · no personal data. Browser queries (Filters,
-              SQL) run on the visitor&apos;s device and are not logged.
+              questions and MCP calls · kept 30 days · no personal data. Filters run on the
+              visitor&apos;s device and are not logged.
             </span>
           </p>
         </div>

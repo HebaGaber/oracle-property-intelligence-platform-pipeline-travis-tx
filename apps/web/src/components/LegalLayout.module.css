@@ -48,10 +48,13 @@
   list-style: none;
 }
 
+/* Each contents and Related link is a 48 x 48 px minimum target at every width (WCAG 2.5.8,
+   A-13-TC-080): short labels such as "Privacy" are widened, not only heightened. */
 .tocLink {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   box-sizing: border-box;
+  min-width: var(--space-9);
   min-height: var(--space-9);
   color: var(--md-sys-color-primary);
   text-decoration: underline;
