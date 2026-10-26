@@ -209,7 +209,11 @@ function fakePinata(opts: FakeOptions = {}) {
         const form = init?.body as FormData;
         const options = JSON.parse(String(form.get("pinataOptions")));
         if (options.cidVersion !== 1) return new Response("want v1", { status: 400 });
-        const name = (JSON.parse(String(form.get("pinataMetadata"))) as { name: string }).name;
+        const label = (JSON.parse(String(form.get("pinataMetadata"))) as { name: string }).name;
+        // Real Pinata (2026-10-26): a "/" in the metadata name wraps the file in a folder and
+        // answers the folder's CID. The fake does the same, so a regression shows as a mismatch.
+        const slashInLabel = label.includes("/");
+        const name = label.split(" > ").join("/");
         const file = form.get("file") as File;
         fileNames.push(file.name);
         const n = (attempts.get(name) ?? 0) + 1;
@@ -222,7 +226,9 @@ function fakePinata(opts: FakeOptions = {}) {
             headers: { "retry-after": "1" },
           });
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const real = await cidOfBytes(bytes);
+        const real = slashInLabel
+          ? "bafybeicjntqsqvszodo7tzhp6ke4gr5qdoezh7hobbzwqituawt7c2oswy"
+          : await cidOfBytes(bytes);
         const cid = opts.answer ? opts.answer(name, real) : real;
         uploads.push(name);
         pinned.add(cid);

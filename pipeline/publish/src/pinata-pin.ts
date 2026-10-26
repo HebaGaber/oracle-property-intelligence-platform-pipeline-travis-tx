@@ -182,9 +182,20 @@ export async function pinByCid(
 }
 
 /**
+ * The `pinataMetadata.name` for a repo path: every "/" becomes " > ". Measured 2026-10-26 on the
+ * Run 3.1 manifest: a "/" in the metadata name alone (basename filename, cidVersion 1) makes
+ * pinFileToIPFS wrap the file in a folder and answer that folder's dag-pb CID
+ * (`bafybeicjntq…`) instead of the file's raw CID (`bafkreidbqsav…`); the same upload with a
+ * slash-free name answers the file's CID.
+ */
+export function pinataLabel(name: string): string {
+  return name.split("/").join(" > ");
+}
+
+/**
  * Uploads the file's bytes so Pinata holds a copy directly, as CIDv1. The multipart filename is
- * the BASENAME only: a filename with "/" can make pinFileToIPFS treat the upload as a folder and
- * answer a directory CID. The full repo path goes only in `pinataMetadata.name`. Bounded by
+ * the BASENAME only and the metadata name has no "/" (pinataLabel): either "/" can make
+ * pinFileToIPFS treat the upload as a folder and answer a directory CID. Bounded by
  * uploadTimeoutMs(size); a timeout surfaces as a thrown error (the caller does not resend a write
  * blind; an idempotent re-run picks it up).
  */
@@ -199,7 +210,7 @@ export async function uploadFile(
   const form = new FormData();
   const fileName = basename(name ?? filePath);
   form.append("file", new Blob([bytes]), fileName);
-  if (name) form.append("pinataMetadata", JSON.stringify({ name }));
+  if (name) form.append("pinataMetadata", JSON.stringify({ name: pinataLabel(name) }));
   form.append("pinataOptions", JSON.stringify(PINATA_UPLOAD_OPTIONS));
   const response = await fetchImpl(`${api}${PINATA_UPLOAD_PATH}`, {
     method: "POST",

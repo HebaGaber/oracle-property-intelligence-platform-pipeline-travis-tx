@@ -144,6 +144,24 @@ describe("uploadFile", () => {
     expect(JSON.parse(metadata ?? "")).toEqual({ name: "a-11-smoke-throwaway" });
   });
 
+  it("never sends a '/' in pinataMetadata.name (a slash makes Pinata answer a folder CID)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pinata-pin-"));
+    const filePath = join(dir, "manifest.json");
+    writeFileSync(filePath, "{}");
+    let metadata: string | undefined;
+    const fetch: FetchLike = async (_input, init) => {
+      metadata = (init?.body as FormData).get("pinataMetadata") as string;
+      return jsonResponse(200, { IpfsHash: CID, ID: "file-6" });
+    };
+    await uploadFile(filePath, "runs/travis-full-run3-1-20261025/manifest.json", {
+      jwt: JWT,
+      fetch,
+    });
+    const sent = JSON.parse(metadata ?? "") as { name: string };
+    expect(sent.name).not.toContain("/");
+    expect(sent.name).toBe("runs > travis-full-run3-1-20261025 > manifest.json");
+  });
+
   it("throws when the upload response carries no IpfsHash", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pinata-pin-"));
     const filePath = join(dir, "throwaway.txt");
@@ -378,7 +396,7 @@ describe("redactJwt", () => {
 });
 
 describe("multipart filename and timeouts (T079 review)", () => {
-  it("sends only the basename as the multipart filename; the full path goes in pinataMetadata", async () => {
+  it("sends only the basename as the multipart filename; the full path (slash-free) goes in pinataMetadata", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pinata-pin-"));
     const filePath = join(dir, "part-00000.parquet");
     writeFileSync(filePath, "x");
@@ -396,7 +414,9 @@ describe("multipart filename and timeouts (T079 review)", () => {
     await uploadFile(filePath, name, { jwt: JWT, fetch });
     expect(fileName).toBe("part-00000.parquet");
     expect(fileName).not.toContain("/");
-    expect(metadata).toEqual({ name });
+    expect(metadata).toEqual({
+      name: "pipeline > data > runs > r > tables > t > part-00000.parquet",
+    });
     expect(signal).toBeInstanceOf(AbortSignal);
   });
 
