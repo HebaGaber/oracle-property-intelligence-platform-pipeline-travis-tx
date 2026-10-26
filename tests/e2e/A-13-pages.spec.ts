@@ -443,14 +443,16 @@ test.describe("A-13 pages · Catalog, Legal, Runs log", { tag: "@a13-pages" }, (
     await page.goto(ROUTES.legalData);
     const section = await routeSettled(page);
     await checkpoint(page, "055", 1);
-    // 2. Seven sources, each with a terms or licence link.
+    // 2. Eight sources, each with a terms or licence link (the Austin address points added
+    // 2026-10-26: a manifest source since Run 3).
     const sources = section.locator("[data-source]");
-    await expect(sources).toHaveCount(7);
+    await expect(sources).toHaveCount(8);
     const text = await section.innerText();
     for (const name of [
       "TCAD",
       "Travis County GIS",
       "3syk-w9eu",
+      "LOCATION_address_points",
       "9cir-efmm",
       "BBB",
       "Overture",

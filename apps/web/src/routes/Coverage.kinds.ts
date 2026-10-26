@@ -130,7 +130,10 @@ export const COVERAGE_KINDS: readonly CoverageKind[] = Object.freeze([
     prefixes: ["places_"],
     source: null,
     table: null,
-    reason: "Not collected · no places source in this run",
+    // The manifest profile travis-places is the Census place-name gazetteer that locates towns and
+    // ZIPs for search; it publishes no place records (label review 2026-10-26).
+    reason:
+      "Not collected · no business-places source in this run (the place-name gazetteer only locates areas)",
   },
   {
     id: "coordinates",

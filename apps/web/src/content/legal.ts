@@ -48,6 +48,15 @@ export const LEGAL_SOURCES: readonly LegalSource[] = Object.freeze([
     checkedOn: "2026-10-22",
   },
   {
+    id: "austin-address-points",
+    name: "City of Austin address points (ArcGIS layer LOCATION_address_points)",
+    fact: "A property with no county GIS point takes a City of Austin 9-1-1 address point, only on a unique exact address match. The points are read from the City's public ArcGIS layer; its catalogue entry gives the City of Austin GIS disclaimer as the licence: for geographic reference only, no warranty of accuracy or completeness.",
+    termsLabel: "City of Austin GIS disclaimer (the layer's ArcGIS catalogue entry)",
+    termsUrl: "https://www.arcgis.com/home/item.html?id=dfa40c66bb4c4f228f717a79bd735f0f",
+    checkedStatus: 200,
+    checkedOn: "2026-10-26",
+  },
+  {
     id: "tx-comptroller",
     name: "Texas Comptroller open data (dataset 9cir-efmm)",
     fact: "Contractor identity is looked up in the Comptroller's franchise-tax holder list, dataset 9cir-efmm on data.texas.gov, read through its public API. The portal's footer points to the platform terms linked here; the dataset page shows its own licence field.",

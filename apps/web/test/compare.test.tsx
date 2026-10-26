@@ -188,6 +188,33 @@ describe("Compare with two runs (FR-001a, TC-007, TC-015)", () => {
     );
   });
 
+  it("shows the per-source change columns only for neighbours (label review 2026-10-26)", async () => {
+    const run3 = await buildRun(3, run2.cid);
+    installFetch([run1, run2, run3], {});
+    await renderCompare("?a=2&b=3");
+    await screen.findAllByRole("article");
+    const near = await waitFor(() => {
+      const table = document.querySelector("[data-change-table]");
+      if (table === null) throw new Error("no change table yet");
+      return table;
+    });
+    expect(near.getAttribute("data-neighbours")).toBe("yes");
+    expect(near.textContent).toContain(`+${String(run3.manifest.sources[0]?.added)}`);
+    cleanup();
+
+    installFetch([run1, run2, run3], {});
+    await renderCompare("?a=1&b=3");
+    await screen.findAllByRole("article");
+    const far = await waitFor(() => {
+      const table = document.querySelector("[data-change-table]");
+      if (table === null) throw new Error("no change table yet");
+      return table;
+    });
+    expect(far.getAttribute("data-neighbours")).toBe("no");
+    expect(far.querySelector("[data-delta-note]")).not.toBeNull();
+    expect(far.textContent).not.toContain(`+${String(run3.manifest.sources[0]?.added)}`);
+  });
+
   it("shows `old manifest still resolves on Pinata and orbitor` only after both independent gateways answered", async () => {
     let releasePinata: (r: Response) => void = () => undefined;
     const pinataAnswer = new Promise<Response>((resolve) => {

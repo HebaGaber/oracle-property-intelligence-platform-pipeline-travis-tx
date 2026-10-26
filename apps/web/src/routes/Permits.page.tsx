@@ -394,7 +394,8 @@ function PermitCards({ rows }: { readonly rows: readonly PermitListRow[] }): Rea
                 {/* B-3: the missing-data pills fold behind a native disclosure (no script). */}
                 <details className={styles.more}>
                   <summary className={styles.moreSummary}>
-                    Show {otherEntries(row).length + contractorEntries(row).length}
+                    {/* The contractor reasons are already in the Contractor row above. */}
+                    Show {otherEntries(row).length}
                   </summary>
                   <span className={styles.value}>
                     <Reasons entries={otherEntries(row)} />

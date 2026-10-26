@@ -23,11 +23,12 @@ async function renderPage(file: "LegalData" | "LegalPrivacy" | "LegalTerms", nam
 }
 
 describe("content/legal.ts", () => {
-  it("has the seven sources, each with an https terms link, a status and an access date", () => {
+  it("has the eight sources, each with an https terms link, a status and an access date", () => {
     expect(LEGAL_SOURCES.map((s) => s.id)).toEqual([
       "tcad",
       "travis-county-gis",
       "city-of-austin",
+      "austin-address-points",
       "tx-comptroller",
       "bbb",
       "overture",
@@ -52,14 +53,14 @@ describe("content/legal.ts", () => {
 });
 
 describe("Legal · Data sources", () => {
-  it("names the seven sources with a terms link each, and the four rules", async () => {
+  it("names the eight sources with a terms link each, and the four rules", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const page = await renderPage("LegalData", "Legal · Data sources");
     expect(page.getAttribute("data-route")).toBe("legal-data");
     const list = within(page).getByRole("list", { name: "Data sources" });
     const items = within(list).getAllByRole("listitem");
-    expect(items).toHaveLength(7);
+    expect(items).toHaveLength(8);
     LEGAL_SOURCES.forEach((source, i) => {
       const item = items[i] as HTMLElement;
       expect(item.textContent).toContain(source.name);

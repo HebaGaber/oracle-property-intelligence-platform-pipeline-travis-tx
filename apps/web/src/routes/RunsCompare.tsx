@@ -424,11 +424,29 @@ function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRu
     a.manifest.artifacts,
     b.manifest.artifacts,
   );
+  // A manifest records added / changed / removed against its own previous run only, so the
+  // columns hold for a pair of neighbours; for any other pair they would mislabel b's own delta
+  // as "a to b" (label review 2026-10-26).
+  const neighbours = b.manifest.previousManifestCid === a.entry.manifestCid;
+  const delta = (n: number, sign: string): string =>
+    neighbours ? `${sign}${formatCount(n)}` : "—";
   return (
-    <section className={styles.card} aria-labelledby="changed-table-heading" data-change-table="">
+    <section
+      className={styles.card}
+      aria-labelledby="changed-table-heading"
+      data-change-table=""
+      data-neighbours={neighbours ? "yes" : "no"}
+    >
       <h3 id="changed-table-heading" className={styles.cardTitle}>
         What changed, per source and artifact
       </h3>
+      {neighbours ? null : (
+        <p className={styles.helperText} data-delta-note="">
+          Added, changed and removed are recorded against each run's own previous run, and {b.label}{" "}
+          does not follow {a.label}, so they are not shown for this pair. The file CIDs below still
+          compare the two runs directly.
+        </p>
+      )}
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
@@ -459,13 +477,13 @@ function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRu
                     {formatCount(source.records)}
                   </td>
                   <td data-label="Added" className={styles.num}>
-                    +{formatCount(source.added)}
+                    {delta(source.added, "+")}
                   </td>
                   <td data-label="Changed" className={styles.num}>
-                    ~{formatCount(source.changed)}
+                    {delta(source.changed, "~")}
                   </td>
                   <td data-label="Removed" className={styles.num}>
-                    −{formatCount(source.removed)}
+                    {delta(source.removed, "−")}
                   </td>
                 </tr>
               );
