@@ -67,16 +67,28 @@
   min-width: calc(var(--space-10) + var(--space-6));
 }
 
+/* D-4: word-level wrapping only. `overflow-wrap: anywhere` let every cell's min-content shrink
+   to one letter, so the 1440 table (wider than its pane) broke values and pills letter by letter
+   into 4–8 line cells; now cells keep whole words and the table scrolls inside `.scroll`. */
 .value {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+}
+
+/* The short "not published · no lexicon carrier" pills stay on one line (never a circle). */
+.value[data-field="address"] [data-status],
+.value[data-field="status_raw"] [data-status],
+.value[data-field="contractor_name"] [data-status] {
+  white-space: nowrap;
 }
 
 .muted {
   color: var(--md-sys-color-on-surface-variant);
 }
 
+/* The row provenance: a fixed-width column where only the long source URL may break mid-word. */
 .source {
-  min-width: calc(var(--space-10) * 3);
+  min-width: calc(var(--space-10) * 4);
+  overflow-wrap: anywhere;
 }
 
 .details {

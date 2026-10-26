@@ -21,6 +21,7 @@ import { StatusPill } from "../components/StatusPill";
 import { utcTimestamp } from "../data/format";
 import { loadRunChain, type RunChainLink } from "../data/run-chain";
 import type { LoadedRun } from "../data/run-loader";
+import { runNumbers } from "../data/runs-index";
 import { VERIFY_MAX_BYTES } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
@@ -74,7 +75,7 @@ function ManifestView({ run }: { readonly run: LoadedRun }): ReactElement {
         </span>
         <FallbackChip source={read.source} />
       </div>
-      <RunChain head={manifestCid} headManifest={manifest} />
+      <RunChain head={manifestCid} headManifest={manifest} numbers={runNumbers(run.index)} />
       <ArtifactTable manifest={manifest} />
       <Provenance>
         Manifest <CidDisplay cid={manifestCid} /> · run {manifest.runId} · read from{" "}
@@ -92,9 +93,12 @@ type ChainState =
 function RunChain({
   head,
   headManifest,
+  numbers,
 }: {
   readonly head: string;
   readonly headManifest: RunManifestV1;
+  /** "Run N" by run ID, from runs/index.json (the header badge, Runs and Log numbering). */
+  readonly numbers: ReadonlyMap<string, number>;
 }): ReactElement {
   const [state, setState] = useState<ChainState>({ kind: "loading" });
   useEffect(() => {
@@ -128,8 +132,8 @@ function RunChain({
               data-chain-entry=""
               data-cid={link.manifestCid}
             >
-              <span className={styles.chainLabel}>
-                Run {state.chain.length - i}
+              <span className={styles.chainLabel} data-chain-label="">
+                Run {numbers.get(link.runId) ?? "not in the index"}
                 {i === 0 ? <span className={styles.chainThis}> · this run</span> : null}
               </span>
               <span className={runStyles.itemTitle}>

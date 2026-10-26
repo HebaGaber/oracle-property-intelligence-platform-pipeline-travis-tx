@@ -20,7 +20,7 @@ import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
 import { formatUtc } from "../components/Provenance";
 import { formatCount } from "../data/format";
-import { RunIndexError, loadRunsIndex, runIndexText } from "../data/runs-index";
+import { RunIndexError, loadRunsIndex, runIndexText, runsByFinish } from "../data/runs-index";
 import { runEvents, type RunEvent } from "../data/run-events";
 import {
   RUN_STAGE_TEXTS,
@@ -63,8 +63,9 @@ async function loadAll(signal: AbortSignal): Promise<LogState> {
     if (result.status === "fulfilled") manifests.push(result.value.manifest);
     else failures.push(toRunLoadError(result.reason));
   }
+  // The shared numbering (runsByFinish order, as runNumbers): "Run N" matches the header and Runs.
   const numbers = new Map(
-    index.runs.map((run, i) => [run.runId, { number: i + 1, finishedAt: run.finishedAt }]),
+    runsByFinish(index).map((run, i) => [run.runId, { number: i + 1, finishedAt: run.finishedAt }]),
   );
   return { kind: "ready", manifests, numbers, failures };
 }
@@ -316,7 +317,7 @@ function LogTable({
         ))}
       </div>
       <div className={runsStyles.tableWrap}>
-        <table className={runsStyles.table} aria-label="Run events">
+        <table className={`${runsStyles.table} ${styles.log}`} aria-label="Run events">
           <thead>
             <tr>
               <th aria-sort={newestFirst ? "descending" : "ascending"}>
@@ -348,17 +349,24 @@ function LogTable({
                   <time dateTime={row.event.time}>{formatUtc(row.event.time)} UTC</time>
                 </td>
                 <td>
-                  <span>{row.runNumber === null ? "" : `Run ${row.runNumber}`}</span>
-                  <span className={styles.runId}>{row.event.runId}</span>
+                  <span data-run-number="">
+                    {row.runNumber === null ? "" : `Run ${row.runNumber}`}
+                  </span>
+                  <span className={styles.runId} data-run-id-text="">
+                    {row.event.runId}
+                  </span>
                 </td>
                 <td>
                   {row.what}
                   {row.event.kind === "finished" && row.event.limitations.length > 0 ? (
-                    <ul className={styles.notes} aria-label="Limitations">
-                      {row.event.limitations.map((limitation) => (
-                        <li key={limitation}>{limitation}</li>
-                      ))}
-                    </ul>
+                    <details>
+                      <summary>Limitations ({row.event.limitations.length})</summary>
+                      <ul className={styles.notes} aria-label="Limitations">
+                        {row.event.limitations.map((limitation) => (
+                          <li key={limitation}>{limitation}</li>
+                        ))}
+                      </ul>
+                    </details>
                   ) : null}
                 </td>
                 <td>{row.source}</td>

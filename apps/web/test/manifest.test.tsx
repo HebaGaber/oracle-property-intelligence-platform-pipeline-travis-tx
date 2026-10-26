@@ -216,6 +216,23 @@ describe("Data · Manifest run chain (FR-003d, TC-024)", () => {
   });
 });
 
+describe("Data · Manifest run numbering (D-10)", () => {
+  it("labels each chain link with its runs/index.json number, as the header and Runs do", async () => {
+    // Three runs in the index; only the last two link (run 2 starts a new chain), so chain
+    // position (2, 1) and index number (3, 2) differ.
+    const r1 = await buildRun(1, null);
+    const r2 = await buildRun(2, null);
+    const r3 = await buildRun(3, r2.cid);
+    install([r1, r2, r3]);
+    await renderManifest();
+    const chain = await screen.findByRole("list", { name: "Run chain" });
+    const items = await within(chain).findAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]?.querySelector("[data-chain-label]")?.textContent).toBe("Run 3 · this run");
+    expect(items[1]?.querySelector("[data-chain-label]")?.textContent).toBe("Run 2");
+  });
+});
+
 describe("Data · Manifest fallback (FR-016)", () => {
   it("shows `fallback · ipfs.filebase.io` when the CID copy is down", async () => {
     install([run1], true);

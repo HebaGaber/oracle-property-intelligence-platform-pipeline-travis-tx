@@ -523,6 +523,48 @@
   text-align: end;
 }
 
+/* D-7 (board RunsCompare390): below 600 px the change table stacks each source as a labelled
+   block (`data-label` on each cell), as CoverageCostLimits does; table roles stay. */
+@media (max-width: 599px) {
+  [data-change-table] .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  [data-change-table] .table,
+  [data-change-table] .table tbody,
+  [data-change-table] .table tr {
+    display: block;
+  }
+
+  [data-change-table] .table tr {
+    padding: var(--space-2) 0;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  [data-change-table] .table td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+    border-top: 0;
+    text-align: end;
+    overflow-wrap: break-word;
+  }
+
+  [data-change-table] .table td::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--md-sys-color-on-surface-variant);
+    font-family: var(--md-sys-typescale-body-small-font);
+    font-size: var(--md-sys-typescale-body-small-size);
+    text-align: start;
+  }
+}
+
 /* Filter chips and pager (Log board). */
 .chips {
   display: flex;
