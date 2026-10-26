@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from "rea
 import { CidDisplay } from "../components/CidDisplay";
 import { WELCOME_QUESTIONS } from "../components/WelcomeCard";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { Icon } from "../components/Icon";
 import { LinearProgress } from "../components/LinearProgress";
 import { Provenance } from "../components/Provenance";
 import { StatusPill } from "../components/StatusPill";
@@ -31,7 +32,8 @@ import {
   limitReached,
   readSessionCount,
   sessionStorageOrUndefined,
-  splitAnswer,
+  answerBlocks,
+  answerInline,
   writeSessionCount,
 } from "./ExploreAi.state";
 import type { ExplorePageState } from "./ExploreFilters";
@@ -332,26 +334,66 @@ export function ExploreAi({ onState, ask = askAgent }: ExploreAiProps): ReactEle
               <p className={styles.note}>{AI_TEXTS.noResultsBody}</p>
             </>
           ) : null}
-          <p className={styles.answer} data-answer="">
-            {splitAnswer(response.answer, response.matches.length).map((part, i) =>
-              part.kind === "text" ? (
-                <span key={i}>{part.text}</span>
-              ) : (
-                <a
-                  key={i}
-                  href={`#ai-match-${part.n}`}
-                  className={styles.cite}
-                  data-cite={part.n}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    jump(part.n);
-                  }}
-                >
-                  [{part.n}]
-                </a>
-              ),
-            )}
-          </p>
+          {/* Explore · AI board: the question, then the prose as headings, paragraphs, items and
+              an amber caveat banner (a safe Markdown subset; no raw markers, no HTML). */}
+          <h3 className={styles.question}>
+            <Icon name="smart_toy" size="medium" />
+            {shown?.prompt ?? prompt}
+          </h3>
+          <div className={styles.answer} data-answer="">
+            {answerBlocks(response.answer).map((block, i) => {
+              const inline = answerInline(block.text, response.matches.length).map((part, j) =>
+                part.kind === "text" ? (
+                  <span key={j}>{part.text}</span>
+                ) : part.kind === "strong" ? (
+                  <strong key={j}>{part.text}</strong>
+                ) : (
+                  <a
+                    key={j}
+                    href={`#ai-match-${part.n}`}
+                    className={styles.cite}
+                    data-cite={part.n}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      jump(part.n);
+                    }}
+                  >
+                    [{part.n}]
+                  </a>
+                ),
+              );
+              if (block.kind === "heading")
+                return (
+                  <h4 key={i} className={styles.answerHeading}>
+                    {inline}
+                  </h4>
+                );
+              if (block.kind === "caveat")
+                return (
+                  <p key={i} className={styles.caveat} role="note">
+                    <Icon name="warning" size="medium" />
+                    <span>{inline}</span>
+                  </p>
+                );
+              if (block.kind === "item")
+                return (
+                  <p key={i} className={styles.answerItem}>
+                    {inline}
+                  </p>
+                );
+              return <p key={i}>{inline}</p>;
+            })}
+          </div>
+          {response.steps.length === 0 ? null : (
+            <ul className={styles.steps} data-steps="">
+              {response.steps.map((step, i) => (
+                <li key={i}>
+                  <Icon name="check_circle" size="small" />
+                  {step.summary}
+                </li>
+              ))}
+            </ul>
+          )}
 
           {response.run === undefined ? null : (
             <p className={styles.note} data-run="">

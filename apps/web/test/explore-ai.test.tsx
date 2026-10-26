@@ -9,7 +9,13 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentAskRequest, AgentAskResponse, AgentMatch } from "../src/data/agent-ask";
 import { ExploreAi } from "../src/routes/ExploreAi";
-import { SESSION_KEY, howChips, splitAnswer } from "../src/routes/ExploreAi.state";
+import {
+  SESSION_KEY,
+  answerBlocks,
+  answerInline,
+  howChips,
+  splitAnswer,
+} from "../src/routes/ExploreAi.state";
 
 let cid: string;
 let manifest: string;
@@ -180,6 +186,52 @@ describe("How I read this chips", () => {
       { kind: "cite", n: 1 },
       { kind: "text", text: " b " },
     ]);
+  });
+});
+
+// PO 2026-10-26 (15.png): the model's Markdown never reaches the page as raw markers.
+describe("Explore · AI answer Markdown", () => {
+  const md = [
+    "Found **28,062 total matches** within 5 mi [1].",
+    "",
+    "> ⚠️ **Confidence note:** roof ages come from the built year.",
+    "",
+    "---",
+    "### Top Results",
+    "| # | Citation | Distance |",
+    "|---|----------|----------|",
+    "| 1 | [1] | 1.19 mi |",
+    "- one `item`",
+  ].join("\n");
+
+  it("reads headings, caveats, table rows and items into blocks", () => {
+    expect(answerBlocks(md)).toEqual([
+      { kind: "para", text: "Found **28,062 total matches** within 5 mi [1]." },
+      { kind: "caveat", text: "⚠️ **Confidence note:** roof ages come from the built year." },
+      { kind: "heading", text: "Top Results" },
+      { kind: "item", text: "1 · [1] · 1.19 mi" },
+      { kind: "item", text: "one `item`" },
+    ]);
+    expect(answerInline("a **b** [1] [7] `c`", 2)).toEqual([
+      { kind: "text", text: "a " },
+      { kind: "strong", text: "b" },
+      { kind: "text", text: " " },
+      { kind: "cite", n: 1 },
+      { kind: "text", text: " " },
+      { kind: "text", text: " c" },
+    ]);
+  });
+
+  it("renders no raw **, ###, > or |---| on the page", async () => {
+    setup(async () => response({ answer: md }));
+    await submit("roofs in Pflugerville");
+    const text = must(document.querySelector("[data-answer]")).textContent ?? "";
+    expect(text).not.toMatch(/\*\*|###|\|-|^>/m);
+    expect(text).toContain("28,062 total matches");
+    expect(document.querySelector("[data-answer] strong")?.textContent).toBe(
+      "28,062 total matches",
+    );
+    expect(document.querySelector("[data-answer] [role='note']")).not.toBeNull();
   });
 });
 
