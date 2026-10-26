@@ -1,5 +1,5 @@
-# A-11 Run 3.1, one-off (PO 2026-10-26, extra runner): county-b07 and permits-b01 only, while the main run's
-# runner 1 waits on county-b06's Filebase pin. publish step 2 (Filebase) on 3 parallel runners, then
+# A-11 Run 3.1, one-off (PO 2026-10-26, extra runner): county-b06 only, re-run after the main run (runner 1) was cancelled
+# (PO decision 2026-10-26: its pin stayed "pinning" for over 2 h). publish step 2 (Filebase) on 3 parallel runners, then
 # steps 3 (car-files) and 7 (release), from the public CID copy (written by step 5 from the laptop).
 # Every file is checked against the manifest's size and sha256 before any upload; elephant-cli
 # refuses a folder whose root differs from the manifest. Items already pinned on Filebase (county
@@ -7,17 +7,17 @@
 # before the table folder that links to it.
 # Runs only on a push to this branch; this branch is never merged. No AWS credentials are used.
 # Filebase keys come from repository secrets and are never printed; GITHUB_TOKEN is the job's own.
-name: run3-1-b07
+name: run3-1-b06
 
 on:
   push:
-    branches: [run3-1-b07]
+    branches: [run3-1-b06]
 
 permissions:
   contents: write
 
 concurrency:
-  group: run3-1-b07
+  group: run3-1-b06
   cancel-in-progress: false
 
 env:
@@ -35,8 +35,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: 4
-            units: county-b07-tables,permits-b01-car,permits-b01-tables
+          - runner: 5
+            units: county-b06-tables
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
