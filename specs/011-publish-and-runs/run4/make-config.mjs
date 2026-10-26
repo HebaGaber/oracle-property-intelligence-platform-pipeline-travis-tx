@@ -1,3 +1,4 @@
+/* global console */
 // Run 4: writes config.json. The run note is derived from austin-facts.json, the P5 compare log,
 // the P5 diff log and the P6 CARs, never hand-typed. Usage: node make-config.mjs (from this dir).
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
