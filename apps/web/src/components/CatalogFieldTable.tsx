@@ -125,9 +125,9 @@ export function CatalogFieldTable({
             return (
               <tr key={column.name} data-column="" data-name={column.name} data-type={column.type}>
                 <td className={styles.mono}>{column.name}</td>
-                <td>{column.type}</td>
+                <td className={styles.type}>{column.type}</td>
                 <td className={info.meaningKnown ? undefined : styles.missing}>{info.meaning}</td>
-                <td>{info.source}</td>
+                <td className={styles.source}>{info.source}</td>
                 <td className={styles.licence}>{info.licence}</td>
               </tr>
             );

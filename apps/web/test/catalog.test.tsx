@@ -263,7 +263,7 @@ describe("Catalog: field table and derived columns (A-16, DataCatalog1440 board)
       "parcel_identifier",
       "STRING",
       "Parcel identifier",
-      "TCAD 2026 certified export",
+      "tcad-2026-certified-json",
       "[As published]",
     ]);
     expect(cells(property, "year_built")[2]).toBe("not described in contract/v1");

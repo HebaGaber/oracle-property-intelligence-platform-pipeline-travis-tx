@@ -102,26 +102,48 @@
   cursor: pointer;
 }
 
-.caption {
+.captionRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  min-height: var(--space-9);
-  padding: 0 var(--space-1);
-  border: 0;
-  background: transparent;
+  padding: var(--space-1) var(--space-1) 0;
+}
+
+.caption {
   color: var(--md-sys-color-on-surface-variant);
-  text-align: left;
   font-family: var(--md-sys-typescale-label-medium-font);
   font-size: var(--md-sys-typescale-label-medium-size);
   font-weight: var(--md-sys-typescale-label-medium-weight);
+  line-height: var(--md-sys-typescale-label-medium-line-height);
+}
+
+.toggle {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--space-9);
+  height: var(--space-9);
+  padding: 0;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font: inherit;
   cursor: pointer;
 }
 
-.captionIcon {
+.chevronUp,
+.chevronDown {
   display: inline-flex;
+}
+
+.chevronUp {
   transform: rotate(-90deg);
+}
+
+.chevronDown {
+  transform: rotate(90deg);
 }
 
 .lists {
@@ -132,6 +154,19 @@
 
 .lists[data-open="false"] {
   display: none;
+}
+
+.group {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.groupName {
+  padding: 0 var(--space-1);
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-ref-typeface-mono);
+  font-size: var(--md-sys-typescale-label-medium-size);
 }
 
 .subhead {
@@ -330,7 +365,7 @@
 
 .action:focus-visible,
 .clear:focus-visible,
-.caption:focus-visible {
+.toggle:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
@@ -410,6 +445,7 @@
 }
 
 .size {
+  display: block;
   color: var(--md-sys-color-on-surface-variant);
   font-weight: var(--md-sys-typescale-body-medium-weight);
 }
@@ -444,15 +480,8 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* 768 board: the list is always open; the caption is a plain label. */
-  .caption {
-    min-height: 0;
-    padding-top: var(--space-1);
-    cursor: default;
-    pointer-events: none;
-  }
-
-  .captionIcon {
+  /* 768 board: the list is always open, so there is nothing to fold. */
+  .toggle {
     display: none;
   }
 

@@ -103,6 +103,7 @@ function unclassifiedParts(manifest: RunManifestV1, tables: readonly CatalogTabl
 
 /** The lexicon class (export table name) of a `{group}.{table}` catalog key. */
 const classOf = (table: string): string => table.slice(table.indexOf(".") + 1);
+const groupOf = (table: string): string => table.slice(0, table.indexOf("."));
 const isRelationship = (table: string): boolean => classOf(table).includes("_has_");
 
 /** Board icons, limited to the glyphs of the self-hosted Material Symbols subset. */
@@ -121,16 +122,19 @@ const TABLE_ICONS: Readonly<Record<string, string>> = {
 const iconOf = (table: string): string => TABLE_ICONS[classOf(table)] ?? "dataset";
 
 interface TableSource {
+  /** The manifest `sources[].name`, shown in the field table's Source column. */
+  readonly name: string;
   readonly label: string;
   readonly url: string;
 }
 
 /** The manifest source a table's data group was captured from (null when not in this run). */
 function sourceOf(table: CatalogTable, manifest: RunManifestV1): TableSource | null {
-  const group = table.table.slice(0, table.table.indexOf("."));
-  const name = TRAVIS_GROUP_SOURCES[group];
+  const name = TRAVIS_GROUP_SOURCES[groupOf(table.table)];
   const source = manifest.sources.find((s) => s.name === name);
-  return source === undefined ? null : { label: sourceLabel(source.name), url: source.url };
+  return source === undefined
+    ? null
+    : { name: source.name, label: sourceLabel(source.name), url: source.url };
 }
 
 /** What a row of the table is, from its export name and the run's own limitations. */
@@ -143,7 +147,7 @@ function describe(table: string, manifest: RunManifestV1): string {
   const scope = manifest.limitations.filter((l) => l.startsWith(`${klass} `));
   return [
     `One row per ${klass} record, exported by elephant-cli from the lexicon class ${klass}.`,
-    ...scope.map((l) => `${l.charAt(0).toUpperCase()}${l.slice(1)}.`),
+    ...scope.map((l) => `Run scope: ${l}.`),
   ].join(" ");
 }
 
@@ -193,11 +197,13 @@ export function Component(): ReactElement {
           const r = results.get(t.table);
           return r?.kind === "ok" && r.columns.some((c) => c.name.toLowerCase().includes(needle));
         });
-  const classTables = shownTables.filter((t) => !isRelationship(t.table));
-  const relationTables = shownTables.filter((t) => isRelationship(t.table));
+  // One list per data group (county, property_improvement): a class name can be in both.
+  const groups = [...new Set(shownTables.map((t) => groupOf(t.table)))];
   const wanted = params.get("table");
   const selected =
-    shownTables.find((t) => t.table === wanted) ?? classTables[0] ?? relationTables[0];
+    shownTables.find((t) => t.table === wanted) ??
+    shownTables.find((t) => !isRelationship(t.table)) ??
+    shownTables[0];
   const failures = [...results.values()].flatMap((r) => (r.kind === "fail" ? [r.reason] : []));
   const allFailed = tables.length > 0 && failures.length === tables.length;
   let unavailable: string | null = null;
@@ -239,6 +245,9 @@ export function Component(): ReactElement {
           onClick={() => {
             choose({ table: table.table });
             setCopied("");
+            // On a phone the folded list puts the chosen table's detail in view (CSS keeps the
+            // list open from 600 px, so this changes nothing wider).
+            setListOpen(false);
           }}
         >
           <Icon name={iconOf(table.table)} size="medium" />
@@ -363,18 +372,24 @@ export function Component(): ReactElement {
                   </button>
                 )}
               </div>
-              <button
-                type="button"
-                className={styles.caption}
-                aria-expanded={listOpen}
-                aria-controls="catalog-tables"
-                onClick={() => setListOpen((open) => !open)}
-              >
-                elephant-cli tables · {runName} · one per class
-                <span className={styles.captionIcon}>
-                  <Icon name={listOpen ? "chevron_left" : "chevron_right"} size="small" />
+              <div className={styles.captionRow}>
+                <span className={styles.caption}>
+                  elephant-cli tables · {runName} · one per class
                 </span>
-              </button>
+                {/* Data390: the list folds away on a phone; from 600 px it is always open. */}
+                <button
+                  type="button"
+                  className={styles.toggle}
+                  aria-label={listOpen ? "Hide the table list" : "Show the table list"}
+                  aria-expanded={listOpen}
+                  aria-controls="catalog-tables"
+                  onClick={() => setListOpen((open) => !open)}
+                >
+                  <span className={listOpen ? styles.chevronUp : styles.chevronDown}>
+                    <Icon name="chevron_right" size="medium" />
+                  </span>
+                </button>
+              </div>
               <div
                 id="catalog-tables"
                 className={styles.lists}
@@ -391,28 +406,41 @@ export function Component(): ReactElement {
                     text="no published table in this run's manifest"
                   />
                 ) : null}
-                {classTables.length > 0 ? (
-                  <ul className={styles.list} aria-label="elephant-cli tables">
-                    {classTables.map(row)}
-                  </ul>
-                ) : null}
-                {relationTables.length > 0 ? (
-                  <details
-                    className={styles.relations}
-                    open={
-                      needle !== "" || (selected !== undefined && isRelationship(selected.table))
-                    }
-                  >
-                    <summary className={styles.row}>
-                      <Icon name="compare_arrows" size="medium" />
-                      <span className={styles.rowName}>relationships/</span>
-                      <span className={styles.rowCount}>{relationTables.length} tables</span>
-                    </summary>
-                    <ul className={styles.list} aria-label="Relationship tables">
-                      {relationTables.map(row)}
-                    </ul>
-                  </details>
-                ) : null}
+                {groups.map((group) => {
+                  const own = shownTables.filter((t) => groupOf(t.table) === group);
+                  const classes = own.filter((t) => !isRelationship(t.table));
+                  const relations = own.filter((t) => isRelationship(t.table));
+                  return (
+                    <div key={group} className={styles.group} data-group={group}>
+                      {groups.length > 1 ? (
+                        <span className={styles.groupName}>{group}/</span>
+                      ) : null}
+                      {classes.length > 0 ? (
+                        <ul className={styles.list} aria-label={`${group} tables`}>
+                          {classes.map(row)}
+                        </ul>
+                      ) : null}
+                      {relations.length > 0 ? (
+                        <details
+                          className={styles.relations}
+                          open={
+                            needle !== "" ||
+                            (selected !== undefined && relations.includes(selected))
+                          }
+                        >
+                          <summary className={styles.row}>
+                            <Icon name="compare_arrows" size="medium" />
+                            <span className={styles.rowName}>relationships/</span>
+                            <span className={styles.rowCount}>{relations.length} tables</span>
+                          </summary>
+                          <ul className={styles.list} aria-label={`${group} relationship tables`}>
+                            {relations.map(row)}
+                          </ul>
+                        </details>
+                      ) : null}
+                    </div>
+                  );
+                })}
                 <span className={styles.subhead}>Also published</span>
                 <ul className={styles.list} aria-label="Also published">
                   <li>
@@ -565,10 +593,10 @@ function TableDetail({
                 </details>
               )}
               <span className={styles.size}>
-                {" · "}
                 <span data-size="" data-value={table.size}>
                   {formatCount(table.size)} bytes
-                </span>
+                </span>{" "}
+                in {table.parts.length} {table.parts.length === 1 ? "file" : "files"}
               </span>
             </dd>
           </div>
@@ -598,7 +626,7 @@ function TableDetail({
             table={table.table}
             klass={klass}
             columns={result.columns}
-            sourceName={isRelationship(table.table) ? "elephant-cli" : (source?.label ?? null)}
+            sourceName={isRelationship(table.table) ? "elephant-cli" : (source?.name ?? null)}
           />
         )}
       </div>
