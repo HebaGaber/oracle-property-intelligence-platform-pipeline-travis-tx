@@ -6,9 +6,9 @@
 // error banner, never an empty lane. The manifest read shows the fallback chip when Filebase
 // served it; the lanes are unaffected. A react-router lazy route module.
 import type { RunManifestV1 } from "@countylens/contract";
-import { PROGRESS_LABELS, type ReadPathUrls } from "@countylens/shared";
+import { PROGRESS_LABELS, verifyPath, type ReadPathUrls } from "@countylens/shared";
 import { useEffect, useState, type ReactElement } from "react";
-import { useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 import { DataTabs } from "../components/DataTabs";
 import { CidDisplay } from "../components/CidDisplay";
 import { ComingSoonEntries } from "../components/ComingSoonEntry";
@@ -114,6 +114,10 @@ async function findCid(run: LoadedRun, cid: string, signal: AbortSignal): Promis
 export function Component(): ReactElement {
   const { cid = "" } = useParams();
   const { state, retry } = useLatestRun();
+  // A bare /data/verify verifies the latest run manifest (hosted review B-6).
+  if (cid === "" && state.kind === "ready") {
+    return <Navigate to={verifyPath(state.run.manifestCid)} replace />;
+  }
   return (
     <section
       aria-label="Data · Verify"
@@ -186,8 +190,9 @@ function VerifyView({ run, cid }: { readonly run: LoadedRun; readonly cid: strin
               {state.found.name}
             </h3>
             <p className={`${runStyles.itemBody} ${styles.targetLine}`}>
-              CID <CidDisplay cid={state.found.target.cid} /> · {state.found.target.size} bytes ·
-              codec {state.found.target.codec} · expected SHA-256{" "}
+              CID <CidDisplay cid={state.found.target.cid} /> ·{" "}
+              {state.found.target.size.toLocaleString("en-US")} bytes · codec{" "}
+              {state.found.target.codec} · expected SHA-256{" "}
               <span className={styles.mono} title={state.found.target.sha256}>
                 {state.found.target.sha256.slice(0, 8)}…{state.found.target.sha256.slice(-4)}
               </span>

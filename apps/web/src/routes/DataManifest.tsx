@@ -258,7 +258,7 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
   return (
     <section className={styles.tableCard} aria-labelledby="artifacts-heading">
       <h3 id="artifacts-heading" className={styles.cardTitle}>
-        Artifacts ({manifest.artifacts.length})
+        Artifacts ({manifest.artifacts.length.toLocaleString("en-US")})
       </h3>
       <div className={`${styles.scroll} ${styles.artifactScroll}`} data-artifact-scroll="">
         <table className={styles.table} aria-label="Artifacts">
@@ -294,7 +294,7 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
                 <td
                   className={styles.num}
                   data-size={artifact.size}
-                  title={`${artifact.size} bytes`}
+                  title={`${artifact.size.toLocaleString("en-US")} bytes`}
                 >
                   {humanBytes(artifact.size)}
                 </td>
@@ -333,7 +333,7 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
       </div>
       {/* Board DataManifest1440 footer strip; every row stays in the scrolled panel above. */}
       <p className={styles.tableFoot}>
-        {manifest.artifacts.length} artifacts · directories and files over{" "}
+        {manifest.artifacts.length.toLocaleString("en-US")} artifacts · directories and files over{" "}
         {VERIFY_MAX_BYTES / 1024 / 1024} MB verify through their CAR
       </p>
     </section>

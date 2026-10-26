@@ -25,6 +25,7 @@ import {
   DerivedCard,
 } from "../components/CatalogFieldTable";
 import { DataTabs } from "../components/DataTabs";
+import { RunSelect } from "../components/RunSelect";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { FallbackChip } from "../components/FallbackChip";
 import { Icon } from "../components/Icon";
@@ -34,7 +35,6 @@ import { StatusPill } from "../components/StatusPill";
 import { truncateCid } from "../components/CidDisplay";
 import { formatUtc } from "../components/Provenance";
 import { coverageRows, type CoverageRow } from "../data/coverage-rows";
-import { formatCount } from "../data/format";
 import {
   catalogTables,
   readTableMeta,
@@ -45,9 +45,11 @@ import type { LoadedRun } from "../data/run-loader";
 import { runName as runNameOf, runNumbers, runsByFinish, type RunNumber } from "../data/runs-index";
 import { COVERAGE_KINDS } from "./Coverage.kinds";
 import { kindOf } from "./Coverage.kinds";
-import { RUN_STAGE_TEXTS, runLabel, useRun } from "./Runs.shared";
-import runsStyles from "./Runs.module.css";
+import { RUN_STAGE_TEXTS, useRun } from "./Runs.shared";
 import styles from "./DataCatalog.module.css";
+
+/** Counts on screen use thousands separators (hosted review); exact values stay in data-* hooks. */
+const formatCount = (n: number): string => n.toLocaleString("en-US");
 
 const TABLES_EXPORT = "tables-export.json";
 const CONCURRENCY = 2;
@@ -285,27 +287,14 @@ export function Component(): ReactElement {
       <div className={styles.head}>
         <h2 className={styles.title}>Data</h2>
         {entries.length > 0 && latestId !== undefined ? (
-          <select
-            className={runsStyles.select}
-            aria-label="Run"
+          // The shared run dropdown (PO rule: a run list of run + date is RunSelect).
+          <RunSelect
+            runs={entries}
             value={run?.entry.runId ?? requestedRun ?? latestId}
-            onChange={(e) => {
-              const next = new URLSearchParams();
-              next.set("run", e.target.value);
-              setParams(next);
-            }}
-          >
-            {entries
-              .map((r) => {
-                const n = numbers.get(r.runId) ?? null;
-                return (
-                  <option key={r.runId} value={r.runId}>
-                    {r.runId === latestId ? `${runNameOf(n)} · current` : runLabel(n, r.finishedAt)}
-                  </option>
-                );
-              })
-              .reverse()}
-          </select>
+            onChange={(runId) => setParams(runId === null ? {} : { run: runId })}
+            label="Run"
+            hideLabel
+          />
         ) : null}
       </div>
       <DataTabs current="catalog" verifyCid={run === null ? null : run.manifestCid} />
