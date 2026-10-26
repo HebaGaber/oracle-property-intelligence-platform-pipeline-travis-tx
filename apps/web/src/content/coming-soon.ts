@@ -57,13 +57,6 @@ export const COMING_SOON_ITEMS: readonly ComingSoonItem[] = Object.freeze([
     skeleton: "list",
   },
   {
-    id: "sql-checks",
-    title: "SQL checks",
-    sentence: "Ready-made SQL checks over the published views are not available yet.",
-    linked: true,
-    skeleton: "list",
-  },
-  {
     id: "pipeline-diagram",
     title: "Pipeline diagram and Gantt",
     sentence: "A diagram and timeline of each run's pipeline stages are not available yet.",
