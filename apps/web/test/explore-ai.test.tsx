@@ -114,7 +114,7 @@ describe("Explore · AI answered (FR-012)", () => {
     expect(at([...rows], 1).querySelector("[data-reason='source_missing']")).not.toBeNull();
     // The missing list gives a reason in words.
     const missing = must(document.querySelector("[data-missing]"));
-    expect(missing.textContent).toContain("tenure_years");
+    expect(missing.textContent).toContain("tenure years");
     expect(missing.textContent).toContain("unknown");
   });
 

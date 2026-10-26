@@ -51,10 +51,12 @@ export const VERIFY_TEXTS = Object.freeze({
 
 /** Explore · Filters, the result rows, permits, owners and the SQL panel. */
 export const EXPLORE_TEXTS = Object.freeze({
+  // Counts carry thousands separators (final review: "68,527", not "68527").
   header: (n: number, r: number, place: string, years: number): string =>
-    `${n} within ${r} mi of ${place} · roof ≥ ${years} yrs`,
+    `${n.toLocaleString("en-US")} within ${r} mi of ${place} · roof ≥ ${years} yrs`,
   /** The header of a search without a roof filter: same wording, no roof clause. */
-  headerNoRoof: (n: number, r: number, place: string): string => `${n} within ${r} mi of ${place}`,
+  headerNoRoof: (n: number, r: number, place: string): string =>
+    `${n.toLocaleString("en-US")} within ${r} mi of ${place}`,
   /** A BAD_REQUEST from explore.search (never the validator's JSON dump). */
   filtersOutOfRange: "Those filters are out of range · check radius, roof age and open years",
   /** `sel` names a property that the current results do not contain. */
@@ -74,7 +76,7 @@ export const EXPLORE_TEXTS = Object.freeze({
   asPrinted: "as printed on permit",
   noCarrier: "not published · no lexicon carrier",
   noOpenPermits: "no open roofing permits in this radius on the current run",
-  tenureUnknownCount: (n: number): string => `tenure unknown: ${n}`,
+  tenureUnknownCount: (n: number): string => `tenure unknown: ${n.toLocaleString("en-US")}`,
   engineBrowser: "DuckDB-WASM in your browser · read-only",
   engineServer: "DuckDB on the server · same views",
   zeroResults: (r: number, k: number): string =>

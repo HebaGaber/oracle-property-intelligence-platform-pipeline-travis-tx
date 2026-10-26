@@ -356,7 +356,7 @@ export function FieldValue({
           reason={missingFor(row, "tenure_years")?.reason}
         />
       ) : (
-        <>{`Owned ${row.tenure_years} yrs`}</>
+        <>{row.tenure_years < 1 ? "Owned < 1 yr" : `Owned ${row.tenure_years} yrs`}</>
       );
     case "tenure_basis":
       return row.tenure_basis === null ? (
@@ -670,6 +670,14 @@ export function ResultRow({
         <span className={styles.meta} data-field="permit">
           <FieldValue row={row} field="permit" />
         </span>
+        {/* Final review: year built and owner on the card when the row carries them (the
+            drawer's Owner and Roof sections hold the fields with their reasons). */}
+        {typeof extras(row).year_built === "number" ? (
+          <span className={styles.meta}>{`Year built ${String(extras(row).year_built)}`}</span>
+        ) : null}
+        {typeof extras(row).owner_name === "string" ? (
+          <span className={styles.meta}>{extras(row).owner_name}</span>
+        ) : null}
         <span className={styles.meta} data-field="tenure_years">
           <FieldValue row={row} field="tenure_years" />
         </span>

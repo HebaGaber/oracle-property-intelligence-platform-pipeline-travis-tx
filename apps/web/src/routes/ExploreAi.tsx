@@ -76,6 +76,46 @@ function missingText(field: string, reason: string): string {
   }
 }
 
+/** Plain words for a contract field name (final review: no raw `snake_case` or dotted names). */
+const FIELD_WORDS: Readonly<Record<string, string>> = {
+  unnormalized_address: "street address",
+  city_name: "city",
+  postal_code: "ZIP",
+  owner_is_out_of_area: "out-of-area owner",
+  owner_area_class: "owner area",
+  owner_mailing_postal_code: "owner mailing ZIP",
+  owner_mailing_state_code: "owner mailing state",
+  name_as_printed: "contractor name",
+  contractor_name_as_printed: "contractor name",
+  status_raw: "status as printed",
+  source_url: "source link",
+};
+const fieldWords = (field: string): string => {
+  const last = field.split(".").pop() ?? field;
+  return FIELD_WORDS[last] ?? last.replaceAll("_", " ");
+};
+
+const ownedText = (years: number): string =>
+  years < 1 ? "Owned < 1 yr" : `Owned ${String(years)} yrs`;
+
+/** A row's gaps, one pill per reason naming its fields in words. */
+function MissingPills({ missing }: { readonly missing: readonly Missing[] }): ReactElement {
+  const groups = new Map<string, string[]>();
+  for (const m of missing) groups.set(m.reason, [...(groups.get(m.reason) ?? []), m.field]);
+  return (
+    <>
+      {[...groups].map(([reason, fields]) => (
+        <StatusPill
+          key={reason}
+          status="unavailable"
+          text={`${missingText(fields[0] ?? "", reason)}: ${fields.map(fieldWords).join(", ")}`}
+          data={{ field: fields.join(","), reason }}
+        />
+      ))}
+    </>
+  );
+}
+
 function statusFor(response: AgentAskResponse): AiState {
   switch (response.outcome) {
     case "answered":
@@ -92,11 +132,20 @@ function statusFor(response: AgentAskResponse): AiState {
 function Match({ match }: { readonly match: AgentMatch }): ReactElement {
   const sourceMissing = match.missing.find((m) => m.field === "source_url");
   const facts: string[] = [];
+  // Optional row fields the API now returns (final review: year built, owner, owned years).
+  const extra = match as {
+    year_built?: number | null;
+    owner_name?: string | null;
+    tenure_years?: number | null;
+  };
   if (match.roof_age_years !== undefined) {
     facts.push(
       `roof ${match.roof_age_years} yrs (${(match.roof_age_basis ?? "basis not stated").replaceAll("_", " ")}${match.roof_age_confidence === undefined ? "" : `, ${match.roof_age_confidence} confidence`})`,
     );
   }
+  if (typeof extra.year_built === "number") facts.push(`Year built ${extra.year_built}`);
+  if (typeof extra.owner_name === "string") facts.push(`Owner ${extra.owner_name}`);
+  if (typeof extra.tenure_years === "number") facts.push(ownedText(extra.tenure_years));
   if (match.permit_number !== undefined) facts.push(`permit ${match.permit_number}`);
   if (match.status_class !== undefined) facts.push(match.status_class.replaceAll("_", " "));
   if (match.open_days !== undefined) facts.push(`open ${match.open_days} days`);
@@ -112,14 +161,7 @@ function Match({ match }: { readonly match: AgentMatch }): ReactElement {
         <p className={styles.facts}>{facts.length === 0 ? match.table : facts.join(" · ")}</p>
         {match.missing.length === 0 ? null : (
           <p className={styles.pills}>
-            {match.missing.map((m) => (
-              <StatusPill
-                key={`${m.field}:${m.reason}`}
-                status="unavailable"
-                text={`${m.field}: ${missingText(m.field, m.reason)}`}
-                data={{ field: m.field, reason: m.reason }}
-              />
-            ))}
+            <MissingPills missing={match.missing as readonly Missing[]} />
           </p>
         )}
         <Provenance
@@ -384,16 +426,6 @@ export function ExploreAi({ onState, ask = askAgent }: ExploreAiProps): ReactEle
               return <p key={i}>{inline}</p>;
             })}
           </div>
-          {response.steps.length === 0 ? null : (
-            <ul className={styles.steps} data-steps="">
-              {response.steps.map((step, i) => (
-                <li key={i}>
-                  <Icon name="check_circle" size="small" />
-                  {step.summary}
-                </li>
-              ))}
-            </ul>
-          )}
 
           {response.run === undefined ? null : (
             <p className={styles.note} data-run="">
@@ -461,7 +493,7 @@ export function ExploreAi({ onState, ask = askAgent }: ExploreAiProps): ReactEle
                   <li key={`${m.field}:${m.reason}`} data-field={m.field} data-reason={m.reason}>
                     <StatusPill
                       status="unavailable"
-                      text={`${m.field}: ${missingText(m.field, m.reason)}`}
+                      text={`${fieldWords(m.field)}: ${missingText(m.field, m.reason)}`}
                       data={{ field: m.field, reason: m.reason }}
                     />
                   </li>
