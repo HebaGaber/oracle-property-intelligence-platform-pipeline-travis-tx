@@ -198,7 +198,8 @@ export function createAgentTools(ctx: AgentToolsContext) {
     description:
       "List roofing permits (replacement roofs), optionally within a radius of a place, " +
       "filtered by status (open, stalled, closed), minimum years open, or an exact permit " +
-      "number (format 'YYYY-NNNNNN XX'). Omitting the area searches county-wide. Returns a " +
+      "number (format 'YYYY-NNNNNN XX'). Omitting the area searches county-wide; with an area, " +
+      "radius_mi is required (use 5 when the user names none). Returns a " +
       "compact list of matches, each carrying a citation index n -- cite rows as [n].",
     inputSchema: ListPermitsInput,
     execute: async (input, options) =>

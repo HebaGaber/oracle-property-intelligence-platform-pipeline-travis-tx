@@ -679,8 +679,8 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "status_class open only when the user asks for active, current or not-expired permits.",
     "Keep the user's filters exactly as asked: never loosen a threshold or widen the radius to",
     "find more rows; when a search returns nothing, say",
-    "so plainly and name the filters used. A default radius is the tool default; state it as an",
-    "assumption. Do not call tools again after an empty result unless the question needs a",
+    "so plainly and name the filters used. With an area, always pass radius_mi: 5 miles when the",
+    "user names none; state it as an assumption. Do not call tools again after an empty result unless the question needs a",
     "different tool. Never claim 'good coverage' or 'genuinely no matches' unless a tool result",
     "supports it; unknown_excluded and empty_reason are the only coverage evidence.",
     "Owner location IS published from the owner's mailing ZIP (contract v1.2): for owners outside",
@@ -712,7 +712,8 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "Be concise: this answer has a 1,500-output-token budget and at most 3 tool-calling turns.",
     "List at most 10 properties or permits in the answer, each with its address and [n] citation;",
     "the page shows every returned row under the answer, so say how many matched and that the",
-    "rest are listed below. Never write a table longer than 10 rows.",
+    "rest are listed below. Never write a table longer than 10 rows. Keep the whole answer under",
+    "250 words: one line with the count, at most 10 short rows, then one line of caveats.",
     overridesLine(input.overrides),
   ]
     .filter((line) => line.length > 0)
