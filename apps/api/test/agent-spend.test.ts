@@ -70,7 +70,7 @@ describe("spend counter (A-14 T008/T015)", () => {
 
   it("readSpend returns paused when spent_usd is above the cap", async () => {
     ddbMock.on(GetCommand).resolves({
-      Item: { pk: "SPEND#2026-10-23", spent_usd: 3.42, model_calls: 25 },
+      Item: { pk: "SPEND#2026-10-23", spent_usd: 5.42, model_calls: 25 },
     });
     const status = await readSpend(ddb, TABLE_NAME, new Date("2026-10-23T12:00:00.000Z"));
     expect(status.paused).toBe(true);

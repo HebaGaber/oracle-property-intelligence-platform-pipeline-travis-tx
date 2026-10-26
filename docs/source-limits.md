@@ -44,7 +44,7 @@ None of these has a bulk source. Every place is classified (22 are records-reque
 | Hosted Permits page, full county | Run 2: first load 24 to 28 s from a home connection, about 45 s from GitHub runners (about 95 MB); count 0.26 s; list 0.56 s | Limit revised to 60 s; list paged at 200 rows |
 | Hosted SQL panel, first query | about 97 s on the full county (A-13) | Later queries are fast |
 | API Lambda, Explore search on the full county | Out of memory at 1 GB, then HTTP 500 at the 29 s limit (2 GB DuckDB cap) | A-13 gap carried to A-16 |
-| Agent model (Bedrock Claude Sonnet 4.6) | 10 requests per minute (story context, 2026-10-17); budget guard pauses at $3 per day | Quota raised, confirmed 2026-10-17 |
+| Agent model (Bedrock Claude Sonnet 4.6) | 10 requests per minute (story context, 2026-10-17); budget guard pauses at $5 per day (raised from $3 on 2026-10-26) | Quota raised, confirmed 2026-10-17 |
 | Account Lambda concurrency | 10, shared by API, agent and MCP | Bursts above 5 requests/s on `/mcp` mostly answer 503 (ERR-64) |
 
 ## 4. Limitations carried in the run report

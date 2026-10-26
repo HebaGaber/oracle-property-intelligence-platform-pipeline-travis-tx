@@ -375,8 +375,8 @@ describe("how/query/missing aggregate across every tool call, not just the last 
 });
 
 describe("documented, reversible config helpers (T023)", () => {
-  it("dailySpendCapUsd reads AI_DAILY_CAP_USD, else spend.ts's $3 default", () => {
-    expect(dailySpendCapUsd({})).toBe(3);
+  it("dailySpendCapUsd reads AI_DAILY_CAP_USD, else spend.ts's $5 default", () => {
+    expect(dailySpendCapUsd({})).toBe(5);
     expect(dailySpendCapUsd({ AI_DAILY_CAP_USD: "0.05" })).toBe(0.05);
   });
 

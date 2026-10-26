@@ -7,14 +7,16 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-/** The daily spend cap (USD) past which `agent.ask` returns `outcome: "paused"` (CLAUDE.md, A7). */
-export const DAILY_SPEND_CAP_USD = 3;
+/** The daily spend cap (USD) past which `agent.ask` returns `outcome: "paused"` (CLAUDE.md, A7).
+ *  PO 2026-10-26: raised from $3 to $5 (CI's hosted agent checks alone used $2.95 that day and
+ *  paused the agent for the demo recording and the evaluator). */
+export const DAILY_SPEND_CAP_USD = 5;
 
 /** Stage 5 review fix (Major #3, alakazam's review): a conservative per-call reservation
  *  (ask.ts's `reserveSpend` call), trued up to the real cost once token usage is known
  *  (ask.ts's `recordSpend(..., { incrementModelCalls: false })`). Large enough that a burst of
  *  concurrent requests cannot all slip through between a read and a later write, small enough
- *  that it does not itself meaningfully overshoot the $3/day cap on its own. */
+ *  that it does not itself meaningfully overshoot the $5/day cap on its own. */
 export const SPEND_RESERVATION_USD = 0.05;
 
 function isConditionalCheckFailed(error: unknown): boolean {

@@ -60,7 +60,7 @@ import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
  *  not apps/api's source, same reason as every other infra/app name pairing in this story). The
  *  alarm's statistic is `Maximum` over 5 minutes, so the value emitted each call must be the
  *  day's running total (`spentUsd` after the increment), not the per-call delta, or the alarm
- *  would never see $2.40. */
+ *  would never see $4.00. */
 export const SPEND_METRIC_NAME = "AiSpendUsd";
 
 // ---------------------------------------------------------------------------------------

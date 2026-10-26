@@ -2,7 +2,7 @@
 // agent-owned CDK resource block of CountyLensApi (infra/src/api-stack.ts): the agent Lambda
 // (arm64, 3,008 MB per AD-27 as amended by AM-09, timeout 25 s, no reserved concurrency — research.md "no reserved
 // Lambda concurrency"), the spend-counter DynamoDB table (on-demand billing, data-model.md
-// "Spend counter"), and the CloudWatch alarm at 80% of the $3/day cap (agent-design.md § "ash"
+// "Spend counter"), and the CloudWatch alarm at 80% of the $5/day cap (agent-design.md § "ash"
 // > "Spend-cap + alarm design").
 //
 // EXPECTED RED until T016 (G-2, wave 1 follow-up, after oracle's concurrent MCP-Lambda edit to
@@ -75,9 +75,9 @@ describe("CountyLensApi agent resources (A-14 T009/T016): Lambda, spend table, 8
     expect(tables[0]?.Properties).not.toHaveProperty("TimeToLiveSpecification");
   });
 
-  it("a CloudWatch alarm fires at 80% of the $3/day spend cap ($2.40)", () => {
-    expect(DAILY_SPEND_CAP_USD).toBe(3);
-    expect(SPEND_ALARM_THRESHOLD_USD).toBeCloseTo(2.4, 5);
+  it("a CloudWatch alarm fires at 80% of the $5/day spend cap ($4.00)", () => {
+    expect(DAILY_SPEND_CAP_USD).toBe(5);
+    expect(SPEND_ALARM_THRESHOLD_USD).toBeCloseTo(4, 5);
     const { template } = synthApi();
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       Threshold: SPEND_ALARM_THRESHOLD_USD,

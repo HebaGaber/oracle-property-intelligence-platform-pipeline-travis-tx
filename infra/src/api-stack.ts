@@ -127,9 +127,9 @@ export const AGENT_TIMEOUT_SECONDS = 25;
  *  with apps/api/src/agent/spend.ts's own DAILY_SPEND_CAP_USD (not imported directly, same
  *  reason as MCP_TOKEN_PARAMETER_NAME above: infra depends on the bundled entry, not the source). */
 export const SPEND_TABLE_NAME = "CountyLensAiSpend";
-/** The daily spend cap (USD) the alarm below watches 80% of. */
-export const DAILY_SPEND_CAP_USD = 3;
-/** 80% of DAILY_SPEND_CAP_USD ($2.40): agent-design.md § "ash" > "Spend-cap + alarm design". */
+/** The daily spend cap (USD) the alarm below watches 80% of (PO 2026-10-26: $3 raised to $5). */
+export const DAILY_SPEND_CAP_USD = 5;
+/** 80% of DAILY_SPEND_CAP_USD ($4.00): agent-design.md § "ash" > "Spend-cap + alarm design". */
 export const SPEND_ALARM_THRESHOLD_USD = DAILY_SPEND_CAP_USD * 0.8;
 /** Powertools EMF metric name the agent Lambda emits per request (`src/agent/ask.ts`, T022). */
 export const SPEND_METRIC_NAME = "AiSpendUsd";

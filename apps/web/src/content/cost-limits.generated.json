@@ -313,7 +313,7 @@
       },
       {
         "step": "Agent model (Bedrock Claude Sonnet 4.6)",
-        "measured": "10 requests per minute (story context, 2026-10-17); budget guard pauses at $3 per day",
+        "measured": "10 requests per minute (story context, 2026-10-17); budget guard pauses at $5 per day (raised from $3 on 2026-10-26)",
         "limit": "Quota raised, confirmed 2026-10-17"
       },
       {
