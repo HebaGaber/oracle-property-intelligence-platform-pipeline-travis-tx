@@ -138,6 +138,7 @@ describe("A-13 routes and URL parameters (contracts/ui-routes.md)", () => {
         "mode",
         "place",
         "view",
+        "page",
       ].sort(),
     );
     expect(EXPLORE_URL_PARAMS).not.toContain("z");

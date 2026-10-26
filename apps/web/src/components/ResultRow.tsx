@@ -497,16 +497,24 @@ export function ResultRow({
       onClick={onClick}
       onKeyDown={onKeyDown}
     >
+      {/* Task B listing order (B-03 ResultRow): title (id, then why there is no address),
+          distance, Open details, expand; then the roof and confidence pills, the permit chip,
+          owned years and owner area; then the short provenance. */}
       <header className={styles.head}>
         <h4 id={titleId} className={styles.title}>
-          <span data-field="address">
-            <FieldValue row={row} field="address" />
-          </span>{" "}
-          <code className={styles.mono} title={row.property_cid}>
-            {truncateCid(row.property_cid)}
-          </code>
+          <span className={styles.titleStack}>
+            <span className={styles.titleMain}>
+              Property{" "}
+              <code className={styles.mono} title={row.property_cid}>
+                {truncateCid(row.property_cid)}
+              </code>
+            </span>
+            <span className={styles.titleSub} data-field="address">
+              <FieldValue row={row} field="address" />
+            </span>
+          </span>
         </h4>
-        <span className={styles.meta} data-field="distance">
+        <span className={styles.distance} data-field="distance">
           <FieldValue row={row} field="distance" />
         </span>
         {onSelect === undefined ? null : (
@@ -515,6 +523,7 @@ export function ResultRow({
             className={styles.iconButton}
             onClick={select}
             aria-label={`Details, property ${row.property_cid}`}
+            title="Open the property"
           >
             <Icon name="info" />
           </button>
@@ -524,35 +533,59 @@ export function ResultRow({
           className={styles.iconButton}
           aria-expanded={open}
           aria-controls={`${titleId}-more`}
-          aria-label="All fields"
+          aria-label={open ? "Collapse details" : "Expand details"}
+          title={open ? "Show less" : "Show more"}
           onClick={() => setOpen((o) => !o)}
         >
           <Icon name="arrow_drop_down" />
         </button>
       </header>
       <div className={styles.chips}>
-        <span className={styles.roof}>
-          <Icon name="roofing" size="small" />
+        {row.roof_age_years === null ? (
           <span data-field="roof_age_years">
             <FieldValue row={row} field="roof_age_years" />
           </span>
-          <span aria-hidden="true">·</span>
+        ) : (
+          <span className={`${styles.pill} ${styles.pillInfo}`}>
+            <Icon name="roofing" size="small" />
+            Roof{" "}
+            <span data-field="roof_age_years">
+              <FieldValue row={row} field="roof_age_years" />
+            </span>
+          </span>
+        )}
+        {row.roof_age_confidence === null ? (
           <span data-field="roof_age_confidence">
             <FieldValue row={row} field="roof_age_confidence" />
           </span>
-        </span>
+        ) : (
+          <span
+            className={`${styles.pill} ${row.roof_age_confidence === "high" ? styles.pillHigh : styles.pillWarn}`}
+          >
+            Confidence{" "}
+            <span data-field="roof_age_confidence">
+              <FieldValue row={row} field="roof_age_confidence" />
+            </span>
+          </span>
+        )}
         <span className={styles.meta} data-field="permit">
           <FieldValue row={row} field="permit" />
         </span>
         <span className={styles.meta} data-field="tenure_years">
           <FieldValue row={row} field="tenure_years" />
         </span>
+        {row.owner_area_class !== null && /out/i.test(row.owner_area_class) ? (
+          <StatusPill status="warning" icon="flight" text="Out-of-area owner" />
+        ) : null}
       </div>
+      <CompactProvenance row={row} />
       <div id={`${titleId}-more`} className={styles.more} hidden={!open}>
+        <p className={styles.cidLine}>
+          Property <CidDisplay cid={row.property_cid} />
+        </p>
         <PropertyFields row={row} fields={MORE_FIELDS} />
         <MissingSummary row={row} />
       </div>
-      <CompactProvenance row={row} />
     </article>
   );
 }

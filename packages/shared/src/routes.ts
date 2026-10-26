@@ -44,5 +44,7 @@ export const EXPLORE_URL_PARAMS = Object.freeze([
   "mode",
   "place",
   "view",
+  // A-16 (PO 2026-10-26): the results page, 1-based (20 rows a page); absent = page 1.
+  "page",
 ] as const);
 export type ExploreUrlParam = (typeof EXPLORE_URL_PARAMS)[number];

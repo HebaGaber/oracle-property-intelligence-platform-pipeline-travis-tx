@@ -109,6 +109,9 @@ async function expectRowFields(
   data: ExploreRowShape | undefined,
   oracle: A13Oracle,
 ): Promise<void> {
+  // A-16 (Task B listing): a result card keeps basis and lat/lon behind "Expand details".
+  const expand = row.getByRole("button", { name: "Expand details" });
+  if ((await expand.count()) > 0) await expand.click();
   for (const field of [
     "address",
     "roof_age_years",
@@ -826,7 +829,12 @@ test.describe("A-13 explorer · filters and property", () => {
     const rows = page.locator(SEL.resultRow);
     await expect(rows).toHaveCount(result.rows.length);
     expect(result.rows.length, "today's run returns rows in the wide area").toBeGreaterThan(0);
-    // 2–3. Every row's cells and provenance.
+    // A-16 (PO 2026-10-26): 20 rows a page; the line under them names the whole total.
+    expect(result.rows.length).toBeLessThanOrEqual(20);
+    await expect(page.locator("[data-showing]")).toHaveText(
+      `Showing 1–${result.rows.length.toLocaleString("en-US")} of ${result.total_within_r.toLocaleString("en-US")}`,
+    );
+    // 2–3. Every row's cells and provenance (the current page).
     const data = byCid(result);
     for (const row of await rows.all()) {
       const cid = (await row.getAttribute("data-property-cid")) ?? "";

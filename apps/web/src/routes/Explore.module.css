@@ -370,16 +370,32 @@
 }
 
 /* The pager under the results (board): "Showing a–b of n", previous, page, next. */
+/* Task B pager footer (B-03 ResultsList): "Showing …" on the left, the page buttons side by side
+   on the right; it wraps under the line on a phone and sticks to the bottom from 600 px. */
 .pager {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-2);
+  gap: 0;
+  background: var(--md-sys-color-surface);
 }
 
 .pager > :first-child {
-  flex: 1 1 auto;
+  flex: 1 1 100%;
+}
+
+@media (min-width: 600px) {
+  .pager {
+    position: sticky;
+    z-index: 2;
+    bottom: 0;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .pager > :first-child {
+    flex-basis: auto;
+  }
 }
 
 .pageButton {
@@ -395,7 +411,9 @@
   color: var(--md-sys-color-on-surface-variant);
   background: transparent;
   cursor: pointer;
-  font: inherit;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
 }
 
 .pageButton:disabled {
@@ -462,4 +480,14 @@
   .page > .pageSearch {
     display: none;
   }
+}
+
+/* Task B pager: numbered page buttons with gaps; the current page on secondary-container. */
+.pageButton.pageOn {
+  color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-secondary-container);
+}
+
+.gap {
+  color: var(--md-sys-color-on-surface-variant);
 }

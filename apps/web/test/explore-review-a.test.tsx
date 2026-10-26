@@ -283,22 +283,26 @@ describe("sel not in the results (finding 10)", () => {
 
 // A-16 T050: the board's pager replaces "Load more" (finding 14 kept: same query, next page).
 describe("Result pager (finding 14, Explore1440 board)", () => {
+  // A-16 (PO 2026-10-26): 20 rows a page, the page in the URL; the mock answers 2 rows a page.
   it("fetches the next page with the same query, shows it and announces the range", async () => {
     api.search.mockImplementation(async (input) =>
       (input.page ?? 0) === 0
-        ? result([0, 1], { total_within_r: 4 })
-        : result([2, 3], { total_within_r: 4 }),
+        ? result([0, 1], { total_within_r: 22 })
+        : result([2, 3], { total_within_r: 22 }),
     );
     await renderExplore("?place=pflugerville&r=5&roof=15");
     await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(api.search.mock.calls.at(-1)?.[0]).toMatchObject({ limit: 20 });
     const showing = (): HTMLElement | null => document.querySelector("[data-showing]");
     expect(showing()?.getAttribute("aria-live")).toBe("polite");
-    expect(showing()?.textContent).toBe("Showing 1–2 of 4");
+    expect(showing()?.textContent).toBe("Showing 1–2 of 22");
     expect(
       (screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled,
     ).toBe(true);
+    expect(screen.getByRole("button", { name: "Page 2" })).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-    await waitFor(() => expect(showing()?.textContent).toBe("Showing 3–4 of 4"));
+    await waitFor(() => expect(showing()?.textContent).toBe("Showing 21–22 of 22"));
+    expect(lastLocation).toContain("page=2");
     expect(api.search.mock.calls.at(-1)?.[0]).toMatchObject({ page: 1, roof: 15, radius_mi: 5 });
     expect(rows()).toHaveLength(2);
     expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(
@@ -306,6 +310,13 @@ describe("Result pager (finding 14, Explore1440 board)", () => {
     );
     // Every row keeps its provenance.
     for (const row of rows()) expect(row.textContent).toContain("travis-test-explore");
+  });
+
+  it("numbers the pages like Task B: first, around the current one, last, with gaps", async () => {
+    const { pageNumbers } = await import("../src/routes/ExploreFilters");
+    expect(pageNumbers(1, 1)).toEqual([1]);
+    expect(pageNumbers(1, 5)).toEqual([1, 2, "gap", 5]);
+    expect(pageNumbers(4, 9)).toEqual([1, "gap", 3, 4, 5, "gap", 9]);
   });
 
   it("disables both page buttons when every row is on one page", async () => {
