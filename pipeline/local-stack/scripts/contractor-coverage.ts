@@ -83,7 +83,10 @@ export function contractorCoverage(
     if (bucket) bucket.push(r);
     else byName.set(key, [r]);
   }
-  const byState = Object.fromEntries(FIVE_STATES.map((s) => [s, 0])) as Record<ResolverState, number>;
+  const byState = Object.fromEntries(FIVE_STATES.map((s) => [s, 0])) as Record<
+    ResolverState,
+    number
+  >;
   const unresolvedBy: Record<string, number> = {};
   let named = 0;
   for (const p of permits) {
@@ -113,16 +116,69 @@ export function contractorCoverage(
   };
 }
 
-function parseArgs(argv: string[]): { group: string; out: string } {
+export function parseArgs(argv: string[]): { group: string; out: string } {
   const a: Record<string, string> = {};
   for (let i = 0; i < argv.length; i += 2) {
     const k = argv[i];
     const v = argv[i + 1];
-    if (k === undefined || !k.startsWith("--") || v === undefined) throw new Error(`bad argument ${k}`);
+    if (k === undefined || !k.startsWith("--") || v === undefined)
+      throw new Error(`bad argument ${k}`);
     a[k.slice(2)] = v;
   }
-  if (a["group"] === undefined || a["out"] === undefined) throw new Error("--group and --out are required");
+  if (a["group"] === undefined || a["out"] === undefined)
+    throw new Error("--group and --out are required");
   return { group: a["group"], out: a["out"] };
+}
+
+/** The tagged-template query function of the postgres client (injected in tests). */
+export type Sql = <T>(strings: TemplateStringsArray, ...values: unknown[]) => Promise<T[]>;
+
+/** The loaded Comptroller registry (read-only) and its latest load row. */
+export async function loadRegistry(sql: Sql): Promise<{
+  registry: ComptrollerRow[];
+  load: { job_id: string; loaded_at: string; source_url: string; watermark: string | null } | null;
+}> {
+  const rows = await sql<{
+    taxpayer_number: string;
+    legal_name: string;
+    sos_status_code: string | null;
+    mailing_address: string | null;
+    sos_file_number: string | null;
+  }>`SELECT taxpayer_number, legal_name, sos_status_code, mailing_address, sos_file_number FROM comptroller_registry`;
+  const [load] = await sql<{
+    job_id: string;
+    loaded_at: Date;
+    source_url: string;
+    watermark: string | null;
+  }>`SELECT job_id, loaded_at, source_url, watermark FROM comptroller_registry_loads ORDER BY loaded_at DESC LIMIT 1`;
+  return {
+    registry: rows.map((r) => ({
+      taxpayerNumber: r.taxpayer_number,
+      legalName: r.legal_name,
+      sosStatusCode: r.sos_status_code ?? "unknown",
+      mailingAddress: r.mailing_address,
+      sosFileNumber: r.sos_file_number,
+    })),
+    load: load === undefined ? null : { ...load, loaded_at: load.loaded_at.toISOString() },
+  };
+}
+
+/** Reads the group and the registry, checks the five-state sum and writes the report. */
+export async function writeCoverageReport(
+  sql: Sql,
+  args: { group: string; out: string },
+  effectiveOn: string,
+): Promise<ContractorCoverage> {
+  const { registry, load } = await loadRegistry(sql);
+  const permits = readPublishedPermits(args.group);
+  const cov = contractorCoverage(permits, registry, effectiveOn);
+  const sum = FIVE_STATES.reduce((n, s) => n + cov.byState[s], 0);
+  if (sum !== cov.permits) throw new Error(`five-state sum ${sum} != permits ${cov.permits}`);
+  writeFileSync(
+    args.out,
+    `${JSON.stringify({ ...cov, effectiveOn, registryLoad: load }, null, 2)}\n`,
+  );
+  return cov;
 }
 
 async function main() {
@@ -135,29 +191,7 @@ async function main() {
   const { default: pg } = await import("postgres");
   const sql = pg(url, { max: 1, onnotice: () => {} });
   try {
-    const rows = await sql<
-      { taxpayer_number: string; legal_name: string; sos_status_code: string | null; mailing_address: string | null; sos_file_number: string | null }[]
-    >`SELECT taxpayer_number, legal_name, sos_status_code, mailing_address, sos_file_number FROM comptroller_registry`;
-    const [load] = await sql<{ job_id: string; loaded_at: Date; source_url: string; watermark: string | null }[]>`
-      SELECT job_id, loaded_at, source_url, watermark FROM comptroller_registry_loads ORDER BY loaded_at DESC LIMIT 1`;
-    const registry: ComptrollerRow[] = rows.map((r) => ({
-      taxpayerNumber: r.taxpayer_number,
-      legalName: r.legal_name,
-      sosStatusCode: r.sos_status_code ?? "unknown",
-      mailingAddress: r.mailing_address,
-      sosFileNumber: r.sos_file_number,
-    }));
-    const permits = readPublishedPermits(args.group);
-    const effectiveOn = new Date().toISOString();
-    const cov = contractorCoverage(permits, registry, effectiveOn);
-    const sum = FIVE_STATES.reduce((n, s) => n + cov.byState[s], 0);
-    if (sum !== cov.permits) throw new Error(`five-state sum ${sum} != permits ${cov.permits}`);
-    const report = {
-      ...cov,
-      effectiveOn,
-      registryLoad: load === undefined ? null : { ...load, loaded_at: load.loaded_at.toISOString() },
-    };
-    writeFileSync(args.out, `${JSON.stringify(report, null, 2)}\n`);
+    const cov = await writeCoverageReport(sql as unknown as Sql, args, new Date().toISOString());
     console.log(
       `[contractor-coverage] permits=${cov.permits} named=${cov.named} ${FIVE_STATES.map((s) => `${s}=${cov.byState[s]}`).join(" ")} unresolved_by=${JSON.stringify(cov.unresolvedBy)} registry_rows=${cov.registryRows}`,
     );

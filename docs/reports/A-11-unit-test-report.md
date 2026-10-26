@@ -90,3 +90,18 @@ Branch `011c-run3-integrated`, run locally on the head of this commit (the featu
 
 Typecheck (`tsc -b`), ESLint and both Prettier checks are clean. Coverage of the changed packages was not measured in this round; the new modules each have their own test file (listed above).
 
+
+## Run 3.1 addendum (2026-10-26, branch `011e-run3-1-permit-contractors`)
+
+Local runs on the final code (the CI run on the same commit is recorded in `docs/gates/G7-A-11-run3-1-precheck.md`):
+
+| Package | Result | New or changed tests |
+| --- | --- | --- |
+| `pipeline/publish` | 408 passed | run-manifest: correction-run options, address-point carry, registry note replaces the old note, contractor coverage cross-check (all five states, sum); publish-run: `PUBLISH_FILEBASE_UNITS` (own units only, unknown ids refused), a tables folder waits for its CAR |
+| `pipeline/local-stack` | contractor-coverage 6 passed | five-state totals, group reading, registry load and report writing with a fake SQL client, argument parsing |
+| `pipeline/oracle-runtime` | permits 31 passed (travis suite 553 passed) | ERR-72: person-only contractor as `company.name`, a printed company wins |
+| `packages/query-core` | 439 passed, 6 skipped | v1.2 address columns and reasons (with and without address fields), owner area reason for a mailing address without a ZIP, view plan |
+| `packages/contract` | 58 passed | v1.2 column list; situs city/ZIP gaps |
+| `apps/web` | 537 passed, 1 skipped (after a fresh build) | sample column count 61 (v1.2) |
+
+Coverage of the changed code (vitest v8, lines): `pipeline/publish/src/run-manifest.ts` 97.6 %, `publish-run.ts` 92.3 %, `manifest.ts` 92.7 % (92.55 % of statements over the three); `pipeline/local-stack/scripts/contractor-coverage.ts` 76.8 %: every exported function is covered; the uncovered lines are the command-line entry (`.env`, database connection, console output), exercised by the real run, which reproduced the published counts exactly (2026-10-26).
