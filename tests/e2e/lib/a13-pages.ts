@@ -68,11 +68,14 @@ export function pageHeading(page: Page): Locator {
   return page.locator("main").getByRole("heading", { level: 2 }).first();
 }
 
-/** Opens the More sheet at any width and returns the dialog. */
+/** The sheet's name: "More" below 600 px, "Coming soon" from 600 px (PO 2026-10-26). */
+const SHEET_NAME = /^(More|Coming soon)$/;
+
+/** Opens the More / Coming soon sheet at any width and returns the dialog. */
 export async function openMore(page: Page): Promise<Locator> {
-  const more = page.getByRole("button", { name: "More", exact: true });
+  const more = page.getByRole("button", { name: SHEET_NAME });
   if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
-  const sheet = page.getByRole("dialog", { name: "More" });
+  const sheet = page.getByRole("dialog", { name: SHEET_NAME });
   await expect(sheet).toBeVisible();
   return sheet;
 }

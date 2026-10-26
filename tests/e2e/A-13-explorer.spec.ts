@@ -8,7 +8,6 @@
 // injected with page.route() in this browser only. The DOM contract is in lib/a13-ui.ts.
 import type { Locator, Page, Route } from "@playwright/test";
 import {
-  COVERAGE_TEXTS,
   DERIVATION_LABELS,
   EXPLORE_TEXTS,
   MISSING_REASON_LABELS,
@@ -146,6 +145,40 @@ async function expectRowFields(
   ).toBe(true);
 }
 
+/** The derivation group a coverage row sits in (its label is said once per group). */
+const derivationGroup = (row: Locator): Locator =>
+  row.locator("xpath=ancestor::*[@data-derivation][1]");
+
+/** The kind card a coverage row belongs to. */
+const kindCardOf = (row: Locator): Locator => row.locator("xpath=ancestor::*[@data-kind][1]");
+
+/**
+ * A "Published vs each source's own total" row: the source_total key when M has one, else the
+ * records read (sources[].records); published rows are a coverage key of M, or "—".
+ */
+async function expectSourceRow(
+  row: Locator,
+  s: A13Oracle["M"]["sources"][number],
+  M: A13Oracle["M"],
+): Promise<void> {
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText(s.name);
+  const total = M.coverage[`source_total:${s.name}`];
+  if (total === undefined) {
+    await expect(row.locator("[data-records]")).toHaveAttribute("data-records", String(s.records));
+  } else {
+    expect(intOf(await row.locator(SEL.count).first().innerText())).toBe(total.count);
+  }
+  const published = row.locator("[data-published]");
+  if ((await published.count()) === 0) {
+    await expect(row).toContainText("—");
+    return;
+  }
+  const key = (await published.getAttribute("data-published-key")) ?? "";
+  expect(M.coverage[key], `published key ${key} in M.coverage`).toBeDefined();
+  await expect(published).toHaveAttribute("data-published", String(M.coverage[key]?.count));
+}
+
 /** The table chip of the kind a coverage row belongs to names a table whose CID is in M. */
 async function expectKindTable(row: Locator, M: A13Oracle["M"]): Promise<void> {
   const kindCard = row.locator("xpath=ancestor::*[@data-kind][1]");
@@ -268,9 +301,13 @@ test.describe("A-13 explorer · demo lines", () => {
       if (M.previousManifestCid === null) {
         await expect(row.getByText(RUNS_TEXTS.firstRun, { exact: true })).toBeVisible();
       } else {
-        await expect(row.locator(SEL.delta("added"))).toHaveText(String(s.added));
-        await expect(row.locator(SEL.delta("changed"))).toHaveText(String(s.changed));
-        await expect(row.locator(SEL.delta("removed"))).toHaveText(String(s.removed));
+        await expect(row.locator(SEL.delta("added"))).toHaveText(s.added.toLocaleString("en-US"));
+        await expect(row.locator(SEL.delta("changed"))).toHaveText(
+          s.changed.toLocaleString("en-US"),
+        );
+        await expect(row.locator(SEL.delta("removed"))).toHaveText(
+          s.removed.toLocaleString("en-US"),
+        );
       }
     }
     // 5. Limitations and the Next sync line.
@@ -309,23 +346,19 @@ test.describe("A-13 explorer · demo lines", () => {
       if (entry === undefined) continue;
       const row = section.locator(`[data-coverage-key="${key}"]`).first();
       expect(intOf(await row.locator(SEL.count).first().innerText())).toBe(entry.count);
+      // PO 2026-10-26: the derivation label heads its group of rows and the collection time is
+      // the kind's one source line, so neither repeats on every row.
       await expect(
-        row.getByText(DERIVATION_LABELS[entry.derivation], { exact: true }),
+        derivationGroup(row).getByText(DERIVATION_LABELS[entry.derivation], { exact: true }),
       ).toBeVisible();
-      await expect(row.locator("time[datetime]").first()).toBeAttached();
+      await expect(kindCardOf(row).locator("time[datetime]").first()).toBeAttached();
       await expectKindTable(row, M);
     }
     await checkpoint(page, "003", 3, { fullPage: true });
-    // 4. Each denominator from a source_total key, else the TC-017 reason.
-    for (const s of M.sources) {
-      const row = section.locator(SEL.denominator(s.name));
-      const total = M.coverage[`source_total:${s.name}`];
-      if (total === undefined) {
-        await expect(row).toContainText(COVERAGE_TEXTS.denominatorMissingFor(s.name));
-      } else {
-        expect(intOf(await row.locator(SEL.count).first().innerText())).toBe(total.count);
-      }
-    }
+    // 4. Each source: its own total (a source_total key, else the records read at capture) and
+    // its published rows from the manifest.
+    for (const s of M.sources)
+      await expectSourceRow(section.locator(SEL.denominator(s.name)), s, M);
     // 5. Each record kind's own card says its denominator (T046, FR-002): the manifest value, or
     // the reason; never blank. Every card carries the in-card line.
     const cards = section.locator("[data-kind]:not([data-kind='other'])");
@@ -582,9 +615,13 @@ test.describe("A-13 explorer · runs and compare", () => {
     for (const s of M.sources) {
       const row = section.locator(SEL.source(s.name));
       if (M.previousManifestCid !== null) {
-        await expect(row.locator(SEL.delta("added"))).toHaveText(String(s.added));
-        await expect(row.locator(SEL.delta("changed"))).toHaveText(String(s.changed));
-        await expect(row.locator(SEL.delta("removed"))).toHaveText(String(s.removed));
+        await expect(row.locator(SEL.delta("added"))).toHaveText(s.added.toLocaleString("en-US"));
+        await expect(row.locator(SEL.delta("changed"))).toHaveText(
+          s.changed.toLocaleString("en-US"),
+        );
+        await expect(row.locator(SEL.delta("removed"))).toHaveText(
+          s.removed.toLocaleString("en-US"),
+        );
       } else {
         await expect(row.getByText(RUNS_TEXTS.firstRun, { exact: true })).toBeVisible();
         await expect(row.locator(SEL.delta("added"))).toHaveCount(0);
@@ -600,15 +637,16 @@ test.describe("A-13 explorer · runs and compare", () => {
     const list = page.getByRole("list", { name: "Limitations" });
     await expect(list).toBeVisible();
     const expected = [...M.limitations, ...M.sources.flatMap((s) => s.limitations)];
-    for (const text of expected)
-      await expect(list.getByText(text, { exact: true }).first()).toBeVisible();
-    const shown = await list.getByRole("listitem").allInnerTexts();
-    for (const item of shown) {
-      expect(
-        expected.some((t) => item.includes(t)),
-        `limitation "${item}" comes from M`,
-      ).toBe(true);
-    }
+    // The first three show; the rest sit behind "Show all N limitations". Long hex runs are cut
+    // on screen, so each item keeps its full note in data-text: exactly M's notes, in order.
+    const more = page.getByText(`Show all ${expected.length} limitations`, { exact: true });
+    if (expected.length > 3) await more.click();
+    const card = list.locator("xpath=..");
+    const shown = await card
+      .locator("li[data-text]")
+      .evaluateAll((els) => els.map((e) => e.getAttribute("data-text") ?? ""));
+    expect(shown, "every limitation of M, in manifest order").toEqual(expected);
+    await expect(card.locator("li[data-text]").last()).toBeVisible();
     await expect(page.getByText(RUNS_TEXTS.nextSync, { exact: true })).toBeVisible();
     await checkpoint(page, "011", 3);
   });
@@ -640,7 +678,7 @@ test.describe("A-13 explorer · runs and compare", () => {
         // No run card and no run chip. (Not every <article>: the Hub's own cards and the Coming
         // soon entries are articles that stay in the error state.)
         await expect(page.locator("#run-title")).toHaveCount(0);
-        await expect(page.getByText(/^Run \d+ · /)).toHaveCount(0);
+        await expect(page.getByText(/^Run \d+(\.\d+)? · /)).toHaveCount(0);
         expect(looksLikeStack(await page.locator("body").innerText())).toBe(false);
         await checkpoint(page, "012", `${name}-${path === "/" ? "hub" : "runs"}`);
       }
@@ -762,7 +800,7 @@ test.describe("A-13 explorer · coverage", () => {
       const count = intOf(await row.locator(SEL.count).first().innerText());
       expect(count, key).toBe(entry.count);
       await expect(
-        row.getByText(DERIVATION_LABELS[entry.derivation], { exact: true }),
+        derivationGroup(row).getByText(DERIVATION_LABELS[entry.derivation], { exact: true }),
       ).toBeVisible();
       // 4. The table chip's CID is in M.artifacts.
       await expectKindTable(row, M);
@@ -796,11 +834,11 @@ test.describe("A-13 explorer · coverage", () => {
         await expect(row.locator(SEL.count)).toHaveCount(0);
       }
     }
-    // 3. Denominators without source_total show the exact line.
+    // 3. Sources without source_total show the records read, never a typed total.
     for (const s of M.sources) {
       if (M.coverage[`source_total:${s.name}`] !== undefined) continue;
       const row = section.locator(SEL.denominator(s.name));
-      await expect(row).toContainText(COVERAGE_TEXTS.denominatorMissingFor(s.name));
+      await expectSourceRow(row, s, M);
       await expect(row.locator(SEL.count)).toHaveCount(0);
     }
     await checkpoint(page, "017", 3, { fullPage: true });

@@ -35,10 +35,17 @@ import runsStyles from "./Runs.module.css";
 
 const DATA = CostLimits.parse(raw);
 
-/** `$9.2469` / `-$9.2469`: four decimals, as the docs print Cost Explorer figures. */
+/** `$9.25` / `-$9.25`: cents. A non-zero amount under a cent reads `< $0.01`, never `$0.00`. */
 export function usd(value: number): string {
-  const text = `$${Math.abs(value).toFixed(4)}`;
+  const abs = Math.abs(value);
+  const text = abs > 0 && abs < 0.005 ? "< $0.01" : `$${abs.toFixed(2)}`;
   return value < 0 ? `-${text}` : text;
+}
+
+/** The doc's cost sentences print Cost Explorer figures to four decimals; show them in cents. */
+export function centsInText(text: string | null): string | null {
+  if (text === null) return null;
+  return text.replace(/\$(\d+\.\d{3,})/g, (_, amount: string) => usd(Number(amount)));
 }
 
 /**
@@ -360,12 +367,12 @@ function CostTableRow({ row }: { readonly row: CostRow }): ReactElement {
             short="Filebase usage: not available"
           />
         ) : (
-          row.idle
+          centsInText(row.idle)
         )}
       </Cell>
-      <Cell label="Per use">{row.perUse}</Cell>
+      <Cell label="Per use">{centsInText(row.perUse)}</Cell>
       <Cell label="Who pays per use">{row.whoPays}</Cell>
-      <Cell label="Seen in the bill">{row.seenInBill}</Cell>
+      <Cell label="Seen in the bill">{centsInText(row.seenInBill)}</Cell>
       {TOGGLE_CELL}
     </tr>
   );

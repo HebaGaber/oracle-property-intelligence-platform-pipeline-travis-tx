@@ -439,7 +439,7 @@ describe("Runs page: sources in manifest order (TC-011)", () => {
 
     expect(within(tcad).getByText(SOURCE_LABELS["tcad-2026-certified-json"])).toBeDefined();
     expect(tcad.textContent).toContain("tcad-2026-certified-json");
-    expect(tcad.textContent).toContain(`${source1.records} records`);
+    expect(tcad.textContent).toContain(`${source1.records.toLocaleString("en-US")} records`);
     // A null watermark is not invented: no "watermark" label on that line.
     expect(source1.watermark).toBeNull();
     expect(tcad.textContent).not.toContain("watermark");
@@ -477,7 +477,7 @@ describe("Runs page: coverage rows (TC-012, TC-031, T060)", () => {
     expect(row.textContent).toContain("Counted from published rows");
   });
 
-  it("shows `No TCAD id on source record` with a true 0 shown as `0` and the aggregate_match helper text", async () => {
+  it("shows `TCAD id matches no property account` with a true 0 shown as `0` and the aggregate_match helper text", async () => {
     await renderRuns();
     await findCard();
 
@@ -667,6 +667,48 @@ describe("Runs page: A-13 run facts (AC-1, FR-001)", () => {
     for (const text of all) expect(within(card).getByText(text)).toBeDefined();
   });
 
+  it("shows the first 3 limitations, the rest behind `Show all N limitations`, with long hex cut to 8 characters", async () => {
+    const digest = "6f7a758568fd03fa200e996d2756559eb53e13241238a004cbadac09ff4c2346";
+    const manifest: RunManifestV1 = {
+      ...fixture.manifest,
+      limitations: [
+        `source unchanged, watermark entry@sha256:${digest}`,
+        "second run note",
+        "third run note",
+        "fourth run note",
+      ],
+    };
+    const manifestBytes = encode(JSON.stringify(manifest));
+    const manifestCid = await rawCid(manifestBytes);
+    installFetch({
+      index: () =>
+        json(
+          JSON.stringify({
+            schema: RUNS_INDEX_SCHEMA,
+            runs: [{ runId: manifest.runId, manifestCid, finishedAt: manifest.finishedAt }],
+          }),
+        ),
+      copy: () => new Response(manifestBytes),
+    });
+    await renderRuns();
+    const card = await findCard();
+    const total =
+      manifest.limitations.length + manifest.sources.flatMap((s) => s.limitations).length;
+    const first = within(card).getByRole("list", { name: "Limitations" });
+    expect(within(first).getAllByRole("listitem")).toHaveLength(3);
+    const more = within(card).getByText(`Show all ${total} limitations`).closest("details");
+    expect(more?.open).toBe(false);
+    expect(more?.querySelectorAll("li")).toHaveLength(total - 3);
+    // Every note is kept in full in data-text, in manifest order.
+    expect(
+      [...card.querySelectorAll("li[data-text]")].map((li) => li.getAttribute("data-text")),
+    ).toEqual([...manifest.limitations, ...manifest.sources.flatMap((s) => s.limitations)]);
+    const hex = card.querySelector(`abbr[data-hex="${digest}"]`);
+    expect(hex?.textContent).toBe("6f7a7585…");
+    expect(hex?.getAttribute("title")).toBe(digest);
+    expect(first.textContent).not.toContain(digest);
+  });
+
   it("shows `first run · nothing to compare against` as each source's delta on a first run", async () => {
     await renderRuns();
     await findCard();
@@ -688,12 +730,14 @@ describe("Runs page: A-13 run facts (AC-1, FR-001)", () => {
     for (const source of withPrevious.manifest.sources) {
       const item = document.querySelector<HTMLElement>(`[data-source="${source.name}"]`);
       expect(item?.textContent).not.toContain(RUNS_TEXTS.firstRun);
-      expect(item?.querySelector('[data-delta="added"]')?.textContent).toBe(String(source.added));
+      expect(item?.querySelector('[data-delta="added"]')?.textContent).toBe(
+        source.added.toLocaleString("en-US"),
+      );
       expect(item?.querySelector('[data-delta="changed"]')?.textContent).toBe(
-        String(source.changed),
+        source.changed.toLocaleString("en-US"),
       );
       expect(item?.querySelector('[data-delta="removed"]')?.textContent).toBe(
-        String(source.removed),
+        source.removed.toLocaleString("en-US"),
       );
     }
   });

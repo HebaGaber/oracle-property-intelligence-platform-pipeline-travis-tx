@@ -516,12 +516,17 @@ export function viewPartNames(
   return boundPartNames(artifacts, views);
 }
 
-/** A-16 A11-11: the first page of the listing (its own ORDER BY, LIMIT one page), validated. */
+/** A-16 A11-11: the first page of the listing, validated. Newest first, as the Permits page
+ *  orders the full list (Permits.page newestFirst), so page 1 stays put when the rest arrives. */
 export async function listFirstPage(
   engine: QueryEngine,
   pageSize: number,
 ): Promise<PermitListRow[]> {
-  return parsePermitRows(await engine.all(`${listRoofingPermitsSql()}\nLIMIT ${pageSize}`));
+  return parsePermitRows(
+    await engine.all(
+      `SELECT * FROM (${listRoofingPermitsSql()})\nORDER BY issue_date DESC NULLS LAST, permit_number, cid\nLIMIT ${pageSize}`,
+    ),
+  );
 }
 
 /** The single page of permits, ordered by permit_number (listRoofingPermitsSql), validated; measured as `countylens:query:list`. */

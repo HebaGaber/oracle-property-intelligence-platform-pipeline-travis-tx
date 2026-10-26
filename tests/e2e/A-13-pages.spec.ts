@@ -369,9 +369,15 @@ test.describe("A-13 pages · Catalog, Legal, Runs log", { tag: "@a13-pages" }, (
         expect(shown, `${table}: columns`).toEqual(expected);
       }
     } else {
-      await expect(section.locator("[data-export-notice]")).toHaveText(
-        PAGE_TEXTS.tableExportMissing,
+      // Batched table directories (…/tables/b01) are a table export too: no notice then.
+      const batched = M.artifacts.some(
+        (a) => a.kind === "directory" && /(^|\/)tables\/b\d+$/.test(a.name),
       );
+      if (batched) await expect(section.locator("[data-export-notice]")).toHaveCount(0);
+      else
+        await expect(section.locator("[data-export-notice]")).toHaveText(
+          PAGE_TEXTS.tableExportMissing,
+        );
       for (const table of tables) {
         // Each table fills in as ITS Parquet footer arrives (progressive render, ERR-41): wait for
         // the "reading the Parquet footer…" note of this row to clear before counting columns. A
@@ -539,7 +545,7 @@ test.describe("A-13 pages · Catalog, Legal, Runs log", { tag: "@a13-pages" }, (
     const items = section.locator("[data-event]");
     await expect(items.first()).toBeVisible({ timeout: 60_000 });
     await checkpoint(page, "057", 1);
-    // 3. Exactly these events, ascending by time, each with its run ID.
+    // 3. Exactly these events, newest first (the board's default order), each with its run ID.
     const shown: Ev[] = await items.evaluateAll((els) =>
       els.map((e) => ({
         runId: e.getAttribute("data-run-id") ?? "",
@@ -554,8 +560,8 @@ test.describe("A-13 pages · Catalog, Legal, Runs log", { tag: "@a13-pages" }, (
     );
     expect(
       shown.map((e) => e.at),
-      "ascending by time",
-    ).toEqual([...shown.map((e) => e.at)].sort((a, b) => a - b));
+      "newest first",
+    ).toEqual([...shown.map((e) => e.at)].sort((a, b) => b - a));
     const shownText = (await items.allInnerTexts()).join("\n");
     for (const label of sourceLabels) expect(shownText, `capture of ${label}`).toContain(label);
     for (const [runId, list] of limitations) {
@@ -577,16 +583,22 @@ const ENTRY: Record<
   string,
   { url: (o: A13Oracle) => string; prep?: (page: Page) => Promise<void> }
 > = {
-  "builder-mode": { url: () => EXPLORE },
-  "other-counties": { url: () => EXPLORE },
+  // PO 2026-10-26: Explore no longer lists these four; they are reached from the More sheet's
+  // "Planned" list (and their /soon/{item} routes).
+  "builder-mode": { url: () => EXPLORE, prep: openMoreSheet },
+  "other-counties": { url: () => EXPLORE, prep: openMoreSheet },
   "street-view": { url: () => exploreUrl(EXPLORE, WIDE), prep: openFirstProperty },
-  "saved-searches": { url: () => EXPLORE },
+  "saved-searches": { url: () => EXPLORE, prep: openMoreSheet },
   "similar-properties": { url: () => exploreUrl(EXPLORE, WIDE), prep: openFirstProperty },
   "pipeline-diagram": { url: () => ROUTES.runs },
-  "area-matrix": { url: () => EXPLORE },
+  "area-matrix": { url: () => EXPLORE, prep: openMoreSheet },
   "timeline-scrubber": { url: () => ROUTES.runs },
   "gateway-race": { url: (o) => verifyPath(o.manifestCid) },
 };
+
+async function openMoreSheet(page: Page): Promise<void> {
+  await openMore(page);
+}
 
 async function openFirstProperty(page: Page): Promise<void> {
   const row = page.locator(SEL.resultRow).first();

@@ -639,12 +639,17 @@ export function describeFilterChanges(steps: AgentAskStep[], question: string): 
       }
     }
     last.set(step.tool, current);
+    // PO 2026-10-26: an "open" permit includes stalled ones (still open, past expiry, never
+    // closed), so open_or_stalled is the reading of "open"; it is a widening only when the
+    // question asks for active / not-expired permits.
     if (
       current.status_class === "open_or_stalled" &&
-      /\bopen\b/i.test(question) &&
+      /\b(active|current|not expired|unexpired)\b/i.test(question) &&
       !/stalled/i.test(question)
     ) {
-      notes.push("status_class widened to open_or_stalled although the question asked for open");
+      notes.push(
+        "status_class widened to open_or_stalled although the question asked for active permits",
+      );
     }
   }
   return [...new Set(notes)];
@@ -669,28 +674,33 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "If the question refers to 'that area' or a prior place, use the most recent area from",
     "turns/overrides unless the question names a new place; call geocodePlace only to",
     "disambiguate, since searchProperties/searchRoofingPermits resolve area.place themselves.",
-    "Keep the user's filters exactly as asked: never loosen a threshold, change open to",
-    "open_or_stalled, or widen the radius to find more rows; when a search returns nothing, say",
-    "so plainly and name the filters used. A default radius is the tool default; state it as an",
-    "assumption. Do not call tools again after an empty result unless the question needs a",
+    "An 'open' permit includes stalled permits (still open, past expiry, never closed): for open",
+    "permits use status_class open_or_stalled and say how many are open and how many stalled; use",
+    "status_class open only when the user asks for active, current or not-expired permits.",
+    "Keep the user's filters exactly as asked: never loosen a threshold or widen the radius to",
+    "find more rows; when a search returns nothing, say",
+    "so plainly and name the filters used. With an area, always pass radius_mi: 5 miles when the",
+    "user names none; state it as an assumption. Do not call tools again after an empty result unless the question needs a",
     "different tool. Never claim 'good coverage' or 'genuinely no matches' unless a tool result",
     "supports it; unknown_excluded and empty_reason are the only coverage evidence.",
-    "owner_is_out_of_area is not in the published export (owner mailing ZIP is not published):",
-    "when asked who lives outside the area, say you cannot tell from the published data",
-    "because it is not in the published export. BBB ratings are not available because BBB",
+    "Owner location IS published from the owner's mailing ZIP (contract v1.2): for owners outside",
+    "the area, set owner_is_out_of_area true and report the matches. Only when a search result",
+    "carries an owner_area notice with status not_published, say the owner's mailing location is",
+    "not in this run's published export. BBB ratings are not available because BBB",
     "blocks automated lookups (bbb_status blocked / not_checked); say that when asked, and give",
     "the permit's bbb_url (a BBB search link) where one is present. The contractor's name AS PRINTED on the permit IS",
     "published (contractor_name_as_printed on each permit row, ERR-78): report it for each permit",
     "that has one, and say 'no contractor printed on this permit' for rows where it is empty;",
-    "never say contractor names are unavailable in general. Whenever the question asks about",
-    "owners outside the area or a BBB rating, call declareUnpublished with those fields in the",
-    "same step as your search. Street addresses are not published: say exactly",
-    "'Address not in the published export'. Write plain words, never field names (say",
+    "never say contractor names are unavailable in general. Whenever the question asks about a",
+    "BBB rating, call declareUnpublished with bbb_status in the same step as your search. Street",
+    "addresses ARE published (address on each property row): name properties by their address;",
+    "only for a row without one say exactly 'Address not in the published export'. Write plain",
+    "words, never field names (say",
     "'contractor name', 'owner lives outside the area', 'year built', not the column names).",
     "Read vague durations as numbers: 'many years' or 'a long time' means open_years_min 5 (at",
     "least 5 years) unless the user gives a number; say the threshold you applied. If the",
-    "question asks for owners outside/out of the area, still run the search with the other",
-    "filters and say that owner location is not in the published export. When the question",
+    "question asks for owners outside/out of the area, run the search with owner_is_out_of_area",
+    "true and the other filters. When the question",
     "contains a permit number (YYYY-NNNNNN XX), ALWAYS call searchRoofingPermits with that",
     "permit_number first, then answer from the result; BBB ratings are not available (BBB",
     "blocks automated lookups), but still report the permit facts you found.",
@@ -700,6 +710,10 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "the published dataset' or 'in the data' as a general claim about all of Travis County.",
     "Your last step writes the final answer with no further tool calls; never end by planning a call.",
     "Be concise: this answer has a 1,500-output-token budget and at most 3 tool-calling turns.",
+    "List at most 10 properties or permits in the answer, each with its address and [n] citation;",
+    "the page shows every returned row under the answer, so say how many matched and that the",
+    "rest are listed below. Never write a table longer than 10 rows. Keep the whole answer under",
+    "250 words: one line with the count, at most 10 short rows, then one line of caveats.",
     overridesLine(input.overrides),
   ]
     .filter((line) => line.length > 0)
@@ -1022,8 +1036,10 @@ export async function runAgentAsk(
         .join("; ");
       extra.push(`Note: the search filters changed during this answer (${changes.join("; ")}).`);
     }
+    // Only when the run does not publish owner location at all; a row without an owner record
+    // (no_owner_record, zip_not_zcta) is a per-row gap, not "cannot tell" (label audit 2026-10-26).
     if (
-      missing.some((m) => m.field === "owner_is_out_of_area") &&
+      missing.some((m) => m.field === "owner_is_out_of_area" && m.reason === "not_in_export") &&
       !(/not in the published export/i.test(cleaned) && /outside the area/i.test(cleaned))
     ) {
       extra.push(

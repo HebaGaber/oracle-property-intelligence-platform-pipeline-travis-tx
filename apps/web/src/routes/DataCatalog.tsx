@@ -52,6 +52,16 @@ import styles from "./DataCatalog.module.css";
 const formatCount = (n: number): string => n.toLocaleString("en-US");
 
 const TABLES_EXPORT = "tables-export.json";
+/** A batched table export directory (Run 1 onward): `…/county-batched/tables/b01`,
+ *  `…/permits-batched/tables/b03`. */
+const BATCHED_TABLES_DIR = /(^|\/)tables\/b\d+$/;
+
+/** True when the run ships a table export: `tables-export.json` or batched table directories. */
+function hasTableExport(artifacts: RunManifestV1["artifacts"]): boolean {
+  return artifacts.some(
+    (a) => a.name === TABLES_EXPORT || (a.kind === "directory" && BATCHED_TABLES_DIR.test(a.name)),
+  );
+}
 const CONCURRENCY = 2;
 /** Shown on a row until its own Parquet footer has been read. */
 const FOOTER_PENDING = "reading the Parquet footer…";
@@ -323,7 +333,7 @@ export function Component(): ReactElement {
       {pageState === "ready" && run !== null ? (
         <>
           <FallbackChip source={run.read.source} />
-          {run.manifest.artifacts.some((a) => a.name === TABLES_EXPORT) ? null : (
+          {hasTableExport(run.manifest.artifacts) ? null : (
             <p className={styles.notice} data-export-notice="">
               {PAGE_TEXTS.tableExportMissing}
             </p>

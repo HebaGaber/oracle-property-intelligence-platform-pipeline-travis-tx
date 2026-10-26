@@ -11,21 +11,22 @@
       "expect": {
         "area_id": "Pflugerville",
         "radius_mi": 5,
-        "applied": { "radius_mi": 5, "roof_age_years_min": 15 },
+        "applied": {
+          "radius_mi": 5,
+          "roof_age_years_min": 15
+        },
         "oracle": {
           "fn": "searchProperties",
           "input": {
-            "area": { "place": "Pflugerville" },
+            "area": {
+              "place": "Pflugerville"
+            },
             "radius_mi": 5,
             "roof_age_years_min": 15,
             "limit": 1000
           }
         },
-        "must_mention": [
-          "Census 2024 Gazetteer",
-          "\\b5\\b",
-          "\\b15\\b"
-        ],
+        "must_mention": ["Census 2024 Gazetteer", "\\b5\\b", "\\b15\\b"],
         "must_flag_missing": [],
         "empty_reason": null,
         "max_steps": 6,
@@ -46,26 +47,21 @@
       "expect": {
         "area_id": "Pflugerville",
         "radius_mi": 5,
-        "applied": { "radius_mi": 5, "status_class": "open", "open_years_min": 5 },
+        "applied": {
+          "radius_mi": 5,
+          "status_class": "open_or_stalled",
+          "open_years_min": 5
+        },
         "oracle": {
           "fn": "listPermits",
           "input": {
-            "area": { "place": "Pflugerville" },
+            "area": {
+              "place": "Pflugerville"
+            },
             "radius_mi": 5,
-            "status_class": "open",
+            "status_class": "open_or_stalled",
             "open_years_min": 5,
             "limit": 1000
-          },
-          "fallback": {
-            "fn": "listPermits",
-            "input": {
-              "area": { "place": "Pflugerville" },
-              "radius_mi": 5,
-              "status_class": "stalled",
-              "open_years_min": 5,
-              "limit": 1000
-            },
-            "when": "primary oracle returns 0 rows"
           }
         },
         "must_mention": [
@@ -91,22 +87,26 @@
       "expect": {
         "area_id": "Manor",
         "radius_mi": 5,
-        "applied": { "radius_mi": 5, "status_class": "open", "open_years_min": 5, "sort": "open_desc" },
+        "applied": {
+          "radius_mi": 5,
+          "status_class": "open_or_stalled",
+          "open_years_min": 5,
+          "sort": "open_desc"
+        },
         "oracle": {
           "fn": "listPermits",
           "input": {
-            "area": { "place": "Manor" },
+            "area": {
+              "place": "Manor"
+            },
             "radius_mi": 5,
-            "status_class": "open",
+            "status_class": "open_or_stalled",
             "open_years_min": 5,
             "sort": "open_desc",
             "limit": 1000
           }
         },
-        "must_mention": [
-          "Manor",
-          "\\b5\\b"
-        ],
+        "must_mention": ["Manor", "\\b5\\b"],
         "must_flag_missing": [],
         "empty_reason": null,
         "sort_field": "open_days",
@@ -127,21 +127,24 @@
         "area_id": "Lakeway",
         "radius_mi": 5,
         "radius_mi_assumption": true,
-        "applied": { "radius_mi": 5, "tenure_years_min": 10, "owner_is_out_of_area": true },
+        "applied": {
+          "radius_mi": 5,
+          "tenure_years_min": 10,
+          "owner_is_out_of_area": true
+        },
         "oracle": {
           "fn": "searchProperties",
           "input": {
-            "area": { "place": "Lakeway" },
+            "area": {
+              "place": "Lakeway"
+            },
             "radius_mi": 5,
             "tenure_years_min": 10,
             "owner_is_out_of_area": true,
             "limit": 1000
           }
         },
-        "must_mention": [
-          "outside the area",
-          "not_in_export|not in the published export"
-        ],
+        "must_mention": ["outside the area", "not_in_export|not in the published export"],
         "must_flag_missing": ["owner_is_out_of_area"],
         "empty_reason": "field_not_published",
         "max_steps": 6,
@@ -159,10 +162,15 @@
       "expect": {
         "permit_number": "{real permit number}",
         "permit_number_from_bound_run": true,
-        "applied": { "permit_number": "{real permit number}" },
+        "applied": {
+          "permit_number": "{real permit number}"
+        },
         "oracle": {
           "fn": "listPermits",
-          "input": { "permit_number": "{real permit number}", "limit": 1 }
+          "input": {
+            "permit_number": "{real permit number}",
+            "limit": 1
+          }
         },
         "must_mention": [
           "{real permit number}",
@@ -186,11 +194,11 @@
         "applied": {},
         "oracle": {
           "fn": "geocodePlace",
-          "input": { "query": "ZIP 99999" }
+          "input": {
+            "query": "ZIP 99999"
+          }
         },
-        "must_mention": [
-          "not.*Travis|out of scope|outside Travis County"
-        ],
+        "must_mention": ["not.*Travis|out of scope|outside Travis County"],
         "must_not_contain_cid": true,
         "matches_length": 0,
         "empty_reason": "out_of_scope",

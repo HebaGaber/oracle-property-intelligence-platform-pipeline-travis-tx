@@ -238,7 +238,8 @@ describe("Explore · Filters rows (AC-4, AC-7, FR-007, FR-022, NFR-003)", () => 
     expect(first.getAttribute("data-property-cid")).toBe(propertyCids[0]);
     expect(field(first, "address")?.textContent).toBe(EXPLORE_TEXTS.addressNotInExport);
     expect(field(first, "roof_age_years")?.textContent).toContain("18");
-    expect(field(first, "roof_age_basis")?.textContent).toBe("permit_anchor");
+    // Codes show in plain words (the code stays in the tooltip).
+    expect(field(first, "roof_age_basis")?.textContent).toBe("permit anchor");
     expect(field(first, "roof_age_confidence")?.textContent).toBe("high");
     expect(field(first, "distance")?.textContent).toBe("1.25 mi NE");
     expect(field(first, "lat_lon")?.textContent).toBe("30.45, -97.6");

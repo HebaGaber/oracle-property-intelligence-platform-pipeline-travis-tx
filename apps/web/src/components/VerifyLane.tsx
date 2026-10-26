@@ -19,6 +19,7 @@ import {
   type VerifyGateway,
   type VerifyTarget,
 } from "../data/verify-lane";
+import { formatBytes } from "../data/format";
 import { Icon } from "./Icon";
 import { StatusPill } from "./StatusPill";
 import styles from "./VerifyLane.module.css";
@@ -113,7 +114,7 @@ export function VerifyLane({
       <dl className={styles.values}>
         <dt>Manifest size</dt>
         <dd data-expected-size="" data-value={target.size}>
-          {target.size}
+          {formatBytes(target.size)}
         </dd>
         <dt>Manifest SHA-256</dt>
         <dd className={styles.digest} data-expected-sha256="" data-value={target.sha256}>
@@ -123,7 +124,7 @@ export function VerifyLane({
           <>
             <dt>Received size</dt>
             <dd data-got-size="" data-value={gotSize}>
-              {gotSize}
+              {formatBytes(gotSize)}
             </dd>
             <dt>SHA-256 computed here</dt>
             <dd className={styles.digest} data-got-sha256="" data-value={gotSha}>

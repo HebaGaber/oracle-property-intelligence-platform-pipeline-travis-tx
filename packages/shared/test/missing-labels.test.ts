@@ -130,8 +130,8 @@ describe("A-03-TC-027: label map covers every reason in missingReasons (FR-011)"
   });
 
   describe("COVERAGE_LABELS (Runs page)", () => {
-    it('labels permits_no_tcad_geoid "No TCAD id on source record"', () => {
-      expect(COVERAGE_LABELS.permits_no_tcad_geoid).toBe("No TCAD id on source record");
+    it('labels permits_no_tcad_geoid "TCAD id matches no property account"', () => {
+      expect(COVERAGE_LABELS.permits_no_tcad_geoid).toBe("TCAD id matches no property account");
     });
   });
 

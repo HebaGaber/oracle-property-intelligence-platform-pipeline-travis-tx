@@ -12,6 +12,34 @@ export const COVERAGE_KIND_MISSING = COVERAGE_TEXTS.kindAbsent;
 export const COVERAGE_TABLE_MISSING = "no published table for this kind in this run";
 /** Shown when the kind's source is not among the manifest's sources. */
 export const COVERAGE_SOURCE_MISSING = "source not in this run's manifest";
+/** A kind with no coverage key whose rows are still in a published table of this run. */
+export const COVERAGE_KIND_IN_TABLE = "No count recorded · rows are in the published table";
+/** A kind with no coverage key, no reason of its own and no published table. */
+export const COVERAGE_KIND_NOT_COLLECTED = "Not collected in this run";
+/** The short "Source total" line when the manifest has no `source_total:{source}` key. */
+export const COVERAGE_TOTAL_MISSING = "no source total recorded";
+/** A source whose rows are read but not published as rows of their own (e.g. address points). */
+export const COVERAGE_NOT_PUBLISHED = "not published as rows";
+
+/**
+ * Readable names of the manifest's sources (static words; the raw id stays beside them). A
+ * source not listed here is shown by its id.
+ */
+export const SOURCE_TITLES: Readonly<Record<string, string>> = Object.freeze({
+  "tcad-2026-certified-json": "TCAD 2026 certified roll",
+  "austin-3syk-w9eu": "Austin building permits",
+  "austin-address-points": "Austin address points",
+});
+
+/**
+ * The coverage key that counts the published rows of a source's records (data audit
+ * 2026-10-26): the county property rows come from the TCAD roll, the permit rows from the Austin
+ * permit dataset. The numbers themselves are read from the manifest; a missing key shows "—".
+ */
+export const SOURCE_PUBLISHED_KEY: Readonly<Record<string, string>> = Object.freeze({
+  "tcad-2026-certified-json": "parcels_published",
+  "austin-3syk-w9eu": "permits_emitted",
+});
 
 export interface CoverageKind {
   readonly id: string;
@@ -21,6 +49,11 @@ export interface CoverageKind {
   readonly source: string | null;
   /** `{group}/{table}` under `tables/`, when the kind is published as a table. */
   readonly table: string | null;
+  /**
+   * Why the kind has no count when the run collects none (docs/source-limits.md); null when the
+   * generic reasons apply (rows in a published table, or not collected).
+   */
+  readonly reason: string | null;
 }
 
 export const COVERAGE_KINDS: readonly CoverageKind[] = Object.freeze([
@@ -30,6 +63,7 @@ export const COVERAGE_KINDS: readonly CoverageKind[] = Object.freeze([
     prefixes: ["parcels_"],
     source: "tcad-2026-certified-json",
     table: "county/property",
+    reason: null,
   },
   {
     id: "ownership",
@@ -37,6 +71,7 @@ export const COVERAGE_KINDS: readonly CoverageKind[] = Object.freeze([
     prefixes: ["owner_", "confidential_"],
     source: "tcad-2026-certified-json",
     table: "county/sales_history",
+    reason: null,
   },
   {
     id: "permit",
@@ -44,6 +79,7 @@ export const COVERAGE_KINDS: readonly CoverageKind[] = Object.freeze([
     prefixes: ["permits_", "roof_age_"],
     source: "austin-3syk-w9eu",
     table: "property_improvement/property_improvement",
+    reason: null,
   },
   {
     id: "contractor",
@@ -52,16 +88,41 @@ export const COVERAGE_KINDS: readonly CoverageKind[] = Object.freeze([
     source: "austin-3syk-w9eu",
     // The printed-name company links (Run 3 manifest limitation; data audit 2026-10-26, row 7).
     table: "property_improvement/property_improvement_has_contractor",
+    reason: null,
   },
-  { id: "bbb", title: "BBB by status", prefixes: ["bbb_"], source: null, table: null },
-  { id: "business", title: "Business", prefixes: ["business_"], source: null, table: null },
-  { id: "places", title: "Places", prefixes: ["places_"], source: null, table: null },
+  {
+    id: "bbb",
+    title: "BBB by status",
+    prefixes: ["bbb_"],
+    source: null,
+    table: null,
+    // docs/source-limits.md: HTTP 403 Cloudflare challenge, never bypassed.
+    reason: "Not collected · bbb.org blocks automated access",
+  },
+  {
+    id: "business",
+    title: "Business",
+    prefixes: ["business_"],
+    source: null,
+    table: null,
+    // The Comptroller registry is a lookup for the contractor match (see Known limitations).
+    reason: "Not published · the business registry only feeds the contractor match",
+  },
+  {
+    id: "places",
+    title: "Places",
+    prefixes: ["places_"],
+    source: null,
+    table: null,
+    reason: "Not collected · no places source in this run",
+  },
   {
     id: "coordinates",
     title: "Coordinates",
     prefixes: ["coordinates_"],
     source: "tcad-2026-certified-json",
     table: "county/geometry",
+    reason: null,
   },
 ]);
 
@@ -71,6 +132,7 @@ export const OTHER_KIND: CoverageKind = Object.freeze({
   prefixes: [],
   source: null,
   table: null,
+  reason: null,
 });
 
 /** A key's label when COVERAGE_LABELS has none: its words ("contractor_resolved" → "contractor resolved"). */

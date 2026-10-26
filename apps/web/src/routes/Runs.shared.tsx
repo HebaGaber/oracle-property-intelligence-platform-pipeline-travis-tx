@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState, type ReactElement, type ReactNode } f
 import styles from "./Runs.module.css";
 import { Provenance } from "../components/Provenance";
 import { readPathUrlsFromEnv } from "../data/config";
+import { formatCount } from "../data/format";
 import type { RunEvent } from "../data/run-events";
 import { loadManifest, type LoadedManifest } from "../data/manifest";
 import {
@@ -336,9 +337,9 @@ export function SourceDeltas({
   if (firstRun) return <span>{RUNS_TEXTS.firstRun}</span>;
   return (
     <span>
-      vs previous run: added <span data-delta="added">{added}</span> · changed{" "}
-      <span data-delta="changed">{changed}</span> · removed{" "}
-      <span data-delta="removed">{removed}</span>
+      vs previous run: added <span data-delta="added">{formatCount(added)}</span> · changed{" "}
+      <span data-delta="changed">{formatCount(changed)}</span> · removed{" "}
+      <span data-delta="removed">{formatCount(removed)}</span>
     </span>
   );
 }

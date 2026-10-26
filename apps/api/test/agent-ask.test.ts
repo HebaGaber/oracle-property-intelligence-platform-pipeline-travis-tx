@@ -444,7 +444,7 @@ describe("ERR-61: an unfinished loop is never 'answered'", () => {
 });
 
 describe("ERR-61/62: a changed filter is stated, never silent", () => {
-  it("radius 5 -> 10 and open -> open_or_stalled appear in answer, how and query", async () => {
+  it("radius 5 -> 10 and active -> open_or_stalled appear in answer, how and query", async () => {
     const loop: RunModelLoop = async () => ({
       text: "No matches.",
       steps: [
@@ -463,7 +463,7 @@ describe("ERR-61/62: a changed filter is stated, never silent", () => {
       totalTokens: 10,
     });
     const result = await runAgentAsk(
-      { prompt: "Which have open roofing permits open for 5 years?" },
+      { prompt: "Which have active roofing permits open for 5 years?" },
       baseDeps({ runModelLoop: loop }),
     );
     expect(result.answer).toContain("open_years_min changed from 3 to 1");
@@ -473,10 +473,34 @@ describe("ERR-61/62: a changed filter is stated, never silent", () => {
   });
 });
 
-describe("ERR-62/63: contract missing[] names and honest owner-location statement", () => {
-  it("owner_is_out_of_area filter -> missing lists it and the answer says not in the published export", async () => {
+describe("PO 2026-10-26: an open permit includes stalled ones", () => {
+  it("open -> open_or_stalled is the reading of 'open', not a widening note", async () => {
     const loop: RunModelLoop = async () => ({
-      text: "No properties matched; the dataset had good coverage.",
+      text: "298 permits matched.",
+      steps: [
+        {
+          tool: "searchRoofingPermits",
+          input: { status_class: "open_or_stalled", open_years_min: 5 },
+          summary: "",
+        },
+      ],
+      toolOutputs: [EMPTY_ENVELOPE({ status_class: "open_or_stalled", open_years_min: 5 })],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk(
+      { prompt: "Which properties have open roofing permits open for many years?" },
+      baseDeps({ runModelLoop: loop }),
+    );
+    expect(result.answer).not.toContain("widened to open_or_stalled");
+  });
+});
+
+describe("ERR-62/63: contract missing[] names and honest owner-location statement", () => {
+  // Label audit 2026-10-26: contract v1.2 publishes the owner mailing ZIP, so an applied
+  // out-of-area filter is not a gap; only a run whose search says owner_area not_published is.
+  it("owner_is_out_of_area filter on a run that publishes owner area -> not listed as missing", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "No properties matched these filters.",
       steps: [
         {
           tool: "searchProperties",
@@ -493,12 +517,57 @@ describe("ERR-62/63: contract missing[] names and honest owner-location statemen
       { prompt: "Homes near Lakeway with owners outside the area?" },
       baseDeps({ runModelLoop: loop }),
     );
+    expect(result.missing.some((m) => m.field === "owner_is_out_of_area")).toBe(false);
+    expect(result.answer).not.toMatch(/cannot tell which owners live outside the area/);
+    expect(result.query).toMatchObject({ radius_mi: 5 });
+  });
+
+  it("rows without an owner record do not make the answer say owner location is unpublished", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "Two properties matched.",
+      steps: [{ tool: "searchProperties", input: { roof_age_years_min: 15 }, summary: "" }],
+      toolOutputs: [
+        {
+          ...EMPTY_ENVELOPE({ radius_mi: 5, roof_age_years_min: 15 }),
+          unpublished: [{ field: "owner_is_out_of_area", reason: "no_owner_record" }],
+        },
+      ],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk(
+      { prompt: "Old roofs near Austin?" },
+      baseDeps({ runModelLoop: loop }),
+    );
+    expect(result.answer).not.toMatch(/cannot tell which owners live outside the area/);
+  });
+
+  it("owner_area not_published notice -> missing lists it and the answer says not in the published export", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "No properties matched; the dataset had good coverage.",
+      steps: [
+        {
+          tool: "searchProperties",
+          input: { tenure_years_min: 10, owner_is_out_of_area: true },
+          summary: "",
+        },
+      ],
+      toolOutputs: [
+        {
+          ...EMPTY_ENVELOPE({ radius_mi: 5, tenure_years_min: 10, owner_is_out_of_area: true }),
+          owner_area: { status: "not_published" },
+        },
+      ],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk(
+      { prompt: "Homes near Lakeway with owners outside the area?" },
+      baseDeps({ runModelLoop: loop }),
+    );
     expect(result.missing).toContainEqual({
       field: "owner_is_out_of_area",
       reason: "not_in_export",
     });
     expect(result.answer).toMatch(/not in the published export/);
-    expect(result.query).toMatchObject({ radius_mi: 5 });
   });
 
   it("contractor/BBB questions flag the contract names, not the column names", async () => {

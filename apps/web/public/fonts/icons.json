@@ -37,6 +37,8 @@
     "info",
     "integration_instructions",
     "inventory_2",
+    "left_panel_close",
+    "left_panel_open",
     "license",
     "lightbulb",
     "location_on",
@@ -68,5 +70,5 @@
     "view_list",
     "warning"
   ],
-  "regenerate": "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=<comma-separated icon_names>&display=block (fetch with a modern browser User-Agent, download the woff2 URL in the response)"
+  "regenerate": "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=<comma-separated icon_names>&display=block (fetch with a modern browser User-Agent, download the woff2 URL in the response; save it as material-symbols-rounded-subset-<first 8 hex of its SHA-256>.woff2 and update fonts.css and index.html)"
 }

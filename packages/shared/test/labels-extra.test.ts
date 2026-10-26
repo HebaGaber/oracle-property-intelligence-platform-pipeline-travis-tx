@@ -47,7 +47,7 @@ describe("A-03-TC-027: fixed UI texts of packages/shared (plan § Fixed texts an
     });
 
     it("keeps the W1 permits_no_tcad_geoid label (TC-031)", () => {
-      expect(COVERAGE_LABELS.permits_no_tcad_geoid).toBe("No TCAD id on source record");
+      expect(COVERAGE_LABELS.permits_no_tcad_geoid).toBe("TCAD id matches no property account");
     });
   });
 

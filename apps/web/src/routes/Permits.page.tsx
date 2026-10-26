@@ -4,7 +4,8 @@
 // aria-busy container; the table (≥ 600 px) or cards (< 600 px) mount only in `ready`, so no
 // empty table ever flashes (FR-008); `empty` only when the manifest count and the row count are
 // both 0 (TC-029); any other difference is the count-mismatch error (FR-009); an engine failure
-// is the fixed engine text. Rows are ordered by permit_number and ALL stay in memory (the count
+// is the fixed engine text. Rows show newest first (issue_date descending, undated last; the
+// engine's permit_number order breaks ties) and ALL stay in memory (the count
 // check above needs every row), but only one client-side page of PERMITS_PAGE_SIZE is rendered
 // with a Previous/Next pager: at full-county scale (about 15,000 rows) rendering every row is
 // roughly 950,000 DOM elements and freezes slow browsers. No sorting, sticky header or column
@@ -13,6 +14,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
   useSyncExternalStore,
   type ReactElement,
@@ -54,6 +56,12 @@ export const TABLE_MEDIA_QUERY = "(min-width: 600px)";
 /** A11-11: shown under the pager while the first page is up and the rest is still loading. */
 export const FIRST_PAGE_NOTE =
   "First page shown. The other permits and the count check against the manifest are still loading.";
+
+/** Newest permit first: issue_date descending, undated rows last; the sort is stable, so rows of
+ *  one date keep the engine's permit_number order. */
+export function newestFirst(rows: readonly PermitListRow[]): PermitListRow[] {
+  return [...rows].sort((a, b) => (b.issue_date ?? "").localeCompare(a.issue_date ?? ""));
+}
 
 export type PermitsState =
   | { readonly kind: "loading"; readonly stage: string }
@@ -494,10 +502,9 @@ export function PermitsPage({ load }: PermitsPageProps): ReactElement {
   }, [load, attempt]);
 
   const shown = state.kind === "ready" || state.kind === "first-page" ? state : null;
-  const visible =
-    shown === null
-      ? []
-      : shown.data.rows.slice(page * PERMITS_PAGE_SIZE, (page + 1) * PERMITS_PAGE_SIZE);
+  const rows = shown?.data.rows;
+  const ordered = useMemo(() => (rows === undefined ? [] : newestFirst(rows)), [rows]);
+  const visible = ordered.slice(page * PERMITS_PAGE_SIZE, (page + 1) * PERMITS_PAGE_SIZE);
 
   return (
     <section

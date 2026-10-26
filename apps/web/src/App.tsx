@@ -30,7 +30,13 @@ const children: RouteObject[] = ROUTE_LIST.map((entry) =>
     : { path: pathOf(entry.path), lazy: entry.load },
 );
 
-export const routes: RouteObject[] = [{ path: "/", Component: Root, children }];
+// Any other address renders ComingSoon's "Page not found" inside the shell, never the router's
+// developer 404 page.
+const notFound: RouteObject = { path: "*", lazy: () => import("./routes/ComingSoon") };
+
+export const routes: RouteObject[] = [
+  { path: "/", Component: Root, children: [...children, notFound] },
+];
 
 export function App(): ReactElement {
   const router = useMemo(() => createBrowserRouter(routes), []);

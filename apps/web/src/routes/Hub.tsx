@@ -256,17 +256,7 @@ export function Component(): ReactElement {
           Counties: Travis County, TX live · other counties coming soon
         </p>
 
-        <nav className={styles.links} aria-label="More about CountyLens">
-          <Link className={styles.link} to={ROUTES.legalTerms}>
-            Terms
-          </Link>
-          <Link className={styles.link} to={ROUTES.legalPrivacy}>
-            Privacy
-          </Link>
-          <Link className={styles.link} to={ROUTES.legalData}>
-            Data licences
-          </Link>
-        </nav>
+        {/* Terms, Privacy and Data licences are in the footer of every page (PO 2026-10-26). */}
       </div>
     </section>
   );

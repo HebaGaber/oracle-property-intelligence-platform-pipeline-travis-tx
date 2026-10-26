@@ -1,9 +1,9 @@
 // Help · MCP (`/help/mcp`; A-13 T031, FR-023, D-12; TC-042). The six fixed tools of the
 // CountyLens MCP server (ARD AD-21: each ≤ 1,000 rows, no SQL tool; P0-13), each with one
-// sentence on what it answers and its input. `search_properties` input is read from the bounds
-// exported by @countylens/query-core (EXPLORE_BOUNDS, PERMIT_FILTERS, EXPLORE_SORTS, limits), never
-// retyped; the other five tools' input schemas are not in query-core yet and say so. Setup snippets
-// for Claude Desktop, Claude Code and MCP Inspector carry `Authorization: Bearer <token>` (the
+// sentence on what it answers and its input. `search_properties` input lists the tool's own
+// arguments (query-core SearchPropertiesInput, keyed by its type so a renamed argument fails
+// tsc), with the bounds and enums query-core exports; the other five tools point to tools/list.
+// Setup snippets for Claude Desktop, Claude Code and MCP Inspector carry `Authorization: Bearer <token>` (the
 // token is shared privately with reviewers). One "Try a tool" control (A-14 T034) runs the chosen
 // tool through the server-side proxy `mcpProxy.callTool` (data/mcp-try.ts): read-only, the same
 // input schemas and result envelope as the MCP server, and no token in the browser. The result
@@ -11,10 +11,10 @@
 // every error plainly; nothing is shown that the server did not return. A react-router lazy route module.
 import {
   EXPLORE_BOUNDS,
-  EXPLORE_DEFAULT_LIMIT,
   EXPLORE_SORTS,
   MAX_ROWS,
-  PERMIT_FILTERS,
+  PROPERTY_STATUS_CLASSES,
+  type SearchPropertiesInput,
 } from "@countylens/query-core";
 import { MCP_TRY_TEXTS } from "@countylens/shared";
 import { useState, type ReactElement } from "react";
@@ -49,23 +49,22 @@ const MCP_TOOLS = Object.freeze([
 
 const range = ([min, max]: readonly [number, number]): string => `${min} to ${max}`;
 
-/** `search_properties` parameters, every bound from query-core. */
-const SEARCH_PARAMS: readonly { readonly name: string; readonly text: string }[] = [
-  { name: "radius_mi", text: `radius in miles, ${range(EXPLORE_BOUNDS.radiusMi)}` },
-  { name: "roof", text: `roof age at least this many years, ${range(EXPLORE_BOUNDS.roof)}` },
-  { name: "permit", text: `permit filter: ${PERMIT_FILTERS.join(", ")}` },
-  {
-    name: "openYrs",
-    text: `open or stalled at least this many years, ${range(EXPLORE_BOUNDS.openYrs)}`,
-  },
-  { name: "tenure", text: `owner tenure over this many years, ${range(EXPLORE_BOUNDS.tenure)}` },
-  { name: "ooa", text: "out-of-area owner only, true or false" },
-  { name: "sort", text: `sort: ${EXPLORE_SORTS.join(", ")}` },
-  {
-    name: "limit",
-    text: `rows per call, 1 to ${MAX_ROWS}, default ${EXPLORE_DEFAULT_LIMIT}`,
-  },
-];
+/** `search_properties` arguments, in SearchPropertiesInput's order; bounds as its Zod schema. */
+const SEARCH_ARGS: Readonly<Record<keyof SearchPropertiesInput, string>> = Object.freeze({
+  manifest_cid: "optional run manifest CID; omitted = the run the server reads",
+  area: 'a place, { "place": "Austin" }, or a point, { "lat": 30.27, "lon": -97.74 }',
+  radius_mi: `radius in miles, ${range(EXPLORE_BOUNDS.radiusMi)}`,
+  roof_age_years_min: `roof age at least this many whole years, ${range(EXPLORE_BOUNDS.roof)}`,
+  tenure_years_min: "owner tenure more than this many whole years, 1 to 100",
+  owner_is_out_of_area: "true: out-of-area owners only",
+  status_class: `permit status: ${PROPERTY_STATUS_CLASSES.join(", ")}`,
+  open_years_min: `with status_class: open at least this many years, ${range(
+    EXPLORE_BOUNDS.openYrs,
+  )}`,
+  sort: `sort: ${EXPLORE_SORTS.join(", ")}; default nearest`,
+  limit: `rows per call, 1 to ${MAX_ROWS}, default 50`,
+});
+const SEARCH_PARAMS = Object.entries(SEARCH_ARGS).map(([name, text]) => ({ name, text }));
 
 const BEARER = "Authorization: Bearer <token>";
 
@@ -94,7 +93,7 @@ const SNIPPETS = Object.freeze([
 /** Starting arguments per tool; the visitor edits them. No invented identifiers. */
 const EXAMPLES: Readonly<Record<McpTryTool, string>> = Object.freeze({
   search_properties:
-    '{\n  "area": { "place": "Pflugerville" },\n  "radius_mi": 5,\n  "roof_age_years_min": 15,\n  "limit": 5\n}',
+    '{\n  "area": { "place": "Austin" },\n  "radius_mi": 5,\n  "roof_age_years_min": 15,\n  "limit": 5\n}',
   list_permits: '{\n  "status_class": "open_or_stalled",\n  "limit": 5\n}',
   get_property: '{\n  "property_cid": "<a property_cid from search_properties>"\n}',
   get_coverage: "{}",

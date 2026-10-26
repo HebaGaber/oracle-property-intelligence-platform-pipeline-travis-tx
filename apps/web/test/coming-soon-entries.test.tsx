@@ -80,13 +80,17 @@ describe("Coming soon entry points", () => {
     expect(css).toMatch(/min-height:\s*var\(--space-9\)/);
   });
 
-  it("Explore · Filters: Builder mode, Saved searches, Area matrix", async () => {
+  // PO 2026-10-26: Explore no longer lists its four Coming soon items above the results; they
+  // stay in the More sheet's "Planned" list and at /soon/{item}.
+  it("Explore · Filters: no Coming soon strip above the results", async () => {
     const { container } = await renderAt(
       "/tx/travis/explore",
       "/tx/travis/explore",
       () => import("../src/routes/Explore"),
     );
-    for (const id of ["builder-mode", "saved-searches", "area-matrix"]) expectEntry(container, id);
+    for (const id of ["builder-mode", "saved-searches", "area-matrix", "other-counties"]) {
+      expect(container.querySelector(`[data-coming-soon-entry="${id}"]`)).toBeNull();
+    }
     expectNoAiUser(container);
   });
 

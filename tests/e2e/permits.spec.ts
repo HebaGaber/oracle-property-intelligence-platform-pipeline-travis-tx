@@ -675,7 +675,8 @@ async function walkPermits(
 // ---------------------------------------------------------------------------------------
 
 test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
-  test.describe.configure({ timeout: 5 * 60_000 });
+  // 20 rows a page since 2026-10-26: walking every page of the full county is ~750 Next clicks.
+  test.describe.configure({ timeout: 20 * 60_000 });
 
   test.describe("A-03-TC-020 Permits list via DuckDB-WASM (happy path, demo D-1/D-4)", () => {
     test("@scenario:A-03-TC-020", async ({ page, run }, testInfo) => {

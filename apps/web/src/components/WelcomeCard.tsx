@@ -14,9 +14,9 @@ export const WELCOME_TEXT =
   "Public property, permit and owner records for Travis County, TX. Ask in plain English, or use the Filters. Every answer shows its sources.";
 /** The board's three sample questions (the first two are the README demo prompts' shape). */
 export const WELCOME_QUESTIONS: readonly string[] = Object.freeze([
-  "Which properties within five miles of Pflugerville have roofs older than 15 years?",
-  "Which properties near Pflugerville have open roofing permits that have been open for many years, and who is the listed contractor?",
-  "Out-of-area owners with roofs over 20 years within 5 miles",
+  "Which properties within five miles of Austin have roofs older than 15 years?",
+  "Which properties near Austin have open roofing permits that have been open for many years, and who is the listed contractor?",
+  "Out-of-area owners with roofs over 20 years within 5 miles of Austin",
 ]);
 const STORAGE_KEY = "countylens.welcome.dismissed";
 

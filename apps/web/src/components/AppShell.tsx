@@ -23,7 +23,6 @@ import {
 } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { COMING_SOON_ITEMS } from "../content/coming-soon";
-import { MORE_PAGES } from "../routes/route-list";
 
 import {
   AdminAccessProvider,
@@ -33,13 +32,21 @@ import {
   hasStoredSession,
 } from "./AdminNav";
 import { CountySelect } from "./CountySelect";
-import { AppRows, AppsMenu, HelpMenu, WELCOME_PATH } from "./HelpMenu";
+import { AppRows, AppsMenu, HelpMenu } from "./HelpMenu";
 import { SyncBadge } from "./SyncBadge";
+import { useMinWidth } from "../data/use-min-width";
 import { Icon } from "./Icon";
 import styles from "./AppShell.module.css";
 
 export const APP_TITLE = "CountyLens";
 export const MORE_LABEL = "More";
+/** PO 2026-10-26: from 600 px the rail's last item opens only the planned items. */
+export const SOON_LABEL = "Coming soon";
+/** The sheet button's glyph per width (named as `icon:` so the font-subset check sees them). */
+const SHEET_ICONS = {
+  wide: { icon: "schedule" },
+  compact: { icon: "more_horiz" },
+} as const;
 /** Shell1440 board: the app bar's "Ask" entry opens Explore's AI tab. */
 export const ASK_LABEL = "Ask";
 export const ASK_PATH = `${ROUTES.explore}?mode=ai`;
@@ -60,6 +67,8 @@ export const DESTINATIONS: readonly Destination[] = [
   { to: ROUTES.runs, label: "Runs", icon: "history" },
   { to: ROUTES.coverage, label: "Coverage", icon: "donut_small", compact: false },
   { to: ROUTES.dataManifest, label: "Data", icon: "dataset" },
+  // PO 2026-10-26: MCP is a rail destination (below 600 px it is a More row).
+  { to: ROUTES.helpMcp, label: "MCP", icon: "integration_instructions", compact: false },
 ];
 
 /** More sheet rows shown only below 600 px (Shell390More board: Coverage; the SQL row was removed
@@ -68,18 +77,13 @@ const COMPACT_MORE: readonly {
   readonly to: string;
   readonly label: string;
   readonly icon: string;
-}[] = [{ to: ROUTES.coverage, label: "Coverage", icon: "donut_small" }];
-
-/** Shell390More board: every row carries its icon; pages without one fall back to `description`. */
-const MORE_ICONS: Readonly<Record<string, string>> = {
-  [ROUTES.dataCatalog]: "menu_book",
-  [ROUTES.runsLog]: "view_list",
-  [ROUTES.runsCompare]: "compare_arrows",
-  [ROUTES.helpMcp]: "integration_instructions",
-};
+}[] = [
+  { to: ROUTES.coverage, label: "Coverage", icon: "donut_small" },
+  { to: ROUTES.helpMcp, label: "MCP", icon: "integration_instructions" },
+];
 
 /** Shell1440 board (Task B's rail pattern): Explore's modes nested under Explore in the rail while
- *  Explore is the current page (from 600 px). Builder is the Coming soon item. */
+ *  Explore is the current page (from 600 px). Builder (Coming soon) stays in the More sheet only. */
 const EXPLORE_CHILDREN: readonly {
   readonly to: string;
   readonly label: string;
@@ -87,17 +91,15 @@ const EXPLORE_CHILDREN: readonly {
   readonly mode?: "filters" | "ai";
 }[] = [
   { to: ROUTES.explore, label: "Filters", icon: "tune", mode: "filters" },
-  { to: comingSoonPath("builder-mode"), label: "Builder", icon: "rule" },
   { to: ASK_PATH, label: "AI", icon: "auto_awesome", mode: "ai" },
 ];
 
-/** Shell390More board: the legal pages sit in the sheet's footer line, not in the list. */
+/** PO 2026-10-26: the legal pages sit in the footer of every page. */
 const LEGAL_LINKS: readonly { readonly to: string; readonly label: string }[] = [
   { to: ROUTES.legalTerms, label: "Terms" },
   { to: ROUTES.legalPrivacy, label: "Privacy" },
   { to: ROUTES.legalData, label: "Data licences" },
 ];
-const LEGAL_PATHS: readonly string[] = LEGAL_LINKS.map((l) => l.to);
 
 function Glyph({ name }: { readonly name: string }): ReactElement {
   return (
@@ -140,7 +142,13 @@ function HeaderSearch(): ReactElement {
   );
 }
 
-function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement {
+function MoreSheet({
+  onClose,
+  label,
+}: {
+  readonly onClose: () => void;
+  readonly label: string;
+}): ReactElement {
   const sheet = useRef<HTMLDivElement>(null);
   useEffect(() => {
     sheet.current?.focus();
@@ -179,7 +187,7 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
       id="more-sheet"
       role="dialog"
       aria-modal="true"
-      aria-label={MORE_LABEL}
+      aria-label={label}
       tabIndex={-1}
       className={styles.sheet}
       onKeyDown={onKeyDown}
@@ -187,7 +195,7 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
       <span className={styles.grabber} aria-hidden="true" />
       {/* Shell390More board: the pages as one outlined list; Coverage and Admin sign-in only
           where the bottom navigation has no room for them. */}
-      <ul className={styles.sheetCard} aria-label="Pages">
+      <ul className={`${styles.sheetCard} ${styles.compactOnly}`} aria-label="Pages">
         {COMPACT_MORE.map((page) => (
           <li key={page.to} className={`${styles.sheetRow} ${styles.compactOnly}`}>
             <Icon name={page.icon} />
@@ -200,20 +208,6 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
           <Icon name="admin_panel_settings" />
           <AdminMoreLink className={styles.sheetItem} onClick={onClose} />
         </li>
-        {MORE_PAGES.filter((page) => !LEGAL_PATHS.includes(page.path)).map((page) => (
-          <li key={page.path} className={styles.sheetRow}>
-            <Icon name={MORE_ICONS[page.path] ?? "description"} />
-            <Link to={page.path} className={styles.sheetItem} onClick={onClose}>
-              {page.title}
-            </Link>
-          </li>
-        ))}
-        <li className={`${styles.sheetRow} ${styles.sheetDivided}`}>
-          <Icon name="lightbulb" />
-          <Link to={WELCOME_PATH} className={styles.sheetItem} onClick={onClose}>
-            What can I ask?
-          </Link>
-        </li>
       </ul>
       {/* Task B's More sheet: the planned items, each row with its tonal "Coming soon" pill. */}
       <h2 className={styles.sheetTitle}>Planned</h2>
@@ -222,7 +216,12 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
           <li key={item.id} className={styles.sheetRow}>
             <Icon name="schedule" />
             {item.linked ? (
-              <Link to={comingSoonPath(item.id)} className={styles.sheetItem} onClick={onClose}>
+              <Link
+                to={comingSoonPath(item.id)}
+                className={styles.sheetItem}
+                onClick={onClose}
+                data-coming-soon-entry={item.id}
+              >
                 <span>{item.title}</span>
                 <span className={styles.soon}>{PAGE_TEXTS.comingSoon}</span>
               </Link>
@@ -240,13 +239,6 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
       <ul className={styles.sheetList} aria-label="Apps">
         <AppRows onNavigate={onClose} className={styles.appRow} />
       </ul>
-      <nav className={styles.sheetFoot} aria-label="Legal">
-        {LEGAL_LINKS.map((link) => (
-          <Link key={link.to} to={link.to} className={styles.sheetFootLink} onClick={onClose}>
-            {link.label}
-          </Link>
-        ))}
-      </nav>
     </div>
   );
 }
@@ -268,6 +260,9 @@ export function AppShell(): ReactElement {
   // badge, which reads /runs/index.json, is not rendered there (justified board difference).
   const staticPage = pathname.startsWith("/legal/") || pathname.startsWith("/soon/");
   const [moreOpen, setMoreOpen] = useState(false);
+  // From 600 px every page has a rail item, so the sheet holds only the planned items.
+  const wide = useMinWidth(600);
+  const moreLabel = wide ? SOON_LABEL : MORE_LABEL;
   const moreButton = useRef<HTMLButtonElement>(null);
   const closeMore = useCallback(() => setMoreOpen(false), []);
   // Return focus to More after the background is no longer inert (an inert element cannot take
@@ -378,9 +373,9 @@ export function AppShell(): ReactElement {
             onClick={() => setMoreOpen((open) => !open)}
           >
             <span className={styles.pill}>
-              <Glyph name="more_horiz" />
+              <Glyph name={wide ? SHEET_ICONS.wide.icon : SHEET_ICONS.compact.icon} />
             </span>
-            <span className={styles.label}>{MORE_LABEL}</span>
+            <span className={styles.label}>{moreLabel}</span>
           </button>
         </nav>
         {moreOpen ? (
@@ -391,7 +386,7 @@ export function AppShell(): ReactElement {
               onClick={closeMore}
               aria-hidden="true"
             />
-            <MoreSheet onClose={closeMore} />
+            <MoreSheet onClose={closeMore} label={moreLabel} />
           </>
         ) : null}
         <main
@@ -401,7 +396,20 @@ export function AppShell(): ReactElement {
           tabIndex={0}
           aria-label={MAIN_LABEL}
         >
-          <Outlet />
+          {/* At least one screen tall, so the footer starts below the fold and a page that grows
+              as its data loads never pushes it across the screen (CLS, A-13 TC-058). */}
+          <div className={styles.content}>
+            <Outlet />
+          </div>
+          <footer className={styles.footer}>
+            <nav aria-label="Legal" className={styles.footerLinks}>
+              {LEGAL_LINKS.map((link) => (
+                <Link key={link.to} to={link.to} className={styles.footerLink}>
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          </footer>
         </main>
       </div>
     </AdminAccessProvider>

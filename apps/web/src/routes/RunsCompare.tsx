@@ -279,9 +279,10 @@ function TwoRuns({
   );
 }
 
-/** MB or GB (1 MB = 2^20 bytes) as on the board; the exact bytes stay in `data-total-size`. */
+/** MB or GB in decimal units (1 GB = 10^9 bytes, as the Cost section and the bill count); the
+ *  exact bytes stay in `data-total-size`. */
 const humanSize = (bytes: number): string =>
-  bytes >= 2 ** 30 ? `${(bytes / 2 ** 30).toFixed(2)} GB` : `${(bytes / 2 ** 20).toFixed(1)} MB`;
+  bytes >= 1e9 ? `${(bytes / 1e9).toFixed(2)} GB` : `${(bytes / 1e6).toFixed(1)} MB`;
 
 /** `bafk…vlfm`: the short form CidDisplay uses, for a CID shown as link text. */
 const shortCid = (cid: string): string => `${cid.slice(0, 4)}…${cid.slice(-4)}`;
@@ -363,21 +364,45 @@ function RunColumn({
 
 const sourceName = (name: string): string => (isSourceName(name) ? sourceLabel(name) : name);
 
-/** Per-source records and deltas, then how many files kept, changed or gained a CID. */
-function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRun }): ReactElement {
-  const before = new Map(a.manifest.artifacts.map((x) => [x.name, x.cid]));
+/**
+ * An artifact's name without the run's own folders (`…/publish-run3-1/county-batched/cars/x.car`
+ * → `county-batched/cars/x.car`): every run publishes under its own directory, so full names
+ * never match across runs (label audit 2026-10-26: Compare said "0 kept the same CID").
+ */
+export function logicalName(name: string): string {
+  const at = name.search(/\/publish-[^/]+\//);
+  return at < 0 ? name : name.slice(name.indexOf("/", at + 1) + 1);
+}
+
+/** How many of `b`'s files kept a CID of `a`, changed (same logical name), are new, or went. */
+export function artifactChanges(
+  a: readonly { readonly name: string; readonly cid: string }[],
+  b: readonly { readonly name: string; readonly cid: string }[],
+): { same: number; changed: number; added: number; removed: number } {
+  const beforeCids = new Set(a.map((x) => x.cid));
+  const beforeNames = new Set(a.map((x) => logicalName(x.name)));
+  const afterCids = new Set(b.map((x) => x.cid));
+  const afterNames = new Set(b.map((x) => logicalName(x.name)));
   let same = 0;
   let changed = 0;
   let added = 0;
-  for (const artifact of b.manifest.artifacts) {
-    const old = before.get(artifact.name);
-    if (old === undefined) added += 1;
-    else if (old === artifact.cid) same += 1;
-    else changed += 1;
+  for (const artifact of b) {
+    if (beforeCids.has(artifact.cid)) same += 1;
+    else if (beforeNames.has(logicalName(artifact.name))) changed += 1;
+    else added += 1;
   }
-  const removed = a.manifest.artifacts.filter(
-    (x) => !b.manifest.artifacts.some((y) => y.name === x.name),
+  const removed = a.filter(
+    (x) => !afterCids.has(x.cid) && !afterNames.has(logicalName(x.name)),
   ).length;
+  return { same, changed, added, removed };
+}
+
+/** Per-source records and deltas, then how many files kept, changed or gained a CID. */
+function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRun }): ReactElement {
+  const { same, changed, added, removed } = artifactChanges(
+    a.manifest.artifacts,
+    b.manifest.artifacts,
+  );
   return (
     <section className={styles.card} aria-labelledby="changed-table-heading" data-change-table="">
       <h3 id="changed-table-heading" className={styles.cardTitle}>

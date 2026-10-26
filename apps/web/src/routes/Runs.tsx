@@ -37,7 +37,7 @@ import {
   verifyPath,
   type CoverageLabelKey,
 } from "@countylens/shared";
-import { type ReactElement } from "react";
+import { type ReactElement, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { ComingSoonEntries } from "../components/ComingSoonEntry";
 import { RunSelect } from "../components/RunSelect";
@@ -234,8 +234,10 @@ function runSearch(runId: string, latestId: string | undefined): string {
   return runId === latestId ? "" : `?${new URLSearchParams({ run: runId }).toString()}`;
 }
 
+/** Calendar days in UTC between the run's finish and now ("today" only on the same UTC day). */
 function ageText(finishedAt: string, now: number): string {
-  const days = Math.floor((now - Date.parse(finishedAt)) / DAY_MS);
+  const utcDay = (ms: number): number => Math.floor(ms / DAY_MS);
+  const days = utcDay(now) - utcDay(Date.parse(finishedAt));
   if (Number.isNaN(days) || days < 0) return "";
   return days === 0 ? "today" : days === 1 ? "1 day ago" : `${days} days ago`;
 }
@@ -721,29 +723,80 @@ function RunCard({
           <h3 id="limitations-heading" className={styles.sectionTitle}>
             Limitations
           </h3>
-          <ul className={styles.list} aria-labelledby="limitations-heading">
-            {manifest.limitations.map((text) => (
-              <li key={`run:${text}`} className={`${styles.item} ${styles.itemBody}`}>
-                {text}
-              </li>
-            ))}
-            {manifest.sources.flatMap((source) =>
-              source.limitations.map((text) => (
-                <li
-                  key={`${source.name}:${text}`}
-                  className={`${styles.item} ${styles.itemBody}`}
-                  data-limitation-source={source.name}
-                >
-                  <span>{text}</span> · <code className={styles.mono}>{source.name}</code>
-                </li>
-              )),
-            )}
-          </ul>
+          <Limitations manifest={manifest} />
         </div>
       </div>
 
       <ServerCheckLine manifestCid={manifestCid} />
     </article>
+  );
+}
+
+/** The first limitations shown; the rest sit behind "Show all N limitations" (as on Coverage). */
+const LIMITATIONS_SHOWN = 3;
+/** A hex run of 16+ characters (a sha256, a long digest) in a manifest note. */
+const LONG_HEX = /\b[0-9a-f]{16,}\b/gi;
+
+/**
+ * A manifest note as published, with each long hex run cut to 8 characters and an ellipsis (the
+ * full value in `title`). The note itself is immutable; only its presentation is compact.
+ */
+function NoteText({ text }: { readonly text: string }): ReactElement {
+  const parts: ReactNode[] = [];
+  let at = 0;
+  for (const match of text.matchAll(LONG_HEX)) {
+    parts.push(text.slice(at, match.index));
+    parts.push(
+      <abbr key={match.index} title={match[0]} data-hex={match[0]}>
+        {match[0].slice(0, 8)}…
+      </abbr>,
+    );
+    at = match.index + match[0].length;
+  }
+  parts.push(text.slice(at));
+  return <>{parts}</>;
+}
+
+/** Run limitations, then each source's, in manifest order; `data-text` keeps the full note. */
+function Limitations({ manifest }: { readonly manifest: RunManifestV1 }): ReactElement {
+  const items = [
+    ...manifest.limitations.map((text) => ({ key: `run:${text}`, text, source: null })),
+    ...manifest.sources.flatMap((s) =>
+      s.limitations.map((text) => ({ key: `${s.name}:${text}`, text, source: s.name })),
+    ),
+  ];
+  const item = ({ key, text, source }: (typeof items)[number]): ReactElement => (
+    <li
+      key={key}
+      className={`${styles.item} ${styles.itemBody}`}
+      data-text={text}
+      data-limitation-source={source ?? undefined}
+    >
+      <span>
+        <NoteText text={text} />
+      </span>
+      {source === null ? null : (
+        <>
+          {" · "}
+          <code className={styles.mono}>{source}</code>
+        </>
+      )}
+    </li>
+  );
+  return (
+    <>
+      <ul className={styles.list} aria-labelledby="limitations-heading">
+        {items.slice(0, LIMITATIONS_SHOWN).map(item)}
+      </ul>
+      {items.length > LIMITATIONS_SHOWN ? (
+        <details className={styles.limitationsMore}>
+          <summary>Show all {items.length} limitations</summary>
+          <ul className={styles.list} aria-label="More limitations">
+            {items.slice(LIMITATIONS_SHOWN).map(item)}
+          </ul>
+        </details>
+      ) : null}
+    </>
   );
 }
 

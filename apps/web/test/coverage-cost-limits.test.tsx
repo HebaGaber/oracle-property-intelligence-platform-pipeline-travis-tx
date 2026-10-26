@@ -6,13 +6,23 @@ import { cleanup, render, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import raw from "../src/content/cost-limits.generated.json";
 import { CostLimits } from "../src/content/cost-limits.schema";
-import { CostSection, SourceSpeed, usd } from "../src/routes/CoverageCostLimits";
+import { CostSection, SourceSpeed, centsInText, usd } from "../src/routes/CoverageCostLimits";
 
 const data = CostLimits.parse(raw);
 
 afterEach(cleanup);
 
 describe("Cost section", () => {
+  it("prints amounts in cents, and a non-zero amount under a cent as < $0.01", () => {
+    expect(usd(9.2469)).toBe("$9.25");
+    expect(usd(-9.2469)).toBe("-$9.25");
+    expect(usd(0)).toBe("$0.00");
+    expect(usd(0.0017)).toBe("< $0.01");
+    expect(centsInText("S3 $0.0277 (requests $0.027, storage $0.0007); $0.00 fixed")).toBe(
+      "S3 $0.03 (requests $0.03, storage < $0.01); $0.00 fixed",
+    );
+  });
+
   it("shows the fixed headline, 'as of' and the source", () => {
     const { container } = render(<CostSection />);
     const section = container.querySelector<HTMLElement>('[data-section="cost"]');
@@ -32,7 +42,7 @@ describe("Cost section", () => {
         (el) => el.getAttribute("data-cost-row") === row.component,
       );
       expect(tr, row.component).toBeDefined();
-      if (row.idle !== null) expect(tr?.textContent).toContain(row.idle);
+      if (row.idle !== null) expect(tr?.textContent).toContain(centsInText(row.idle));
       if (row.whoPays !== null) expect(tr?.textContent).toContain(row.whoPays);
     }
     for (const name of [

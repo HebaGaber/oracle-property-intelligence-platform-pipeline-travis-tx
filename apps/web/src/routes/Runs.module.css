@@ -947,6 +947,30 @@ p.changeRow {
   overflow-wrap: anywhere;
 }
 
+/* Run limitations past the first three: "Show all N limitations", a 48 px text-button target. */
+.limitationsMore > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-9);
+  color: var(--md-sys-color-primary);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+  cursor: pointer;
+}
+
+.limitationsMore > summary:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+/* A shortened digest in a note: the full value is its title. */
+.itemBody abbr[data-hex] {
+  font-family: var(--md-ref-typeface-mono);
+  text-decoration: none;
+}
+
 /* A run's per-source lines, collapsed behind a 48 px disclosure (the table below lists them). */
 [data-compare-run] details {
   width: 100%;

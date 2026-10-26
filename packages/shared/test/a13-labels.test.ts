@@ -67,6 +67,10 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
       "Pinata: second copy of every run manifest and of the latest run's table files that fit the free quota",
       "GitHub Release: CAR backup of the run, re-pinnable",
     ]);
+    // Plain words on the page: no internal record ids (ARD, AM-nn).
+    expect(VERIFY_TEXTS.storedOnProvenance).toBe(
+      "Storage policy: a second copy on Pinata's free plan; CAR files on GitHub Releases",
+    );
   });
 
   it("Explore", () => {

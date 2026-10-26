@@ -101,6 +101,8 @@ export interface FilterSheetProps {
   readonly matchCount?: number | null;
   /** True while the Property drawer is open: the controls fold behind "Filters" at every width. */
   readonly folded?: boolean;
+  /** The Explore drawer is collapsed: from 840 px the controls are hidden (kept in the DOM). */
+  readonly hiddenWide?: boolean;
 }
 
 export function FilterSheet({
@@ -112,6 +114,7 @@ export function FilterSheet({
   notFoundText,
   matchCount = null,
   folded = false,
+  hiddenWide = false,
 }: FilterSheetProps): ReactElement {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -210,7 +213,13 @@ export function FilterSheet({
   const radius = drafts.r ?? value("r");
 
   return (
-    <div className={folded ? `${styles.sheet} ${styles.folded}` : styles.sheet}>
+    <div
+      className={[
+        styles.sheet,
+        folded ? styles.folded : "",
+        hiddenWide ? styles.hiddenWide : "",
+      ].join(" ")}
+    >
       <button
         type="button"
         className={styles.toggle}
@@ -221,11 +230,6 @@ export function FilterSheet({
         Filters
       </button>
       <div id={`${id}-panel`} className={`${styles.panel} ${open ? styles.open : ""}`}>
-        <p className={styles.panelTitle}>
-          <Icon name="tune" size="medium" />
-          <span>Filters</span>
-          <span className={styles.panelSub}>· query</span>
-        </p>
         <div className={styles.field}>
           <label className={styles.label} htmlFor={`${id}-place`}>
             Place
@@ -340,7 +344,7 @@ export function FilterSheet({
               </label>
             ))}
           </div>
-          <div className={styles.field}>
+          <div className={`${styles.field} ${styles.inline}`}>
             <label className={styles.label} htmlFor={`${id}-openYrs`}>
               Open ≥
             </label>
@@ -387,7 +391,7 @@ export function FilterSheet({
               Out-of-area
             </label>
           </div>
-          <div className={styles.field}>
+          <div className={`${styles.field} ${styles.inline}`}>
             <label className={styles.label} htmlFor={`${id}-tenure`}>
               Tenure
             </label>

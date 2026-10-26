@@ -82,7 +82,9 @@ export const VERIFY_TEXTS = Object.freeze({
     "Pinata: second copy of every run manifest and of the latest run's table files that fit the free quota",
     "GitHub Release: CAR backup of the run, re-pinnable",
   ] as const),
-  storedOnProvenance: "Storage policy · ARD § 16 AM-10",
+  /** Plain words: the record ids behind this policy stay in the docs, not on the page. */
+  storedOnProvenance:
+    "Storage policy: a second copy on Pinata's free plan; CAR files on GitHub Releases",
 });
 
 /** Explore · Filters, the result rows, permits, owners and the SQL panel. */

@@ -7,22 +7,24 @@
 // count comes from the manifest; nothing is computed here but sums and shares of manifest numbers.
 //
 // A-16 (T041, T046; boards Coverage1440/768/390, CoverageStates): header with the run chip and
-// Download CSV, four KPI tiles, "Loaded vs each source's own total", the per-kind cards, Known
+// Download CSV, four KPI tiles, "Published vs each source's own total", the per-kind cards, Known
 // limitations, then "Source speed and constraints" and "Cost" (CoverageCostLimits, which do not
 // depend on the run, so they still show when the manifest cannot load, as the Error state says).
-// Justified differences: "Coverage by area" (heatmap), the trend column and the Reconciliation
-// section are not drawn because the published manifest has no per-area, per-run-history or merge
-// counts; the area card and the Areas tile say so. The board's "Gaps only" filter and "Complete /
-// Partial" kind statuses are not built: a kind's own total exists only where the manifest has a
-// `source_total:` key, so completeness is shown as a share where there is a total and as a
-// missing reason where there is not. A react-router lazy route module.
+// PO 2026-10-26 ("more readable, no big spacing"): dense kind cards (label · count rows grouped
+// by derivation, one source line, one table line, notes behind "Details"), one short reason per
+// kind without a count, the manifest CID and run said once per section, and "Coverage by area" as
+// one line. The source table reads each source's records at capture (`sources[].records`, or a
+// `source_total:` key when the manifest has one) against its published rows (SOURCE_PUBLISHED_KEY,
+// e.g. parcels_published for the TCAD roll). Justified differences: the area heatmap, the trend
+// column and the Reconciliation section are not drawn because the published manifest has no
+// per-area, per-run-history or merge counts. A react-router lazy route module.
 import type { ManifestArtifact, ManifestSource, RunManifestV1 } from "@countylens/contract";
 import {
-  COVERAGE_TEXTS,
   DERIVATION_LABELS,
   PROGRESS_LABELS,
   ROUTES,
   verifyPath,
+  type Derivation,
 } from "@countylens/shared";
 import { resolveBatchGroups } from "@countylens/query-core";
 import type { ReactElement } from "react";
@@ -41,20 +43,28 @@ import {
   coverageRows,
   denominatorRows,
   type CoverageRow,
+  type DenominatorRow,
 } from "../data/coverage-rows";
 
 import type { LoadedRun } from "../data/run-loader";
 import { runNumbers, type RunNumber } from "../data/runs-index";
 import {
   COVERAGE_KINDS,
+  COVERAGE_KIND_IN_TABLE,
   COVERAGE_KIND_MISSING,
+  COVERAGE_KIND_NOT_COLLECTED,
+  COVERAGE_NOT_PUBLISHED,
   COVERAGE_SOURCE_MISSING,
   COVERAGE_TABLE_MISSING,
+  COVERAGE_TOTAL_MISSING,
   OTHER_KIND,
+  SOURCE_PUBLISHED_KEY,
+  SOURCE_TITLES,
   kindOf,
   keyWords,
   type CoverageKind,
 } from "./Coverage.kinds";
+import cov from "./Coverage.module.css";
 import { CostSection, SourceSpeed } from "./CoverageCostLimits";
 import costStyles from "./CoverageCostLimits.module.css";
 import { RUN_STAGE_TEXTS, ShareBar, runErrorNode, runLabel, useRun } from "./Runs.shared";
@@ -170,29 +180,57 @@ function CoverageCards({ run }: { readonly run: LoadedRun }): ReactElement {
     byKind.set(id, [...(byKind.get(id) ?? []), row]);
   }
   const kinds = [...COVERAGE_KINDS, ...(byKind.has(OTHER_KIND.id) ? [OTHER_KIND] : [])];
+  const counted = kinds.filter((k) => (byKind.get(k.id)?.length ?? 0) > 0);
+  const uncounted = kinds.filter((k) => (byKind.get(k.id)?.length ?? 0) === 0);
   const number = runNumber(run);
   return (
     <>
       <KpiTiles run={run} kinds={kinds} byKind={byKind} number={number} />
       <LoadedVsTotal manifest={manifest} manifestCid={manifestCid} />
-      <h3 className={styles.sectionTitle}>Counts by record kind</h3>
-      {/* A-16 PO notes: the kind cards fill the width (three per row at 1440, one at 390). */}
-      <div className={costStyles.kindGrid}>
-        {kinds.map((kind) => (
-          <KindCard
-            key={kind.id}
-            kind={kind}
-            rows={byKind.get(kind.id) ?? []}
-            manifest={manifest}
-            manifestCid={manifestCid}
-          />
-        ))}
-      </div>
-      <div className={styles.cardGrid}>
-        <AreaCard />
-        <KnownLimitations manifest={manifest} />
-      </div>
+      <section className={cov.section} aria-labelledby="kinds-heading" data-section="kinds">
+        <div className={cov.sectionHead}>
+          <h3 id="kinds-heading" className={styles.sectionTitle}>
+            Counts by record kind
+          </h3>
+          <RunProvenance manifest={manifest} manifestCid={manifestCid} />
+        </div>
+        {/* PO 2026-10-26: dense cards, provenance once per kind, one short reason per gap. */}
+        <div className={cov.kindGrid}>
+          {counted.map((kind) => (
+            <KindCard
+              key={kind.id}
+              kind={kind}
+              rows={byKind.get(kind.id) ?? []}
+              manifest={manifest}
+            />
+          ))}
+        </div>
+        {uncounted.length === 0 ? null : (
+          <div className={cov.gapGrid}>
+            {uncounted.map((kind) => (
+              <KindCard key={kind.id} kind={kind} rows={[]} manifest={manifest} />
+            ))}
+          </div>
+        )}
+      </section>
+      <AreaNotice />
+      <KnownLimitations manifest={manifest} />
     </>
+  );
+}
+
+/** The § 8 provenance line, said once per section: the manifest CID and the run. */
+function RunProvenance({
+  manifest,
+  manifestCid,
+}: {
+  readonly manifest: RunManifestV1;
+  readonly manifestCid: string;
+}): ReactElement {
+  return (
+    <Provenance>
+      Manifest <CidDisplay cid={manifestCid} /> · run {manifest.runId}
+    </Provenance>
   );
 }
 
@@ -210,18 +248,12 @@ function KpiTiles({
   const { manifest } = run;
   const listed = kinds.filter((k) => k.id !== OTHER_KIND.id);
   const withCounts = listed.filter((k) => (byKind.get(k.id)?.length ?? 0) > 0).length;
-  const loaded = manifest.sources.reduce((sum, s) => sum + s.records, 0);
-  const withTotal = manifest.sources.filter(
-    (s) => manifest.coverage[`${SOURCE_TOTAL_PREFIX}${s.name}`] !== undefined,
-  );
-  const totalSum = withTotal.reduce(
-    (sum, s) => sum + (manifest.coverage[`${SOURCE_TOTAL_PREFIX}${s.name}`]?.count ?? 0),
-    0,
-  );
-  const loadedOfTotals = withTotal.reduce((sum, s) => sum + s.records, 0);
-  const share = totalSum > 0 ? (loadedOfTotals / totalSum) * 100 : null;
+  // Records read from the sources at capture (manifest sources[].records), not published rows.
+  const read = manifest.sources.reduce((sum, s) => sum + s.records, 0);
+  const published = sourceFigures(manifest).filter((f) => f.published !== null);
+  const publishedSum = published.reduce((sum, f) => sum + (f.published ?? 0), 0);
   return (
-    <div className={styles.tiles} data-kpi-tiles="">
+    <div className={`${styles.tiles} ${cov.tiles}`} data-kpi-tiles="">
       <div className={styles.tile} data-tile="kinds">
         <span className={styles.tileLabel}>Record kinds with counts</span>
         <b className={styles.tileBig}>
@@ -232,53 +264,32 @@ function KpiTiles({
           max={listed.length}
           label={`${withCounts} of ${listed.length} kinds have counts`}
         />
-        <span className={styles.tileLabel}>
-          {listed.length - withCounts} not in this run&apos;s coverage section
-        </span>
       </div>
       <div className={styles.tile} data-tile="loaded">
-        <span className={styles.tileLabel}>Records loaded</span>
-        <b className={styles.tileBig}>{groupedCount(loaded)}</b>
-        {share === null ? (
-          <StatusPill
-            status="unavailable"
-            text="Not available · the manifest has no source totals to measure against"
-          />
-        ) : (
-          <>
-            <ShareBar
-              value={share}
-              max={100}
-              label={`${share.toFixed(1)} percent of the sources' own totals`}
-            />
-            <span className={styles.tileLabel}>
-              {groupedCount(loadedOfTotals)} of {groupedCount(totalSum)} in the sources&apos; own
-              totals · {share.toFixed(1)}% ({withTotal.length} of {manifest.sources.length} sources
-              have a total)
-            </span>
-          </>
-        )}
+        <span className={styles.tileLabel}>Source records read</span>
+        <b className={styles.tileBig}>{groupedCount(read)}</b>
+        <span className={styles.tileLabel}>
+          {published.length === 0
+            ? `from ${manifest.sources.length} sources · none published as rows`
+            : `${groupedCount(publishedSum)} published as rows · ${manifest.sources.length} sources`}
+        </span>
       </div>
       <div className={styles.tile} data-tile="areas">
         <span className={styles.tileLabel}>Areas with permit data</span>
-        <StatusPill
-          status="unavailable"
-          text="Not available · the manifest has no per-area counts"
-        />
-        <span className={styles.tileLabel}>Austin publishes permits for the city only</span>
+        <b className={styles.tileBig} aria-label="Not available">
+          —
+        </b>
+        <span className={styles.tileLabel}>No per-area counts in this run&apos;s manifest</span>
       </div>
       <div className={styles.tile} data-tile="counted-from">
         <span className={styles.tileLabel}>Counted from</span>
         <b className={styles.tileBig}>{runLabel(number, manifest.finishedAt)}</b>
         <span className={costStyles.pillLine}>
           <StatusPill status="info" icon="cloud_done" text="Published" />
-          <span className={styles.tileLabel}>
-            <code className={styles.mono}>{manifest.runId}</code>
-          </span>
+          <Link className={styles.textLink} to={ROUTES.runs}>
+            Open the run
+          </Link>
         </span>
-        <Link className={styles.textLink} to={ROUTES.runs}>
-          Open the run
-        </Link>
       </div>
     </div>
   );
@@ -300,141 +311,187 @@ function tableParts(manifest: RunManifestV1, table: string): ManifestArtifact[] 
   });
 }
 
-// A-16 PO note 2026-10-26: one compact card per kind. Each coverage key is one line (label and
-// count), its derivation, collection time and note below, the note clamped to two lines until
-// "Details" opens the card; the kind's denominator, source and table are short fact lines.
+/** The kind's rows grouped by derivation (the label is said once per group, not per row). */
+function byDerivation(rows: readonly CoverageRow[]): [Derivation, CoverageRow[]][] {
+  const groups = new Map<Derivation, CoverageRow[]>();
+  for (const row of rows) groups.set(row.derivation, [...(groups.get(row.derivation) ?? []), row]);
+  return [...groups.entries()];
+}
+
+const rowLabel = (row: CoverageRow): string =>
+  row.label === row.key ? keyWords(row.key) : row.label;
+
+// PO 2026-10-26: one dense card per kind. Rows are label · count (right-aligned), grouped under
+// their derivation; the source, collection time and denominator are one small line; the table
+// is one line; the notes and part CIDs sit behind "Details". A kind with no coverage key is a
+// single line with one short reason.
 function KindCard({
   kind,
   rows,
   manifest,
-  manifestCid,
 }: {
   readonly kind: CoverageKind;
   readonly rows: readonly CoverageRow[];
   readonly manifest: RunManifestV1;
-  readonly manifestCid: string;
 }): ReactElement {
   const titleId = `kind-${kind.id}`;
   const source =
     kind.source === null ? undefined : manifest.sources.find((s) => s.name === kind.source);
   const parts = kind.table === null ? [] : tableParts(manifest, kind.table);
-  const long = rows.some((row) => row.note !== null) || parts.length > 2;
-  return (
-    <article className={styles.card} aria-labelledby={titleId} data-kind={kind.id}>
-      <div>
-        <h3 id={titleId} className={styles.sectionTitle}>
-          {kind.title}
-        </h3>
-        {long ? (
-          <details>
-            <summary>Details</summary>
+  const notes = rows.filter((row) => row.note !== null);
+  const tableLine =
+    kind.table === null || parts.length === 0 ? null : (
+      <div className={cov.fact} data-table={kind.table}>
+        Table <code className={styles.mono}>{kind.table}</code>
+        {parts.length === 1 ? (
+          <>
+            {" · "}
+            <CidDisplay cid={parts[0]?.cid ?? ""} />
+          </>
+        ) : (
+          <details className={cov.details}>
+            <summary>{parts.length} parts</summary>
+            <ul className={cov.cidList}>
+              {parts.map((part) => (
+                <li key={part.cid}>
+                  <CidDisplay cid={part.cid} />
+                </li>
+              ))}
+            </ul>
           </details>
-        ) : null}
+        )}
       </div>
-      {rows.length === 0 ? (
-        <StatusPill status="unavailable" text={COVERAGE_KIND_MISSING} />
-      ) : (
-        <ul aria-labelledby={titleId}>
-          {rows.map((row) => (
-            <li key={row.key} data-coverage-key={row.key}>
-              <span>{row.label === row.key ? keyWords(row.key) : row.label}</span>
-              <span className={styles.count} data-count={row.count}>
-                {groupedCount(row.count)}
-              </span>
-              <span>
-                <span>{row.derivationLabel}</span>
-                {source === undefined ? null : (
-                  <>
-                    {" · collected "}
-                    <time dateTime={source.captured_at}>{formatUtc(source.captured_at)}</time> UTC
-                  </>
-                )}
-                {row.note === null ? null : (
-                  <>
-                    {" · "}
-                    <span>{row.note}</span>
-                  </>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+    );
+  if (rows.length === 0) {
+    const reason =
+      kind.reason ?? (tableLine === null ? COVERAGE_KIND_NOT_COLLECTED : COVERAGE_KIND_IN_TABLE);
+    return (
+      <article className={`${cov.card} ${cov.gap}`} aria-labelledby={titleId} data-kind={kind.id}>
+        <h4 id={titleId} className={cov.kindTitle}>
+          {kind.title}
+        </h4>
+        <span
+          className={cov.reason}
+          data-kind-missing=""
+          {...(kind.source === null ? { "data-kind-denominator": "none" } : {})}
+        >
+          {/* One pill: the short reason drawn, the TC-017 words kept as its text and tooltip. */}
+          <StatusPill
+            status="unavailable"
+            text={`${reason} · ${COVERAGE_KIND_MISSING}`}
+            short={reason}
+          />
+        </span>
+        {/* A kind with no source says its reason only; the pill above is its denominator line. */}
+        {kind.id === OTHER_KIND.id || kind.source === null ? null : (
+          <div className={cov.fact} data-kind-denominator={kind.source}>
+            {sourceLine(kind, manifest, source)}
+          </div>
+        )}
+        {tableLine}
+      </article>
+    );
+  }
+  return (
+    <article className={cov.card} aria-labelledby={titleId} data-kind={kind.id}>
+      <h4 id={titleId} className={cov.kindTitle}>
+        {kind.title}
+      </h4>
+      {byDerivation(rows).map(([derivation, group]) => (
+        <div key={derivation} data-derivation={derivation}>
+          <p className={cov.derivation}>{DERIVATION_LABELS[derivation]}</p>
+          <ul className={cov.rows} aria-label={`${kind.title} · ${DERIVATION_LABELS[derivation]}`}>
+            {group.map((row) => (
+              <li key={row.key} data-coverage-key={row.key}>
+                <span>{rowLabel(row)}</span>
+                <span className={styles.count} data-count={row.count}>
+                  {groupedCount(row.count)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
       {kind.id === OTHER_KIND.id ? null : (
-        <div className={costStyles.facts}>
-          <div data-kind-denominator={kind.source ?? "none"}>
-            {denominatorNode(kind, manifest, source)}
-          </div>
-          <div>
-            {source === undefined ? (
-              <StatusPill status="unavailable" text={COVERAGE_SOURCE_MISSING} />
-            ) : (
-              <span>
-                Collected <time dateTime={source.captured_at}>{formatUtc(source.captured_at)}</time>{" "}
-                UTC · <code className={styles.mono}>{source.name}</code>
-              </span>
-            )}
-          </div>
-          <div>
-            {kind.table === null || parts.length === 0 ? (
-              <StatusPill status="unavailable" text={COVERAGE_TABLE_MISSING} />
-            ) : (
-              <span data-table={kind.table}>
-                Table <code className={styles.mono}>{kind.table}</code>
-                {parts.map((part) => (
-                  <span key={part.cid}>
-                    {" · "}
-                    <CidDisplay cid={part.cid} />
-                  </span>
-                ))}
-              </span>
-            )}
-          </div>
+        <div className={cov.fact} data-kind-denominator={kind.source ?? "none"}>
+          {sourceLine(kind, manifest, source)}
         </div>
       )}
-      <Provenance>
-        Manifest <CidDisplay cid={manifestCid} /> · run {manifest.runId}
-      </Provenance>
+      {tableLine ??
+        (kind.id === OTHER_KIND.id ? null : (
+          <div className={cov.fact}>{COVERAGE_TABLE_MISSING}</div>
+        ))}
+      {notes.length === 0 ? null : (
+        <details className={cov.details}>
+          <summary>Notes</summary>
+          <dl className={cov.notes}>
+            {notes.map((row) => (
+              <div key={row.key}>
+                <dt>{rowLabel(row)}</dt>
+                <dd>{row.note}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
     </article>
   );
 }
 
-// The kind's own denominator (FR-002): the manifest's `source_total:{source}` key of the kind's
-// source with its derivation label and collection time, else the exact "not in this run's
-// manifest" reason (naming the A-01 source when the kind has one). Never a typed number.
-function denominatorNode(
+// The kind's source in one line: its readable name, records read and collection time, then its
+// own denominator (FR-002) — the manifest's `source_total:{source}` value with its derivation,
+// else the short "no source total recorded". Never a typed number.
+function sourceLine(
   kind: CoverageKind,
   manifest: RunManifestV1,
   source: ManifestSource | undefined,
 ): ReactElement {
-  const total =
-    kind.source === null ? undefined : manifest.coverage[`${SOURCE_TOTAL_PREFIX}${kind.source}`];
-  if (total === undefined) {
-    return (
-      <StatusPill
-        status="unavailable"
-        text={
-          kind.source === null
-            ? COVERAGE_TEXTS.denominatorMissing
-            : COVERAGE_TEXTS.denominatorMissingFor(kind.source)
-        }
-      />
-    );
-  }
+  if (kind.source === null) return <>No single source in this run</>;
+  if (source === undefined) return <>{COVERAGE_SOURCE_MISSING}</>;
+  const total = manifest.coverage[`${SOURCE_TOTAL_PREFIX}${kind.source}`];
   return (
     <>
-      Denominator <span data-denominator-value={total.count}>{groupedCount(total.count)}</span> ·{" "}
-      {DERIVATION_LABELS[total.derivation]}
-      {source === undefined ? null : (
+      {SOURCE_TITLES[source.name] ?? source.name} · {groupedCount(source.records)} records read ·
+      collected <time dateTime={source.captured_at}>{formatUtc(source.captured_at)}</time> UTC ·{" "}
+      {total === undefined ? (
+        COVERAGE_TOTAL_MISSING
+      ) : (
         <>
-          {" · collected "}
-          <time dateTime={source.captured_at}>{formatUtc(source.captured_at)}</time> UTC
+          source total <span data-denominator-value={total.count}>{groupedCount(total.count)}</span>{" "}
+          ({DERIVATION_LABELS[total.derivation]})
         </>
       )}
     </>
   );
 }
 
+interface SourceFigure {
+  readonly row: DenominatorRow;
+  /** Records read from the source at capture (sources[].records). */
+  readonly read: number;
+  /** Published rows of the source's records (SOURCE_PUBLISHED_KEY), null when none. */
+  readonly published: number | null;
+  readonly publishedKey: string | null;
+}
+
+function sourceFigures(manifest: RunManifestV1): SourceFigure[] {
+  const records = new Map(manifest.sources.map((s) => [s.name, s.records]));
+  return denominatorRows(manifest).map((row) => {
+    const key = SOURCE_PUBLISHED_KEY[row.source] ?? null;
+    const entry = key === null ? undefined : manifest.coverage[key];
+    return {
+      row,
+      read: records.get(row.source) ?? 0,
+      published: entry?.count ?? null,
+      publishedKey: entry === undefined ? null : key,
+    };
+  });
+}
+
+// "Published vs each source's records": what the run read from each source at capture
+// (sources[].records, or the source's own `source_total:` count when the manifest has one) and
+// how many of them are published as rows (the source's published coverage key). No bar where a
+// figure is missing: "—" and a short reason.
 function LoadedVsTotal({
   manifest,
   manifestCid,
@@ -442,128 +499,114 @@ function LoadedVsTotal({
   readonly manifest: RunManifestV1;
   readonly manifestCid: string;
 }): ReactElement {
-  const records = new Map(manifest.sources.map((s) => [s.name, s.records]));
   return (
     <section
-      className={styles.card}
+      className={cov.section}
       aria-labelledby="denominators-heading"
       data-section="loaded-vs-total"
     >
-      <div>
+      <div className={cov.sectionHead}>
         <h3 id="denominators-heading" className={styles.sectionTitle}>
-          Loaded vs each source&apos;s own total
+          Published vs each source&apos;s own total
         </h3>
-        <p className={styles.helperText}>
-          The total is the source&apos;s own count recorded at capture (manifest key{" "}
-          <code className={styles.mono}>source_total:…</code>). Where the manifest has none, the row
-          says so and shows no percentage.
-        </p>
+        <Provenance>
+          <Link className={styles.link} to={verifyPath(manifestCid)}>
+            Run manifest
+          </Link>{" "}
+          <CidDisplay cid={manifestCid} /> · run {manifest.runId}
+        </Provenance>
       </div>
-      <div className={styles.tableWrap}>
-        <table
-          className={`${styles.table} ${costStyles.stack} ${costStyles.flat}`}
-          aria-label="Loaded vs source total"
-        >
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th className={styles.num}>Loaded</th>
-              <th>Out of the source&apos;s own total</th>
-              <th>Collected</th>
-              <th>Provenance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {denominatorRows(manifest).map((row) => {
-              const loaded = records.get(row.source) ?? 0;
-              const share =
-                row.count === null || row.count === 0 ? null : (loaded / row.count) * 100;
-              return (
-                <tr key={row.source} data-denominator={row.source}>
-                  <td data-label="Data">
-                    <span className={costStyles.dataCell}>
-                      <Icon
-                        name={
-                          share === null
-                            ? "do_not_disturb_on"
-                            : share >= 100
-                              ? "check_circle"
-                              : "warning"
-                        }
-                        size="medium"
-                      />
-                      <b>{row.source}</b>
+      <table
+        className={`${styles.table} ${costStyles.stack} ${costStyles.flat} ${cov.sourceTable}`}
+        aria-label="Published vs source total"
+      >
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th className={styles.num}>Source total</th>
+            <th className={styles.num}>Published</th>
+            <th>Share</th>
+            <th>Collected</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sourceFigures(manifest).map(({ row, read, published, publishedKey }) => {
+            const total = row.count ?? read;
+            const share = published === null || total === 0 ? null : (published / total) * 100;
+            return (
+              <tr key={row.source} data-denominator={row.source}>
+                <td data-label="Source">
+                  <span className={cov.sourceName}>
+                    <b>{SOURCE_TITLES[row.source] ?? row.source}</b>
+                    <code className={styles.mono}>{row.source}</code>
+                  </span>
+                </td>
+                <td data-label="Source total" className={styles.num}>
+                  {row.count === null ? (
+                    <span data-records={read} title="Records read from the source at capture">
+                      {groupedCount(read)} <span className={cov.sub}>read</span>
                     </span>
-                  </td>
-                  <td data-label="Loaded" className={styles.num} data-loaded={loaded}>
-                    {groupedCount(loaded)}
-                  </td>
-                  <td data-label="Out of the source's own total">
-                    <div className={costStyles.totalCell}>
-                      {row.count === null ? (
-                        <>
-                          {/* Board "Missing" swatch: a hatched, empty bar, never a 0 %. */}
-                          <span className={costStyles.hatchBar} aria-hidden="true" />
-                          <StatusPill status="unavailable" text={row.missingText ?? ""} />
-                        </>
-                      ) : (
-                        <>
-                          <span className={styles.count} data-count={row.count}>
-                            {groupedCount(row.count)}
-                          </span>
-                          {share === null ? null : (
-                            <ShareBar
-                              value={Math.min(100, share)}
-                              max={100}
-                              label={`${share.toFixed(1)} percent loaded`}
-                            />
-                          )}
-                          <span className={styles.helper}>
-                            {share === null ? "" : `${share.toFixed(1)}% · `}
-                            {row.derivation === null ? "" : DERIVATION_LABELS[row.derivation]}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  <td data-label="Collected">
+                  ) : (
+                    <span className={styles.count} data-count={row.count}>
+                      {groupedCount(row.count)}
+                    </span>
+                  )}
+                </td>
+                <td data-label="Published" className={styles.num}>
+                  {published === null ? (
                     <span>
-                      <time dateTime={row.capturedAt}>{formatUtc(row.capturedAt)}</time> UTC
+                      — <span className={cov.sub}>{COVERAGE_NOT_PUBLISHED}</span>
                     </span>
-                  </td>
-                  <td data-label="Provenance">
-                    <Link className={styles.link} to={verifyPath(manifestCid)}>
-                      Run manifest · coverage section
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  ) : (
+                    <span data-published={published} data-published-key={publishedKey ?? ""}>
+                      {groupedCount(published)}
+                    </span>
+                  )}
+                </td>
+                <td data-label="Share">
+                  {share === null ? (
+                    "—"
+                  ) : (
+                    <span className={cov.share}>
+                      <ShareBar
+                        value={Math.min(100, share)}
+                        max={100}
+                        label={`${share.toFixed(1)} percent published`}
+                      />
+                      <span>{share.toFixed(1)}%</span>
+                    </span>
+                  )}
+                </td>
+                <td data-label="Collected">
+                  <time dateTime={row.capturedAt}>{formatUtc(row.capturedAt)}</time> UTC
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {manifest.sources.some(
+        (s) => manifest.coverage[`${SOURCE_TOTAL_PREFIX}${s.name}`] === undefined,
+      ) ? (
+        <p className={styles.helperText}>
+          Where the manifest has no <code className={styles.mono}>source_total:…</code> key, the
+          total is the records the run read from the source at capture.
+        </p>
+      ) : null}
     </section>
   );
 }
 
-function AreaCard(): ReactElement {
+function AreaNotice(): ReactElement {
   return (
-    <section className={styles.card} aria-labelledby="area-heading" data-section="by-area">
-      <div>
-        <h3 id="area-heading" className={styles.sectionTitle}>
-          Coverage by area
-        </h3>
-        <p className={styles.helperText}>
-          Share of each area&apos;s parcels or records that have the data.
-        </p>
-      </div>
-      {/* Board "No source" cell treatment: a hatched panel holding the reason; no grid is drawn. */}
-      <div className={costStyles.hatchPanel}>
-        <StatusPill
-          status="unavailable"
-          text="Not available · the run manifest carries no per-area counts, so the area grid is not drawn"
-        />
-      </div>
+    <section className={cov.notice} aria-labelledby="area-heading" data-section="by-area">
+      <h3 id="area-heading" className={styles.sectionTitle}>
+        Coverage by area
+      </h3>
+      <StatusPill
+        status="unavailable"
+        text="Not available · no per-area counts in this run's manifest"
+      />
     </section>
   );
 }
@@ -579,21 +622,21 @@ function KnownLimitations({ manifest }: { readonly manifest: RunManifestV1 }): R
     ),
   ];
   return (
-    <section className={styles.card} aria-labelledby="limits-heading" data-section="limitations">
+    <section className={cov.section} aria-labelledby="limits-heading" data-section="limitations">
       <h3 id="limits-heading" className={styles.sectionTitle}>
         Known limitations
       </h3>
       {items.length === 0 ? (
         <StatusPill status="unavailable" text="No limitation is recorded in this run's manifest" />
       ) : (
-        <ul className={styles.limitations}>
+        <ul className={`${styles.limitations} ${cov.limitations}`}>
           {items.map((item) => (
             <li key={item.key} className={styles.itemBody}>
               {item.text}
               {item.source === null ? null : (
                 <>
                   {" · "}
-                  <code className={styles.mono}>{item.source}</code>
+                  <code className={styles.mono}>{SOURCE_TITLES[item.source] ?? item.source}</code>
                 </>
               )}
             </li>
@@ -601,7 +644,7 @@ function KnownLimitations({ manifest }: { readonly manifest: RunManifestV1 }): R
         </ul>
       )}
       {items.length > LIMITATIONS_SHOWN ? (
-        <details>
+        <details className={cov.details}>
           <summary>Show all {items.length} limitations</summary>
         </details>
       ) : null}
