@@ -42,6 +42,7 @@ import {
   type ParquetColumn,
 } from "../data/parquet-meta";
 import type { LoadedRun } from "../data/run-loader";
+import { PART_CONCURRENCY } from "../data/fetch-parts";
 import { runName as runNameOf, runNumbers, runsByFinish, type RunNumber } from "../data/runs-index";
 import { COVERAGE_KINDS } from "./Coverage.kinds";
 import { kindOf } from "./Coverage.kinds";
@@ -62,7 +63,12 @@ function hasTableExport(artifacts: RunManifestV1["artifacts"]): boolean {
     (a) => a.name === TABLES_EXPORT || (a.kind === "directory" && BATCHED_TABLES_DIR.test(a.name)),
   );
 }
-const CONCURRENCY = 2;
+/**
+ * Tables read at once. The host's whole budget (PART_CONCURRENCY: 16 on the CID copy, 3 on a
+ * public gateway) is shared out between them, each table reading its parts' footers in parallel
+ * (label review 2026-10-26: two tables with one footer at a time took about 30 s on Run 4).
+ */
+const TABLE_CONCURRENCY = 4;
 /** Shown on a row until its own Parquet footer has been read. */
 const FOOTER_PENDING = "reading the Parquet footer…";
 
@@ -79,12 +85,13 @@ async function readTable(
   table: CatalogTable,
   run: LoadedRun,
   signal: AbortSignal,
+  concurrency: number,
 ): Promise<TableResult> {
   try {
     const meta = await readTableMeta(
       table.parts.map((part) => ({ name: part.name, cid: part.cid, size: part.size })),
       (part) => run.read.partUrl({ name: part.name, cid: part.cid }),
-      { signal },
+      { signal, concurrency },
     );
     return { kind: "ok", columns: meta.columns, rows: meta.rows };
   } catch (error) {
@@ -179,16 +186,19 @@ export function Component(): ReactElement {
     const controller = new AbortController();
     setResults(new Map());
     const tables = catalogTables(run.manifest);
+    const budget = PART_CONCURRENCY[run.read.source.kind];
+    const tableWorkers = Math.max(1, Math.min(TABLE_CONCURRENCY, budget, tables.length));
+    const partConcurrency = Math.max(1, Math.floor(budget / tableWorkers));
     let next = 0;
     const worker = async (): Promise<void> => {
       while (next < tables.length && !controller.signal.aborted) {
         const table = tables[next++] as CatalogTable;
-        const result = await readTable(table, run, controller.signal);
+        const result = await readTable(table, run, controller.signal, partConcurrency);
         if (controller.signal.aborted) return;
         setResults((previous) => new Map(previous).set(table.table, result));
       }
     };
-    void Promise.all(Array.from({ length: Math.min(CONCURRENCY, tables.length) }, worker));
+    void Promise.all(Array.from({ length: tableWorkers }, worker));
     return () => controller.abort();
   }, [run, attempt]);
 

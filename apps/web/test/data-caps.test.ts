@@ -56,7 +56,7 @@ describe("parquet-meta Range guard", () => {
     expect(FOOTER_MAX_BYTES).toBeLessThanOrEqual(8 * 1024 * 1024);
   });
 
-  it("readTableMeta takes columns from the first part and sums rows sequentially", async () => {
+  it("readTableMeta takes columns from the first part and sums rows (one at a time by default)", async () => {
     let live = 0;
     let peak = 0;
     const f = (async (_u: RequestInfo | URL, init?: RequestInit) => {
@@ -72,6 +72,32 @@ describe("parquet-meta Range guard", () => {
     expect(meta.rows).toBe(60);
     expect(meta.columns).toHaveLength(61); // contract v1.2 (A-11 Run 3.1) adds unnormalized_address, owner_mailing_postal_code, owner_mailing_state_code to v1.1's 58
     expect(peak).toBe(1);
+  });
+
+  it("readTableMeta reads up to `concurrency` part footers at once, same rows and columns", async () => {
+    let live = 0;
+    let peak = 0;
+    const f = (async (_u: RequestInfo | URL, init?: RequestInit) => {
+      live++;
+      peak = Math.max(peak, live);
+      await new Promise((r) => setTimeout(r, 5));
+      live--;
+      const m = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get("Range") ?? "") ?? [];
+      return new Response(PARQUET.slice(Number(m[1]), Number(m[2]) + 1), { status: 206 });
+    }) as typeof fetch;
+    const parts = [0, 1, 2, 3, 4, 5].map((i) => ({
+      name: `p${i}`,
+      cid: `c${i}`,
+      size: PARQUET.length,
+    }));
+    const meta = await readTableMeta(parts, (p) => `https://h.test/${p.name}`, {
+      fetch: f,
+      concurrency: 4,
+    });
+    expect(meta.rows).toBe(120);
+    expect(meta.columns).toHaveLength(61);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(4);
   });
 });
 

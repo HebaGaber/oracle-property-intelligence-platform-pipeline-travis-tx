@@ -30,6 +30,8 @@ export interface ParquetFooter {
 export interface ReadFooterOptions {
   readonly fetch?: typeof fetch;
   readonly signal?: AbortSignal;
+  /** readTableMeta: how many of the table's part footers are read at once (default 1). */
+  readonly concurrency?: number;
 }
 
 /** The type label of a schema element: logical type, else converted type, else physical. */
@@ -110,12 +112,22 @@ export async function readTableMeta(
   urlOf: (part: TablePartRef) => string,
   options: ReadFooterOptions = {},
 ): Promise<ParquetFooter> {
-  const [first, ...rest] = parts;
-  if (first === undefined) throw new Error("the table has no part in the manifest");
-  const head = await readParquetFooter(urlOf(first), first.size, options);
-  let rows = head.rows;
-  for (const part of rest) rows += (await readParquetFooter(urlOf(part), part.size, options)).rows;
-  return { columns: head.columns, rows };
+  if (parts.length === 0) throw new Error("the table has no part in the manifest");
+  // Label review 2026-10-26: the parts were read one after another (Run 4: 255 parts, about 30 s
+  // for the page); now up to `concurrency` at a time. Columns come from the first part.
+  const footers = new Array<ParquetFooter>(parts.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < parts.length) {
+      const i = next++;
+      const part = parts[i] as TablePartRef;
+      footers[i] = await readParquetFooter(urlOf(part), part.size, options);
+    }
+  };
+  const width = Math.max(1, Math.min(options.concurrency ?? 1, parts.length));
+  await Promise.all(Array.from({ length: width }, worker));
+  const [head] = footers as [ParquetFooter];
+  return { columns: head.columns, rows: footers.reduce((sum, f) => sum + f.rows, 0) };
 }
 
 export interface CatalogPart {
