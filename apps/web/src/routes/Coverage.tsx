@@ -26,7 +26,8 @@ import {
 } from "@countylens/shared";
 import { resolveBatchGroups } from "@countylens/query-core";
 import type { ReactElement } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
+import { RunSelect } from "../components/RunSelect";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
@@ -41,7 +42,7 @@ import {
   denominatorRows,
   type CoverageRow,
 } from "../data/coverage-rows";
-import { formatCount } from "../data/format";
+
 import type { LoadedRun } from "../data/run-loader";
 import { runNumbers, type RunNumber } from "../data/runs-index";
 import {
@@ -56,11 +57,17 @@ import {
 } from "./Coverage.kinds";
 import { CostSection, SourceSpeed } from "./CoverageCostLimits";
 import costStyles from "./CoverageCostLimits.module.css";
-import { RUN_STAGE_TEXTS, ShareBar, runErrorNode, runLabel, useLatestRun } from "./Runs.shared";
+import { RUN_STAGE_TEXTS, ShareBar, runErrorNode, runLabel, useRun } from "./Runs.shared";
 import styles from "./Runs.module.css";
 
+/** Coverage counts with en-US thousands separators (review 2026-10-26; the tests parse grouping). */
+const groupedCount = (count: number): string => count.toLocaleString("en-US");
+
 export function Component(): ReactElement {
-  const { state, retry } = useLatestRun();
+  // The shared run dropdown (PO rule): `?run=` picks a run, none means the latest.
+  const [params, setParams] = useSearchParams();
+  const { state, retry } = useRun(params.get("run"));
+  const choose = (runId: string | null): void => setParams(runId === null ? {} : { run: runId });
   return (
     <section
       aria-label="Coverage"
@@ -77,7 +84,7 @@ export function Component(): ReactElement {
             where in the county it reaches. Every count has its date and run.
           </p>
         </div>
-        {state.kind === "ready" ? <HeadActions run={state.run} /> : null}
+        {state.kind === "ready" ? <HeadActions run={state.run} onRun={choose} /> : null}
       </div>
       {state.kind === "loading" ? (
         <>
@@ -117,7 +124,13 @@ function coverageCsv(rows: readonly CoverageRow[], runId: string): string {
   return [head, ...lines].join("\n");
 }
 
-function HeadActions({ run }: { readonly run: LoadedRun }): ReactElement {
+function HeadActions({
+  run,
+  onRun,
+}: {
+  readonly run: LoadedRun;
+  readonly onRun: (runId: string | null) => void;
+}): ReactElement {
   const { manifest, read } = run;
   const download = (): void => {
     const blob = new Blob([coverageCsv(coverageRows(manifest), manifest.runId)], {
@@ -133,10 +146,13 @@ function HeadActions({ run }: { readonly run: LoadedRun }): ReactElement {
   return (
     <div className={costStyles.headActions}>
       <FallbackChip source={read.source} />
-      <Link className={costStyles.runButton} to={ROUTES.runs}>
-        {runLabel(runNumber(run), manifest.finishedAt)} · current
-        <Icon name="arrow_drop_down" size="medium" />
-      </Link>
+      <RunSelect
+        runs={run.index.runs}
+        value={run.entry.runId}
+        onChange={onRun}
+        label="Run"
+        hideLabel
+      />
       <button type="button" className={costStyles.outlined} onClick={download}>
         <Icon name="download" size="medium" />
         Download CSV
@@ -222,7 +238,7 @@ function KpiTiles({
       </div>
       <div className={styles.tile} data-tile="loaded">
         <span className={styles.tileLabel}>Records loaded</span>
-        <b className={styles.tileBig}>{formatCount(loaded)}</b>
+        <b className={styles.tileBig}>{groupedCount(loaded)}</b>
         {share === null ? (
           <StatusPill
             status="unavailable"
@@ -236,7 +252,7 @@ function KpiTiles({
               label={`${share.toFixed(1)} percent of the sources' own totals`}
             />
             <span className={styles.tileLabel}>
-              {formatCount(loadedOfTotals)} of {formatCount(totalSum)} in the sources&apos; own
+              {groupedCount(loadedOfTotals)} of {groupedCount(totalSum)} in the sources&apos; own
               totals · {share.toFixed(1)}% ({withTotal.length} of {manifest.sources.length} sources
               have a total)
             </span>
@@ -323,7 +339,7 @@ function KindCard({
             <li key={row.key} data-coverage-key={row.key}>
               <span>{row.label === row.key ? keyWords(row.key) : row.label}</span>
               <span className={styles.count} data-count={row.count}>
-                {formatCount(row.count)}
+                {groupedCount(row.count)}
               </span>
               <span>
                 <span>{row.derivationLabel}</span>
@@ -407,7 +423,7 @@ function denominatorNode(
   }
   return (
     <>
-      Denominator <span data-denominator-value={total.count}>{formatCount(total.count)}</span> ·{" "}
+      Denominator <span data-denominator-value={total.count}>{groupedCount(total.count)}</span> ·{" "}
       {DERIVATION_LABELS[total.derivation]}
       {source === undefined ? null : (
         <>
@@ -480,7 +496,7 @@ function LoadedVsTotal({
                     </span>
                   </td>
                   <td data-label="Loaded" className={styles.num} data-loaded={loaded}>
-                    {formatCount(loaded)}
+                    {groupedCount(loaded)}
                   </td>
                   <td data-label="Out of the source's own total">
                     <div className={costStyles.totalCell}>
@@ -493,7 +509,7 @@ function LoadedVsTotal({
                       ) : (
                         <>
                           <span className={styles.count} data-count={row.count}>
-                            {formatCount(row.count)}
+                            {groupedCount(row.count)}
                           </span>
                           {share === null ? null : (
                             <ShareBar

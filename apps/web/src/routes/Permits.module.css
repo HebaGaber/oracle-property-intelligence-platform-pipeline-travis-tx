@@ -43,20 +43,11 @@
   gap: var(--space-2);
 }
 
-/* Phones (< 600 px): the pager is a bar stuck to the bottom of the screen (Atlas bottom bar), so
-   it never pushes the first card, and its provenance line, below the first viewport. It stays
-   first in the DOM (reading and tab order); `order` only moves it after the cards visually. */
-@media (max-width: 599.98px) {
-  .pager {
-    order: 1;
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
-    padding: var(--space-2) var(--space-4);
-    border-top: 1px solid var(--md-sys-color-outline-variant);
-    background-color: var(--md-sys-color-surface-container);
-  }
-}
+/* Phones (< 600 px): the pager stays in the flow above the cards (hosted review 2026-10-26 B-7: a
+   sticky bottom bar wrapped to two lines and covered about 130 px of a card). The range takes its
+   own line and the two buttons share the next, so the first card's provenance line still sits
+   inside the 390 x 844 viewport (A-03-TC-NF-03). The rule sits at the end of the file, after
+   `.range`. */
 
 .range {
   flex: 1 1 auto;
@@ -419,4 +410,11 @@
 .bbbLink:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
+}
+
+/* Phones: the pager range on its own line, the two buttons on the next (see the pager note). */
+@media (max-width: 599.98px) {
+  .range {
+    flex-basis: 100%;
+  }
 }
