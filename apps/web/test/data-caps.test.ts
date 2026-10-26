@@ -6,7 +6,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { readParquetFooter, readTableMeta, FOOTER_MAX_BYTES } from "../src/data/parquet-meta";
+import {
+  readParquetFooter,
+  readTableMeta,
+  FOOTER_FIRST_READ_BYTES,
+  FOOTER_MAX_BYTES,
+} from "../src/data/parquet-meta";
 import { checkManifestResolves, RUN_MANIFEST_MAX_BYTES } from "../src/data/run-chain";
 import { runVerifyLane } from "../src/data/verify-lane";
 import { readPathUrls } from "@countylens/shared";
@@ -54,6 +59,22 @@ describe("parquet-meta Range guard", () => {
 
   it("caps the footer slice size", () => {
     expect(FOOTER_MAX_BYTES).toBeLessThanOrEqual(8 * 1024 * 1024);
+  });
+
+  it("asks for at most 64 KB from the end of a part, not hyparquet's 512 KB default", async () => {
+    const big = new Uint8Array(2 * 1024 * 1024);
+    big.set(PARQUET, big.length - PARQUET.length); // the footer sits at the end
+    const ranges: string[] = [];
+    const f = (async (_u: RequestInfo | URL, init?: RequestInit) => {
+      const range = new Headers(init?.headers).get("Range") ?? "";
+      ranges.push(range);
+      const m = /^bytes=(\d+)-(\d+)$/.exec(range) ?? [];
+      return new Response(big.slice(Number(m[1]), Number(m[2]) + 1), { status: 206 });
+    }) as typeof fetch;
+    await readParquetFooter("https://h.test/p", big.length, { fetch: f }).catch(() => undefined);
+    const [first] = ranges;
+    const m = /^bytes=(\d+)-(\d+)$/.exec(first ?? "") ?? [];
+    expect(Number(m[2]) - Number(m[1]) + 1).toBeLessThanOrEqual(FOOTER_FIRST_READ_BYTES);
   });
 
   it("readTableMeta takes columns from the first part and sums rows (one at a time by default)", async () => {

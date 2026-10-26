@@ -43,6 +43,14 @@ function typeOf(element: SchemaElement, hasChildren: boolean): string {
   return hasChildren ? "GROUP" : "UNKNOWN";
 }
 
+/**
+ * The first slice read from the end of a part (hyparquet's default is 512 KB, which made the
+ * catalog download about 119 MB for Run 4's 255 parts). Run 4's footers: median 3.9 KB, largest
+ * 35 KB (measured 2026-10-26), so one 64 KB read holds the footer; a larger one costs one more
+ * read, never more data than the footer itself.
+ */
+export const FOOTER_FIRST_READ_BYTES = 64 * 1024;
+
 /** Largest footer slice one Range GET may ask for (a footer is KBs; this is a hard ceiling). */
 export const FOOTER_MAX_BYTES = 4 * 1024 * 1024;
 /** Shown when a host answers a Range request with the whole file (or more than the slice). */
@@ -86,7 +94,9 @@ export async function readParquetFooter(
   size: number,
   options: ReadFooterOptions = {},
 ): Promise<ParquetFooter> {
-  const metadata = await parquetMetadataAsync(rangeBuffer(url, size, options));
+  const metadata = await parquetMetadataAsync(rangeBuffer(url, size, options), {
+    initialFetchSize: FOOTER_FIRST_READ_BYTES,
+  });
   const tree = parquetSchema(metadata);
   return {
     columns: tree.children.map((child) => ({
