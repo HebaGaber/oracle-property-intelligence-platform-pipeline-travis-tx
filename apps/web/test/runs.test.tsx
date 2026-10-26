@@ -767,13 +767,15 @@ describe("A-16 Runs page: board sections, LCP and the signed-out view", () => {
     await renderRuns();
     await findCard();
     expect(screen.getByRole("heading", { level: 2, name: "Pipeline runs" })).toBeDefined();
+    // DOM order: the run card comes right after Sync status so its manifest CID is the page's
+    // first provenance line (A-03-TC-NF-03); from 600 px CSS `order` shows it last (board order).
     const order = [
       "[data-run-list]",
       "[data-sync-status]",
+      "article",
       "[data-pipeline-steps]",
       "[data-latest-events]",
       "[data-what-changed]",
-      "article",
     ].map((selector) => document.querySelector(selector));
     for (const el of order) expect(el).not.toBeNull();
     for (let i = 1; i < order.length; i += 1) {
