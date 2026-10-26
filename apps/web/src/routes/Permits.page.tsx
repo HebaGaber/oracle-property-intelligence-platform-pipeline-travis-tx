@@ -192,15 +192,36 @@ function FieldValue({
  * for it, the cell says the permit printed none (or that BBB blocks lookups); a row's own reason
  * pill is never repeated as a note (data audit 2026-10-26, rows 1, 9, 17).
  */
+/** The resolution pill's text when the permit printed no contractor (nothing to match). */
+export const NO_CONTRACTOR_PRINTED = "No contractor printed";
+
+/**
+ * The resolution pill's text: `resolved`; NO_CONTRACTOR_PRINTED when contractor_company_cid is
+ * source_missing (the permit printed none; data audit row 8), so a permit with nothing to match
+ * never reads as a failed match; else `unresolved` (contractor_unresolved, or a printed-name
+ * company with no registry id).
+ */
+export function contractorState(row: PermitListRow): string {
+  if (row.contractor_resolution === "resolved") return "resolved";
+  const notPrinted = row.missing.some(
+    (m) => m.field === "contractor_company_cid" && m.reason === "source_missing",
+  );
+  return notPrinted ? NO_CONTRACTOR_PRINTED : row.contractor_resolution;
+}
+
 function ContractorCell({ row }: { readonly row: PermitListRow }): ReactElement {
   const status: StatusKind = row.contractor_resolution === "resolved" ? "verified" : "unavailable";
+  const state = contractorState(row);
   const name = row.contractor_name_as_printed;
-  const nameReason = row.missing.some((m) => m.field === "contractor_name_as_printed");
+  // The pill already says no contractor was printed; the note would repeat it.
+  const nameReason =
+    state === NO_CONTRACTOR_PRINTED ||
+    row.missing.some((m) => m.field === "contractor_name_as_printed");
   const bbbReason = row.missing.some((m) => m.field === "bbb_url");
   return (
     <span className={styles.contractor}>
       <span className={styles.value}>
-        <StatusPill status={status} text={row.contractor_resolution} />
+        <StatusPill status={status} text={state} />
         {name !== null ? (
           <span className={styles.printed} data-printed-name="">{`As printed: ${name}`}</span>
         ) : nameReason ? null : (

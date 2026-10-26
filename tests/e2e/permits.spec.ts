@@ -62,6 +62,10 @@ import { harnessConfig, requireCidCopyHost, runtimeUrl, type PublishedRun } from
 /** plan § "Fixed texts": `apps/web/src/components/EngineLine.tsx` ENGINE_LINE_TEXT (TC-023). */
 const ENGINE_LINE_TEXT = "DuckDB-WASM in your browser · read-only";
 
+/** `apps/web/src/routes/Permits.page.tsx` NO_CONTRACTOR_PRINTED: the resolution pill of a permit
+ *  that printed no contractor (contractor_company_cid source_missing; A-16 data audit row 8). */
+const NO_CONTRACTOR_PRINTED = "No contractor printed";
+
 /** plan § "Fixed texts": the word `fallback`, ` · `, the gateway host (`apps/web/src/components/FallbackChip.tsx`). */
 const FALLBACK_LABEL = /^fallback · /;
 
@@ -128,6 +132,7 @@ function auditParamsOf(run: PublishedRun): AuditParams {
     columns: HEADERS.length,
     provenanceColumn: COL.provenance,
     contractorColumn: COL.contractor,
+    noContractorState: NO_CONTRACTOR_PRINTED,
     blankTexts: [...BLANK_TEXTS],
     rawCodes: [...MISSING_REASONS],
     offset: 0,
@@ -426,6 +431,8 @@ interface AuditParams {
   columns: number;
   provenanceColumn: number;
   contractorColumn: number;
+  /** The resolution pill text of a permit that printed no contractor (A-16). */
+  noContractorState: string;
   blankTexts: string[];
   rawCodes: string[];
   /** Global index of the current page's first row (0-based), so a failure names the real row. */
@@ -580,7 +587,13 @@ function auditPageRows(page: Page, params: AuditParams): Promise<RowAudit> {
           )
         : [];
       const state = resolution.length === 1 ? normalize(visible(resolution[0] as Element)) : "";
-      if (state !== "resolved" && state !== "unresolved") {
+      const companyEntry = missing.find((m) => m.field === "contractor_company_cid");
+      if (state === p.noContractorState) {
+        // A-16 data audit row 8: the permit printed no contractor (source_missing), nothing to match.
+        if (companyEntry?.reason !== "source_missing") {
+          flag("contractor", index, `"${state}" without contractor_company_cid source_missing`);
+        }
+      } else if (state !== "resolved" && state !== "unresolved") {
         flag("contractor", index, `${resolution.length} resolution pill(s), text "${state}"`);
       } else if (state === "unresolved") {
         // Contract v1.1 (A-11 Run 3, ERR-66): a company published from the printed permit name has
@@ -990,7 +1003,8 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
       await waitForPermitRows(page);
 
       // Full-county adaptation 2026-10-24, paged 2026-10-25: every row on every page has exactly
-      // one resolved / unresolved pill (and unresolved lists contractor_unresolved); the
+      // one resolved / unresolved / no-contractor-printed pill (and unresolved lists
+      // contractor_unresolved, no contractor printed lists source_missing); the
       // label-by-label assertions run on the sample.
       const walk = await walkPermits(page, run, { snapshots: true });
       const audit = walk;
@@ -1006,18 +1020,33 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
         const missing = parseMissing(row);
         const leaves = row.leaves[COL.contractor] ?? [];
 
-        // Step 2: the resolution pill (`data-status`, no `data-reason`) reads resolved / unresolved.
+        // Step 2: the resolution pill (`data-status`, no `data-reason`) reads one of three states:
+        // resolved; unresolved (with contractor_unresolved, or a printed-name company); or, since
+        // the A-16 data audit (row 8), "No contractor printed" with contractor_company_cid
+        // source_missing (the permit printed none, so nothing failed to match).
         const resolution = row.contractorPills.filter((candidate) => candidate.reason === null);
         expect(resolution.length, `row ${index}: one resolution pill`).toBe(1);
         const [pill] = resolution;
         const state = pill?.text;
         expect(
-          ["resolved", "unresolved"],
-          `row ${index}: contractor cell shows resolved or unresolved`,
+          ["resolved", "unresolved", NO_CONTRACTOR_PRINTED],
+          `row ${index}: contractor cell shows resolved, unresolved or no contractor printed`,
         ).toContain(state);
         expect(pill?.status, `row ${index}: the pill's § 2.4 status`).toBe(
           state === "resolved" ? "verified" : "unavailable",
         );
+        const companyEntry = missing.find((entry) => entry.field === "contractor_company_cid");
+        if (state === NO_CONTRACTOR_PRINTED) {
+          expect(
+            companyEntry?.reason,
+            `row ${index}: no contractor printed is source_missing`,
+          ).toBe("source_missing");
+        }
+        if (state === "unresolved" && companyEntry !== undefined) {
+          expect(companyEntry.reason, `row ${index}: unresolved is contractor_unresolved`).toBe(
+            "contractor_unresolved",
+          );
+        }
 
         // Step 3: an unresolved row with no company shows the approved label beside the pill (since
         // contract v1.1 a printed-name company is unresolved with a CID and no missing entry).
