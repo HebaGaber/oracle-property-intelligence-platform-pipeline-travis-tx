@@ -28,11 +28,9 @@ const COLUMNS: readonly {
   { label: "Conf.", fields: ["roof_age_confidence"] },
   { label: "Permit", fields: ["permit"] },
   { label: "Mi · lat, lon", fields: ["distance", "lat_lon"] },
-  {
-    label: "Owner",
-    fields: ["tenure_years", "tenure_basis", "owner_area_class"],
-    optional: "owner",
-  },
+  // Task B B-03: tenure (years since the last dated sale or deed) shows by default.
+  { label: "Owned", fields: ["tenure_years", "tenure_basis"] },
+  { label: "Owner area", fields: ["owner_area_class"], optional: "owner" },
   {
     label: "Contractor",
     fields: ["contractor_name", "contractor_resolution", "bbb"],
@@ -41,7 +39,7 @@ const COLUMNS: readonly {
 ];
 
 const OPTIONAL_LABELS: Readonly<Record<Optional, string>> = {
-  owner: "Owner",
+  owner: "Owner area",
   contractor: "Contractor",
 };
 

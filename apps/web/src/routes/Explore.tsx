@@ -8,6 +8,7 @@ import { lazy, Suspense, useCallback, useEffect, useState, type ReactElement } f
 import { useSearchParams } from "react-router";
 import { ComingSoonEntries } from "../components/ComingSoonEntry";
 import { LinearProgress } from "../components/LinearProgress";
+import { SearchBox } from "../components/SearchBox";
 import { ExploreFilters, type ExplorePageState } from "./ExploreFilters";
 import styles from "./Explore.module.css";
 
@@ -54,6 +55,8 @@ export function Component(): ReactElement {
       data-view="list"
       className={styles.page}
     >
+      {/* Explore390/768 boards: the search box on the page below 1024 px (the app bar has it from there). */}
+      <SearchBox className={styles.pageSearch} />
       <h2 className={styles.title}>Explore</h2>
       <div role="tablist" aria-label="Explore mode" className={styles.tabs}>
         {(["filters", "ai"] as const).map((tab) => (

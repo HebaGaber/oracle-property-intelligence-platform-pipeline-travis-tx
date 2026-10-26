@@ -194,6 +194,9 @@ export function FieldValue({
     case "roof_age_basis":
       return unknownRoof(row.roof_age_basis) ? (
         gapFor(row, "roof_age_basis")
+      ) : row.roof_age_basis === "built_year" ? (
+        // Task B B-03: the roof dates from the building (the index carries no year number).
+        <span title="built_year">Year built (no reroof permit found)</span>
       ) : (
         <>{row.roof_age_basis}</>
       );
@@ -260,7 +263,7 @@ export function FieldValue({
           reason={missingFor(row, "tenure_years")?.reason}
         />
       ) : (
-        <>{`${row.tenure_years} yrs`}</>
+        <>{`Owned ${row.tenure_years} yrs`}</>
       );
     case "tenure_basis":
       return row.tenure_basis === null ? (
@@ -448,7 +451,15 @@ export interface ResultRowProps {
 
 /** The fields the compact card keeps behind its expand button (the rest show in its summary). */
 const MORE_FIELDS: readonly RowField[] = CARD_FIELDS.filter(
-  (f) => !["address", "distance", "roof_age_years", "roof_age_confidence", "permit"].includes(f),
+  (f) =>
+    ![
+      "address",
+      "distance",
+      "roof_age_years",
+      "roof_age_confidence",
+      "permit",
+      "tenure_years",
+    ].includes(f),
 );
 
 /**
@@ -532,6 +543,9 @@ export function ResultRow({
         </span>
         <span className={styles.meta} data-field="permit">
           <FieldValue row={row} field="permit" />
+        </span>
+        <span className={styles.meta} data-field="tenure_years">
+          <FieldValue row={row} field="tenure_years" />
         </span>
       </div>
       <div id={`${titleId}-more`} className={styles.more} hidden={!open}>
