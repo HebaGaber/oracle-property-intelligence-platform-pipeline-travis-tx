@@ -182,7 +182,7 @@ function PendingSections({
   readonly state: Extract<RunPageState, { kind: "loading" }>;
 }): ReactElement {
   return (
-    <div data-pending-manifest="" aria-label={RUN_STAGE_TEXTS[state.stage]}>
+    <div data-pending-manifest="" role="status" aria-label={RUN_STAGE_TEXTS[state.stage]}>
       <Skeleton variant="cards" count={1} />
     </div>
   );
