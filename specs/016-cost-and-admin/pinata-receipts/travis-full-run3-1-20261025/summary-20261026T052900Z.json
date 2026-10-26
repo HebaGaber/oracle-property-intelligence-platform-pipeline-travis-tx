@@ -5,10 +5,7 @@
   "manifest_cid": "bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai",
   "dry_run": false,
   "first_only": true,
-  "kinds": [
-    "manifest",
-    "table"
-  ],
+  "kinds": ["manifest", "table"],
   "budget": {
     "bytes": 946819239,
     "files": 498,

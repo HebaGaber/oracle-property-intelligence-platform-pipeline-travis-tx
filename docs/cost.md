@@ -12,32 +12,32 @@ As of billing date **2026-10-24** (last full UTC day in Cost Explorer; 2026-10-2
 
 ## Gross cost versus credits (Cost Explorer, by record type)
 
-| UTC day | Usage (gross) | Credit | Net |
-| --- | --- | --- | --- |
-| 2026-10-18, 10-19 | 0.0000 | 0.0000 | 0.0000 |
-| 2026-10-20 | 0.0001 | -0.0001 | 0.0000 |
-| 2026-10-21 | 1.2770 | -1.2770 | 0.0000 |
-| 2026-10-22 | 4.1254 | -4.1254 | 0.0000 |
-| 2026-10-23 | 1.8671 | -1.8671 | 0.0000 |
-| 2026-10-24 | 1.9772 | -1.9772 | 0.0000 |
-| **Total, 7 full days** | **9.2469** | **-9.2469** | **0.0000** |
-| 2026-10-25 (partial, estimated) | 1.5649 | -1.5649 | 0.0000 |
+| UTC day                         | Usage (gross) | Credit      | Net        |
+| ------------------------------- | ------------- | ----------- | ---------- |
+| 2026-10-18, 10-19               | 0.0000        | 0.0000      | 0.0000     |
+| 2026-10-20                      | 0.0001        | -0.0001     | 0.0000     |
+| 2026-10-21                      | 1.2770        | -1.2770     | 0.0000     |
+| 2026-10-22                      | 4.1254        | -4.1254     | 0.0000     |
+| 2026-10-23                      | 1.8671        | -1.8671     | 0.0000     |
+| 2026-10-24                      | 1.9772        | -1.9772     | 0.0000     |
+| **Total, 7 full days**          | **9.2469**    | **-9.2469** | **0.0000** |
+| 2026-10-25 (partial, estimated) | 1.5649        | -1.5649     | 0.0000     |
 
 Read by service without the record-type split, the same days look like "$0.00 per service" because the credit is netted into each service line. Use the Usage rows below as the real number.
 
 ## Gross usage by service (RECORD_TYPE = Usage, USD)
 
-| Service | 10-20 | 10-21 | 10-22 | 10-23 | 10-24 | 7-day total | 10-25 (partial) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| AWS Amplify | 0 | 1.2640 | 4.1216 | 1.8330 | 1.7772 | 8.9958 | 0.8363 |
-| Claude Sonnet 4.6 (Amazon Bedrock) | 0 | 0 | 0 | 0 | 0.1198 | 0.1198 | 0.7066 |
-| AWS Secrets Manager (not CountyLens, see note) | 0 | 0 | 0 | 0.0263 | 0.0278 | 0.0541 | 0.0066 |
-| Amazon DynamoDB | 0 | 0 | 0 | 0.0009 | 0.0273 | 0.0282 | 0.0067 |
-| Amazon API Gateway | 0 | 0.0004 | 0.0032 | 0.0016 | 0.0169 | 0.0221 | 0.0076 |
-| Amazon S3 | 0.0001 | 0.0127 | 0.0006 | 0.0050 | 0.0083 | 0.0267 | 0.0011 |
-| AWS Step Functions | 0 | 0 | 0 | 0.0002 | 0 | 0.0002 | 0 |
-| Amazon CloudWatch | 0 | 0 | 0 | 0.0001 | 0.0001 | 0.0002 | 0 |
-| AWS Lambda | 0 | 0 | 0 | 0 | 0 | 0 (inside the free tier; usage lines exist, see below) | 0 |
+| Service                                        | 10-20  | 10-21  | 10-22  | 10-23  | 10-24  | 7-day total                                            | 10-25 (partial) |
+| ---------------------------------------------- | ------ | ------ | ------ | ------ | ------ | ------------------------------------------------------ | --------------- |
+| AWS Amplify                                    | 0      | 1.2640 | 4.1216 | 1.8330 | 1.7772 | 8.9958                                                 | 0.8363          |
+| Claude Sonnet 4.6 (Amazon Bedrock)             | 0      | 0      | 0      | 0      | 0.1198 | 0.1198                                                 | 0.7066          |
+| AWS Secrets Manager (not CountyLens, see note) | 0      | 0      | 0      | 0.0263 | 0.0278 | 0.0541                                                 | 0.0066          |
+| Amazon DynamoDB                                | 0      | 0      | 0      | 0.0009 | 0.0273 | 0.0282                                                 | 0.0067          |
+| Amazon API Gateway                             | 0      | 0.0004 | 0.0032 | 0.0016 | 0.0169 | 0.0221                                                 | 0.0076          |
+| Amazon S3                                      | 0.0001 | 0.0127 | 0.0006 | 0.0050 | 0.0083 | 0.0267                                                 | 0.0011          |
+| AWS Step Functions                             | 0      | 0      | 0      | 0.0002 | 0      | 0.0002                                                 | 0               |
+| Amazon CloudWatch                              | 0      | 0      | 0      | 0.0001 | 0.0001 | 0.0002                                                 | 0               |
+| AWS Lambda                                     | 0      | 0      | 0      | 0      | 0      | 0 (inside the free tier; usage lines exist, see below) | 0               |
 
 Service totals are summed from the daily rows above (the 7-day column excludes 10-25). Where a day is blank in Cost Explorer the cell is 0 only because the bill shows no line.
 
@@ -45,21 +45,21 @@ Service totals are summed from the daily rows above (the 7-day column excludes 1
 
 Resources come from CloudFormation in `eu-north-1` (stacks `CountyLensData`, `CountyLensApi`, `CountyLensWeb`, `CountyLensCert`, `CountyLensOps`, `CountyLensScheduler`).
 
-| Component (stack) | Idle cost per month | Cost per use | Who pays | Seen in the bill |
-| --- | --- | --- | --- | --- |
-| Amplify static hosting, app `countylens-web` + custom domain (`CountyLensWeb`, `CountyLensCert`) | $0.00 fixed. Storage $0.023 per GB-month (billed $0.0017 in the window) | Data transfer out $0.15 per GB; build minutes $0.01 each | Visitors and CI pay through usage; the project pays the bill (credits) | **Yes, the largest line**: 42.3 GB out ($6.3472) and 348 build minutes ($3.4833) over 2026-10-20 to 10-25 for the two Amplify apps. CloudWatch `BytesDownloaded` for `countylens-web` was about 39 GB of that, so the demo site and its Playwright runs drive it. |
-| Lambda: query API, agent, MCP (`CountyLensApi`, 3 functions) and budget provider (`CountyLensOps`) | $0.00 (no provisioned concurrency) | Requests and GB-seconds (arm64 for the API functions) | Caller traffic; the project pays | Usage lines exist (for example 10-24: 15,757 ARM requests, 1,353 ARM GB-s) but the monthly free tier absorbs them: $0.00 billed, not zero usage. |
-| API Gateway HTTP APIs (3 APIs, `CountyLensApi`) | $0.00 | $1.00 per million requests | Caller traffic | $0.0296 for 27,899 requests |
-| S3 + CloudFront CID copy (`CountyLensData`) | Storage only: 2.88 GB measured on 10-25, about $0.07 per month (pricing model) | S3 requests, CloudFront transfer (first 1 TB per month free) | Reader traffic | S3 $0.0277 (requests $0.027, storage $0.0007). No CloudFront line billed. |
-| DynamoDB on-demand, table `CountyLensAiSpend` (`CountyLensApi`) | $0.00 (PAY_PER_REQUEST, 51 bytes stored) | $1.25 per million write units, $0.25 per million read units | Agent traffic | $0.0348 (47,239 write units, 23,205 read units). The account also has three `crm-*` tables from another project. |
-| SSM parameters (several, standard tier) | $0.00 | $0.00 | n/a | No SSM line. |
-| CloudWatch Logs and alarms (`CountyLensApi`, `CountyLensOps`, `CountyLensScheduler`) | $0.00 within free ingestion and storage; retention 14 days, access logs 30 | $0.50 per GB ingested; $0.10 per alarm per month after the first 10 | Traffic | $0.0001 (metrics). Alarms stay inside the free 10. |
-| Scheduler `countylens-incremental-run` (`CountyLensScheduler`) | $0.00. **State: DISABLED** (read from EventBridge Scheduler) | One ECS task per run when enabled, never by default | The project, only when the PO enables it | Not billed. The stack also holds a VPC with an internet gateway and no NAT gateway (none exists in the region), an ECS cluster, an SQS dead-letter queue `countylens-scheduler-run-task-dlq` and SNS topics `countylens-alerts`, `countylens-scheduler-alerts`: all $0 idle. |
-| Step Functions | $0.00 | Per transition | Run traffic | $0.0002 (cross-region out-bytes) |
-| Bedrock, Claude Sonnet 4.6 via `eu.` profile (agent) | $0.00 | Per token: input, output, cache write, cache read | Evaluators and tests asking the agent | **$0.8264** gross over 10-24 and 10-25 (output $0.3055, cache write $0.3505, input $0.1655, cache read $0.0049). The budget guard pauses the agent at $3 per day. |
-| Cognito user pool, Lite plan (deployed 2026-10-26, `CountyLensApi`) | $0.00 (pricing model: free tier of 10,000 monthly active users; first billed day pending) | Per monthly active user above the free tier | Operator sign-ins | Not yet billed |
-| SQS command queue + DLQ (deployed 2026-10-26, `CountyLensApi`) | $0.00 (pricing model: per request, first million per month free; first billed day pending) | $0.40 per million requests after the free tier | Operator commands | Not yet billed (the existing scheduler DLQ has no billed line either) |
-| SNS alert topic `countylens-alerts` (CountyLensOps; admin alarms added 2026-10-26) | $0.00 (pricing model: first million publishes free, email deliveries free; first billed day pending) | Per publish and delivery above the free tier | Alarm events | Not yet billed |
+| Component (stack)                                                                                  | Idle cost per month                                                                                  | Cost per use                                                        | Who pays                                                               | Seen in the bill                                                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Amplify static hosting, app `countylens-web` + custom domain (`CountyLensWeb`, `CountyLensCert`)   | $0.00 fixed. Storage $0.023 per GB-month (billed $0.0017 in the window)                              | Data transfer out $0.15 per GB; build minutes $0.01 each            | Visitors and CI pay through usage; the project pays the bill (credits) | **Yes, the largest line**: 42.3 GB out ($6.3472) and 348 build minutes ($3.4833) over 2026-10-20 to 10-25 for the two Amplify apps. CloudWatch `BytesDownloaded` for `countylens-web` was about 39 GB of that, so the demo site and its Playwright runs drive it.            |
+| Lambda: query API, agent, MCP (`CountyLensApi`, 3 functions) and budget provider (`CountyLensOps`) | $0.00 (no provisioned concurrency)                                                                   | Requests and GB-seconds (arm64 for the API functions)               | Caller traffic; the project pays                                       | Usage lines exist (for example 10-24: 15,757 ARM requests, 1,353 ARM GB-s) but the monthly free tier absorbs them: $0.00 billed, not zero usage.                                                                                                                             |
+| API Gateway HTTP APIs (3 APIs, `CountyLensApi`)                                                    | $0.00                                                                                                | $1.00 per million requests                                          | Caller traffic                                                         | $0.0296 for 27,899 requests                                                                                                                                                                                                                                                  |
+| S3 + CloudFront CID copy (`CountyLensData`)                                                        | Storage only: 2.88 GB measured on 10-25, about $0.07 per month (pricing model)                       | S3 requests, CloudFront transfer (first 1 TB per month free)        | Reader traffic                                                         | S3 $0.0277 (requests $0.027, storage $0.0007). No CloudFront line billed.                                                                                                                                                                                                    |
+| DynamoDB on-demand, table `CountyLensAiSpend` (`CountyLensApi`)                                    | $0.00 (PAY_PER_REQUEST, 51 bytes stored)                                                             | $1.25 per million write units, $0.25 per million read units         | Agent traffic                                                          | $0.0348 (47,239 write units, 23,205 read units). The account also has three `crm-*` tables from another project.                                                                                                                                                             |
+| SSM parameters (several, standard tier)                                                            | $0.00                                                                                                | $0.00                                                               | n/a                                                                    | No SSM line.                                                                                                                                                                                                                                                                 |
+| CloudWatch Logs and alarms (`CountyLensApi`, `CountyLensOps`, `CountyLensScheduler`)               | $0.00 within free ingestion and storage; retention 14 days, access logs 30                           | $0.50 per GB ingested; $0.10 per alarm per month after the first 10 | Traffic                                                                | $0.0001 (metrics). Alarms stay inside the free 10.                                                                                                                                                                                                                           |
+| Scheduler `countylens-incremental-run` (`CountyLensScheduler`)                                     | $0.00. **State: DISABLED** (read from EventBridge Scheduler)                                         | One ECS task per run when enabled, never by default                 | The project, only when the PO enables it                               | Not billed. The stack also holds a VPC with an internet gateway and no NAT gateway (none exists in the region), an ECS cluster, an SQS dead-letter queue `countylens-scheduler-run-task-dlq` and SNS topics `countylens-alerts`, `countylens-scheduler-alerts`: all $0 idle. |
+| Step Functions                                                                                     | $0.00                                                                                                | Per transition                                                      | Run traffic                                                            | $0.0002 (cross-region out-bytes)                                                                                                                                                                                                                                             |
+| Bedrock, Claude Sonnet 4.6 via `eu.` profile (agent)                                               | $0.00                                                                                                | Per token: input, output, cache write, cache read                   | Evaluators and tests asking the agent                                  | **$0.8264** gross over 10-24 and 10-25 (output $0.3055, cache write $0.3505, input $0.1655, cache read $0.0049). The budget guard pauses the agent at $3 per day.                                                                                                            |
+| Cognito user pool, Lite plan (deployed 2026-10-26, `CountyLensApi`)                                | $0.00 (pricing model: free tier of 10,000 monthly active users; first billed day pending)            | Per monthly active user above the free tier                         | Operator sign-ins                                                      | Not yet billed                                                                                                                                                                                                                                                               |
+| SQS command queue + DLQ (deployed 2026-10-26, `CountyLensApi`)                                     | $0.00 (pricing model: per request, first million per month free; first billed day pending)           | $0.40 per million requests after the free tier                      | Operator commands                                                      | Not yet billed (the existing scheduler DLQ has no billed line either)                                                                                                                                                                                                        |
+| SNS alert topic `countylens-alerts` (CountyLensOps; admin alarms added 2026-10-26)                 | $0.00 (pricing model: first million publishes free, email deliveries free; first billed day pending) | Per publish and delivery above the free tier                        | Alarm events                                                           | Not yet billed                                                                                                                                                                                                                                                               |
 
 Not deployed and not allowed: Secrets Manager, RDS, KMS customer keys, provisioned concurrency, WAF, Route 53 hosted zone (AC-2 assertions cover these).
 
@@ -86,6 +86,14 @@ Not deployed and not allowed: Secrets Manager, RDS, KMS customer keys, provision
 ## Filebase (pinning vendor)
 
 Filebase usage: **not available · reason: Filebase publishes usage and billing only in its dashboard; its S3-compatible API reports no billing or plan usage, and summing object sizes would need a full listing against a service that rate-limits (HTTP 429 seen).** Known from the run log: the free plan is 5 GB; one full county publication is about 2.95 GB (upper bound 3.73 GB), so a second pinned run would not fit (5.90 GB). Who pays: the PO's Filebase account. Pinata (second gateway) is on a plan that refuses pin-by-CID (`PAID_FEATURE_ONLY`), so any paid Pinata or self-hosted node is a cost line that does not exist yet.
+
+## Pinata (second copy, AM-10)
+
+Pinata cost: **$0.00 per month** on the free plan (1 GB, 500 files). Usage was read from Pinata's API (`GET /data/userPinnedDataTotal`) right after the Run 3.1 copy on 2026-10-26: **206 pins, 947,494,513 bytes**. That covers all 5 run manifests, 201 of Run 3.1's 255 table files and one Run 3 table part. The copy tool keeps a 950 MB budget and stops before the quota (`specs/016-cost-and-admin/pinata-receipts/travis-full-run3-1-20261025/summary.json`). Who pays: the PO's Pinata account, $0.
+
+Not bought: a paid Pinata plan (about $20 a month) would hold every artifact, including the 4.0 GB of CARs, as a full second live pin. It is a recurring cost, so it conflicts with the README's no-ongoing-cost default (PO decision 2026-10-26, ARD § 16 AM-10).
+
+The two public gateways, Pinata's `gateway.pinata.cloud` and `ipfs.orbitor.dev`, cost nothing and need no account. Storacha (planned 2026-10-26) is not used: its upload service ended on 2026-04-15.
 
 ## How to re-read this
 

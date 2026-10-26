@@ -55,5 +55,5 @@ Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the
 
 - Parity work is the largest; families not finished by 02:00 go in as recorded differences.
 - Amplify builds can queue 10–25 min; batch 2 must be pushed by about 02:05.
-- Second pin (Storacha) moved to a separate PO session (2026-10-26); A11-3/A11-14 recorded as handled there.
+- Second copy (AM-10, branch 016b-second-copy-and-gateways): Pinata holds all run manifests + 201 of 255 Run 3.1 tables, Pinata + orbitor verify; A11-3 partly closed, A11-14 closed (2026-10-26).
 - Run 3 publish is another session's GitHub job (started 23:21 EEST); not in this story's path.

@@ -82,7 +82,7 @@ Format: `[ID] [P?] [Group] Description — files — AC / Closure ID`. `[P]` = c
 - [x] T077 [P] [metagross] `infra/src/web-stack.ts`: `VITE_ORBITOR_GATEWAY_HOST` env var on the Amplify app, tests (after T075)
 - [x] T078 [P] [oracle] `scripts/verify-manifest.ts`: `GATEWAYS` = Pinata + orbitor, Filebase fallback reported separately; a JSON evidence file option; tests
 - [x] T079 [P] [oracle] `pipeline/publish/scripts/pinata-copy.ts` (+ `src/pinata-pin.ts` `cidVersion: 1`): upload manifests and a chosen set of table files, compare each CID with the manifest, unpin a mismatch, stop at the quota budget, write a receipt per file under `specs/016-cost-and-admin/pinata-receipts/<runId>/`; fake-fetch tests, no real network
-- [ ] T080 [Me] After Run 3.1 publishes: run T079 on Run 3.1 (manifest first, stop on mismatch), then T078 on the same set; evidence in `docs/evidence/A-16.md`, $0 row in `docs/cost.md`, A11-3 / A11-14 rows in the Closure table, PR known-gap wording
+- [x] T080 [Me] After Run 3.1 publishes: run T079 on Run 3.1 (manifest first, stop on mismatch), then T078 on the same set; evidence in `docs/evidence/A-16.md`, $0 row in `docs/cost.md`, A11-3 / A11-14 rows in the Closure table, PR known-gap wording
 
 ## Phase 3 · Finalise docs (Me, parallel with Phase 2)
 
