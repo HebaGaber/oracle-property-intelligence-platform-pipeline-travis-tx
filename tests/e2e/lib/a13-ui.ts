@@ -334,6 +334,25 @@ export function trpcData(body: unknown): unknown {
 }
 
 /** The fixed BBB text a row must show for its `bbb_status`, or null when a rating is expected. */
+/**
+ * A-16 data audit #1: the contractor cell shows the name printed on the permit (Run 3: 4,139 of
+ * 15,025 permits), else "No contractor printed on this permit". Read from whichever field the
+ * explore.search row carries it in.
+ */
+export function expectedContractorText(row: ExploreRowShape): string {
+  const r = row as {
+    contractor?: { name_as_printed?: string | null } | null;
+    permit?: { contractor_name_as_printed?: string | null } | null;
+    contractor_name_as_printed?: string | null;
+  };
+  return (
+    r.contractor?.name_as_printed ??
+    r.permit?.contractor_name_as_printed ??
+    r.contractor_name_as_printed ??
+    EXPLORE_TEXTS.contractorNotPrinted
+  );
+}
+
 export function expectedBbbText(status: string | null, reason: string | null): string | null {
   switch (status) {
     case "not_checked":

@@ -236,7 +236,7 @@ describe("Explore · Filters rows (AC-4, AC-7, FR-007, FR-022, NFR-003)", () => 
     const [first] = rows();
     if (first === undefined) throw new Error("row");
     expect(first.getAttribute("data-property-cid")).toBe(propertyCids[0]);
-    expect(field(first, "address")?.textContent).toBe(EXPLORE_TEXTS.noCarrier);
+    expect(field(first, "address")?.textContent).toBe(EXPLORE_TEXTS.addressNotInExport);
     expect(field(first, "roof_age_years")?.textContent).toContain("18");
     expect(field(first, "roof_age_basis")?.textContent).toBe("permit_anchor");
     expect(field(first, "roof_age_confidence")?.textContent).toBe("high");
@@ -286,7 +286,7 @@ describe("Explore · Filters rows (AC-4, AC-7, FR-007, FR-022, NFR-003)", () => 
     expect(field(a, "roof_age_basis")?.textContent).toBe(EXPLORE_TEXTS.roofUnknown);
     expect(field(a, "tenure_years")?.textContent).toBe(EXPLORE_TEXTS.tenureUnknown);
     expect(field(a, "owner_area_class")?.textContent).toBe(EXPLORE_TEXTS.ownerAreaUnknown);
-    expect(field(a, "contractor_name")?.textContent).toBe(EXPLORE_TEXTS.noCarrier);
+    expect(field(a, "contractor_name")?.textContent).toBe(EXPLORE_TEXTS.contractorNotPrinted);
     expect(field(a, "status_raw")?.textContent).toBe(EXPLORE_TEXTS.noCarrier);
     expect(field(a, "bbb")?.textContent).toBe(
       EXPLORE_TEXTS.bbbNotChecked("BBB lookups are not run for this county yet"),
@@ -297,11 +297,11 @@ describe("Explore · Filters rows (AC-4, AC-7, FR-007, FR-022, NFR-003)", () => 
     const pill = (el: HTMLElement, name: string): Element | null | undefined =>
       field(el, name)?.querySelector("[data-status]");
     for (const [name, short, full] of [
-      ["address", "No address", EXPLORE_TEXTS.noCarrier],
+      ["address", "No address", EXPLORE_TEXTS.addressNotInExport],
       ["roof_age_basis", "Roof age unknown", EXPLORE_TEXTS.roofUnknown],
       ["tenure_years", "Tenure unknown", EXPLORE_TEXTS.tenureUnknown],
       ["owner_area_class", "Owner area unknown", EXPLORE_TEXTS.ownerAreaUnknown],
-      ["contractor_name", "Name not published", EXPLORE_TEXTS.noCarrier],
+      ["contractor_name", "No contractor printed", EXPLORE_TEXTS.contractorNotPrinted],
       ["status_raw", "Status not published", EXPLORE_TEXTS.noCarrier],
       [
         "bbb",
