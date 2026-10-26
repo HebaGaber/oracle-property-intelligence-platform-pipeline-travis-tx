@@ -195,8 +195,15 @@
   white-space: nowrap;
 }
 
-/* Below 600 px each artifact is a card of label/value lines (board Data390). */
-@media (max-width: 599px) {
+/* The Details column only serves the phone cards. */
+.artifactScroll th:last-child,
+.artifactScroll td:last-child {
+  display: none;
+}
+
+/* B-4: below 1024 px every column is reachable without a sideways scroll: each artifact is a
+   compact block of label/value pairs, two per line (name first, full width). */
+@media (max-width: 1023.98px) {
   .artifactScroll thead {
     position: absolute;
     width: 1px;
@@ -206,12 +213,15 @@
   }
 
   .artifactScroll table,
-  .artifactScroll tbody,
-  .artifactScroll tr {
+  .artifactScroll tbody {
     display: block;
   }
 
   .artifactScroll tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+    gap: 0 var(--space-3);
     padding: var(--space-2) var(--space-3);
     border-bottom: 1px solid var(--md-sys-color-outline-variant);
   }
@@ -221,6 +231,7 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
     align-items: center;
     gap: var(--space-2);
+    min-width: 0;
     padding: 0;
     border-bottom: 0;
     text-align: start;
@@ -257,12 +268,51 @@
 
   .artifactScroll td:first-child {
     display: block;
+    grid-column: 1 / -1;
     min-width: 0;
     padding-bottom: var(--space-1);
     font-weight: var(--md-sys-typescale-title-small-weight);
   }
+}
 
-  .artifactScroll td:first-child::before {
-    content: none;
+/* B-3: below 600 px a card shows name, size, check and a Details disclosure; CID, codec,
+   SHA-256 and CAR open with it (every row stays in the DOM). */
+@media (max-width: 599.98px) {
+  .artifactScroll td:last-child {
+    display: block;
+  }
+
+  .artifactScroll
+    tr:not(:has(details[open]))
+    td:is(:nth-child(2), :nth-child(3), :nth-child(5), :nth-child(6)) {
+    display: none;
+  }
+
+  .artifactScroll
+    tr:has(details[open])
+    td:is(:nth-child(2), :nth-child(3), :nth-child(5), :nth-child(6)) {
+    grid-column: 1 / -1;
+  }
+
+  .artifactScroll td:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+
+  .artifactScroll summary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--space-9);
+    min-height: var(--space-9);
+    color: var(--md-sys-color-primary);
+    font-family: var(--md-sys-typescale-label-large-font);
+    font-size: var(--md-sys-typescale-label-large-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    cursor: pointer;
+  }
+
+  .artifactScroll summary:focus-visible {
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 2px;
   }
 }

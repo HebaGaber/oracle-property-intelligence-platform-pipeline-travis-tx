@@ -232,6 +232,13 @@ function needsCar(artifact: ManifestArtifact): boolean {
   return artifact.kind === "directory" || artifact.size > VERIFY_MAX_BYTES;
 }
 
+/** B-3: a phone card shows name, size and check; this native disclosure opens the rest (CSS). */
+const ROW_DETAILS = (
+  <details>
+    <summary>Details</summary>
+  </details>
+);
+
 /** The last three path segments of an artifact name ("b01/address/part-00000.parquet"). */
 const tail = (name: string): string => name.split("/").slice(-3).join("/");
 
@@ -262,6 +269,7 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
               <th scope="col">SHA-256</th>
               <th scope="col">CAR</th>
               <th scope="col">Check</th>
+              <th scope="col">Details</th>
             </tr>
           </thead>
           <tbody>
@@ -311,6 +319,7 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
                     <span className={styles.mono}>{VERIFY_TEXTS.viaCar}</span>
                   )}
                 </td>
+                <td>{ROW_DETAILS}</td>
               </tr>
             ))}
           </tbody>

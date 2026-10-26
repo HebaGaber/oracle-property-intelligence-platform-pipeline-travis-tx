@@ -117,11 +117,46 @@ const contractorEntries = (row: PermitListRow): Missing[] =>
 const otherEntries = (row: PermitListRow): Missing[] =>
   row.missing.filter((m) => !DISPLAYED_FIELDS.has(m.field) && !isContractorField(m.field));
 
+/**
+ * A-16 B-2: each pill names its field on one short line ("Close date: not on record"); the
+ * approved full label stays the pill's text (screen readers, tests) and tooltip (StatusPill).
+ */
+const FIELD_WORDS: Readonly<Record<string, string>> = {
+  status_raw: "Raw status",
+  expiry_date: "Expiry date",
+  permit_close_date: "Close date",
+  final_inspection_date: "Final inspection",
+  open_days: "Days open",
+  contractor_company_cid: "Contractor company",
+  contractor_name_as_printed: "Contractor name",
+  bbb_rating: "BBB rating",
+  bbb_url: "BBB link",
+  work_class_raw: "Work class",
+  description: "Description",
+  improvement_status: "Status",
+};
+const REASON_WORDS: Readonly<Record<string, string>> = {
+  no_lexicon_carrier: "not in the data model",
+  source_missing: "not on record",
+  not_in_export: "not published",
+  not_open: "permit not open",
+  not_closed: "permit not closed",
+  contractor_unresolved: "not matched",
+  enum_lacks_value: "no matching value",
+};
+const shortLabel = (m: Missing): string =>
+  `${FIELD_WORDS[m.field] ?? m.field.replaceAll("_", " ")}: ${REASON_WORDS[m.reason] ?? "missing"}`;
+
 function Reasons({ entries }: { readonly entries: readonly Missing[] }): ReactElement {
   return (
     <>
       {entries.map((m, i) => (
-        <MissingReason key={`${i}-${m.field}`} field={m.field} reason={m.reason} />
+        <MissingReason
+          key={`${i}-${m.field}`}
+          field={m.field}
+          reason={m.reason}
+          short={shortLabel(m)}
+        />
       ))}
     </>
   );
@@ -266,9 +301,15 @@ function PermitCards({ rows }: { readonly rows: readonly PermitListRow[] }): Rea
                 <ContractorCell row={row} />
               </CardRow>
               <CardRow label={COLUMNS[5]}>
-                <span className={styles.value}>
-                  <Reasons entries={otherEntries(row)} />
-                </span>
+                {/* B-3: the missing-data pills fold behind a native disclosure (no script). */}
+                <details className={styles.more}>
+                  <summary className={styles.moreSummary}>
+                    Show {otherEntries(row).length + contractorEntries(row).length}
+                  </summary>
+                  <span className={styles.value}>
+                    <Reasons entries={otherEntries(row)} />
+                  </span>
+                </details>
               </CardRow>
             </dl>
             <RowProvenance row={row} />

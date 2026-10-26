@@ -70,6 +70,24 @@
   background: var(--md-sys-color-surface-container-low);
 }
 
+/* B-1: a long "not available" pill shows its short label on one line; an opened row shows the
+   full reason as normal wrapping text instead. */
+.compact tr:has(details[open]) [data-short] {
+  white-space: normal;
+}
+
+.compact tr:has(details[open]) [data-short]::after {
+  content: none;
+}
+
+.compact tr:has(details[open]) [data-short] > span:last-child {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+}
+
 /* Name cell: the short name bold, the doc's parenthetical as a helper line. */
 .compact td:first-child > span {
   overflow-wrap: anywhere;
