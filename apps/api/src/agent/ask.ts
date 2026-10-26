@@ -639,12 +639,17 @@ export function describeFilterChanges(steps: AgentAskStep[], question: string): 
       }
     }
     last.set(step.tool, current);
+    // PO 2026-10-26: an "open" permit includes stalled ones (still open, past expiry, never
+    // closed), so open_or_stalled is the reading of "open"; it is a widening only when the
+    // question asks for active / not-expired permits.
     if (
       current.status_class === "open_or_stalled" &&
-      /\bopen\b/i.test(question) &&
+      /\b(active|current|not expired|unexpired)\b/i.test(question) &&
       !/stalled/i.test(question)
     ) {
-      notes.push("status_class widened to open_or_stalled although the question asked for open");
+      notes.push(
+        "status_class widened to open_or_stalled although the question asked for active permits",
+      );
     }
   }
   return [...new Set(notes)];
@@ -669,8 +674,11 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "If the question refers to 'that area' or a prior place, use the most recent area from",
     "turns/overrides unless the question names a new place; call geocodePlace only to",
     "disambiguate, since searchProperties/searchRoofingPermits resolve area.place themselves.",
-    "Keep the user's filters exactly as asked: never loosen a threshold, change open to",
-    "open_or_stalled, or widen the radius to find more rows; when a search returns nothing, say",
+    "An 'open' permit includes stalled permits (still open, past expiry, never closed): for open",
+    "permits use status_class open_or_stalled and say how many are open and how many stalled; use",
+    "status_class open only when the user asks for active, current or not-expired permits.",
+    "Keep the user's filters exactly as asked: never loosen a threshold or widen the radius to",
+    "find more rows; when a search returns nothing, say",
     "so plainly and name the filters used. A default radius is the tool default; state it as an",
     "assumption. Do not call tools again after an empty result unless the question needs a",
     "different tool. Never claim 'good coverage' or 'genuinely no matches' unless a tool result",
@@ -1027,8 +1035,10 @@ export async function runAgentAsk(
         .join("; ");
       extra.push(`Note: the search filters changed during this answer (${changes.join("; ")}).`);
     }
+    // Only when the run does not publish owner location at all; a row without an owner record
+    // (no_owner_record, zip_not_zcta) is a per-row gap, not "cannot tell" (label audit 2026-10-26).
     if (
-      missing.some((m) => m.field === "owner_is_out_of_area") &&
+      missing.some((m) => m.field === "owner_is_out_of_area" && m.reason === "not_in_export") &&
       !(/not in the published export/i.test(cleaned) && /outside the area/i.test(cleaned))
     ) {
       extra.push(
