@@ -46,6 +46,11 @@ const HarnessEnv = z.object({
     blankToUndefined,
     z.string().min(1).default("gateway.pinata.cloud"),
   ),
+  /** The second independent Verify gateway (ARD § 16 AM-10). */
+  ORBITOR_GATEWAY_HOST: z.preprocess(
+    blankToUndefined,
+    z.string().min(1).default("ipfs.orbitor.dev"),
+  ),
   READPATH_PRIVATE_PREFIX: z.preprocess(
     blankToUndefined,
     z

@@ -1,8 +1,14 @@
-// verify-manifest (FR-006, AM-01, AM-05): independent proof that every published artifact is
-// what the committed manifest says, read from two public gateways that are not our copy. The
-// Pinata public gateway is the independent one (Filebase is also the pin host). ipfs.io and
-// dweb.link retired on 2026-09-21 (docs/decisions/0001-read-path.md Finding 3); they, the
-// CloudFront CID copy and w3s.link are refused before any request.
+// verify-manifest (FR-006, AM-05; gateways per AM-10 2026-10-26, which amends AM-01): independent
+// proof that every published artifact is what the committed manifest says, read from two public
+// gateways that are neither our copy nor our storage host: Pinata's public gateway and
+// ipfs.orbitor.dev. "Independent" means a public gateway CountyLens does not operate, with the bytes
+// hash-checked (README); the two are the counted gateways, labelled with plain facts (PO wording
+// 2026-10-26): Pinata "public gateway · also holds our second copy", orbitor "public gateway ·
+// holds no copy of ours". The Filebase gateway may be read as a labelled fallback ("our main
+// storage host · fallback, not counted"); its result is reported but never
+// counts toward the verdict. ipfs.io and dweb.link retired on 2026-09-21
+// (docs/decisions/0001-read-path.md Finding 3); they, the CloudFront CID copy, w3s.link and
+// storacha.link (Storacha uploads ended 2026-04-15) are refused before any request.
 //
 // Order: the manifest itself first, by its own CID (the raw-leaves CIDv1 of the local bytes),
 // from both gateways, compared byte-for-byte with the local file; a gateway that returns
@@ -14,36 +20,57 @@
 // size + 1 bytes; TIMEOUT_MS per request; 429/5xx retried up to MAX_ATTEMPTS with Retry-After
 // or capped full jitter; at most CONCURRENCY_PER_GATEWAY requests in flight per gateway. One line
 // per artifact per gateway; `ALL ARTIFACTS VERIFIED` only when the manifest and every artifact
-// match on both gateways. The run never writes a file.
+// match on both counted gateways. The run never writes a file.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { RunManifestV1, type ManifestArtifact } from "@countylens/contract";
 import { cidOfBytes } from "./cid.js";
 import { jcsBytes } from "./jcs.js";
+import { backoffDelayMs } from "./backoff.js";
+import {
+  ALLOWED_GATEWAY_HOSTS,
+  COUNTED_GATEWAY_HOSTS,
+  FALLBACK_GATEWAY_HOSTS,
+  GATEWAY_LABELS,
+  STORAGE_HOST_LABEL,
+  gatewayLabel as labelOf,
+  gatewayRefusalText,
+  gatewayRole as roleOf,
+} from "./gateways.js";
 
-/** Config key `PINATA_GATEWAY_HOST`: the independent public gateway. */
-export const PINATA_GATEWAY_HOST = "gateway.pinata.cloud";
-/** Config key `FILEBASE_GATEWAY_HOST`: the pin host's gateway. */
-export const FILEBASE_GATEWAY_HOST = "ipfs.filebase.io";
-/** The complete allowlist. Success needs every host in it. */
-export const VERIFY_GATEWAYS: readonly string[] = [PINATA_GATEWAY_HOST, FILEBASE_GATEWAY_HOST];
+// Roles, labels and the refusal text live in ./gateways.ts (one definition, shared with
+// scripts/verify-manifest.ts); re-exported here under this module's established names.
+export {
+  FILEBASE_GATEWAY_HOST,
+  ORBITOR_GATEWAY_HOST,
+  PINATA_GATEWAY_HOST,
+  STORAGE_HOST_LABEL,
+} from "./gateways.js";
+/** The counted gateways (AM-10). Success needs every host in it. */
+export const VERIFY_GATEWAYS: readonly string[] = COUNTED_GATEWAY_HOSTS;
+/** Our main storage host's gateway: reported alongside, never counted (AM-10). */
+export const VERIFY_FALLBACK_GATEWAYS: readonly string[] = FALLBACK_GATEWAY_HOSTS;
+/** Every host verify may read. */
+export const VERIFY_ALLOWED_GATEWAYS: readonly string[] = ALLOWED_GATEWAY_HOSTS;
+/** The plain-facts label for each host (PO wording 2026-10-26). */
+export const VERIFY_GATEWAY_LABELS: Readonly<Record<string, string>> = GATEWAY_LABELS;
+
 /** Per request; the first fetch after an upload is slow (plan R5). */
 export const TIMEOUT_MS = 120_000;
 export const MAX_ATTEMPTS = 5;
 export const CONCURRENCY_PER_GATEWAY = 2;
 export const ALL_VERIFIED_TEXT = "ALL ARTIFACTS VERIFIED";
 const BACKOFF_BASE_MS = 1000;
-const BACKOFF_CAP_MS = 60_000;
 
 /** The exact refusal (plan § "Fixed texts", TC-042). */
 export function refusedGatewayText(host: string): string {
-  return `Refused gateway ${host}: verify-manifest only uses ${PINATA_GATEWAY_HOST}, ${FILEBASE_GATEWAY_HOST}`;
+  return gatewayRefusalText(host);
 }
 
 /** Throws the refusal for the first host outside the allowlist. Runs before any request. */
 export function assertAllowedGateways(hosts: readonly string[]): void {
   for (const host of hosts) {
-    if (!VERIFY_GATEWAYS.includes(host)) throw new Error(refusedGatewayText(host));
+    if (!VERIFY_ALLOWED_GATEWAYS.includes(host)) throw new Error(refusedGatewayText(host));
   }
 }
 
@@ -61,14 +88,7 @@ export function retryDelayMs(
   random: () => number = Math.random,
   now: () => number = Date.now,
 ): number {
-  if (retryAfter !== null) {
-    const trimmed = retryAfter.trim();
-    if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
-    const at = Date.parse(trimmed);
-    if (!Number.isNaN(at)) return Math.max(0, at - now());
-  }
-  const ceiling = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** (attempt - 1));
-  return Math.max(1, Math.round(random() * ceiling));
+  return backoffDelayMs(attempt, retryAfter, { baseMs: BACKOFF_BASE_MS, random, now });
 }
 
 export type VerifyField = "cid" | "carCid" | "manifest";
@@ -80,6 +100,8 @@ export interface VerifyCheck {
   cid: string;
   field: VerifyField;
   gateway: string;
+  /** "fallback" = the storage host: reported, never counted toward the verdict (AM-10). */
+  role: "counted" | "fallback";
   /** The final HTTP status, or null when no response arrived. */
   status: number | null;
   /** Bytes received (at most the expected size + 1), or null without a response. */
@@ -99,12 +121,14 @@ export interface VerifyReport {
   artifacts: VerifyCheck[];
   /** Every URL requested, in request order (TC-040 step 3). */
   requests: string[];
+  /** Loud but non-failing findings, e.g. the fallback serving other manifest bytes. */
+  warnings: string[];
 }
 
 export interface VerifyOptions {
   /** The committed manifest (`runs/<runId>/manifest.json`), exact JCS bytes. */
   manifestPath: string;
-  /** Hosts to use; each must be in VERIFY_GATEWAYS. Default: both. */
+  /** Hosts to use; each must be in VERIFY_ALLOWED_GATEWAYS. Default: all three. */
   gateways?: readonly string[];
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -299,8 +323,10 @@ function compare(
 
 function formatLine(c: VerifyCheck): string {
   const head = `${c.ok ? "ok  " : "FAIL"} ${c.gateway} ${c.name} ${c.field === "manifest" ? "cid" : c.field}=${c.cid}`;
-  if (c.ok) return `${head} size=${c.size} match sha256 match`;
-  return `${head} ${c.reason ?? "failed"}`;
+  const body = c.ok
+    ? `${head} size=${c.size} match sha256 match`
+    : `${head} ${c.reason ?? "failed"}`;
+  return `${body} [${labelOf(c.gateway)}]`;
 }
 
 /** Which CID the byte check fetches (TC-043): never the dag-json root of a car or directory. */
@@ -310,7 +336,7 @@ function target(a: ManifestArtifact): { field: VerifyField; cid: string | null }
 }
 
 export async function verifyManifest(options: VerifyOptions): Promise<VerifyReport> {
-  const gateways = [...new Set(options.gateways ?? VERIFY_GATEWAYS)];
+  const gateways = [...new Set(options.gateways ?? VERIFY_ALLOWED_GATEWAYS)];
   assertAllowedGateways(gateways);
   const log = options.log ?? ((line: string) => console.log(line));
   const t: Transport = {
@@ -345,6 +371,7 @@ export async function verifyManifest(options: VerifyOptions): Promise<VerifyRepo
           cid: manifestCid,
           field: "manifest",
           gateway,
+          role: roleOf(gateway),
           status: fetched.status,
           size: fetched.size,
           sha256: fetched.sha256,
@@ -368,12 +395,21 @@ export async function verifyManifest(options: VerifyOptions): Promise<VerifyRepo
     manifest: manifestChecks,
     artifacts: [],
     requests: t.requests,
+    warnings: [],
   };
-  // A gateway that answered 200 with other bytes for this CID is a broken gateway: stop here.
+  // A counted gateway that answered 200 with other bytes for this CID is broken: stop here.
+  // The fallback (our storage host) serving other bytes is worth a loud WARNING, but it does not
+  // stop the run: it is never counted.
   const differing = manifestChecks.filter((c) => c.status === 200 && !c.ok);
-  if (differing.length > 0) {
+  for (const c of differing.filter((d) => d.role === "fallback")) {
+    const warning = `WARNING ${c.gateway} (${STORAGE_HOST_LABEL}) served other bytes for the manifest CID ${manifestCid}: ${c.reason ?? "bytes differ"}`;
+    report.warnings.push(warning);
+    log(warning);
+  }
+  const countedDiffering = differing.filter((c) => c.role === "counted");
+  if (countedDiffering.length > 0) {
     log(
-      `VERIFICATION FAILED: manifest bytes differ on ${differing.map((c) => c.gateway).join(", ")}; artifacts not checked`,
+      `VERIFICATION FAILED: manifest bytes differ on ${countedDiffering.map((c) => c.gateway).join(", ")}; artifacts not checked`,
     );
     return report;
   }
@@ -392,6 +428,7 @@ export async function verifyManifest(options: VerifyOptions): Promise<VerifyRepo
               cid: artifact.cid,
               field,
               gateway,
+              role: roleOf(gateway),
               status: null,
               size: null,
               sha256: null,
@@ -406,6 +443,7 @@ export async function verifyManifest(options: VerifyOptions): Promise<VerifyRepo
               cid,
               field,
               gateway,
+              role: roleOf(gateway),
               status: fetched.status,
               size: fetched.size,
               sha256: fetched.sha256,
@@ -421,10 +459,18 @@ export async function verifyManifest(options: VerifyOptions): Promise<VerifyRepo
   }
   report.artifacts = await Promise.all(jobs);
 
-  // 3. The verdict: the manifest and every artifact ok on every allowlisted gateway.
+  // 3. The verdict: the manifest and every artifact ok on every counted gateway. Fallback
+  // (storage host) checks are reported in one summary line and never count (AM-10).
   const missing = VERIFY_GATEWAYS.filter((g) => !gateways.includes(g));
-  for (const g of missing) log(`FAIL ${g} not checked: ${ALL_VERIFIED_TEXT} needs both gateways`);
-  const checks = [...report.manifest, ...report.artifacts];
+  for (const g of missing)
+    log(`FAIL ${g} not checked: ${ALL_VERIFIED_TEXT} needs both counted gateways`);
+  const all = [...report.manifest, ...report.artifacts];
+  const fallback = all.filter((c) => c.role === "fallback");
+  if (fallback.length > 0)
+    log(
+      `fallback ${VERIFY_FALLBACK_GATEWAYS.join(", ")} (${STORAGE_HOST_LABEL}): ${fallback.filter((c) => c.ok).length} of ${fallback.length} checks matched; not counted`,
+    );
+  const checks = all.filter((c) => c.role === "counted");
   const failed = checks.filter((c) => !c.ok).length;
   report.ok = failed === 0 && missing.length === 0;
   if (report.ok) log(ALL_VERIFIED_TEXT);

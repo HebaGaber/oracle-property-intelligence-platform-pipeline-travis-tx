@@ -2,11 +2,17 @@
 // `previousManifestCid` back to the first run (null). Each manifest is read through the caller's
 // loader (fetch-by-cid + parseManifest in the pages), so every link is a verified published file.
 // A cycle or a chain longer than `maxLinks` stops the walk instead of looping. Compare shows
-// "old manifest still resolves on Pinata and Filebase" only after both public gateways answered
-// with bytes whose raw-leaves CID equals the manifest CID (never the CID copy, AM-01).
+// "old manifest still resolves on Pinata and orbitor" only after both independent gateways
+// answered with bytes whose raw-leaves CID equals the manifest CID (never the CID copy). Filebase
+// is checked too and shown as the labelled fallback, but never decides the text (AM-10).
 import type { RunManifestV1 } from "@countylens/contract";
 import { rawCid } from "@countylens/query-core";
-import { RUNS_TEXTS, type GatewayName, type ReadPathUrls } from "@countylens/shared";
+import {
+  INDEPENDENT_GATEWAYS,
+  RUNS_TEXTS,
+  type GatewayName,
+  type ReadPathUrls,
+} from "@countylens/shared";
 import { browserFetch } from "./http";
 import { readCapped } from "./read-capped";
 
@@ -48,14 +54,18 @@ export async function loadRunChain(
 /** One gateway's answer for an old manifest: not yet answered, the right bytes, or not. */
 export type GatewayCheck = "pending" | "resolves" | "fails";
 
-export interface ChainResolves {
-  readonly pinata: GatewayCheck;
-  readonly filebase: GatewayCheck;
-}
+export type ChainResolves = Readonly<Record<GatewayName, GatewayCheck>>;
 
-/** The fixed text only when both gateways served the right bytes; otherwise nothing. */
+/** Every gateway still to answer. */
+export const PENDING_RESOLVES: ChainResolves = Object.freeze({
+  pinata: "pending",
+  orbitor: "pending",
+  filebase: "pending",
+});
+
+/** The fixed text only when both independent gateways served the right bytes (never Filebase). */
 export function oldManifestResolvesText(resolves: ChainResolves): string | null {
-  return resolves.pinata === "resolves" && resolves.filebase === "resolves"
+  return INDEPENDENT_GATEWAYS.every((g) => resolves[g] === "resolves")
     ? RUNS_TEXTS.oldManifestResolves
     : null;
 }
@@ -85,14 +95,15 @@ async function checkGateway(
   }
 }
 
-/** GET the manifest from Pinata and Filebase in parallel and check each response's CID. */
+/** GET the manifest from Pinata, orbitor and Filebase in parallel and check each response's CID. */
 export async function checkManifestResolves(
   cid: string,
   options: CheckOptions,
 ): Promise<ChainResolves> {
-  const [pinata, filebase] = await Promise.all([
+  const [pinata, orbitor, filebase] = await Promise.all([
     checkGateway(cid, "pinata", options),
+    checkGateway(cid, "orbitor", options),
     checkGateway(cid, "filebase", options),
   ]);
-  return { pinata, filebase };
+  return { pinata, orbitor, filebase };
 }

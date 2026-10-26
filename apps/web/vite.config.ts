@@ -1,5 +1,5 @@
 // Vite build of the hosted UI (A-03 T007; A-13 T015). Env: VITE_CID_COPY_HOST,
-// VITE_FILEBASE_GATEWAY_HOST and VITE_PINATA_GATEWAY_HOST come from the Amplify app environment
+// VITE_FILEBASE_GATEWAY_HOST, VITE_PINATA_GATEWAY_HOST and VITE_ORBITOR_GATEWAY_HOST come from the Amplify app environment
 // (infra web-stack); nothing is read here. DuckDB-WASM is a dynamic import (only the Permits page)
 // so it stays outside the 300 KB gzipped JS budget; its chunk file name keeps "duckdb" (the
 // adapter module is engine/duckdb-wasm.ts) so scripts/bundle-size.ts can exclude it.

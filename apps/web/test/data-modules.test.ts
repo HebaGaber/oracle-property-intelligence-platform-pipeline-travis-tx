@@ -26,6 +26,7 @@ import {
   checkManifestResolves,
   loadRunChain,
   oldManifestResolvesText,
+  type GatewayCheck,
 } from "../src/data/run-chain";
 import { runEvents } from "../src/data/run-events";
 import { SOURCE_TOTAL_PREFIX, coverageRows, denominatorRows } from "../src/data/coverage-rows";
@@ -53,6 +54,7 @@ const URLS = readPathUrls({
   cidCopyHost: "copy.host.test",
   filebaseGatewayHost: "filebase.host.test",
   pinataGatewayHost: "pinata.host.test",
+  orbitorGatewayHost: "orbitor.host.test",
 });
 
 /** A second run after the committed one (test-only). */
@@ -117,15 +119,18 @@ describe("run-chain", () => {
     expect(chain).toHaveLength(1);
   });
 
-  it('"old manifest still resolves" only after both Pinata and Filebase answered', () => {
-    expect(oldManifestResolvesText({ pinata: "pending", filebase: "resolves" })).toBeNull();
-    expect(oldManifestResolvesText({ pinata: "resolves", filebase: "fails" })).toBeNull();
-    expect(oldManifestResolvesText({ pinata: "resolves", filebase: "resolves" })).toBe(
-      RUNS_TEXTS.oldManifestResolves,
-    );
+  it('"old manifest still resolves" only after both independent gateways (Pinata, orbitor) answered', () => {
+    const r = (pinata: GatewayCheck, orbitor: GatewayCheck, filebase: GatewayCheck) =>
+      oldManifestResolvesText({ pinata, orbitor, filebase });
+    expect(r("pending", "resolves", "resolves")).toBeNull();
+    expect(r("resolves", "fails", "resolves")).toBeNull();
+    // AM-10: Filebase is the storage host; it never decides the text either way.
+    expect(r("resolves", "resolves", "fails")).toBe(RUNS_TEXTS.oldManifestResolves);
+    expect(r("resolves", "resolves", "resolves")).toBe(RUNS_TEXTS.oldManifestResolves);
+    expect(r("fails", "pending", "resolves")).toBeNull();
   });
 
-  it("checkManifestResolves GETs both gateways (never the copy) and checks the bytes' CID", async () => {
+  it("checkManifestResolves GETs every gateway (never the copy) and checks the bytes' CID", async () => {
     const seen: string[] = [];
     const fetchImpl = (async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -135,9 +140,10 @@ describe("run-chain", () => {
         : new Response("not the manifest", { status: 200 });
     }) as typeof fetch;
     const r = await checkManifestResolves(LATEST.manifestCid, { urls: URLS, fetch: fetchImpl });
-    expect(r).toEqual({ pinata: "resolves", filebase: "fails" });
+    expect(r).toEqual({ pinata: "resolves", orbitor: "fails", filebase: "fails" });
     expect(seen.sort()).toEqual([
       URLS.gatewayUrl(LATEST.manifestCid, "filebase"),
+      URLS.gatewayUrl(LATEST.manifestCid, "orbitor"),
       URLS.gatewayUrl(LATEST.manifestCid, "pinata"),
     ]);
     expect(seen).not.toContain(URLS.copyUrl(LATEST.manifestCid));
@@ -348,6 +354,9 @@ describe("verify-lane", () => {
     );
     expect(verifyLaneUrl(URLS, "filebase", LATEST.manifestCid)).toBe(
       `https://filebase.host.test/ipfs/${LATEST.manifestCid}`,
+    );
+    expect(verifyLaneUrl(URLS, "orbitor", LATEST.manifestCid)).toBe(
+      `https://orbitor.host.test/ipfs/${LATEST.manifestCid}`,
     );
   });
 

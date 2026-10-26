@@ -17,7 +17,8 @@
 // - Compare: one `[data-compare-run]` per column with `data-cid`; the previous link is
 //   a link `a[data-previous-cid="{cid}"]`; a CAR link per run `a[data-car-link]`; the summed size
 //   `[data-total-size]` (bytes in the attribute); the pill text RUNS_TEXTS.oldManifestResolves;
-//   one `[data-gateway="pinata|filebase"]` check with `data-check`; a button "Re-check".
+//   one `[data-gateway="pinata|orbitor|filebase"]` check with `data-check` (the pill needs
+//   Pinata and orbitor; Filebase is the labelled fallback, AM-10); a button "Re-check".
 // - Coverage: each record kind `[data-kind="{kind}"]` (KIND_IDS; contractor names its five states)
 //   holds its `[data-coverage-key="{key}"]` count rows (each with `[data-count]`, the derivation
 //   label and a `time[datetime]`) or the "not in this run's coverage section" text, and a table chip
@@ -28,7 +29,9 @@
 //   `tbody tr[data-artifact="{name}"]` per artifact with `[data-cid]`, `[data-codec]`,
 //   `[data-size]`, `[data-sha256]`, `[data-car-cid]` (where present) and a link "Verify" or
 //   "Verify via CAR".
-// - Verify: one lane per gateway `[data-lane="pinata|filebase"]` with `data-state` = the
+// - Verify: the page result `[data-verify-result]` (pending, verified, not_verified, via_car;
+//   decided by Pinata and orbitor only, AM-10), then one lane per gateway
+//   `[data-lane="pinata|orbitor|filebase"]` (`data-independent` true|false) with `data-state` = the
 //   VerifyLane kind (idle, fetching, retrying, verified, mismatch, failed, via_car), the lane URL
 //   as text, `[data-got-size]`, `[data-got-sha256]`, `[data-expected-size]`,
 //   `[data-expected-sha256]` (full values in the attribute `data-value`), and "✓" only when
@@ -100,7 +103,7 @@ export const SEL = {
   previousLink: "[data-previous-cid]",
   carLink: "a[data-car-link]",
   totalSize: "[data-total-size]",
-  resolveCheck: (gw: "pinata" | "filebase"): string => `[data-gateway="${gw}"]`,
+  resolveCheck: (gw: "pinata" | "orbitor" | "filebase"): string => `[data-gateway="${gw}"]`,
   coverageKey: "[data-coverage-key]",
   count: "[data-count]",
   /** The kind's table chip; its CID is a `[data-cid]` inside. */
@@ -111,7 +114,8 @@ export const SEL = {
   artifactTable: 'table[aria-label="Artifacts"]',
   artifactRow: (name: string): string => `tbody tr[data-artifact="${name}"]`,
   artifactRows: 'table[aria-label="Artifacts"] tbody tr[data-artifact]',
-  lane: (gw: "pinata" | "filebase"): string => `[data-lane="${gw}"]`,
+  lane: (gw: "pinata" | "orbitor" | "filebase"): string => `[data-lane="${gw}"]`,
+  verifyResult: "[data-verify-result]",
   header: "[data-explore-header]",
   engineLine: "[data-engine-line]",
   resultRow: "[data-result-row]",

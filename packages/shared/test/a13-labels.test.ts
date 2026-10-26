@@ -19,7 +19,7 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
   it("Runs, Compare and the run index", () => {
     expect(RUNS_TEXTS.nextSync).toBe("Next sync: none · scheduler off by default");
     expect(RUNS_TEXTS.oldManifestResolves).toBe(
-      "old manifest still resolves on Pinata and Filebase",
+      "old manifest still resolves on Pinata and orbitor",
     );
     expect(RUNS_TEXTS.firstRun).toBe("first run · nothing to compare against");
     expect(RUNS_TEXTS.indexUnavailable("HTTP 404")).toBe("Run index unavailable · HTTP 404");
@@ -40,6 +40,33 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
         { size: 12, sha256: "cccc3333dddd4444" },
       ),
     ).toBe("Mismatch · size 10 vs 12 · SHA-256 aaaa…2222 vs cccc…4444");
+  });
+
+  it("Verify gateways (ARD § 16 AM-10): two independent lanes, Filebase a labelled fallback", () => {
+    expect(VERIFY_TEXTS.gatewayOperators).toEqual({
+      pinata: "Pinata",
+      orbitor: "orbitor",
+      filebase: "Filebase",
+    });
+    expect(VERIFY_TEXTS.laneRoles).toEqual({
+      pinata: "Public gateway · also holds our second copy",
+      orbitor: "Public gateway · holds no copy of ours",
+      filebase: "Our main storage host · fallback, not counted",
+    });
+    expect(VERIFY_TEXTS.independentVerified).toBe(
+      "Verified on Pinata and orbitor · two public gateways CountyLens does not operate; bytes match the manifest",
+    );
+    expect(VERIFY_TEXTS.independentNotVerified(VERIFY_TEXTS.noVerifiedAnswer("orbitor"))).toBe(
+      "Not verified on two public gateways · no verified answer from orbitor",
+    );
+    expect(VERIFY_TEXTS.bytesDiffer("Pinata")).toBe("bytes differ on Pinata");
+    expect(VERIFY_TEXTS.pinataGaveUp).toBe("Pinata may be rate-limiting; try again");
+    expect(VERIFY_TEXTS.laneGaveUp).toBe("no readable answer after retries");
+    expect(VERIFY_TEXTS.storedOn).toEqual([
+      "Filebase: IPFS pin of every artifact (storage host)",
+      "Pinata: second copy of every run manifest and of the latest run's table files that fit the free quota",
+      "GitHub Release: CAR backup of the run, re-pinnable",
+    ]);
   });
 
   it("Explore", () => {

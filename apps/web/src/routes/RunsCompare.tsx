@@ -4,9 +4,10 @@
 // nothing to compare against" and links to it; nothing is invented. With two it shows both runs
 // (run ID, manifest CID, finish time, fallback chip when Filebase served the read), run b's
 // `previousManifestCid` link and its per-source deltas, and the old-manifest check: a plain GET
-// of run a's manifest on Pinata and on Filebase (data/run-chain, never the CID copy); "old
-// manifest still resolves on Pinata and Filebase" appears only after both answered with bytes of
-// that CID. Layout (A-16 F3, board RunsCompare1440/768/390): previous and current cards side by
+// of run a's manifest on Pinata, orbitor and Filebase (data/run-chain, never the CID copy); "old
+// manifest still resolves on Pinata and orbitor" appears only after both independent gateways
+// answered with bytes of that CID. Filebase is listed as the labelled fallback (AM-10) and never
+// decides the text. Layout (A-16 F3, board RunsCompare1440/768/390): previous and current cards side by
 // side from 1024 px, the change table (compact per-source blocks below 600 px), then Immutability
 // checks beside the old-manifest check. Justified: the board's third "CAR available" card is
 // folded into each card's CAR link, the "CAR available" chip and "Directory CAR" (bundle budget).
@@ -16,6 +17,8 @@ import {
   PROGRESS_LABELS,
   ROUTES,
   RUNS_TEXTS,
+  VERIFY_TEXTS,
+  isIndependentGateway,
   isSourceName,
   sourceLabel,
   verifyPath,
@@ -36,11 +39,12 @@ import { formatUtc } from "../components/Provenance";
 import {
   checkManifestResolves,
   oldManifestResolvesText,
+  PENDING_RESOLVES,
   type ChainResolves,
   type GatewayCheck,
 } from "../data/run-chain";
 import { numberedRuns, type RunsIndexEntry } from "../data/runs-index";
-import { verifyUrlsFromEnv } from "../data/verify-lane";
+import { VERIFY_GATEWAYS, verifyUrlsFromEnv } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
   runErrorNode,
@@ -52,7 +56,7 @@ import {
 } from "./Runs.shared";
 import styles from "./Runs.module.css";
 
-const GATEWAY_LABELS = { pinata: "Pinata", filebase: "Filebase" } as const;
+const GATEWAY_LABELS = VERIFY_TEXTS.gatewayOperators;
 const CHECK_LABELS: Readonly<Record<GatewayCheck, string>> = {
   pending: "checking",
   resolves: "answered with the manifest's bytes",
@@ -490,15 +494,12 @@ function ImmutabilityChecks({
 }
 
 function OldManifestCheck({ cid }: { readonly cid: string }): ReactElement {
-  const [resolves, setResolves] = useState<ChainResolves>({
-    pinata: "pending",
-    filebase: "pending",
-  });
+  const [resolves, setResolves] = useState<ChainResolves>(PENDING_RESOLVES);
   const [failure, setFailure] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    setResolves({ pinata: "pending", filebase: "pending" });
+    setResolves(PENDING_RESOLVES);
     setFailure(null);
     let urls: ReturnType<typeof verifyUrlsFromEnv>;
     try {
@@ -529,7 +530,7 @@ function OldManifestCheck({ cid }: { readonly cid: string }): ReactElement {
         </div>
       )}
       <ul className={styles.list}>
-        {(["pinata", "filebase"] as const).map((gateway) => (
+        {VERIFY_GATEWAYS.map((gateway) => (
           <li
             key={gateway}
             className={`${styles.item} ${styles.itemBody}`}
@@ -537,6 +538,7 @@ function OldManifestCheck({ cid }: { readonly cid: string }): ReactElement {
             data-check={resolves[gateway]}
           >
             {GATEWAY_LABELS[gateway]}: {CHECK_LABELS[resolves[gateway]]}
+            {isIndependentGateway(gateway) ? null : ` · ${VERIFY_TEXTS.laneRoles[gateway]}`}
           </li>
         ))}
       </ul>

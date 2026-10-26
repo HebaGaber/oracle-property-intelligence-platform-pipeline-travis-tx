@@ -4,7 +4,8 @@
 // CID or "previous: none", and a Verify link. Then the Atlas data table of every manifest artifact:
 // name, CID, codec, size, SHA-256, CAR, and the action: "Verify" for a file ≤ 50 MB, "Verify via
 // CAR" (linking to its CAR's Verify page when it has one) for a directory or a larger file. Every
-// value is the manifest's; the fallback chip names Filebase when it served the read. A
+// value is the manifest's; the fallback chip names Filebase when it served the read. "Stored on"
+// (AM-10) says where the bytes live: Filebase pin, Pinata copy, GitHub Release CARs. A
 // react-router lazy route module.
 import type { ManifestArtifact, RunManifestV1 } from "@countylens/contract";
 import { PROGRESS_LABELS, VERIFY_TEXTS, verifyPath } from "@countylens/shared";
@@ -27,6 +28,7 @@ import {
   RUN_STAGE_TEXTS,
   runErrorNode,
   loadManifestByCid,
+  StoredOn,
   toRunLoadError,
   useLatestRun,
   type RunLoadError,
@@ -126,6 +128,7 @@ function ManifestView({ run }: { readonly run: LoadedRun }): ReactElement {
         Manifest <CidDisplay cid={manifestCid} /> · run {manifest.runId} · read from{" "}
         {read.source.host}
       </Provenance>
+      <StoredOn />
     </>
   );
 }

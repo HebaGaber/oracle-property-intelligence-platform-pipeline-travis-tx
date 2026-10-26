@@ -57,6 +57,7 @@ import { harnessConfig, requireCidCopyHost } from "./lib/runtime.js";
 
 const FILEBASE = (): string => harnessConfig().FILEBASE_GATEWAY_HOST;
 const PINATA = (): string => harnessConfig().PINATA_GATEWAY_HOST;
+const ORBITOR = (): string => harnessConfig().ORBITOR_GATEWAY_HOST;
 const EXPLORE = ROUTES.explore;
 /** The wide area of TC-026 (downtown Austin, 25 mi) so today's run returns rows. */
 const WIDE = { at: "30.2672,-97.7431", r: 25 } as const;
@@ -387,7 +388,7 @@ test.describe("A-13 explorer · demo lines", () => {
     // 5. Fallback chip exactly when Filebase served the read.
     await expectFallbackChip(page, hosts);
     // 6. Reload with the CID copy aborted → the same rows with the fallback chip.
-    const gateways = new Set([FILEBASE(), PINATA(), new URL(page.url()).host]);
+    const gateways = new Set([FILEBASE(), PINATA(), ORBITOR(), new URL(page.url()).host]);
     await page.route(
       (url) => url.href.includes(oracle.manifestCid) && !gateways.has(url.host),
       (route: Route) => route.abort("failed"),
@@ -446,7 +447,7 @@ test.describe("A-13 explorer · demo lines", () => {
     await settled(page, "runs-compare");
     await expect(page.getByText(RUNS_TEXTS.firstRun, { exact: true })).toBeVisible();
     await checkpoint(page, "007", "today");
-    for (const host of [PINATA(), FILEBASE()]) {
+    for (const host of [PINATA(), ORBITOR(), FILEBASE()]) {
       const res = await fetch(`https://${host}/ipfs/${oracle.manifestCid}`, {
         signal: AbortSignal.timeout(60_000),
       });
@@ -704,19 +705,19 @@ test.describe("A-13 explorer · runs and compare", () => {
     const { n } = oracle;
     const old = oracle.numbered[n - 2]?.manifestCid ?? "";
     const net = recordRequests(page);
-    // 1. Filebase answers 504 for the old manifest.
-    await page.route(`https://${FILEBASE()}/ipfs/${old}*`, (route) =>
+    // 1. orbitor (an independent gateway, AM-10) answers 504 for the old manifest.
+    await page.route(`https://${ORBITOR()}/ipfs/${old}*`, (route) =>
       route.fulfill({ status: 504, headers: { "access-control-allow-origin": "*" }, body: "" }),
     );
-    // 2–3. Pill absent, the Filebase check shows its failure (or the retry text).
+    // 2–3. Pill absent, the orbitor check shows its failure (or the retry text).
     await page.goto(`${ROUTES.runsCompare}?a=${n - 1}&b=${n}`);
     await ready(page, "runs-compare");
-    const check = page.locator(SEL.resolveCheck("filebase"));
+    const check = page.locator(SEL.resolveCheck("orbitor"));
     await expect(check).toHaveAttribute("data-check", /fail|retry|error/, { timeout: 60_000 });
     await expect(page.getByText(RUNS_TEXTS.oldManifestResolves, { exact: true })).toHaveCount(0);
     await checkpoint(page, "015", 3);
     // 4. Remove the route; re-check → the pill.
-    await page.unroute(`https://${FILEBASE()}/ipfs/${old}*`);
+    await page.unroute(`https://${ORBITOR()}/ipfs/${old}*`);
     await page.getByRole("button", { name: "Re-check" }).click();
     await expect(page.getByText(RUNS_TEXTS.oldManifestResolves, { exact: true })).toBeVisible({
       timeout: 90_000,
@@ -724,10 +725,10 @@ test.describe("A-13 explorer · runs and compare", () => {
     const hosts = new Set(
       net.requests.filter((r) => r.url.href.includes(old)).map((r) => r.url.host),
     );
-    // The app reads manifests through the CID copy; only the two checks go to the gateways.
+    // The app reads manifests through the CID copy; only the gateway checks go to the gateways.
     for (const host of hosts) {
       if (host === requireCidCopyHost()) continue;
-      expect([PINATA(), FILEBASE()]).toContain(host);
+      expect([PINATA(), ORBITOR(), FILEBASE()]).toContain(host);
     }
     await checkpoint(page, "015", 4);
   });

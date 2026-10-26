@@ -5,9 +5,16 @@
 // manifest ("Manifest unavailable · {cid} · {reason}", the full CID in `data-cid`). The reason is
 // the A-03 text (RUN_INDEX_TEXTS, BOTH_HOSTS_DOWN_TEXT, a CID mismatch) as its own element, so
 // both the A-03 checks and the A-13 sentence read exactly. Not a route module (no `Component`).
-import { RUNS_TEXTS, SOURCE_LABELS, isSourceName, sourceLabel } from "@countylens/shared";
+import {
+  RUNS_TEXTS,
+  SOURCE_LABELS,
+  VERIFY_TEXTS,
+  isSourceName,
+  sourceLabel,
+} from "@countylens/shared";
 import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import styles from "./Runs.module.css";
+import { Provenance } from "../components/Provenance";
 import { readPathUrlsFromEnv } from "../data/config";
 import type { RunEvent } from "../data/run-events";
 import { loadManifest, type LoadedManifest } from "../data/manifest";
@@ -333,5 +340,29 @@ export function SourceDeltas({
       <span data-delta="changed">{changed}</span> · removed{" "}
       <span data-delta="removed">{removed}</span>
     </span>
+  );
+}
+
+/**
+ * "Stored on" (A-16 T076, ARD § 16 AM-10): where the published bytes live. Filebase pins every
+ * artifact; Pinata holds a second copy of every run manifest and of the latest run's table files
+ * that fit its free quota (not every artifact); the run's GitHub Release holds the CARs as the
+ * re-pinnable backup. Fixed wording from VERIFY_TEXTS; the provenance names the policy.
+ */
+export function StoredOn(): ReactElement {
+  return (
+    <section className={styles.card} aria-labelledby="stored-on-heading" data-stored-on="">
+      <h3 id="stored-on-heading" className={styles.sectionTitle}>
+        {VERIFY_TEXTS.storedOnTitle}
+      </h3>
+      <ul className={styles.list}>
+        {VERIFY_TEXTS.storedOn.map((line) => (
+          <li key={line} className={`${styles.item} ${styles.itemBody}`}>
+            {line}
+          </li>
+        ))}
+      </ul>
+      <Provenance>{VERIFY_TEXTS.storedOnProvenance}</Provenance>
+    </section>
   );
 }
