@@ -7,6 +7,7 @@
 // the reason. Row click opens the Property drawer. Shown from 1360 px (Explore picks it); the
 // cards (ResultRow) below. Render-only.
 import type { ExploreRow } from "@countylens/query-core";
+import { EXPLORE_TEXTS } from "@countylens/shared";
 import type { KeyboardEvent, MouseEvent, ReactElement } from "react";
 import { truncateCid } from "./CidDisplay";
 import { Icon } from "./Icon";
@@ -17,8 +18,10 @@ import {
   NO_PERMIT_TEXT,
   PLACEHOLDER_BUILT_YEAR,
   PLACEHOLDER_BUILT_YEAR_NOTE,
+  bbbText,
   builtYearWords,
   plainWords,
+  printedName,
 } from "./ResultRow";
 import styles from "./ResultTable.module.css";
 
@@ -218,6 +221,23 @@ function Row({
         {/* README demo: the contractor as printed on the permit and its BBB status. */}
         {row.permit === null ? (
           <span className={styles.sub}>—</span>
+        ) : printedName(row) === null ? (
+          // PO 2026-10-26: no printed contractor reads as a plain dash, like a row with no permit.
+          // The reasons stay in the cell for screen readers and the hosted checks, and on hover.
+          <span className={styles.stack}>
+            <span
+              data-field="contractor_name"
+              className={`${styles.sub} ${styles.dash}`}
+              title={EXPLORE_TEXTS.contractorNotPrinted}
+            >
+              <span className={styles.srOnly}>{EXPLORE_TEXTS.contractorNotPrinted}</span>
+            </span>
+            {bbbText(row.bbb_status, row.bbb_status_reason) !== null && (
+              <span data-field="bbb" className={styles.srOnly}>
+                <FieldValue row={row} field="bbb" />
+              </span>
+            )}
+          </span>
         ) : (
           <span className={styles.stack}>
             <span data-field="contractor_name">

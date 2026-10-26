@@ -176,7 +176,7 @@ interface RowExtras {
 const extras = (row: ExploreRow): RowExtras => row as ExploreRow & RowExtras;
 
 /** The contractor name as printed on the permit, wherever the row carries it. */
-function printedName(row: ExploreRow): string | null {
+export function printedName(row: ExploreRow): string | null {
   const nested = (row.contractor as { name_as_printed?: string | null } | null)?.name_as_printed;
   const onPermit = (row.permit as { contractor_name_as_printed?: string | null } | null)
     ?.contractor_name_as_printed;

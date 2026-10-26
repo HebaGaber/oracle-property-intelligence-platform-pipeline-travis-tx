@@ -206,6 +206,11 @@
   outline-offset: 2px;
 }
 
+/* A missing contractor: a visible dash; the reason is in the cell for screen readers. */
+.dash::before {
+  content: "—";
+}
+
 .srOnly {
   position: absolute;
   width: 1px;

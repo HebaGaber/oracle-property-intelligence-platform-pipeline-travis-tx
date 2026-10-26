@@ -3,6 +3,7 @@
 // the 1440 table and the compact cards answer the same checks. Unit tests have no matchMedia and
 // render the cards through Explore, so the table is rendered directly here.
 import type { ExploreRow } from "@countylens/query-core";
+import { EXPLORE_TEXTS } from "@countylens/shared";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ResultTable } from "../src/components/ResultTable";
@@ -108,5 +109,31 @@ describe("ResultTable", () => {
     );
     expect(document.querySelector('[data-result-row] [data-field="contractor_name"]')).toBeNull();
     expect(document.querySelector("[data-result-row]")?.textContent).toContain("—");
+  });
+
+  it("a permit with no printed contractor shows only a dash; the reasons stay for screen readers", () => {
+    render(
+      <ResultTable
+        rows={[
+          row({
+            permit: { ...row({}).permit!, contractor_name_as_printed: null },
+            contractor: { name_as_printed: null, resolution: "unresolved", company_cid: null },
+            bbb_status: "not_checked",
+            bbb_status_reason: "BBB lookups are not run for this county yet",
+          }),
+        ]}
+        first={1}
+        onSelect={() => undefined}
+        selected={null}
+      />,
+    );
+    const name = document.querySelector('[data-result-row] [data-field="contractor_name"]');
+    expect(name?.className).toMatch(/dash/);
+    expect(name?.getAttribute("title")).toBe(EXPLORE_TEXTS.contractorNotPrinted);
+    expect(name?.textContent).toBe(EXPLORE_TEXTS.contractorNotPrinted);
+    expect(name?.querySelector("[data-status]")).toBeNull(); // no chip
+    expect(document.querySelector('[data-result-row] [data-field="bbb"]')?.className).toMatch(
+      /srOnly/,
+    );
   });
 });
