@@ -413,3 +413,12 @@ describe("context helpers", () => {
     expect(asProxyRouteEvent(proxied)).toBe(proxied);
   });
 });
+
+describe("Activity counts questions only (metagross review, Major 2)", () => {
+  it("every Activity query filters to explore.search and query.* paths, never admin or runs", () => {
+    for (const q of Object.values(ACTIVITY_QUERIES)) {
+      expect(q.startsWith("filter path like /\\/trpc\\/(explore\\.search|query\\.)/")).toBe(true);
+      expect(q).not.toMatch(/admin|runs\./);
+    }
+  });
+});

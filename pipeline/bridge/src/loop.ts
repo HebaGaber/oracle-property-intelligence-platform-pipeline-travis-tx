@@ -22,6 +22,8 @@ export interface BridgeDeps {
   now: () => number;
   log: Logger;
   sleep?: (ms: number) => Promise<void>;
+  /** Tells the operator a run failed (machamp review M3): one SNS message to the Ops topic. */
+  alert?: (subject: string, message: string) => Promise<void>;
   /** True when the operator asked the bridge to quit (kill file). */
   killSwitch?: () => boolean;
 }
@@ -151,17 +153,24 @@ export class Bridge {
       await this.#finish(msg, cmd.commandId, "rejected_active_run");
       return;
     }
-    idem.record(cmd.commandId, "accepted");
-    await live.update({
-      state: "running",
-      runId: null,
-      commandId: cmd.commandId,
-      startedAt: new Date(this.#d.now()).toISOString(),
-      step: null,
-      limitations: [],
-      lastCommand: this.#last(cmd.commandId, "accepted"),
-    });
-    await this.#d.queue.delete(msg.receiptHandle);
+    // From here the lock is held: any throw before #drive takes it over must release it
+    // (code-review finding 3), or every later Start is refused until the bridge restarts.
+    try {
+      idem.record(cmd.commandId, "accepted");
+      await live.update({
+        state: "running",
+        runId: null,
+        commandId: cmd.commandId,
+        startedAt: new Date(this.#d.now()).toISOString(),
+        step: null,
+        limitations: [],
+        lastCommand: this.#last(cmd.commandId, "accepted"),
+      });
+      await this.#d.queue.delete(msg.receiptHandle);
+    } catch (error) {
+      release();
+      throw error;
+    }
     log(`command ${cmd.commandId}: accepted (${cmd.action}, ${cmd.mode})`);
     this.#activeCommandId = cmd.commandId;
     this.#active = this.#drive(cmd, release);
@@ -173,6 +182,10 @@ export class Bridge {
       result = await this.#d.runner(cmd);
     } catch (error) {
       result = { outcome: "failed", runId: null, reason: (error as Error).message };
+    }
+    // An empty reason would fail LiveRunV1 (min length 1) and leave live.json "running" (finding 7).
+    if (result.outcome === "failed" && result.reason.trim() === "") {
+      result = { ...result, reason: "the run failed without a message (see the bridge log)" };
     }
     try {
       const live = this.#d.live;
@@ -193,6 +206,16 @@ export class Bridge {
         });
       }
       this.#d.log(`command ${cmd.commandId}: ${result.outcome}`);
+      if (result.outcome === "failed" && this.#d.alert !== undefined) {
+        try {
+          await this.#d.alert(
+            "CountyLens run failed",
+            `Run ${result.runId ?? "(not started)"} for command ${cmd.commandId} failed: ${result.reason}`,
+          );
+        } catch (error) {
+          this.#d.log(`command ${cmd.commandId}: alert not sent: ${(error as Error).message}`);
+        }
+      }
     } finally {
       this.#d.stop.clear();
       release();

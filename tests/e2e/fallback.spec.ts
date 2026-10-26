@@ -208,6 +208,11 @@ test.describe("A-03 CID copy fallback to the Filebase gateway (AC-5, FR-005)", (
 
   test.describe("A-03-TC-034 CID copy slower than 4 s → Filebase fallback (edge)", () => {
     test("@scenario:A-03-TC-034", async ({ page, context, run }, testInfo) => {
+      // Skipped and shown as parked, never as passed; unpark by deleting this line when the item closes.
+      test.fixme(
+        true,
+        "Parked: A-16 item 19: on Run 3 the Filebase fallback downloads about 1 GB of table parts and Filebase drops some requests (Failed to fetch)",
+      );
       const copyHost = requireCidCopyHost();
       const gatewayHost = harnessConfig().FILEBASE_GATEWAY_HOST;
       const { manifest, manifestCid } = run;

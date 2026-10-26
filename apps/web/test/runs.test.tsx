@@ -22,7 +22,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { BOTH_HOSTS_DOWN_TEXT } from "../src/data/fetch-by-cid";
 
@@ -784,5 +784,170 @@ describe("A-16 Runs page: board sections, LCP and the signed-out view", () => {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
     expect(document.body.textContent).not.toContain("Signed in as admin");
+  });
+});
+
+describe("A-16 Runs page: the Run menu switches the shown run (PO note)", () => {
+  interface TwoRuns {
+    older: { runId: string; manifestCid: string; bytes: Uint8Array<ArrayBuffer> };
+    newer: { runId: string; manifestCid: string; bytes: Uint8Array<ArrayBuffer> };
+    indexJson: string;
+  }
+
+  async function buildTwoRuns(): Promise<TwoRuns> {
+    const first = await buildFixture(0);
+    const newerManifest: RunManifestV1 = {
+      ...first.manifest,
+      runId: "travis-2026-10-test",
+      startedAt: "2026-10-24T08:00:00.000Z",
+      finishedAt: "2026-10-24T08:20:00.000Z",
+      previousManifestCid: first.manifestCid,
+      sources: first.manifest.sources.map((s) => ({ ...s, added: 3, changed: 2, removed: 1 })),
+    };
+    const newerBytes = encode(JSON.stringify(newerManifest));
+    const newerCid = await rawCid(newerBytes);
+    return {
+      older: {
+        runId: first.manifest.runId,
+        manifestCid: first.manifestCid,
+        bytes: first.manifestBytes,
+      },
+      newer: { runId: newerManifest.runId, manifestCid: newerCid, bytes: newerBytes },
+      indexJson: JSON.stringify({
+        schema: RUNS_INDEX_SCHEMA,
+        runs: [
+          {
+            runId: first.manifest.runId,
+            manifestCid: first.manifestCid,
+            finishedAt: first.manifest.finishedAt,
+          },
+          {
+            runId: newerManifest.runId,
+            manifestCid: newerCid,
+            finishedAt: newerManifest.finishedAt,
+          },
+        ],
+      }),
+    };
+  }
+
+  let runs: TwoRuns;
+  let lastSearch = "";
+
+  function SearchProbe(): null {
+    lastSearch = useLocation().search;
+    return null;
+  }
+
+  beforeAll(async () => {
+    runs = await buildTwoRuns();
+  });
+
+  beforeEach(() => {
+    lastSearch = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (input) => {
+        const url = urlOf(input);
+        if (url === "/runs/index.json") return json(runs.indexJson);
+        if (url.includes(runs.newer.manifestCid)) return new Response(runs.newer.bytes);
+        if (url.includes(runs.older.manifestCid)) return new Response(runs.older.bytes);
+        throw new TypeError(`unexpected request ${url}`);
+      }),
+    );
+  });
+
+  async function renderAt(entry: string): Promise<void> {
+    const { Component } = await import("../src/routes/Runs");
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Providers>
+          <Component />
+          <SearchProbe />
+        </Providers>
+      </MemoryRouter>,
+    );
+  }
+
+  const shownRun = (): string | null | undefined =>
+    document.querySelector("[data-shown-run]")?.getAttribute("data-shown-run");
+  const title = async (): Promise<string> =>
+    (await screen.findByRole("article")).querySelector("#run-title")?.textContent ?? "";
+  const current = (): string | null =>
+    document
+      .querySelector('[data-run-list] a[aria-current="true"]')
+      ?.getAttribute("data-choose-run") ?? null;
+
+  it("shows the latest run by default and marks it in the menu", async () => {
+    await renderAt("/runs");
+    expect(await title()).toBe(runs.newer.runId);
+    expect(current()).toBe(runs.newer.runId);
+    expect(screen.getByText("What Run 2 changed")).toBeDefined();
+    expect(shownRun()).toBe(runs.newer.runId);
+  });
+
+  it("switches the card, sources, events and What changed to the chosen run and keeps ?run= in sync", async () => {
+    await renderAt("/runs");
+    expect(await title()).toBe(runs.newer.runId);
+    const list = screen.getByRole("list", { name: "Runs, newest first" });
+    const choice = within(list).getByRole("link", { name: /^Run 1 ·/ });
+    expect(choice.getAttribute("href")).toBe(`/runs?run=${runs.older.runId}`);
+    fireEvent.click(choice);
+    await waitFor(() => expect(lastSearch).toBe(`?run=${runs.older.runId}`));
+    await waitFor(() => expect(shownRun()).toBe(runs.older.runId));
+    expect(await title()).toBe(runs.older.runId);
+    expect(current()).toBe(runs.older.runId);
+    expect(screen.getByText("What Run 1 changed")).toBeDefined();
+    expect(document.querySelector("[data-run-number]")?.textContent).toContain("an earlier run");
+    // Sources show the older run's first-run deltas, not the newer run's counts.
+    expect(document.querySelector("[data-source-delta]")?.textContent).toBe(RUNS_TEXTS.firstRun);
+    // Latest events name the chosen run only.
+    const events = document.querySelector("[data-latest-events]");
+    expect(events?.textContent).toContain(runs.older.runId);
+    expect(events?.textContent).not.toContain(runs.newer.runId);
+    // Sync status still describes the latest run and says why coverage is not shown.
+    expect(document.querySelector("[data-county-coverage]")?.textContent).toMatch(/^Not shown/);
+
+    // Back to the latest: the run parameter is dropped.
+    fireEvent.click(within(list).getByRole("link", { name: /^Run 2 ·/ }));
+    await waitFor(() => expect(lastSearch).toBe(""));
+    await waitFor(() => expect(shownRun()).toBe(runs.newer.runId));
+    expect(current()).toBe(runs.newer.runId);
+  });
+
+  it("opens the run named in ?run= directly", async () => {
+    await renderAt(`/runs?run=${runs.older.runId}`);
+    expect(await title()).toBe(runs.older.runId);
+    expect(current()).toBe(runs.older.runId);
+    expect(document.querySelector("[data-run-list] summary")?.textContent).toContain("Run 1 ·");
+  });
+
+  it("shows the latest run and says why when ?run= names no run in the index", async () => {
+    await renderAt("/runs?run=travis-unknown");
+    expect(await title()).toBe(runs.newer.runId);
+    const note = await waitFor(() => {
+      const el = document.querySelector("[data-run-not-found]");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(note.getAttribute("data-run-not-found")).toBe("travis-unknown");
+    expect(note.textContent).toContain("is not in /runs/index.json");
+  });
+});
+
+describe("selectRun (A-16 Run menu)", () => {
+  it("picks the requested run with its 1-based number, else the latest", async () => {
+    const { selectRun } = await import("../src/data/run-loader");
+    const index = {
+      schema: RUNS_INDEX_SCHEMA as typeof RUNS_INDEX_SCHEMA,
+      runs: [
+        { runId: "b", manifestCid: "cid-b", finishedAt: "2026-10-22T00:00:00.000Z" },
+        { runId: "a", manifestCid: "cid-a", finishedAt: "2026-10-21T00:00:00.000Z" },
+      ],
+    };
+    expect(selectRun(index, null)).toMatchObject({ number: 2, isLatest: true, notFound: null });
+    expect(selectRun(index, null).entry.runId).toBe("b");
+    expect(selectRun(index, "a")).toMatchObject({ number: 1, isLatest: false, notFound: null });
+    expect(selectRun(index, "zzz")).toMatchObject({ number: 2, isLatest: true, notFound: "zzz" });
   });
 });

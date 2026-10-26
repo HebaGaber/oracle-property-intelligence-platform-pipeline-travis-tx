@@ -289,7 +289,7 @@ export const bbbSearchUrl = (name: string | null): string | null =>
         /[!'()*]/g,
         (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
       ) +
-      "&find_loc=Austin%2C%20TX&find_type=Category";
+      "&find_loc=Austin%2C%20TX";
 
 interface HttpRequest {
   url?: string;
@@ -398,7 +398,7 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
       ELSE 'https://www.bbb.org/search?find_country=USA&find_text='
         || replace(replace(replace(replace(replace(url_encode(rtrim(left(name, 120))),
              '!', '%21'), '''', '%27'), '(', '%28'), ')', '%29'), '*', '%2A')
-        || '&find_loc=Austin%2C%20TX&find_type=Category' END`,
+        || '&find_loc=Austin%2C%20TX' END`,
   source_url: `(req) AS json_extract_string(req, '$.url') || coalesce('?' || nullif(array_to_string(
       flatten(list_transform(
         coalesce(json_keys(req, '$.multiValueQueryString'), []::VARCHAR[]),

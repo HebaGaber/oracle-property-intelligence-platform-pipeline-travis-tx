@@ -105,7 +105,7 @@
         "missingReason": null
       },
       {
-        "component": "Cognito user pool (Part 2, not deployed)",
+        "component": "Cognito user pool, Lite plan (deployed 2026-10-26, CountyLensApi)",
         "idle": "$0.00 (pricing model: free tier of 10,000 monthly active users; first billed day pending)",
         "perUse": "Per monthly active user above the free tier",
         "whoPays": "Operator sign-ins",
@@ -113,7 +113,7 @@
         "missingReason": null
       },
       {
-        "component": "SQS command queue + DLQ (Part 2, not deployed)",
+        "component": "SQS command queue + DLQ (deployed 2026-10-26, CountyLensApi)",
         "idle": "$0.00 (pricing model: per request, first million per month free; first billed day pending)",
         "perUse": "$0.40 per million requests after the free tier",
         "whoPays": "Operator commands",
@@ -121,7 +121,7 @@
         "missingReason": null
       },
       {
-        "component": "SNS alert topic (Part 2, not deployed)",
+        "component": "SNS alert topic countylens-alerts (CountyLensOps; admin alarms added 2026-10-26)",
         "idle": "$0.00 (pricing model: first million publishes free, email deliveries free; first billed day pending)",
         "perUse": "Per publish and delivery above the free tier",
         "whoPays": "Alarm events",
@@ -134,7 +134,7 @@
         "perUse": "the free plan is 5 GB; one full county publication is about 2.95 GB (upper bound 3.73 GB), so a second pinned run would not fit (5.90 GB).",
         "whoPays": "the PO's Filebase account",
         "seenInBill": null,
-        "missingReason": "Filebase publishes usage and billing only in its dashboard; the S3-compatible API used by the pipeline (~/.config/assessment/filebase.env exists with FILEBASE_ACCESS_KEY, FILEBASE_SECRET_KEY, FILEBASE_BUCKET) reports no billing or plan usage, and summing object sizes would need a full listing against a service that rate-limits (HTTP 429 seen). No dashboard was opened for this draft."
+        "missingReason": "Filebase publishes usage and billing only in its dashboard; its S3-compatible API reports no billing or plan usage, and summing object sizes would need a full listing against a service that rate-limits (HTTP 429 seen)."
       }
     ]
   },

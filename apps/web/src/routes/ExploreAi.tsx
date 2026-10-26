@@ -13,6 +13,7 @@ import type { Missing } from "@countylens/contract";
 import { AI_TEXTS, missingLabel } from "@countylens/shared";
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { CidDisplay } from "../components/CidDisplay";
+import { WELCOME_QUESTIONS } from "../components/WelcomeCard";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { LinearProgress } from "../components/LinearProgress";
 import { Provenance } from "../components/Provenance";
@@ -132,7 +133,11 @@ function Match({ match }: { readonly match: AgentMatch }): ReactElement {
 }
 
 export function ExploreAi({ onState, ask = askAgent }: ExploreAiProps): ReactElement {
-  const [prompt, setPrompt] = useState("");
+  // `?q=` (the "What can I ask?" card, the drawer's "Ask about this property") fills the box; it
+  // is never sent until the person presses Ask.
+  const [prompt, setPrompt] = useState(
+    () => new URLSearchParams(window.location.search).get("q") ?? "",
+  );
   const [state, setState] = useState<AiState>("idle");
   const [shown, setShown] = useState<Shown | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -271,6 +276,21 @@ export function ExploreAi({ onState, ask = askAgent }: ExploreAiProps): ReactEle
           <span className={styles.counter} data-counter={used}>
             {AI_TEXTS.counter(used, AI_TEXTS.sessionLimit)}
           </span>
+        </div>
+        {/* ExploreQ-ai board "Suggestions": each fills the box; nothing is sent until Ask. */}
+        <div className={styles.suggestions} aria-label="Suggestions" role="group">
+          {WELCOME_QUESTIONS.map((q) => (
+            <button
+              key={q}
+              type="button"
+              className={styles.suggestion}
+              disabled={working}
+              onClick={() => setPrompt(q)}
+              data-ai-suggestion=""
+            >
+              {q}
+            </button>
+          ))}
         </div>
       </form>
 

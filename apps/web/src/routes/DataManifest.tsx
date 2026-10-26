@@ -10,23 +10,25 @@
 import type { ManifestArtifact, RunManifestV1 } from "@countylens/contract";
 import { PROGRESS_LABELS, VERIFY_TEXTS, verifyPath } from "@countylens/shared";
 import { useEffect, useState, type ReactElement } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
+import { DataTabs } from "../components/DataTabs";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
 import { LinearProgress } from "../components/LinearProgress";
-import { Provenance } from "../components/Provenance";
+import { Provenance, formatUtc } from "../components/Provenance";
 import { Skeleton } from "../components/Skeleton";
-import { StatusPill } from "../components/StatusPill";
-import { utcTimestamp } from "../data/format";
+import { Icon } from "../components/Icon";
 import { loadRunChain, type RunChainLink } from "../data/run-chain";
 import type { LoadedRun } from "../data/run-loader";
+import { runNumbers, runsByFinish } from "../data/runs-index";
 import { VERIFY_MAX_BYTES } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
   runErrorNode,
   loadManifestByCid,
   StoredOn,
+  runLabel,
   toRunLoadError,
   useLatestRun,
   type RunLoadError,
@@ -39,6 +41,27 @@ const NO_CAR_TEXT = "no CAR listed for this artifact";
 
 export function Component(): ReactElement {
   const { state, retry } = useLatestRun();
+  // The run picker: `?run={runId}` shows that indexed run's manifest; no parameter (or an
+  // unknown run) shows the latest.
+  const [params, setParams] = useSearchParams();
+  const latest = state.kind === "ready" ? state.run : undefined;
+  const wanted = params.get("run");
+  const entry = latest?.index.runs.find(
+    (r) => r.runId === wanted && r.runId !== latest.entry.runId,
+  );
+  const [other, setOther] = useState<LoadedRun | RunLoadError>();
+  useEffect(() => {
+    setOther(undefined);
+    if (latest === undefined || entry === undefined) return;
+    const controller = new AbortController();
+    loadManifestByCid(entry.manifestCid, controller.signal).then(
+      (read) => !controller.signal.aborted && setOther({ ...latest, entry, ...read }),
+      (error: unknown) => !controller.signal.aborted && setOther(toRunLoadError(error)),
+    );
+    return () => controller.abort();
+  }, [latest, entry]);
+  const failed = other && !("manifest" in other) ? other : undefined;
+  const shown = entry ? (failed ? undefined : (other as LoadedRun | undefined)) : latest;
   return (
     <section
       aria-label="Data · Manifest"
@@ -46,7 +69,42 @@ export function Component(): ReactElement {
       data-state={state.kind}
       className={styles.page}
     >
-      <h2 className={runStyles.title}>Data · Manifest</h2>
+      {/* Board DataManifest1440: the title left, the Run picker and manifest.json download right. */}
+      <div className={runStyles.cardHead}>
+        <h2 className={runStyles.title}>Data · Manifest</h2>
+        <div className={runStyles.header}>
+          {latest && (
+            <select
+              className={runStyles.select}
+              aria-label="Run"
+              value={entry?.runId ?? latest.entry.runId}
+              onChange={(e) => setParams({ run: e.target.value })}
+            >
+              {runsByFinish(latest.index)
+                .map((r, i) => (
+                  <option key={r.runId} value={r.runId}>
+                    {runLabel(i + 1, r.finishedAt)}
+                  </option>
+                ))
+                .reverse()}
+            </select>
+          )}
+          {shown ? (
+            // manifest.json: the CID-checked bytes on the host that served this read.
+            <a
+              className={runStyles.chip}
+              href={shown.read.partUrl({ name: "manifest.json", cid: shown.manifestCid })}
+              download={`manifest-${shown.manifest.runId}.json`}
+            >
+              <Icon name="download" size="small" />
+              manifest.json
+            </a>
+          ) : null}
+        </div>
+      </div>
+      <DataTabs current="manifest" verifyCid={shown?.manifestCid ?? null} />
+      {failed && <ErrorBanner message={runErrorNode(failed)} />}
+      {entry && !other && <Skeleton variant="rows" />}
       {state.kind === "loading" ? (
         <>
           <LinearProgress label={PROGRESS_LABELS.runs} stageText={RUN_STAGE_TEXTS[state.stage]} />
@@ -56,7 +114,7 @@ export function Component(): ReactElement {
       {state.kind === "error" ? (
         <ErrorBanner message={runErrorNode(state.error)} onRetry={retry} />
       ) : null}
-      {state.kind === "ready" ? <ManifestView run={state.run} /> : null}
+      {shown ? <ManifestView run={shown} /> : null}
     </section>
   );
 }
@@ -71,7 +129,7 @@ function ManifestView({ run }: { readonly run: LoadedRun }): ReactElement {
         </span>
         <FallbackChip source={read.source} />
       </div>
-      <RunChain head={manifestCid} headManifest={manifest} />
+      <RunChain head={manifestCid} headManifest={manifest} numbers={runNumbers(run.index)} />
       <ArtifactTable manifest={manifest} />
       <StoredOn />
       <Provenance>
@@ -90,9 +148,12 @@ type ChainState =
 function RunChain({
   head,
   headManifest,
+  numbers,
 }: {
   readonly head: string;
   readonly headManifest: RunManifestV1;
+  /** "Run N" by run ID, from runs/index.json (the header badge, Runs and Log numbering). */
+  readonly numbers: ReadonlyMap<string, number>;
 }): ReactElement {
   const [state, setState] = useState<ChainState>({ kind: "loading" });
   useEffect(() => {
@@ -118,20 +179,24 @@ function RunChain({
       {state.kind === "loading" ? <Skeleton variant="cards" count={1} /> : null}
       {state.kind === "error" ? <ErrorBanner message={runErrorNode(state.error)} /> : null}
       {state.kind === "ready" ? (
-        <ul className={runStyles.list} aria-label="Run chain">
-          {state.chain.map((link) => (
+        <ul className={styles.chainCards} aria-label="Run chain">
+          {state.chain.map((link, i) => (
             <li
               key={link.manifestCid}
-              className={runStyles.item}
+              className={`${styles.chainCard} ${i === 0 ? styles.chainCurrent : ""}`}
               data-chain-entry=""
               data-cid={link.manifestCid}
             >
+              <span className={styles.chainLabel} data-chain-label="">
+                Run {numbers.get(link.runId) ?? "not in the index"}
+                {i === 0 ? <span className={styles.chainThis}> · this run</span> : null}
+              </span>
               <span className={runStyles.itemTitle}>
                 <code className={runStyles.mono}>{link.runId}</code>
                 <CidDisplay cid={link.manifestCid} />
               </span>
               <span className={runStyles.itemBody}>
-                finished {utcTimestamp(link.finishedAt)} UTC ·{" "}
+                finished {formatUtc(link.finishedAt)} UTC ·{" "}
                 {link.previousManifestCid === null ? (
                   "previous: none"
                 ) : (
@@ -153,48 +218,91 @@ function RunChain({
   );
 }
 
+/** Sizes as the board shows them (B, KB, MB, GB; 1 KB = 1,024 bytes); exact bytes in the title. */
+export function humanBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
 function needsCar(artifact: ManifestArtifact): boolean {
   return artifact.kind === "directory" || artifact.size > VERIFY_MAX_BYTES;
 }
 
+/** B-3: a phone card shows name, size and check; this native disclosure opens the rest (CSS). */
+const ROW_DETAILS = (
+  <details>
+    <summary>Details</summary>
+  </details>
+);
+
+/** The last three path segments of an artifact name ("b01/address/part-00000.parquet"). */
+const tail = (name: string): string => name.split("/").slice(-3).join("/");
+
+/**
+ * A-16 PO note 2026-10-26 (board DataManifest1440): the artifact table spans the card, each name
+ * shows its last three path segments (batch, table, file); the leading folders stay in the row as
+ * visually hidden text and in the cell's tooltip, so the row still reads as its full manifest
+ * name. The table scrolls inside a bounded panel with a sticky header instead of running for
+ * thousands of pixels (the board's pager would hide rows; every artifact stays a row because the
+ * hosted checks find each one by its manifest name). Below 600 px each row is a card (Data390).
+ */
 function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): ReactElement {
   return (
     <section className={runStyles.card} aria-labelledby="artifacts-heading">
       <h3 id="artifacts-heading" className={runStyles.sectionTitle}>
         Artifacts ({manifest.artifacts.length})
       </h3>
-      <div className={styles.scroll}>
+      <div className={`${styles.scroll} ${styles.artifactScroll}`} data-artifact-scroll="">
         <table className={styles.table} aria-label="Artifacts">
           <thead>
             <tr>
               <th scope="col">Name</th>
               <th scope="col">CID</th>
               <th scope="col">Codec</th>
-              <th scope="col">Size (bytes)</th>
+              <th scope="col" className={styles.num}>
+                Size
+              </th>
               <th scope="col">SHA-256</th>
               <th scope="col">CAR</th>
               <th scope="col">Check</th>
+              <th scope="col">Details</th>
             </tr>
           </thead>
           <tbody>
             {manifest.artifacts.map((artifact) => (
               <tr key={artifact.name} data-artifact={artifact.name}>
-                <td className={styles.mono}>{artifact.name}</td>
+                <td title={artifact.name}>
+                  <span className={styles.mono}>
+                    <span>{artifact.name.slice(0, -tail(artifact.name).length)}</span>
+                    {tail(artifact.name)}
+                  </span>
+                </td>
                 <td>
                   <CidDisplay cid={artifact.cid} />
                 </td>
                 <td className={styles.mono} data-codec={artifact.codec}>
                   {artifact.codec}
                 </td>
-                <td className={styles.num} data-size={artifact.size}>
-                  {artifact.size}
+                <td
+                  className={styles.num}
+                  data-size={artifact.size}
+                  title={`${artifact.size} bytes`}
+                >
+                  {humanBytes(artifact.size)}
                 </td>
-                <td className={styles.digest} data-sha256={artifact.sha256}>
-                  {artifact.sha256}
+                <td className={styles.digest} data-sha256={artifact.sha256} title={artifact.sha256}>
+                  {artifact.sha256.slice(0, 8)}…{artifact.sha256.slice(-4)}
                 </td>
                 <td>
                   {artifact.carCid === undefined ? (
-                    <StatusPill status="unavailable" text={NO_CAR_TEXT} />
+                    NO_CAR_TEXT
                   ) : (
                     <span data-car-cid={artifact.carCid}>
                       <CidDisplay cid={artifact.carCid} />
@@ -214,6 +322,7 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
                     <span className={styles.mono}>{VERIFY_TEXTS.viaCar}</span>
                   )}
                 </td>
+                <td>{ROW_DETAILS}</td>
               </tr>
             ))}
           </tbody>

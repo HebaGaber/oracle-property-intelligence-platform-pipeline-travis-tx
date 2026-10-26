@@ -9,9 +9,13 @@
 // so the chips are the three kinds that exist; the status pill is "Done" (or "Done with
 // limitations" for a finish that carries notes), never a rate-limit or blocked pill the data does
 // not record. An unreadable index is one banner; an unreadable manifest is a banner naming its CID
-// while the other runs still list. A react-router lazy route module.
+// while the other runs still list. Oldest first stays the default (the board shows newest first)
+// because A-13 TC-057 reads the list ascending. Below 840 px each event is a small card (time and
+// status, run, event, source and count) instead of a squeezed table row (D-6).
+// A react-router lazy route module.
 import type { RunManifestV1 } from "@countylens/contract";
-import { PROGRESS_LABELS, RUNS_TEXTS, sourceLabel, isSourceName } from "@countylens/shared";
+import { PROGRESS_LABELS, ROUTES, RUNS_TEXTS, sourceLabel, isSourceName } from "@countylens/shared";
+import { Link } from "react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
@@ -20,7 +24,7 @@ import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
 import { formatUtc } from "../components/Provenance";
 import { formatCount } from "../data/format";
-import { RunIndexError, loadRunsIndex, runIndexText } from "../data/runs-index";
+import { RunIndexError, loadRunsIndex, runIndexText, runsByFinish } from "../data/runs-index";
 import { runEvents, type RunEvent } from "../data/run-events";
 import {
   RUN_STAGE_TEXTS,
@@ -63,8 +67,9 @@ async function loadAll(signal: AbortSignal): Promise<LogState> {
     if (result.status === "fulfilled") manifests.push(result.value.manifest);
     else failures.push(toRunLoadError(result.reason));
   }
+  // The shared numbering (runsByFinish order, as runNumbers): "Run N" matches the header and Runs.
   const numbers = new Map(
-    index.runs.map((run, i) => [run.runId, { number: i + 1, finishedAt: run.finishedAt }]),
+    runsByFinish(index).map((run, i) => [run.runId, { number: i + 1, finishedAt: run.finishedAt }]),
   );
   return { kind: "ready", manifests, numbers, failures };
 }
@@ -178,7 +183,12 @@ export function Component(): ReactElement {
       className={runsStyles.page}
     >
       <div className={runsStyles.pageHead}>
-        <h2 className={runsStyles.pageTitle}>Pipeline history log</h2>
+        <div className={runsStyles.compareTitle}>
+          <Link className={runsStyles.textLink} to={ROUTES.runs} aria-label="Back to runs">
+            <Icon name="arrow_back" size="medium" />
+          </Link>
+          <h2 className={runsStyles.pageTitle}>Pipeline history log</h2>
+        </div>
         <p className={runsStyles.intro}>
           Every event of every published run, read from each run&apos;s manifest.{" "}
           {RUNS_TEXTS.nextSync}
@@ -251,7 +261,7 @@ function LogTable({
 
   return (
     <div className={runsStyles.card}>
-      <div className={runsStyles.cardHead}>
+      <div className={styles.filters}>
         <div className={runsStyles.chips} role="group" aria-label="Event kind">
           <button
             type="button"
@@ -282,41 +292,41 @@ function LogTable({
             </button>
           ) : null}
         </div>
-        <button type="button" className={runsStyles.chip} onClick={download}>
+        <div className={runsStyles.chips} role="group" aria-label="Run">
+          <button
+            type="button"
+            className={runsStyles.chip}
+            aria-pressed={run === "all"}
+            onClick={() => {
+              setRun("all");
+              setPage(1);
+            }}
+          >
+            All runs
+          </button>
+          {[...runIds].reverse().map((r) => (
+            <button
+              key={r.runId}
+              type="button"
+              className={runsStyles.chip}
+              aria-pressed={run === r.runId}
+              title={r.runId}
+              onClick={() => {
+                setRun(r.runId);
+                setPage(1);
+              }}
+            >
+              {runLabel(r.number, r.finishedAt)}
+            </button>
+          ))}
+        </div>
+        <button type="button" className={styles.download} onClick={download}>
           <Icon name="download" size="small" />
           Download CSV
         </button>
       </div>
-      <div className={runsStyles.chips} role="group" aria-label="Run">
-        <button
-          type="button"
-          className={runsStyles.chip}
-          aria-pressed={run === "all"}
-          onClick={() => {
-            setRun("all");
-            setPage(1);
-          }}
-        >
-          All runs
-        </button>
-        {[...runIds].reverse().map((r) => (
-          <button
-            key={r.runId}
-            type="button"
-            className={runsStyles.chip}
-            aria-pressed={run === r.runId}
-            title={r.runId}
-            onClick={() => {
-              setRun(r.runId);
-              setPage(1);
-            }}
-          >
-            {runLabel(r.number, r.finishedAt)}
-          </button>
-        ))}
-      </div>
       <div className={runsStyles.tableWrap}>
-        <table className={runsStyles.table} aria-label="Run events">
+        <table className={`${runsStyles.table} ${styles.log}`} aria-label="Run events">
           <thead>
             <tr>
               <th aria-sort={newestFirst ? "descending" : "ascending"}>
@@ -345,20 +355,27 @@ function LogTable({
                 data-run-id={row.event.runId}
               >
                 <td className={runsStyles.num}>
-                  <time dateTime={row.event.time}>{formatUtc(row.event.time)} UTC</time>
+                  <time dateTime={row.event.time}>{formatUtc(row.event.time)}</time>
                 </td>
                 <td>
-                  <span>{row.runNumber === null ? "" : `Run ${row.runNumber}`}</span>
-                  <span className={styles.runId}>{row.event.runId}</span>
+                  <span data-run-number="">
+                    {row.runNumber === null ? "" : `Run ${row.runNumber}`}
+                  </span>
+                  <span className={styles.runId} data-run-id-text="" title={row.event.runId}>
+                    {row.event.runId}
+                  </span>
                 </td>
                 <td>
                   {row.what}
                   {row.event.kind === "finished" && row.event.limitations.length > 0 ? (
-                    <ul className={styles.notes} aria-label="Limitations">
-                      {row.event.limitations.map((limitation) => (
-                        <li key={limitation}>{limitation}</li>
-                      ))}
-                    </ul>
+                    <details>
+                      <summary>Limitations ({row.event.limitations.length})</summary>
+                      <ul className={styles.notes} aria-label="Limitations">
+                        {row.event.limitations.map((limitation) => (
+                          <li key={limitation}>{limitation}</li>
+                        ))}
+                      </ul>
+                    </details>
                   ) : null}
                 </td>
                 <td>{row.source}</td>
@@ -366,9 +383,7 @@ function LogTable({
                 <td>
                   <StatusPill
                     status={row.limited ? "warning" : row.done === "Started" ? "info" : "verified"}
-                    icon={
-                      row.done === "Started" ? "play_circle" : row.limited ? "warning" : "check"
-                    }
+                    icon={row.done === "Started" ? "play_arrow" : row.limited ? "warning" : "check"}
                     text={row.done}
                   />
                 </td>

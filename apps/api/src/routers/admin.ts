@@ -49,7 +49,12 @@ export type AdminMeOutput = z.infer<typeof AdminMeOutput>;
 
 export const RunStartInput = z.object({ mode: z.enum(["publish", "dry_run"]) }).strict();
 export const RunStopInput = z.object({ commandId: z.uuid().optional() }).strict();
-export const RunRetryInput = z.object({ targetRunId: z.string().min(1) }).strict();
+export const RunRetryInput = z
+  .object({
+    targetRunId: z.string().min(1),
+    mode: z.enum(["publish", "dry_run"]).default("publish"),
+  })
+  .strict();
 export const RunCommandSent = z.object({ commandId: z.uuid(), expiresAt: z.string() }).strict();
 export type RunCommandSent = z.infer<typeof RunCommandSent>;
 
@@ -87,11 +92,17 @@ export const ACTIVITY_CACHE_MS = 5 * 60 * 1000;
 export const ACTIVITY_DEADLINE_MS = 8000;
 const POLL_MS = 400;
 
+/**
+ * Only question procedures count (Explore searches and the query.* procedures); admin, runs and
+ * status polling are left out so the Runs page's own 5 s polls never inflate the numbers
+ * (metagross review, Major 2). Agent questions use the separate agent API and its own log.
+ */
+export const QUESTION_FILTER = String.raw`filter path like /\/trpc\/(explore\.search|query\.)/`;
+
 export const ACTIVITY_QUERIES = {
-  perDay: "stats count(*) as questions by bin(1d) as day | sort day asc",
-  latency:
-    "filter ispresent(responseLatency) | stats count(*) as requests, pct(responseLatency, 95) as p95",
-  failures: "filter status >= 400 | stats count(*) as failures by status",
+  perDay: `${QUESTION_FILTER} | stats count(*) as questions by bin(1d) as day | sort day asc`,
+  latency: `${QUESTION_FILTER} | filter ispresent(responseLatency) | stats count(*) as requests, pct(responseLatency, 95) as p95`,
+  failures: `${QUESTION_FILTER} | filter status >= 400 | stats count(*) as failures by status`,
 } as const;
 type QueryName = keyof typeof ACTIVITY_QUERIES;
 
@@ -375,7 +386,7 @@ export const adminRouter = router({
       return send(ctx.user, {
         action: "retry",
         window: null,
-        mode: "publish",
+        mode: input.mode,
         targetRunId: input.targetRunId,
       });
     }),

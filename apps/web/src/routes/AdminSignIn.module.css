@@ -16,9 +16,21 @@
   max-width: calc(var(--space-10) * 7);
   padding: var(--space-6);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-medium);
+  border-radius: var(--md-sys-shape-corner-extra-large);
   background: var(--md-sys-color-surface-container-lowest);
   color: var(--md-sys-color-on-surface);
+}
+
+/* From 600 px the card sits lower in the main column with roomier padding, as on the 768 and
+   1440 boards (card top about a third down the page). */
+@media (min-width: 600px) {
+  .page {
+    padding: var(--space-10) 0;
+  }
+
+  .card {
+    padding: var(--space-7);
+  }
 }
 
 .hero {

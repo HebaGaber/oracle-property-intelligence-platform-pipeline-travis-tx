@@ -105,77 +105,89 @@ function propertyCidSet(rows: Row[]): Set<string> {
   return new Set(rows.map((r) => String(r.property_cid)));
 }
 
-describe("T029: searchProperties / listPermits / MCP / agent property_cid parity", () => {
-  let fx: Fixture;
-  let engine: QueryEngine;
-  let bound: BoundRun;
+// Each case runs several DuckDB queries; on a busy CI runner they took just over 5 s (CI run
+// 40241307421), so this group gets 20 s instead of the 5 s default.
+describe(
+  "T029: searchProperties / listPermits / MCP / agent property_cid parity",
+  { timeout: 20_000 },
+  () => {
+    let fx: Fixture;
+    let engine: QueryEngine;
+    let bound: BoundRun;
 
-  beforeAll(async () => {
-    fx = await bindFixture(TABLES);
-    engine = fx.db;
-    bound = fx.bound;
-  });
-  afterAll(() => fx.close());
+    beforeAll(async () => {
+      fx = await bindFixture(TABLES);
+      engine = fx.db;
+      bound = fx.bound;
+    });
+    afterAll(() => fx.close());
 
-  it("listPermits's distinct property_cids equal searchProperties's property_cids for the same filter", async () => {
-    const properties = await searchProperties(engine, bound, { ...AREA, status_class: "open" });
-    const permits = await listPermits(engine, bound, { ...AREA, status_class: "open" });
+    it("listPermits's distinct property_cids equal searchProperties's property_cids for the same filter", async () => {
+      const properties = await searchProperties(engine, bound, { ...AREA, status_class: "open" });
+      const permits = await listPermits(engine, bound, { ...AREA, status_class: "open" });
 
-    const propertySet = propertyCidSet(properties.rows);
-    const permitPropertySet = propertyCidSet(permits.rows);
+      const propertySet = propertyCidSet(properties.rows);
+      const permitPropertySet = propertyCidSet(permits.rows);
 
-    expect(propertySet).toEqual(new Set([P1]));
-    expect(permitPropertySet).toEqual(new Set([P1]));
-    expect(permitPropertySet).toEqual(propertySet);
-  });
+      expect(propertySet).toEqual(new Set([P1]));
+      expect(permitPropertySet).toEqual(new Set([P1]));
+      expect(permitPropertySet).toEqual(propertySet);
+    });
 
-  it("the MCP adapter returns the identical property_cid set as the raw query-core functions", async () => {
-    const rawProperties = await searchProperties(engine, bound, { ...AREA, status_class: "open" });
-    const rawPermits = await listPermits(engine, bound, { ...AREA, status_class: "open" });
+    it("the MCP adapter returns the identical property_cid set as the raw query-core functions", async () => {
+      const rawProperties = await searchProperties(engine, bound, {
+        ...AREA,
+        status_class: "open",
+      });
+      const rawPermits = await listPermits(engine, bound, { ...AREA, status_class: "open" });
 
-    const deps: McpToolDeps = {
-      resolveRun: async () => ({ engine, bound }),
-      runsIndex: async () => ({ runs: [] }),
-    };
-    const mcpProperties = await searchPropertiesTool(deps, {
-      ...AREA,
-      status_class: "open",
-    } as never);
-    const mcpPermits = await listPermitsTool(deps, { ...AREA, status_class: "open" } as never);
+      const deps: McpToolDeps = {
+        resolveRun: async () => ({ engine, bound }),
+        runsIndex: async () => ({ runs: [] }),
+      };
+      const mcpProperties = await searchPropertiesTool(deps, {
+        ...AREA,
+        status_class: "open",
+      } as never);
+      const mcpPermits = await listPermitsTool(deps, { ...AREA, status_class: "open" } as never);
 
-    const mcpPropertyData = mcpProperties.structuredContent as { rows: Row[] };
-    const mcpPermitData = mcpPermits.structuredContent as { rows: Row[] };
+      const mcpPropertyData = mcpProperties.structuredContent as { rows: Row[] };
+      const mcpPermitData = mcpPermits.structuredContent as { rows: Row[] };
 
-    expect(propertyCidSet(mcpPropertyData.rows)).toEqual(propertyCidSet(rawProperties.rows));
-    expect(propertyCidSet(mcpPermitData.rows)).toEqual(propertyCidSet(rawPermits.rows));
-  });
+      expect(propertyCidSet(mcpPropertyData.rows)).toEqual(propertyCidSet(rawProperties.rows));
+      expect(propertyCidSet(mcpPermitData.rows)).toEqual(propertyCidSet(rawPermits.rows));
+    });
 
-  it("the agent adapter's matches[] carry the identical property_cid set as the raw query-core functions", async () => {
-    const rawProperties = await searchProperties(engine, bound, { ...AREA, status_class: "open" });
-    const rawPermits = await listPermits(engine, bound, { ...AREA, status_class: "open" });
+    it("the agent adapter's matches[] carry the identical property_cid set as the raw query-core functions", async () => {
+      const rawProperties = await searchProperties(engine, bound, {
+        ...AREA,
+        status_class: "open",
+      });
+      const rawPermits = await listPermits(engine, bound, { ...AREA, status_class: "open" });
 
-    const tools = createAgentTools({ engine, bound, registry: createCitationRegistry() });
-    const opts = { toolCallId: "t1", messages: [] } as const;
+      const tools = createAgentTools({ engine, bound, registry: createCitationRegistry() });
+      const opts = { toolCallId: "t1", messages: [] } as const;
 
-    if (!tools.searchProperties.execute || !tools.searchRoofingPermits.execute) {
-      throw new Error("agent tool is missing its execute() — cannot run this parity check");
-    }
-    const agentProperties = (await tools.searchProperties.execute(
-      { ...AREA, status_class: "open" } as never,
-      opts as never,
-    )) as { matches: { property_cid: string }[] };
-    const agentPermits = (await tools.searchRoofingPermits.execute(
-      { ...AREA, status_class: "open" } as never,
-      opts as never,
-    )) as { matches: { property_cid: string }[] };
+      if (!tools.searchProperties.execute || !tools.searchRoofingPermits.execute) {
+        throw new Error("agent tool is missing its execute() — cannot run this parity check");
+      }
+      const agentProperties = (await tools.searchProperties.execute(
+        { ...AREA, status_class: "open" } as never,
+        opts as never,
+      )) as { matches: { property_cid: string }[] };
+      const agentPermits = (await tools.searchRoofingPermits.execute(
+        { ...AREA, status_class: "open" } as never,
+        opts as never,
+      )) as { matches: { property_cid: string }[] };
 
-    const agentPropertySet = new Set(agentProperties.matches.map((m) => m.property_cid));
-    const agentPermitSet = new Set(agentPermits.matches.map((m) => m.property_cid));
+      const agentPropertySet = new Set(agentProperties.matches.map((m) => m.property_cid));
+      const agentPermitSet = new Set(agentPermits.matches.map((m) => m.property_cid));
 
-    expect(agentPropertySet).toEqual(propertyCidSet(rawProperties.rows));
-    expect(agentPermitSet).toEqual(propertyCidSet(rawPermits.rows));
-  });
-});
+      expect(agentPropertySet).toEqual(propertyCidSet(rawProperties.rows));
+      expect(agentPermitSet).toEqual(propertyCidSet(rawPermits.rows));
+    });
+  },
+);
 
 // T030 (AC-8): the agent/MCP property search and A-13's Explore builder return the identical
 // ordered property_cid list for the same area, radius and filters. The fixture has a known-old

@@ -167,6 +167,23 @@ describe("Explore · Filters search and header (AC-4, FR-004, FR-006a)", () => {
     expect(section?.getAttribute("data-view")).toBe("list");
   });
 
+  it("keeps the A-13 tab contract: only the Explore mode tabs are tabs (TC-073)", async () => {
+    await renderExplore("?place=pflugerville&r=5&roof=15");
+    await waitFor(() => expect(rows().length).toBeGreaterThan(0));
+    // The scan clicks every tab in turn; a mode switch unmounts the results, so a results-view
+    // tab would vanish mid-loop. Every tab must sit in the "Explore mode" tablist.
+    const modes = screen.getByRole("tablist", { name: "Explore mode" });
+    for (const tab of screen.getAllByRole("tab")) expect(modes.contains(tab)).toBe(true);
+    const view = screen.getByRole("group", { name: "Results view" });
+    const matches = within(view).getByRole("button", { name: /^Matches/ });
+    expect(matches.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      within(view)
+        .getByRole("button", { name: /^Close/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
   it("shows the gazetteer label for the place and offers it as an option while typing", async () => {
     await renderExplore("?place=pflugerville&r=5&roof=15");
     const label = resolvePlace("Pflugerville");
@@ -276,6 +293,27 @@ describe("Explore · Filters rows (AC-4, AC-7, FR-007, FR-022, NFR-003)", () => 
     );
     expect(field(b, "bbb")?.textContent).toBe(EXPLORE_TEXTS.bbbBlocked);
     expect(field(c, "bbb")?.textContent).toBe(EXPLORE_TEXTS.bbbNotFound);
+    // Compact pills: a short visible label (data-short), the full reason as text and tooltip.
+    const pill = (el: HTMLElement, name: string): Element | null | undefined =>
+      field(el, name)?.querySelector("[data-status]");
+    for (const [name, short, full] of [
+      ["address", "No address", EXPLORE_TEXTS.noCarrier],
+      ["roof_age_basis", "Roof age unknown", EXPLORE_TEXTS.roofUnknown],
+      ["tenure_years", "Tenure unknown", EXPLORE_TEXTS.tenureUnknown],
+      ["owner_area_class", "Owner area unknown", EXPLORE_TEXTS.ownerAreaUnknown],
+      ["contractor_name", "Name not published", EXPLORE_TEXTS.noCarrier],
+      ["status_raw", "Status not published", EXPLORE_TEXTS.noCarrier],
+      [
+        "bbb",
+        "BBB not checked",
+        EXPLORE_TEXTS.bbbNotChecked("BBB lookups are not run for this county yet"),
+      ],
+    ] as const) {
+      expect(pill(a, name)?.getAttribute("data-short"), name).toBe(short);
+      expect(pill(a, name)?.getAttribute("title"), name).toBe(full);
+    }
+    expect(pill(b, "bbb")?.getAttribute("data-short")).toBe("BBB blocked");
+    expect(pill(c, "bbb")?.getAttribute("data-short")).toBe("No BBB profile");
   });
 
   it("names the field of every missing-data pill and groups identical reasons (ERR-20)", async () => {
@@ -303,6 +341,25 @@ describe("Explore · Filters rows (AC-4, AC-7, FR-007, FR-022, NFR-003)", () => 
     );
     for (const g of groups)
       expect(g.getAttribute("aria-label")).toMatch(/^[a-z_.]+(, [a-z_.]+)*: .+/);
+  });
+});
+
+describe("Explore tabs after the SQL tab was removed (A-16, PO decision)", () => {
+  it("offers only Filters and AI", async () => {
+    await renderExplore("");
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Filters", "AI"]);
+    expect(screen.getByRole("tab", { name: "Filters" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("replaces an old ?mode=sql link with Filters and keeps the other parameters", async () => {
+    await renderExplore("?mode=sql&place=pflugerville&r=5");
+    await waitFor(() => expect(lastLocation).toBe("/tx/travis/explore?place=pflugerville&r=5"));
+    expect(screen.queryByRole("tab", { name: "SQL" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Filters" }).getAttribute("aria-selected")).toBe("true");
+    await waitFor(() =>
+      expect(header()?.textContent).toBe(EXPLORE_TEXTS.headerNoRoof(2, 5, "Pflugerville")),
+    );
   });
 });
 

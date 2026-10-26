@@ -33,7 +33,6 @@ export interface ExploreQuery {
   readonly ooa: boolean;
   readonly sort: ExploreSort;
   readonly sel: string | null;
-  readonly mode: "filters" | "sql";
 }
 
 const inRange = (value: number, [min, max]: readonly [number, number]): boolean =>
@@ -78,7 +77,6 @@ export function parseExploreQuery(params: URLSearchParams): ExploreQuery {
     ooa: ooa === "1" || ooa === "true",
     sort,
     sel: params.get("sel"),
-    mode: params.get("mode") === "sql" ? "sql" : "filters",
   };
 }
 

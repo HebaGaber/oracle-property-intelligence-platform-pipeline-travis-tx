@@ -62,7 +62,12 @@ const READY_TIMEOUT_MS = { runs: 60_000, permits: PERMITS_LOAD_WAIT_MS } as cons
 
 async function open(page: Page, path: string, ready: string, timeout: number): Promise<void> {
   await page.goto(`${runtimeUrl()}${path}`, { waitUntil: "domcontentloaded" });
-  await page.locator(ready).first().waitFor({ state: "visible", timeout });
+  // visible only: the Runs page Run menu holds hidden copies of every CID first
+  await page
+    .locator(ready)
+    .filter({ visible: true })
+    .first()
+    .waitFor({ state: "visible", timeout });
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
 }
 
@@ -111,7 +116,10 @@ test.describe("A-03-TC-NF-03 responsive 390 / 768 / 1440, Atlas tokens only", ()
             if (target.name === "runs") {
               await expect
                 .soft(
-                  page.locator(`[data-cid="${run.manifestCid}"]`).first(),
+                  page
+                    .locator(`article [data-cid="${run.manifestCid}"]`)
+                    .filter({ visible: true })
+                    .first(),
                   `${label}: run card shows the manifest CID`,
                 )
                 .toBeVisible();

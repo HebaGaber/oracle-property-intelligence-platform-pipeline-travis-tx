@@ -216,9 +216,155 @@
 }
 
 .provenanceCell {
-  min-width: calc(var(--space-10) * 4);
+  min-width: calc(var(--space-10) * 3 + var(--space-7));
 }
 
+/* A-16 B-2: the table fits its card. Pills show one short line each (StatusPill `short`), long
+   source URLs break anywhere, the permit number and date stay on one line. */
+.table td {
+  overflow-wrap: anywhere;
+}
+
+.table td:first-child,
+.table td:nth-child(4) {
+  white-space: nowrap;
+}
+
+/* From 1200 px the seven columns share the card width (no sideways scroll). */
+@media (min-width: 1200px) {
+  .table {
+    table-layout: fixed;
+  }
+
+  .table th:nth-child(1) {
+    width: 11%;
+  }
+
+  .table th:nth-child(2) {
+    width: 10%;
+  }
+
+  .table th:nth-child(3) {
+    width: 8%;
+  }
+
+  .table th:nth-child(4) {
+    width: 8%;
+  }
+
+  .table th:nth-child(5) {
+    width: 19%;
+  }
+
+  .table th:nth-child(6) {
+    width: 23%;
+  }
+}
+
+/* A-16 B-2: below 1200 px each permit row stacks as a compact block inside the card: the four
+   short fields on one line (label over value), then Contractor, Missing data and Provenance full
+   width. The element stays a table with one row per permit (the hosted checks count rows). */
+@media (max-width: 1199.98px) {
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .table,
+  .table tbody {
+    display: block;
+  }
+
+  .table tr {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .table td {
+    display: block;
+    height: auto;
+    min-width: 0;
+    padding: 0;
+    border-top: 0;
+  }
+
+  .table td:nth-child(n + 5) {
+    grid-column: 1 / -1;
+  }
+
+  .table td::before {
+    display: block;
+    color: var(--md-sys-color-on-surface-variant);
+    font-family: var(--md-sys-typescale-label-medium-font);
+    font-size: var(--md-sys-typescale-label-medium-size);
+    line-height: var(--md-sys-typescale-label-medium-line-height);
+  }
+
+  .table td:nth-child(1)::before {
+    content: "Permit number";
+  }
+
+  .table td:nth-child(2)::before {
+    content: "Improvement status";
+  }
+
+  .table td:nth-child(3)::before {
+    content: "Status class";
+  }
+
+  .table td:nth-child(4)::before {
+    content: "Issue date";
+  }
+
+  .table td:nth-child(5)::before {
+    content: "Contractor";
+  }
+
+  .table td:nth-child(6)::before {
+    content: "Missing data";
+  }
+
+  .table td:nth-child(7)::before {
+    content: "Provenance";
+  }
+}
+
+/* A-16 B-3: on a phone card the missing-data pills fold behind a native disclosure. */
+/* The contractor reason pills open with it; the resolution pill stays. */
+.card:not(:has(details[open])) .cardRow:nth-last-child(2) [data-field] {
+  display: none;
+}
+
+/* Short pills may wrap inside the fixed table columns. */
+.table [data-short] {
+  white-space: normal;
+}
+
+.more {
+  min-width: 0;
+}
+
+.moreSummary {
+  display: flex;
+  align-items: center;
+  min-height: var(--space-9);
+  color: var(--md-sys-color-primary);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  cursor: pointer;
+}
+
+.moreSummary:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
 @media (min-width: 600px) {
   .page {
     gap: var(--space-6);

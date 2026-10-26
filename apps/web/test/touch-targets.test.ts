@@ -67,7 +67,6 @@ describe("D4: Explore checkboxes are 48 px targets with the token font", () => {
     const uses: [string, string, string][] = [
       ["components/FilterSheet.module.css", "input", "FilterSheet.tsx"],
       ["components/CountySelect.module.css", "select", "CountySelect.tsx"],
-      ["routes/Explore.module.css", "editor", "ExploreSql.tsx"],
     ];
     for (const [css, cls] of uses) {
       const b = ruleBody(src(css), cls);

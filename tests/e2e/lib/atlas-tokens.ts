@@ -166,12 +166,17 @@ export function smallTapTargets(
     if (rect.width === 0 && rect.height === 0) continue; // not rendered
     // WCAG 2.5.8 inline exception: a link inside a sentence is sized by its line of text.
     if (el.tagName === "A" && getComputedStyle(el).display === "inline") continue;
-    if (rect.width < min || rect.height < min) {
+    // A visually hidden native input (1 x 1, clipped) inside its <label> chip: the label is the
+    // tap target, so the label's box is measured instead (A-16 Explore chips, WCAG 2.5.8).
+    const chip =
+      el.tagName === "INPUT" && rect.width <= 1 && rect.height <= 1 ? el.closest("label") : null;
+    const box = chip ? chip.getBoundingClientRect() : rect;
+    if (box.width < min || box.height < min) {
       const label = el.getAttribute("aria-label") ?? (el.textContent ?? "").trim().slice(0, 40);
       out.push({
         selector: `${el.tagName.toLowerCase()}${label ? ` "${label}"` : ""}`,
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
       });
     }
   }

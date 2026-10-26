@@ -17,7 +17,7 @@ function params(url: string): URLSearchParams {
 describe("bbbSearchUrl", () => {
   it("builds the proposed search shape from the name and the city", () => {
     expect(bbbSearchUrl("Done Right Roofing", "Austin")).toBe(
-      "https://www.bbb.org/search?find_country=USA&find_text=Done%20Right%20Roofing&find_loc=Austin%2C%20TX&find_type=Category",
+      "https://www.bbb.org/search?find_country=USA&find_text=Done%20Right%20Roofing&find_loc=Austin%2C%20TX",
     );
   });
 
@@ -27,7 +27,7 @@ describe("bbbSearchUrl", () => {
     const p = params(url);
     expect(p.get("find_text")).toBe("A&B Roofing + Sons, Inc. (O'Neil) No. 1/2");
     expect(p.get("find_loc")).toBe("Round Rock, TX");
-    expect([...p.keys()]).toEqual(["find_country", "find_text", "find_loc", "find_type"]);
+    expect([...p.keys()]).toEqual(["find_country", "find_text", "find_loc"]);
     expect(url).not.toContain("'");
     expect(url).not.toContain("(");
     expect(url).not.toContain(" ");

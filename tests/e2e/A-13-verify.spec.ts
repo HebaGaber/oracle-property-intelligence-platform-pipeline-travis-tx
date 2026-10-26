@@ -12,18 +12,13 @@ import {
   noteBranch,
   ready,
   recordRequests,
-  runSql,
   settled,
-  sqlScalar,
   test,
   type A13Oracle,
-  PARKED_GAPS,
-  parkGap,
 } from "./lib/a13-fixtures.js";
 import {
   SEL,
   directoryArtifact,
-  exploreUrl,
   fallbackText,
   flipLastByte,
   oversizedFiles,
@@ -327,7 +322,6 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
   });
 
   test(scenario("023"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.sqlFirstQuery);
     const artifact = verifyFileArtifact(oracle.M);
     const aborted = new Map<string, number>();
     // "No request reached the aborted host again after the first failure per file" holds within
@@ -354,13 +348,7 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     await expect(page.getByText(fallbackText(FILEBASE()), { exact: true }).first()).toBeVisible();
     await checkpoint(page, "023", 3);
     assertOncePerFile("Runs");
-    // 4. SQL count as TC-004, with the fallback label.
-    await page.goto(exploreUrl(ROUTES.explore, { mode: "sql" }));
-    await runSql(page, "SELECT count(*) FROM v_property");
-    expect(await sqlScalar(page)).toBe(oracle.M.coverage.parcels_published?.count);
-    await expect(page.getByText(fallbackText(FILEBASE()), { exact: true }).first()).toBeVisible();
-    await checkpoint(page, "023", 4);
-    assertOncePerFile("SQL");
+    // 4. (The SQL count step was removed with the Explore SQL tab, PO decision 2026-10-26.)
     // 5. Verify unchanged: two ✓ lanes.
     await page.goto(verifyPath(artifact.cid));
     await expectVerified(page, artifact.cid, artifact.size, artifact.sha256);

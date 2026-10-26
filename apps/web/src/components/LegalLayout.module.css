@@ -1,0 +1,157 @@
+/* Legal layout (Legal boards): contents as rows of underlined links above the text below 1024 px
+   (only Related below 600 px, as on the 390 board), a side column from 1024 px with the pair
+   centred in the main column; the page title (headline-large), an info banner, and sections
+   separated by space rather than rules. Every target is at least 48 px tall. Tokens only. */
+
+.layout {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.toc {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.onPage {
+  display: none;
+}
+
+.onPage,
+.related {
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.related {
+  display: grid;
+}
+
+.tocTitle {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
+}
+
+.tocList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each contents and Related link is a 48 x 48 px minimum target at every width (WCAG 2.5.8,
+   A-13-TC-080): short labels such as "Privacy" are widened, not only heightened. */
+.tocLink {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: var(--space-9);
+  min-height: var(--space-9);
+  color: var(--md-sys-color-primary);
+  text-decoration: underline;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+.tocLink:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.text {
+  display: grid;
+  align-content: start;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-headline-medium-font);
+  font-size: var(--md-sys-typescale-headline-medium-size);
+  font-weight: var(--md-sys-typescale-headline-medium-weight);
+  line-height: var(--md-sys-typescale-headline-medium-line-height);
+}
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--md-sys-shape-corner-medium);
+  color: var(--status-info);
+  background: var(--status-info-container);
+  font-family: var(--md-sys-typescale-body-large-font);
+  font-size: var(--md-sys-typescale-body-large-size);
+  line-height: var(--md-sys-typescale-body-large-line-height);
+}
+
+.section {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  scroll-margin-top: var(--space-4);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--md-sys-typescale-title-large-font);
+  font-size: var(--md-sys-typescale-title-large-size);
+  font-weight: var(--md-sys-typescale-title-large-weight);
+  line-height: var(--md-sys-typescale-title-large-line-height);
+}
+
+@media (min-width: 600px) {
+  .onPage {
+    display: grid;
+  }
+
+  .title {
+    font-family: var(--md-sys-typescale-headline-large-font);
+    font-size: var(--md-sys-typescale-headline-large-size);
+    font-weight: var(--md-sys-typescale-headline-large-weight);
+    line-height: var(--md-sys-typescale-headline-large-line-height);
+  }
+}
+
+/* Side contents column, the pair centred in the main column (no auto margins: the grid centres
+   its tracks). Text column: the board's 944 px for the sources table, 720 px for prose. */
+@media (min-width: 1024px) {
+  .layout {
+    justify-content: center;
+    gap: var(--space-10);
+  }
+
+  .wide {
+    grid-template-columns: calc(var(--space-10) * 3) minmax(0, calc(var(--space-10) * 15));
+  }
+
+  .prose {
+    grid-template-columns: calc(var(--space-10) * 4) minmax(
+        0,
+        calc(var(--space-10) * 11 + var(--space-4))
+      );
+  }
+
+  .toc {
+    position: sticky;
+    top: 0;
+    gap: var(--space-5);
+  }
+
+  .tocList {
+    display: grid;
+  }
+}

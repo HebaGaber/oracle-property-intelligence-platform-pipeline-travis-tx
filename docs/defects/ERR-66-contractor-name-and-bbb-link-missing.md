@@ -6,7 +6,7 @@ story: A-11
 test_case: pipeline/oracle-runtime test/travis/permits (bbb-search-url, write-group), test/transforms/austin-property-improvement; packages/query-core test/derive and views.fixture; packages/contract test/columns
 ac_reference: A-11
 severity: High
-status: Open 2026-10-25: contractor name as printed is in Run 3 (manifest bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm) for 4,139 permits (specs/011-publish-and-runs/run3/run3-evidence.json); the BBB link shape is still unverified (one manual click by the PO; the link is built in the view, so a fix needs no new run)
+status: Closed 2026-10-26: contractor name as printed published in Run 3 (manifest bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm) for 4,139 permits; BBB link checked by hand by the PO: with find_type=Category BBB listed only category ads, without it the exact business was found, so find_type was removed (view macro and helper)
 found_by: Task B validation of published Run 2 (contractor and BBB columns), for HebaGaber
 found_date: 2026-10-25
 fix_branch: 011b-run3-corrections
@@ -49,4 +49,4 @@ Why the first investigation missed it: it searched for a place to put a *string 
 | Still not published | `status_raw` and `expiry_date` (no lexicon property; ADR-0002 verdicts 2 and 3), the contractor city, and any person contractor. |
 | Tests that pin it | oracle-runtime: `test/travis/permits/bbb-search-url.test.ts`, `test/travis/permits/write-group.test.ts` ("printed contractor company"), `test/transforms/austin-property-improvement.test.ts`. query-core: `test/derive.test.ts` (resolution, BBB state, SQL macro equals the TypeScript builder over ampersands, quotes, unicode, long and emoji names), `test/views.fixture.test.ts` (DuckDB: printed company unresolved with link, registry id resolved, no name no link), `test/view-plan.test.ts`, `test/permits-views-batched.test.ts`, `test/sample.test.ts`. contract: `test/columns.test.ts`. web: `test/permits-bind-subset.test.ts`. |
 | Re-test | Pending: needs a full Property Improvement re-write, new CARs and a Run 3 manifest (PO approval for the publish). |
-| Status | Names published in Run 3 (4,139 permits); BBB link shape awaits one manual check. |
+| Status | Closed 2026-10-26: names in Run 3 (4,139 permits); BBB link checked by hand by the PO and corrected (find_type removed). |

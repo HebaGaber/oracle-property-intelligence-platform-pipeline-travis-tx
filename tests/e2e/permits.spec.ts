@@ -578,13 +578,14 @@ function auditPageRows(page: Page, params: AuditParams): Promise<RowAudit> {
       const state = resolution.length === 1 ? normalize(visible(resolution[0] as Element)) : "";
       if (state !== "resolved" && state !== "unresolved") {
         flag("contractor", index, `${resolution.length} resolution pill(s), text "${state}"`);
-      } else if (
-        state === "unresolved" &&
-        !missing.some(
-          (m) => m.field === "contractor_company_cid" && m.reason === "contractor_unresolved",
-        )
-      ) {
-        flag("contractor", index, "unresolved without contractor_unresolved in missing");
+      } else if (state === "unresolved") {
+        // Contract v1.1 (A-11 Run 3, ERR-66): a company published from the printed permit name has
+        // a CID but no registry id, so it stays unresolved and missing has no contractor_company_cid
+        // entry. When the entry is there, its reason must be contractor_unresolved.
+        const cidEntry = missing.find((m) => m.field === "contractor_company_cid");
+        if (cidEntry !== undefined && cidEntry.reason !== "contractor_unresolved") {
+          flag("contractor", index, `unresolved with contractor_company_cid ${cidEntry.reason}`);
+        }
       }
     });
     const permitNumbers = rows.map((row) => normalize(row.querySelector("td")?.textContent ?? ""));
@@ -1014,8 +1015,10 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
           state === "resolved" ? "verified" : "unavailable",
         );
 
-        // Step 3: an unresolved row shows the approved label beside the pill.
-        if (state === "unresolved") {
+        // Step 3: an unresolved row with no company shows the approved label beside the pill (since
+        // contract v1.1 a printed-name company is unresolved with a CID and no missing entry).
+        const printedCompany = !missing.some((entry) => entry.field === "contractor_company_cid");
+        if (state === "unresolved" && !printedCompany) {
           expect(leaves, `row ${index}: contractor_unresolved label`).toContain(
             MISSING_REASON_LABELS.contractor_unresolved,
           );

@@ -134,17 +134,10 @@ export interface AdminActionsProps {
   readonly access: AccessAdmin;
   readonly liveState: LiveState;
   readonly refresh: () => void;
-  /** The newest published run, the target of Retry. */
-  readonly latestRunId: string | null;
 }
 
 /** Start / Stop / Retry plus the signed-in line and the live status banner. */
-export function AdminActions({
-  access,
-  liveState,
-  refresh,
-  latestRunId,
-}: AdminActionsProps): ReactElement {
+export function AdminActions({ access, liveState, refresh }: AdminActionsProps): ReactElement {
   const [dryRun, setDryRun] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState<RunCommandAck | undefined>(undefined);
@@ -157,10 +150,10 @@ export function AdminActions({
 
   const live = liveState.kind === "ready" ? liveState.live : undefined;
   const running = live !== undefined && (live.state === "running" || live.state === "stopping");
-  const canRetry =
-    latestRunId !== null &&
-    live !== undefined &&
-    (live.state === "failed" || live.state === "stopped");
+  // Retry resumes the run that failed or was stopped (live.runId), never the latest published one.
+  const retryRunId =
+    live !== undefined && (live.state === "failed" || live.state === "stopped") ? live.runId : null;
+  const canRetry = retryRunId !== null;
   const banner = describeLive(live, sent, now);
 
   const act = useCallback(
@@ -190,6 +183,8 @@ export function AdminActions({
       setMessage(ADMIN_TEXTS.alreadyRunning);
       return;
     }
+    // A real Start publishes a new public run whose CIDs never change: ask once (review minor).
+    if (!dryRun && !window.confirm(ADMIN_TEXTS.confirmPublish)) return;
     act(() => adminApi.start(dryRun ? "dry_run" : "publish"));
   };
 
@@ -233,7 +228,8 @@ export function AdminActions({
           type="button"
           className={styles.outlined}
           onClick={() => {
-            if (latestRunId !== null) act(() => adminApi.retry(latestRunId));
+            if (retryRunId !== null)
+              act(() => adminApi.retry(retryRunId, dryRun ? "dry_run" : "publish"));
           }}
           disabled={busy || !canRetry}
         >

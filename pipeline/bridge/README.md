@@ -92,3 +92,10 @@ Per-step output goes to `pipeline/data/bridge/logs/<commandId>-<step>.log`, neve
 
 `pnpm --filter @countylens/bridge test` (fake SQS client, fake process runner, fake fetch; nothing
 touches AWS). The real-queue rehearsal (one `dry_run` on the dev queue) is in the A-16 evidence plan.
+
+## Alerts and the explore index (A-16 review fixes)
+
+- `COUNTYLENS_ALERTS_TOPIC_ARN` (optional): when set, a failed run publishes one message to this SNS topic (the Ops topic `countylens-alerts`); the operator profile needs `sns:Publish` on it. Without it a failure is only in `live.json` and the bridge log.
+- In publish mode the runner builds, verifies and uploads the run's Explore index (`build-explore-index.ts --source cidcopy --verify --upload`) right after the CID copy step, so a bridge-published run is searchable before it is listed. It needs `CID_COPY_HOST` and `CID_COPY_BUCKET`.
+- The saved `state.json` (the last run this bridge published) wins over `BRIDGE_COUNTY_DIR` / `BRIDGE_PERMITS_SEED_JOB`; those only seed the first run. The base run is the command's `sinceRunId` and must be in `runs/index.json`.
+- A retry after a failed capture uses a new Restate workflow key (`…-a<attempt>`, counted in `progress.json`), because a workflow runs once per key.

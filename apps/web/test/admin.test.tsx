@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   live: vi.fn<() => Promise<unknown>>(),
   start: vi.fn<(mode: string) => Promise<unknown>>(),
   stop: vi.fn<(id?: string) => Promise<unknown>>(),
-  retry: vi.fn<(id: string) => Promise<unknown>>(),
+  retry: vi.fn<(id: string, mode: string) => Promise<unknown>>(),
   activity: vi.fn<() => Promise<unknown>>(),
 }));
 
@@ -284,7 +284,6 @@ describe("describeLive: the status line of the admin controls (AC-7, AC-9)", () 
 
 async function renderActions(
   state: ReturnType<typeof live> | "unavailable",
-  latestRunId: string | null = "run-3",
 ): Promise<{ refresh: ReturnType<typeof vi.fn> }> {
   const { AdminActions } = await import("../src/routes/RunsAdmin");
   const refresh = vi.fn();
@@ -300,7 +299,6 @@ async function renderActions(
           state === "unavailable" ? { kind: "unavailable" } : { kind: "ready", live: state }
         }
         refresh={refresh}
-        latestRunId={latestRunId}
       />
     </MemoryRouter>,
   );
@@ -308,6 +306,19 @@ async function renderActions(
 }
 
 describe("AdminActions (TC-010, TC-013, TC-014)", () => {
+  beforeEach(() => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+  });
+
+  it("asks before a real publish and sends nothing when the admin cancels", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    mocks.start.mockClear();
+    await renderActions(live({ state: "idle" }));
+    fireEvent.click(screen.getByRole("button", { name: /start run/i }));
+    expect(window.confirm).toHaveBeenCalled();
+    expect(mocks.start).not.toHaveBeenCalled();
+  });
+
   it("shows 'Signed in as admin' and Start, Stop, Retry", async () => {
     await renderActions(live({}));
     expect(screen.getByText("Signed in as admin")).toBeDefined();
@@ -357,16 +368,16 @@ describe("AdminActions (TC-010, TC-013, TC-014)", () => {
     expect(await screen.findByText("A run is already running")).toBeDefined();
   });
 
-  it("Retry is enabled after a failed run and targets the latest run", async () => {
+  it("Retry is enabled after a failed run and targets that failed run, not the latest published one", async () => {
     mocks.retry.mockResolvedValue({
       commandId: "cmd-3",
       expiresAt: new Date(Date.now() + 900_000).toISOString(),
     });
-    await renderActions(live({ state: "failed", runId: "run-3", step: "publish" }));
+    await renderActions(live({ state: "failed", runId: "run-4-failed", step: "publish" }));
     const retry = screen.getByRole("button", { name: /^retry$/i });
     expect(retry.hasAttribute("disabled")).toBe(false);
     fireEvent.click(retry);
-    await waitFor(() => expect(mocks.retry).toHaveBeenCalledWith("run-3"));
+    await waitFor(() => expect(mocks.retry).toHaveBeenCalledWith("run-4-failed", "publish"));
   });
 
   it("says why when the bridge status cannot be read", async () => {

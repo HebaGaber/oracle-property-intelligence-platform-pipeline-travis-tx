@@ -47,7 +47,7 @@ The whole story runs in one session (PO target: 3 hours) as four parallel builde
 | XI | Data honesty | Cost page shows gross vs credits and "not available · reason"; index answers say "index not available for this run" instead of timing out; parity differences recorded with reasons | ✅ |
 | XII | Secrets | Test user credentials in `~/.config/assessment/countylens-test.env`; no secrets in git; Cognito users created by the operator via CLI | ✅ |
 | XIII–XVII | Owner agents | agent-design.md filled; builders and reviewers above | ✅ |
-| XVIII–XXIII | Delivery | G4 PASS (2026-10-26); G5/G6 together; branch `016-cost-and-admin`; defects from ERR-72 | ✅ |
+| XVIII–XXIII | Delivery | G4 PASS (2026-10-26); G5/G6 together; branch `016-cost-and-admin`; defects from ERR-75 | ✅ |
 | Addendum A6, A7 | Source terms, zero idle | Bridge respects existing source pacing (Austin ≥ 1 s per page); Cognito/SQS/SNS per-request only; no WAF (MCP 503 stays an exception, PO 2026-10-26) | ✅ |
 
 ## Project Structure

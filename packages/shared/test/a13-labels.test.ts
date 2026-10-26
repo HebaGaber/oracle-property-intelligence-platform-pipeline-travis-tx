@@ -82,12 +82,6 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
     expect(EXPLORE_TEXTS.tenureUnknownCount(4)).toBe("tenure unknown: 4");
     expect(EXPLORE_TEXTS.engineBrowser).toBe("DuckDB-WASM in your browser · read-only");
     expect(EXPLORE_TEXTS.engineServer).toBe("DuckDB on the server · same views");
-    expect(EXPLORE_TEXTS.sqlReadOnly).toBe(
-      "Read-only: only SELECT, WITH, DESCRIBE and SHOW run here",
-    );
-    expect(EXPLORE_TEXTS.sqlError("Parser Error: syntax error", "check the quotes")).toBe(
-      "Parser Error: syntax error · Try: check the quotes",
-    );
     expect(EXPLORE_TEXTS.zeroResults(5, 3)).toBe(
       "No properties within 5 mi · 3 close matches just outside",
     );
@@ -123,7 +117,7 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
 });
 
 describe("A-13 routes and URL parameters (contracts/ui-routes.md)", () => {
-  it("names every route of the contract, and /permits is kept", () => {
+  it("names every route of the contract, /permits kept, plus the A-16 admin routes", () => {
     expect(Object.values(ROUTES).sort()).toEqual(
       [
         "/",
@@ -141,6 +135,9 @@ describe("A-13 routes and URL parameters (contracts/ui-routes.md)", () => {
         "/legal/terms",
         "/soon/:item",
         "/permits",
+        // A-16 (frozen interfaces): admin sign-in and Activity
+        "/admin/sign-in",
+        "/activity",
       ].sort(),
     );
     expect(verifyPath("bafkreiabc")).toBe("/data/verify/bafkreiabc");

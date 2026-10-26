@@ -625,6 +625,27 @@ describe("car-files and manifest steps (probe / adopt)", () => {
     expect(items.every((i) => i.action === "run" && /probe skipped/.test(i.reason))).toBe(true);
   });
 
+  it("presentOnly plans only the files on disk and writes no receipt for the others", async () => {
+    const { ctx } = await realContext();
+    const h = harness(ctx, { fetch: vi.fn() as unknown as FetchLike });
+    h.deps.carFiles.skipProbe = true;
+    h.deps.carFiles.presentOnly = true;
+    const targets = ctx.manifest.artifacts.filter((a) => a.carCid !== undefined);
+    const report = await runPublish({
+      ctx,
+      impls: createPublishSteps(h.deps),
+      dryRun: true,
+      step: "car-files",
+    });
+    const items = report.steps.at(-1)?.items ?? [];
+    expect(items.length).toBe(targets.length);
+    const missing = items.filter((i) => /not fetched yet/.test(i.reason));
+    const present = items.filter((i) => i.action === "run");
+    expect(missing.length + present.length).toBe(targets.length);
+    expect(missing.every((i) => i.action === "skip")).toBe(true);
+    expect(existsSync(join(ctx.receiptsDir, "carfiles"))).toBe(false);
+  });
+
   it("--probe finds files both gateways already serve at the manifest size and skips them", async () => {
     const { ctx } = await realContext();
     const sizes = new Map(

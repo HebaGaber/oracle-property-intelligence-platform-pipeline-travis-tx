@@ -148,10 +148,11 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G5 | specs/014-agent-and-mcp (spec, plan, tasks) | 2026-10-22 | PASS 10/10 after analyze fixes F1 and F2, `docs/gates/G5-A-14-precheck.md` | Approved (HebaGaber) | 2026-10-22 |
 | G6 | testplans/A-14-test-cases.md | v1.0 | PASS 9/9, `docs/gates/G6-A-14-precheck.md` | Approved (HebaGaber) | 2026-10-22 |
 | G7 | A-14 (branch `014-agent-and-mcp` @ `ad7d14d`, hosted results on `40808ca`) | Agent, AI tab and MCP server deployed to `CountyLensApi`; golden G1 to G6 6 of 6 and MCP 12 passed on the small run; reviewers alakazam 80, ash 84, oracle 80, donphan 80; CI run `40227521852` green on `9e98772` | FAIL on the strict rule (C-01, C-04, C-10), `docs/gates/G7-A-14-precheck.md`, 2026-10-25; PO exceptions: E1 full-county gap (`DEC-A-14-agent-mcp-full-county.md`), E2 ten convergence tasks to A-16, E3 MCP burst 503 (`DEC-A-14-mcp-burst-503.md`, ERR-64), E4 TC-011, TC-017, TC-028 not executed | Approved with exceptions (HebaGaber); merged `283bf51` | 2026-10-25 |
-| G7 | A-11 Run 3 corrections (branch `011c-run3-integrated`) | 2026-10-25 | pre-check FAIL (6), `docs/gates/G7-A-11-run3-precheck.md`; fixes: ERR-65..71 renumbered and closed on the Run 3 numbers (ERR-66 open: BBB link check), reviewers oracle 76, donphan 78, machamp 78, porygon 80, evidence and reports updated; hosted Run 3 checks after the index step | Merged on PO approval 2026-10-25 ("if ci is green merge"); the 2 hosted checks stay open until the index step | |
+| G7 | A-11 Run 3 corrections (branch `011c-run3-integrated`) | 2026-10-25 | pre-check FAIL (6), `docs/gates/G7-A-11-run3-precheck.md`; fixes: ERR-65..71 renumbered and closed on the Run 3 numbers (ERR-66 closed 2026-10-26 after the PO checked the BBB link), reviewers oracle 76, donphan 78, machamp 78, porygon 80, evidence and reports updated; hosted Run 3 checks after the index step | Merged on PO approval 2026-10-25 ("if ci is green merge"); the 2 hosted checks stay open until the index step | |
 | G4 | stories/A-16-cost-and-admin.md | rev 2 (2026-10-26) | FAIL (4) → FAIL (1, C-11 pending PO) → PASS 11/11, `docs/gates/G4-A-16-precheck.md`; PO exceptions: sizing (Part 3 added), AC-1 billed-days window, AC-6 email + password from Task B | Ready (HebaGaber) | 2026-10-26 |
 | G5 | specs/016-cost-and-admin (spec, plan, tasks) | 2026-10-26 | FAIL (7) → FAIL (1, C-10 analyze H1) → PASS with PO exception, `docs/gates/G5-A-16-precheck.md`; `/speckit-analyze` 0 CRITICAL, 6 HIGH fixed, H1 five builder groups = PO exception; ADR-0001 amendment 1 accepted | Approved (HebaGaber) | 2026-10-26 |
 | G6 | testplans/A-16-test-cases.md | v1.0 | PASS, `docs/gates/G6-A-16-precheck.md` | Approved (HebaGaber) | 2026-10-26 |
+| PO decision | scripts/bundle-size.ts total-JS gate | 2026-10-26 | 300 KB → 310 KB gzipped for the board-matched UI and the Task B search box port; Hub first-load limit 150 KB unchanged (130.8 KB) | Approved (HebaGaber) | 2026-10-26 |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
 
@@ -174,7 +175,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | Open days only for open permits | ERR-70 | permit status | 795 with open days, 548 open 5+ years |
 | Deed dates for tenure (ADR-0003) | ERR-71 | AC-39 (tenure) | tenure known 175,408 → 420,411 (95.1%) |
 | Address points for condo units (ADR-0004) | ERR-65 | AC-10 (coordinates) | coordinates 390,061 → 434,016 (98.2%) |
-| Contractor names "as printed, unverified"; BBB link if blocked | ERR-66 (open: link check) | AC-38 (contractor, BBB) | 0 → 4,139 permits with a printed name |
+| Contractor names "as printed, unverified"; BBB link if blocked | ERR-66 (closed 2026-10-26: link checked and corrected) | AC-38 (contractor, BBB) | 0 → 4,139 permits with a printed name |
 | Keep elephant-cli as uploader, with a network wrapper | ERR-67 | AC-21, AC-28 (IPFS) | 30/30 Filebase uploads with receipts |
 | Real incremental refresh | n/a | AC-15, AC-31 | Austin: 660 added, 9,922 changed, 0 removed; watermark from Run 2 |
 

@@ -276,7 +276,7 @@ describe("contractor edges (donphan M4)", () => {
       bbb_status_reason: "bbb_blocked",
       bbb_rating: null,
       bbb_url:
-        "https://www.bbb.org/search?find_country=USA&find_text=Roofer%20A&find_loc=Austin%2C%20TX&find_type=Category",
+        "https://www.bbb.org/search?find_country=USA&find_text=Roofer%20A&find_loc=Austin%2C%20TX",
     });
     expect(reasonOf(pmt("pc"), "bbb_rating")).toBe("bbb_blocked");
     expect(reasonOf(pmt("pc"), "contractor_name_as_printed")).toBeUndefined();

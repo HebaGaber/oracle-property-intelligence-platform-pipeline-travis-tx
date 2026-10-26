@@ -1,5 +1,10 @@
-/* Coverage · Source speed and Cost (A-16 T041). The tables come from Runs.module.css; below
-   600 px each row stacks as a labelled block (the boards' "stacked, charts as tables"). Tokens only. */
+/* Coverage page styles (A-16 T041; PO note 2026-10-26). The tables come from Runs.module.css.
+   - `.compact` (Source speed, read path, Cost): full card width, fixed column shares, cells
+     clamped to three lines; the row's native Details disclosure lifts the clamp in CSS (no
+     script: the JS bundle budget is nearly spent, so the rules below key on structure).
+   - `.stack`: below 840 px each row stacks as label/value lines (board Coverage390).
+   - `.kindGrid`: "Counts by record kind" cards filling the width, one line per coverage key.
+   Tokens only; no auto margins. */
 .notice {
   display: flex;
   align-items: flex-start;
@@ -18,6 +23,174 @@
   overflow-wrap: anywhere;
 }
 
+/* Gross, credits and budget side by side from 600 px (board: "Last bill" and "Budget alert"). */
+.costTiles {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 600px) {
+  .costTiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ---- compact tables ---- */
+.compact td {
+  min-width: 0;
+}
+
+.compact td > div,
+.kindGrid li > span:nth-child(3),
+.facts > div:last-child {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.kindGrid li > span:nth-child(3),
+.facts > div:last-child {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.compact tr:has(details[open]) td > div,
+.kindGrid article:has(details[open]) li > span:nth-child(3),
+.kindGrid article:has(details[open]) .facts > div:last-child {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+
+.compact tr:has(details[open]) {
+  background: var(--md-sys-color-surface-container-low);
+}
+
+/* B-1: a long "not available" pill shows its short label on one line; an opened row shows the
+   full reason as normal wrapping text instead. */
+.compact tr:has(details[open]) [data-short] {
+  white-space: normal;
+}
+
+.compact tr:has(details[open]) [data-short]::after {
+  content: none;
+}
+
+.compact tr:has(details[open]) [data-short] > span:last-child {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+}
+
+/* Name cell: the short name bold, the doc's parenthetical as a helper line. */
+.compact td:first-child > span {
+  overflow-wrap: anywhere;
+}
+
+.compact td:first-child b {
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+}
+
+.compact td:first-child > span > span {
+  display: block;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+}
+
+.compact td:last-child,
+.compact th:last-child {
+  text-align: end;
+}
+
+/* The toggle column's header is named for screen readers only. */
+.compact th:last-child > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Atlas text button on a native summary, 48 px target; no disclosure marker. */
+.compact summary,
+.kindGrid summary,
+[data-section="limitations"] summary {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--space-9);
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-primary);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  list-style: none;
+  cursor: pointer;
+}
+
+.compact summary::-webkit-details-marker,
+.kindGrid summary::-webkit-details-marker,
+[data-section="limitations"] summary::-webkit-details-marker {
+  display: none;
+}
+
+.compact summary:hover,
+.kindGrid summary:hover,
+[data-section="limitations"] summary:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.compact summary:focus-visible,
+.kindGrid summary:focus-visible,
+[data-section="limitations"] summary:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.compact details[open] summary,
+.kindGrid details[open] summary,
+[data-section="limitations"] details[open] summary {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+[data-section="limitations"] details {
+  justify-self: start;
+}
+
+/* Known limitations: the first five items until "Show all" is open. */
+[data-section="limitations"]:not(:has(details[open])) li:nth-child(n + 6) {
+  display: none;
+}
+
+/* From 840 px: the table spans the card, columns share it evenly, the name column a bit wider. */
+@media (min-width: 840px) {
+  .compact {
+    table-layout: fixed;
+  }
+
+  .compact th:first-child {
+    width: 18%;
+  }
+
+  .compact th:last-child {
+    width: calc(var(--space-10) + var(--space-6));
+  }
+}
+
 @media (max-width: 839px) {
   .stack thead {
     position: absolute;
@@ -29,8 +202,7 @@
 
   .stack,
   .stack tbody,
-  .stack tr,
-  .stack td {
+  .stack tr {
     display: block;
   }
 
@@ -39,7 +211,11 @@
     border-top: 1px solid var(--md-sys-color-outline-variant);
   }
 
+  /* One label/value line per cell: the column name on the left, the value on the right. */
   .stack td {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: var(--space-3);
     padding: var(--space-1) 0;
     border-top: 0;
     text-align: start;
@@ -47,9 +223,141 @@
 
   .stack td::before {
     content: attr(data-label);
-    display: block;
     color: var(--md-sys-color-on-surface-variant);
     font-family: var(--md-sys-typescale-body-small-font);
     font-size: var(--md-sys-typescale-body-small-size);
+    line-height: var(--md-sys-typescale-body-medium-line-height);
   }
+
+  /* The disclosure needs no label line on a phone: it sits under the row's values. */
+  .compact td:last-child {
+    display: block;
+    text-align: start;
+  }
+
+  .compact td:last-child::before {
+    content: none;
+  }
+
+  /* Collapsed, a stacked row shows its key figures; Details opens the rest. */
+  .compact[aria-label="Source limits"]
+    tr:not(:has(details[open]))
+    td:is(:nth-child(2), :nth-child(4), :nth-child(6)),
+  .compact[aria-label="Deployed resources and idle cost"]
+    tr:not(:has(details[open]))
+    td:is(:nth-child(4), :nth-child(5)) {
+    display: none;
+  }
+}
+
+/* "Publication and read path": a folded section; its summary is a 48 px target. */
+[data-section="source-limits"] > details > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--space-9);
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+}
+
+[data-section="source-limits"] > details > summary:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+/* ---- Counts by record kind ---- */
+.kindGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
+
+@media (min-width: 600px) {
+  .kindGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .kindGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.kindGrid > article {
+  align-content: start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Card head: the kind title and its Details disclosure. */
+.kindGrid > article > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--space-9);
+}
+
+.kindGrid ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One coverage key: label and count on a line, derivation · collected · note below. */
+.kindGrid li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0 var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.kindGrid li > span:first-child {
+  min-width: 0;
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
+  overflow-wrap: anywhere;
+}
+
+.kindGrid li > span:nth-child(2) {
+  white-space: nowrap;
+}
+
+.kindGrid li > span:nth-child(3) {
+  grid-column: 1 / -1;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  display: grid;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+  overflow-wrap: anywhere;
+}
+
+.facts > div {
+  min-width: 0;
+}
+
+/* "Loaded vs each source's own total": count, bar and share stacked in one cell. */
+.totalCell {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
 }

@@ -46,8 +46,6 @@
 //   list text EXPLORE_TEXTS.noOpenPermits; filter definitions `[data-filter-definition="tenure|ooa"]`;
 //   the count `[data-tenure-unknown]`; the drawer `role="dialog"` with `[data-field]` cells, a
 //   contractor badge `[data-contractor-resolution]` and the BBB line `[data-field="bbb"]`.
-// - Explore · SQL: a textbox named "SQL", a button "Run", the result grid
-//   `table[aria-label="Query result"]`, an error or refusal line `[data-sql-error]`.
 import type { RunManifestV1 } from "@countylens/contract";
 import { COVERAGE_TEXTS, EXPLORE_TEXTS, VERIFY_TEXTS } from "@countylens/shared";
 import { z } from "zod";
@@ -129,8 +127,6 @@ export const SEL = {
   filterDefinition: (f: "tenure" | "ooa"): string => `[data-filter-definition="${f}"]`,
   tenureUnknown: "[data-tenure-unknown]",
   contractorBadge: "[data-contractor-resolution]",
-  sqlResult: 'table[aria-label="Query result"]',
-  sqlError: "[data-sql-error]",
 } as const;
 
 // ---------------------------------------------------------------------------------------
@@ -158,7 +154,7 @@ export function scenario(tc: string): string {
 }
 
 // ---------------------------------------------------------------------------------------
-// Explore URLs and SQL cross-checks
+// Explore URLs
 // ---------------------------------------------------------------------------------------
 
 export type ExploreParams = Partial<
@@ -192,41 +188,13 @@ export function exploreUrl(explorePath: string, params: ExploreParams = {}): str
   return `${explorePath}?${query}`;
 }
 
-/** Statute mile in metres (the same constant as query-core builders.ts). */
-export const METRES_PER_MILE = 1609.344;
-
-export interface SqlArea {
-  readonly lat: number;
-  readonly lon: number;
-  readonly radiusMi: number;
-}
-
-/** Haversine distance in metres from the area centre to v_property (`p`), in DuckDB SQL. */
-function haversineM({ lat, lon }: SqlArea): string {
-  return `2 * 6371008.8 * asin(sqrt(power(sin(radians(p.latitude - ${lat}) / 2), 2) + cos(radians(${lat})) * cos(radians(p.latitude)) * power(sin(radians(p.longitude - (${lon})) / 2), 2)))`;
-}
-
-/** The browser-SQL count of v_property inside the radius with optional extra predicates on `p`. */
-export function areaCountSql(area: SqlArea, where: readonly string[] = []): string {
-  const radiusM = area.radiusMi * METRES_PER_MILE;
-  const conds = [
-    "p.latitude IS NOT NULL",
-    "p.longitude IS NOT NULL",
-    `${haversineM(area)} < ${radiusM}`,
-    ...where,
-  ];
-  return `SELECT count(*) AS n FROM v_property p WHERE ${conds.join(" AND ")}`;
-}
-
-/** Open (`status_class = 'open'`) reroofs open ≥ `days` inside the area (TC-035). */
-export function openPermitCountSql(area: SqlArea, days: number): string {
-  const radiusM = area.radiusMi * METRES_PER_MILE;
-  return `SELECT count(*) AS n FROM v_roofing_permit r JOIN v_property p ON p.property_cid = r.property_cid WHERE r.status_class = 'open' AND r.open_days >= ${days} AND p.latitude IS NOT NULL AND ${haversineM(area)} < ${radiusM}`;
-}
-
-/** {x} of a permit chip: open days / 365.25 to one decimal. */
+/**
+ * {x} of a permit chip: open days / 365.25 to one decimal, rounded down, as the explore.search
+ * contract fixes `open_years` (specs/013-explorer-and-pages/contracts/explore-search.md) and
+ * query-core's toExploreRow computes it.
+ */
 export function openYears(openDays: number): number {
-  return Math.round((openDays / 365.25) * 10) / 10;
+  return Math.floor((openDays / 365.25) * 10) / 10;
 }
 
 /** The numeric {x} of a "Stalled {x} yrs …" / "Open {x} yrs …" chip, or null. */

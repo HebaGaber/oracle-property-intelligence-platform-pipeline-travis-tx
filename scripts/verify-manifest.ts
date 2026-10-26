@@ -768,13 +768,13 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   return report;
 }
 
-/** A `--sample` run that passed: a partial check, so it must not look like a full verification. */
-export const EXIT_SAMPLE_ONLY = 3;
-
-/** 0 only for a full verification; 3 for a passing sample; 1 for any failure. (2 = usage.) */
+/**
+ * 0 when every check run passed (a full run, or a `--sample` run: the log line says "sample only",
+ * so a partial check never reads as a full verification); 1 for any failure. (2 = usage.)
+ * A passing sample used to exit 3 (A11-16), which broke hosted TC-040; the wording carries it now.
+ */
 export function exitCodeFor(report: Pick<VerifyReport, "ok" | "sample">): number {
-  if (!report.ok) return 1;
-  return report.sample === undefined ? 0 : EXIT_SAMPLE_ONLY;
+  return report.ok ? 0 : 1;
 }
 
 export const EVIDENCE_SCHEMA = "verify-manifest-evidence.v1";

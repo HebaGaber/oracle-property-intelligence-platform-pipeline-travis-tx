@@ -73,19 +73,21 @@ See [`docs/kit-usage.md`](https://github.com/HebaGaber/oracle-property-intellige
 
 ## Known gaps
 
+Everything carried into A-16 is listed once in [`docs/evidence/A-16.md` § Closure](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/evidence/A-16.md), as Closed (with evidence) or Exception (with reason and PO decision). What stays open:
+
 | Gap | Why | Next step |
 | --- | --- | --- |
-| Run 3 and the three-run immutability check | A-11 closed with Runs 1 and 2; Run 3 needs a later UTC date and pending data fixes (owner names, roof date) | A-16 |
-| Full gateway verification of the full-county runs | Public gateways rate-limit the 456-artifact check; not complete at merge | A-16 |
-| Demo video | Recorded once the full county and the explorer are live | Release step R4 |
-| **Explorer filter search does not run on the full county** | One search joins all 441,961 properties inside the API Lambda: it ran out of memory at 1 GB, then times out at 29 s (HTTP 500). It worked on the 14-property slice (p95 817 ms). Demo lines for radius and roof age and for open permits show an error on live data. PO-accepted exception: [`DEC-A-13-explore-full-county`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/decisions/DEC-A-13-explore-full-county.md) | A-16 item 1: a per-run Explore index |
-| SQL panel first query takes about 97 s on the full county (limit 8 s) | The first query binds 225 table parts; after that queries are fast | A-16 item 2 |
-| Page speed on five manifest-driven pages (LCP 2.7 to 3.4 s against 2.5 s) | Rendering 240 table rows and two manifests on a throttled phone profile | A-16 item 3 |
-| **Agent, AI tab and MCP data tools do not run on the full county** | The same cause as the Explorer: a question that reads property data on Run 1 or Run 2 ends at the Lambda limit. The agent now answers HTTP 200 with a plain "took too long" and names the run it searched (never a 5xx); the MCP data tools end at their own 15 s limit. Proven on the small run (`travis-202609-permits-20261021t103516z`, pinned). PO-accepted exception: [`DEC-A-14-agent-mcp-full-county`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/decisions/DEC-A-14-agent-mcp-full-county.md) | A-16 item 1: the per-run Explore index |
-| MCP burst above 5 requests per second mostly answers 503, not 429 | The route throttle is configured as designed, but API Gateway's throttle is approximate and the account's 10-concurrent-Lambda limit rejects the rest. Test A-14-TC-021 stays red. PO-accepted deviation: [`DEC-A-14-mcp-burst-503`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/decisions/DEC-A-14-mcp-burst-503.md) | A-16: WAF rate rule or more Lambda concurrency |
-| Ten A-14 convergence tasks and the final-review items are not built | Listed with their reasons in [`stories/A-16-cost-and-admin.md`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/stories/A-16-cost-and-admin.md) under "Carried forward from A-14" | A-16 |
-| 29 hosted test cases are parked | Skipped with the A-16 gap named in the report, never counted as passed ([`docs/evidence/A-13.md`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/evidence/A-13.md)) | A-16 |
-| Atlas registration | No Atlas access in this environment; an external dependency, not blocking | A-16 |
+| Second independent pin and independent public gateway | Pinata's pin-by-CID needs a paid tier; the README's example gateways (ipfs.io, dweb.link) are retired. Filebase and the CloudFront CID copy serve every object | PO's separate session: Storacha CAR upload (CIDs unchanged) |
+| MCP burst above 5 rps mostly answers 503, not 429 | API Gateway's throttle is approximate and the account allows 10 concurrent Lambdas; a WAF rate rule would bill while idle. PO kept $0 idle ([`DEC-A-14-mcp-burst-503`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/decisions/DEC-A-14-mcp-burst-503.md)) | Lambda concurrency quota increase |
+| Live admin Start through the laptop bridge | Built and unit-tested (fake queue, 36 tests); the live dry run waits until another session's Run 3.1 work releases the shared local Query DB (PO 2026-10-26) | One dry-run Start after Run 3.1 |
+| County counts in the manifest coverage section | Run manifests are immutable; Run 3's coverage carries permit keys only. The Coverage page names the documented 441,961 | Written by the manifest builder from Run 4 |
+| Out-of-area owner filter | Owner mailing location is not published in any run; the page and the agent say so instead of returning rows | A future run that publishes owner ZIP |
+| Six-case golden grader on the full county | The grader re-binds the run locally and the CID copy refuses its unsigned fetch; the two README prompts were answered live on Run 3 instead | Grader reads parts through the signed path |
+| SQL panel first query on the full county | The panel now binds only the views a query names and the tab renders, but the first full-county query still exceeds 4 min on the CI runner (TC-004, TC-023 parked, PO 2026-10-26) | Read one footer per table and only the queried columns |
+| Page speed on Catalog and Manifest (Run 3) | LCP 3.1–3.3 s against 2.5 s; CLS 0.12–0.25 on Runs, Coverage, Manifest (TC-081 parked, PO 2026-10-26) | Reserve layout space; load the artifact table on demand |
+| Run 3 size: Catalog footers and Filebase fallback | 255 parts, 983 MB (parked by the Run 3 session) | Footer-only Catalog read |
+| Atlas registration | No Atlas access in this environment; an external dependency | — |
+| Demo video | Recorded at release step R7 | R7 |
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 

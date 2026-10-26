@@ -19,6 +19,7 @@ import {
 import { MCP_TRY_TEXTS } from "@countylens/shared";
 import { useState, type ReactElement } from "react";
 import { CidDisplay } from "../components/CidDisplay";
+import { Icon } from "../components/Icon";
 import { StatusPill } from "../components/StatusPill";
 import {
   MCP_TRY_TOOLS,
@@ -183,6 +184,16 @@ export function Component({ callTool = tryMcpTool }: HelpMcpProps = {}): ReactEl
   const [tool, setTool] = useState<McpTryTool>("search_properties");
   const [args, setArgs] = useState<string>(EXAMPLES.search_properties);
   const [state, setState] = useState<TryState>({ kind: "idle" });
+  const [client, setClient] = useState<(typeof SNIPPETS)[number]["id"]>("claude-desktop");
+  const [copied, setCopied] = useState(false);
+  const snippet =
+    SNIPPETS.find((s) => s.id === client) ?? (SNIPPETS[0] as (typeof SNIPPETS)[number]);
+  const copy = (): void => {
+    void navigator.clipboard?.writeText(snippet.code).then(
+      () => setCopied(true),
+      () => setCopied(false),
+    );
+  };
   const run = async (): Promise<void> => {
     let parsed: unknown;
     try {
@@ -210,6 +221,8 @@ export function Component({ callTool = tryMcpTool }: HelpMcpProps = {}): ReactEl
       setState({ kind: "error", message });
     }
   };
+  // HelpMcp1440/768/390 boards: the path as a small crumb above the "MCP and API" headline; a top
+  // row of Endpoint | Access | Connect a client, then the tools | Try a tool. The grid stacks at 390.
   return (
     <section
       aria-label="Help · MCP"
@@ -217,105 +230,197 @@ export function Component({ callTool = tryMcpTool }: HelpMcpProps = {}): ReactEl
       data-state="ready"
       className={runStyles.page}
     >
-      <h2 className={runStyles.title}>Help · MCP</h2>
+      <h2 className={styles.crumb}>Help · MCP</h2>
+      <p className={styles.subtitle}>MCP and API</p>
       <p className={runStyles.itemBody}>
-        The CountyLens MCP server answers with fixed, typed tools over the same published views as
-        Explore. Each tool returns at most {MAX_ROWS} rows; there is no free-form query tool
-        (free-form queries run only in your browser, in Explore).
+        Ask CountyLens from Claude Desktop, MCP Inspector or any MCP client. The tools read the same
+        published views as Explore; each returns at most {MAX_ROWS} rows. No tool runs free-form
+        queries.
       </p>
-      <ul className={runStyles.list} aria-label="MCP tools">
-        {MCP_TOOLS.map((tool) => (
-          <li key={tool.name} className={runStyles.item} data-tool={tool.name}>
-            <span className={runStyles.itemTitle}>
-              <code className={runStyles.mono}>{tool.name}</code>
-            </span>
-            <span className={runStyles.itemBody}>{tool.what}</span>
-            {tool.name === "search_properties" ? (
-              <ul className={runStyles.list} aria-label="search_properties input" data-schema="">
-                {SEARCH_PARAMS.map((param) => (
-                  <li key={param.name} className={runStyles.itemBody} data-param={param.name}>
-                    <code className={runStyles.mono}>{param.name}</code> · {param.text}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span className={runStyles.itemBody} data-schema-pending="">
-                Input schema: published with the MCP server in story A-14.
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
+      <div className={styles.layout}>
+        <div className={runStyles.card} data-mcp-endpoint="">
+          <h3 className={runStyles.sectionTitle}>Endpoint</h3>
+          <dl className={styles.facts}>
+            <dt>URL</dt>
+            <dd>Shared privately with reviewers, together with the token</dd>
+            <dt>Transport</dt>
+            <dd>Streamable HTTP</dd>
+            <dt>Runs on</dt>
+            <dd>Its own stateless Lambda handler, sharing query-core with Explore</dd>
+            <dt>Data</dt>
+            <dd>The latest published run (the badge in the app bar)</dd>
+          </dl>
+        </div>
+        <div className={runStyles.card} data-mcp-access="">
+          <h3 className={runStyles.sectionTitle}>Access</h3>
+          <dl className={styles.facts}>
+            <dt>
+              <code>tools/list</code>
+            </dt>
+            <dd>Bearer token</dd>
+            <dt>
+              <code>tools/call</code>
+            </dt>
+            <dd>Bearer token · read-only</dd>
+          </dl>
+          <p className={runStyles.itemBody}>
+            Send it as <code>{BEARER}</code>. Every tool only reads published data, and calls are
+            throttled. No or wrong token: 401 Unauthorized · throttled: 429 Too Many Requests.
+          </p>
+        </div>
 
-      <div className={runStyles.card}>
-        <h3 className={runStyles.sectionTitle}>Connect a client</h3>
-        <p className={runStyles.itemBody}>Bearer token required, shared privately with reviewers</p>
-        {SNIPPETS.map((snippet) => (
-          <div key={snippet.id} className={styles.snippetBox}>
-            <h4 className={runStyles.sectionTitle}>{snippet.title}</h4>
-            <pre data-snippet={snippet.id} className={styles.snippet} tabIndex={0}>
-              <code>{snippet.code}</code>
-            </pre>
+        <div className={`${runStyles.card} ${styles.connect}`}>
+          <h3 className={runStyles.sectionTitle}>Connect a client</h3>
+          <p className={runStyles.itemBody}>
+            Bearer token required, shared privately with reviewers
+          </p>
+          <div className={styles.tabRow}>
+            <div role="tablist" aria-label="MCP client" className={styles.clientTabs}>
+              {SNIPPETS.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={client === s.id}
+                  className={`${styles.clientTab} ${client === s.id ? styles.clientTabOn : ""}`}
+                  onClick={() => {
+                    setClient(s.id);
+                    setCopied(false);
+                  }}
+                >
+                  {s.title}
+                </button>
+              ))}
+            </div>
+            <button type="button" className={styles.copy} onClick={copy}>
+              <Icon name="content_copy" size="medium" />
+              {copied ? "Copied" : "Copy"}
+            </button>
           </div>
-        ))}
-      </div>
-
-      <div className={runStyles.card}>
-        <h3 className={runStyles.sectionTitle}>Try a tool</h3>
-        <p className={runStyles.itemBody}>{MCP_TRY_TEXTS.noToken}</p>
-        <label className={runStyles.itemBody} htmlFor="mcp-try-tool">
-          Tool
-        </label>
-        <select
-          id="mcp-try-tool"
-          className={styles.field}
-          value={tool}
-          onChange={(event) => {
-            const next = event.target.value as McpTryTool;
-            setTool(next);
-            setArgs(EXAMPLES[next]);
-            setState({ kind: "idle" });
-          }}
-        >
-          {MCP_TRY_TOOLS.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
+          {SNIPPETS.map((snippet) => (
+            <div key={snippet.id} className={styles.snippetBox}>
+              <div role="tabpanel" aria-label={snippet.title} hidden={client !== snippet.id}>
+                <pre data-snippet={snippet.id} className={styles.snippet} tabIndex={0}>
+                  <code>{snippet.code}</code>
+                </pre>
+              </div>
+            </div>
           ))}
-        </select>
-        <label className={runStyles.itemBody} htmlFor="mcp-try-args">
-          Arguments (JSON)
-        </label>
-        <textarea
-          id="mcp-try-args"
-          className={`${styles.field} ${styles.args}`}
-          value={args}
-          rows={6}
-          spellCheck={false}
-          onChange={(event) => setArgs(event.target.value)}
-        />
-        <span>
-          <button
-            type="button"
-            className={runStyles.action}
-            data-main-control=""
-            disabled={state.kind === "running"}
-            onClick={() => void run()}
-          >
+        </div>
+
+        <div className={`${runStyles.card} ${styles.tools}`}>
+          <h3 className={styles.toolsTitle}>
+            Tools <span className={styles.count}>{MCP_TOOLS.length}</span>
+          </h3>
+          <ul className={styles.toolList} aria-label="MCP tools">
+            {MCP_TOOLS.map((tool) => (
+              <li
+                key={tool.name}
+                className={
+                  tool.name === "search_properties"
+                    ? `${styles.tool} ${styles.toolWide}`
+                    : styles.tool
+                }
+                data-tool={tool.name}
+              >
+                <span className={styles.toolHead}>
+                  <code className={styles.toolName}>{tool.name}</code>
+                  <StatusPill status="info" icon="lock" text="Read-only" />
+                </span>
+                <span className={runStyles.itemBody}>{tool.what}</span>
+                {tool.name === "search_properties" ? (
+                  <table
+                    className={styles.schema}
+                    aria-label="search_properties input"
+                    data-schema=""
+                  >
+                    <thead>
+                      <tr>
+                        <th scope="col">Input</th>
+                        <th scope="col">Allowed values</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {SEARCH_PARAMS.map((param) => (
+                        <tr key={param.name} data-param={param.name}>
+                          <th scope="row">
+                            <code className={runStyles.mono}>{param.name}</code>
+                          </th>
+                          <td>{param.text}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <span className={styles.pending} data-schema-pending="">
+                    Input schema: published with the MCP server in story A-14.
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className={`${runStyles.card} ${styles.try}`}>
+          <h3 className={styles.toolsTitle}>
+            <Icon name="play_arrow" />
             Try a tool
-          </button>
-        </span>
-        <span role="status" data-try-state={state.kind}>
-          {state.kind === "running" ? (
-            <StatusPill status="info" icon="schedule" text={MCP_TRY_TEXTS.running} />
+          </h3>
+          <p className={runStyles.itemBody}>{MCP_TRY_TEXTS.noToken}</p>
+          <label className={runStyles.itemBody} htmlFor="mcp-try-tool">
+            Tool
+          </label>
+          <select
+            id="mcp-try-tool"
+            className={styles.field}
+            value={tool}
+            onChange={(event) => {
+              const next = event.target.value as McpTryTool;
+              setTool(next);
+              setArgs(EXAMPLES[next]);
+              setState({ kind: "idle" });
+            }}
+          >
+            {MCP_TRY_TOOLS.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <label className={runStyles.itemBody} htmlFor="mcp-try-args">
+            Arguments (JSON)
+          </label>
+          <textarea
+            id="mcp-try-args"
+            className={`${styles.field} ${styles.args}`}
+            value={args}
+            rows={6}
+            spellCheck={false}
+            onChange={(event) => setArgs(event.target.value)}
+          />
+          <span>
+            <button
+              type="button"
+              className={styles.run}
+              data-main-control=""
+              disabled={state.kind === "running"}
+              onClick={() => void run()}
+            >
+              Try a tool
+            </button>
+          </span>
+          <span role="status" data-try-state={state.kind}>
+            {state.kind === "running" ? (
+              <StatusPill status="info" icon="schedule" text={MCP_TRY_TEXTS.running} />
+            ) : null}
+          </span>
+          {state.kind === "error" ? (
+            <div role="alert" data-try-error="">
+              <StatusPill status="error" text={state.message} />
+            </div>
           ) : null}
-        </span>
-        {state.kind === "error" ? (
-          <div role="alert" data-try-error="">
-            <StatusPill status="error" text={state.message} />
-          </div>
-        ) : null}
-        {state.kind === "done" ? <TryResult response={state.response} /> : null}
+          {state.kind === "done" ? <TryResult response={state.response} /> : null}
+        </div>
       </div>
     </section>
   );

@@ -3,6 +3,7 @@ id: DEC-A-14-agent-mcp-full-county
 type: decision
 story: A-14
 title: "Close A-14 with the agent and MCP server proven on the small published run, not on the full county; the gap moves to A-16 (PO exception, same cause as DEC-A-13-explore-full-county)"
+superseded: "A-16 closed it on 2026-10-26: the agent and MCP read the per-run index; hosted D-10 on Run 3 answered in 15.5 s (28,062 matches), MCP search_properties 0.8–2.4 s (docs/evidence/A-16.md § Closure, A14-1)"
 status: Approved by the PO (HebaGaber) on 2026-10-25 ("Close like A-13")
 created: 2026-10-25
 ---

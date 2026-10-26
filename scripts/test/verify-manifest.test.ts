@@ -19,7 +19,6 @@ import {
   ALL_VERIFIED_TEXT,
   ALLOWED_GATEWAYS,
   EVIDENCE_SCHEMA,
-  EXIT_SAMPLE_ONLY,
   FALLBACK_GATEWAYS,
   GATEWAYS,
   NEVER_GATEWAYS,
@@ -255,9 +254,8 @@ describe("exit code (A11-16)", () => {
     expect(exitCodeFor(report({}))).toBe(0);
   });
 
-  it("a sample that passes is not a full verification: exit 3, never 0", () => {
-    expect(exitCodeFor(report({ sample: { checked: 2, total: 240 } }))).toBe(EXIT_SAMPLE_ONLY);
-    expect(EXIT_SAMPLE_ONLY).toBe(3);
+  it("a sample that passes exits 0 (hosted TC-040); its log line says SAMPLE VERIFIED, not ALL", () => {
+    expect(exitCodeFor(report({ sample: { checked: 2, total: 240 } }))).toBe(0);
   });
 
   it("any failure exits 1, sample or not", () => {
@@ -688,7 +686,7 @@ describe("AM-10: Filebase is a reported fallback, never an independent check", (
 });
 
 describe("--sample: the CAR is a storage-host read, not an independent check", () => {
-  it("reads the CAR from Filebase only, says so, and exits 3", async () => {
+  it("reads the CAR from Filebase only, says so, and exits 0", async () => {
     const f = await fixture();
     const lines: string[] = [];
     const { fetchImpl, requests } = fakeGateways(f.published);
@@ -701,7 +699,7 @@ describe("--sample: the CAR is a storage-host read, not an independent check", (
       log: (l) => lines.push(l),
     });
     expect(report.ok).toBe(true);
-    expect(exitCodeFor(report)).toBe(EXIT_SAMPLE_ONLY);
+    expect(exitCodeFor(report)).toBe(0);
     const car = report.verdicts.find((v) => v.kind === "car");
     expect(car?.independentCheck).toBe(false);
     expect(car?.checks.map((c) => c.gateway)).toEqual([FILEBASE]);

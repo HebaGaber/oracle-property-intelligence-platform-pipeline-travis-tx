@@ -25,7 +25,6 @@ test.describe("A-13 vitals", { tag: "@a13-vitals" }, () => {
   test.describe.configure({ mode: "serial" });
 
   test(scenario("058"), async ({ browser, oracle }) => {
-    parkGap(PARKED_GAPS.runsLogLcp);
     test.setTimeout(15 * 60_000);
     noteBranch(oracle, `${oracle.runs.length} run(s); provisional below 3`);
     // 1. Lighthouse-profile loads of /runs/log (five, at least three required).

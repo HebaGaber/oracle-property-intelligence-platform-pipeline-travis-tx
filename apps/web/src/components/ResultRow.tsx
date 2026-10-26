@@ -4,17 +4,27 @@
 // missing reason in words (contracts/ui-routes.md), never blank. `MissingSummary` groups the
 // row's `missing` entries by reason and names their fields (ERR-20: "{fields}: {reason}"); a
 // no-carrier entry reads "not published · no lexicon carrier". `RowProvenance` is the § 8 line
-// (source, collected, table CID, run). `ResultRow` is the clickable Atlas card; Enter/Space or its
-// Details button open the drawer. Every value comes from the explore.search row. Render-only.
+// (source, collected, table CID, run) the drawer shows; `CompactProvenance` is its short form for
+// the result rows (host · date, table CID, run; A-16 PO notes). `ResultRow` is the compact
+// clickable Atlas card (Explore390 board); Enter/Space or its Details button open the drawer.
+// Every value comes from the explore.search row. Render-only.
 import { MISSING_REASONS, type MissingReason as Reason } from "@countylens/contract";
 import type { ExploreRow, MissingEntry } from "@countylens/query-core";
 import { EXPLORE_TEXTS, missingLabel } from "@countylens/shared";
-import type { KeyboardEvent, MouseEvent, ReactElement, ReactNode } from "react";
-import { CidDisplay } from "./CidDisplay";
+import {
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { safeHttpUrl } from "../data/safe-url";
+import { CidDisplay, truncateCid } from "./CidDisplay";
 import { ContractorBadge } from "./ContractorBadge";
+import { Icon } from "./Icon";
 import { MissingReason } from "./MissingReason";
 import { PermitChip } from "./PermitChip";
-import { Provenance } from "./Provenance";
+import { Provenance, formatUtc } from "./Provenance";
 import { StatusPill } from "./StatusPill";
 import styles from "./ResultRow.module.css";
 
@@ -28,17 +38,20 @@ const NO_CARRIER = "no_lexicon_carrier";
 /** A gap pill: the reason in words, with the entry's field and reason as data. */
 function Gap({
   text,
+  short,
   reason,
   field,
 }: {
   readonly text: string;
+  /** The compact visible label; `text` stays the pill's text and tooltip. */
+  readonly short?: string | undefined;
   readonly reason?: string | undefined;
   readonly field?: string | undefined;
 }): ReactElement {
   const data: Record<string, string> = {};
   if (reason !== undefined) data["reason"] = reason;
   if (field !== undefined) data["field"] = field;
-  return <StatusPill status="unavailable" text={text} data={data} />;
+  return <StatusPill status="unavailable" text={text} data={data} short={short} />;
 }
 
 const isReason = (reason: string): reason is Reason =>
@@ -48,13 +61,28 @@ function missingFor(row: ExploreRow, field: string): MissingEntry | undefined {
   return row.missing.find((m) => m.field === field);
 }
 
-/** A gap for `field`: its own missing entry's label when the row has one, else `fallback`. */
-function gapFor(row: ExploreRow, field: string, fallback: string): ReactElement {
+const ROOF_SHORT = "Roof age unknown";
+const TENURE_SHORT = "Tenure unknown";
+const BBB_SHORT = {
+  not_checked: "BBB not checked",
+  blocked: "BBB blocked",
+  not_found: "No BBB profile",
+} as const;
+
+/** A roof gap for `field`: its own missing entry's label when the row has one, else roofUnknown. */
+function gapFor(row: ExploreRow, field: string): ReactElement {
   const entry = missingFor(row, field);
   if (entry !== undefined && isReason(entry.reason) && entry.reason !== NO_CARRIER) {
-    return <MissingReason field={entry.field} reason={entry.reason} />;
+    return <MissingReason field={entry.field} reason={entry.reason} short={ROOF_SHORT} />;
   }
-  return <Gap text={fallback} reason={entry?.reason} field={entry?.field} />;
+  return (
+    <Gap
+      text={EXPLORE_TEXTS.roofUnknown}
+      short={ROOF_SHORT}
+      reason={entry?.reason}
+      field={entry?.field}
+    />
+  );
 }
 
 export function bbbText(status: string | null, reason: string | null): string | null {
@@ -93,89 +121,199 @@ function Cell({
 
 const unknownRoof = (basis: string | null): boolean => basis === null || basis === "unknown";
 
-export function PropertyFields({ row }: { readonly row: ExploreRow }): ReactElement {
-  const roofUnknown = unknownRoof(row.roof_age_basis);
-  const bbb = bbbText(row.bbb_status, row.bbb_status_reason);
-  const ownerUnknown = row.owner_area_class === null || row.owner_area_class === "unknown";
-  return (
-    <dl className={styles.fields}>
-      <Cell label="Address" field="address">
-        {row.address ?? (
+/** Every field a result row shows, in board order (the table, the card and the drawer). */
+export type RowField =
+  | "address"
+  | "roof_age_years"
+  | "roof_age_basis"
+  | "roof_age_confidence"
+  | "distance"
+  | "lat_lon"
+  | "permit"
+  | "status_raw"
+  | "contractor_name"
+  | "contractor_resolution"
+  | "bbb"
+  | "tenure_years"
+  | "tenure_basis"
+  | "owner_area_class";
+
+/** The field's label, as the card and drawer show it. */
+export const FIELD_LABELS: Readonly<Record<RowField, string>> = {
+  address: "Address",
+  roof_age_years: "Roof age",
+  roof_age_basis: "Basis",
+  roof_age_confidence: "Confidence",
+  distance: "Distance",
+  lat_lon: "Lat, lon",
+  permit: "Roofing permit",
+  status_raw: "Status as printed",
+  contractor_name: "Contractor as printed",
+  contractor_resolution: "Contractor match",
+  bbb: "BBB",
+  tenure_years: "Tenure",
+  tenure_basis: "Tenure basis",
+  owner_area_class: "Owner area",
+};
+
+/** Whether the row has the field at all (permit, contractor and BBB cells exist only with data). */
+export function hasField(row: ExploreRow, field: RowField): boolean {
+  if (field === "status_raw") return row.permit !== null;
+  if (field === "contractor_name" || field === "contractor_resolution")
+    return row.contractor !== null;
+  if (field === "bbb") return bbbText(row.bbb_status, row.bbb_status_reason) !== null;
+  return true;
+}
+
+/** One field's value, or its missing reason in words (never blank). */
+export function FieldValue({
+  row,
+  field,
+}: {
+  readonly row: ExploreRow;
+  readonly field: RowField;
+}): ReactElement | null {
+  switch (field) {
+    case "address":
+      return (
+        row.address ?? (
           <Gap
             text={EXPLORE_TEXTS.noCarrier}
+            short="No address"
             reason={missingFor(row, "address")?.reason}
             field="address"
           />
-        )}
-      </Cell>
-      <Cell label="Roof age" field="roof_age_years">
-        {row.roof_age_years === null
-          ? gapFor(row, "roof_age_years", EXPLORE_TEXTS.roofUnknown)
-          : `${row.roof_age_years} yrs`}
-      </Cell>
-      <Cell label="Basis" field="roof_age_basis">
-        {roofUnknown
-          ? gapFor(row, "roof_age_basis", EXPLORE_TEXTS.roofUnknown)
-          : row.roof_age_basis}
-      </Cell>
-      <Cell label="Confidence" field="roof_age_confidence">
-        {row.roof_age_confidence ?? gapFor(row, "roof_age_confidence", EXPLORE_TEXTS.roofUnknown)}
-      </Cell>
-      <Cell label="Distance" field="distance">
-        {`${row.dist_mi} mi ${row.bearing}`}
-      </Cell>
-      <Cell label="Lat, lon" field="lat_lon">
-        {`${row.lat}, ${row.lon}`}
-      </Cell>
-      <Cell label="Roofing permit" field="permit">
-        {row.permit === null ? <span>{NO_PERMIT_TEXT}</span> : <PermitChip permit={row.permit} />}
-      </Cell>
-      {row.permit === null ? null : (
-        <Cell label="Status as printed" field="status_raw">
-          <Gap text={EXPLORE_TEXTS.noCarrier} reason={NO_CARRIER} field="permit.status_raw" />
-        </Cell>
-      )}
-      {row.contractor === null ? null : (
-        <>
-          <Cell label="Contractor as printed" field="contractor_name">
-            <Gap
-              text={EXPLORE_TEXTS.noCarrier}
-              reason={NO_CARRIER}
-              field="contractor.name_as_printed"
-            />
+        )
+      );
+    case "roof_age_years":
+      return row.roof_age_years === null ? (
+        gapFor(row, "roof_age_years")
+      ) : (
+        <>{`${row.roof_age_years} yrs`}</>
+      );
+    case "roof_age_basis":
+      return unknownRoof(row.roof_age_basis) ? (
+        gapFor(row, "roof_age_basis")
+      ) : row.roof_age_basis === "built_year" ? (
+        // Task B B-03: the roof dates from the building (the index carries no year number).
+        <span title="built_year">Year built (no reroof permit found)</span>
+      ) : (
+        <>{row.roof_age_basis}</>
+      );
+    case "roof_age_confidence":
+      return row.roof_age_confidence === null ? (
+        gapFor(row, "roof_age_confidence")
+      ) : (
+        <>{row.roof_age_confidence}</>
+      );
+    case "distance":
+      return <>{`${row.dist_mi} mi ${row.bearing}`}</>;
+    case "lat_lon":
+      // 5 decimals (about 1 m), so float noise such as 30.266854499999997 never shows.
+      return <>{`${Number(row.lat.toFixed(5))}, ${Number(row.lon.toFixed(5))}`}</>;
+    case "permit":
+      return row.permit === null ? (
+        <span>{NO_PERMIT_TEXT}</span>
+      ) : (
+        <PermitChip permit={row.permit} />
+      );
+    case "status_raw":
+      return row.permit === null ? null : (
+        <Gap
+          text={EXPLORE_TEXTS.noCarrier}
+          short="Status not published"
+          reason={NO_CARRIER}
+          field="permit.status_raw"
+        />
+      );
+    case "contractor_name":
+      return row.contractor === null ? null : (
+        <Gap
+          text={EXPLORE_TEXTS.noCarrier}
+          short="Name not published"
+          reason={NO_CARRIER}
+          field="contractor.name_as_printed"
+        />
+      );
+    case "contractor_resolution":
+      return row.contractor === null ? null : (
+        <ContractorBadge resolution={row.contractor.resolution} />
+      );
+    case "bbb": {
+      const bbb = bbbText(row.bbb_status, row.bbb_status_reason);
+      if (bbb === null) return null;
+      return row.bbb_status === "not_checked" ||
+        row.bbb_status === "blocked" ||
+        row.bbb_status === "not_found" ? (
+        <Gap
+          text={bbb}
+          short={BBB_SHORT[row.bbb_status]}
+          reason={`bbb_${row.bbb_status}`}
+          field="bbb_status"
+        />
+      ) : (
+        <>{bbb}</>
+      );
+    }
+    case "tenure_years":
+      return row.tenure_years === null ? (
+        <Gap
+          text={EXPLORE_TEXTS.tenureUnknown}
+          short={TENURE_SHORT}
+          reason={missingFor(row, "tenure_years")?.reason}
+        />
+      ) : (
+        <>{`Owned ${row.tenure_years} yrs`}</>
+      );
+    case "tenure_basis":
+      return row.tenure_basis === null ? (
+        <Gap text={EXPLORE_TEXTS.tenureUnknown} short={TENURE_SHORT} />
+      ) : (
+        <>{row.tenure_basis}</>
+      );
+    case "owner_area_class":
+      return row.owner_area_class === null || row.owner_area_class === "unknown" ? (
+        <Gap text={EXPLORE_TEXTS.ownerAreaUnknown} short="Owner area unknown" />
+      ) : (
+        <>{row.owner_area_class}</>
+      );
+  }
+}
+
+const CARD_FIELDS: readonly RowField[] = [
+  "address",
+  "roof_age_years",
+  "roof_age_basis",
+  "roof_age_confidence",
+  "distance",
+  "lat_lon",
+  "permit",
+  "status_raw",
+  "contractor_name",
+  "contractor_resolution",
+  "bbb",
+  "tenure_years",
+  "tenure_basis",
+  "owner_area_class",
+];
+
+/** The row's fields (default: every field) as a description list; absent permit/contractor cells are skipped. */
+export function PropertyFields({
+  row,
+  fields = CARD_FIELDS,
+}: {
+  readonly row: ExploreRow;
+  readonly fields?: readonly RowField[];
+}): ReactElement {
+  return (
+    <dl className={styles.fields}>
+      {fields
+        .filter((f) => hasField(row, f))
+        .map((field) => (
+          <Cell key={field} label={FIELD_LABELS[field]} field={field}>
+            <FieldValue row={row} field={field} />
           </Cell>
-          <Cell label="Contractor match" field="contractor_resolution">
-            <ContractorBadge resolution={row.contractor.resolution} />
-          </Cell>
-        </>
-      )}
-      {bbb === null ? null : (
-        <Cell label="BBB" field="bbb">
-          {row.bbb_status === "not_checked" ||
-          row.bbb_status === "blocked" ||
-          row.bbb_status === "not_found" ? (
-            <Gap text={bbb} reason={`bbb_${row.bbb_status}`} field="bbb_status" />
-          ) : (
-            bbb
-          )}
-        </Cell>
-      )}
-      <Cell label="Tenure" field="tenure_years">
-        {row.tenure_years === null ? (
-          <Gap
-            text={EXPLORE_TEXTS.tenureUnknown}
-            reason={missingFor(row, "tenure_years")?.reason}
-          />
-        ) : (
-          `${row.tenure_years} yrs`
-        )}
-      </Cell>
-      <Cell label="Tenure basis" field="tenure_basis">
-        {row.tenure_basis ?? <Gap text={EXPLORE_TEXTS.tenureUnknown} />}
-      </Cell>
-      <Cell label="Owner area" field="owner_area_class">
-        {ownerUnknown ? <Gap text={EXPLORE_TEXTS.ownerAreaUnknown} /> : row.owner_area_class}
-      </Cell>
+        ))}
     </dl>
   );
 }
@@ -203,7 +341,11 @@ export function MissingSummary({ row }: { readonly row: ExploreRow }): ReactElem
           >
             <code className={styles.fieldNames}>{fields.join(", ")}</code>
             {reason === NO_CARRIER || !isReason(reason) ? (
-              <Gap text={label} reason={reason} />
+              <Gap
+                text={label}
+                short={reason === NO_CARRIER ? "Not published" : undefined}
+                reason={reason}
+              />
             ) : (
               <MissingReason field={fields[0] ?? ""} reason={reason} />
             )}
@@ -227,11 +369,74 @@ export function RowProvenance({ row }: { readonly row: ExploreRow }): ReactEleme
         />
       ) : (
         <Provenance>
-          Source: {p.source_url ?? <Gap text={NOT_IN_ROW} />} · table{" "}
-          {p.table_cid === null ? <Gap text={NOT_IN_ROW} /> : <CidDisplay cid={p.table_cid} />} ·
-          run {p.run_id ?? <Gap text={NOT_IN_ROW} />}
+          Source: {p.source_url ?? <Gap text={NOT_IN_ROW} short="Not in row" />} · table{" "}
+          {p.table_cid === null ? (
+            <Gap text={NOT_IN_ROW} short="Not in row" />
+          ) : (
+            <CidDisplay cid={p.table_cid} />
+          )}{" "}
+          · run {p.run_id ?? <Gap text={NOT_IN_ROW} short="Not in row" />}
         </Provenance>
       )}
+    </div>
+  );
+}
+
+/** A source URL's host ("traviscad.org") for the compact line; null when it is not a URL. */
+export function sourceHost(url: string | null): string | null {
+  if (url === null) return null;
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The compact § 8 line of a result (PO 2026-10-26: no long URLs in the rows): the source host as a
+ * link with the full URL as its tooltip, the collected date (UTC time as tooltip), the table CID
+ * (truncated, full in `data-cid`/tooltip; the Property drawer has the copy button) and the run.
+ */
+export function CompactProvenance({ row }: { readonly row: ExploreRow }): ReactElement {
+  const p = row.provenance;
+  const host = sourceHost(p.source_url);
+  const href = p.source_url === null ? undefined : safeHttpUrl(p.source_url);
+  const notInRow = <Gap text={NOT_IN_ROW} short="Not in row" />;
+  return (
+    <div data-provenance="" className={styles.prov}>
+      <span className={styles.provLine}>
+        <Icon name="description" size="small" />
+        {p.source_url === null ? (
+          notInRow
+        ) : href !== undefined && host !== null ? (
+          <a href={href} title={p.source_url} rel="noopener noreferrer" target="_blank">
+            {host}
+          </a>
+        ) : (
+          <span title={p.source_url}>{host ?? p.source_url}</span>
+        )}
+        {" · "}
+        {p.captured_at === null ? (
+          notInRow
+        ) : (
+          <time dateTime={p.captured_at} title={`collected ${formatUtc(p.captured_at)} UTC`}>
+            {p.captured_at.slice(0, 10)}
+          </time>
+        )}
+      </span>
+      <span className={styles.provLine}>
+        table{" "}
+        {p.table_cid === null ? (
+          notInRow
+        ) : (
+          <code className={styles.mono} data-cid={p.table_cid} title={p.table_cid}>
+            {truncateCid(p.table_cid)}
+          </code>
+        )}
+      </span>
+      <span className={styles.provLine} title={p.run_id ?? undefined}>
+        run {p.run_id ?? notInRow}
+      </span>
     </div>
   );
 }
@@ -244,12 +449,31 @@ export interface ResultRowProps {
   readonly inRadius?: boolean;
 }
 
+/** The fields the compact card keeps behind its expand button (the rest show in its summary). */
+const MORE_FIELDS: readonly RowField[] = CARD_FIELDS.filter(
+  (f) =>
+    ![
+      "address",
+      "distance",
+      "roof_age_years",
+      "roof_age_confidence",
+      "permit",
+      "tenure_years",
+    ].includes(f),
+);
+
+/**
+ * A compact result card (Explore390 board): the address and distance, Details and expand icon
+ * buttons, the roof and permit chips, then the compact provenance; every other field and the
+ * grouped missing data sit behind the expand button. Each `[data-field]` appears once.
+ */
 export function ResultRow({
   row,
   onSelect,
   selected = false,
   inRadius = true,
 }: ResultRowProps): ReactElement {
+  const [open, setOpen] = useState(false);
   const select = (): void => onSelect?.(row.property_cid);
   const onClick = (event: MouseEvent<HTMLElement>): void => {
     if ((event.target as Element).closest("a, button") !== null) return;
@@ -275,17 +499,60 @@ export function ResultRow({
     >
       <header className={styles.head}>
         <h4 id={titleId} className={styles.title}>
-          Property <CidDisplay cid={row.property_cid} />
+          <span data-field="address">
+            <FieldValue row={row} field="address" />
+          </span>{" "}
+          <code className={styles.mono} title={row.property_cid}>
+            {truncateCid(row.property_cid)}
+          </code>
         </h4>
+        <span className={styles.meta} data-field="distance">
+          <FieldValue row={row} field="distance" />
+        </span>
         {onSelect === undefined ? null : (
-          <button type="button" className={styles.details} onClick={select}>
-            Details
+          <button
+            type="button"
+            className={styles.iconButton}
+            onClick={select}
+            aria-label={`Details, property ${row.property_cid}`}
+          >
+            <Icon name="info" />
           </button>
         )}
+        <button
+          type="button"
+          className={styles.iconButton}
+          aria-expanded={open}
+          aria-controls={`${titleId}-more`}
+          aria-label="All fields"
+          onClick={() => setOpen((o) => !o)}
+        >
+          <Icon name="arrow_drop_down" />
+        </button>
       </header>
-      <PropertyFields row={row} />
-      <MissingSummary row={row} />
-      <RowProvenance row={row} />
+      <div className={styles.chips}>
+        <span className={styles.roof}>
+          <Icon name="roofing" size="small" />
+          <span data-field="roof_age_years">
+            <FieldValue row={row} field="roof_age_years" />
+          </span>
+          <span aria-hidden="true">·</span>
+          <span data-field="roof_age_confidence">
+            <FieldValue row={row} field="roof_age_confidence" />
+          </span>
+        </span>
+        <span className={styles.meta} data-field="permit">
+          <FieldValue row={row} field="permit" />
+        </span>
+        <span className={styles.meta} data-field="tenure_years">
+          <FieldValue row={row} field="tenure_years" />
+        </span>
+      </div>
+      <div id={`${titleId}-more`} className={styles.more} hidden={!open}>
+        <PropertyFields row={row} fields={MORE_FIELDS} />
+        <MissingSummary row={row} />
+      </div>
+      <CompactProvenance row={row} />
     </article>
   );
 }

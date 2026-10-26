@@ -4,7 +4,7 @@
 import { rawCid, type ExploreRow } from "@countylens/query-core";
 import { PAGE_TEXTS } from "@countylens/shared";
 import { QueryClient, QueryClientProvider, skipToken } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ReactElement, ReactNode } from "react";
@@ -25,10 +25,6 @@ vi.mock("@countylens/api-client/react", () => ({
     },
   }),
 }));
-vi.mock("../src/routes/ExploreSql.engine", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/routes/ExploreSql.engine")>();
-  return { ...real, openSqlSession: () => new Promise(() => undefined) };
-});
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -91,16 +87,6 @@ describe("Coming soon entry points", () => {
       () => import("../src/routes/Explore"),
     );
     for (const id of ["builder-mode", "saved-searches", "area-matrix"]) expectEntry(container, id);
-    expectNoAiUser(container);
-  });
-
-  it("Explore · SQL: SQL checks", async () => {
-    const { container } = await renderAt(
-      "/tx/travis/explore?mode=sql",
-      "/tx/travis/explore",
-      () => import("../src/routes/Explore"),
-    );
-    await waitFor(() => expectEntry(container, "sql-checks"));
     expectNoAiUser(container);
   });
 

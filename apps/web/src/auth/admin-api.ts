@@ -63,7 +63,9 @@ interface AdminTrpc {
     readonly run: {
       readonly start: { mutate: (input: { mode: RunMode }) => Promise<unknown> };
       readonly stop: { mutate: (input: { commandId?: string }) => Promise<unknown> };
-      readonly retry: { mutate: (input: { targetRunId: string }) => Promise<unknown> };
+      readonly retry: {
+        mutate: (input: { targetRunId: string; mode: RunMode }) => Promise<unknown>;
+      };
     };
     readonly runs: { readonly live: { query: () => Promise<unknown> } };
     readonly activity: { readonly summary: { query: () => Promise<unknown> } };
@@ -90,6 +92,8 @@ export const ADMIN_TEXTS = Object.freeze({
   signedOut: "Your session ended. Sign in again.",
   notAdmin: "This account is not an admin.",
   unavailable: "The admin service did not answer. Try again in a moment.",
+  confirmPublish:
+    "Start a real run? It publishes a new public run by CID, and published CIDs never change. Tick Dry run to rehearse without uploading.",
 });
 
 function adminTrpc(): AdminTrpc {
@@ -148,8 +152,8 @@ export const adminApi = {
     call(z.unknown(), (api) =>
       api.admin.run.stop.mutate(commandId === undefined ? {} : { commandId }),
     ),
-  retry: (targetRunId: string): Promise<RunCommandAck> =>
-    call(RunCommandAck, (api) => api.admin.run.retry.mutate({ targetRunId })),
+  retry: (targetRunId: string, mode: RunMode): Promise<RunCommandAck> =>
+    call(RunCommandAck, (api) => api.admin.run.retry.mutate({ targetRunId, mode })),
   activity: (): Promise<ActivitySummary> =>
     call(ActivitySummary, (api) => api.admin.activity.summary.query()),
 };

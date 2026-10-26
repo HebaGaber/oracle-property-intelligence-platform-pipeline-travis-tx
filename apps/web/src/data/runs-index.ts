@@ -72,3 +72,16 @@ export function latestRun(index: RunsIndexV1): RunsIndexEntry {
 export function runIndexText(reason: RunIndexFailure): string {
   return RUN_INDEX_TEXTS[reason];
 }
+
+/** The index's runs oldest first (by `finishedAt`): the order every page numbers runs in. */
+export function runsByFinish(index: RunsIndexV1): RunsIndexEntry[] {
+  return [...index.runs].sort((a, b) => Date.parse(a.finishedAt) - Date.parse(b.finishedAt));
+}
+
+/**
+ * Each run's 1-based number by run ID (RUNS_TEXTS.numbering): its place in `runsByFinish`, the
+ * same "Run N" the header badge, Runs, Compare, Log and the Manifest chain show.
+ */
+export function runNumbers(index: RunsIndexV1): ReadonlyMap<string, number> {
+  return new Map(runsByFinish(index).map((run, i) => [run.runId, i + 1]));
+}

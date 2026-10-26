@@ -615,6 +615,11 @@ export interface CarFilesStepDeps {
    * same CID) and the local receipts still skip finished files.
    */
   skipProbe?: boolean;
+  /**
+   * Plan only the files already on disk; a missing one is skipped with no receipt, so a later
+   * call uploads it. For a runner that fetches the CARs one by one as the CID copy fills.
+   */
+  presentOnly?: boolean;
 }
 
 function carFileId(ctx: PublishContext, target: CarFileTarget): string {
@@ -652,6 +657,10 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
         const local = validLocal(ctx, target, size);
         if (local !== undefined) {
           items.push({ id, action: "skip", reason: `receipt ${rel(ctx, local)}` });
+          continue;
+        }
+        if (deps.presentOnly === true && !existsSync(target.path)) {
+          items.push({ id, action: "skip", reason: "file not fetched yet (no receipt written)" });
           continue;
         }
         if (probe && deps.skipProbe !== true) {

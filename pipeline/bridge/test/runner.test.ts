@@ -217,6 +217,36 @@ describe("runner (publish)", () => {
       expect(l).not.toContain("--dry-run");
   });
 
+  it("builds and uploads the Explore index right after the CID copy, before the run is listed (review M1)", async () => {
+    const c = command({ mode: "publish", commandId: "12345678-1234-4234-8234-123456789012" });
+    const h = harness();
+    h.files.writeText(
+      `${REPO}/pipeline/data/bridge/work/${runIdFor(c, new Date(T0))}/affected-pids.txt`,
+      "p2\n",
+    );
+    expect((await h.runner(c)).outcome).toBe("succeeded");
+    const lines = h.calls.map(cmdLine);
+    const at = (needle: string): number => lines.findIndex((l) => l.includes(needle));
+    const index = at("build-explore-index.ts");
+    expect(index).toBeGreaterThan(at("--step cid-copy"));
+    expect(index).toBeLessThan(at("--step index"));
+    expect(lines[index]).toContain("--source cidcopy");
+    expect(lines[index]).toContain("--verify");
+  });
+
+  it("fails closed when the command's base run is not in runs/index.json (finding 6)", async () => {
+    const c = command({
+      mode: "publish",
+      commandId: "12345678-1234-4234-8234-123456789012",
+      window: { kind: "austin_permits_since_watermark", sinceRunId: "travis-full-run9-20991231" },
+    });
+    const out = await harness().runner(c);
+    expect(out.outcome).toBe("failed");
+    expect(out.outcome === "failed" ? out.reason : "").toMatch(
+      /travis-full-run9-20991231 is not in runs\/index.json/,
+    );
+  });
+
   it("stops between atomic steps and never starts the index step after a stop", async () => {
     const c = command({ mode: "publish", commandId: "12345678-1234-4234-8234-123456789012" });
     const h = harness({

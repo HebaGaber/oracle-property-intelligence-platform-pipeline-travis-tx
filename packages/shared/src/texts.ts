@@ -99,11 +99,6 @@ export const EXPLORE_TEXTS = Object.freeze({
   tenureUnknownCount: (n: number): string => `tenure unknown: ${n}`,
   engineBrowser: "DuckDB-WASM in your browser · read-only",
   engineServer: "DuckDB on the server · same views",
-  sqlReadOnly: "Read-only: only SELECT, WITH, DESCRIBE and SHOW run here",
-  /** The SQL result caption: the true count only when the result was not cut. */
-  sqlRows: (shown: number, capped: boolean, ms: number): string =>
-    `${capped ? `showing the first ${shown} rows` : `${shown} rows`} · ${ms} ms in this browser`,
-  sqlError: (firstLine: string, fix: string): string => `${firstLine} · Try: ${fix}`,
   zeroResults: (r: number, k: number): string =>
     `No properties within ${r} mi · ${k} close matches just outside`,
   milesOutside: (miles: number): string => `+${miles} mi`,
@@ -168,7 +163,7 @@ export const AI_TEXTS = Object.freeze({
   paused: "AI answers are paused for today · the daily budget is used up and resets at 00:00 UTC",
   timedOut: "Took too long · try again, or use Filters instead",
   limitReached: (limit: number): string =>
-    `Question limit reached · ${limit} questions per session · use Filters or SQL, or reload to start a new session`,
+    `Question limit reached · ${limit} questions per session · use Filters, or reload to start a new session`,
   cancelled: "Cancelled · nothing was counted",
   failed: "The agent could not answer this question · try rephrasing it, or use Filters instead",
   unreachable: "The agent could not be reached · try again, or use Filters instead",

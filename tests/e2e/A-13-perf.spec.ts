@@ -1,10 +1,11 @@
-// A-13 performance cases (T033; testplans/A-13-test-cases.md § 8): TC-040 (first DuckDB-WASM load
-// ≤ 8 s with a progress bar), TC-041 (5 timed runs per Filters search on the hosted site since 2026-10-25, 20 for the operator benchmark; see A-16 gap 1, p95 < 3 s, input change →
-// updated header, engine = server per FR-006a) and TC-082 (initial JS ≤ 300 KB gzipped excluding
-// DuckDB). Both TC-040 and TC-041 "Wait for A-11": today they run on the single published run and
-// are recorded as provisional. The SQL `count(*)` run has no timing target (FR-006a); TC-004 records
-// its elapsed time only. Timings are written to docs/evidence/A-13-TC-{nnn}-timings.json and
-// attached to the report. Nearest-rank percentiles (lib/perf.ts).
+// A-13 performance cases (T033; testplans/A-13-test-cases.md § 8): TC-041 (5 timed runs per Filters
+// search on the hosted site since 2026-10-25, 20 for the operator benchmark; see A-16 gap 1, p95 < 3 s,
+// input change → updated header, engine = server per FR-006a) and TC-082 (initial JS ≤ 300 KB
+// gzipped excluding DuckDB). TC-041 "Wait for A-11": today it runs on the single published run and
+// is recorded as provisional. TC-040 (first DuckDB-WASM load of the Explore SQL tab) was removed
+// with the SQL tab (PO decision 2026-10-26). Timings are written to
+// docs/evidence/A-13-TC-{nnn}-timings.json and attached to the report. Nearest-rank percentiles
+// (lib/perf.ts).
 import type { Page } from "@playwright/test";
 import { ROUTES } from "@countylens/shared";
 import {
@@ -18,8 +19,6 @@ import {
   ready,
   setControl,
   test,
-  PARKED_GAPS,
-  parkGap,
 } from "./lib/a13-fixtures.js";
 import { SEL, exploreUrl, scenario, trpcData } from "./lib/a13-ui.js";
 import {
@@ -32,7 +31,6 @@ import {
 import { LIMITS, QUERY_SAMPLE_RUNS, summarize } from "./lib/perf.js";
 
 const EXPLORE = ROUTES.explore;
-const COLD_LOADS = 5;
 /** The radius in the URL the TC-041 series open at (that search is cached by the page). */
 const URL_RADIUS = 5;
 /** The untimed warm-up radius: outside the timed list (3..8 mi except 5), so no run repeats it. */
@@ -42,59 +40,6 @@ const JS_BUDGET_BYTES = 307_200;
 
 test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
   test.describe.configure({ mode: "serial" });
-
-  test(scenario("040"), async ({ browser, oracle }) => {
-    parkGap(PARKED_GAPS.sqlFirstQuery);
-    test.setTimeout(300_000);
-    noteBranch(oracle, "provisional until A-11");
-    const timings: number[] = [];
-    for (let i = 1; i <= COLD_LOADS; i += 1) {
-      // 1. A fresh private window (no cache) each time.
-      const context = await browser.newContext();
-      const page = await context.newPage();
-      await page.addInitScript(() => {
-        const w = window as unknown as { __a13ProgressSeen?: boolean };
-        const look = (): void => {
-          const bar = document.querySelector('[role="progressbar"]');
-          if (
-            bar !== null &&
-            (bar.getAttribute("aria-label") ?? bar.getAttribute("aria-labelledby") ?? "") !== ""
-          ) {
-            w.__a13ProgressSeen = true;
-          }
-        };
-        new MutationObserver(look).observe(document, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-        });
-      });
-      await page.goto(exploreUrl(EXPLORE, { mode: "sql" }));
-      // 2. Navigation start → engine ready (the SQL editor is editable and no progress bar remains).
-      await expect(page.getByRole("textbox", { name: "SQL" })).toBeEditable({ timeout: 60_000 });
-      await expect(page.locator(SEL.progress)).toHaveCount(0, { timeout: 60_000 });
-      const ms = await page.evaluate(() => performance.now());
-      timings.push(Math.round(ms));
-      expect(
-        await page.evaluate(
-          () => (window as unknown as { __a13ProgressSeen?: boolean }).__a13ProgressSeen === true,
-        ),
-        `load ${i}: a named progress bar was visible`,
-      ).toBe(true);
-      if (i === 1) await checkpoint(page, "040", "ready");
-      await context.close();
-    }
-    await evidenceJson("A-13-TC-040-timings.json", {
-      case: "A-13-TC-040",
-      provisional: oracle.branch === "today",
-      runId: oracle.M.runId,
-      limitMs: LIMITS.firstLoadMs,
-      timingsMs: timings,
-    });
-    for (const [i, ms] of timings.entries()) {
-      expect(ms, `cold load ${i + 1}`).toBeLessThanOrEqual(LIMITS.firstLoadMs);
-    }
-  });
 
   /**
    * One timed search: input change -> header names the new radius, bounded by PER_RUN_TIMEOUT_MS. The
@@ -156,7 +101,6 @@ test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
   }
 
   test(scenario("041"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     // Two series of 1 warm-up + 5 runs (hosted sample, PO 2026-10-25), each run capped at PER_RUN_TIMEOUT_MS: the budget is the cap
     // times the run count (the 300 s default is a few runs short of that worst case); typical use ~2 min.
     test.setTimeout(seriesBudgetMs(2, QUERY_SAMPLE_RUNS));

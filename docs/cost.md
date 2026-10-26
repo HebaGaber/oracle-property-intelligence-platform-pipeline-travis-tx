@@ -57,9 +57,9 @@ Resources come from CloudFormation in `eu-north-1` (stacks `CountyLensData`, `Co
 | Scheduler `countylens-incremental-run` (`CountyLensScheduler`) | $0.00. **State: DISABLED** (read from EventBridge Scheduler) | One ECS task per run when enabled, never by default | The project, only when the PO enables it | Not billed. The stack also holds a VPC with an internet gateway and no NAT gateway (none exists in the region), an ECS cluster, an SQS dead-letter queue `countylens-scheduler-run-task-dlq` and SNS topics `countylens-alerts`, `countylens-scheduler-alerts`: all $0 idle. |
 | Step Functions | $0.00 | Per transition | Run traffic | $0.0002 (cross-region out-bytes) |
 | Bedrock, Claude Sonnet 4.6 via `eu.` profile (agent) | $0.00 | Per token: input, output, cache write, cache read | Evaluators and tests asking the agent | **$0.8264** gross over 10-24 and 10-25 (output $0.3055, cache write $0.3505, input $0.1655, cache read $0.0049). The budget guard pauses the agent at $3 per day. |
-| Cognito user pool (Part 2, not deployed) | $0.00 (pricing model: free tier of 10,000 monthly active users; first billed day pending) | Per monthly active user above the free tier | Operator sign-ins | Not yet billed |
-| SQS command queue + DLQ (Part 2, not deployed) | $0.00 (pricing model: per request, first million per month free; first billed day pending) | $0.40 per million requests after the free tier | Operator commands | Not yet billed (the existing scheduler DLQ has no billed line either) |
-| SNS alert topic (Part 2, not deployed) | $0.00 (pricing model: first million publishes free, email deliveries free; first billed day pending) | Per publish and delivery above the free tier | Alarm events | Not yet billed |
+| Cognito user pool, Lite plan (deployed 2026-10-26, `CountyLensApi`) | $0.00 (pricing model: free tier of 10,000 monthly active users; first billed day pending) | Per monthly active user above the free tier | Operator sign-ins | Not yet billed |
+| SQS command queue + DLQ (deployed 2026-10-26, `CountyLensApi`) | $0.00 (pricing model: per request, first million per month free; first billed day pending) | $0.40 per million requests after the free tier | Operator commands | Not yet billed (the existing scheduler DLQ has no billed line either) |
+| SNS alert topic `countylens-alerts` (CountyLensOps; admin alarms added 2026-10-26) | $0.00 (pricing model: first million publishes free, email deliveries free; first billed day pending) | Per publish and delivery above the free tier | Alarm events | Not yet billed |
 
 Not deployed and not allowed: Secrets Manager, RDS, KMS customer keys, provisioned concurrency, WAF, Route 53 hosted zone (AC-2 assertions cover these).
 
@@ -78,14 +78,14 @@ Not deployed and not allowed: Secrets Manager, RDS, KMS customer keys, provision
 1. **Not all of the bill is CountyLens.** The account also hosts the separate `roofing-crm` project (stacks `Crm*`, Amplify app `roofing-crm-web`, a Cognito pool, three DynamoDB tables, three Secrets Manager secrets). Cost Explorer here is not split by stack or tag. **Secrets Manager ($0.0541 in the window, $0.0607 with 10-25) comes from the `roofing-crm/*` secrets, not CountyLens**; CountyLens has no secret. Amplify and DynamoDB also contain `roofing-crm` usage: by CloudWatch download bytes, `countylens-web` served about 39 GB and `roofing-crm-web` about 2.2 GB over 10-20 to 10-24, but build minutes and DynamoDB are not split. The figures above are therefore an upper bound for CountyLens.
 2. **The window is short.** Cost Explorer holds five billed days with traffic (2026-10-20 to 10-24), all marked estimated. This is the PO-approved window (2026-10-26), recorded as a gate exception.
 3. **No fixed line observed, but not "zero".** What stays on the bill with no traffic is storage cents. The $0.00 claim is about recurring fees, not about total usage.
-4. **Part 2 resources** (Cognito, the admin SQS queue and DLQ, the admin SNS topic) are stated from their pricing models until their first billed day.
+4. **Part 2 resources** (Cognito, the admin SQS queue and DLQ, the admin alarms on the SNS topic) were deployed on 2026-10-26; they are stated from their pricing models until their first billed day appears in Cost Explorer (about 24 h later).
 5. **Lambda reads $0.00** only because of the monthly free tier; at higher traffic it would bill.
 6. **Leftover resource**: log group `/aws/lambda/CountyLensSpike-CustomS3AutoDeleteObjectsCustomRes-*` has no retention set (belongs to no current stack); it holds almost nothing, but it breaks the 14-day rule and should be deleted or given a retention.
 7. **Account, not stack, budget**: the `assessment usd` budget is already over its $10 threshold on gross usage ($10.812); the CDK `countylens-monthly-*` budget is the one this project owns.
 
 ## Filebase (pinning vendor)
 
-Filebase usage: **not available · reason: Filebase publishes usage and billing only in its dashboard; the S3-compatible API used by the pipeline (`~/.config/assessment/filebase.env` exists with `FILEBASE_ACCESS_KEY`, `FILEBASE_SECRET_KEY`, `FILEBASE_BUCKET`) reports no billing or plan usage, and summing object sizes would need a full listing against a service that rate-limits (HTTP 429 seen). No dashboard was opened for this draft.** Known from the run log: the free plan is 5 GB; one full county publication is about 2.95 GB (upper bound 3.73 GB), so a second pinned run would not fit (5.90 GB). Who pays: the PO's Filebase account. Pinata (second gateway) is on a plan that refuses pin-by-CID (`PAID_FEATURE_ONLY`), so any paid Pinata or self-hosted node is a cost line that does not exist yet.
+Filebase usage: **not available · reason: Filebase publishes usage and billing only in its dashboard; its S3-compatible API reports no billing or plan usage, and summing object sizes would need a full listing against a service that rate-limits (HTTP 429 seen).** Known from the run log: the free plan is 5 GB; one full county publication is about 2.95 GB (upper bound 3.73 GB), so a second pinned run would not fit (5.90 GB). Who pays: the PO's Filebase account. Pinata (second gateway) is on a plan that refuses pin-by-CID (`PAID_FEATURE_ONLY`), so any paid Pinata or self-hosted node is a cost line that does not exist yet.
 
 ## How to re-read this
 
@@ -98,4 +98,4 @@ aws ce get-cost-and-usage ... --filter '{"Dimensions":{"Key":"RECORD_TYPE","Valu
 aws freetier get-account-plan-state --profile assess --region us-east-1
 ```
 
-Billing screenshot: not captured in this draft; add to `docs/evidence/img/` from the Cost Explorer console (Usage and Credit record types, daily).
+Billing screenshot: `docs/evidence/img/A-16-billing.png` (Cost Explorer, daily, by service), added by the operator.

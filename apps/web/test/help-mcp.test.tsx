@@ -99,7 +99,10 @@ describe("Help · MCP (FR-023, TC-042)", () => {
 
   it("has one Try a tool button, no per-tool buttons, and shows nothing before it is pressed", async () => {
     await renderHelp();
-    const buttons = screen.getAllByRole("button");
+    // A-16: the client panel's Copy button is not a tool button.
+    const buttons = screen
+      .getAllByRole("button")
+      .filter((b) => !/^Cop(y|ied)$/.test(b.textContent ?? ""));
     expect(buttons).toHaveLength(1);
     expect(buttons[0]?.textContent).toBe("Try a tool");
     expect(screen.queryByRole("button", { name: /Try (search|list|get)_/ })).toBeNull();

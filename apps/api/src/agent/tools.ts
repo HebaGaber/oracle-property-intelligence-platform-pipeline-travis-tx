@@ -225,8 +225,8 @@ export function createAgentTools(ctx: AgentToolsContext) {
     description:
       "Declare which fields the question asks about that the published export does not carry: " +
       "owner_is_out_of_area (owners living outside the area / absentee owners: the owner's mailing " +
-      "location is not published), contractor.name_as_printed (the contractor's name), bbb_status " +
-      "(BBB rating). Call it in the same step as your search whenever the question asks about any " +
+      "location is not published), bbb_status (BBB rating). The contractor's printed name IS " +
+      "published (contractor_name_as_printed on each permit row; empty when the permit prints none). Call it in the same step as your search whenever the question asks about any " +
       "of them; the answer then states they are not available.",
     inputSchema: z.object({ fields: z.array(z.enum(fields)).min(1).max(fields.length) }).strict(),
     execute: async ({ fields: asked }) => ({

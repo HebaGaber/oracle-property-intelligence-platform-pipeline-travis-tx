@@ -11,6 +11,7 @@ import type { RunManifestV1 } from "@countylens/contract";
 import { PROGRESS_LABELS, VERIFY_TEXTS, type ReadPathUrls } from "@countylens/shared";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useParams } from "react-router";
+import { DataTabs } from "../components/DataTabs";
 import { CidDisplay } from "../components/CidDisplay";
 import { ComingSoonEntries } from "../components/ComingSoonEntry";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -135,6 +136,7 @@ export function Component(): ReactElement {
       className={styles.page}
     >
       <h2 className={runStyles.title}>Data · Verify</h2>
+      <DataTabs current="verify" verifyCid={null} />
       <ComingSoonEntries ids={["gateway-race"]} />
       {state.kind === "loading" ? (
         <>
