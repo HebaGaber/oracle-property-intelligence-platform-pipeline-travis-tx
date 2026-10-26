@@ -1215,3 +1215,29 @@ p.changeRow {
   padding: var(--space-1) 0;
   border-top: 0;
 }
+
+/* A-03-TC-NF-03: the run card is first in the DOM (its manifest CID is the page's first
+   provenance line). Below 600 px it shows right after the title and Run picker, before Sync
+   status and the pipeline, so that line is inside the first phone screen; from 600 px it shows
+   last, as on the boards. */
+@media (max-width: 599px) {
+  [data-route="runs"] > div:first-child,
+  [data-route="runs"] > [data-shown-run] {
+    display: contents;
+  }
+
+  [data-route="runs"] > div:first-child > div:first-child {
+    order: -2;
+  }
+
+  [data-route="runs"] > [data-run-not-found],
+  [data-shown-run] > article {
+    order: -1;
+  }
+}
+
+@media (min-width: 600px) {
+  [data-shown-run] > article {
+    order: 1;
+  }
+}

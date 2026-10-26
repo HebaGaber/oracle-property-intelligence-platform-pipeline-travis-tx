@@ -153,6 +153,10 @@ export function Component(): ReactElement {
         <ComingSoonEntries ids={["pipeline-diagram", "timeline-scrubber"]} />
       ) : (
         <div className={styles.cardGrid} data-shown-run={run.entry.runId}>
+          {/* The run card is first in the DOM: its provenance line (the manifest CID) is the
+              page's first CID and sits inside the first phone screen (A-03-TC-NF-03). From 600 px
+              CSS `order` shows it last, as on the boards. */}
+          <RunCard run={run} selected={selected} />
           <PipelineSteps
             manifest={run.manifest}
             manifestCid={run.manifestCid}
@@ -163,7 +167,6 @@ export function Component(): ReactElement {
             <LatestEvents manifest={run.manifest} />
           </div>
           <WhatChanged run={run} number={selected.number} />
-          <RunCard run={run} selected={selected} />
         </div>
       )}
       {state.kind === "loading" && latest === undefined ? (
