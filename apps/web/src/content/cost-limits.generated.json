@@ -134,7 +134,7 @@
         "perUse": "the free plan is 5 GB; one full county publication is about 2.95 GB (upper bound 3.73 GB), so a second pinned run would not fit (5.90 GB).",
         "whoPays": "the PO's Filebase account",
         "seenInBill": null,
-        "missingReason": "Filebase publishes usage and billing only in its dashboard; the S3-compatible API used by the pipeline (~/.config/assessment/filebase.env exists with FILEBASE_ACCESS_KEY, FILEBASE_SECRET_KEY, FILEBASE_BUCKET) reports no billing or plan usage, and summing object sizes would need a full listing against a service that rate-limits (HTTP 429 seen). No dashboard was opened for this draft."
+        "missingReason": "Filebase publishes usage and billing only in its dashboard; its S3-compatible API reports no billing or plan usage, and summing object sizes would need a full listing against a service that rate-limits (HTTP 429 seen)."
       }
     ]
   },
@@ -162,7 +162,10 @@
         "antiBot": "The story context records HTTP 403 on publicinformation (2026-10-17 and 2026-10-19); the A-01 catalog shows the listing as available. The 403 evidence file was not found under docs/evidence/blocked/, so the 403 stays unconfirmed here",
         "optimisation": "Not used as a feed",
         "status": "blocked",
-        "blockedDates": ["2026-10-17", "2026-10-19"],
+        "blockedDates": [
+          "2026-10-17",
+          "2026-10-19"
+        ],
         "missingReason": null
       },
       {
@@ -222,7 +225,11 @@
         "antiBot": "Cloudflare challenge; never solved, no identity change, no retry; 0 requests since (A-07 gap, PO decision 2026-10-22)",
         "optimisation": "None possible; the official API application is not filed (PO decision 2026-10-20)",
         "status": "blocked",
-        "blockedDates": ["2026-10-17", "2026-10-19", "2026-10-20"],
+        "blockedDates": [
+          "2026-10-17",
+          "2026-10-19",
+          "2026-10-20"
+        ],
         "missingReason": null
       },
       {

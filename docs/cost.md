@@ -85,7 +85,7 @@ Not deployed and not allowed: Secrets Manager, RDS, KMS customer keys, provision
 
 ## Filebase (pinning vendor)
 
-Filebase usage: **not available · reason: Filebase publishes usage and billing only in its dashboard; the S3-compatible API used by the pipeline (`~/.config/assessment/filebase.env` exists with `FILEBASE_ACCESS_KEY`, `FILEBASE_SECRET_KEY`, `FILEBASE_BUCKET`) reports no billing or plan usage, and summing object sizes would need a full listing against a service that rate-limits (HTTP 429 seen). No dashboard was opened for this draft.** Known from the run log: the free plan is 5 GB; one full county publication is about 2.95 GB (upper bound 3.73 GB), so a second pinned run would not fit (5.90 GB). Who pays: the PO's Filebase account. Pinata (second gateway) is on a plan that refuses pin-by-CID (`PAID_FEATURE_ONLY`), so any paid Pinata or self-hosted node is a cost line that does not exist yet.
+Filebase usage: **not available · reason: Filebase publishes usage and billing only in its dashboard; its S3-compatible API reports no billing or plan usage, and summing object sizes would need a full listing against a service that rate-limits (HTTP 429 seen).** Known from the run log: the free plan is 5 GB; one full county publication is about 2.95 GB (upper bound 3.73 GB), so a second pinned run would not fit (5.90 GB). Who pays: the PO's Filebase account. Pinata (second gateway) is on a plan that refuses pin-by-CID (`PAID_FEATURE_ONLY`), so any paid Pinata or self-hosted node is a cost line that does not exist yet.
 
 ## How to re-read this
 
@@ -98,4 +98,4 @@ aws ce get-cost-and-usage ... --filter '{"Dimensions":{"Key":"RECORD_TYPE","Valu
 aws freetier get-account-plan-state --profile assess --region us-east-1
 ```
 
-Billing screenshot: not captured in this draft; add to `docs/evidence/img/` from the Cost Explorer console (Usage and Credit record types, daily).
+Billing screenshot: `docs/evidence/img/A-16-billing.png` (Cost Explorer, daily, by service), added by the operator.
