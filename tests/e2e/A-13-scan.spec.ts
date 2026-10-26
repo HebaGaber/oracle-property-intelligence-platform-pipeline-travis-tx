@@ -100,7 +100,7 @@ async function openEverything(
 ): Promise<string[]> {
   note("read the page");
   const seen: string[] = [await pageStrings(page)];
-  // The drawer comes first: clicking the SQL tab unmounts the result rows (mode=sql), so a row
+  // The drawer comes first: clicking the AI tab unmounts the result rows (mode=ai), so a row
   // found afterwards can vanish between the count and the click.
   const row = page.locator(SEL.resultRow).first();
   if ((await row.count()) > 0) {

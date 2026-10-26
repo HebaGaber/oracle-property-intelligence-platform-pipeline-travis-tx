@@ -1,8 +1,8 @@
 // A-13 Part 1 explorer cases (T032; testplans/A-13-test-cases.md § 7–8): Runs, Compare, Coverage,
-// Data · Manifest, Explore · Filters / SQL and the Property drawer. One test per case, titled
+// Data · Manifest, Explore · Filters and the Property drawer. One test per case, titled
 // exactly `@scenario:A-13-TC-{nnn}`, steps as written in the test plan. Every expected value is
 // read at run time from the `oracle` fixture (runs/index.json + the latest manifest by CID from
-// Pinata), the explore.search response or the browser SQL panel; the only fixed numbers are the
+// Pinata), or the explore.search response; the only fixed numbers are the
 // dated Pflugerville references (2026-10-19, re-measured at run time). Fixed strings come from
 // @countylens/shared; the two the package does not export yet are in lib/a13-ui.ts. Faults are
 // injected with page.route() in this browser only. The DOM contract is in lib/a13-ui.ts.
@@ -21,22 +21,16 @@ import {
   expect,
   gazetteerPlace,
   intOf,
-  isApiCall,
   isDuckdbWasm,
   nextSearch,
   noteBranch,
   ready,
   recordRequests,
-  runSql,
   settled,
   ensureFiltersOpen,
   setControl,
-  sqlCountInNewTab,
-  sqlScalar,
   test,
   type A13Oracle,
-  PARKED_GAPS,
-  parkGap,
 } from "./lib/a13-fixtures.js";
 import {
   CONTRACTOR_STATES,
@@ -44,14 +38,12 @@ import {
   KIND_IDS,
   ExploreSearchResult,
   SEL,
-  areaCountSql,
   chipYears,
   expectedBbbText,
   exploreUrl,
   fallbackText,
   isBlankCell,
   looksLikeStack,
-  openPermitCountSql,
   openYears,
   placeSuggestion,
   scenario,
@@ -61,9 +53,6 @@ import {
 } from "./lib/a13-ui.js";
 import { fetchAllManifests } from "./lib/a13.js";
 import { harnessConfig, requireCidCopyHost } from "./lib/runtime.js";
-
-/** Rows of v_property in the published county group (docs/evidence/A-04.md; Runs 1 and 2 reuse it). */
-const COUNTY_PROPERTY_ROWS = 441_961;
 
 const FILEBASE = (): string => harnessConfig().FILEBASE_GATEWAY_HOST;
 const PINATA = (): string => harnessConfig().PINATA_GATEWAY_HOST;
@@ -340,39 +329,6 @@ test.describe("A-13 explorer · demo lines", () => {
     await checkpoint(page, "003", 4, { fullPage: true });
   });
 
-  test(scenario("004"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.sqlFirstQuery);
-    // Runs 1 and 2 publish no `parcels_published` coverage key; the county group is R-only with
-    // 441,961 properties (docs/evidence/A-04.md: v_property rows = distinct property_cid = Query DB R accounts).
-    const expected = oracle.M.coverage.parcels_published?.count ?? COUNTY_PROPERTY_ROWS;
-    // 1. Open Explore · SQL; record requests.
-    const net = recordRequests(page);
-    const t0 = Date.now();
-    await page.goto(exploreUrl(EXPLORE, { mode: "sql" }));
-    // 2. Wait for the progress bar to finish (binding the views of a full-county run takes about 97 s).
-    test.slow();
-    await expect(page.getByRole("textbox", { name: "SQL" })).toBeEditable({ timeout: 240_000 });
-    await expect(page.locator(SEL.progress)).toHaveCount(0, { timeout: 240_000 });
-    await checkpoint(page, "004", 2);
-    // 3–4. Type the count and Run.
-    const mark = net.mark();
-    await runSql(page, "SELECT count(*) FROM v_property");
-    // 5. One row, one integer.
-    const n = await sqlScalar(page);
-    expect(n).toBe(expected);
-    // 6. Engine line.
-    await expect(page.locator(SEL.engineLine)).toContainText(EXPLORE_TEXTS.engineBrowser);
-    // 7. No /api/ or /trpc/ request between Run and the result.
-    expect(
-      net
-        .since(mark)
-        .filter((r) => isApiCall(r.url))
-        .map((r) => r.url.href),
-    ).toEqual([]);
-    test.info().annotations.push({ type: "elapsed-ms", description: String(Date.now() - t0) });
-    await checkpoint(page, "004", 7);
-  });
-
   test(scenario("005"), async ({ page, oracle }) => {
     const { M } = oracle;
     const hosts = responseHosts(page, oracle.manifestCid);
@@ -521,16 +477,11 @@ test.describe("A-13 explorer · demo lines", () => {
     // 6. Engine line and the server's total.
     await expect(page.locator(SEL.engineLine)).toContainText(EXPLORE_TEXTS.engineServer);
     await checkpoint(page, "008", 6);
-    // 7. Three ways: server, list, browser SQL.
+    // 7. Two ways: server and list (the browser SQL cross-check was removed with the SQL tab,
+    // PO decision 2026-10-26).
     const rows = page.locator(SEL.resultRow);
     if (n <= result.rows.length) await expect(rows).toHaveCount(n);
     else test.info().annotations.push({ type: "paged", description: `${n} rows > first page` });
-    const sqlN = await sqlCountInNewTab(
-      page,
-      EXPLORE,
-      areaCountSql({ lat: place.lat, lon: place.lon, radiusMi: 5 }, ["p.roof_age_years >= 15"]),
-    );
-    expect(sqlN, "browser SQL count of the same filter").toBe(n);
     // 8. Each row's fields (TC-026).
     const data = byCid(result);
     for (const row of await rows.all()) {
@@ -913,24 +864,22 @@ test.describe("A-13 explorer · filters and property", () => {
 
   test(scenario("028"), async ({ page }) => {
     const point = { lat: 30.447765, lon: -97.602116 };
-    // Precondition: SQL count 0 for the filter; halve r until it is (contract minimum 0.25 mi).
+    // Precondition: explore.search total 0 for the filter; halve r until it is (contract minimum
+    // 0.25 mi). The server total replaces the removed browser SQL count (PO decision 2026-10-26).
+    // 1. Open the zero-result search.
     let r = 0.5;
+    let result: ExploreSearchResult;
     for (;;) {
-      const n = await sqlCountInNewTab(
+      result = await openExplore(
         page,
-        EXPLORE,
-        areaCountSql({ ...point, radiusMi: r }, ["p.roof_age_years >= 15"]),
+        exploreUrl(EXPLORE, { at: `${point.lat},${point.lon}`, r, roof: 15 }),
       );
+      const n = result.total_within_r;
       if (n === 0) break;
       test.skip(r / 2 < 0.25, `no zero-result radius ≥ 0.25 mi at this point (n=${n} at r=${r})`);
       r /= 2;
     }
     test.info().annotations.push({ type: "radius", description: String(r) });
-    // 1. Open the zero-result search.
-    const result = await openExplore(
-      page,
-      exploreUrl(EXPLORE, { at: `${point.lat},${point.lon}`, r, roof: 15 }),
-    );
     // 2. The zero-results line with {k} from the response.
     const k = result.close_matches.length;
     await expect(page.getByText(EXPLORE_TEXTS.zeroResults(r, k), { exact: true })).toBeVisible();
@@ -1178,20 +1127,13 @@ test.describe("A-13 explorer · filters and property", () => {
   });
 
   test(scenario("035"), async ({ page }) => {
-    const place = gazetteerPlace("Pflugerville");
     // 1. Open permits ≥ 5 years in Pflugerville 5 mi.
     const result = await openExplore(
       page,
       exploreUrl(EXPLORE, { place: "pflugerville", r: 5, permit: "open", openYrs: 5 }),
     );
-    // 2. Browser SQL: 0 open reroofs with open_days ≥ 1,826 (dated reference 2026-10-19: 0 open).
-    const n = await sqlCountInNewTab(
-      page,
-      EXPLORE,
-      openPermitCountSql({ lat: place.lat, lon: place.lon, radiusMi: 5 }, 1826),
-    );
-    expect(n).toBe(0);
-    // 3. The exact message, no blank table.
+    // 2. (The browser SQL cross-check was removed with the SQL tab, PO decision 2026-10-26.)
+    // 3. The exact message, no blank table (dated reference 2026-10-19: 0 open).
     expect(result.total_within_r).toBe(0);
     await expect(page.getByText(EXPLORE_TEXTS.noOpenPermits, { exact: true })).toBeVisible();
     await expect(page.locator(SEL.resultRow)).toHaveCount(0);
@@ -1241,72 +1183,19 @@ test.describe("A-13 explorer · filters and property", () => {
       EXPLORE_TEXTS.tenureUnknownCount(result.tenure_unknown),
     );
     await checkpoint(page, "037", 2);
-    // 3. SQL count of the same area with tenure_years IS NULL (same other filters).
-    const url = new URL(page.url());
-    const area = result.area as
-      { point?: { lat: number; lon: number }; lat?: number; lon?: number } | undefined;
-    const lat = area?.point?.lat ?? area?.lat;
-    const lon = area?.point?.lon ?? area?.lon;
-    expect(lat !== undefined && lon !== undefined, "explore.search returns the resolved area").toBe(
-      true,
-    );
-    const where = ["p.tenure_years IS NULL"];
-    if (url.searchParams.get("ooa") === "1") where.push("p.owner_is_out_of_area = true");
-    const roof = url.searchParams.get("roof");
-    if (roof !== null) where.push(`p.roof_age_years >= ${Number(roof)}`);
-    const n = await sqlCountInNewTab(
-      page,
-      EXPLORE,
-      areaCountSql(
-        { lat: lat ?? 0, lon: lon ?? 0, radiusMi: Number(url.searchParams.get("r") ?? "5") },
-        where,
-      ),
-    );
-    expect(result.tenure_unknown).toBe(n);
+    // 3. No row with an unknown tenure is listed (the browser SQL count of tenure_years IS NULL
+    // was removed with the SQL tab, PO decision 2026-10-26).
+    expect(Number.isInteger(result.tenure_unknown)).toBe(true);
     expect(result.rows.filter((r) => r.tenure_years === null)).toEqual([]);
     await checkpoint(page, "037", 3);
   });
 });
 
 // ---------------------------------------------------------------------------------------
-// Part 1 · SQL and the Filters engine
+// Part 1 · the Filters engine
 // ---------------------------------------------------------------------------------------
 
-test.describe("A-13 explorer · SQL", () => {
-  test(scenario("038"), async ({ page, oracle }) => {
-    // 1. Explore · SQL.
-    await page.goto(exploreUrl(EXPLORE, { mode: "sql" }));
-    // 2. Write statements are refused.
-    for (const sql of ["DELETE FROM v_property", "CREATE TABLE t AS SELECT 1"]) {
-      await runSql(page, sql);
-      await expect(page.locator(SEL.sqlError)).toHaveText(EXPLORE_TEXTS.sqlReadOnly);
-      await checkpoint(page, "038", sql.split(" ")[0] ?? "write");
-    }
-    // 3. The count still equals TC-004's.
-    await runSql(page, "SELECT count(*) FROM v_property");
-    expect(await sqlScalar(page)).toBe(oracle.M.coverage.parcels_published?.count);
-    await checkpoint(page, "038", 3);
-  });
-
-  test(scenario("039"), async ({ page }) => {
-    await page.goto(exploreUrl(EXPLORE, { mode: "sql" }));
-    for (const [step, sql, fix] of [
-      [2, "SELEC count(*) FROM v_property", "SELECT"],
-      [3, "SELECT count(*) FROM v_propety", "v_property"],
-    ] as const) {
-      await runSql(page, sql);
-      const error = page.locator(SEL.sqlError);
-      await expect(error).toHaveCount(1);
-      const text = (await error.innerText()).trim();
-      expect(text.split("\n")).toHaveLength(1);
-      expect(text).toMatch(templatePattern((first, f) => EXPLORE_TEXTS.sqlError(first, f), 2));
-      expect(text.split(" · Try: ")[1] ?? "").toContain(fix);
-      expect(looksLikeStack(await page.locator(SEL.page("explore")).innerText())).toBe(false);
-      await expect(page.getByRole("textbox", { name: "SQL" })).toHaveValue(sql);
-      await checkpoint(page, "039", step);
-    }
-  });
-
+test.describe("A-13 explorer · Filters engine", () => {
   test(scenario("043"), async ({ page, oracle }) => {
     // 1. Filters search; record requests.
     const net = recordRequests(page);
@@ -1325,17 +1214,6 @@ test.describe("A-13 explorer · SQL", () => {
     expect(result.as_of.manifestCid).toBe(oracle.manifestCid);
     expect(net.requests.filter((r) => isDuckdbWasm(r.url)).map((r) => r.url.href)).toEqual([]);
     await checkpoint(page, "043", 3);
-    // 4. Switch to SQL → the browser engine line and DuckDB-WASM loads now.
-    const mark = net.mark();
-    const tab = page.getByRole("tab", { name: "SQL" });
-    if ((await tab.count()) > 0) await tab.click();
-    else await page.goto(exploreUrl(EXPLORE, { mode: "sql" }));
-    await expect(page.locator(SEL.engineLine)).toContainText(EXPLORE_TEXTS.engineBrowser, {
-      timeout: 60_000,
-    });
-    await expect
-      .poll(() => net.since(mark).some((r) => isDuckdbWasm(r.url)), { timeout: 60_000 })
-      .toBe(true);
-    await checkpoint(page, "043", 4);
+    // 4. (Switching to the SQL tab was removed with the tab, PO decision 2026-10-26.)
   });
 });

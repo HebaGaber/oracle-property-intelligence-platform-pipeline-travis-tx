@@ -196,44 +196,6 @@ export async function setControl(control: Locator, value: string | boolean): Pro
   await control.press("Enter").catch(() => undefined);
 }
 
-/** Opens Explore · SQL, waits for the engine, runs `sql` and returns the result locator text. */
-export async function runSql(page: Page, sql: string): Promise<void> {
-  // The first query binds every contract view of a full-county run (about 97 s on the hosted site: footers of 200 parts read by range), so the editor stays disabled that long.
-  test.slow();
-  const editor = page.getByRole("textbox", { name: "SQL" });
-  await expect(editor).toBeEditable({ timeout: 240_000 });
-  await editor.fill(sql);
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-}
-
-/** The single integer of a one-row, one-column SQL result. */
-export async function sqlScalar(page: Page): Promise<number> {
-  const grid = page.locator(SEL.sqlResult);
-  await expect(grid).toBeVisible({ timeout: 240_000 });
-  const cells = grid.locator("tbody tr td");
-  await expect(grid.locator("tbody tr")).toHaveCount(1);
-  await expect(cells).toHaveCount(1);
-  const text = (await cells.first().innerText()).replace(/[,\s]/g, "");
-  expect(text, "the SQL result is one integer").toMatch(/^\d+$/);
-  return Number(text);
-}
-
-/** Opens `/tx/travis/explore?mode=sql` in a new page of the same context and returns a count. */
-export async function sqlCountInNewTab(
-  page: Page,
-  explorePath: string,
-  sql: string,
-): Promise<number> {
-  const tab = await page.context().newPage();
-  try {
-    await tab.goto(`${explorePath}?mode=sql`);
-    await runSql(tab, sql);
-    return await sqlScalar(tab);
-  } finally {
-    await tab.close();
-  }
-}
-
 /** Integer in a text with optional en-US grouping. */
 export function intOf(text: string): number {
   const m = /-?\d[\d,]*/.exec(text);
@@ -329,15 +291,10 @@ export const PARKED_GAPS = {
   /** Explore search returns HTTP 500 after ~29 s on the full county. */
   exploreSearch:
     "A-16 gap 1: Explore search does not run on the full county (HTTP 500 after ~29 s)",
-  /** A-16 exception (PO 2026-10-26): lazy binding renders the tab, but a full-county query still returns no result within 4 min on CI. */
-  sqlFirstQuery:
-    "A-16 exception (PO 2026-10-26): the SQL panel's first full-county query returns no result within 4 min on the CI runner (lazy binding shipped; the remaining cost is the parts the query reads)",
-  /** Five manifest-driven pages exceed the 2.5 s LCP limit on the full county; Manifest CLS 0.132. */
-  /** The SQL tab binds every Run 3 table on load: ~96 s against the 60 s wait (2026-10-26). */
-  sqlTabBind: "A-16 item 18: the Explore SQL tab binds Run 3 in about 96 s; the tests wait 60 s",
   /** Run 3 has 255 table parts, 24 tables, 983 MB; the Catalog's footers do not all arrive in 2 min. */
   catalogFooters:
     "A-16 item 19: on Run 3 (255 parts, 983 MB) the Catalog's Parquet footers do not all arrive within the 2-minute test budget",
+  /** Five manifest-driven pages exceed the 2.5 s LCP limit on the full county; Manifest CLS 0.132. */
   runsLogLcp:
     "A-16 exception (PO 2026-10-26): on Run 3 Catalog LCP 3.1 s and Manifest LCP 3.3 s (limit 2.5 s); CLS Runs 0.124, Coverage 0.115, Manifest 0.250 (limit 0.1)",
 } as const;
@@ -351,7 +308,6 @@ export function parkGap(reason: (typeof PARKED_GAPS)[keyof typeof PARKED_GAPS]):
 }
 
 /** Routes a multi-route case skips while their A-16 item is open (the other routes still run). */
-// A-16 item 18 (explore-sql) is unparked: the SQL panel binds only the views a query names (A13-2).
 const PARKED_ROUTES: Readonly<Record<string, (typeof PARKED_GAPS)[keyof typeof PARKED_GAPS]>> = {};
 
 /**
