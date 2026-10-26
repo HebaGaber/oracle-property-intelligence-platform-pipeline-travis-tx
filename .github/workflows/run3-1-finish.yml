@@ -1,0 +1,68 @@
+# A-11 Run 3.1, one-off (PO 2026-10-26, finish only): publish steps 3 (car-files) and 7 (release), run while
+# county-b06 still waits on its Filebase pin; neither step depends on the Filebase receipts. publish step 2 (Filebase) on 3 parallel runners, then
+# steps 3 (car-files) and 7 (release), from the public CID copy (written by step 5 from the laptop).
+# Every file is checked against the manifest's size and sha256 before any upload; elephant-cli
+# refuses a folder whose root differs from the manifest. Items already pinned on Filebase (county
+# b01-b05) are not in any runner's list, so nothing is uploaded twice. Each runner uploads its CAR
+# before the table folder that links to it.
+# Runs only on a push to this branch; this branch is never merged. No AWS credentials are used.
+# Filebase keys come from repository secrets and are never printed; GITHUB_TOKEN is the job's own.
+name: run3-1-finish
+
+on:
+  push:
+    branches: [run3-1-finish]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: run3-1-finish
+  cancel-in-progress: false
+
+env:
+  RUN_ID: travis-full-run3-1-20261025
+  MANIFEST: runs/travis-full-run3-1-20261025/manifest.json
+  CID_COPY_HOST: ${{ vars.CID_COPY_HOST }}
+  TARGET: 011e-run3-1-permit-contractors
+  RECEIPTS: specs/011-publish-and-runs/upload-receipts/travis-full-run3-1-20261025
+
+jobs:
+  finish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Fetch every file from the CID copy (size + sha256 checked)
+        run: node .github/run3-1/fetch-from-copy.mjs
+      - name: Step 3 car-files (county CARs adopted from Run 3's receipts)
+        env:
+          FILEBASE_ACCESS_KEY: ${{ secrets.FILEBASE_ACCESS_KEY }}
+          FILEBASE_SECRET_KEY: ${{ secrets.FILEBASE_SECRET_KEY }}
+          FILEBASE_BUCKET: ${{ secrets.FILEBASE_BUCKET }}
+          PUBLISH_DEFER_PINATA: "1"
+          PUBLISH_CARFILES_NO_PROBE: "1"
+        run: |
+          export NODE_OPTIONS="--import $(node -e "console.log(require('path').dirname(require.resolve('tsx'))+'/loader.mjs')") --import $PWD/pipeline/publish/scripts/fetch-retry.ts"
+          npx tsx pipeline/publish/scripts/publish-run.ts --manifest "$MANIFEST" --run-id "$RUN_ID" \
+            --copy-host "$CID_COPY_HOST" --release-target "$TARGET" --repo "$GITHUB_REPOSITORY" --step car-files
+      - name: Step 7 GitHub release (Run 3's identical county CAR assets reused)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npx tsx pipeline/publish/scripts/publish-run.ts --manifest "$MANIFEST" --run-id "$RUN_ID" \
+            --copy-host "$CID_COPY_HOST" --release-target "$TARGET" --repo "$GITHUB_REPOSITORY" \
+            --release-reuse-tag run-travis-full-run3-20261025 --step release
+      - name: Keep the receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run3-1-receipts-finish
+          path: ${{ env.RECEIPTS }}/
+          if-no-files-found: warn
