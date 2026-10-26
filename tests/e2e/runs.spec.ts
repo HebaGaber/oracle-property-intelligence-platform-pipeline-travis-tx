@@ -476,7 +476,7 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       expect(ids, "every run, newest first").toEqual(byFinish.map((r) => r.runId).reverse());
       await expect(picker).toHaveValue(latest.runId);
       expect(await picker.locator("option").first().textContent()).toMatch(
-        /^Run \d+ · [A-Z][a-z]{2} \d{1,2}, \d{4} · latest$/,
+        /^Run \d+(\.\d+)? · [A-Z][a-z]{2} \d{1,2}, \d{4} · latest$/,
       );
 
       await picker.selectOption(oldest.runId);

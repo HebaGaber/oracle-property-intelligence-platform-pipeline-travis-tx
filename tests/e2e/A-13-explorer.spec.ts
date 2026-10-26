@@ -678,7 +678,7 @@ test.describe("A-13 explorer · runs and compare", () => {
         // No run card and no run chip. (Not every <article>: the Hub's own cards and the Coming
         // soon entries are articles that stay in the error state.)
         await expect(page.locator("#run-title")).toHaveCount(0);
-        await expect(page.getByText(/^Run \d+ · /)).toHaveCount(0);
+        await expect(page.getByText(/^Run \d+(\.\d+)? · /)).toHaveCount(0);
         expect(looksLikeStack(await page.locator("body").innerText())).toBe(false);
         await checkpoint(page, "012", `${name}-${path === "/" ? "hub" : "runs"}`);
       }

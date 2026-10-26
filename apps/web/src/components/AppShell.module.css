@@ -143,11 +143,19 @@
 
 /* The scroll container; 16 px margins on compact. */
 .main {
+  display: flex;
+  flex-direction: column;
   grid-area: main;
   box-sizing: border-box;
   min-width: 0;
   overflow-y: auto;
   padding: var(--space-4);
+}
+
+.content {
+  flex: 1 0 auto;
+  min-width: 0;
+  min-height: 100%;
 }
 
 /* A13-7: the focus ring of the scroll container is drawn inside it (an inset 2 px primary ring),
@@ -539,6 +547,7 @@ a.sheetItem:hover {
 
 /* PO 2026-10-26: the legal links at the foot of every page (they left the More sheet). */
 .footer {
+  flex: none;
   margin-top: var(--space-6);
   padding: var(--space-3) 0;
   border-top: 1px solid var(--md-sys-color-outline-variant);

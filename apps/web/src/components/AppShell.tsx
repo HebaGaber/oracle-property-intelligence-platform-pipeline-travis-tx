@@ -396,7 +396,11 @@ export function AppShell(): ReactElement {
           tabIndex={0}
           aria-label={MAIN_LABEL}
         >
-          <Outlet />
+          {/* At least one screen tall, so the footer starts below the fold and a page that grows
+              as its data loads never pushes it across the screen (CLS, A-13 TC-058). */}
+          <div className={styles.content}>
+            <Outlet />
+          </div>
           <footer className={styles.footer}>
             <nav aria-label="Legal" className={styles.footerLinks}>
               {LEGAL_LINKS.map((link) => (
