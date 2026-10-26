@@ -11,8 +11,10 @@ import {
   COVERAGE_TEXTS,
   DERIVATION_LABELS,
   EXPLORE_TEXTS,
+  MISSING_REASON_LABELS,
   ROUTES,
   RUNS_TEXTS,
+  missingLabel,
 } from "@countylens/shared";
 import {
   EXPLORE_SEARCH,
@@ -1100,8 +1102,12 @@ test.describe("A-13 explorer · filters and property", () => {
         seen.add("tenure_unknown");
       }
       if (data.owner_area_class === null || data.owner_area_class === "unknown") {
+        // Contract v1.2 rows say why (e.g. zip_not_zcta); otherwise the generic text.
+        const reason = data.missing.find((m) => m.field === "owner_area_class")?.reason;
         await expect(row.locator(SEL.field("owner_area_class"))).toHaveText(
-          EXPLORE_TEXTS.ownerAreaUnknown,
+          reason !== undefined && reason in MISSING_REASON_LABELS
+            ? missingLabel("owner_area_class", reason as Parameters<typeof missingLabel>[1])
+            : EXPLORE_TEXTS.ownerAreaUnknown,
         );
         seen.add("owner_area_unknown");
       }
@@ -1201,8 +1207,12 @@ test.describe("A-13 explorer · filters and property", () => {
       }
       expect(data.tenure_years ?? 0).toBeGreaterThan(10);
       if (data.owner_area_class === null || data.owner_area_class === "unknown") {
+        // Contract v1.2 rows say why (e.g. zip_not_zcta); otherwise the generic text.
+        const reason = data.missing.find((m) => m.field === "owner_area_class")?.reason;
         await expect(row.locator(SEL.field("owner_area_class"))).toHaveText(
-          EXPLORE_TEXTS.ownerAreaUnknown,
+          reason !== undefined && reason in MISSING_REASON_LABELS
+            ? missingLabel("owner_area_class", reason as Parameters<typeof missingLabel>[1])
+            : EXPLORE_TEXTS.ownerAreaUnknown,
         );
       }
     }

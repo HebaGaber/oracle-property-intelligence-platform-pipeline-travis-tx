@@ -365,8 +365,13 @@ export function FieldValue({
         <>{row.tenure_basis}</>
       );
     case "owner_area_class":
+      // Contract v1.2: the run says why (e.g. zip_not_zcta); the generic text only when it does not.
       return row.owner_area_class === null || row.owner_area_class === "unknown" ? (
-        <Gap text={EXPLORE_TEXTS.ownerAreaUnknown} short="Owner area unknown" />
+        <Gap
+          text={reasonLabel(row, "owner_area_class") ?? EXPLORE_TEXTS.ownerAreaUnknown}
+          short="Owner area unknown"
+          reason={missingFor(row, "owner_area_class")?.reason}
+        />
       ) : (
         <>{row.owner_area_class}</>
       );
@@ -446,7 +451,12 @@ export function MissingSummary({ row }: { readonly row: ExploreRow }): ReactElem
                 reason={reason}
               />
             ) : (
-              <MissingReason field={fields[0] ?? ""} reason={reason} />
+              // No data-field here: each [data-field] appears once per row (the field's own cell).
+              <StatusPill
+                status="unavailable"
+                text={missingLabel(fields[0] ?? "", reason)}
+                data={{ reason }}
+              />
             )}
           </li>
         );
