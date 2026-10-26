@@ -4,8 +4,8 @@
 // Radius (number + slider), "Roof age at least, in years" preset chips 10/13/15/20/25 with an
 // "Other" box (accessible name "Roof age"), Roofing permit segmented Any / Open or stalled /
 // Stalled (radios), Open ≥, Owner chips "Tenure > 10 yrs" and "Out-of-area" (accessible name
-// "Out-of-area owner") with the Tenure box, the one-line definitions, Sort, Suggestions (the
-// `ooa78753` preset and two board presets), then "{n} properties match" with Clear. Below 840 px
+// "Out-of-area owner") with the Tenure box, the one-line definitions, Suggestions (the
+// `ooa78753` preset and two board presets), Sort, then "{n} properties match" with Clear. Below 840 px
 // the controls collapse behind a "Filters" button (aria-expanded); from 840 px they sit beside
 // the results. Atlas fields and chips, 48 px targets. Render-only.
 import { EXPLORE_BOUNDS } from "@countylens/query-core/explore";
@@ -404,28 +404,6 @@ export function FilterSheet({
           </p>
         </fieldset>
 
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor={`${id}-sort`}>
-            Sort
-          </label>
-          <select
-            id={`${id}-sort`}
-            className={styles.input}
-            value={pending.sort ?? sortUrl}
-            onChange={(e) => {
-              setPending((p) => ({ ...p, sort: e.target.value }));
-              onPatch({ sort: e.target.value });
-            }}
-            onBlur={() => clearPending("sort")}
-          >
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
         <div className={styles.group}>
           <p className={styles.label}>Suggestions</p>
           <div className={styles.suggestions}>
@@ -458,6 +436,30 @@ export function FilterSheet({
               </button>
             ))}
           </div>
+        </div>
+
+        {/* 13.png keeps Sort above the results; with no top bar here it closes the pane, after
+            the board's own controls. */}
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor={`${id}-sort`}>
+            Sort
+          </label>
+          <select
+            id={`${id}-sort`}
+            className={styles.input}
+            value={pending.sort ?? sortUrl}
+            onChange={(e) => {
+              setPending((p) => ({ ...p, sort: e.target.value }));
+              onPatch({ sort: e.target.value });
+            }}
+            onBlur={() => clearPending("sort")}
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className={styles.footer}>
