@@ -26,29 +26,31 @@
   display: flex;
   align-items: center;
   padding: 0 var(--space-4);
+  /* The 1 px edge under the bar (Shell1440 / Task B CrmShell390). */
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
   transition: box-shadow var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
 }
 
-/* Shell boards: title, location chip, then the actions (sync badge, help, Ask) at the end. On
-   compact widths the location chip takes a second row under the title (Shell390 boards). */
+/* Shell boards: title, location chip, search, then the actions (sync badge, help, Ask, Apps) at
+   the end, on one 64 px row at every width (the chip is a pin icon below 600 px, Welcome390). */
 .bar {
-  height: auto;
-  min-height: var(--space-10);
-  flex-wrap: wrap;
-  gap: 0 var(--space-3);
+  gap: var(--space-3);
 }
 
 .location {
-  order: 3;
-  flex-basis: 100%;
-  padding-bottom: var(--space-2);
+  flex: none;
+}
+
+/* Compact (Welcome390): the title takes the free space, so the pin sits with the actions. */
+.title {
+  flex: 1 1 auto;
 }
 
 .actions {
   display: flex;
-  flex: 1 1 auto;
+  flex: none;
   justify-content: flex-end;
   align-items: center;
   gap: var(--space-1);
@@ -90,6 +92,11 @@
   display: none;
 }
 
+/* Apps (the grid icon): from 600 px; below it the More sheet lists the same rows (Task B). */
+.apps {
+  display: none;
+}
+
 /* Signed in as an admin (RunsAdmin1440 board): a tonal chip linking to Activity. */
 .adminChip {
   display: inline-flex;
@@ -110,6 +117,10 @@
 /* Bottom navigation at 390 shows four destinations (Shell390More board): Coverage moves into
    More on compact widths and is back on the rail from 600 px. */
 .nav .compactHidden {
+  display: none;
+}
+
+.nav .itemNested {
   display: none;
 }
 
@@ -275,13 +286,17 @@
   outline: none;
 }
 
+/* Task B's sheet group heading: title-small, on-surface-variant, a divider above. */
 .sheetTitle {
-  margin: var(--space-2) 0;
-  font-family: var(--md-sys-typescale-title-medium-font);
-  font-size: var(--md-sys-typescale-title-medium-size);
-  font-weight: var(--md-sys-typescale-title-medium-weight);
-  line-height: var(--md-sys-typescale-title-medium-line-height);
-  letter-spacing: var(--md-sys-typescale-title-medium-tracking);
+  margin: 0;
+  padding: var(--space-3) 0 var(--space-2);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking);
 }
 
 .sheetList {
@@ -315,14 +330,43 @@ a.sheetItem:hover {
   );
 }
 
+/* Task B RoadmapItem: the tonal "unavailable" pill at the row's end. */
 .soon {
   flex: none;
   white-space: nowrap;
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-label-small-font);
-  font-size: var(--md-sys-typescale-label-small-size);
-  line-height: var(--md-sys-typescale-label-small-line-height);
-  letter-spacing: var(--md-sys-typescale-label-small-tracking);
+  padding: 0 var(--space-2);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--status-unavailable-container);
+  color: var(--status-unavailable);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: var(--md-sys-typescale-label-medium-weight);
+  line-height: var(--md-sys-typescale-label-medium-line-height);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking);
+}
+
+/* Shell390More board: the pages in one outlined surface card, the help row after a divider. */
+.sheetCard {
+  margin: var(--space-2) 0 var(--space-3);
+  padding: var(--space-1) 0;
+  list-style: none;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+.sheetDivided {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+/* The app-switcher rows (HelpMenu's AppRows) laid out like the other sheet rows. */
+.appRow {
+  border-radius: var(--md-sys-shape-corner-full);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
 }
 
 /* Medium and up (Atlas § 4): navigation rail, 80 px wide, left of the main region; 24 px margins. */
@@ -348,14 +392,40 @@ a.sheetItem:hover {
     padding: var(--space-6);
   }
 
+  /* The title sits 24 px from the window edge, in line with the page content (Task B). */
   .bar {
-    flex-wrap: nowrap;
+    padding: 0 var(--space-6);
   }
 
-  .location {
-    order: 0;
-    flex-basis: auto;
-    padding-bottom: 0;
+  .apps {
+    display: inline-flex;
+  }
+
+  .title {
+    flex: none;
+  }
+
+  .actions {
+    flex: 1 1 auto;
+  }
+
+  /* Explore's modes nested under Explore in the rail (Shell1440; Task B CrmShell1440): a smaller
+     pill and a label-small label. */
+  .nav .itemNested {
+    display: flex;
+    min-height: var(--space-8);
+    gap: 0;
+  }
+
+  .itemNested .pill {
+    width: var(--space-9);
+    height: var(--space-6);
+  }
+
+  .itemNested .label {
+    font-family: var(--md-sys-typescale-label-small-font);
+    font-size: var(--md-sys-typescale-label-small-size);
+    line-height: var(--md-sys-typescale-label-small-line-height);
   }
 
   .sync {
@@ -439,6 +509,7 @@ a.sheetItem:hover {
    link's start padding, so the whole row stays one 48 px link) and the legal links as a footer. */
 .sheet {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
 }
 

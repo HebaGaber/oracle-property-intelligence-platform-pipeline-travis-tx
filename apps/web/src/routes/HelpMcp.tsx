@@ -69,20 +69,24 @@ const SEARCH_PARAMS: readonly { readonly name: string; readonly text: string }[]
 
 const BEARER = "Authorization: Bearer <token>";
 
+/** HelpMcp boards: each client's snippet under the file (or place) it goes in, args one per line. */
 const SNIPPETS = Object.freeze([
   {
     id: "claude-desktop",
     title: "Claude Desktop",
-    code: `{\n  "mcpServers": {\n    "countylens": {\n      "command": "npx",\n      "args": ["mcp-remote", "<mcp-url>", "--header", "${BEARER}"]\n    }\n  }\n}`,
+    file: "claude_desktop_config.json",
+    code: `{\n  "mcpServers": {\n    "countylens": {\n      "command": "npx",\n      "args": [\n        "mcp-remote",\n        "<mcp-url>",\n        "--header",\n        "${BEARER}"\n      ]\n    }\n  }\n}`,
   },
   {
     id: "claude-code",
     title: "Claude Code",
+    file: "Terminal",
     code: `claude mcp add --transport http countylens <mcp-url> \\\n  --header "${BEARER}"`,
   },
   {
     id: "mcp-inspector",
     title: "MCP Inspector",
+    file: "Terminal, then the Inspector's connection form",
     code: `npx @modelcontextprotocol/inspector\n# Transport: Streamable HTTP\n# URL: <mcp-url>\n# Header: ${BEARER}`,
   },
 ]);
@@ -97,6 +101,19 @@ const EXAMPLES: Readonly<Record<McpTryTool, string>> = Object.freeze({
   list_runs: '{\n  "limit": 5\n}',
   get_schema: '{\n  "view": "v_property"\n}',
 });
+
+/** HelpMcp1440 board "Example request (tools/call)": the JSON-RPC call for search_properties,
+ *  built from the same starting arguments Try a tool uses (no invented values). */
+const EXAMPLE_REQUEST = JSON.stringify(
+  {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: { name: "search_properties", arguments: JSON.parse(EXAMPLES.search_properties) },
+  },
+  null,
+  2,
+);
 
 /** Rows and characters shown on the page; the server returned (and counted) all of them. */
 const SHOWN_ROWS = 5;
@@ -292,6 +309,9 @@ export function Component({ callTool = tryMcpTool }: HelpMcpProps = {}): ReactEl
                 </button>
               ))}
             </div>
+          </div>
+          <div className={styles.fileRow}>
+            <code className={styles.fileName}>{snippet.file}</code>
             <button type="button" className={styles.copy} onClick={copy}>
               <Icon name="content_copy" size="medium" />
               {copied ? "Copied" : "Copy"}
@@ -329,28 +349,39 @@ export function Component({ callTool = tryMcpTool }: HelpMcpProps = {}): ReactEl
                 </span>
                 <span className={runStyles.itemBody}>{tool.what}</span>
                 {tool.name === "search_properties" ? (
-                  <table
-                    className={styles.schema}
-                    aria-label="search_properties input"
-                    data-schema=""
-                  >
-                    <thead>
-                      <tr>
-                        <th scope="col">Input</th>
-                        <th scope="col">Allowed values</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {SEARCH_PARAMS.map((param) => (
-                        <tr key={param.name} data-param={param.name}>
-                          <th scope="row">
-                            <code className={runStyles.mono}>{param.name}</code>
-                          </th>
-                          <td>{param.text}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className={styles.schemaRow}>
+                    <div className={styles.schemaCol}>
+                      <span className={styles.blockLabel}>Input schema</span>
+                      <table
+                        className={styles.schema}
+                        aria-label="search_properties input"
+                        data-schema=""
+                      >
+                        <thead>
+                          <tr>
+                            <th scope="col">Input</th>
+                            <th scope="col">Allowed values</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {SEARCH_PARAMS.map((param) => (
+                            <tr key={param.name} data-param={param.name}>
+                              <th scope="row">
+                                <code className={runStyles.mono}>{param.name}</code>
+                              </th>
+                              <td>{param.text}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className={styles.schemaCol}>
+                      <span className={styles.blockLabel}>Example request (tools/call)</span>
+                      <pre className={styles.snippet} tabIndex={0} data-example-request="">
+                        <code>{EXAMPLE_REQUEST}</code>
+                      </pre>
+                    </div>
+                  </div>
                 ) : (
                   <span className={styles.pending} data-schema-pending="">
                     Input schema: published with the MCP server in story A-14.

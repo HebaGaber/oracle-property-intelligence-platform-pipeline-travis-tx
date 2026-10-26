@@ -80,3 +80,45 @@
 .glyph {
   color: var(--md-sys-color-on-surface-variant);
 }
+
+/* Apps menu rows (Task B AppLinks; CrmAppsMenu): label, the current app's trailing check, and a
+   muted reason on a row that has no link yet. */
+.label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.check {
+  display: inline-flex;
+  color: var(--md-sys-color-on-surface);
+}
+
+.unavailable {
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: default;
+}
+
+.unavailable:hover {
+  background: transparent;
+}
+
+.reason {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+}
+
+/* The Apps icon (Shell1440 "apps" glyph, not in the symbols subset): a 3 × 3 grid of dots drawn
+   with a repeating radial gradient in the current colour, inside the 24 px icon box. */
+.icon > .appsGlyph {
+  width: calc(var(--space-5) - var(--space-1) / 2);
+  height: calc(var(--space-5) - var(--space-1) / 2);
+  background: radial-gradient(
+      circle,
+      currentColor 0 calc(var(--space-1) / 2),
+      transparent calc(var(--space-1) / 2 + 1px)
+    )
+    0 0 / calc((var(--space-5) - var(--space-1) / 2) / 3)
+    calc((var(--space-5) - var(--space-1) / 2) / 3);
+}

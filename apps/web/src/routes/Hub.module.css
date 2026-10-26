@@ -374,3 +374,26 @@
   align-items: center;
   gap: var(--space-2);
 }
+
+/* Hub boards: the latest run as an outlined chip (corner-small, label-large, cloud-done glyph in
+   the success colour). */
+.runChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  min-height: var(--space-8);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+}
+
+.runChip > :first-child {
+  color: var(--status-success);
+}
