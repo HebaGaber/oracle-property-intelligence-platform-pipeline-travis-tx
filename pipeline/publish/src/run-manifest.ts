@@ -362,14 +362,23 @@ export async function buildRunManifest(
     ...(facts === null ? {} : permitLinkCoverage(facts)),
     ...((config.coverageOverrides ?? {}) as Record<string, CoverageCount>),
   };
-  if (emitted.total !== baseEmitted) {
+  // A11-10(d): the base's other coverage keys (contractor_*, permits_trade_sub_permit) describe the
+  // published permit rows. They are stale when the count moved, and also when an incremental run
+  // (facts present: the source changed) rebuilt a permits batch whose archive root the base does
+  // not hold, even if the count is unchanged. Then they must be supplied, never carried.
+  const baseCarRoots = new Set(base.artifacts.filter((a) => a.kind === "car").map((a) => a.cid));
+  const permitsRebuilt = permitsGroups.some((g) => !baseCarRoots.has(g.carRoot));
+  const countMoved = emitted.total !== baseEmitted;
+  if (countMoved || (facts !== null && permitsRebuilt)) {
     const stale = Object.keys(base.coverage).filter(
       (k) => k !== "permits_emitted" && k !== "parcels_published" && !(k in overrides),
     );
     if (stale.length > 0) {
+      const why = countMoved
+        ? `${emitted.total} permits are published but the base manifest recorded ${String(baseEmitted)}; `
+        : `the permits group was rebuilt in an incremental run (${emitted.total} permits, the base's count) and its batches differ from the base manifest's; `;
       throw new Error(
-        `${emitted.total} permits are published but the base manifest recorded ${String(baseEmitted)}; ` +
-          `its other coverage keys no longer apply. Supply coverageOverrides for: ${stale.join(", ")}`,
+        `${why}its other coverage keys no longer apply. Supply coverageOverrides for: ${stale.join(", ")}`,
       );
     }
   }

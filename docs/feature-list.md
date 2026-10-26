@@ -116,7 +116,7 @@ Rules: IDs follow the story IDs (`FEAT-A01` = story A-01). `Feature` = observabl
 
 | FEAT-ID | Story | Class | Feature name | Description (≤ 20 words) | MoSCoW | Eval pt | Scenario | Vision ref |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| FEAT-A17 | A-16 (part A-17) | Feature | Admin sign-in and run commands | Operator signs in by email code and starts, stops or retries runs through a queue the laptop pulls. | Should | A3 | SCN-D | VIS-A |
+| FEAT-A17 | A-16 (part A-17) | Feature | Admin sign-in and run commands | Operator signs in by email and password (Task B pattern, PO 2026-10-26) and starts, stops or retries runs through a queue the laptop pulls. | Should | A3 | SCN-D | VIS-A |
 | FEAT-A18 | A-13 (part A-18) | Feature | Content and Coming soon pages | Shows hub, legal, catalog and run-log pages from real files and marks planned features Coming soon without sample data. | Should | A5 | SCN-A | VIS-A |
 
 **Notes on the backlog**

@@ -22,8 +22,9 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatUtc } from "../src/components/Provenance";
 import { BOTH_HOSTS_DOWN_TEXT } from "../src/data/fetch-by-cid";
 
 const COPY_HOST = "copy.example.test";
@@ -337,8 +338,16 @@ describe("Runs page: the run card (TC-010)", () => {
     expect(within(card).getByRole("heading", { level: 2 }).textContent).toBe(
       fixture.manifest.runId,
     );
-    expect(card.textContent).toContain(`Started ${fixture.manifest.startedAt} UTC`);
-    expect(card.textContent).toContain(`Finished ${fixture.manifest.finishedAt} UTC`);
+    // G2 board round: the instant reads like the board (no T…Z) in a <time datetime={ISO}>.
+    for (const [word, iso] of [
+      ["Started", fixture.manifest.startedAt],
+      ["Finished", fixture.manifest.finishedAt],
+    ] as const) {
+      expect(card.textContent).toContain(`${word} ${formatUtc(iso)} UTC`);
+      expect(card.querySelector(`time[datetime="${iso}"]`)?.textContent).toBe(
+        `${formatUtc(iso)} UTC`,
+      );
+    }
   });
 
   it("shows the manifest CID in data-cid with a middle-truncated text and a copy button that copies the full CID", async () => {
@@ -421,7 +430,8 @@ describe("Runs page: sources in manifest order (TC-011)", () => {
 
     expect(within(austin).getByText(SOURCE_LABELS["austin-3syk-w9eu"])).toBeDefined();
     expect(austin.textContent).toContain(`${source0.records} records`);
-    expect(austin.textContent).toContain(`collected ${source0.captured_at} UTC`);
+    expect(austin.textContent).toContain(`collected ${formatUtc(source0.captured_at)} UTC`);
+    expect(austin.querySelector(`time[datetime="${source0.captured_at}"]`)).not.toBeNull();
     // TC-002 step 3: the source's watermark is shown, labelled, as published.
     expect(source0.watermark).not.toBeNull();
     expect(austin.textContent).toContain(`watermark ${source0.watermark}`);
@@ -725,5 +735,236 @@ describe("Runs page: exact error texts (contracts/ui-routes.md, FR-021)", () => 
     expect(alert.querySelector(`[data-cid="${fixture.manifestCid}"]`)).not.toBeNull();
     expect(within(alert).getByText(BOTH_HOSTS_DOWN_TEXT).tagName).toBe("SPAN");
     expect(screen.queryByRole("article")).toBeNull();
+  });
+});
+
+describe("A-16 Runs page: board sections, LCP and the signed-out view", () => {
+  it("paints the run list and Sync status from the index while the manifest is still loading (A13-3)", async () => {
+    installFetch({
+      index: () => json(fixture.indexJson),
+      copy: () => new Response(fixture.manifestBytes),
+    });
+    // The manifest never answers: only the index is available.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (input) => {
+        const url = urlOf(input);
+        if (url === "/runs/index.json") return json(fixture.indexJson);
+        return new Promise<Response>(() => undefined);
+      }),
+    );
+    await renderRuns();
+    const picker = await screen.findByRole("combobox", { name: "Run" });
+    expect(within(picker).getAllByRole("option")).toHaveLength(1);
+    const section = document.querySelector('[data-route="runs"]');
+    expect(section?.getAttribute("data-state")).toBe("loading");
+    expect(document.querySelector("[data-sync-status]")).not.toBeNull();
+    expect(document.querySelector("[data-last-sync]")?.textContent).toContain("2026-10-21");
+    expect(screen.queryByRole("article")).toBeNull();
+  });
+
+  it("shows the board sections once the manifest is read, in the board order", async () => {
+    await renderRuns();
+    await findCard();
+    expect(screen.getByRole("heading", { level: 2, name: "Pipeline runs" })).toBeDefined();
+    // DOM order: the run card comes right after Sync status so its manifest CID is the page's
+    // first provenance line (A-03-TC-NF-03); from 600 px CSS `order` shows it last (board order).
+    const order = [
+      "[data-run-list]",
+      "[data-sync-status]",
+      "article",
+      "[data-pipeline-steps]",
+      "[data-latest-events]",
+      "[data-what-changed]",
+    ].map((selector) => document.querySelector(selector));
+    for (const el of order) expect(el).not.toBeNull();
+    for (let i = 1; i < order.length; i += 1) {
+      const before = order[i - 1] as Element;
+      const after = order[i] as Element;
+      expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(screen.getByText("What Run 1 changed")).toBeDefined();
+  });
+
+  it("gives a signed-out visitor an Admin sign-in link and no Start, Stop or Retry control", async () => {
+    await renderRuns();
+    await findCard();
+    const link = screen.getByRole("link", { name: /admin sign-in/i });
+    expect(link.getAttribute("href")).toBe("/admin/sign-in");
+    expect(document.querySelector("[data-admin-controls]")).toBeNull();
+    for (const name of [/start run/i, /stop run/i, /^retry$/i]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+    expect(document.body.textContent).not.toContain("Signed in as admin");
+  });
+});
+
+describe("A-16 Runs page: the Run menu switches the shown run (PO note)", () => {
+  interface TwoRuns {
+    older: { runId: string; manifestCid: string; bytes: Uint8Array<ArrayBuffer> };
+    newer: { runId: string; manifestCid: string; bytes: Uint8Array<ArrayBuffer> };
+    indexJson: string;
+  }
+
+  async function buildTwoRuns(): Promise<TwoRuns> {
+    const first = await buildFixture(0);
+    const newerManifest: RunManifestV1 = {
+      ...first.manifest,
+      runId: "travis-2026-10-test",
+      startedAt: "2026-10-24T08:00:00.000Z",
+      finishedAt: "2026-10-24T08:20:00.000Z",
+      previousManifestCid: first.manifestCid,
+      sources: first.manifest.sources.map((s) => ({ ...s, added: 3, changed: 2, removed: 1 })),
+    };
+    const newerBytes = encode(JSON.stringify(newerManifest));
+    const newerCid = await rawCid(newerBytes);
+    return {
+      older: {
+        runId: first.manifest.runId,
+        manifestCid: first.manifestCid,
+        bytes: first.manifestBytes,
+      },
+      newer: { runId: newerManifest.runId, manifestCid: newerCid, bytes: newerBytes },
+      indexJson: JSON.stringify({
+        schema: RUNS_INDEX_SCHEMA,
+        runs: [
+          {
+            runId: first.manifest.runId,
+            manifestCid: first.manifestCid,
+            finishedAt: first.manifest.finishedAt,
+          },
+          {
+            runId: newerManifest.runId,
+            manifestCid: newerCid,
+            finishedAt: newerManifest.finishedAt,
+          },
+        ],
+      }),
+    };
+  }
+
+  let runs: TwoRuns;
+  let lastSearch = "";
+
+  function SearchProbe(): null {
+    lastSearch = useLocation().search;
+    return null;
+  }
+
+  beforeAll(async () => {
+    runs = await buildTwoRuns();
+  });
+
+  beforeEach(() => {
+    lastSearch = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (input) => {
+        const url = urlOf(input);
+        if (url === "/runs/index.json") return json(runs.indexJson);
+        if (url.includes(runs.newer.manifestCid)) return new Response(runs.newer.bytes);
+        if (url.includes(runs.older.manifestCid)) return new Response(runs.older.bytes);
+        throw new TypeError(`unexpected request ${url}`);
+      }),
+    );
+  });
+
+  async function renderAt(entry: string): Promise<void> {
+    const { Component } = await import("../src/routes/Runs");
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Providers>
+          <Component />
+          <SearchProbe />
+        </Providers>
+      </MemoryRouter>,
+    );
+  }
+
+  const shownRun = (): string | null | undefined =>
+    document.querySelector("[data-shown-run]")?.getAttribute("data-shown-run");
+  const title = async (): Promise<string> =>
+    (await screen.findByRole("article")).querySelector("#run-title")?.textContent ?? "";
+  // The run picker is a dropdown (PO 2026-10-26, RunSelect): its value is the shown run ID.
+  const picker = (): HTMLSelectElement => screen.getByRole("combobox", { name: "Run" });
+  const current = (): string | null => picker().value || null;
+
+  it("shows the latest run by default and marks it in the menu", async () => {
+    await renderAt("/runs");
+    expect(await title()).toBe(runs.newer.runId);
+    expect(current()).toBe(runs.newer.runId);
+    expect(screen.getByText("What Run 2 changed")).toBeDefined();
+    expect(shownRun()).toBe(runs.newer.runId);
+  });
+
+  it("switches the card, sources, events and What changed to the chosen run and keeps ?run= in sync", async () => {
+    await renderAt("/runs");
+    expect(await title()).toBe(runs.newer.runId);
+    // Newest first, "Run N · Mon D, YYYY", the latest marked.
+    expect([...picker().options].map((o) => o.textContent)).toEqual([
+      "Run 2 · Oct 24, 2026 · latest",
+      expect.stringMatching(/^Run 1 · [A-Z][a-z]{2} \d{1,2}, \d{4}$/),
+    ]);
+    expect([...picker().options].map((o) => o.getAttribute("data-run-id"))).toEqual([
+      runs.newer.runId,
+      runs.older.runId,
+    ]);
+    fireEvent.change(picker(), { target: { value: runs.older.runId } });
+    await waitFor(() => expect(lastSearch).toBe(`?run=${runs.older.runId}`));
+    await waitFor(() => expect(shownRun()).toBe(runs.older.runId));
+    expect(await title()).toBe(runs.older.runId);
+    expect(current()).toBe(runs.older.runId);
+    expect(screen.getByText("What Run 1 changed")).toBeDefined();
+    expect(document.querySelector("[data-run-number]")?.textContent).toContain("an earlier run");
+    // Sources show the older run's first-run deltas, not the newer run's counts.
+    expect(document.querySelector("[data-source-delta]")?.textContent).toBe(RUNS_TEXTS.firstRun);
+    // Latest events name the chosen run only.
+    const events = document.querySelector("[data-latest-events]");
+    expect(events?.textContent).toContain(runs.older.runId);
+    expect(events?.textContent).not.toContain(runs.newer.runId);
+    // Sync status still describes the latest run and says why coverage is not shown.
+    expect(document.querySelector("[data-county-coverage]")?.textContent).toMatch(/^Not shown/);
+
+    // Back to the latest: the run parameter is dropped.
+    fireEvent.change(picker(), { target: { value: runs.newer.runId } });
+    await waitFor(() => expect(lastSearch).toBe(""));
+    await waitFor(() => expect(shownRun()).toBe(runs.newer.runId));
+    expect(current()).toBe(runs.newer.runId);
+  });
+
+  it("opens the run named in ?run= directly", async () => {
+    await renderAt(`/runs?run=${runs.older.runId}`);
+    expect(await title()).toBe(runs.older.runId);
+    expect(current()).toBe(runs.older.runId);
+    expect(picker().selectedOptions[0]?.textContent).toMatch(/^Run 1 ·/);
+  });
+
+  it("shows the latest run and says why when ?run= names no run in the index", async () => {
+    await renderAt("/runs?run=travis-unknown");
+    expect(await title()).toBe(runs.newer.runId);
+    const note = await waitFor(() => {
+      const el = document.querySelector("[data-run-not-found]");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(note.getAttribute("data-run-not-found")).toBe("travis-unknown");
+    expect(note.textContent).toContain("is not in /runs/index.json");
+  });
+});
+
+describe("selectRun (A-16 Run menu)", () => {
+  it("picks the requested run with its 1-based number, else the latest", async () => {
+    const { selectRun } = await import("../src/data/run-loader");
+    const index = {
+      schema: RUNS_INDEX_SCHEMA as typeof RUNS_INDEX_SCHEMA,
+      runs: [
+        { runId: "b", manifestCid: "cid-b", finishedAt: "2026-10-22T00:00:00.000Z" },
+        { runId: "a", manifestCid: "cid-a", finishedAt: "2026-10-21T00:00:00.000Z" },
+      ],
+    };
+    expect(selectRun(index, null)).toMatchObject({ number: 2, isLatest: true, notFound: null });
+    expect(selectRun(index, null).entry.runId).toBe("b");
+    expect(selectRun(index, "a")).toMatchObject({ number: 1, isLatest: false, notFound: null });
+    expect(selectRun(index, "zzz")).toMatchObject({ number: 2, isLatest: true, notFound: "zzz" });
   });
 });

@@ -178,12 +178,249 @@
   gap: var(--space-2);
 }
 
+/* A-16 T050 (Explore1440 board): panel header, chip rows, segmented permit, suggestions, footer. */
+/* Explore · Filters board (13.png): the "Filters · query" header sits on its own row, ruled off
+   from the controls. */
+.panelTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-medium-font);
+  font-size: var(--md-sys-typescale-title-medium-size);
+  font-weight: var(--md-sys-typescale-title-medium-weight);
+  line-height: var(--md-sys-typescale-title-medium-line-height);
+}
+
+.panelSub {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  font-weight: var(--md-sys-typescale-body-small-weight);
+}
+
+.group {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.group > legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+}
+
+.chips,
+.segmented,
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chip,
+.segment,
+.suggestion {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.chip {
+  padding: 0 var(--space-3);
+  background: var(--md-sys-color-surface);
+}
+
+.chip.chipOn,
+.segment.segmentOn {
+  border-color: transparent;
+  color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-secondary-container);
+}
+
+label.chip:focus-within,
+.segment:focus-within,
+.suggestion:focus-visible,
+.textButton:focus-visible,
+.slider:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.segmented {
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
+.segment {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: var(--space-9);
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--md-sys-color-outline);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+  text-align: center;
+}
+
+.segment + .segment {
+  border-left: 0;
+}
+
+.segment:first-child {
+  border-radius: var(--md-sys-shape-corner-full) 0 0 var(--md-sys-shape-corner-full);
+}
+
+.segment:last-child {
+  border-radius: 0 var(--md-sys-shape-corner-full) var(--md-sys-shape-corner-full) 0;
+}
+
+.number {
+  width: calc(var(--space-10) + var(--space-6));
+  flex: none;
+}
+
+/* D-4: room for the "any time" placeholder of Open ≥ (it was cut to "any tim"). */
+.number[id$="-openYrs"] {
+  width: calc(var(--space-10) * 2);
+}
+
+/* TC-009: a segment / chip's native input covers its whole label (the visible 48 px target),
+   invisible but hit-testable, so a real click (and Playwright's setChecked) reaches it.
+   TC-072: content-box sizing, so the 48 px min-height is the padding box the input fills (with
+   border-box the 1 px borders left the input 46 px tall). */
+.segment,
+label.chip {
+  position: relative;
+  box-sizing: content-box;
+}
+
+.segment > input,
+label.chip > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  appearance: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+  min-height: var(--space-9);
+  accent-color: var(--md-sys-color-primary);
+}
+
+.suggestions {
+  display: grid;
+}
+
+.suggestion {
+  justify-content: flex-start;
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  text-align: left;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.count {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+.textButton {
+  min-width: var(--space-9);
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-primary);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  border-radius: 0;
+  font: inherit;
+  appearance: none;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 @media (min-width: 840px) {
   .toggle {
     display: none;
   }
 
   .panel {
+    display: grid;
+  }
+
+  /* Property drawer open (Property1440 board): the controls fold behind the button again. */
+  .folded .toggle {
+    display: block;
+    justify-self: start;
+  }
+
+  .folded .panel {
+    display: none;
+  }
+
+  .folded .panel.open {
     display: grid;
   }
 }

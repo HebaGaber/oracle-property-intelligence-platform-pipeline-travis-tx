@@ -27,6 +27,7 @@ import {
   mkdirSync,
   openSync,
   closeSync,
+  linkSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -38,6 +39,7 @@ import { parseArgs } from "node:util";
 import { RunManifestV1, type ManifestArtifact } from "@countylens/contract";
 import {
   carFileTargets,
+  receiptCoversGateways,
   uploadCarFile,
   type CarFileTarget,
   type UploadCarFileOptions,
@@ -395,6 +397,8 @@ export interface FilebaseStepDeps {
   reverse?: boolean;
   /** Upload only these unit kinds (for example only "car" while the provider's dag/import of tables hangs). */
   kinds?: readonly string[];
+  /** Test seam: called right after a unit's lock is taken, before the receipt re-check. */
+  onLockTaken?: (unitId: string) => void;
   /** Upload only these unit ids (one runner of a split job); every other unit is left for another worker. */
   units?: readonly string[];
 }
@@ -414,20 +418,57 @@ export function tryUnitLock(
   pid: number = process.pid,
   alive: (pid: number) => boolean = processAlive,
 ): (() => void) | undefined {
-  for (let tries = 0; tries < 2; tries += 1) {
+  // A11-17 R5: the pid goes into a private temp file and is published with a hard link, so the lock
+  // never exists empty (a reader would take that for stale), and a stale lock is replaced only by
+  // the one worker that creates the takeover guard (exclusive create); everyone else backs off.
+  const readOwner = (): number => {
     try {
-      const fd = openSync(lockPath, "wx");
-      writeFileSync(fd, String(pid));
-      closeSync(fd);
-      return () => rmSync(lockPath, { force: true });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const owner = Number(readFileSync(lockPath, "utf8").trim());
-      if (Number.isInteger(owner) && owner > 0 && owner !== pid && alive(owner)) return undefined;
-      rmSync(lockPath, { force: true });
+      return Number(readFileSync(lockPath, "utf8").trim());
+    } catch {
+      return Number.NaN; // vanished or unreadable
     }
+  };
+  const create = (): boolean => {
+    const tmp = `${lockPath}.${pid}.${process.pid}.tmp`;
+    writeFileSync(tmp, String(pid));
+    try {
+      linkSync(tmp, lockPath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw error;
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  };
+  const release = (): void => {
+    if (readOwner() === pid) rmSync(lockPath, { force: true });
+  };
+  if (create()) return release;
+  const owner = readOwner();
+  if (Number.isInteger(owner) && owner > 0 && owner !== pid && alive(owner)) return undefined;
+  const guard = `${lockPath}.takeover`;
+  try {
+    closeSync(openSync(guard, "wx"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return undefined;
+    throw error;
   }
-  return undefined;
+  try {
+    const now = readOwner();
+    // Changed hands since we judged it stale (a rival finished a takeover): not ours to replace.
+    if (!Object.is(now, owner) && !Number.isNaN(now)) return undefined;
+    const aside = `${lockPath}.stale.${pid}.${process.pid}`;
+    try {
+      renameSync(lockPath, aside);
+      rmSync(aside, { force: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return create() ? release : undefined;
+  } finally {
+    rmSync(guard, { force: true });
+  }
 }
 
 function processAlive(pid: number): boolean {
@@ -510,6 +551,16 @@ function filebaseStep(deps: FilebaseStepDeps): StepImpl {
           continue;
         }
         try {
+          deps.onLockTaken?.(unit.id);
+          // A11-17 R5: re-check AFTER taking the lock. Another worker may have finished and
+          // released this unit between the first check and our lock; uploading again is wasted
+          // work (content-addressed, so harmless) and would overwrite its receipt.
+          if (
+            scanUploadReceipts(ctx.receiptsRoot).some((r) => sameCid(r.root, unit.artifact.cid))
+          ) {
+            deps.log(`skip ${unit.id} (a receipt appeared while taking the lock)`);
+            continue;
+          }
           const input = join(ctx.repoRoot, unit.artifact.name);
           if (!existsSync(input))
             throw new Error(`${unit.id}: ${unit.artifact.name} does not exist`);
@@ -607,7 +658,14 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
   ): string | undefined => {
     const path = receiptPath(ctx, carFileId(ctx, target));
     const json = readJson(path);
-    return json !== undefined && json.carCid === target.carCid && json.size === size
+    // A11-17 R4: a receipt that deferred a gateway this run must read back is not a full receipt.
+    return json !== undefined &&
+      json.carCid === target.carCid &&
+      json.size === size &&
+      receiptCoversGateways(
+        json as Parameters<typeof receiptCoversGateways>[0],
+        deps.readbackGateways ?? READBACK_GATEWAYS,
+      )
       ? path
       : undefined;
   };
@@ -643,6 +701,7 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
                   size,
                   adopted: true,
                   gateways: checks,
+                  deferredGateways: [],
                   recordedAt: deps.now().toISOString(),
                 }),
             });
@@ -686,6 +745,7 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
           size: result.size,
           adopted: false,
           gateways: result.gateways,
+          deferredGateways: result.deferredGateways,
           recordedAt: deps.now().toISOString(),
         });
       }

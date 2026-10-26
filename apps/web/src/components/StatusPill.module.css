@@ -21,6 +21,28 @@
   padding: var(--space-1) 0;
 }
 
+/* A compact missing-data pill: one line, the short label drawn (hidden from screen readers by the
+   empty alt text), the full reason kept as visually hidden text and as the tooltip. */
+.pill[data-short] {
+  position: relative;
+  white-space: nowrap;
+}
+
+.pill[data-short]::after {
+  content: attr(data-short); /* fallback where alt text after "/" is unsupported */
+  content: attr(data-short) / "";
+  padding: var(--space-1) 0;
+}
+
+.pill[data-short] > .text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
 .verified {
   color: var(--status-success);
   background-color: var(--status-success-container);

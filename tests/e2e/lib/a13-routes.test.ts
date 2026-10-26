@@ -5,7 +5,8 @@ import { comingSoonItems, median, routeTargets } from "./a13-routes.js";
 describe("Coming soon items", () => {
   it("lists the PO's items with one sentence each and exactly one unlinked item", () => {
     const items = comingSoonItems();
-    expect(items.length).toBeGreaterThanOrEqual(11);
+    // 10 since A-16: "SQL checks" was removed with the SQL tab (PO decision).
+    expect(items.length).toBeGreaterThanOrEqual(10);
     expect(items.filter((i) => !i.linked).map((i) => i.id)).toEqual(["ai-user-sign-in"]);
     for (const item of items) expect(item.sentence).toMatch(/^[^.!?]+[.!?]$/);
   });
@@ -18,7 +19,8 @@ describe("route targets", () => {
     expect(paths).toContain("/");
     expect(paths).toContain("/runs/compare?a=1&b=1");
     expect(paths).toContain("/data/verify/bafkreitest");
-    expect(paths).toContain("/tx/travis/explore?mode=sql");
+    expect(paths).toContain("/tx/travis/explore");
+    expect(paths.some((p) => p.includes("mode=sql"))).toBe(false);
     expect(paths).toContain("/permits");
     expect(paths.filter((p) => p.startsWith("/soon/")).length).toBe(
       comingSoonItems().filter((i) => i.linked).length,

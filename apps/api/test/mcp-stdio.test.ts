@@ -28,6 +28,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 
 import { buildMcpServer } from "../src/mcp/server.js";
+import { asRun } from "../src/mcp/tools.js";
 import { RUNS_TABLES_DIR_ENV, createLocalDeps, openLocalDuckDb } from "../src/mcp/stdio.js";
 
 const COMMITTED = JSON.parse(
@@ -99,10 +100,10 @@ describe("stdio local deps", () => {
     async () => {
       const deps = createLocalDeps(env);
       const first = await deps.resolveRun();
-      expect(first?.bound.runId).toBe("fixture-run");
-      expect(first?.bound.manifestCid).toBe(fixture.cid);
+      expect(asRun(first)?.bound.runId).toBe("fixture-run");
+      expect(asRun(first)?.bound.manifestCid).toBe(fixture.cid);
       const again = await deps.resolveRun(fixture.cid);
-      expect(again?.bound).toBe(first?.bound); // one bind per manifest_cid
+      expect(asRun(again)?.bound).toBe(asRun(first)?.bound); // one bind per manifest_cid
 
       const server = buildMcpServer(deps);
       const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();

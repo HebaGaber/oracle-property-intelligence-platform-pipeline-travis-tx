@@ -19,11 +19,13 @@ export function shortHash(value: string): string {
 /** Runs, Compare and the run index. */
 export const RUNS_TEXTS = Object.freeze({
   nextSync: "Next sync: none · scheduler off by default",
-  oldManifestResolves: "old manifest still resolves on Pinata and Filebase",
+  /** Shown only when both independent gateways (Pinata, orbitor) served the bytes (AM-10). */
+  oldManifestResolves: "old manifest still resolves on Pinata and orbitor",
   /** Compare with one run, and the delta column of a first run. */
   firstRun: "first run · nothing to compare against",
-  /** The numbering contract of `a`/`b` on Compare and of the Hub chip: run n = the n-th entry of runs/index.json ordered by finishedAt (1-based). */
-  numbering: "Run n is the n-th entry of runs/index.json, ordered by finish time",
+  /** The numbering contract of `a`/`b` on Compare, the Hub chip and every "Run N" (PO 2026-10-26): the non-pilot runs of runs/index.json numbered 1..n by finishedAt; A-03's pilot slice is listed but never numbered. */
+  numbering:
+    "Run n is the n-th full-county run in runs/index.json, by finish time; the first small test slice is listed as Pilot slice and not numbered",
   indexUnavailable: (reason: string): string => `Run index unavailable · ${reason}`,
   manifestUnavailable: (cid: string, reason: string): string =>
     `Manifest unavailable · ${cid} · ${reason}`,
@@ -46,14 +48,51 @@ export const VERIFY_TEXTS = Object.freeze({
   notVerified: (detail: string): string => `Not verified · ${detail}`,
   /** The Warning pill when a gateway other than the copy served the bytes. */
   fallback: (host: string): string => `fallback · ${host}`,
+  /** Operator names of the Verify gateways (ARD § 16 AM-10). */
+  gatewayOperators: Object.freeze({ pinata: "Pinata", orbitor: "orbitor", filebase: "Filebase" }),
+  /**
+   * The role line of each lane: plain facts (PO decision 2026-10-26, AM-10). "Independent" means a
+   * public gateway CountyLens does not operate, bytes hash-checked; Pinata and orbitor are counted.
+   */
+  laneRoles: Object.freeze({
+    pinata: "Public gateway · also holds our second copy",
+    orbitor: "Public gateway · holds no copy of ours",
+    filebase: "Our main storage host · fallback, not counted",
+  }),
+  /** The Filebase lane's text when its bytes match: shown, never counted. */
+  fallbackVerified: "Bytes match the manifest · our storage host, not counted",
+  countedLanesTitle: "Counted gateways",
+  fallbackLanesTitle: "Fallback gateway · not counted",
+  /** A counted lane that ended `failed` after its retries: no readable bytes, not tampering. */
+  laneGaveUp: "no readable answer after retries",
+  pinataGaveUp: "Pinata may be rate-limiting; try again",
+  /** The page result: both counted lanes matched the manifest. */
+  independentVerified:
+    "Verified on Pinata and orbitor · two public gateways CountyLens does not operate; bytes match the manifest",
+  independentPending:
+    "Checking Pinata and orbitor · two public gateways CountyLens does not operate",
+  /** The page result when a counted lane ended without a match; `details` from the two below. */
+  independentNotVerified: (details: string): string =>
+    `Not verified on two public gateways · ${details}`,
+  noVerifiedAnswer: (gateways: string): string => `no verified answer from ${gateways}`,
+  bytesDiffer: (gateways: string): string => `bytes differ on ${gateways}`,
+  storedOnTitle: "Stored on",
+  storedOn: Object.freeze([
+    "Filebase: IPFS pin of every artifact (storage host)",
+    "Pinata: second copy of every run manifest and of the latest run's table files that fit the free quota",
+    "GitHub Release: CAR backup of the run, re-pinnable",
+  ] as const),
+  storedOnProvenance: "Storage policy · ARD § 16 AM-10",
 });
 
 /** Explore · Filters, the result rows, permits, owners and the SQL panel. */
 export const EXPLORE_TEXTS = Object.freeze({
+  // Counts carry thousands separators (final review: "68,527", not "68527").
   header: (n: number, r: number, place: string, years: number): string =>
-    `${n} within ${r} mi of ${place} · roof ≥ ${years} yrs`,
+    `${n.toLocaleString("en-US")} within ${r} mi of ${place} · roof ≥ ${years} yrs`,
   /** The header of a search without a roof filter: same wording, no roof clause. */
-  headerNoRoof: (n: number, r: number, place: string): string => `${n} within ${r} mi of ${place}`,
+  headerNoRoof: (n: number, r: number, place: string): string =>
+    `${n.toLocaleString("en-US")} within ${r} mi of ${place}`,
   /** A BAD_REQUEST from explore.search (never the validator's JSON dump). */
   filtersOutOfRange: "Those filters are out of range · check radius, roof age and open years",
   /** `sel` names a property that the current results do not contain. */
@@ -73,20 +112,18 @@ export const EXPLORE_TEXTS = Object.freeze({
   asPrinted: "as printed on permit",
   noCarrier: "not published · no lexicon carrier",
   noOpenPermits: "no open roofing permits in this radius on the current run",
-  tenureUnknownCount: (n: number): string => `tenure unknown: ${n}`,
+  tenureUnknownCount: (n: number): string => `tenure unknown: ${n.toLocaleString("en-US")}`,
   engineBrowser: "DuckDB-WASM in your browser · read-only",
   engineServer: "DuckDB on the server · same views",
-  sqlReadOnly: "Read-only: only SELECT, WITH, DESCRIBE and SHOW run here",
-  /** The SQL result caption: the true count only when the result was not cut. */
-  sqlRows: (shown: number, capped: boolean, ms: number): string =>
-    `${capped ? `showing the first ${shown} rows` : `${shown} rows`} · ${ms} ms in this browser`,
-  sqlError: (firstLine: string, fix: string): string => `${firstLine} · Try: ${fix}`,
   zeroResults: (r: number, k: number): string =>
     `No properties within ${r} mi · ${k} close matches just outside`,
   milesOutside: (miles: number): string => `+${miles} mi`,
   roofUnknown: "roof age unknown · no permit, new-construction or built-year record",
   bbbNotChecked: (reason: string): string => `BBB not checked · ${reason}`,
-  bbbBlocked: "BBB blocked · 403 challenge, not harvested",
+  // A-16 data audit (2026-10-26, #1, #9, #18): the real reasons, not a blanket "no carrier".
+  bbbBlocked: "BBB blocks automated lookups; not checked",
+  addressNotInExport: "Address not in the published export",
+  contractorNotPrinted: "No contractor printed on this permit",
   bbbNotFound: "BBB: no profile found",
   tenureUnknown: "tenure unknown · no dated sale on record",
   ownerAreaUnknown: "owner area unknown · mailing address not in the published export",
@@ -98,7 +135,7 @@ export const COVERAGE_TEXTS = Object.freeze({
   kindAbsent: "not in this run's coverage section",
   denominatorMissing: "denominator not in this run's manifest",
   denominatorMissingFor: (source: string): string =>
-    `denominator not in this run's manifest · A-01 source ${source}`,
+    `denominator not in this run's manifest · source ${source}`,
 });
 
 /** Hub, Catalog, Coming soon, county selector and Help · MCP. */
@@ -108,8 +145,8 @@ export const PAGE_TEXTS = Object.freeze({
   travisOnly: "CountyLens has data for Travis County, TX only",
   catalogUnavailable: (reason: string): string => `Catalog unavailable · ${reason}`,
   tableExportMissing: "table export not in this run's manifest",
-  /** "Run {n} · {finishedAt as YYYY-MM-DD HH:mm UTC}"; n is the 1-based index position. */
-  hubChip: (n: number, finishedAt: string): string => `Run ${n} · ${utcMinute(finishedAt)}`,
+  /** "{Run N | Pilot slice} · {finishedAt as YYYY-MM-DD HH:mm UTC}"; the name follows RUNS_TEXTS.numbering. */
+  hubChip: (name: string, finishedAt: string): string => `${name} · ${utcMinute(finishedAt)}`,
 });
 
 /** Help · MCP "Try a tool" (A-14 T034): fixed wording of every state. */
@@ -145,7 +182,7 @@ export const AI_TEXTS = Object.freeze({
   paused: "AI answers are paused for today · the daily budget is used up and resets at 00:00 UTC",
   timedOut: "Took too long · try again, or use Filters instead",
   limitReached: (limit: number): string =>
-    `Question limit reached · ${limit} questions per session · use Filters or SQL, or reload to start a new session`,
+    `Question limit reached · ${limit} questions per session · use Filters, or reload to start a new session`,
   cancelled: "Cancelled · nothing was counted",
   failed: "The agent could not answer this question · try rephrasing it, or use Filters instead",
   unreachable: "The agent could not be reached · try again, or use Filters instead",

@@ -249,6 +249,25 @@ export async function localPart(cid: string): Promise<string> {
   return file;
 }
 
+/**
+ * A-16 AC-13: the bytes of one Explore index object `<EXPLORE_INDEX_PREFIX><cid>/<file>`, or
+ * undefined when it is absent. The reader role has GetObject on that prefix only (no ListBucket),
+ * so S3 answers a missing key with 403: both mean "not built". Any other key is refused.
+ */
+export async function getIndexObject(key: string): Promise<Uint8Array | undefined> {
+  const { cidCopyBucket, exploreIndexPrefix } = getEngineConfig();
+  if (exploreIndexPrefix === undefined || !key.startsWith(exploreIndexPrefix) || key.includes(".."))
+    throw new Error(`getIndexObject: ${key} is not under the Explore index prefix`);
+  try {
+    const object = await s3().send(new GetObjectCommand({ Bucket: cidCopyBucket, Key: key }));
+    if (object.Body === undefined) return undefined;
+    return await object.Body.transformToByteArray();
+  } catch (error) {
+    if (isAbsent(error)) return undefined;
+    throw error;
+  }
+}
+
 /** A presigned in-region GET URL for `ipfs/<cid>`. */
 export async function presignPart(cid: string): Promise<string> {
   return presign(getEngineConfig().cidCopyBucket, ipfsKey(cid));

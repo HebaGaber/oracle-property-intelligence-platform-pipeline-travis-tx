@@ -232,6 +232,17 @@ describe("status_class (generated status map, scoped to the profile's jurisdicti
     },
   );
 
+  it("A11-16: open_days_reason has no as-of default, so it cannot disagree with the SQL macro", () => {
+    // @ts-expect-error asOf is required: a call without it must not compile
+    const withoutAsOf = (): unknown => d.openDaysReason("stalled", "2026-03-11");
+    expect(typeof withoutAsOf).toBe("function");
+    // a finished permit with a plausible final date is not_open for any as-of on or after it
+    expect(d.openDaysReason("stalled", "2026-03-11", "2026-10-26", "2026-04-01")).toBe("not_open");
+    expect(d.openDaysReason("stalled", "2026-03-11", "2026-03-15", "2026-04-01")).toBe(
+      "needs_review",
+    );
+  });
+
   it.each([
     // improvement_status is null: stalled means the enum has no value for the source word
     // (Expired); otherwise the null is unexplained (needs_review).
@@ -292,7 +303,8 @@ describe("owner kind, name and missing reason (code-review #2, donphan M1)", () 
 
 describe("contractor edge count (donphan M4: never pick one of several)", () => {
   it.each([
-    [0, null, null, "contractor_unresolved"],
+    // A-16: no edge means the permit printed no contractor (source_missing), nothing failed to match.
+    [0, null, null, "source_missing"],
     [1, "baguqeeraone", "baguqeeraone", "contractor_unresolved"],
     [2, "baguqeeraone", null, "needs_review"],
   ] as const)("%s edge(s), min cid %s → company %s, reason %s", async (n, cid, company, reason) => {
@@ -346,7 +358,7 @@ describe("coordinate_source, contractor and BBB state", () => {
 
   it.each([
     ["Roofer A", "blocked", "bbb_blocked"],
-    [null, "not_checked", "contractor_unresolved"],
+    [null, "not_checked", "source_missing"],
   ] as const)("contractor name %s → bbb %s / %s", async (name, status, reason) => {
     expect(d.bbbStatus(name)).toBe(status);
     expect(d.bbbStatusReason(name)).toBe(reason);

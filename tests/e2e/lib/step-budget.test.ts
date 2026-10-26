@@ -9,11 +9,11 @@ describe("runBudgeted", () => {
 
   it("rejects with the step label, the budget and the last noted sub-step when it overruns", async () => {
     const stuck = runBudgeted("explore @ 390", 30, async (note) => {
-      note("click tab SQL");
+      note("click tab AI");
       await new Promise(() => undefined);
     });
     await expect(stuck).rejects.toThrow(
-      "explore @ 390: no result within 30 ms; last step: click tab SQL",
+      "explore @ 390: no result within 30 ms; last step: click tab AI",
     );
   });
 

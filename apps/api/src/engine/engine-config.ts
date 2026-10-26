@@ -9,15 +9,26 @@ export const REQUIRED_ENGINE_ENV_KEYS = ["CID_COPY_BUCKET", "READPATH_PRIVATE_PR
 
 /** `private/<name>/`: the only prefix the bench may read (research R-02, contracts/storage.md). */
 const PRIVATE_PREFIX = /^private\/[a-z0-9-]+\/$/;
+/** The Explore index: `private/<name>/` plus an optional views-version folder (`v1.2/`). */
+const INDEX_PREFIX = /^private\/[a-z0-9-]+\/(?:v[0-9]+(?:\.[0-9]+)*\/)?$/;
 
 const EngineEnv = z.object({
   CID_COPY_BUCKET: z.string().min(1),
   READPATH_PRIVATE_PREFIX: z.string().regex(PRIVATE_PREFIX, "must match private/<name>/"),
+  // A-16 AC-13: where the per-run Explore index lives (G1 sets it on the API, agent and MCP
+  // Lambdas). Optional: unset means "no index", so only small runs can be served.
+  EXPLORE_INDEX_PREFIX: z
+    .string()
+    .regex(INDEX_PREFIX, "must match private/<name>/ or private/<name>/v<version>/")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
 });
 
 export interface EngineConfig {
   readonly cidCopyBucket: string;
   readonly readPathPrivatePrefix: string;
+  /** `EXPLORE_INDEX_PREFIX` (e.g. `private/explore-index/`), undefined when not configured. */
+  readonly exploreIndexPrefix?: string;
 }
 
 export type EnvSource = Readonly<Record<string, string | undefined>>;
@@ -42,6 +53,9 @@ export function loadEngineConfig(env: EnvSource = process.env): EngineConfig {
   return {
     cidCopyBucket: parsed.data.CID_COPY_BUCKET,
     readPathPrivatePrefix: parsed.data.READPATH_PRIVATE_PREFIX,
+    ...(parsed.data.EXPLORE_INDEX_PREFIX !== undefined
+      ? { exploreIndexPrefix: parsed.data.EXPLORE_INDEX_PREFIX }
+      : {}),
   };
 }
 
@@ -51,4 +65,9 @@ let cached: EngineConfig | undefined;
 export function getEngineConfig(): EngineConfig {
   cached ??= loadEngineConfig();
   return cached;
+}
+
+/** Tests only: forget the validated config so the next getEngineConfig() re-reads the env. */
+export function resetEngineConfig(): void {
+  cached = undefined;
 }

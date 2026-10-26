@@ -18,7 +18,7 @@ import { Annotations, CfnOutput, CfnParameter, Stack, type StackProps } from "aw
 import * as amplify from "aws-cdk-lib/aws-amplify";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import type { Construct } from "constructs";
-import { CONTEXT_KEYS, type InfraConfig } from "./config.js";
+import { CONTEXT_KEYS, ENV_NAMES, type InfraConfig } from "./config.js";
 
 /** Amplify app name (console and `aws amplify list-apps`). */
 export const AMPLIFY_APP_NAME = "countylens-web";
@@ -28,8 +28,10 @@ export const AMPLIFY_MONOREPO_APP_ROOT = "apps/web";
 export const AUTO_BRANCH_PATTERN = "0*";
 /** FILEBASE_GATEWAY_HOST (plan § "Fixed texts and config keys"); the web build reads VITE_*. */
 export const DEFAULT_FILEBASE_GATEWAY_HOST = "ipfs.filebase.io";
-/** PINATA_GATEWAY_HOST (A-13 AM-01): the independent Verify gateway; the web build reads VITE_*. */
+/** PINATA_GATEWAY_HOST (AM-01, AM-10): an independent Verify gateway; the web build reads VITE_*. */
 export const DEFAULT_PINATA_GATEWAY_HOST = "gateway.pinata.cloud";
+/** ORBITOR_GATEWAY_HOST (A-16 AM-10): the second independent Verify gateway; the web build reads VITE_*. */
+export const DEFAULT_ORBITOR_GATEWAY_HOST = "ipfs.orbitor.dev";
 /**
  * Hub links (A-13 contracts/site-links.md, research R6): Amplify variable → CDK context key.
  * Empty by default (the link is hidden; the CRM card stays "Coming soon · Not deployed yet").
@@ -86,6 +88,10 @@ export interface WebStackProps extends StackProps {
   readonly filebaseGatewayHost?: string;
   /** Independent IPFS gateway host for Verify (PINATA_GATEWAY_HOST, A-13 AM-01). */
   readonly pinataGatewayHost?: string;
+  /** Second independent IPFS gateway host for Verify (ORBITOR_GATEWAY_HOST, A-16 AM-10). */
+  readonly orbitorGatewayHost?: string;
+  /** A-16 (AC-6): the admin user pool and SRP client from CountyLensApi. Missing → no admin sign-in vars. */
+  readonly cognito?: { readonly userPoolId: string; readonly userPoolClientId: string };
 }
 
 /** A site link from context: "" when unset or blank, else an https:// URL (anything else fails synth). */
@@ -189,8 +195,19 @@ export class WebStack extends Stack {
       name: "VITE_PINATA_GATEWAY_HOST",
       value: props.pinataGatewayHost ?? DEFAULT_PINATA_GATEWAY_HOST,
     });
+    environmentVariables.push({
+      name: "VITE_ORBITOR_GATEWAY_HOST",
+      value: props.orbitorGatewayHost ?? DEFAULT_ORBITOR_GATEWAY_HOST,
+    });
     for (const [name, key] of Object.entries(SITE_LINK_CONTEXT_KEYS)) {
       environmentVariables.push({ name, value: siteLinkFromContext(this, key) });
+    }
+    // A-16 (AC-6): public identifiers only (a pool id and a secretless SRP client id).
+    if (props.cognito !== undefined) {
+      environmentVariables.push(
+        { name: ENV_NAMES.webUserPoolId, value: props.cognito.userPoolId },
+        { name: ENV_NAMES.webUserPoolClientId, value: props.cognito.userPoolClientId },
+      );
     }
 
     // Rules apply top-down: the API rewrite must come before the SPA fallback, whose regex would

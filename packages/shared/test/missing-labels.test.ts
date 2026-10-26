@@ -11,9 +11,11 @@ import { describe, expect, it } from "vitest";
 import { MISSING_REASONS, type MissingReason } from "@countylens/contract";
 import {
   COVERAGE_LABELS,
+  INDEPENDENT_GATEWAYS,
   MISSING_REASON_LABELS,
   SOURCE_LABELS,
   assertMissingReasonLabels,
+  isIndependentGateway,
   missingLabel,
   readPathUrls,
   sourceLabel,
@@ -34,8 +36,8 @@ const SPEC_LABELS: Record<MissingReason, string> = {
   no_coordinates: "No coordinates for this parcel",
   no_roof_date: "No roof date found",
   basis_unmatched: "No roof-age basis matched",
-  no_dated_sale: "No dated sale to read the owner from",
-  no_owner_record: "No owner on the latest sale",
+  no_dated_sale: "No dated sale or deed on record",
+  no_owner_record: "No owner record on the TCAD account",
   no_mailing_address: "No owner mailing address",
   zip_not_zcta: "ZIP is not a Census ZIP area",
   not_open: "Permit is not open",
@@ -59,6 +61,7 @@ const HOSTS = {
   cidCopyHost: "copy.example.test",
   filebaseGatewayHost: "filebase.example.test",
   pinataGatewayHost: "pinata.example.test",
+  orbitorGatewayHost: "orbitor.example.test",
 };
 
 describe("A-03-TC-027: label map covers every reason in missingReasons (FR-011)", () => {
@@ -170,6 +173,15 @@ describe("A-03-TC-027: label map covers every reason in missingReasons (FR-011)"
       // The fallback label is "fallback · {host}": the host must be reachable as configured.
       expect(gatewayHost("filebase")).toBe(HOSTS.filebaseGatewayHost);
       expect(gatewayHost("pinata")).toBe(HOSTS.pinataGatewayHost);
+      expect(gatewayUrl(CID, "orbitor")).toBe(`https://${HOSTS.orbitorGatewayHost}/ipfs/${CID}`);
+      expect(gatewayHost("orbitor")).toBe(HOSTS.orbitorGatewayHost);
+    });
+
+    it("Pinata and orbitor are the independent Verify gateways; Filebase never is (AM-10)", () => {
+      expect(INDEPENDENT_GATEWAYS).toEqual(["pinata", "orbitor"]);
+      expect(isIndependentGateway("pinata")).toBe(true);
+      expect(isIndependentGateway("orbitor")).toBe(true);
+      expect(isIndependentGateway("filebase")).toBe(false);
     });
 
     it("changes with the configured hosts (nothing is remembered from an earlier config)", () => {
@@ -187,6 +199,7 @@ describe("A-03-TC-027: label map covers every reason in missingReasons (FR-011)"
       expect(gatewayUrl(CID, "filebase")).toBe(`https://${HOSTS.filebaseGatewayHost}/ipfs/${CID}`);
       expect(() => gatewayUrl(CID, "pinata")).toThrow(/PINATA_GATEWAY_HOST/);
       expect(() => gatewayHost("pinata")).toThrow(/PINATA_GATEWAY_HOST/);
+      expect(() => gatewayUrl(CID, "orbitor")).toThrow(/ORBITOR_GATEWAY_HOST/);
     });
 
     it("refuses anything that is not a CIDv1 (A3: CIDv1 only)", () => {
@@ -208,6 +221,9 @@ describe("A-03-TC-027: label map covers every reason in missingReasons (FR-011)"
       expect(() =>
         readPathUrls({ ...HOSTS, pinataGatewayHost: "pinata.example.test:8080" }),
       ).toThrow(/PINATA_GATEWAY_HOST/);
+      expect(() =>
+        readPathUrls({ ...HOSTS, orbitorGatewayHost: "https://orbitor.example.test" }),
+      ).toThrow(/ORBITOR_GATEWAY_HOST/);
       expect(() => readPathUrls({ ...HOSTS, cidCopyHost: "" })).toThrow(/CID_COPY_HOST/);
     });
 
@@ -215,7 +231,7 @@ describe("A-03-TC-027: label map covers every reason in missingReasons (FR-011)"
       const source = readFileSync(resolve(HERE, "../src/urls.ts"), "utf8");
       expect(source).not.toMatch(/https?:\/\/[a-z0-9]/i);
       expect(source).not.toMatch(
-        /ipfs\.filebase\.io|gateway\.pinata\.cloud|cloudfront\.net|ipfs\.io|dweb\.link|w3s\.link/i,
+        /ipfs\.filebase\.io|gateway\.pinata\.cloud|ipfs\.orbitor\.dev|cloudfront\.net|ipfs\.io|dweb\.link|w3s\.link/i,
       );
     });
   });

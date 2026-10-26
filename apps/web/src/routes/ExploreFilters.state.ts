@@ -7,6 +7,7 @@
 // anything else (e.g. `any`) means no permit filter.
 import {
   EXPLORE_BOUNDS,
+  EXPLORE_MAX_PAGE,
   EXPLORE_SORTS,
   type ExploreSort,
   type PermitFilter,
@@ -33,7 +34,8 @@ export interface ExploreQuery {
   readonly ooa: boolean;
   readonly sort: ExploreSort;
   readonly sel: string | null;
-  readonly mode: "filters" | "sql";
+  /** 0-based results page (the URL's `page` is 1-based). */
+  readonly page: number;
 }
 
 const inRange = (value: number, [min, max]: readonly [number, number]): boolean =>
@@ -78,7 +80,7 @@ export function parseExploreQuery(params: URLSearchParams): ExploreQuery {
     ooa: ooa === "1" || ooa === "true",
     sort,
     sel: params.get("sel"),
-    mode: params.get("mode") === "sql" ? "sql" : "filters",
+    page: (num(params, "page", [1, EXPLORE_MAX_PAGE + 1], true) ?? 1) - 1,
   };
 }
 
@@ -111,9 +113,11 @@ export interface ExploreSearchRequest {
   readonly ooa?: boolean;
   readonly sort: ExploreSort;
   readonly limit: number;
+  readonly page?: number;
 }
 
-export const EXPLORE_PAGE_ROWS = 200;
+/** Rows a results page (PO 2026-10-26: 20, as the boards' pager). */
+export const EXPLORE_PAGE_ROWS = 20;
 
 export function searchRequest(query: ExploreQuery, manifestCid: string): ExploreSearchRequest {
   const permit = permitFilter(query.permit);
@@ -128,6 +132,7 @@ export function searchRequest(query: ExploreQuery, manifestCid: string): Explore
     ...(query.ooa ? { ooa: true } : {}),
     sort: query.sort,
     limit: EXPLORE_PAGE_ROWS,
+    ...(query.page > 0 ? { page: query.page } : {}),
   };
 }
 

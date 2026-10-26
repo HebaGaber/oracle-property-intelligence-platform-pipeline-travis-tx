@@ -52,7 +52,7 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
     ...base,
     data,
     description:
-      "CountyLens API: tRPC Lambda (arm64, 3,008 MB, 15 s) behind an HTTP API with a 30-day JSON access log and X-Ray (AD-09, AM-03, AM-06).",
+      "CountyLens API: tRPC Lambda (arm64, 1,769 MB, 15 s) behind an HTTP API with a 30-day JSON access log and X-Ray (AD-09, AM-03, AM-06); admin user pool and command queue (A-16).",
   });
   const web = new WebStack(app, "CountyLensWeb", {
     ...base,
@@ -60,6 +60,10 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
     httpApiUrl: api.httpApiUrl,
     agentApiUrl: api.agentHttpApi.apiEndpoint,
     cidCopyHost: data.distribution.distributionDomainName,
+    cognito: {
+      userPoolId: api.userPool.userPoolId,
+      userPoolClientId: api.userPoolClient.userPoolClientId,
+    },
     description:
       "CountyLens web: Amplify Hosting app and branches for apps/web; /api/<*> rewritten to the HTTP API.",
   });
@@ -68,7 +72,7 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
     api,
     operatorEmail: requireOperatorEmail(config),
     description:
-      "CountyLens operations: SNS email, alarms (Errors, Throttles, 5xx) and the $10 budget (no CI deploy role, AM-08).",
+      "CountyLens operations: SNS email, alarms (Errors, Throttles, 5xx, p95 duration, account concurrency) and the $10 budget (no CI deploy role, AM-08).",
   });
   const cert = new CertStack(app, "CountyLensCert", {
     ...base,

@@ -71,3 +71,19 @@
     grid-template-columns: auto minmax(0, 1fr);
   }
 }
+
+.role {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  font-weight: var(--md-sys-typescale-body-small-weight);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking);
+}
+
+.reason {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--md-sys-color-on-surface-variant);
+}

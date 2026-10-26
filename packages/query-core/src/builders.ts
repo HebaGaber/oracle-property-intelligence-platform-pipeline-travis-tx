@@ -21,7 +21,12 @@ const PERMIT_COLUMNS = [
   "improvement_status",
   "status_class",
   "issue_date",
+  "final_date",
+  "permit_close_date",
+  "open_days",
   "contractor_resolution",
+  "contractor_name_as_printed",
+  "bbb_url",
 ] as const;
 
 /** The Permits page list (FR-008): the permit columns, provenance and `missing`, one row per

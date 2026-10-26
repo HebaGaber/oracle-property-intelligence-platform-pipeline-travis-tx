@@ -46,6 +46,11 @@ const HarnessEnv = z.object({
     blankToUndefined,
     z.string().min(1).default("gateway.pinata.cloud"),
   ),
+  /** The second independent Verify gateway (ARD § 16 AM-10). */
+  ORBITOR_GATEWAY_HOST: z.preprocess(
+    blankToUndefined,
+    z.string().min(1).default("ipfs.orbitor.dev"),
+  ),
   READPATH_PRIVATE_PREFIX: z.preprocess(
     blankToUndefined,
     z
@@ -237,11 +242,19 @@ export async function readPublishedRun(page: Page): Promise<PublishedRun> {
   const index = await fetchRunsIndex();
   const latest = latestRun(index);
   await page.goto(`${runtimeUrl()}/runs`, { waitUntil: "domcontentloaded" });
-  const cidElement = page.locator(`[data-cid="${latest.manifestCid}"]`).first();
+  // The Run menu lists every CID in a collapsed list first; the card's visible CID is the one shown.
+  const cidElement = page
+    .locator(`[data-cid="${latest.manifestCid}"]`)
+    .filter({ visible: true })
+    .first();
   await cidElement.waitFor({ state: "visible", timeout: 60_000 });
   const manifestCid = await cidElement.getAttribute("data-cid");
   if (!manifestCid) throw new Error("the run card's manifest CID element has no data-cid");
-  await page.getByText(latest.runId).first().waitFor({ state: "visible", timeout: 30_000 });
+  await page
+    .getByText(latest.runId)
+    .filter({ visible: true })
+    .first()
+    .waitFor({ state: "visible", timeout: 30_000 });
   const fetched = await fetchManifest(manifestCid);
   if (fetched.manifest.runId !== latest.runId) {
     throw new Error(

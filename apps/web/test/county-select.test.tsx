@@ -38,14 +38,13 @@ describe("CountySelect", () => {
     expect(select.value).toBe("travis");
   });
 
-  it("links to the Coming soon item Other counties and states", () => {
+  it("has no Other counties link next to the chip (Shell boards; PO 2026-10-26: it is in More)", () => {
     render(
       <MemoryRouter>
         <CountySelect />
       </MemoryRouter>,
     );
-    const link = screen.getByRole("link", { name: /Other counties and states/ });
-    expect(link.getAttribute("href")).toBe("/soon/other-counties");
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });
 
@@ -56,13 +55,14 @@ describe("shell location slot", () => {
     await screen.findByRole("navigation", { name: "Primary" }, { timeout: 20_000 });
   }
 
-  it("is mounted under /tx/ and absent elsewhere; the app bar keeps no button", async () => {
+  it("is the app bar's location chip under /tx/ and absent elsewhere (Shell boards, A-16)", async () => {
     await renderAt("/runs");
     expect(screen.queryByRole("combobox", { name: "County" })).toBeNull();
     cleanup();
     await renderAt("/tx/harris/explore");
-    expect(await screen.findByRole("combobox", { name: "County" })).toBeTruthy();
-    expect(screen.getByRole("banner").querySelectorAll("button, select")).toHaveLength(0);
+    const select = await screen.findByRole("combobox", { name: "County" });
+    expect(screen.getByRole("banner").contains(select)).toBe(true);
+    expect(screen.getByRole("main").querySelector("select[data-county-picker]")).toBeNull();
   });
 
   it("/tx/{other}/… renders the Travis-only text with a link to Explore", async () => {

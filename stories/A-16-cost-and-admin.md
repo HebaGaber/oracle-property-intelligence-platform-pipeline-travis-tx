@@ -11,18 +11,25 @@ priority: P2
 moscow: Must
 branch: 016-cost-and-admin
 spec: specs/016-cost-and-admin/
-depends_on: [A-03, A-11, A-13]
-size_days: 2
+depends_on: [A-03, A-11, A-13, A-14]
+size_days: 2 # sizing exception requested at G4 (Part 3 added 2026-10-26); see Gate G4 notes
 agents:
   design: [metagross, machamp]
-  builder: [metagross, machamp]   # AGENT-MAP: metagross (cost page, sign-in, UI, API), machamp (cost jobs, queue, DLQ, bridge)
+  builder: [metagross, machamp] # AGENT-MAP: metagross (cost page, sign-in, UI, API), machamp (cost jobs, queue, DLQ, bridge)
   reviewers: [metagross, machamp, audino]
   verify: "`docs/cost.md` + billing screenshot; Playwright admin sign-in + Start run reaches the bridge; non-admin gets 403"
-skills: [build-frontend-backends, build-batch-workflows, frontend-bug-fix, responsive-design-tests, apply-engineering-guidelines]
+skills:
+  [
+    build-frontend-backends,
+    build-batch-workflows,
+    frontend-bug-fix,
+    responsive-design-tests,
+    apply-engineering-guidelines,
+  ]
 ui: true
-status: Draft
-gate: G4
-qc_testability_signoff: false
+status: Done
+gate: G7
+qc_testability_signoff: true
 created: 2026-10-19
 merged: 2026-10-21
 ---
@@ -31,14 +38,14 @@ merged: 2026-10-21
 
 **Merged story (2026-10-21).** This story now holds two former stories so the six-stage loop runs once: **A-16** (zero idle cost and source limits, Must) and **A-17** (admin sign-in and run commands, Should). The original files are in [stories/merged/](merged/) for history; this file is the one to plan, build and gate. Every AC keeps its old ID in brackets, for example `(A-17 AC-2)`, so older evidence and reviews still trace.
 
-| Field | Value |
-| --- | --- |
-| Evaluation point | A4 (primary) · A1 · A3 |
-| Demo line(s) | D-1 (opening claim), D-4 ("without requiring Oracle-hosted database infrastructure"); the admin part needs no demo line and supports D-2 by showing how a run is started |
-| Agents | design `metagross`, `machamp` · builder `metagross` (cost page, sign-in, UI, API), `machamp` (cost jobs, queue, DLQ, bridge) · reviewers `metagross`, `machamp`, `audino` · verify `docs/cost.md` + billing screenshot; Playwright admin sign-in + Start run reaches the bridge; non-admin gets 403 (source: [AGENT-MAP.md](../../assessment-guide/AGENT-MAP.md) § 4) |
-| Depends on | A-03, A-11 (full publish and incremental runs, which now include the former A-12), A-13 (Explorer pages) |
-| Size | 2 days (0.5 + 1.5) |
-| Branch | `016-cost-and-admin`, merged into `feature/oracle-pipeline` |
+| Field            | Value                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Evaluation point | A4 (primary) · A1 · A3                                                                                                                                                                                                                                                                                                                                                |
+| Demo line(s)     | D-1 (opening claim), D-4 ("without requiring Oracle-hosted database infrastructure"); the admin part needs no demo line and supports D-2 by showing how a run is started                                                                                                                                                                                              |
+| Agents           | design `metagross`, `machamp` · builder `metagross` (cost page, sign-in, UI, API), `machamp` (cost jobs, queue, DLQ, bridge) · reviewers `metagross`, `machamp`, `audino` · verify `docs/cost.md` + billing screenshot; Playwright admin sign-in + Start run reaches the bridge; non-admin gets 403 (source: [AGENT-MAP.md](../../assessment-guide/AGENT-MAP.md) § 4) |
+| Depends on       | A-03, A-11 (full publish and incremental runs, which now include the former A-12), A-13 (Explorer pages), A-14 (agent outcome events, MCP; added 2026-10-26, D-1)                                                                                                                                                                                                     |
+| Size             | 2 days (0.5 + 1.5)                                                                                                                                                                                                                                                                                                                                                    |
+| Branch           | `016-cost-and-admin`, merged into `feature/oracle-pipeline`                                                                                                                                                                                                                                                                                                           |
 
 ## Context
 
@@ -54,11 +61,12 @@ The two parts share infrastructure and cost rules: Part 2's Cognito, SQS, DLQ an
 
 As the **evaluator**, I want **to see on the hosted Coverage page what CountyLens costs while idle, who pays for each part, and how fast each source can be read**, so that **I can confirm Oracle carries no standing infrastructure cost and that source limits are known and respected**.
 
-As the **Oracle operator**, I want **to sign in with an email code and start, stop or retry an incremental run from the Runs page, and see recent activity**, so that **I can refresh Travis County data on demand while the Query DB stays private on my machine**.
+As the **Oracle operator**, I want **to sign in with my email and password and start, stop or retry an incremental run from the Runs page, and see recent activity**, so that **I can refresh Travis County data on demand while the Query DB stays private on my machine**.
 
 When done:
+
 - **Part 1:** `docs/cost.md` (component, idle cost, cost per use, who pays) with real numbers from Cost Explorer and Filebase, plus a Budgets/Cost Explorer screenshot; `docs/source-limits.md` (throughput, rate limits, anti-bot posture, slow sites, BBB limits) from the A-01 to A-11 measurements; both shown on the Coverage page's Cost and Limits sections. CDK assertions enforce the cost rules.
-- **Part 2:** A Cognito user pool with the built-in email code, self sign-up off, and an `admin` group. An `adminProcedure` that verifies the JWT with `aws-jwt-verify`. `admin.runs.start / stop / retry` send a command to an SQS queue (15-minute expiry, cancel by command ID) with a DLQ and one alarm that emails the operator through SNS. A local bridge in `pipeline/` polls the queue outbound and starts the Restate `CountyIngest` workflow. It writes `runs/live.json`, a small admin S3 status object. The Activity page shows `admin.activity.summary / list` from the query log through Logs Insights, cached 5 minutes. Admin controls appear only after sign-in.
+- **Part 2:** A Cognito user pool with email + password sign-in (copied from Task B, PO 2026-10-26), self sign-up off, and an `admin` group. An `adminProcedure` that verifies the JWT with `aws-jwt-verify`. `admin.runs.start / stop / retry` send a command to an SQS queue (15-minute expiry, cancel by command ID) with a DLQ and one alarm that emails the operator through SNS. A local bridge in `pipeline/` polls the queue outbound and starts the Restate `CountyIngest` workflow. It writes `runs/live.json`, a small admin S3 status object. The Activity page shows `admin.activity.summary / list` from the query log through Logs Insights, cached 5 minutes. Admin controls appear only after sign-in.
 
 **Independent test:** (1) open Coverage · Cost on the hosted URL; it shows "$0.00 fixed per month" with the billing date, and `cdk synth` assertions pass. (2) Sign in as the admin on the hosted URL, press Start for an Austin-permits window, see the command reach the bridge and the run state change in `runs/live.json`; sign in as a non-admin and get 403.
 
@@ -66,20 +74,26 @@ When done:
 
 ### Part 1 · Zero idle cost and source limits (was A-16, Must)
 
-1. **AC-1** (A-16 AC-1) · **Given** the deployed stacks with no traffic, **When** Cost Explorer is read for the last full day, **Then** `docs/cost.md` shows each component's idle cost (Amplify static, Lambda, API Gateway, S3 + CloudFront CID copy, DynamoDB on-demand, SSM, CloudWatch Logs, disabled scheduler, Cognito, SQS + DLQ, SNS) with $0.00 fixed per month plus storage cents, who pays per use, and the screenshot is in `docs/evidence/img/`. ☐ testable
-2. **AC-2** (A-16 AC-2) · **Given** the CDK app, **When** `cdk synth` runs, **Then** assertions confirm: scheduler `DISABLED`; no Secrets Manager, RDS, KMS CMK, provisioned concurrency, WAF or Route 53 hosted zone; log retention 14 days (query log 30); a $10 budget alert; region from config. ☐ testable
-3. **AC-3** (A-16 AC-3, scale) · **Given** the measurements from A-01 to A-11, **When** `docs/source-limits.md` is written, **Then** every source has throughput (rows or requests per minute), page size, the full-capture duration measured at full scale (for example the 2,380,725-row Austin backfill and the full GIS paging), rate limits, anti-bot posture and the optimisation applied. ☐ testable
-4. **AC-4** (A-16 AC-4) · **Given** the hosted Coverage page, **When** the evaluator opens Cost and Limits, **Then** both sections render the same numbers as the two docs, each with its "as of" date and source. ☐ testable
-5. **AC-5** (A-16 AC-5, missing data) · **Given** Cost Explorer has not yet produced data for the current day (about 24 h lag) or Filebase usage is not readable through its API, **When** the page renders, **Then** it shows the last available date with "as of {date}" or "Filebase usage: not available · {reason}", never a zero filled in. ☐ testable
+1. **AC-1** (A-16 AC-1, window amended 2026-10-26 by the PO) · **Given** the deployed stacks, **When** Cost Explorer is read for the last full billed days (at least 3), grouped by service and by record type, with per-use lines (evaluator traffic, CI, deploys) separated from idle lines, **Then** `docs/cost.md` shows each component's idle cost (Amplify static, Lambda, API Gateway, S3 + CloudFront CID copy, DynamoDB on-demand, SSM, CloudWatch Logs, disabled scheduler, Cognito, SQS + DLQ, SNS) with $0.00 fixed per month plus storage cents, who pays per use, and the screenshot is in `docs/evidence/img/`. ☑ testable
+2. **AC-2** (A-16 AC-2) · **Given** the CDK app, **When** `cdk synth` runs, **Then** assertions confirm: scheduler `DISABLED`; no Secrets Manager, RDS, KMS CMK, provisioned concurrency, WAF or Route 53 hosted zone; log retention 14 days (query log 30); a $10 budget alert; region from config. ☑ testable
+3. **AC-3** (A-16 AC-3, scale) · **Given** the measurements from A-01 to A-11, **When** `docs/source-limits.md` is written, **Then** every source has throughput (rows or requests per minute), page size, the full-capture duration measured at full scale (for example the 2,380,725-row Austin backfill and the full GIS paging), rate limits, anti-bot posture and the optimisation applied. ☑ testable
+4. **AC-4** (A-16 AC-4) · **Given** the hosted Coverage page, **When** the evaluator opens Cost and Limits, **Then** both sections render the same numbers as the two docs, each with its "as of" date and source. ☑ testable
+5. **AC-5** (A-16 AC-5, missing data) · **Given** Cost Explorer has not yet produced data for the current day (about 24 h lag) or Filebase usage is not readable through its API, **When** the page renders, **Then** it shows the last available date with "as of {date}" or "Filebase usage: not available · {reason}", never a zero filled in. ☑ testable
 
 ### Part 2 · Admin sign-in and run commands (was A-17, Should)
 
-6. **AC-6** (A-17 AC-1) · **Given** the operator's email is in the `admin` group, **When** they open Admin, enter the email and the 6-digit code from the Cognito email, **Then** they land on Runs with Start / Stop / Retry visible and "Signed in as admin" shown; signed-out visitors never see these controls. ☐ testable
-7. **AC-7** (A-17 AC-2) · **Given** a signed-in admin and the bridge running, **When** they press Start for "Austin permits since Run {n} watermark", **Then** one SQS message with a command ID is sent, the bridge picks it up within 60 s, the Restate `CountyIngest` workflow starts, and the Runs page shows "Running · started {UTC time}" from `runs/live.json`. ☐ testable
-8. **AC-8** (A-17 AC-3, error) · **Given** a signed-in user who is not in the `admin` group, or an expired token, **When** they call any `admin.*` procedure, **Then** the API answers 403 or 401, sends nothing to SQS, and logs the refusal without the token. ☐ testable
-9. **AC-9** (A-17 AC-4, missing data / error) · **Given** the bridge is offline, **When** a Start command waits 15 minutes, **Then** it expires, the UI shows "Bridge offline · command expired at {time}", nothing runs later by surprise, and after 3 failed receives the message goes to the DLQ, whose alarm emails the operator. ☐ testable
-10. **AC-10** (A-17 AC-5, scale) · **Given** 30 days of query log, **When** the admin opens Activity, **Then** the summary (questions per day, p95 latency, failures by outcome) loads in p95 < 3 s through the 5-minute cache, and every number links to its Logs Insights query. ☐ testable
-11. **AC-11** (A-17 AC-6) · **Given** the CDK app, **When** `cdk synth` runs, **Then** assertions confirm self sign-up off, the queue's DLQ and alarm, no inbound path from AWS to the operator machine, no Query DB connection string in `apps/` or `infra/`, and $0 idle cost (Cognito free tier, SQS per request). ☐ testable
+6. **AC-6** (A-17 AC-1, amended 2026-10-26: sign-in copied from Task B's working Cognito email + password flow instead of the email code, PO decision) · **Given** the operator's email is in the `admin` group, **When** they open Admin and sign in with that email and its password, **Then** they land on Runs with Start / Stop / Retry visible and "Signed in as admin" shown; signed-out visitors never see these controls. ☑ testable
+7. **AC-7** (A-17 AC-2) · **Given** a signed-in admin and the bridge running, **When** they press Start for "Austin permits since Run {n} watermark", **Then** one SQS message with a command ID is sent, the bridge picks it up within 60 s, the incremental refresh starts (the Restate `AustinPermits` workflow, then the gated publish through `scripts/publish-run.ts` `gate` and `gate-remote`; the repo has no `CountyIngest` workflow, machamp design 2026-10-26), and the Runs page shows "Running · started {UTC time}" from `runs/live.json`. ☑ testable
+8. **AC-8** (A-17 AC-3, error) · **Given** a signed-in user who is not in the `admin` group, or an expired token, **When** they call any `admin.*` procedure, **Then** the API answers 403 or 401, sends nothing to SQS, and logs the refusal without the token. ☑ testable
+9. **AC-9** (A-17 AC-4, missing data / error) · **Given** the bridge is offline, **When** a Start command waits 15 minutes, **Then** it expires, the UI shows "Bridge offline · command expired at {time}", nothing runs later by surprise, and after 3 failed receives the message goes to the DLQ, whose alarm emails the operator. ☑ testable
+10. **AC-10** (A-17 AC-5, scale) · **Given** 30 days of query log, **When** the admin opens Activity, **Then** the summary (questions per day, p95 latency, failures by outcome) loads in p95 < 3 s through the 5-minute cache, and every number links to its Logs Insights query. ☑ testable
+11. **AC-11** (A-17 AC-6) · **Given** the CDK app, **When** `cdk synth` runs, **Then** assertions confirm self sign-up off, the queue's DLQ and alarm, no inbound path from AWS to the operator machine, no Query DB connection string in `apps/` or `infra/`, and $0 idle cost (Cognito free tier, SQS per request). ☑ testable
+
+### Part 3 · Close the carried gaps and match the prototype (added 2026-10-26, PO)
+
+12. **AC-12** (prototype, scale) · **Given** the hosted app and the CountyLens boards in `design/prototype/`, **When** each page is opened at 390, 768 and 1440 px in every state its board shows (light theme), **Then** its layout, section order, components, labels and states match its board, and every remaining difference is listed in `docs/evidence/A-16-prototype-parity.md` with its reason (an AD-xx decision, real data, or an accessibility rule); placeholder numbers on the boards are not compared. ☑ testable
+13. **AC-13** (full county, scale) · **Given** the latest published full-county run (441,961 properties), **When** an evaluator runs an Explore search (radius, roof age, open permits, tenure, out-of-area owner), asks the agent a README prompt, or calls an MCP data tool, **Then** each answers from a per-run Explore index built only from that run's published CIDs (recorded in the index), with p95 < 3 s for Explore and no Lambda timeout, and the A-13/A-14 tests parked for this gap run again. ☑ testable
+14. **AC-14** (missing data / closure) · **Given** the items carried forward from A-11, A-13 and A-14 below, **When** A-16 reaches G7, **Then** each row of the Closure table is closed with evidence or listed in `docs/evidence/A-16.md` § Exceptions with its reason and a PO decision; no parked test is counted as passed. ☑ testable
 
 ## Edge cases (at least two)
 
@@ -88,36 +102,41 @@ When done:
 - (A-16) A source that never became reachable (TCAD 403) → its limit row says "blocked" with dates, not a throughput.
 - (A-17) Two Start presses in a row → the second is rejected while a run is active ("A run is already running"); one command ID per run.
 - (A-17) Stop during publication → the bridge finishes the current atomic step, never leaves half-published CIDs, and records "stopped by admin" in the run limitations.
-- (A-17) The Cognito email quota (default SES sender) is reached → the sign-in screen shows "Code could not be sent, try later"; the public app is unaffected.
+- (A-17) Cognito refuses the sign-in (too many attempts, or its service limit is reached) → the sign-in screen shows "Sign-in is not available right now, try later"; the public app is unaffected.
+- (cost window, PO 2026-10-26) The story must finish in one 3-hour session, so AC-1 reads the last full billed days, splits idle from per-use by service and record type, and states the Part 2 resources (Cognito, SQS, SNS) from their pricing model until their first billed day; recorded as a gate exception.
 - (merge) The Part 2 resources (Cognito, SQS, DLQ, SNS) appear in Cost Explorer → they are listed in `docs/cost.md` as per-use, with $0 idle; a non-zero idle line fails AC-1.
 
 ## Requirements
 
-| REQ | Requirement | Traces to |
-| --- | --- | --- |
-| FR-001 | (A-16 FR-001) System MUST document idle and per-use cost per component from billing data | AC-1 |
-| FR-002 | (A-16 FR-002) CDK MUST assert the zero-idle-cost rules | AC-2 |
-| FR-003 | (A-16 FR-003) System MUST document measured limits for every source | AC-3 |
-| FR-004 | (A-16 FR-004) Coverage page MUST show both documents' numbers with dates | AC-4 |
-| FR-005 | (A-16 FR-005) Page MUST show reasons for unavailable cost data | AC-5 |
-| FR-006 | (A-17 FR-001) System MUST sign in admins with a Cognito email code and show admin controls only to them | AC-6 |
-| FR-007 | (A-17 FR-002) System MUST deliver run commands through SQS to an outbound-polling bridge | AC-7 |
-| FR-008 | (A-17 FR-003) System MUST reject non-admin and expired tokens on every admin procedure | AC-8 |
-| FR-009 | (A-17 FR-004) System MUST expire unpicked commands and alarm on DLQ messages | AC-9 |
-| FR-010 | (A-17 FR-005) System MUST show Activity from the query log with links to its queries | AC-10 |
-| NFR-001 | (A-16 NFR-001) $0.00 fixed per month while idle; $10 budget alert (NFR-02) | AC-1, AC-2, AC-11 |
-| NFR-002 | (A-16 NFR-002) Responsive at 390/768/1440, Atlas only (NFR-08) | AC-4, AC-6 |
-| NFR-003 | (A-17 NFR-001) Activity p95 < 3 s cached; command pickup ≤ 60 s while the bridge runs | AC-7, AC-10 |
-| NFR-004 | (A-17 NFR-002) Least-privilege IAM; no token in logs; WCAG 2.2 AA | AC-6, AC-8 |
+| REQ     | Requirement                                                                                                 | Traces to         |
+| ------- | ----------------------------------------------------------------------------------------------------------- | ----------------- |
+| FR-001  | (A-16 FR-001) System MUST document idle and per-use cost per component from billing data                    | AC-1              |
+| FR-002  | (A-16 FR-002) CDK MUST assert the zero-idle-cost rules                                                      | AC-2              |
+| FR-003  | (A-16 FR-003) System MUST document measured limits for every source                                         | AC-3              |
+| FR-004  | (A-16 FR-004) Coverage page MUST show both documents' numbers with dates                                    | AC-4              |
+| FR-005  | (A-16 FR-005) Page MUST show reasons for unavailable cost data                                              | AC-5              |
+| FR-006  | (A-17 FR-001) System MUST sign in admins with Cognito email + password and show admin controls only to them | AC-6              |
+| FR-007  | (A-17 FR-002) System MUST deliver run commands through SQS to an outbound-polling bridge                    | AC-7              |
+| FR-008  | (A-17 FR-003) System MUST reject non-admin and expired tokens on every admin procedure                      | AC-8              |
+| FR-009  | (A-17 FR-004) System MUST expire unpicked commands and alarm on DLQ messages                                | AC-9              |
+| FR-010  | (A-17 FR-005) System MUST show Activity from the query log with links to its queries                        | AC-10             |
+| FR-011  | System MUST match each prototype board at 390/768/1440 or record the reason                                 | AC-12             |
+| FR-012  | Explore, the agent and MCP MUST read a per-run index built from published CIDs only                         | AC-13             |
+| FR-013  | Every carried gap MUST be closed or recorded as a PO-approved exception                                     | AC-14             |
+| NFR-001 | (A-16 NFR-001) $0.00 fixed per month while idle; $10 budget alert (NFR-02)                                  | AC-1, AC-2, AC-11 |
+| NFR-002 | (A-16 NFR-002) Responsive at 390/768/1440, Atlas only (NFR-08)                                              | AC-4, AC-6        |
+| NFR-003 | (A-17 NFR-001) Activity p95 < 3 s cached; command pickup ≤ 60 s while the bridge runs                       | AC-7, AC-10       |
+| NFR-004 | (A-17 NFR-002) Least-privilege IAM; no token in logs; WCAG 2.2 AA                                           | AC-6, AC-8        |
 
 ## Prototype reference (mandatory if the story has UI)
 
-| Element | Value |
-| --- | --- |
-| Claude Design screens, Part 1 | `design/prototype/Coverage1440.dc.html` (Cost section), `Coverage768.dc.html`, `Coverage390.dc.html`, `CoverageStates.dc.html` |
-| Claude Design screens, Part 2 | `design/prototype/AdminSignIn1440.dc.html` (+ 768, 390), `design/prototype/RunsAdmin1440.dc.html`, `design/prototype/Activity1440.dc.html` (+ 768, 390), `design/prototype/ActivityStates.dc.html` |
-| States covered | Cost: populated · partial (as of yesterday) · unavailable with reason. Admin: signed out · code sent · signed in · running · bridge offline · expired · empty activity · error |
-| Design system | `assessment-guide/design-system/` (Atlas, Material 3, mobile-first) |
+| Element                       | Value                                                                                                                                                                                                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Design screens, Part 1 | `design/prototype/Coverage1440.dc.html` (Cost section), `Coverage768.dc.html`, `Coverage390.dc.html`, `CoverageStates.dc.html`                                                                                                                                                    |
+| Claude Design screens, Part 2 | `design/prototype/AdminSignIn1440.dc.html` (+ 768, 390), `design/prototype/RunsAdmin1440.dc.html`, `design/prototype/Activity1440.dc.html` (+ 768, 390), `design/prototype/ActivityStates.dc.html`                                                                                |
+| Part 3 (AC-12)                | Every board in `design/prototype/` that maps to a route (inventory in `docs/evidence/A-16-prototype-parity.md`); light theme only (PO 2026-10-26)                                                                                                                                 |
+| States covered                | Cost: populated · partial (as of yesterday) · unavailable with reason. Admin: signed out · signed in (the board's "code sent" state does not apply to password sign-in; recorded as Justified in the parity matrix) · running · bridge offline · expired · empty activity · error |
+| Design system                 | `assessment-guide/design-system/` (Atlas, Material 3, mobile-first)                                                                                                                                                                                                               |
 
 ## Demo Script
 
@@ -149,6 +168,7 @@ A-11 (Run 1, full publish) merged with seven recorded, deliberate gaps — track
 
 18. **Explore SQL tab takes about 96 s to bind Run 3 (from A-11 Run 3, PO 2026-10-26: known gap).** Measured on the hosted feature site (commit `2af013c`): the in-browser DuckDB binds every published table of the latest run, about 1,500 CloudFront requests and 15 MB, all 200/206, ready after about 96 s (Run 2 fitted in 60 s). Hosted tests that open the SQL tab time out at 60 s: A-13-TC-066, A-13-TC-080 (explore-sql at 390) and A-13-TC-083 (CI run 40243665046). The "lazy SQL" work on `016-cost-and-admin` should fix it; the tests keep their 60 s limit. Parked until then (`PARKED_GAPS.sqlTabBind` in `tests/e2e/lib/a13-fixtures.ts`): TC-066 is skipped as "Parked", and TC-080 and TC-083 skip only the explore-sql route with a "parked" note in the report; unpark by deleting the parkGap call and the PARKED_ROUTES entry when this item closes.
 19. **Run 3 size: Catalog footers and the Filebase fallback (from A-11 Run 3, PO 2026-10-26: known gap, parked).** Run 3 has 255 table parts, 24 tables and 983 MB of tables (Run 2: 225, 21, 556 MB). Each of these hosted cases passed once and failed twice on Run 3 (CI runs 40242647867, 40243665046, 40246031481): A-13-TC-053, where the Catalog's Parquet footers do not all arrive within the 2-minute test budget (rows fill in, slowly); and A-03-TC-034, where the forced Filebase fallback downloads about 1 GB and Filebase drops some requests ("Failed to fetch"). Both are parked (`PARKED_GAPS.catalogFooters`; a `test.fixme` in `tests/e2e/fallback.spec.ts`) until A-16's lazy loading lands; unpark by deleting those lines.
+
 ## Carried forward from A-13 (known gaps to close here)
 
 A-13 (Explorer UI and content pages) was closed on 2026-10-25 with the gaps below, by PO decision "go to option 3 and document the gaps in A-16" (record: `docs/decisions/DEC-A-13-explore-full-county.md`). Every one of them was measured on the hosted site against the real Run 2 (441,961 properties, 15,025 permits); none was hidden or faked.
@@ -159,8 +179,8 @@ A-13 (Explorer UI and content pages) was closed on 2026-10-25 with the gaps belo
 4. **Run 3 does not exist** (A-11 closed without it). A-13-TC-015 and AC-1 ("Runs 1 to 3", Compare of Run 3 against Run 2) and AC-12 ("at least 3 runs" in the Runs log) can only be shown for Runs 1 and 2. This is items 2 and 4 of the A-11 list above; closing them closes this one.
 5. **Run 2 publishes only permit coverage keys.** `coverage` has no parcel or property count (the county tables are reused from Run 1), so the Coverage page lists permit kinds only. The expected property count in A-13-TC-004 is the documented 441,961 (`docs/evidence/A-04.md`). **To close it:** the manifest builder adds the county counts, and the Coverage page shows them (A-11 manifest change, so a new run).
 6. **Infrastructure changed under A-13, to carry into the cost review:** API Lambda `CountyLensApi` DuckDB limit 2 GB (was 1 GB) and timeout 29 s (was 15 s); both are deployed from the laptop and recorded in `infra/`. The 29 s timeout is a stop-gap and can go back to 15 s once item 1 is closed. Review risk (metagross, 2026-10-25): at 3,008 MB a failing Explore search bills up to about 87 GB-s (about $0.0012), the stage throttle allows 10 rps, so a polling client could cost about $40 an hour and about 290 concurrent runs would reach the account concurrency quota (the $120 credit budget stops access when spent). Because every search fails at 29 s whatever the timeout, **put the timeout back to 15 s now (one CDK deploy) and add a per-route throttle for `explore.search` plus a Lambda duration alarm**; read `Max Memory Used` from a cold Explore search REPORT line and keep the 2 GB DuckDB cap only if the peak stays under 2.8 GB.
-8. **Review follow-ups from the post-merge review (`docs/reviews/CR-A-13.md`, metagross 80, audino 80), all Minor or copy:** a one-line `role="status"` note under the SQL progress bar explaining the long first query; a Retry on the SQL engine-error banner; an "unclassified table parts (N)" row in the Catalog; an accessible name and an inset focus ring for the focusable `<main>`; `scripts/ci-watch.sh` to stop on `timed_out` as well; TC-041 back to 20 timed runs and TC-004's property count derived from the Query DB oracle when they are unparked.
-7. **Hosted-test status at A-13 close:** see `docs/reports/A-13-test-report.md` (final CI run and per-case result). The cases that fail only because of items 1 to 4 stay red on purpose; they are the proof of the gap and should turn green when it is closed.
+7. **Review follow-ups from the post-merge review (`docs/reviews/CR-A-13.md`, metagross 80, audino 80), all Minor or copy:** a one-line `role="status"` note under the SQL progress bar explaining the long first query; a Retry on the SQL engine-error banner; an "unclassified table parts (N)" row in the Catalog; an accessible name and an inset focus ring for the focusable `<main>`; `scripts/ci-watch.sh` to stop on `timed_out` as well; TC-041 back to 20 timed runs and TC-004's property count derived from the Query DB oracle when they are unparked.
+8. **Hosted-test status at A-13 close:** see `docs/reports/A-13-test-report.md` (final CI run and per-case result). The cases that fail only because of items 1 to 4 stay red on purpose; they are the proof of the gap and should turn green when it is closed.
 
 ## Carried forward from A-14 (known gaps to close here)
 
@@ -174,6 +194,46 @@ A-14 (agent, AI tab and MCP server) was closed on 2026-10-25 with the gaps below
 6. **Convergence tasks deferred from A-14 (T038-T040, T042-T044, T046, T047, T049, T050 in `specs/014-agent-and-mcp/tasks.md` Phase 6), by PO decision "Focused subset":** a stalled-permit follow-up after an empty open result; a "partly outside Travis" sentence for places like Round Rock; edited assumptions applied deterministically and scoped to one re-ask; a distinct reason for transient run-lookup errors instead of `run_not_found`; wiring the 80% spend alarm to the Ops SNS topic; a more-than-25-row case in the parity tests and the hosted three-way comparison on the full county; pre-loading the MCP token at cold start (TC-028); `resetsAt` on the paused answer; honesty flags derived from tool filters and results instead of English regexes; recording every tool call per step.
 7. **Permits with no property row are dropped before any tool sees them (final review, donphan Major 2).** The generated view SQL (`packages/query-core/src/sql.generated.ts`, `meta.permit`) inner-joins `county.property`, so a permit whose property is missing from the published data never reaches `v_roofing_permit`. `list_permits` therefore cannot count them; the `unknown_excluded.property_link` key added in A-14 is defensive and never fires on the real views (only `coordinates`, permits whose property has no latitude or longitude, can). Closing it needs a count against the raw tables or a change to the generated view, then re-publishing the contract; until then the number of permits without a property is unknown to the agent and the MCP server.
 8. **Final-review items not built in A-14 (alakazam, ash, oracle, donphan, `docs/reviews/CR-A-14-final-*.md`):** `matches[]`, `missing[]` and `query` accumulate across loosened retries in one answer; the MCP server has no per-call deadline (a full-county call ends at the 15 s Lambda timeout with a bare gateway error); `listPermits` with `permit_number` ignores the area and status filters while `applied` echoes them; the runs index is fetched on every call without a cache; `postCheck` strips property, table and manifest CIDs the model quotes because only row CIDs are registered; the proxy rate limit is per sandbox; no token-rotation TTL.
+
+## Closure table (AC-14)
+
+Each carried item has one stable ID. The plan assigns each to a builder group or proposes it as an exception; G7 reads this table against `docs/evidence/A-16.md` § Closure.
+
+| ID     | Item (short)                                                                              | Planned outcome                                                                                                                                           |
+| ------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A11-1  | Sequence-runner batching wired through the gated publish                                  | Close (Part 2 bridge path) or Exception if the bridge only starts the permits refresh                                                                     |
+| A11-2  | Runs 2 and 3                                                                              | Run 2 done; Run 3 from the A-11 Run 3 work (merged 2026-10-25, publish pending PO)                                                                        |
+| A11-3  | Second independent pin                                                                    | Exception on hold (PO 2026-10-26: alternatives first)                                                                                                     |
+| A11-4  | Full gateway verification of Run 1                                                        | Close with a fresh verify log, or Exception (gateway rate limits)                                                                                         |
+| A11-5  | Atlas registration                                                                        | Exception (external, no access)                                                                                                                           |
+| A11-6  | Manifest reconciliation of the 5 permit-exclusion keys                                    | Close                                                                                                                                                     |
+| A11-8  | Publish/resume hardening from the A-11 reviews                                            | Exception for the minor items; Majors closed                                                                                                              |
+| A11-9  | Fallback too-large message                                                                | Close                                                                                                                                                     |
+| A11-10 | A-11 `/code-review medium` findings (a)–(e)                                               | Close (b), (c), (e); (a) policy noted; (d) Close                                                                                                          |
+| A11-11 | Permits first-load time; tighten the 60 s limit                                           | Close (measure after paging)                                                                                                                              |
+| A11-12 | smeargle on Permits and Runs                                                              | Close (AC-12 parity run)                                                                                                                                  |
+| A11-14 | Second independent pin + independent public gateway, 10 county CARs on the newest Release | On hold with A11-3 (PO 2026-10-26); attaching the county CARs to the Release is closed here (Me)                                                          |
+| A11-15 | Run 3 published (index step)                                                              | PO go-ahead for the `index` step; then closes A11-2 and A13-4                                                                                             |
+| A11-16 | `/code-review medium` findings on the Run 3 corrections                                   | Close `verify-manifest --sample` exit code, `openDaysReason` default, untimed downloads (G3); data-precedence findings Exception (change only from Run 4) |
+| A11-17 | Reviewer findings R2–R11 on Run 3                                                         | Close R4–R6 publish tooling (G3, with A11-10b) and R10–R11 labels/docs (Me); R2, R3, R8, R9 Exception (Run 4 data)                                        |
+| A11-18 | Explore SQL tab binds all of Run 3 (~96 s)                                                | Close via A13-2 lazy binding; unparked, hosted CI decides                                                                                                 |
+| A11-19 | Run 3 size: Catalog footers and Filebase fallback                                         | Exception (parked by the Run 3 session; not addressed in A-16)                                                                                            |
+| A13-1  | Explore search on the full county                                                         | Close (AC-13 index)                                                                                                                                       |
+| A13-2  | SQL panel first query                                                                     | Close (lazy binding)                                                                                                                                      |
+| A13-3  | LCP on manifest-driven pages                                                              | Close (run list first)                                                                                                                                    |
+| A13-4  | Run 3                                                                                     | Same as A11-2                                                                                                                                             |
+| A13-5  | County counts in the manifest coverage                                                    | Close if Run 3 publishes them, else Exception                                                                                                             |
+| A13-6  | Lambda timeout, throttle, duration alarm                                                  | Close                                                                                                                                                     |
+| A13-7  | Review follow-ups (copy, Retry, focus ring, ci-watch)                                     | Close                                                                                                                                                     |
+| A13-8  | Parked hosted tests                                                                       | Close (unparked by AC-13)                                                                                                                                 |
+| A14-1  | Agent and MCP on the full county                                                          | Close (AC-13 index)                                                                                                                                       |
+| A14-2  | MCP burst 503                                                                             | Exception unless the PO accepts a paid WAF rule (breaks AC-2 "no WAF")                                                                                    |
+| A14-3  | Shared Lambda concurrency of 10                                                           | Close with throttles and alarms; quota increase noted                                                                                                     |
+| A14-4  | Golden queries on zero rows                                                               | Close (rerun on the full county)                                                                                                                          |
+| A14-5  | Honesty sentences from wording                                                            | Close (Task B's structured empty outcomes)                                                                                                                |
+| A14-6  | Ten convergence tasks                                                                     | Close the spend-alarm wiring and the run-lookup reason; rest Exception (minor)                                                                            |
+| A14-7  | Permits with no property row dropped                                                      | Close with a raw-table count in the index header                                                                                                          |
+| A14-8  | Final-review items                                                                        | Close the MCP per-call deadline and the runs-index cache; rest Exception (minor)                                                                          |
 
 ## Out of scope
 
@@ -192,17 +252,23 @@ A-14 (agent, AI tab and MCP server) was closed on 2026-10-25 with the gaps below
 
 ## Gate G4: Story ready for planning
 
-| # | Criterion | Status |
-| --- | --- | --- |
-| G4-1 | Front matter complete (parent FEAT, eval point, branch, priority, **agents and skills from AGENT-MAP.md**) | ☐ |
-| G4-2 | "As a / I want / So that" stated, with an independent test | ☐ |
-| G4-3 | Every AC is Given / When / Then, and its testable box is ticked | ☐ |
-| G4-4 | One scale AC and one missing-data or error AC | ☐ |
-| G4-5 | At least two edge cases | ☐ |
-| G4-6 | Every requirement traces to an AC; NFRs have thresholds | ☐ |
-| G4-7 | Prototype screen linked (UI stories) | ☐ |
-| G4-8 | Dependencies done, or stubbed with **real** sample data | ☐ |
-| G4-9 | No `[NEEDS CLARIFICATION]` left | ☐ |
-| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☐ |
+| #     | Criterion                                                                                                  | Status |
+| ----- | ---------------------------------------------------------------------------------------------------------- | ------ |
+| G4-1  | Front matter complete (parent FEAT, eval point, branch, priority, **agents and skills from AGENT-MAP.md**) | ☑      |
+| G4-2  | "As a / I want / So that" stated, with an independent test                                                 | ☑      |
+| G4-3  | Every AC is Given / When / Then, and its testable box is ticked                                            | ☑      |
+| G4-4  | One scale AC and one missing-data or error AC                                                              | ☑      |
+| G4-5  | At least two edge cases                                                                                    | ☑      |
+| G4-6  | Every requirement traces to an AC; NFRs have thresholds                                                    | ☑      |
+| G4-7  | Prototype screen linked (UI stories)                                                                       | ☑      |
+| G4-8  | Dependencies done, or stubbed with **real** sample data                                                    | ☑      |
+| G4-9  | No `[NEEDS CLARIFICATION]` left                                                                            | ☑      |
+| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS                                                      | ☑      |
 
-**Decision:** ☐ Ready ☐ Returned, reason: {…} · {date}
+### Gate G4 notes
+
+- **Sizing exception (PO, 2026-10-26):** `size_days: 2` is above the 0.5–1.5 day band and Part 3 (AC-12 to AC-14) adds more. Accepted because A-16 is the final Task A story and the carried gaps from A-11, A-13 and A-14 belong here (primary evaluation point A4; Part 3 also serves A5 and A6). Not split; the build runs in parallel builder groups within one session.
+- **AC-1 window (PO, 2026-10-26):** last full billed days instead of a quiet day; recorded gate exception.
+- **AC-6 (PO, 2026-10-26):** email + password sign-in copied from Task B; the AdminSignIn board's "code sent" state is Justified in the parity matrix.
+
+**Decision:** ☑ Ready ☐ Returned · 2026-10-26 (PO approved G4 with the sizing exception)

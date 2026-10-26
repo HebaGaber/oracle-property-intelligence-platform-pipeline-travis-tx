@@ -5,12 +5,19 @@
 // reload). The page shows the gazetteer label of the place, the header "{n} within {r} mi of
 // {place} · roof ≥ {years} yrs" for the search that answered, "tenure unknown: {n}" with the
 // tenure filter, the result cards (ResultRow) or, with zero results, the empty line and Close
-// matches with "+{miles_outside} mi", the engine line, and the Property drawer for `sel`. Not a
-// route module: Explore.tsx mounts it.
-import type { ExploreResult, ExploreRow } from "@countylens/query-core/explore";
+// matches with "+{miles_outside} mi", the engine line, and the Property drawer for `sel`. A-16
+// T050 (Explore1440/768/390 boards): Matches / Close tabs, the results table from 1240 px (cards
+// below), a pager over the server's pages instead of "Load more", "{n} properties match" in the
+// filter panel and the first-visit "What can I ask?" card. Not a route module: Explore.tsx
+// mounts it.
+import {
+  EXPLORE_BOUNDS,
+  type ExploreResult,
+  type ExploreRow,
+} from "@countylens/query-core/explore";
 import { resolvePlace, searchPlaces, type ResolvedPlace } from "@countylens/query-core/places";
 import { EXPLORE_TEXTS } from "@countylens/shared";
-import { keepPreviousData, skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@countylens/api-client/react";
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useSearchParams } from "react-router";
@@ -19,10 +26,12 @@ import { FilterSheet, type FilterKey, type FilterPatch } from "../components/Fil
 import { Icon } from "../components/Icon";
 import { LinearProgress } from "../components/LinearProgress";
 import { ResultRow } from "../components/ResultRow";
+import { WelcomeCard } from "../components/WelcomeCard";
 import { Skeleton } from "../components/Skeleton";
 import { RunIndexError, latestRun, loadRunsIndex, runIndexText } from "../data/runs-index";
 import {
   DEFAULT_RADIUS_MI,
+  EXPLORE_PAGE_ROWS,
   SEARCH_DEBOUNCE_MS,
   isOpenOrStalled,
   parseExploreQuery,
@@ -107,15 +116,9 @@ interface AskedSearch {
   readonly name: string;
 }
 
-/** What "Load more" has fetched for one request: the extra pages' rows and the last page fetched. */
-interface MoreRows {
-  readonly key: string;
-  readonly rows: readonly ExploreRow[];
-  readonly page: number;
-  readonly busy: boolean;
-  readonly failed: boolean;
-}
-const NO_MORE: MoreRows = { key: "", rows: [], page: 0, busy: false, failed: false };
+/** "Showing {first}–{last} of {total}" under the results (board pager). */
+export const showingText = (first: number, last: number, total: number): string =>
+  `Showing ${first.toLocaleString("en-US")}–${last.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}`;
 
 function isBadRequest(error: unknown): boolean {
   return (
@@ -123,6 +126,36 @@ function isBadRequest(error: unknown): boolean {
     error !== null &&
     (error as { data?: { code?: unknown } }).data?.code === "BAD_REQUEST"
   );
+}
+
+/**
+ * A-16 AC-13 (frozen interfaces "Index errors"): explore.search answers PRECONDITION_FAILED with a
+ * message ending "(index_not_built)" or "(index_stale)" when the run's Explore index cannot be
+ * read. The banner says what that means and what still works, never a raw server message.
+ */
+export const INDEX_ERROR_TEXTS = Object.freeze({
+  index_not_built:
+    "The search index for this run is not built yet, so Filters cannot search it. The run's published files and the Data pages still work.",
+  index_stale:
+    "The search index for this run is out of date (built from other view definitions), so Filters cannot search it. The run's published files and the Data pages still work.",
+});
+
+/** The banner text of a failed explore.search: index, out-of-range or the server's message. */
+export function exploreErrorText(error: unknown): string {
+  if (isBadRequest(error)) return EXPLORE_TEXTS.filtersOutOfRange;
+  const message = error instanceof Error ? error.message : String(error);
+  const code = /\((index_not_built|index_stale)\)\s*$/.exec(message)?.[1];
+  if (code === "index_not_built" || code === "index_stale") return INDEX_ERROR_TEXTS[code];
+  return message;
+}
+
+/** explore.search's notice when `ooa` was asked on a run that publishes no owner area (G4). */
+function ownerAreaNotice(data: unknown): string | null {
+  const notice = (data as { owner_area?: { status?: unknown; message?: unknown } } | undefined)
+    ?.owner_area;
+  return notice?.status === "not_published" && typeof notice.message === "string"
+    ? notice.message
+    : null;
 }
 
 export function ExploreFilters({
@@ -141,7 +174,6 @@ export function ExploreFilters({
       : null;
   const debounced = useDebounced(asked, SEARCH_DEBOUNCE_MS);
   const trpc = useTRPC();
-  const queryClient = useQueryClient();
   const search = useQuery({
     ...trpc.explore.search.queryOptions(debounced?.request ?? skipToken),
     // No automatic retry: a search the server could not finish already took up to 29 s, and a second
@@ -156,33 +188,8 @@ export function ExploreFilters({
     answered.current = debounced;
   }
   const answeredKey = answered.current === null ? "" : JSON.stringify(answered.current.request);
-  const [moreState, setMore] = useState<MoreRows>(NO_MORE);
-  const more = moreState.key === answeredKey ? moreState : NO_MORE;
-  const loadMore = async (): Promise<void> => {
-    const current = answered.current;
-    if (current === null || more.busy) return;
-    const key = answeredKey;
-    const page = more.page + 1;
-    setMore({ ...more, key, busy: true, failed: false });
-    try {
-      const next = await queryClient.fetchQuery(
-        trpc.explore.search.queryOptions({ ...current.request, page }),
-      );
-      setMore((prev) => {
-        if (prev.key !== key) return prev;
-        const seen = new Set(prev.rows.map((r) => r.property_cid));
-        return {
-          key,
-          page,
-          busy: false,
-          failed: false,
-          rows: [...prev.rows, ...next.rows.filter((r) => !seen.has(r.property_cid))],
-        };
-      });
-    } catch {
-      setMore((prev) => (prev.key === key ? { ...prev, busy: false, failed: true } : prev));
-    }
-  };
+  // The pager (PO 2026-10-26): 20 rows a page; the URL's `page` is part of the search request.
+  const page = answered.current?.request.page ?? 0;
 
   const pageState: ExplorePageState =
     bound.kind === "error" || search.isError
@@ -192,9 +199,15 @@ export function ExploreFilters({
         : "ready";
   useEffect(() => onState(pageState), [pageState, onState]);
 
+  // A filter change starts again on page 1; the pager and the drawer keep the page.
   const patch = (values: FilterPatch, replace = true): void => {
-    setParams((current) => patchParams(current, values), { replace });
+    const keep = "page" in values || "sel" in values;
+    setParams((current) => patchParams(current, keep ? values : { ...values, page: null }), {
+      replace,
+    });
   };
+  const goTo = (next: number): void =>
+    patch({ page: next > 0 ? String(next + 1) : null, sel: null }, false);
   const value = (key: FilterKey): string => {
     if (key === "r") return params.get("r") ?? String(DEFAULT_RADIUS_MI);
     if (key === "sort") return query.sort;
@@ -203,11 +216,9 @@ export function ExploreFilters({
   };
 
   const data: ExploreResult | undefined = search.data;
-  const extraRows = more.rows.filter(
-    (r) => !(data?.rows ?? []).some((d) => d.property_cid === r.property_cid),
-  );
+  const pageRows: readonly ExploreRow[] = data?.rows ?? [];
   const all: readonly ExploreRow[] = data
-    ? [...data.rows, ...extraRows, ...data.close_matches.map((c) => c.row)]
+    ? [...pageRows, ...data.close_matches.map((c) => c.row)]
     : [];
   const selected = query.sel === null ? undefined : all.find((r) => r.property_cid === query.sel);
   // A `sel` that the answered results do not hold is said so, never silently ignored.
@@ -220,18 +231,24 @@ export function ExploreFilters({
   const select = (cid: string): void => patch({ sel: cid }, false);
 
   return (
-    <div className={styles.layout}>
+    <div
+      className={selected === undefined ? styles.layout : `${styles.layout} ${styles.withDrawer}`}
+    >
       <div className={styles.filters}>
         <FilterSheet
+          folded={selected !== undefined}
           value={value}
           openOrStalled={isOpenOrStalled(query.permit)}
           ooa={query.ooa}
           onPatch={(v) => patch(v)}
           suggest={suggestPlaces}
           notFoundText={PLACE_NOT_FOUND}
+          matchCount={data === undefined ? null : data.total_within_r}
         />
       </div>
       <div className={styles.results}>
+        {/* Explore boards: the "What can I ask?" card only until a search has results. */}
+        {data !== undefined && data.total_within_r > 0 ? null : <WelcomeCard />}
         <p className={styles.area} data-area="">
           {place === null ? (
             query.at === null ? null : (
@@ -251,9 +268,7 @@ export function ExploreFilters({
         {search.isFetching ? <LinearProgress label={SEARCHING} stageText={SEARCHING} /> : null}
         {search.isError ? (
           <ErrorBanner
-            message={
-              isBadRequest(search.error) ? EXPLORE_TEXTS.filtersOutOfRange : search.error.message
-            }
+            message={exploreErrorText(search.error)}
             onRetry={() => void search.refetch()}
           />
         ) : null}
@@ -265,11 +280,9 @@ export function ExploreFilters({
             {EXPLORE_TEXTS.propertyNotInResults}
           </p>
         ) : null}
-        {selected === undefined ? null : (
-          <PropertyDrawer row={selected} onClose={() => patch({ sel: null }, false)} />
-        )}
         {data !== undefined && answered.current !== null ? (
           <Results
+            key={answeredKey}
             data={data}
             header={headerText(
               data.total_within_r,
@@ -277,109 +290,200 @@ export function ExploreFilters({
               answered.current.name,
             )}
             request={answered.current.request}
-            more={more}
-            extraRows={extraRows}
-            onLoadMore={() => void loadMore()}
+            page={page}
+            pageRows={pageRows}
+            onPage={goTo}
+            onWiden={(r) => patch({ r: String(r) })}
             onSelect={select}
             selected={query.sel}
           />
         ) : null}
       </div>
+      {selected === undefined ? null : (
+        <PropertyDrawer row={selected} onClose={() => patch({ sel: null }, false)} />
+      )}
     </div>
   );
+}
+
+type ResultsTab = "matches" | "close";
+
+/** Task B pager: 1, the pages around the current one, the last page, with gaps (1-based). */
+export function pageNumbers(current: number, pages: number): readonly (number | "gap")[] {
+  const keep = [...new Set([1, pages, current - 1, current, current + 1])]
+    .filter((n) => n >= 1 && n <= pages)
+    .sort((a, b) => a - b);
+  const items: (number | "gap")[] = [];
+  keep.forEach((n, i) => {
+    if (i > 0 && n - (keep[i - 1] ?? n) > 1) items.push("gap");
+    items.push(n);
+  });
+  return items;
 }
 
 function Results({
   data,
   header,
   request,
-  more,
-  extraRows,
-  onLoadMore,
+  page,
+  pageRows,
+  onPage,
+  onWiden,
   onSelect,
   selected,
 }: {
   readonly data: ExploreResult;
   readonly header: string;
   readonly request: ExploreSearchRequest;
-  readonly more: MoreRows;
-  readonly extraRows: readonly ExploreRow[];
-  readonly onLoadMore: () => void;
+  /** 0-based. */
+  readonly page: number;
+  readonly pageRows: readonly ExploreRow[];
+  readonly onPage: (page: number) => void;
+  readonly onWiden: (radiusMi: number) => void;
   readonly onSelect: (cid: string) => void;
   readonly selected: string | null;
 }): ReactElement {
   const zero = data.total_within_r === 0;
+  const [chosen, setChosen] = useState<ResultsTab | null>(null);
+  // With no match the Close tab opens (the board's "Close 3"); a choice sticks until the next search.
+  const tab: ResultsTab = chosen ?? (zero ? "close" : "matches");
   const showTenureUnknown = request.tenure !== undefined;
-  // AC-5 / D-9: with the open-or-stalled filter active and no rows, say so in the fixed words.
-  const permitFilter = request.permit !== undefined;
-  const shown = data.rows.length + extraRows.length;
+  // AC-5 / D-9 / TC-009 step 5: with a permit filter that takes open permits and no open permit
+  // among the answered rows (none at all, or only stalled ones), say so in the fixed words.
+  const noOpen =
+    (request.permit === "open" || request.permit === "open_or_stalled") &&
+    !data.rows.some((r) => r.permit?.status_class === "open");
+  const first = page * EXPLORE_PAGE_ROWS + 1;
+  const last = Math.min(data.total_within_r, page * EXPLORE_PAGE_ROWS + pageRows.length);
+  const pages = Math.max(1, Math.ceil(data.total_within_r / EXPLORE_PAGE_ROWS));
+  const tabs: readonly { readonly id: ResultsTab; readonly label: string; readonly n: number }[] = [
+    { id: "matches", label: "Matches", n: data.total_within_r },
+    { id: "close", label: "Close", n: data.close_matches.length },
+  ];
   return (
     <>
       <p className={styles.header} data-explore-header="" aria-live="polite">
         {header}
       </p>
+      {request.ooa === true && ownerAreaNotice(data) !== null ? (
+        <p className={styles.empty} role="status" data-owner-area-notice="">
+          Out-of-area owner: {ownerAreaNotice(data)}. That is why this filter finds no properties
+          here; it does not mean every owner lives in Travis County.
+        </p>
+      ) : null}
       {showTenureUnknown ? (
         <p className={styles.engine} data-tenure-unknown="">
           {EXPLORE_TEXTS.tenureUnknownCount(data.tenure_unknown)}
         </p>
       ) : null}
+      {/* Toggle buttons, not tabs: the A-13 contract (TC-073 scan, a13-vitals) reads the page's
+          tabs as the Explore modes only. */}
+      <div role="group" aria-label="Results view" className={styles.resultTabs}>
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            aria-pressed={tab === t.id}
+            className={`${styles.resultTab} ${tab === t.id ? styles.resultTabOn : ""}`}
+            onClick={() => setChosen(t.id)}
+          >
+            {t.label} <span className={styles.tabCount}>{t.n.toLocaleString("en-US")}</span>
+          </button>
+        ))}
+      </div>
+      {noOpen ? <p className={styles.empty}>{EXPLORE_TEXTS.noOpenPermits}</p> : null}
       {zero ? (
         <>
-          {permitFilter ? <p className={styles.empty}>{EXPLORE_TEXTS.noOpenPermits}</p> : null}
           <p className={styles.empty}>
             {EXPLORE_TEXTS.zeroResults(request.radius_mi, data.close_matches.length)}
           </p>
-          {data.close_matches.length === 0 ? null : (
-            <ul className={styles.list} aria-label="Close matches">
-              {data.close_matches.map((match) => (
-                <li key={match.row.property_cid} className={styles.item} data-close-match="">
-                  <span
-                    className={styles.outside}
-                    data-miles-outside=""
-                    data-value={match.miles_outside}
-                  >
-                    {EXPLORE_TEXTS.milesOutside(match.miles_outside)}
-                  </span>
-                  <ResultRow
-                    row={match.row}
-                    inRadius={false}
-                    onSelect={onSelect}
-                    selected={selected === match.row.property_cid}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* EmptyHints board: one next step, "Widen to {r + 2} mi" (within the radius bound). */}
+          {request.radius_mi < EXPLORE_BOUNDS.radiusMi[1] ? (
+            <button
+              type="button"
+              className={styles.resultTab}
+              onClick={() => onWiden(Math.min(EXPLORE_BOUNDS.radiusMi[1], request.radius_mi + 2))}
+            >
+              {`Widen to ${String(Math.min(EXPLORE_BOUNDS.radiusMi[1], request.radius_mi + 2))} mi`}
+            </button>
+          ) : null}
         </>
-      ) : (
+      ) : null}
+      {tab === "close" ? (
+        data.close_matches.length === 0 ? (
+          <p className={styles.engine}>No close matches just outside {request.radius_mi} mi.</p>
+        ) : (
+          <ul className={styles.list} aria-label="Close matches">
+            {data.close_matches.map((match) => (
+              <li key={match.row.property_cid} className={styles.item} data-close-match="">
+                <span
+                  className={styles.outside}
+                  data-miles-outside=""
+                  data-value={match.miles_outside}
+                >
+                  {EXPLORE_TEXTS.milesOutside(match.miles_outside)}
+                </span>
+                <ResultRow
+                  row={match.row}
+                  inRadius={false}
+                  onSelect={onSelect}
+                  selected={selected === match.row.property_cid}
+                />
+              </li>
+            ))}
+          </ul>
+        )
+      ) : zero ? null : (
         <>
+          {/* Task B listing: one card per property at every width (B-03 ResultsList). */}
           <ul className={styles.list} aria-label="Results">
-            {[...data.rows, ...extraRows].map((row) => (
+            {pageRows.map((row) => (
               <li key={row.property_cid} className={styles.item}>
                 <ResultRow row={row} onSelect={onSelect} selected={selected === row.property_cid} />
               </li>
             ))}
           </ul>
-          <div className={styles.engine} data-showing="" aria-live="polite">
-            {data.total_within_r > shown
-              ? EXPLORE_TEXTS.showingFirst(shown, data.total_within_r)
-              : more.page > 0
-                ? EXPLORE_TEXTS.showingAll(data.total_within_r)
-                : null}
-          </div>
-          {more.failed ? <ErrorBanner message={EXPLORE_TEXTS.loadMoreFailed} /> : null}
-          {data.total_within_r > shown ? (
-            <div>
-              <button
-                type="button"
-                className={styles.run}
-                disabled={more.busy}
-                onClick={onLoadMore}
-              >
-                {EXPLORE_TEXTS.loadMore}
-              </button>
-            </div>
-          ) : null}
+          <nav className={styles.pager} aria-label="Result pages" data-results-pager="">
+            <span className={styles.engine} data-showing="" aria-live="polite">
+              {pageRows.length > 0 ? showingText(first, last, data.total_within_r) : null}
+            </span>
+            <button
+              type="button"
+              className={styles.pageButton}
+              aria-label="Previous page"
+              disabled={page <= 0}
+              onClick={() => onPage(page - 1)}
+            >
+              <Icon name="chevron_left" />
+            </button>
+            {pageNumbers(page + 1, pages).map((item, i) =>
+              item === "gap" ? (
+                <span key={`gap-${String(i)}`} className={styles.gap} aria-hidden="true">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={item}
+                  type="button"
+                  className={`${styles.pageButton} ${item === page + 1 ? styles.pageOn : ""}`}
+                  aria-label={`Page ${String(item)}`}
+                  {...(item === page + 1 ? { "aria-current": "page" as const } : {})}
+                  onClick={() => onPage(item - 1)}
+                >
+                  {item}
+                </button>
+              ),
+            )}
+            <button
+              type="button"
+              className={styles.pageButton}
+              aria-label="Next page"
+              disabled={page >= pages - 1}
+              onClick={() => onPage(page + 1)}
+            >
+              <Icon name="chevron_right" />
+            </button>
+          </nav>
         </>
       )}
     </>

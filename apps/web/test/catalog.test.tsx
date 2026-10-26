@@ -7,7 +7,7 @@ import { rawCid } from "@countylens/query-core";
 import { PAGE_TEXTS, ROUTES } from "@countylens/shared";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,11 +40,12 @@ interface Fixture {
 }
 let fx: Fixture;
 
-async function build(withExport: boolean): Promise<Fixture> {
+async function build(withExport: boolean, extra: readonly string[] = []): Promise<Fixture> {
   const names = [
     "tables/county/property/part-00000.parquet",
     "tables/county/property/part-00001.parquet",
     "tables/property_improvement/property_improvement/part-00000.parquet",
+    ...extra,
   ];
   const parts = await Promise.all(
     names.map(async (name) => ({ name, cid: await rawCid(encode(name)) })),
@@ -146,6 +147,16 @@ async function renderCatalog(): Promise<HTMLElement> {
   return screen.getByRole("region", { name: "Data · Catalog" });
 }
 
+/** A-16 board: clicking a table's list row shows its header card and field table on the right. */
+function detailOf(page: HTMLElement, table: string): HTMLElement {
+  const row = page.querySelector<HTMLElement>(`[data-table="${table}"]`);
+  expect(row, table).not.toBeNull();
+  fireEvent.click(row as HTMLElement);
+  const detail = page.querySelector<HTMLElement>(`[data-catalog-detail="${table}"]`);
+  expect(detail, `${table} detail`).not.toBeNull();
+  return detail as HTMLElement;
+}
+
 beforeEach(() => {
   vi.stubEnv("VITE_CID_COPY_HOST", COPY_HOST);
   vi.stubEnv("VITE_FILEBASE_GATEWAY_HOST", "ipfs.filebase.io");
@@ -181,9 +192,9 @@ describe("Catalog: one row per table (TC-053)", () => {
     });
     const property = [...rows].find((r) => r.getAttribute("data-table") === "county.property");
     expect(property).toBeDefined();
-    const p = property as HTMLElement;
-    // Two parts of 100 and 101 bytes; footers say 10 rows each.
-    expect(within(p).getByText(/rows in the published file/).textContent).toContain("20");
+    // Two parts of 100 and 101 bytes; footers say 10 rows each: the list row shows the sum.
+    expect(property?.querySelector("[data-rows]")?.getAttribute("data-value")).toBe("20");
+    const p = detailOf(page, "county.property");
     expect(within(p).getByText("parcel_identifier")).toBeTruthy();
     expect(within(p).getByText("year_built")).toBeTruthy();
     const hrefs = [...p.querySelectorAll("a")].map((a) => a.getAttribute("href"));
@@ -196,12 +207,10 @@ describe("Catalog: one row per table (TC-053)", () => {
     await vi.waitFor(() =>
       expect(page.getAttribute("data-state"), page.textContent ?? "").toBe("ready"),
     );
-    const p = page.querySelector<HTMLElement>('[data-table="county.property"]') as HTMLElement;
+    const p = detailOf(page, "county.property");
     expect(p.textContent).toContain("published_rows");
     expect(p.querySelector('[data-coverage-key="parcels_emitted"]')?.textContent).toContain("7");
-    const other = page.querySelector<HTMLElement>(
-      '[data-table="property_improvement.property_improvement"]',
-    ) as HTMLElement;
+    const other = detailOf(page, "property_improvement.property_improvement");
     expect(other.textContent).not.toContain("published_rows");
   });
 
@@ -240,6 +249,37 @@ describe("Catalog: one row per table (TC-053)", () => {
   });
 });
 
+describe("Catalog: field table and derived columns (A-16, DataCatalog1440 board)", () => {
+  const cells = (detail: HTMLElement, field: string): string[] =>
+    [...(detail.querySelector(`[data-column][data-name="${field}"]`)?.children ?? [])].map(
+      (c) => c.textContent ?? "",
+    );
+
+  it("names each field's meaning, source and licence from contract/v1, or says it is not described", async () => {
+    const page = await renderCatalog();
+    await vi.waitFor(() => expect(page.querySelectorAll("[data-rows]").length).toBe(2));
+    const property = detailOf(page, "county.property");
+    expect(cells(property, "parcel_identifier")).toEqual([
+      "parcel_identifier",
+      "STRING",
+      "Parcel identifier",
+      "tcad-2026-certified-json",
+      "[As published]",
+    ]);
+    expect(cells(property, "year_built")[2]).toBe("not described in contract/v1");
+    const permit = detailOf(page, "property_improvement.property_improvement");
+    expect(cells(permit, "improvement_type").slice(2)).toEqual([
+      "Lexicon improvement type",
+      "Derived: source profile",
+      "[Derived]",
+    ]);
+    const derived = permit.querySelector('[data-derived-view="v_roofing_permit"]');
+    expect(derived?.textContent).toContain("v_roofing_permit reads this table and adds");
+    expect(derived?.textContent).toContain("status_class (open, stalled, closed)");
+    expect(derived?.textContent).not.toContain("improvement_type");
+  });
+});
+
 describe("Catalog: progressive render (ERR-41, NFR-002)", () => {
   const NEVER = (): Promise<never> => new Promise(() => undefined);
   const improvementCid = (): string => fx.parts[2]?.cid ?? "";
@@ -249,7 +289,7 @@ describe("Catalog: progressive render (ERR-41, NFR-002)", () => {
     const page = await renderCatalog();
     await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
     expect(page.querySelectorAll("[data-catalog-row]")).toHaveLength(2);
-    const p = page.querySelector<HTMLElement>('[data-table="county.property"]') as HTMLElement;
+    const p = detailOf(page, "county.property");
     expect(p.querySelector("[data-size]")?.getAttribute("data-value")).toBe("201");
     for (const part of fx.parts.slice(0, 2)) {
       expect(p.querySelector(`a[data-cid="${part.cid}"]`)?.getAttribute("href")).toBe(
@@ -275,18 +315,20 @@ describe("Catalog: progressive render (ERR-41, NFR-002)", () => {
         : NEVER(),
     );
     const page = await renderCatalog();
-    const done = (await vi.waitFor(() => {
+    await vi.waitFor(() => {
       const el = page.querySelector<HTMLElement>(
         '[data-table="property_improvement.property_improvement"]',
       );
       expect(el?.querySelector("[data-rows]")?.getAttribute("data-value")).toBe("4");
-      return el;
-    })) as HTMLElement;
+    });
+    const done = detailOf(page, "property_improvement.property_improvement");
     expect(done.querySelector("[data-column]")?.getAttribute("data-name")).toBe("improvement_type");
-    const pending = page.querySelector<HTMLElement>(
+    const pendingRow = page.querySelector<HTMLElement>(
       '[data-table="county.property"]',
     ) as HTMLElement;
-    expect(pending.querySelector("[data-rows]")).toBeNull();
+    expect(pendingRow.querySelector("[data-rows]")).toBeNull();
+    expect(pendingRow.querySelector("[data-footer-status='pending']")).not.toBeNull();
+    const pending = detailOf(page, "county.property");
     expect(pending.querySelector("[data-column]")).toBeNull();
     expect(pending.querySelector("[data-footer-status='pending']")).not.toBeNull();
     expect(page.getAttribute("data-state")).toBe("ready");
@@ -323,12 +365,12 @@ describe("Catalog: progressive render (ERR-41, NFR-002)", () => {
         page.querySelector("[data-table='property_improvement.property_improvement'] [data-rows]"),
       ).not.toBeNull(),
     );
-    const slotOf = (table: string): HTMLElement =>
-      page.querySelector(`[data-table="${table}"] [data-columns-slot]`) as HTMLElement;
+    const slotOf = (table: string): string =>
+      (detailOf(page, table).querySelector("[data-columns-slot]") as HTMLElement).className;
     const filled = slotOf("property_improvement.property_improvement");
     const pending = slotOf("county.property");
-    expect(filled.className).not.toBe("");
-    expect(pending.className).toBe(filled.className);
+    expect(filled).not.toBe("");
+    expect(pending).toBe(filled);
     const css = readFileSync(
       resolve(import.meta.dirname, "../src/routes/DataCatalog.module.css"),
       "utf8",
@@ -357,12 +399,13 @@ describe("Catalog: valid definition lists (TC-083, ERR-33)", () => {
         }
       }
     }
-    const p = page.querySelector<HTMLElement>('[data-table="county.property"]') as HTMLElement;
+    const p = detailOf(page, "county.property");
     expect(p.querySelector("[data-size]")?.getAttribute("data-value")).toBe("201");
+    const listRow = page.querySelector<HTMLElement>('[data-table="county.property"]');
     // `ready` means the table list is painted; a row's count arrives with ITS footer (ERR-41), so
     // wait for it instead of reading it at once (a race that only loses on a loaded machine, CI).
     await vi.waitFor(() =>
-      expect(p.querySelector("[data-rows]")?.getAttribute("data-value")).toBe("20"),
+      expect(listRow?.querySelector("[data-rows]")?.getAttribute("data-value")).toBe("20"),
     );
     expect(p.querySelector("[data-published-rows]")?.getAttribute("data-value")).toBe("7");
   });
@@ -409,5 +452,53 @@ describe("Catalog: unavailable (TC-054)", () => {
     // The failing table says why once ITS footer has been attempted (ERR-41: per-table state).
     await vi.waitFor(() => expect(bad.textContent).toContain("range read failed"));
     expect(page.querySelectorAll("[data-table]")).toHaveLength(2);
+  });
+});
+
+describe("Catalog: unclassified table parts (A13-7, CR-A-13 finding 4)", () => {
+  it("counts the parts whose export batch has no known data group, with the reason", async () => {
+    fx = await build(false, [
+      "tables/mystery/unknown_table/part-00000.parquet",
+      "tables/mystery/unknown_table/part-00001.parquet",
+    ]);
+    try {
+      const page = await renderCatalog();
+      await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
+      const row = page.querySelector<HTMLElement>("[data-unclassified-parts]");
+      expect(row).not.toBeNull();
+      expect(row?.getAttribute("data-unclassified-parts")).toBe("2");
+      expect(row?.textContent).toContain("unclassified table parts (2)");
+      expect(row?.textContent).toMatch(/no known data group/);
+      expect(page.querySelectorAll("[data-table]").length).toBe(2);
+    } finally {
+      fx = await build(false);
+    }
+  });
+
+  it("shows no unclassified row when every part has a data group", async () => {
+    const page = await renderCatalog();
+    await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
+    expect(page.querySelector("[data-unclassified-parts]")).toBeNull();
+  });
+});
+
+describe("Catalog: find a table or field (A-16 T050, DataCatalog1440 board)", () => {
+  it("filters the tables by table name or by a field in their footer", async () => {
+    const page = await renderCatalog();
+    await vi.waitFor(() => expect(page.querySelectorAll("[data-rows]").length).toBe(2));
+    const names = (): (string | null)[] =>
+      [...page.querySelectorAll("[data-table]")].map((t) => t.getAttribute("data-table"));
+    const find = screen.getByLabelText("Find a table or field");
+    fireEvent.change(find, { target: { value: "improvement_type" } });
+    expect(names()).toEqual(["property_improvement.property_improvement"]);
+    fireEvent.change(find, { target: { value: "county.prop" } });
+    expect(names()).toEqual(["county.property"]);
+    fireEvent.change(find, { target: { value: "nothing_like_this" } });
+    expect(names()).toEqual([]);
+    expect(screen.getByRole("status").textContent).toContain("nothing_like_this");
+    fireEvent.change(find, { target: { value: "" } });
+    expect(screen.getByRole("link", { name: "Search in Explore" }).getAttribute("href")).toBe(
+      "/tx/travis/explore",
+    );
   });
 });

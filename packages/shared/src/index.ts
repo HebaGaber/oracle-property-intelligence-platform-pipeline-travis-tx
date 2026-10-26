@@ -2,6 +2,7 @@
 // the scripts (plan.md § Project Structure). Browser-safe: no node: imports, no env reads.
 export {
   ADDRESS_POINT_PROVENANCE_TEXT,
+  BBB_SEARCH_LINK_LABEL,
   COORDINATE_SOURCE_LABELS,
   CONTRACTOR_NOT_PRINTED_LABEL,
   COVERAGE_LABELS,
@@ -20,7 +21,14 @@ export {
   type Derivation,
 } from "./labels.js";
 export { SOURCE_LABELS, isSourceName, sourceLabel, type SourceName } from "./sources.js";
-export { readPathUrls, type GatewayName, type ReadPathHosts, type ReadPathUrls } from "./urls.js";
+export {
+  INDEPENDENT_GATEWAYS,
+  isIndependentGateway,
+  readPathUrls,
+  type GatewayName,
+  type ReadPathHosts,
+  type ReadPathUrls,
+} from "./urls.js";
 export {
   AI_TEXTS,
   MCP_TRY_TEXTS,

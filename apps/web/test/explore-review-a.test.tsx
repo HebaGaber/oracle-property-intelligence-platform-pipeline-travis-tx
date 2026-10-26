@@ -180,7 +180,7 @@ describe("the header names the request it answers (finding 6)", () => {
     await renderExplore("?place=pflugerville&r=5");
     await waitFor(() => expect(api.search).toHaveBeenCalledTimes(1));
     // The URL moves to another place before the older answer arrives (inside the debounce).
-    fireEvent.click(screen.getByRole("button", { name: "ooa78753" }));
+    fireEvent.click(screen.getByRole("button", { name: /ooa78753/ }));
     expect(lastLocation).toContain("place=78753");
     await act(async () => release(result([0, 1])));
     await waitFor(() =>
@@ -226,6 +226,47 @@ describe("search errors (finding 9)", () => {
   });
 });
 
+describe("A-16 AC-13: index errors and the owner-area notice", () => {
+  it.each([
+    ["index_not_built", "is not built yet"],
+    ["index_stale", "is out of date"],
+  ])(
+    "PRECONDITION_FAILED (%s) shows the fixed index sentence, not the raw message",
+    async (code, words) => {
+      api.search.mockImplementationOnce(async () => {
+        throw Object.assign(new Error(`explore index unavailable for bafkreix (${code})`), {
+          data: { code: "PRECONDITION_FAILED" },
+        });
+      });
+      await renderExplore("?place=pflugerville&r=5");
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toContain(words);
+      expect(alert.textContent).toContain(
+        "The run's published files and the Data pages still work",
+      );
+      expect(alert.textContent).not.toContain(`(${code})`);
+    },
+  );
+
+  it("an out-of-area search on a run without owner area says why it finds nothing", async () => {
+    api.search.mockImplementation(async () => ({
+      ...result([], { total_within_r: 0 }),
+      owner_area: {
+        status: "not_published",
+        reason: "owner_area_not_published",
+        message: "owner area not published in this run",
+      },
+    }));
+    await renderExplore("?place=pflugerville&r=5&ooa=1");
+    const notice = await waitFor(() => {
+      const el = document.querySelector("[data-owner-area-notice]");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(notice.textContent).toContain("owner area not published in this run");
+  });
+});
+
 describe("sel not in the results (finding 10)", () => {
   it("shows the notice instead of ignoring it", async () => {
     await renderExplore(`?place=pflugerville&r=5&sel=${cids[4]}`);
@@ -240,30 +281,50 @@ describe("sel not in the results (finding 10)", () => {
   });
 });
 
-describe("Load more (finding 14)", () => {
-  it("fetches the next page with the same query, appends rows and announces the count", async () => {
+// A-16 T050: the board's pager replaces "Load more" (finding 14 kept: same query, next page).
+describe("Result pager (finding 14, Explore1440 board)", () => {
+  // A-16 (PO 2026-10-26): 20 rows a page, the page in the URL; the mock answers 2 rows a page.
+  it("fetches the next page with the same query, shows it and announces the range", async () => {
     api.search.mockImplementation(async (input) =>
       (input.page ?? 0) === 0
-        ? result([0, 1], { total_within_r: 4 })
-        : result([2, 3], { total_within_r: 4 }),
+        ? result([0, 1], { total_within_r: 22 })
+        : result([2, 3], { total_within_r: 22 }),
     );
     await renderExplore("?place=pflugerville&r=5&roof=15");
     await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(api.search.mock.calls.at(-1)?.[0]).toMatchObject({ limit: 20 });
     const showing = (): HTMLElement | null => document.querySelector("[data-showing]");
     expect(showing()?.getAttribute("aria-live")).toBe("polite");
-    expect(showing()?.textContent).toBe("Showing the first 2 of 4");
-    fireEvent.click(screen.getByRole("button", { name: EXPLORE_TEXTS.loadMore }));
-    await waitFor(() => expect(rows()).toHaveLength(4));
+    expect(showing()?.textContent).toBe("Showing 1–2 of 22");
+    expect(
+      (screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: "Page 2" })).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(showing()?.textContent).toBe("Showing 21–22 of 22"));
+    expect(lastLocation).toContain("page=2");
     expect(api.search.mock.calls.at(-1)?.[0]).toMatchObject({ page: 1, roof: 15, radius_mi: 5 });
-    expect(showing()?.textContent).toBe("Showing all 4");
-    expect(screen.queryByRole("button", { name: EXPLORE_TEXTS.loadMore })).toBeNull();
-    // Every appended row keeps its provenance.
+    expect(rows()).toHaveLength(2);
+    expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    // Every row keeps its provenance.
     for (const row of rows()) expect(row.textContent).toContain("travis-test-explore");
   });
 
-  it("offers no Load more when every row is shown", async () => {
+  it("numbers the pages like Task B: first, around the current one, last, with gaps", async () => {
+    const { pageNumbers } = await import("../src/routes/ExploreFilters");
+    expect(pageNumbers(1, 1)).toEqual([1]);
+    expect(pageNumbers(1, 5)).toEqual([1, 2, "gap", 5]);
+    expect(pageNumbers(4, 9)).toEqual([1, "gap", 3, 4, 5, "gap", 9]);
+  });
+
+  it("disables both page buttons when every row is on one page", async () => {
     await renderExplore("?place=pflugerville&r=5");
     await waitFor(() => expect(rows()).toHaveLength(2));
+    expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
     expect(screen.queryByRole("button", { name: EXPLORE_TEXTS.loadMore })).toBeNull();
   });
 });
@@ -293,7 +354,9 @@ describe("Place combobox keyboard (finding 15)", () => {
     fireEvent.change(box, { target: { value: "Aus" } });
     await within(places()).findAllByRole("option");
     fireEvent.keyDown(box, { key: "Escape" });
-    expect((box as HTMLInputElement).value).toBe("");
+    // Escape drops the typed text; the box shows the chosen place again (A-16: it mirrors `place=`).
+    expect((box as HTMLInputElement).value).not.toBe("Aus");
+    expect(second).toContain((box as HTMLInputElement).value);
     expect(within(places()).queryAllByRole("option")).toHaveLength(0);
   });
 });

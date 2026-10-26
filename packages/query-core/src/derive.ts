@@ -188,20 +188,19 @@ export function openDays(
 }
 
 /** Why open_days is empty: not_open (closed, or finished with a plausible final_date),
- *  source_missing (no issue date), needs_review (no class, or an implausible final_date). */
+ *  source_missing (no issue date), needs_review (no class, or an implausible final_date).
+ *  `asOf` is required (A11-16): without it a finished permit could disagree with the SQL macro. */
 export const openDaysReason = (
   cls: StatusClass | null,
   issueDate: string | null,
-  asOf: string | null = null,
+  asOf: string,
   finalDate: string | null = null,
 ): "not_open" | "source_missing" | "needs_review" => {
   if (cls === null) return "needs_review";
   if (cls !== "open" && cls !== "stalled") return "not_open";
   if (issueDate === null) return "source_missing";
   if (finalDate === null) return "not_open";
-  return asOf !== null && terminalDateAccepted(finalDate, issueDate, asOf)
-    ? "not_open"
-    : "needs_review";
+  return terminalDateAccepted(finalDate, issueDate, asOf) ? "not_open" : "needs_review";
 };
 
 /** Why a published improvement_status is null: stalled means the carrier exists but its enum has
@@ -263,16 +262,23 @@ export const contractorResolution = (registryId: string | null): "resolved" | "u
 export const soleContractor = (edges: number, minCid: string | null): string | null =>
   edges === 1 ? minCid : null;
 
-/** Several contractor edges are ambiguous (needs_review); none is unresolved. */
-export const contractorMissingReason = (edges: number): "contractor_unresolved" | "needs_review" =>
-  edges > 1 ? "needs_review" : "contractor_unresolved";
+/**
+ * Several contractor edges are ambiguous (needs_review). No edge means the permit printed no
+ * contractor (A-16 PO audit item 8: source_missing, "Contractor not printed on permit"), not a
+ * failed match; contractor_unresolved is left for a single edge whose value is still missing.
+ */
+export const contractorMissingReason = (
+  edges: number,
+): "contractor_unresolved" | "needs_review" | "source_missing" =>
+  edges > 1 ? "needs_review" : edges === 0 ? "source_missing" : "contractor_unresolved";
 
 /** BBB is never contacted (A-01: 403 challenge). A printed name means the lookup is blocked. */
 export const bbbStatus = (name: string | null): "blocked" | "not_checked" =>
   name === null ? "not_checked" : "blocked";
 
-export const bbbStatusReason = (name: string | null): "bbb_blocked" | "contractor_unresolved" =>
-  name === null ? "contractor_unresolved" : "bbb_blocked";
+/** No printed name: there is nothing to look up (source_missing); else BBB blocks the lookup. */
+export const bbbStatusReason = (name: string | null): "bbb_blocked" | "source_missing" =>
+  name === null ? "source_missing" : "bbb_blocked";
 
 /** Longest printed name that goes into a BBB search link (code points). */
 export const BBB_NAME_MAX = 120;
@@ -398,10 +404,10 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
     "(registry_id) AS CASE WHEN registry_id IS NULL THEN 'unresolved' ELSE 'resolved' END",
   sole_contractor: "(edges, min_cid) AS CASE WHEN edges = 1 THEN min_cid END",
   contractor_missing_reason:
-    "(edges) AS CASE WHEN edges > 1 THEN 'needs_review' ELSE 'contractor_unresolved' END",
+    "(edges) AS CASE WHEN edges > 1 THEN 'needs_review' WHEN edges = 0 THEN 'source_missing' ELSE 'contractor_unresolved' END",
   bbb_status: "(name) AS CASE WHEN name IS NULL THEN 'not_checked' ELSE 'blocked' END",
   bbb_status_reason:
-    "(name) AS CASE WHEN name IS NULL THEN 'contractor_unresolved' ELSE 'bbb_blocked' END",
+    "(name) AS CASE WHEN name IS NULL THEN 'source_missing' ELSE 'bbb_blocked' END",
   bbb_search_url: `(name) AS CASE WHEN name IS NULL THEN NULL
       ELSE 'https://www.bbb.org/search?find_country=USA&find_text='
         || replace(replace(replace(replace(replace(url_encode(rtrim(left(name, 120))),

@@ -1,14 +1,15 @@
-// T007 (A-11, contracts/publish-sequence.md "verify-manifest contract", AM-01 2026-10-21 amends
-// P0-14): gateway-hardening tests for scripts/verify-manifest.ts over an injected fetch. No
-// network: a fake pair of gateways (gateway.pinata.cloud, ipfs.filebase.io — the only allowed
-// pair) serves bytes by CID; every other host, including the retired ipfs.io/dweb.link pair, is
-// refused before any request. Checks: 429/504/timeout retried with backoff then marked
-// `unverified` with the gateway's response recorded, non-zero exit; `ALL ARTIFACTS VERIFIED`
-// never prints unless both gateways match every check; a same-domain CID-subdomain redirect is
+// T007 (A-11, contracts/publish-sequence.md "verify-manifest contract") and T078 (A-16, AM-10
+// 2026-10-26, amends AM-01 and P0-14): gateway-hardening tests for scripts/verify-manifest.ts over
+// an injected fetch. No network: fake gateways serve bytes by CID for the two independent hosts
+// (gateway.pinata.cloud, ipfs.orbitor.dev) and the storage-host fallback (ipfs.filebase.io);
+// every other host, including ipfs.io, dweb.link, w3s.link and storacha.link, is refused before
+// any request. Checks: 429/504/timeout retried with backoff then marked `unverified` with the
+// gateway's response recorded, non-zero exit; `ALL ARTIFACTS VERIFIED` never prints unless both
+// independent gateways match every artifact; a Filebase result is reported but never counts; a same-domain CID-subdomain redirect is
 // followed; a redirect to any other host is refused; an artifact over 50 MB is hashed correctly
 // by the streaming path (NFR-06).
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -16,10 +17,19 @@ import { cidOfBytes } from "../../pipeline/publish/src/cid.js";
 import { jcsBytes } from "../../pipeline/publish/src/jcs.js";
 import {
   ALL_VERIFIED_TEXT,
+  ALLOWED_GATEWAYS,
+  EVIDENCE_SCHEMA,
+  RESUMED_TEXT,
+  FALLBACK_GATEWAYS,
   GATEWAYS,
+  NEVER_GATEWAYS,
+  STORAGE_HOST_LABEL,
+  buildEvidence,
+  writeEvidence,
   MAX_ATTEMPTS,
   STREAM_THRESHOLD_BYTES,
   assertAllowedGateways,
+  exitCodeFor,
   parseResumeLog,
   refusedGatewayText,
   resumeKey,
@@ -27,10 +37,12 @@ import {
   selectSample,
   verifyManifest,
   type ManifestArtifactLike,
+  type VerifyReport,
 } from "../verify-manifest.js";
 
 const RUN_ID = "travis-202609-reroof-20261021t1530z";
 const PINATA = "https://gateway.pinata.cloud";
+const ORBITOR = "https://ipfs.orbitor.dev";
 const FILEBASE = "https://ipfs.filebase.io";
 
 // G7 fix (2026-10-24): every test in this file calls fixture(), which does real sha256 hashing
@@ -39,7 +51,9 @@ const FILEBASE = "https://ipfs.filebase.io";
 // "retries 504" test at the default, while only the first test had been given a per-test
 // override). Raise the timeout for the whole file instead of per-test so every fixture()-using
 // test gets the same margin.
-vi.setConfig({ testTimeout: 20000 });
+// A-16 T078: three gateways now read every ~50 MB fixture artifact (was two), so 20 s timed out
+// under the full root suite; 90 s keeps the same margin.
+vi.setConfig({ testTimeout: 90_000 });
 
 /** Deterministic pseudo-random bytes from a seed (sha256 chain) — no large literal in the file. */
 function bytesOf(seed: string, length: number): Uint8Array {
@@ -171,19 +185,35 @@ function fakeGateways(published: Map<string, Uint8Array>, opts: FakeOptions = {}
 const noSleep = async (): Promise<void> => {};
 const noJitter = (): number => 1;
 
-describe("the fixed gateway allowlist (P0-14)", () => {
-  it("accepts only gateway.pinata.cloud and ipfs.filebase.io", () => {
-    expect([...GATEWAYS]).toEqual([PINATA, FILEBASE]);
-    expect(() => assertAllowedGateways([PINATA, FILEBASE])).not.toThrow();
+describe("the fixed gateway allowlist (AM-10, amends AM-01 and P0-14)", () => {
+  it("counted = Pinata + orbitor; Filebase is the separate storage-host fallback", () => {
+    expect([...GATEWAYS]).toEqual([PINATA, ORBITOR]);
+    expect([...FALLBACK_GATEWAYS]).toEqual([FILEBASE]);
+    expect([...ALLOWED_GATEWAYS]).toEqual([PINATA, ORBITOR, FILEBASE]);
+    expect(() => assertAllowedGateways([PINATA, ORBITOR, FILEBASE])).not.toThrow();
   });
 
-  it("refuses ipfs.io, dweb.link and the S3 CID copy before any request", () => {
+  it("refuses ipfs.io, dweb.link, w3s.link, storacha.link, dget.top and the S3 CID copy before any request", () => {
+    expect([...NEVER_GATEWAYS]).toEqual(
+      expect.arrayContaining([
+        "https://ipfs.io",
+        "https://dweb.link",
+        "https://w3s.link",
+        "https://storacha.link",
+      ]),
+    );
     for (const other of [
       "https://ipfs.io",
       "https://dweb.link",
+      "https://w3s.link",
+      "https://storacha.link",
+      "https://dget.top",
       "https://d111111abcdef8.cloudfront.net",
     ]) {
       expect(() => assertAllowedGateways([other])).toThrow(refusedGatewayText(other));
+      expect(refusedGatewayText(other)).toBe(
+        `Refused gateway ${other}: verify-manifest only uses https://gateway.pinata.cloud (public gateway · also holds our second copy), https://ipfs.orbitor.dev (public gateway · holds no copy of ours) and https://ipfs.filebase.io (our main storage host · fallback, not counted)`,
+      );
     }
   });
 });
@@ -210,6 +240,37 @@ describe("--sample selection", () => {
   });
 });
 
+describe("exit code (A11-16)", () => {
+  const report = (over: Partial<VerifyReport>): VerifyReport => ({
+    ok: true,
+    manifestPath: "m.json",
+    manifestCid: "cid",
+    gateways: [...ALLOWED_GATEWAYS],
+    independentGateways: [...GATEWAYS],
+    fallbackGateways: [...FALLBACK_GATEWAYS],
+    manifest: [],
+    artifacts: [],
+    verdicts: [],
+    artifactsListed: 0,
+    resumed: 0,
+    verdictText: "",
+    ...over,
+  });
+
+  it("a full verification that passes exits 0", () => {
+    expect(exitCodeFor(report({}))).toBe(0);
+  });
+
+  it("a sample that passes exits 0 (hosted TC-040); its log line says SAMPLE VERIFIED, not ALL", () => {
+    expect(exitCodeFor(report({ sample: { checked: 2, total: 240 } }))).toBe(0);
+  });
+
+  it("any failure exits 1, sample or not", () => {
+    expect(exitCodeFor(report({ ok: false }))).toBe(1);
+    expect(exitCodeFor(report({ ok: false, sample: { checked: 2, total: 240 } }))).toBe(1);
+  });
+});
+
 describe("retry with backoff on 429/504/timeout", () => {
   it("retries 429 up to MAX_ATTEMPTS, honouring Retry-After, then succeeds", async () => {
     const f = await fixture();
@@ -231,7 +292,7 @@ describe("retry with backoff on 429/504/timeout", () => {
     const f = await fixture();
     const { fetchImpl, attempts } = fakeGateways(f.published, {
       statuses: (host, cid) =>
-        host === "ipfs.filebase.io" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : [],
+        host === "ipfs.orbitor.dev" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : [],
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -240,8 +301,8 @@ describe("retry with backoff on 429/504/timeout", () => {
       random: noJitter,
     });
     expect(report.ok).toBe(false);
-    expect(attempts.get(`ipfs.filebase.io:${f.manifestCid}`)).toBe(MAX_ATTEMPTS);
-    const failed = report.manifest.find((c) => c.gateway === FILEBASE);
+    expect(attempts.get(`ipfs.orbitor.dev:${f.manifestCid}`)).toBe(MAX_ATTEMPTS);
+    const failed = report.manifest.find((c) => c.gateway === ORBITOR);
     expect(failed?.ok).toBe(false);
     expect(failed?.reason).toMatch(/HTTP 504 after 5 attempts/);
   });
@@ -266,7 +327,7 @@ describe("retry with backoff on 429/504/timeout", () => {
     const lines: string[] = [];
     const { fetchImpl } = fakeGateways(f.published, {
       statuses: (host, cid) =>
-        host === "ipfs.filebase.io" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : [],
+        host === "ipfs.orbitor.dev" && cid === f.manifestCid ? Array(MAX_ATTEMPTS).fill(504) : [],
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -311,13 +372,13 @@ describe("retryDelayMs", () => {
   });
 });
 
-describe("Filebase redirects", () => {
+describe("same-gateway redirects (orbitor)", () => {
   it("follows a redirect to the same gateway's CID-subdomain host", async () => {
     const f = await fixture();
-    const subdomain = `${f.manifestCid}.ipfs.filebase.io`;
+    const subdomain = `${f.manifestCid}.ipfs.orbitor.dev`;
     const { fetchImpl, requests } = fakeGateways(f.published, {
       redirectTo: (host, cid) =>
-        host === "ipfs.filebase.io" && cid === f.manifestCid
+        host === "ipfs.orbitor.dev" && cid === f.manifestCid
           ? `https://${subdomain}/ipfs/${cid}`
           : undefined,
     });
@@ -335,7 +396,7 @@ describe("Filebase redirects", () => {
     const f = await fixture();
     const { fetchImpl } = fakeGateways(f.published, {
       redirectTo: (host, cid) =>
-        host === "ipfs.filebase.io" && cid === f.manifestCid ? "https://evil.example/x" : undefined,
+        host === "ipfs.orbitor.dev" && cid === f.manifestCid ? "https://evil.example/x" : undefined,
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -344,7 +405,7 @@ describe("Filebase redirects", () => {
       random: noJitter,
     });
     expect(report.ok).toBe(false);
-    const failed = report.manifest.find((c) => c.gateway === FILEBASE);
+    const failed = report.manifest.find((c) => c.gateway === ORBITOR);
     expect(failed?.ok).toBe(false);
     expect(failed?.reason).toContain("redirect to evil.example refused");
   });
@@ -354,10 +415,10 @@ describe("Filebase redirects", () => {
     // unlike the main fetch above it, so a timeout there threw uncaught and killed the run
     // instead of being recorded as a failed check.
     const f = await fixture();
-    const subdomain = `${f.manifestCid}.ipfs.filebase.io`;
+    const subdomain = `${f.manifestCid}.ipfs.orbitor.dev`;
     const { fetchImpl } = fakeGateways(f.published, {
       redirectTo: (host, cid) =>
-        host === "ipfs.filebase.io" && cid === f.manifestCid
+        host === "ipfs.orbitor.dev" && cid === f.manifestCid
           ? `https://${subdomain}/ipfs/${cid}`
           : undefined,
       timeoutsFor: (host) => (host === subdomain ? Infinity : 0),
@@ -369,7 +430,7 @@ describe("Filebase redirects", () => {
       random: noJitter,
     });
     expect(report.ok).toBe(false);
-    const failed = report.manifest.find((c) => c.gateway === FILEBASE);
+    const failed = report.manifest.find((c) => c.gateway === ORBITOR);
     expect(failed?.ok).toBe(false);
     expect(failed?.reason).toContain("after redirect");
   });
@@ -387,7 +448,7 @@ describe("streaming hash for large artifacts (NFR-06)", () => {
     });
     expect(report.ok).toBe(true);
     const large = report.artifacts.filter((c) => c.name === f.largeArtifact.name);
-    expect(large).toHaveLength(2);
+    expect(large).toHaveLength(3);
     for (const c of large) {
       expect(c.ok).toBe(true);
       expect(c.size).toBe(f.largeArtifact.size);
@@ -456,7 +517,7 @@ describe("resume (--resume-from)", () => {
     const resumeSkip = parseResumeLog(lines.join("\n"));
     expect(resumeSkip.size).toBeGreaterThanOrEqual(firstReport.artifacts.length);
     for (const c of firstReport.artifacts)
-      expect(resumeSkip.has(resumeKey(c.gateway, c.name))).toBe(true);
+      expect(resumeSkip.has(resumeKey(c.gateway, c.name, c.cid))).toBe(true);
 
     // The manifest self-check is deliberately never skipped (cheap, correctness-critical), so
     // the fetch here must still work for it -- only the artifact CIDs should go unrequested.
@@ -474,6 +535,56 @@ describe("resume (--resume-from)", () => {
       expect(requests.some((u) => u.includes(c.cid ?? "\u0000"))).toBe(false);
     }
     expect(secondReport.artifacts.length).toBe(firstReport.artifacts.length);
+    // Resumed checks claim nothing about this run's bytes, and the verdict says so.
+    expect(secondReport.artifacts.every((c) => c.resumed === true && c.status === null)).toBe(true);
+    expect(secondReport.artifacts.every((c) => c.size === null && c.sha256 === null)).toBe(true);
+    expect(secondReport.resumed).toBe(secondReport.artifacts.length);
+    expect(secondReport.verdictText).toBe(
+      `${ALL_VERIFIED_TEXT} (${secondReport.resumed} of ${secondReport.artifacts.length} artifact checks resumed from a prior run, not re-fetched)`,
+    );
+    const evidence = buildEvidence(secondReport);
+    expect(evidence.summary.resumed).toBe(secondReport.resumed);
+    expect(evidence.summary.verdict).not.toBe(ALL_VERIFIED_TEXT);
+    const table = evidence.artifacts.find((a) => a.name === f.largeArtifact.name);
+    expect(table?.gateways[PINATA]).toMatchObject({
+      resumed: true,
+      status: null,
+      bytes: null,
+      sha256: null,
+      ok: true,
+    });
+  });
+
+  it("never seeds a resume from a line that was itself resumed", async () => {
+    const lines = [
+      `ok   ${PINATA} t/a cid=bafkreifresh size=1 match sha256 match [public gateway · also holds our second copy]`,
+      `ok   ${PINATA} t/b cid=bafkreiold ${RESUMED_TEXT} [public gateway · also holds our second copy]`,
+    ];
+    const skip = parseResumeLog(lines.join("\n"));
+    expect(skip.has(resumeKey(PINATA, "t/a", "bafkreifresh"))).toBe(true);
+    expect(skip.has(resumeKey(PINATA, "t/b", "bafkreiold"))).toBe(false);
+    expect(skip.size).toBe(1);
+  });
+
+  it("re-fetches a check whose CID changed since the prior log", async () => {
+    const f = await fixture();
+    const lines = [
+      `ok   ${PINATA} ${f.largeArtifact.name} cid=bafkreioldcid size=1 match sha256 match`,
+    ];
+    const resumeSkip = parseResumeLog(lines.join("\n"));
+    expect(resumeSkip.has(resumeKey(PINATA, f.largeArtifact.name, "bafkreioldcid"))).toBe(true);
+    const { fetchImpl, requests } = fakeGateways(f.published);
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      resumeSkip,
+      log: () => {},
+    });
+    expect(report.resumed).toBe(0);
+    expect(requests).toContain(`${PINATA}/ipfs/${f.largeArtifact.cid}`);
+    expect(report.verdictText).toBe(ALL_VERIFIED_TEXT);
   });
 
   it("still fetches checks not present in the resume set", async () => {
@@ -511,5 +622,298 @@ describe("resume (--resume-from)", () => {
       (c) => c.name === "car/travis-county.car" && c.gateway === FILEBASE,
     );
     expect(skipped?.ok).toBe(true);
+  });
+});
+
+describe("AM-10: Filebase is a reported fallback, never a counted check", () => {
+  it("a Filebase-only miss is printed with the storage-host label but does not fail the run", async () => {
+    const f = await fixture();
+    const lines: string[] = [];
+    const { fetchImpl } = fakeGateways(f.published, {
+      // 404 (the fake's `serve` falls back to the real bytes on undefined)
+      statuses: (host, cid) =>
+        host === "ipfs.filebase.io" && cid === f.largeArtifact.cid ? [404] : [],
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      log: (l) => lines.push(l),
+    });
+    expect(report.ok).toBe(true);
+    expect(lines.at(-1)).toBe(ALL_VERIFIED_TEXT);
+    const miss = report.artifacts.find(
+      (c) => c.name === f.largeArtifact.name && c.gateway === FILEBASE,
+    );
+    expect(miss?.ok).toBe(false);
+    expect(miss?.role).toBe("fallback");
+    expect(
+      lines.some(
+        (l) => l.startsWith("FAIL") && l.includes(FILEBASE) && l.includes(STORAGE_HOST_LABEL),
+      ),
+    ).toBe(true);
+    const verdict = report.verdicts.find((v) => v.name === f.largeArtifact.name);
+    expect(verdict).toMatchObject({ independentOk: true, fallbackOk: false, ok: true });
+  });
+
+  it("a Filebase match never rescues a miss on an independent gateway", async () => {
+    const f = await fixture();
+    const lines: string[] = [];
+    const { fetchImpl } = fakeGateways(f.published, {
+      // 404 (the fake's `serve` falls back to the real bytes on undefined)
+      statuses: (host, cid) =>
+        host === "ipfs.orbitor.dev" && cid === f.largeArtifact.cid ? [404] : [],
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      log: (l) => lines.push(l),
+    });
+    expect(report.ok).toBe(false);
+    expect(lines).not.toContain(ALL_VERIFIED_TEXT);
+    const verdict = report.verdicts.find((v) => v.name === f.largeArtifact.name);
+    expect(verdict).toMatchObject({ independentOk: false, fallbackOk: true, ok: false });
+    expect(exitCodeFor(report)).toBe(1);
+  });
+
+  it("Filebase answering 200 with other manifest bytes is a loud WARNING, not a stop", async () => {
+    const f = await fixture();
+    const lines: string[] = [];
+    const { fetchImpl } = fakeGateways(f.published, {
+      serve: (host, cid, bytes) =>
+        host === "ipfs.filebase.io" && cid === f.manifestCid ? new Uint8Array([1, 2, 3]) : bytes,
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      log: (l) => lines.push(l),
+    });
+    expect(report.ok).toBe(true);
+    expect(report.artifacts.length).toBeGreaterThan(0);
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0]).toMatch(
+      /^WARNING https:\/\/ipfs\.filebase\.io .*served other bytes/,
+    );
+    expect(lines.some((l) => l.startsWith("WARNING"))).toBe(true);
+    expect(lines.at(-1)).toBe(ALL_VERIFIED_TEXT);
+    expect(buildEvidence(report).summary.warnings).toEqual(report.warnings);
+  });
+
+  it("a counted gateway answering other manifest bytes still stops before any artifact", async () => {
+    const f = await fixture();
+    const { fetchImpl, requests } = fakeGateways(f.published, {
+      serve: (host, cid, bytes) =>
+        host === "ipfs.orbitor.dev" && cid === f.manifestCid ? new Uint8Array([1, 2, 3]) : bytes,
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      log: () => {},
+    });
+    expect(report.ok).toBe(false);
+    expect(report.artifacts).toHaveLength(0);
+    expect(requests).toHaveLength(ALLOWED_GATEWAYS.length);
+    expect(report.verdictText).toMatch(/artifacts not checked/);
+  });
+
+  it("an unreachable Filebase manifest does not stop the run", async () => {
+    const f = await fixture();
+    const { fetchImpl } = fakeGateways(f.published, {
+      // 404 (the fake's `serve` falls back to the real bytes on undefined)
+      statuses: (host, cid) => (host === "ipfs.filebase.io" && cid === f.manifestCid ? [404] : []),
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      log: () => {},
+    });
+    expect(report.ok).toBe(true);
+    expect(report.manifestVerdict).toMatchObject({ independentOk: true, fallbackOk: false });
+  });
+
+  it("an omitted independent gateway fails the run; an omitted fallback is only a note", async () => {
+    const f = await fixture();
+    const lines: string[] = [];
+    const onlyIndependent = await verifyManifest({
+      manifestPath: f.manifestPath,
+      gateways: [PINATA, ORBITOR],
+      fetch: fakeGateways(f.published).fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      log: (l) => lines.push(l),
+    });
+    expect(onlyIndependent.ok).toBe(true);
+    expect(lines.some((l) => l.startsWith("note") && l.includes(FILEBASE))).toBe(true);
+
+    const pinataAndFilebase = await verifyManifest({
+      manifestPath: f.manifestPath,
+      gateways: [PINATA, FILEBASE],
+      fetch: fakeGateways(f.published).fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      log: () => {},
+    });
+    expect(pinataAndFilebase.ok).toBe(false);
+    expect(pinataAndFilebase.verdictText).toContain(`${ORBITOR} (not checked)`);
+  });
+});
+
+describe("--sample: the CAR has ONE counted gateway (orbitor)", () => {
+  it("reads the CAR from orbitor and Filebase (Pinata skipped), says so, and exits 0", async () => {
+    const f = await fixture();
+    const lines: string[] = [];
+    const { fetchImpl, requests } = fakeGateways(f.published);
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      sample: true,
+      log: (l) => lines.push(l),
+    });
+    expect(report.ok).toBe(true);
+    expect(exitCodeFor(report)).toBe(0);
+    const car = report.verdicts.find((v) => v.kind === "car");
+    expect(car?.independentCheck).toBe(false);
+    expect(car?.countedGateways).toEqual([ORBITOR]);
+    expect(car?.checks.map((c) => c.gateway).sort()).toEqual([FILEBASE, ORBITOR].sort());
+    const carCid = car?.cid ?? "\u0000";
+    expect(requests.filter((u) => u.includes(carCid)).some((u) => u.startsWith(PINATA))).toBe(
+      false,
+    );
+    expect(
+      lines.some((l) => /ONE counted gateway in a sample/.test(l) && l.includes(car?.name ?? "")),
+    ).toBe(true);
+    expect(lines.at(-1)).toBe(
+      "SAMPLE VERIFIED 2 of 2 artifacts (the CAR on orbitor and Filebase only)",
+    );
+    const ev = buildEvidence(report);
+    expect(ev.artifacts.find((a) => a.kind === "car")?.counted_gateways).toEqual([ORBITOR]);
+    expect(ev.summary.one_counted_gateway).toBe(1);
+    const table = report.verdicts.find((v) => v.kind === "table");
+    expect(table).toMatchObject({ independentCheck: true, independentOk: true });
+  });
+
+  it("fails the sample when orbitor misses the CAR, even if Filebase matches", async () => {
+    const f = await fixture();
+    const probe = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fakeGateways(f.published).fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      sample: true,
+      log: () => {},
+    });
+    const carCid = probe.verdicts.find((v) => v.kind === "car")?.cid ?? "";
+    const { fetchImpl } = fakeGateways(f.published, {
+      statuses: (host, cid) => (host === "ipfs.orbitor.dev" && cid === carCid ? [404] : []),
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      sample: true,
+      log: () => {},
+    });
+    expect(report.ok).toBe(false);
+    expect(report.verdicts.find((v) => v.kind === "car")).toMatchObject({
+      independentOk: false,
+      fallbackOk: true,
+      ok: false,
+    });
+  });
+});
+
+describe("--json evidence (T078)", () => {
+  it("records per-artifact, per-gateway results, independent_ok and a summary", async () => {
+    const f = await fixture();
+    let clock = 0;
+    const { fetchImpl } = fakeGateways(f.published, {
+      // 404 (the fake's `serve` falls back to the real bytes on undefined)
+      statuses: (host, cid) =>
+        host === "ipfs.filebase.io" && cid === f.largeArtifact.cid ? [404] : [],
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: async (input, init) => {
+        clock += 7;
+        return fetchImpl(input, init);
+      },
+      now: () => clock,
+      sleep: noSleep,
+      random: noJitter,
+      log: () => {},
+    });
+    const evidence = buildEvidence(report, new Date("2026-10-26T12:00:00Z"));
+    expect(evidence.schema).toBe(EVIDENCE_SCHEMA);
+    expect(evidence.generated_at).toBe("2026-10-26T12:00:00.000Z");
+    expect(evidence.mode).toBe("full");
+    expect(evidence.independent_gateways).toEqual([PINATA, ORBITOR]);
+    expect(evidence.fallback_gateways).toEqual([FILEBASE]);
+    expect(evidence.artifacts.map((a) => a.name)).toEqual([
+      "manifest",
+      "car/travis-county.car",
+      f.largeArtifact.name,
+    ]);
+    const large = evidence.artifacts.find((a) => a.name === f.largeArtifact.name);
+    expect(large).toMatchObject({
+      cid: f.largeArtifact.cid,
+      size: f.largeArtifact.size,
+      sha256: f.largeArtifact.sha256,
+      independent_ok: true,
+      fallback_ok: false,
+      ok: true,
+    });
+    expect(large?.gateways[PINATA]).toMatchObject({
+      role: "counted",
+      holds_our_copy: true,
+      label: "public gateway · also holds our second copy",
+      resumed: false,
+      status: 200,
+      ok: true,
+      bytes: f.largeArtifact.size,
+      sha256: f.largeArtifact.sha256,
+      ms: 7,
+    });
+    expect(large?.gateways[FILEBASE]).toMatchObject({
+      role: "fallback",
+      holds_our_copy: true,
+      label: "our main storage host · fallback, not counted",
+      status: 404,
+      ok: false,
+    });
+    expect(large?.gateways[ORBITOR]).toMatchObject({
+      role: "counted",
+      holds_our_copy: false,
+      label: "public gateway · holds no copy of ours",
+    });
+    expect(evidence.summary).toMatchObject({
+      ok: true,
+      exit_code: 0,
+      verdict: ALL_VERIFIED_TEXT,
+      artifacts_listed: 2,
+      artifacts_checked: 2,
+      independent_ok: 3,
+      independent_failed: 0,
+      one_counted_gateway: 0,
+      warnings: [],
+      fallback_checks: 3,
+      fallback_ok: 2,
+      resumed: 0,
+    });
+
+    const out = join(mkdtempSync(join(tmpdir(), "verify-evidence-")), "nested", "evidence.json");
+    writeEvidence(out, evidence);
+    expect(JSON.parse(readFileSync(out, "utf8"))).toEqual(evidence);
   });
 });

@@ -11,7 +11,7 @@ describe("@countylens/api-client", () => {
   });
 
   it("never batches agent.* and mcpProxy.* procedures; batches everything else", () => {
-    expect([...UNBATCHED_PREFIXES].sort()).toEqual(["agent.", "mcpProxy."]);
+    expect([...UNBATCHED_PREFIXES].sort()).toEqual(["agent.", "explore.search", "mcpProxy."]);
     expect(isUnbatched("agent.ask")).toBe(true);
     expect(isUnbatched("mcpProxy.call")).toBe(true);
     expect(isUnbatched("runs.summary")).toBe(false);

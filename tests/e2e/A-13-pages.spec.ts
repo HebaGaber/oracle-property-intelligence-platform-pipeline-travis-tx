@@ -102,7 +102,7 @@ test.describe("A-13 pages · Hub", { tag: "@a13-pages" }, () => {
     // 3. The Roofing CRM card: "Coming soon · Not deployed yet", disabled button, no href.
     await expectCrmNotDeployed(page);
     // 4. The chip: "Run {n} · {YYYY-MM-DD HH:mm} UTC" from runs/index.json.
-    const chipText = PAGE_TEXTS.hubChip(oracle.n, oracle.latest.finishedAt);
+    const chipText = PAGE_TEXTS.hubChip(`Run ${oracle.n}`, oracle.latest.finishedAt);
     const chip = page.getByText(chipText, { exact: true });
     await expect(chip).toBeVisible();
     await checkpoint(page, "001", 4);
@@ -582,7 +582,6 @@ const ENTRY: Record<
   "street-view": { url: () => exploreUrl(EXPLORE, WIDE), prep: openFirstProperty },
   "saved-searches": { url: () => EXPLORE },
   "similar-properties": { url: () => exploreUrl(EXPLORE, WIDE), prep: openFirstProperty },
-  "sql-checks": { url: () => exploreUrl(EXPLORE, { mode: "sql" }) },
   "pipeline-diagram": { url: () => ROUTES.runs },
   "area-matrix": { url: () => EXPLORE },
   "timeline-scrubber": { url: () => ROUTES.runs },
@@ -632,7 +631,6 @@ test.describe("A-13 pages · Coming soon", { tag: "@a13-pages" }, () => {
     ["062", "street-view"],
     ["064", "saved-searches"],
     ["065", "similar-properties"],
-    ["066", "sql-checks"],
     ["067", "pipeline-diagram"],
     ["068", "area-matrix"],
     ["069", "timeline-scrubber"],
@@ -641,8 +639,6 @@ test.describe("A-13 pages · Coming soon", { tag: "@a13-pages" }, () => {
 
   for (const [tc, id] of CASES) {
     test(scenario(tc), async ({ page, oracle }) => {
-      if (tc === "062" || tc === "065") parkGap(PARKED_GAPS.exploreSearch); // needs a search result row to open the drawer
-      if (tc === "066") parkGap(PARKED_GAPS.sqlTabBind); // its entry point is the Explore SQL tab
       const item = itemFor(id);
       const entry = ENTRY[id];
       if (entry === undefined) throw new Error(`no entry point defined for Coming soon item ${id}`);
@@ -683,7 +679,8 @@ test.describe("A-13 pages · Coming soon", { tag: "@a13-pages" }, () => {
       for (const h of await inSiteHrefs(page)) hrefs.add(h);
     }
     expect(
-      [...hrefs].filter((h) => /ai-user|sign-?in/i.test(h)),
+      // The admin sign-in entry (A-16 AC-6, /admin/sign-in) is not the AI-user sign-in.
+      [...hrefs].filter((h) => /ai-user|sign-?in/i.test(h) && !h.startsWith("/admin/")),
       "no link to AI-user sign-in",
     ).toEqual([]);
     await checkpoint(page, "063", 1);
@@ -854,7 +851,6 @@ test.describe("A-13 pages · cross-cutting", { tag: "@a13-pages" }, () => {
   });
 
   test(scenario("086"), async ({ page, oracle, request }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     test.setTimeout(20 * 60_000);
     const targets = routeTargets(oracle.manifestCid);
     const visited = new Set(targets.map((t) => t.path.split("?")[0]));
@@ -892,7 +888,8 @@ test.describe("A-13 pages · cross-cutting", { tag: "@a13-pages" }, () => {
     }
     expect(broken, "no broken in-site link").toEqual([]);
     expect(
-      [...hrefs].filter((h) => /ai-user|sign-?in/i.test(h)),
+      // The admin sign-in entry (A-16 AC-6, /admin/sign-in) is not the AI-user sign-in.
+      [...hrefs].filter((h) => /ai-user|sign-?in/i.test(h) && !h.startsWith("/admin/")),
       "no link to AI-user sign-in",
     ).toEqual([]);
     test.info().annotations.push({ type: "links-crawled", description: String(hrefs.size) });

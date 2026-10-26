@@ -3,6 +3,7 @@ id: DEC-A-13-explore-full-county
 type: decision
 story: A-13
 title: "Close A-13 with Explore search unproven on the full county; the gap moves to A-16 (PO exception to AC-4, AC-5, AC-8 and NFR-001 at full-county scale)"
+superseded: "A-16 closed it on 2026-10-26: Explore search reads a per-run index (ADR-0001 Amendment 1); hosted Run 3 search 1.0–1.9 s; the parked cases are unparked (see docs/evidence/A-16.md § Closure, A13-1, A13-8)"
 status: Approved by the PO (HebaGaber) on 2026-10-25 ("go to option 3 and document the gaps in a16")
 created: 2026-10-25
 ---

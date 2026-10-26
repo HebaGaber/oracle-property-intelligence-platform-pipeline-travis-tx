@@ -13,15 +13,34 @@
 // outcomes T023 tests for (`answered`, `paused`, `throttled`, `timed_out`) are each reachable
 // through documented, reversible configuration (an env var or a constructor override) rather
 // than by hand-crafting a fake `outcome` value.
+//
+// A-16 A14-5 (Task B's structured empty outcomes): `missing[]` and the honesty sentences come from
+// tool results only (empty_reason, an owner-area notice, the declareUnpublished tool, applied
+// thresholds), never from the question's wording, and an answer that cites nothing carries
+// `empty_outcome` (empty_in_scope, field_not_published, …) with its plain sentence. AC-13: a run
+// with no usable Explore index answers `failed` with reason index_not_built / index_stale, and a
+// runs index that cannot be read answers `failed` with reason run_lookup_failed (A14-6).
 import { generateText, stepCountIs, type LanguageModel } from "ai";
 import { z } from "zod";
 import { CidV1 } from "@countylens/contract";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import { EXPLORE_BOUNDS, type BoundRun, type QueryEngine } from "@countylens/query-core";
 import { abortError, raceAbort } from "./abort.js";
-import { bindOnce, getEngine } from "../engine/duckdb-node.js";
+import { bindOnce, getEngine, ownerAreaPublished } from "../engine/duckdb-node.js";
+import { isIndexUnavailable } from "../engine/explore-index.js";
 import { lazyViewEngine, type BindViews } from "../engine/lazy-views.js";
-import { createCitationRegistry, type Match } from "./citations.js";
+import {
+  ADDRESS_NOT_PUBLISHED_TEXT,
+  EMPTY_OUTCOME_SENTENCES,
+  UNPUBLISHED_FIELDS,
+  fieldLabel,
+  plainWording,
+  createCitationRegistry,
+  emptyOutcomeOf,
+  unpublishedFromTools,
+  type EmptyOutcome,
+  type Match,
+} from "./citations.js";
 import { agentObservability } from "./observability.js";
 import {
   DAILY_SPEND_CAP_USD,
@@ -145,6 +164,8 @@ export interface AgentAskResponse {
   /** The one run this answer is about (donphan Major 1): present on every response produced after
    *  the run was bound, so an empty answer still names the run it searched. */
   run?: RunEcho;
+  /** A-16 A14-5: why an answer cites nothing, from the tool results (absent when rows matched). */
+  empty_outcome?: EmptyOutcome;
   /** ERR-63: observable budgets (AC-5). All optional so older clients stay compatible. */
   modelCalls?: number;
   outputTokens?: number;
@@ -414,6 +435,11 @@ const CONTRACT_MISSING_NAMES: Record<string, string> = {
   bbb_rating: "bbb_status",
 };
 
+/** A-16: questions asking for a street address (not in the published export). */
+export function asksAddress(question: string): boolean {
+  return /\b(street )?address(es)?\b/i.test(question) && !/mailing/i.test(question);
+}
+
 /** ERR-64: questions about contractors / BBB (not answerable from the published export). */
 export function asksContractorOrBbb(question: string): boolean {
   return /contractor|\bbbb\b|better business/i.test(question);
@@ -471,7 +497,7 @@ export function permitNumberIn(question: string): string | undefined {
 export function composeStructuredParts(
   matches: Match[],
   toolOutputs: Record<string, unknown>[],
-  question = "",
+  _question = "",
   run?: RunEcho,
 ): {
   how: string;
@@ -526,23 +552,10 @@ export function composeStructuredParts(
       missing.push({ field: "bbb_status", reason: match.bbb_status_reason ?? match.bbb_status });
     }
   }
-  // ERR-62: the owner's mailing ZIP is not in the published export (columns.ts UNCARRIED
-  // owner_mailing_postal_code -> owner_area_class unknown -> owner_is_out_of_area null), so
-  // any question that filters on it cannot be answered, whatever the row count says.
-  if (applied.owner_is_out_of_area === true) {
-    missing.push({ field: "owner_is_out_of_area", reason: "not_in_export" });
-  }
-  // ERR-64: question-text rules, independent of which filters the model chose. The permit export
-  // carries no contractor name and no BBB rating (UNCARRIED v_roofing_permit), and the owner's
-  // mailing location is not published, so a question that asks about them is flagged even when
-  // no search ran or the search returned no rows.
-  if (asksOutOfAreaOwner(question)) {
-    missing.push({ field: "owner_is_out_of_area", reason: "not_in_export" });
-  }
-  if (asksContractorOrBbb(question)) {
-    missing.push({ field: "contractor.name_as_printed", reason: "no_lexicon_carrier" });
-    missing.push({ field: "bbb_status", reason: "no_lexicon_carrier" });
-  }
+  // ERR-62 / A-16 A14-5: fields the export does not carry, from structured tool results only
+  // (an applied out-of-area filter, an owner-area "not published" notice, declareUnpublished),
+  // never from the question's wording.
+  missing.push(...unpublishedFromTools(toolOutputs));
 
   const howParts: string[] = [];
   if (run !== undefined) howParts.push(`Run ${run.run_id}, as of ${asOfDate(run.as_of)}`);
@@ -562,7 +575,7 @@ export function composeStructuredParts(
   const unplacedSentences = [...unplaced.entries()].map(([key, n]) =>
     UNPLACED_REASONS[key] !== undefined
       ? UNPLACED_REASONS[key].sentence(n)
-      : `${n} ${n === 1 ? "record was" : "records were"} left out because ${key.replaceAll("_", " ")} is unknown.`,
+      : `${n} ${n === 1 ? "record was" : "records were"} left out because ${fieldLabel(key)} is unknown.`,
   );
 
   return {
@@ -573,14 +586,14 @@ export function composeStructuredParts(
   };
 }
 
-/** One `bbb_status` entry only: the specific reason a match carried (e.g. contractor_unresolved)
- *  wins over the generic `no_lexicon_carrier`. */
+/** One `bbb_status` entry only: the specific reason a match carried (e.g. source_missing) wins
+ *  over the generic declared one (UNPUBLISHED_FIELDS.bbb_status). */
 function dedupeBbb(
   entries: { field: string; reason: string }[],
 ): { field: string; reason: string }[] {
   const bbb = entries.filter((e) => e.field === "bbb_status");
   if (bbb.length < 2) return entries;
-  const chosen = bbb.find((e) => e.reason !== "no_lexicon_carrier") ?? bbb[0];
+  const chosen = bbb.find((e) => e.reason !== UNPUBLISHED_FIELDS.bbb_status) ?? bbb[0];
   const out: { field: string; reason: string }[] = [];
   let placed = false;
   for (const e of entries) {
@@ -664,15 +677,23 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "supports it; unknown_excluded and empty_reason are the only coverage evidence.",
     "owner_is_out_of_area is not in the published export (owner mailing ZIP is not published):",
     "when asked who lives outside the area, say you cannot tell from the published data",
-    "because it is not in the published export. Contractor names and BBB ratings are likewise",
-    "not available in the published export; say so when asked.",
+    "because it is not in the published export. BBB ratings are not available because BBB",
+    "blocks automated lookups (bbb_status blocked / not_checked); say that when asked, and give",
+    "the permit's bbb_url (a BBB search link) where one is present. The contractor's name AS PRINTED on the permit IS",
+    "published (contractor_name_as_printed on each permit row, ERR-78): report it for each permit",
+    "that has one, and say 'no contractor printed on this permit' for rows where it is empty;",
+    "never say contractor names are unavailable in general. Whenever the question asks about",
+    "owners outside the area or a BBB rating, call declareUnpublished with those fields in the",
+    "same step as your search. Street addresses are not published: say exactly",
+    "'Address not in the published export'. Write plain words, never field names (say",
+    "'contractor name', 'owner lives outside the area', 'year built', not the column names).",
     "Read vague durations as numbers: 'many years' or 'a long time' means open_years_min 5 (at",
     "least 5 years) unless the user gives a number; say the threshold you applied. If the",
     "question asks for owners outside/out of the area, still run the search with the other",
     "filters and say that owner location is not in the published export. When the question",
     "contains a permit number (YYYY-NNNNNN XX), ALWAYS call searchRoofingPermits with that",
-    "permit_number first, then answer from the result; BBB ratings are not available in the",
-    "published data, but still report the permit facts you found.",
+    "permit_number first, then answer from the result; BBB ratings are not available (BBB",
+    "blocks automated lookups), but still report the permit facts you found.",
     "Thresholds: tenure_years_min means owner tenure MORE THAN that many years (strictly); say",
     "'more than N years' for it. roof_age_years_min and open_years_min mean at least N years.",
     "Say 'in this run' for coverage claims: this answer searches ONE published run; never say 'in",
@@ -715,7 +736,17 @@ export interface AskDeps {
   bindViews: BindViews;
   resolveManifestCid: ResolveManifestCid;
   runModelLoop: RunModelLoop;
+  /** Whether a run publishes any owner area (default: engine/duckdb-node.ts). */
+  ownerAreaPublished: (manifestCid: string) => Promise<boolean>;
 }
+
+/** A14-6: the runs index could not be read, so the latest run is unknown. */
+export class RunLookupFailedError extends Error {
+  override readonly name = "RunLookupFailedError";
+}
+
+export const RUN_LOOKUP_FAILED_ANSWER =
+  "I could not read the list of published runs right now, so I have no run to search. Try again in a minute.";
 
 /** T037: the only text a `failed` outcome from an unexpected error carries. */
 const FAILED_MESSAGE = "Something went wrong on our side. Try again, or use Filters instead.";
@@ -760,6 +791,7 @@ export async function runAgentAsk(
   const bindViews = overrides.bindViews ?? bindOnce;
   const resolveManifestCid = overrides.resolveManifestCid ?? defaultResolveManifestCid;
   const runModelLoop = overrides.runModelLoop ?? defaultRunModelLoop;
+  const ownerArea = overrides.ownerAreaPublished ?? ownerAreaPublished;
 
   // T036 (AD-27 layer 1): the 23 s abort starts before the first awaited step (spend reservation,
   // run lookup, engine, bind, tool calls, model loop) and the whole body is raced against it, so
@@ -831,7 +863,16 @@ export async function runAgentAsk(
       throw abortError();
     }
 
-    const manifestCid = input.manifest_cid ?? (await resolveManifestCid(env, signal));
+    let manifestCid = input.manifest_cid;
+    if (manifestCid === undefined) {
+      try {
+        manifestCid = await resolveManifestCid(env, signal);
+      } catch (error) {
+        if (isAbortError(error) || signal.aborted) throw error;
+        throw new RunLookupFailedError(errorMessage(error));
+      }
+    }
+    const runCid = manifestCid;
     const engine = await getEngineFn();
     const bound = await bindFn(manifestCid);
     runEcho = runEchoOf(bound);
@@ -841,6 +882,7 @@ export async function runAgentAsk(
       engine: lazyViewEngine(engine, manifestCid, bindViews),
       bound,
       registry,
+      ownerAreaPublished: () => ownerArea(runCid),
     });
 
     const traceId = /Root=([^;]+)/.exec(env._X_AMZN_TRACE_ID ?? "")?.[1];
@@ -988,8 +1030,9 @@ export async function runAgentAsk(
         "I cannot tell which owners live outside the area: the owner's mailing location is not in the published export.",
       );
     }
+    // A14-5: from the applied threshold, not the question's wording.
     const years = query.open_years_min;
-    if (asksOpenPermitDuration(input.prompt) && typeof years === "number") {
+    if (typeof years === "number") {
       const stated = new RegExp(`(at least|>=)\\s*${years}\\b`, "i");
       if (!stated.test(cleaned)) {
         extra.push(
@@ -1000,9 +1043,13 @@ export async function runAgentAsk(
     if (
       missing.some((m) => m.field === "bbb_status") &&
       !hasRealBbbStatus(matches) &&
-      !/BBB status is not available in the published data/i.test(cleaned)
+      !/BBB blocks automated lookups/i.test(cleaned)
     ) {
-      extra.push("BBB status is not available in the published data.");
+      // A-16: BBB status is published (blocked / not_checked); the rating is not, because BBB
+      // blocks automated lookups. Say that, never "not published".
+      extra.push(
+        "BBB status is not available: BBB blocks automated lookups, so BBB was not checked; a BBB search link is given where a contractor is printed.",
+      );
     }
     if (
       missing.some((m) => m.field === "contractor.name_as_printed") &&
@@ -1012,8 +1059,13 @@ export async function runAgentAsk(
         "The contractor name is not printed in the published source (contractor not printed).",
       );
     }
+    if (asksAddress(input.prompt) && !/address not in the published export/i.test(cleaned))
+      extra.push(`${ADDRESS_NOT_PUBLISHED_TEXT}.`);
     missing = dedupeMissing(missing);
     extra.push(...composed.unplacedSentences);
+    const emptyOutcome = emptyOutcomeOf(matches.length, result.toolOutputs);
+    if (emptyOutcome !== null && !cleaned.includes(EMPTY_OUTCOME_SENTENCES[emptyOutcome]))
+      extra.push(EMPTY_OUTCOME_SENTENCES[emptyOutcome]);
 
     agentObservability().logger.info("agent.ask answered", {
       toolSteps: result.steps.length,
@@ -1023,7 +1075,8 @@ export async function runAgentAsk(
     });
 
     return {
-      answer: [cleaned, ...extra].join(" ").trim(),
+      // A-16: one address wording, plain labels instead of raw field names.
+      answer: plainWording([cleaned, ...extra].join(" ").trim()),
       how,
       steps: result.steps,
       matches,
@@ -1031,6 +1084,7 @@ export async function runAgentAsk(
       missing,
       outcome: "answered",
       ...(runEcho !== undefined ? { run: runEcho } : {}),
+      ...(emptyOutcome !== null ? { empty_outcome: emptyOutcome } : {}),
       ...telemetry(modelCalls, result.outputTokens),
     };
   };
@@ -1045,6 +1099,27 @@ export async function runAgentAsk(
         "Took too long. Try again, or use Filters instead.",
         runEcho,
       );
+    }
+    // AC-13: the run has no usable Explore index; A14-6: the runs index could not be read.
+    if (isIndexUnavailable(error)) {
+      agentObservability().logger.warn("agent.ask: run has no usable Explore index", {
+        reason: error.reason,
+        manifestCid: error.manifestCid,
+      });
+      return {
+        ...emptyResponse("failed", EMPTY_OUTCOME_SENTENCES[error.reason], runEcho),
+        missing: [{ field: "result", reason: error.reason }],
+        empty_outcome: error.reason,
+      };
+    }
+    if (error instanceof RunLookupFailedError) {
+      agentObservability().logger.warn("agent.ask: runs index could not be read", {
+        errorMessage: error.message,
+      });
+      return {
+        ...emptyResponse("failed", RUN_LOOKUP_FAILED_ANSWER, runEcho),
+        missing: [{ field: "run", reason: "run_lookup_failed" }],
+      };
     }
     // Throttling is only a model-provider condition: a throttle-shaped error from DynamoDB, the
     // runs index or a tool is a plain failure. A throttle before any billed step means the

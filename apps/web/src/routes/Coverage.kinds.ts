@@ -50,7 +50,8 @@ export const COVERAGE_KINDS: readonly CoverageKind[] = Object.freeze([
     title: "Contractor · resolved, candidate, ambiguous, conflicting, unresolved",
     prefixes: ["contractor_"],
     source: "austin-3syk-w9eu",
-    table: null,
+    // The printed-name company links (Run 3 manifest limitation; data audit 2026-10-26, row 7).
+    table: "property_improvement/property_improvement_has_contractor",
   },
   { id: "bbb", title: "BBB by status", prefixes: ["bbb_"], source: null, table: null },
   { id: "business", title: "Business", prefixes: ["business_"], source: null, table: null },

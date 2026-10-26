@@ -165,7 +165,7 @@ describe("Open and stalled permits (AC-5, FR-005)", () => {
     const chip = document.querySelector("[data-permit-chip]");
     expect(chip?.getAttribute("data-open-days")).toBe("2337"); // the row's open_days, not years × 365.25
     for (const cell of document.querySelectorAll('[data-field="contractor_name"]')) {
-      expect(cell.textContent).toBe(EXPLORE_TEXTS.noCarrier);
+      expect(cell.textContent).toBe(EXPLORE_TEXTS.contractorNotPrinted);
     }
     expect(document.querySelectorAll("[data-contractor-resolution]")).toHaveLength(2);
   });

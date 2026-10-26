@@ -9,7 +9,6 @@ import {
   ExploreSearchResult,
   a11Branch,
   a13EvidenceName,
-  areaCountSql,
   chipYears,
   directoryArtifact,
   expectedBbbText,
@@ -46,19 +45,12 @@ describe("evidence names and titles", () => {
   });
 });
 
-describe("explore URLs and SQL", () => {
+describe("explore URLs", () => {
   it("keeps the case's parameter order and a readable at", () => {
     expect(exploreUrl("/tx/travis/explore", { at: "30.2672,-97.7431", r: 25, view: "list" })).toBe(
       "/tx/travis/explore?at=30.2672,-97.7431&r=25&view=list",
     );
     expect(exploreUrl("/tx/travis/explore")).toBe("/tx/travis/explore");
-  });
-
-  it("builds a read-only count over v_property", () => {
-    const sql = areaCountSql({ lat: 30.4, lon: -97.6, radiusMi: 5 }, ["p.roof_age_years >= 15"]);
-    expect(sql).toMatch(/^SELECT count\(\*\) AS n FROM v_property p WHERE /);
-    expect(sql).toContain("p.roof_age_years >= 15");
-    expect(sql).toContain(String(5 * 1609.344));
   });
 });
 
@@ -67,7 +59,10 @@ describe("chips, blanks and stacks", () => {
     expect(chipYears(EXPLORE_TEXTS.stalledNoCarrier(22.6))).toBe(22.6);
     expect(chipYears(EXPLORE_TEXTS.openNoCarrier(5))).toBe(5);
     expect(chipYears("Final")).toBeNull();
-    expect(openYears(8254)).toBe(22.6);
+    // 8254 / 365.25 = 22.598…: one decimal, rounded down (explore-search contract).
+    expect(openYears(8254)).toBe(22.5);
+    // A TC-031-like case: 16,309 days is 44.65… years; the chip shows 44.6, never 44.7.
+    expect(openYears(16309)).toBe(44.6);
   });
 
   it("turns templates into anchored patterns", () => {

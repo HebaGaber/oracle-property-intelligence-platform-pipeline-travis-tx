@@ -14,10 +14,17 @@ export interface MissingReasonProps {
   readonly field: string;
   /** One of the contract's closed list of reasons (contract `missing[].reason`). */
   readonly reason: Reason;
+  /** A compact visible label; the full label stays the text and the tooltip (StatusPill). */
+  readonly short?: string | undefined;
 }
 
-export function MissingReason({ field, reason }: MissingReasonProps): ReactElement {
+export function MissingReason({ field, reason, short }: MissingReasonProps): ReactElement {
   return (
-    <StatusPill status="unavailable" text={missingLabel(field, reason)} data={{ field, reason }} />
+    <StatusPill
+      status="unavailable"
+      text={missingLabel(field, reason)}
+      data={{ field, reason }}
+      short={short}
+    />
   );
 }

@@ -36,6 +36,78 @@ export function sessionStorageOrUndefined(): Storage | undefined {
 
 export const limitReached = (used: number): boolean => used >= AI_TEXTS.sessionLimit;
 
+/** One block of the answer prose (a safe Markdown subset; text only, never HTML). */
+export interface AnswerBlock {
+  readonly kind: "heading" | "para" | "item" | "caveat";
+  readonly text: string;
+}
+
+const RULE = /^\s*([-*_])\1{2,}\s*$/;
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+
+/**
+ * PO 2026-10-26 (15.png): the model writes Markdown. This reads the few shapes it uses into blocks
+ * so the page never shows raw `**`, `###`, `>` or `|---|`: headings, list items, `>` quotes as a
+ * caveat, table rows as items ("cell · cell", header and separator rows dropped), rules dropped.
+ * Bold markers are handled inline (answerInline); everything stays plain text.
+ */
+export function answerBlocks(answer: string): AnswerBlock[] {
+  const blocks: AnswerBlock[] = [];
+  let tableHeader = false;
+  for (const raw of answer.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line === "" || RULE.test(line)) {
+      tableHeader = false;
+      continue;
+    }
+    if (line.startsWith("|")) {
+      if (TABLE_SEPARATOR.test(line)) continue;
+      const cells = line
+        .replace(/^\||\|$/g, "")
+        .split("|")
+        .map((c) => c.trim())
+        .filter((c) => c !== "");
+      if (!tableHeader) {
+        tableHeader = true; // the first row of a table is its header
+        continue;
+      }
+      blocks.push({ kind: "item", text: cells.join(" · ") });
+      continue;
+    }
+    tableHeader = false;
+    const heading = /^#{1,6}\s+(.*)$/.exec(line);
+    if (heading) blocks.push({ kind: "heading", text: heading[1] ?? "" });
+    else if (line.startsWith(">")) blocks.push({ kind: "caveat", text: line.replace(/^>\s*/, "") });
+    else if (/^([-*+]|\d+[.)])\s+/.test(line))
+      blocks.push({ kind: "item", text: line.replace(/^([-*+]|\d+[.)])\s+/, "") });
+    else blocks.push({ kind: "para", text: line });
+  }
+  return blocks;
+}
+
+export type InlinePart = AnswerPart | { readonly kind: "strong"; readonly text: string };
+
+/** Inline pieces of one block: `**bold**`, `[n]` citations, the rest as text (markers dropped). */
+export function answerInline(text: string, matchCount: number): InlinePart[] {
+  const parts: InlinePart[] = [];
+  const clean = text
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/(^|\s)[_*]([^_*\s][^_*]*)[_*](?=\s|$|[.,;:])/g, "$1$2");
+  let last = 0;
+  for (const m of clean.matchAll(/\*\*([^*]+)\*\*|\[(\d+)\]/g)) {
+    const index = m.index ?? 0;
+    if (index > last) parts.push({ kind: "text", text: clean.slice(last, index) });
+    if (m[1] !== undefined) parts.push({ kind: "strong", text: m[1] });
+    else {
+      const n = Number(m[2]);
+      if (n >= 1 && n <= matchCount) parts.push({ kind: "cite", n });
+    }
+    last = index + m[0].length;
+  }
+  if (last < clean.length) parts.push({ kind: "text", text: clean.slice(last) });
+  return parts;
+}
+
 export type AnswerPart =
   { readonly kind: "text"; readonly text: string } | { readonly kind: "cite"; readonly n: number };
 

@@ -11,6 +11,8 @@
 import { ROUTES, comingSoonPath } from "@countylens/shared/routes";
 import { PAGE_TEXTS } from "@countylens/shared/texts";
 import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useRef,
@@ -22,31 +24,119 @@ import {
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { COMING_SOON_ITEMS } from "../content/coming-soon";
 import { MORE_PAGES } from "../routes/route-list";
+
+import {
+  AdminAccessProvider,
+  AdminChip,
+  AdminMoreLink,
+  AdminNavItem,
+  hasStoredSession,
+} from "./AdminNav";
 import { CountySelect } from "./CountySelect";
+import { AppRows, AppsMenu, HelpMenu, WELCOME_PATH } from "./HelpMenu";
+import { SyncBadge } from "./SyncBadge";
+import { Icon } from "./Icon";
 import styles from "./AppShell.module.css";
 
 export const APP_TITLE = "CountyLens";
 export const MORE_LABEL = "More";
+/** Shell1440 board: the app bar's "Ask" entry opens Explore's AI tab. */
+export const ASK_LABEL = "Ask";
+export const ASK_PATH = `${ROUTES.explore}?mode=ai`;
+/** A13-7: the accessible name of the focusable scroll container `<main>`. */
+export const MAIN_LABEL = "Page content";
 
 export interface Destination {
   readonly to: string;
   readonly label: string;
   /** Material Symbols Rounded glyph name (Atlas § 6). */
   readonly icon: string;
+  /** Shell390More board: false = not in the bottom navigation below 600 px (listed in More). */
+  readonly compact?: false;
 }
 
 export const DESTINATIONS: readonly Destination[] = [
-  { to: ROUTES.explore, label: "Explore", icon: "travel_explore" },
+  { to: ROUTES.explore, label: "Explore", icon: "map" },
   { to: ROUTES.runs, label: "Runs", icon: "history" },
-  { to: ROUTES.coverage, label: "Coverage", icon: "fact_check" },
-  { to: ROUTES.dataManifest, label: "Data", icon: "database" },
+  { to: ROUTES.coverage, label: "Coverage", icon: "donut_small", compact: false },
+  { to: ROUTES.dataManifest, label: "Data", icon: "dataset" },
 ];
+
+/** More sheet rows shown only below 600 px (Shell390More board: Coverage; the SQL row was removed
+ *  with the Explore SQL tab by PO decision, A-16). */
+const COMPACT_MORE: readonly {
+  readonly to: string;
+  readonly label: string;
+  readonly icon: string;
+}[] = [{ to: ROUTES.coverage, label: "Coverage", icon: "donut_small" }];
+
+/** Shell390More board: every row carries its icon; pages without one fall back to `description`. */
+const MORE_ICONS: Readonly<Record<string, string>> = {
+  [ROUTES.dataCatalog]: "menu_book",
+  [ROUTES.runsLog]: "view_list",
+  [ROUTES.runsCompare]: "compare_arrows",
+  [ROUTES.helpMcp]: "integration_instructions",
+};
+
+/** Shell1440 board (Task B's rail pattern): Explore's modes nested under Explore in the rail while
+ *  Explore is the current page (from 600 px). Builder is the Coming soon item. */
+const EXPLORE_CHILDREN: readonly {
+  readonly to: string;
+  readonly label: string;
+  readonly icon: string;
+  readonly mode?: "filters" | "ai";
+}[] = [
+  { to: ROUTES.explore, label: "Filters", icon: "tune", mode: "filters" },
+  { to: comingSoonPath("builder-mode"), label: "Builder", icon: "rule" },
+  { to: ASK_PATH, label: "AI", icon: "auto_awesome", mode: "ai" },
+];
+
+/** Shell390More board: the legal pages sit in the sheet's footer line, not in the list. */
+const LEGAL_LINKS: readonly { readonly to: string; readonly label: string }[] = [
+  { to: ROUTES.legalTerms, label: "Terms" },
+  { to: ROUTES.legalPrivacy, label: "Privacy" },
+  { to: ROUTES.legalData, label: "Data licences" },
+];
+const LEGAL_PATHS: readonly string[] = LEGAL_LINKS.map((l) => l.to);
 
 function Glyph({ name }: { readonly name: string }): ReactElement {
   return (
     <span className={`material-symbols-rounded ${styles.glyph}`} aria-hidden="true">
       {name}
     </span>
+  );
+}
+
+/** Shell1440 board: the app bar's search box (from 1024 px; A-16 port of Task B's combobox).
+ *  The combobox module (gazetteer suggestions) loads on first focus, so the shell stays small;
+ *  until then this placeholder field stands in with the same label. */
+export const SEARCH_LABEL = "Search CountyLens: town, ZIP, permit or a question";
+
+const SearchBox = lazy(() => import("./SearchBox").then((m) => ({ default: m.SearchBox })));
+
+function HeaderSearch(): ReactElement {
+  const [live, setLive] = useState<string | null>(null);
+  const field = (
+    <div role="search" className={styles.search}>
+      <Icon name="location_on" size="medium" />
+      <input
+        type="text"
+        role="combobox"
+        aria-expanded={false}
+        className={styles.searchInput}
+        aria-label={SEARCH_LABEL}
+        placeholder={SEARCH_LABEL}
+        value={live ?? ""}
+        onFocus={() => setLive((t) => t ?? "")}
+        onChange={(event) => setLive(event.target.value)}
+      />
+    </div>
+  );
+  if (live === null) return field;
+  return (
+    <Suspense fallback={field}>
+      <SearchBox initialText={live} autoFocus className={styles.search} />
+    </Suspense>
   );
 }
 
@@ -63,7 +153,12 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
       }
       if (event.key !== "Tab") return;
       // Focus trap: Tab and Shift+Tab cycle inside the sheet.
-      const items = Array.from(sheet.current?.querySelectorAll<HTMLElement>("a[href]") ?? []);
+      // From 600 px the compact-only rows are display:none and cannot take focus.
+      const wide =
+        typeof window.matchMedia === "function" && window.matchMedia("(min-width: 600px)").matches;
+      const items = Array.from(
+        sheet.current?.querySelectorAll<HTMLElement>("a[href]") ?? [],
+      ).filter((a) => !(wide && a.closest(`.${styles.compactOnly}`) !== null));
       const first = items[0];
       const last = items[items.length - 1];
       if (first === undefined || last === undefined) return;
@@ -89,20 +184,43 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
       className={styles.sheet}
       onKeyDown={onKeyDown}
     >
-      <h2 className={styles.sheetTitle}>Pages</h2>
-      <ul className={styles.sheetList}>
-        {MORE_PAGES.map((page) => (
-          <li key={page.path}>
+      <span className={styles.grabber} aria-hidden="true" />
+      {/* Shell390More board: the pages as one outlined list; Coverage and Admin sign-in only
+          where the bottom navigation has no room for them. */}
+      <ul className={styles.sheetCard} aria-label="Pages">
+        {COMPACT_MORE.map((page) => (
+          <li key={page.to} className={`${styles.sheetRow} ${styles.compactOnly}`}>
+            <Icon name={page.icon} />
+            <Link to={page.to} className={styles.sheetItem} onClick={onClose}>
+              {page.label}
+            </Link>
+          </li>
+        ))}
+        <li className={`${styles.sheetRow} ${styles.compactOnly}`}>
+          <Icon name="admin_panel_settings" />
+          <AdminMoreLink className={styles.sheetItem} onClick={onClose} />
+        </li>
+        {MORE_PAGES.filter((page) => !LEGAL_PATHS.includes(page.path)).map((page) => (
+          <li key={page.path} className={styles.sheetRow}>
+            <Icon name={MORE_ICONS[page.path] ?? "description"} />
             <Link to={page.path} className={styles.sheetItem} onClick={onClose}>
               {page.title}
             </Link>
           </li>
         ))}
+        <li className={`${styles.sheetRow} ${styles.sheetDivided}`}>
+          <Icon name="lightbulb" />
+          <Link to={WELCOME_PATH} className={styles.sheetItem} onClick={onClose}>
+            What can I ask?
+          </Link>
+        </li>
       </ul>
+      {/* Task B's More sheet: the planned items, each row with its tonal "Coming soon" pill. */}
       <h2 className={styles.sheetTitle}>Planned</h2>
-      <ul className={styles.sheetList}>
+      <ul className={styles.sheetList} aria-label="Planned">
         {COMING_SOON_ITEMS.map((item) => (
-          <li key={item.id}>
+          <li key={item.id} className={styles.sheetRow}>
+            <Icon name="schedule" />
             {item.linked ? (
               <Link to={comingSoonPath(item.id)} className={styles.sheetItem} onClick={onClose}>
                 <span>{item.title}</span>
@@ -117,6 +235,18 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
           </li>
         ))}
       </ul>
+      {/* Shell390More "Apps" (Task B's Apps group): the app switcher rows. */}
+      <h2 className={styles.sheetTitle}>Apps</h2>
+      <ul className={styles.sheetList} aria-label="Apps">
+        <AppRows onNavigate={onClose} className={styles.appRow} />
+      </ul>
+      <nav className={styles.sheetFoot} aria-label="Legal">
+        {LEGAL_LINKS.map((link) => (
+          <Link key={link.to} to={link.to} className={styles.sheetFootLink} onClick={onClose}>
+            {link.label}
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }
@@ -130,7 +260,13 @@ export function AppShell(): ReactElement {
   }, []);
   // The location slot (county selector) sits at the top of the page region under `/tx/…`; the
   // app bar keeps the title as its only control.
-  const inCounty = useLocation().pathname.startsWith("/tx/");
+  const { pathname, search } = useLocation();
+  const inCounty = pathname.startsWith("/tx/");
+  const onExplore = pathname === ROUTES.explore;
+  const aiMode = new URLSearchParams(search).get("mode") === "ai";
+  // Legal and Coming soon pages are static and make no data request (A-13 TC-056), so the sync
+  // badge, which reads /runs/index.json, is not rendered there (justified board difference).
+  const staticPage = pathname.startsWith("/legal/") || pathname.startsWith("/soon/");
   const [moreOpen, setMoreOpen] = useState(false);
   const moreButton = useRef<HTMLButtonElement>(null);
   const closeMore = useCallback(() => setMoreOpen(false), []);
@@ -142,57 +278,132 @@ export function AppShell(): ReactElement {
     wasOpen.current = moreOpen;
   }, [moreOpen]);
 
+  // Ask admin.me again whenever a session appears or goes (sign-in, sign-out); none = no request.
+  const sessionKey = hasStoredSession() ? "session" : "signed-out";
+
   return (
-    <div className={styles.shell}>
-      <header
-        inert={moreOpen}
-        className={scrolled ? `${styles.bar} ${styles.barScrolled}` : styles.bar}
-      >
-        <h1 className={styles.title}>
-          <Link to={ROUTES.hub} className={styles.titleLink}>
-            {APP_TITLE}
-          </Link>
-        </h1>
-      </header>
-      <nav className={styles.nav} aria-label="Primary" inert={moreOpen}>
-        {DESTINATIONS.map((destination) => (
-          <NavLink
-            key={destination.to}
-            to={destination.to}
-            className={({ isActive }) =>
-              isActive ? `${styles.item} ${styles.itemActive}` : styles.item
-            }
+    <AdminAccessProvider key={sessionKey}>
+      <div className={styles.shell}>
+        <header
+          inert={moreOpen}
+          className={scrolled ? `${styles.bar} ${styles.barScrolled}` : styles.bar}
+        >
+          <h1 className={styles.title}>
+            <Link to={ROUTES.hub} className={styles.titleLink}>
+              {APP_TITLE}
+            </Link>
+          </h1>
+          {inCounty ? (
+            <div className={styles.location}>
+              <CountySelect />
+            </div>
+          ) : null}
+          <HeaderSearch />
+          <div className={styles.actions}>
+            <AdminChip className={styles.adminChip} />
+            {staticPage ? null : (
+              <span className={styles.sync}>
+                <SyncBadge />
+              </span>
+            )}
+            <HelpMenu />
+            <Link to={ASK_PATH} className={styles.ask} aria-label={ASK_LABEL}>
+              <Icon name="smart_toy" size="medium" />
+              <span className={styles.askText} aria-hidden="true">
+                {ASK_LABEL}
+              </span>
+            </Link>
+            <span className={styles.apps}>
+              <AppsMenu />
+            </span>
+          </div>
+        </header>
+        <nav className={styles.nav} aria-label="Primary" inert={moreOpen}>
+          {DESTINATIONS.map((destination) => [
+            <NavLink
+              key={destination.to}
+              to={destination.to}
+              className={({ isActive }) =>
+                [
+                  styles.item,
+                  isActive ? styles.itemActive : "",
+                  destination.compact === false ? styles.compactHidden : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+              }
+            >
+              <span className={styles.pill}>
+                <Glyph name={destination.icon} />
+              </span>
+              <span className={styles.label}>{destination.label}</span>
+            </NavLink>,
+            destination.to === ROUTES.explore && onExplore
+              ? EXPLORE_CHILDREN.map((child) => {
+                  const current =
+                    child.mode !== undefined && child.mode === (aiMode ? "ai" : "filters");
+                  return (
+                    <Link
+                      key={child.label}
+                      to={child.to}
+                      aria-current={current ? "page" : undefined}
+                      data-nested=""
+                      className={`${styles.item} ${styles.itemNested} ${
+                        current ? styles.itemActive : ""
+                      }`}
+                    >
+                      <span className={styles.pill}>
+                        <Glyph name={child.icon} />
+                      </span>
+                      <span className={styles.label}>{child.label}</span>
+                    </Link>
+                  );
+                })
+              : null,
+          ])}
+          <AdminNavItem
+            classes={{
+              item: `${styles.item} ${styles.compactHidden}`,
+              itemActive: styles.itemActive,
+              pill: styles.pill,
+              label: styles.label,
+            }}
+          />
+          <button
+            ref={moreButton}
+            type="button"
+            className={styles.more}
+            aria-expanded={moreOpen}
+            aria-controls="more-sheet"
+            onClick={() => setMoreOpen((open) => !open)}
           >
             <span className={styles.pill}>
-              <Glyph name={destination.icon} />
+              <Glyph name="more_horiz" />
             </span>
-            <span className={styles.label}>{destination.label}</span>
-          </NavLink>
-        ))}
-        <button
-          ref={moreButton}
-          type="button"
-          className={styles.more}
-          aria-expanded={moreOpen}
-          aria-controls="more-sheet"
-          onClick={() => setMoreOpen((open) => !open)}
+            <span className={styles.label}>{MORE_LABEL}</span>
+          </button>
+        </nav>
+        {moreOpen ? (
+          <>
+            <div
+              className={styles.scrim}
+              data-more-scrim=""
+              onClick={closeMore}
+              aria-hidden="true"
+            />
+            <MoreSheet onClose={closeMore} />
+          </>
+        ) : null}
+        <main
+          className={styles.main}
+          onScroll={onScroll}
+          inert={moreOpen}
+          tabIndex={0}
+          aria-label={MAIN_LABEL}
         >
-          <span className={styles.pill}>
-            <Glyph name="more_horiz" />
-          </span>
-          <span className={styles.label}>{MORE_LABEL}</span>
-        </button>
-      </nav>
-      {moreOpen ? (
-        <>
-          <div className={styles.scrim} data-more-scrim="" onClick={closeMore} aria-hidden="true" />
-          <MoreSheet onClose={closeMore} />
-        </>
-      ) : null}
-      <main className={styles.main} onScroll={onScroll} inert={moreOpen} tabIndex={0}>
-        {inCounty ? <CountySelect /> : null}
-        <Outlet />
-      </main>
-    </div>
+          <Outlet />
+        </main>
+      </div>
+    </AdminAccessProvider>
   );
 }

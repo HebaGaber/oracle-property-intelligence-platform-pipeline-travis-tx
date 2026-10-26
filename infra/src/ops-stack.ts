@@ -33,10 +33,14 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
-import { acknowledgeWildcardResources, type ApiStack } from "./api-stack.js";
-import { PROJECT_NAME, PROJECT_TAG_KEY } from "./config.js";
+import {
+  API_DURATION_ALARM_P95_MS,
+  acknowledgeWildcardResources,
+  type ApiStack,
+} from "./api-stack.js";
+import { ALERTS_TOPIC_NAME, PROJECT_NAME, PROJECT_TAG_KEY } from "./config.js";
 
-export const ALERTS_TOPIC_NAME = "countylens-alerts";
+export { ALERTS_TOPIC_NAME };
 export const MONTHLY_BUDGET_USD = 10;
 /** Budget name prefix; the full name carries a revision hash (budgetNameFor, metagross N2). */
 export const BUDGET_NAME = "countylens-monthly";
@@ -70,6 +74,8 @@ export function budgetNameFor(operatorEmail: string): string {
 export const BUDGET_RESOURCE_TYPE = "Custom::CountyLensBudget";
 /** Alarm evaluation window (FR-007: "Errors ≥ 1 per 5 min"); one period, threshold 1. */
 export const ALARM_PERIOD = Duration.minutes(5);
+/** A-16 T025 (A14-3): alarm at 8 of the account's 10 concurrent Lambda executions. */
+export const ACCOUNT_CONCURRENCY_ALARM = 8;
 
 export interface OpsStackProps extends StackProps {
   /** CountyLensApi: the function and HTTP API the alarms watch. */
@@ -137,6 +143,38 @@ export class OpsStack extends Stack {
         "countylens-api-5xx",
         props.api.httpApi.metricServerError(sum),
         "countylens-api HTTP API: one or more 5xx responses in 5 minutes (FR-007)",
+      ),
+      // A-16 T022 (A13-6): p95 duration at 80 % of the 15 s timeout means searches are about
+      // to time out (and bill the full timeout each).
+      notify(
+        new cw.Alarm(this, "LambdaDuration", {
+          alarmName: "countylens-api-duration-p95",
+          alarmDescription: `countylens-api: p95 duration ≥ ${API_DURATION_ALARM_P95_MS} ms (80 % of the timeout) in 5 minutes (A13-6)`,
+          metric: props.api.fn.metricDuration({ period: ALARM_PERIOD, statistic: "p95" }),
+          threshold: API_DURATION_ALARM_P95_MS,
+          evaluationPeriods: 1,
+          comparisonOperator: cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+          treatMissingData: cw.TreatMissingData.NOT_BREACHING,
+        }),
+      ),
+      // A-16 T025 (A14-3): the query API, the agent and the MCP server share the account's 10
+      // concurrent executions; at 8 one of them is about to starve the others. The lasting fix
+      // is a Service Quotas increase for "Concurrent executions" (operator option, not IaC).
+      notify(
+        new cw.Alarm(this, "AccountConcurrency", {
+          alarmName: "countylens-account-concurrency",
+          alarmDescription: `Account Lambda ConcurrentExecutions ≥ ${ACCOUNT_CONCURRENCY_ALARM} of 10 in 1 minute (A14-3; shared by api, agent, mcp)`,
+          metric: new cw.Metric({
+            namespace: "AWS/Lambda",
+            metricName: "ConcurrentExecutions",
+            statistic: "Maximum",
+            period: Duration.minutes(1),
+          }),
+          threshold: ACCOUNT_CONCURRENCY_ALARM,
+          evaluationPeriods: 1,
+          comparisonOperator: cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+          treatMissingData: cw.TreatMissingData.NOT_BREACHING,
+        }),
       ),
     ];
 

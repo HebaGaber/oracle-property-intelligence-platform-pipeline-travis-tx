@@ -19,6 +19,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import type { Construct } from "constructs";
+import { EXPLORE_INDEX_ROOT, LIVE_STATUS_KEY } from "./config.js";
 
 /** Public keys: `ipfs/<cid>` only (table parts, CARs under their carCid, manifests). */
 export const CID_COPY_PUBLIC_PREFIX = "ipfs/";
@@ -272,6 +273,11 @@ export class DataStack extends Stack {
       resourceArns: [
         this.bucket.arnForObjects(`${CID_COPY_PUBLIC_PREFIX}*`),
         this.bucket.arnForObjects(`${CID_COPY_PRIVATE_BENCH_PREFIX}*`),
+        // A-16 (AC-13, ADR-0001 amendment): the private per-run Explore index, built on the
+        // laptop from published CIDs only; outside the CloudFront origin path like bench/.
+        this.bucket.arnForObjects(`${EXPLORE_INDEX_ROOT}*`),
+        // A-16 (AC-7): the bridge's status object, one exact key (read-only here).
+        this.bucket.arnForObjects(LIVE_STATUS_KEY),
       ],
     });
     grantee.grantPrincipal.addToPrincipalPolicy(

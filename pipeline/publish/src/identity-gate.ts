@@ -36,6 +36,11 @@ export interface IdentityGateOptions {
   allowCidMap?: boolean;
   /** Opens the query engine (AD-19: DuckDB is wired by the caller, scripts/duckdb-engine.ts). */
   openEngine: () => Promise<OpenedEngine>;
+  /**
+   * Longest a manifest bind (remote part reads included) may take before the gate fails closed
+   * instead of hanging (A11-16). Default 30 minutes.
+   */
+  bindTimeoutMs?: number;
 }
 
 export interface OpenedEngine {
@@ -199,6 +204,22 @@ const sha256File = (path: string): Promise<string> =>
       .on("end", () => done(hash.digest("hex")));
   });
 
+/** Default longest a manifest bind may take (A11-16: a stalled remote part read must not hang the gate). */
+export const BIND_TIMEOUT_MS_DEFAULT = 30 * 60 * 1000;
+
+/** Rejects with `what timed out after N ms` when `work` has not settled in `ms` (the timer is cleared). */
+export async function withDeadline<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms} ms`)), ms);
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Binds a manifest's table parts into `engine`. A local part is read only after its bytes hash to
  * the manifest's SHA-256 (a file changed after the manifest was built must not pass the gate);
@@ -212,6 +233,7 @@ async function bindParts(
   remoteOnly: boolean,
   engine: QueryEngine,
   failures: string[],
+  bindTimeoutMs: number,
 ): Promise<void> {
   const localOk = new Set<string>();
   if (!remoteOnly) {
@@ -225,7 +247,11 @@ async function bindParts(
   }
   const partUrl = ({ name, cid }: { name: string; cid: string }): string =>
     localOk.has(name) ? resolve(root, name) : `https://${copyHost}/${cid}`;
-  await bindManifest(bytes, "", engine, { partUrl });
+  await withDeadline(
+    bindManifest(bytes, "", engine, { partUrl }),
+    bindTimeoutMs,
+    `binding the manifest from ${copyHost}`,
+  );
 }
 
 export async function runIdentityGate(options: IdentityGateOptions): Promise<IdentityGateSummary> {
@@ -233,6 +259,7 @@ export async function runIdentityGate(options: IdentityGateOptions): Promise<Ide
   const expectPermits = options.expectPermits ?? null;
   const pids = options.pids ?? null;
   const remoteOnly = options.remoteOnly === true;
+  const bindTimeoutMs = options.bindTimeoutMs ?? BIND_TIMEOUT_MS_DEFAULT;
   if (options.manifestBytes === undefined && options.manifestPath === undefined)
     throw new Error("runIdentityGate needs manifestPath or manifestBytes");
   if (copyHost === "") throw new Error("runIdentityGate needs a CID copy host");
@@ -247,7 +274,16 @@ export async function runIdentityGate(options: IdentityGateOptions): Promise<Ide
   const { engine } = opened;
   try {
     const failures: string[] = [];
-    await bindParts(bytes, manifest.artifacts, root, copyHost, remoteOnly, engine, failures);
+    await bindParts(
+      bytes,
+      manifest.artifacts,
+      root,
+      copyHost,
+      remoteOnly,
+      engine,
+      failures,
+      bindTimeoutMs,
+    );
 
     const permits = count(await engine.all("SELECT count(*) AS n FROM v_roofing_permit"));
     const joined = count(await engine.all("SELECT count(*) AS n FROM meta.permit"));
@@ -305,6 +341,7 @@ export async function runIdentityGate(options: IdentityGateOptions): Promise<Ide
           remoteOnly,
           second.engine,
           noise,
+          bindTimeoutMs,
         );
         failures.push(...noise.map((n) => `previous run: ${n}`));
         const compared = compareIdentity(

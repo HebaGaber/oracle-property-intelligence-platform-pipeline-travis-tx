@@ -21,7 +21,7 @@
 #      (A-13 contracts/site-links.md) from the Amplify variables CRM_URL, DEMO_VIDEO_URL and
 #      PR_URL that the Web stack sets from CDK context, "" when unset (the Hub hides the link and
 #      validates https itself). A link switch is a Web-stack deploy plus a rebuild, no code change.
-#   4. vite build (VITE_CID_COPY_HOST, VITE_FILEBASE_GATEWAY_HOST and VITE_PINATA_GATEWAY_HOST come from the app's
+#   4. vite build (VITE_CID_COPY_HOST and VITE_{FILEBASE,PINATA,ORBITOR}_GATEWAY_HOST come from the app's
 #      environment, never from this file), then gzip duckdb-eh.wasm in dist/ to .wasm.gz and
 #      delete the raw .wasm (apps/web/scripts/compress-wasm.ts, T057); the engine fetches the .gz
 #      and gunzips it in the browser (no Content-Encoding header: Amplify rejects it as read-only,

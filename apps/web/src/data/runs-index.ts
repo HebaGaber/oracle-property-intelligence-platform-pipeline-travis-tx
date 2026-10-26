@@ -6,6 +6,15 @@
 import { RunsIndexV1 } from "@countylens/contract";
 import { RUN_INDEX_TEXTS } from "@countylens/shared";
 import { browserFetch, requestInit, throwIfAborted } from "./http";
+import { byFinish, numberRuns, numberedByFinish, runName, type RunNumber } from "./run-numbers";
+
+export {
+  PILOT_RUN_IDS,
+  PILOT_SLICE_LABEL,
+  isPilotRun,
+  runName,
+  type RunNumber,
+} from "./run-numbers";
 
 export const RUNS_INDEX_PATH = "/runs/index.json";
 
@@ -71,4 +80,41 @@ export function latestRun(index: RunsIndexV1): RunsIndexEntry {
 /** The fixed banner text for a RunIndexError (plan § "Fixed texts"; the only source is shared). */
 export function runIndexText(reason: RunIndexFailure): string {
   return RUN_INDEX_TEXTS[reason];
+}
+
+/** The index's runs oldest first (by `finishedAt`), the pilot slice included. */
+export function runsByFinish(index: RunsIndexV1): RunsIndexEntry[] {
+  return byFinish(index.runs);
+}
+
+/** The numbered runs oldest first (RUNS_TEXTS.numbering): Run N is entry N-1; no pilot run. */
+export function numberedRuns(index: RunsIndexV1): RunsIndexEntry[] {
+  return numberedByFinish(index.runs);
+}
+
+/**
+ * Each run's number by run ID (RUNS_TEXTS.numbering, run-numbers.ts): 1..n over the non-pilot
+ * runs in finish order, `null` for the pilot slice. The same "Run N" the header badge, Hub, Runs,
+ * Compare, Log, Coverage, Catalog and the Manifest chain show.
+ */
+export function runNumbers(index: RunsIndexV1): ReadonlyMap<string, RunNumber> {
+  return numberRuns(index.runs);
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** `Oct 25, 2026` (UTC) for an ISO instant; the instant itself when it does not parse. */
+export function runDate(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  const d = new Date(ms);
+  return `${MONTHS[d.getUTCMonth()] ?? ""} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
+
+/**
+ * A run in a run picker (PO 2026-10-26: a run list with only the run and its date is a dropdown):
+ * `Run 3 · Oct 25, 2026` or `Pilot slice · Oct 21, 2026` (runName, runNumbers).
+ */
+export function runOptionLabel(number: RunNumber, finishedAt: string): string {
+  return `${runName(number)} · ${runDate(finishedAt)}`;
 }

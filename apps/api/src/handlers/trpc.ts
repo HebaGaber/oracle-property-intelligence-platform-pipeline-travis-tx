@@ -25,7 +25,7 @@ import type {
   APIGatewayProxyStructuredResultV2,
   Context as LambdaContext,
 } from "aws-lambda";
-import { createContext } from "../context.js";
+import { asProxyRouteEvent, createContext } from "../context.js";
 import {
   HEADER_CORRELATION_ID,
   HEADER_TRACE_ID,
@@ -84,6 +84,12 @@ export function procedureOf(event: APIGatewayProxyEventV2): string {
     .at(-1);
   const name = (fromRoute ?? fromPath ?? "").split("?")[0] ?? "";
   return PROCEDURE_NAME.test(name) ? name : "unknown";
+}
+
+/** True when a batched request (comma-joined procedure names) includes explore.search. */
+export function isBatchedExploreSearch(procedure: string): boolean {
+  const names = procedure.split(",");
+  return names.length > 1 && names.includes("explore.search");
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -237,6 +243,17 @@ export function createHandler(options: HandlerOptions = {}): TrpcHandler {
     }
 
     const headers = responseHeaders(obs, context.awsRequestId);
+    // explore.search has its own route throttle; a batch through the proxy route would skip it
+    // (metagross review, Major 1), so a batch that names it is refused before any work runs.
+    if (isApiGatewayEvent(event) && isBatchedExploreSearch(procedureOf(event))) {
+      return {
+        statusCode: 400,
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({
+          error: { code: "BAD_REQUEST", message: "explore.search cannot be batched" },
+        }),
+      };
+    }
     const manifestCid = manifestCidOf(event);
     const response = await observeQuery(
       obs,
@@ -245,7 +262,8 @@ export function createHandler(options: HandlerOptions = {}): TrpcHandler {
         ...(manifestCid !== undefined ? { manifestCid } : {}),
       },
       async (): Promise<QueryOutcome<APIGatewayProxyStructuredResultV2>> => {
-        const value = await trpc(event, context);
+        // A-16: `ANY /trpc/explore.search` (own throttle) answers as the proxy route would.
+        const value = await trpc(asProxyRouteEvent(event), context);
         return { value, ...summariseResponse(value) };
       },
     );

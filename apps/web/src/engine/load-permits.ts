@@ -9,7 +9,12 @@
 // chunk until this runs. Every count comes from the manifest (FR-009). Dependencies are
 // injectable for the unit tests; the defaults are the real modules.
 import type { RunManifestV1, RunsIndexV1 } from "@countylens/contract";
-import { PERMITS_TEXTS, readPathUrls, type ReadPathUrls } from "@countylens/shared";
+import {
+  PERMITS_PAGE_SIZE,
+  PERMITS_TEXTS,
+  readPathUrls,
+  type ReadPathUrls,
+} from "@countylens/shared";
 import {
   fallbackLabel as defaultFallbackLabel,
   type FetchByCidOptions,
@@ -45,6 +50,26 @@ import { STAGE_TEXTS } from "./stages";
  */
 export const PERMITS_PREFETCH_MAX_BYTES = 64 * 1024 * 1024;
 
+/** A11-9: the banner text when the fallback served a run whose Permits subset is above the cap. */
+export const TOO_LARGE_ON_FALLBACK_TEXT =
+  "This copy is too large to read from the fallback gateway. Try again when the CID copy is back.";
+
+/**
+ * A11-9: the Filebase fallback served the manifest and the Permits parts total more than
+ * PERMITS_PREFETCH_MAX_BYTES. Neither path is safe: DuckDB's own range reads have no 429/CORS
+ * retry (ERR-15) and an unbounded prefetch has no size limit, so the load stops with this error.
+ */
+export class TooLargeOnFallback extends Error {
+  override readonly name = "TooLargeOnFallback";
+
+  constructor(
+    readonly bytes: number,
+    readonly limit: number,
+  ) {
+    super(TOO_LARGE_ON_FALLBACK_TEXT);
+  }
+}
+
 /** What the page renders from: manifest facts plus the listed rows. */
 export interface PermitsLoaded {
   readonly runId: string;
@@ -54,11 +79,15 @@ export interface PermitsLoaded {
   readonly rows: readonly PermitListRow[];
   /** `fallback · {host}` when the Filebase gateway served the manifest and parts; null for the copy. */
   readonly fallbackLabel: string | null;
+  /** A11-11: true on the early first page (rows = the first PERMITS_PAGE_SIZE, no count check yet). */
+  readonly partial?: true;
 }
 
 export type PermitsLoader = (
   report: (stage: string) => void,
   signal: AbortSignal,
+  /** A11-11: receives the first page as soon as the views are bound, before the full listing. */
+  onFirstPage?: (first: PermitsLoaded) => void,
 ) => Promise<PermitsLoaded>;
 
 /** The engine chunk's surface (`import("./duckdb-wasm")`). */
@@ -69,6 +98,8 @@ export interface EngineModule {
   readonly permitsPartNames: typeof permitsPartNames;
   readonly countPermits: typeof countPermits;
   readonly listPermits: typeof listPermits;
+  /** The first page in listing order (duckdb-wasm listFirstPage); absent = no early paint. */
+  readonly listFirstPage?: (engine: OpenedEngine, pageSize: number) => Promise<PermitListRow[]>;
 }
 
 export interface PermitsLoaderDeps {
@@ -114,10 +145,10 @@ function permitsEmitted(manifest: RunManifestV1): number {
   return count.count;
 }
 
-type OpenedEngine = Awaited<ReturnType<EngineModule["openEngine"]>>;
+type OpenedEngine = Awaited<ReturnType<typeof openEngine>>;
 
 export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}): PermitsLoader {
-  return async (report, signal) => {
+  return async (report, signal, onFirstPage) => {
     const deps: PermitsLoaderDeps = {
       loadRunsIndex: overrides.loadRunsIndex ?? defaultLoadRunsIndex,
       latestRun: overrides.latestRun ?? defaultLatestRun,
@@ -141,23 +172,24 @@ export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}):
       const entry = deps.latestRun(index);
       const loaded = await deps.loadManifest(entry.manifestCid, { urls: deps.urls, signal });
       signal.throwIfAborted();
-      // ERR-15 resurfaces above PART_PREFETCH_MAX_BYTES: DuckDB-WASM's own httpfs then range-reads
-      // every part itself, with none of fetchParts's concurrency cap or 429/CORS-tolerant retry
-      // (measured 2026-10-21: Filebase answers an excess request 429 with no CORS header, which
-      // the browser reports as a network error, not a retryable status). The copy (CloudFront)
-      // was measured to take that volume at full concurrency (ADR-0001 decision 4), so only the
-      // fallback is exempted from the size cap: whenever Filebase served the manifest, every part
-      // goes through fetchParts's throttled, retried path instead of DuckDB's unprotected one.
-      const prefetchMaxBytes =
-        loaded.read.source.kind === "fallback"
-          ? Number.POSITIVE_INFINITY
-          : PERMITS_PREFETCH_MAX_BYTES;
+      // ERR-15 resurfaces above the cap: DuckDB-WASM's own httpfs then range-reads every part
+      // itself, with none of fetchParts's concurrency cap or 429/CORS-tolerant retry (measured
+      // 2026-10-21: Filebase answers an excess request 429 with no CORS header). The copy
+      // (CloudFront) takes that volume (ADR-0001 decision 4). From the fallback a subset above
+      // the cap is refused with TooLargeOnFallback (A11-9) instead of an unbounded prefetch.
+      const prefetchMaxBytes = PERMITS_PREFETCH_MAX_BYTES;
       // The Permits page binds only the tables its views read, so only those parts are prefetched
       // (or, above the cap, range-read): not the ~225 parts of a full run. The module is the
       // chunk fetch already under way since the top of this load, not the engine start.
       const wantedNames = new Set((await loadingModule).permitsPartNames(loaded.manifest));
       signal.throwIfAborted();
       const wanted = partsToPrefetch(loaded.manifest, prefetchMaxBytes, wantedNames);
+      if (wanted === null && loaded.read.source.kind === "fallback") {
+        const bytes = loaded.manifest.artifacts
+          .filter((a) => a.kind === "table" && wantedNames.has(a.name))
+          .reduce((n, a) => n + a.size, 0);
+        throw new TooLargeOnFallback(bytes, prefetchMaxBytes);
+      }
       const parts = wanted === null ? null : await deps.fetchParts(wanted, loaded.read, { signal });
       signal.throwIfAborted();
       const { module: engineModule, engine } = await starting;
@@ -172,18 +204,23 @@ export function createPermitsLoader(overrides: Partial<PermitsLoaderDeps> = {}):
       signal.throwIfAborted();
       report(STAGE_TEXTS.query);
       const emitted = permitsEmitted(loaded.manifest);
+      const facts = {
+        runId: loaded.manifest.runId,
+        manifestCid: loaded.manifestCid,
+        permitsEmitted: emitted,
+        fallbackLabel: deps.fallbackLabel(loaded.read.source),
+      };
+      if (onFirstPage !== undefined && engineModule.listFirstPage !== undefined) {
+        const first = await engineModule.listFirstPage(engine, PERMITS_PAGE_SIZE);
+        signal.throwIfAborted();
+        onFirstPage({ ...facts, rows: first, partial: true });
+      }
       // The page's own COUNT (TC-NF-02 times it): it must equal the manifest's count (FR-009).
       const counted = await engineModule.countPermits(engine);
       if (counted !== emitted) throw new Error(PERMITS_TEXTS.countMismatch(counted, emitted));
       signal.throwIfAborted();
       const rows = await engineModule.listPermits(engine);
-      return {
-        runId: loaded.manifest.runId,
-        manifestCid: loaded.manifestCid,
-        permitsEmitted: emitted,
-        rows,
-        fallbackLabel: deps.fallbackLabel(loaded.read.source),
-      };
+      return { ...facts, rows };
     } finally {
       // A-03 lists once; the worker is released so the page holds no idle engine (also when the
       // load failed before the engine was needed: it is closed once it has started).

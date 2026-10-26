@@ -262,6 +262,7 @@ jobs:
       CID_COPY_HOST: ${{ vars.CID_COPY_HOST }}
       FILEBASE_GATEWAY_HOST: ${{ vars.FILEBASE_GATEWAY_HOST }}
       PINATA_GATEWAY_HOST: ${{ vars.PINATA_GATEWAY_HOST }}
+      ORBITOR_GATEWAY_HOST: ${{ vars.ORBITOR_GATEWAY_HOST }}
       # TC-030: the permit number(s) the run counted under permits_no_tcad_geoid (manifest coverage).
       NO_TCAD_PERMIT_NUMBERS: ${{ vars.NO_TCAD_PERMIT_NUMBERS }}
     steps:

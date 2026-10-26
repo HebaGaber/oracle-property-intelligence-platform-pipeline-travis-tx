@@ -1,5 +1,6 @@
-// T029 (TC-040…043 at unit level): verify-manifest over an injected fetch. No network: a fake
-// gateway serves bytes by CID for the two allowlisted hosts; every other host is refused before
+// T029 (TC-040…043 at unit level; gateways per AM-10, A-16 T078): verify-manifest over an
+// injected fetch. No network: a fake gateway serves bytes by CID for the two independent hosts
+// (Pinata, orbitor) and the storage-host fallback (Filebase, reported, never counted); every other host is refused before
 // any request. Checks: the exact refusal text; the manifest fetched by its CID from both gateways
 // and compared byte-for-byte before any artifact (AM-05); car and directory artifacts fetched by
 // carCid, tables by cid, dag-json roots never fetched as files; plain GETs (no Range) with a
@@ -21,8 +22,12 @@ import {
   ALL_VERIFIED_TEXT,
   FILEBASE_GATEWAY_HOST,
   MAX_ATTEMPTS,
+  ORBITOR_GATEWAY_HOST,
   PINATA_GATEWAY_HOST,
+  STORAGE_HOST_LABEL,
   TIMEOUT_MS,
+  VERIFY_ALLOWED_GATEWAYS,
+  VERIFY_FALLBACK_GATEWAYS,
   VERIFY_GATEWAYS,
   assertAllowedGateways,
   refusedGatewayText,
@@ -33,8 +38,9 @@ import {
 
 const RUN_ID = "travis-202609-reroof-20261021t1530z";
 const PINATA = "gateway.pinata.cloud";
+const ORBITOR = "ipfs.orbitor.dev";
 const FILEBASE = "ipfs.filebase.io";
-const HOSTS = [PINATA, FILEBASE];
+const HOSTS = [PINATA, ORBITOR, FILEBASE];
 const CLOUDFRONT = "d111111abcdef8.cloudfront.net";
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -300,17 +306,20 @@ function fetchedCid(a: ManifestArtifact): string {
 }
 
 describe("gateway allowlist (TC-042)", () => {
-  it("names exactly the Pinata public gateway and the Filebase gateway", () => {
+  it("counted = Pinata + orbitor (AM-10); Filebase is the separate storage-host fallback", () => {
     expect(PINATA_GATEWAY_HOST).toBe("gateway.pinata.cloud");
+    expect(ORBITOR_GATEWAY_HOST).toBe("ipfs.orbitor.dev");
     expect(FILEBASE_GATEWAY_HOST).toBe("ipfs.filebase.io");
-    expect([...VERIFY_GATEWAYS]).toEqual([PINATA, FILEBASE]);
-    expect(() => assertAllowedGateways([PINATA, FILEBASE])).not.toThrow();
+    expect([...VERIFY_GATEWAYS]).toEqual([PINATA, ORBITOR]);
+    expect([...VERIFY_FALLBACK_GATEWAYS]).toEqual([FILEBASE]);
+    expect([...VERIFY_ALLOWED_GATEWAYS]).toEqual(HOSTS);
+    expect(() => assertAllowedGateways(HOSTS)).not.toThrow();
   });
 
-  it("refuses CloudFront, w3s.link, ipfs.io and dweb.link with the exact text, before any request", async () => {
+  it("refuses CloudFront, w3s.link, storacha.link, ipfs.io and dweb.link with the exact text, before any request", async () => {
     const f = await fixture();
-    for (const host of [CLOUDFRONT, "w3s.link", "ipfs.io", "dweb.link"]) {
-      const text = `Refused gateway ${host}: verify-manifest only uses gateway.pinata.cloud, ipfs.filebase.io`;
+    for (const host of [CLOUDFRONT, "w3s.link", "storacha.link", "ipfs.io", "dweb.link"]) {
+      const text = `Refused gateway ${host}: verify-manifest only uses gateway.pinata.cloud (public gateway · also holds our second copy), ipfs.orbitor.dev (public gateway · holds no copy of ours) and ipfs.filebase.io (our main storage host · fallback, not counted)`;
       expect(refusedGatewayText(host)).toBe(text);
       expect(() => assertAllowedGateways([host])).toThrow(text);
       const gw = fakeGateways(f.published);
@@ -344,11 +353,11 @@ describe("manifest byte-compare first (AM-05, TC-040 step 1b)", () => {
     const manifestUrls = HOSTS.map((h) => `https://${h}/ipfs/${f.manifestCid}`);
     expect(
       requests
-        .slice(0, 2)
+        .slice(0, HOSTS.length)
         .map((r) => r.url)
         .sort(),
     ).toEqual([...manifestUrls].sort());
-    expect(requests.slice(2).some((r) => r.cid === f.manifestCid)).toBe(false);
+    expect(requests.slice(HOSTS.length).some((r) => r.cid === f.manifestCid)).toBe(false);
     expect(report.manifest.map((c) => c.gateway).sort()).toEqual([...HOSTS].sort());
     for (const check of report.manifest) {
       expect(check).toMatchObject({
@@ -362,7 +371,7 @@ describe("manifest byte-compare first (AM-05, TC-040 step 1b)", () => {
       });
     }
     const manifestLines = lines.filter((l) => / manifest /.test(l));
-    expect(manifestLines).toHaveLength(2);
+    expect(manifestLines).toHaveLength(HOSTS.length);
     for (const host of HOSTS)
       expect(manifestLines.some((l) => l.includes(host) && l.includes(f.manifestCid))).toBe(true);
   });
@@ -377,7 +386,7 @@ describe("manifest byte-compare first (AM-05, TC-040 step 1b)", () => {
     });
     expect(report.ok).toBe(false);
     expect(requests.every((r) => r.cid === f.manifestCid)).toBe(true);
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(HOSTS.length);
     expect(report.artifacts).toEqual([]);
     const failed = report.manifest.find((c) => c.gateway === PINATA);
     expect(failed?.ok).toBe(false);
@@ -386,6 +395,22 @@ describe("manifest byte-compare first (AM-05, TC-040 step 1b)", () => {
       lines.some((l) => l.startsWith("FAIL") && l.includes(PINATA) && l.includes("manifest")),
     ).toBe(true);
     expect(lines).not.toContain(ALL_VERIFIED_TEXT);
+  });
+});
+
+describe("fallback serving other manifest bytes (review 2026-10-26)", () => {
+  it("is a loud WARNING, not a failure, when both counted gateways match", async () => {
+    const f = await fixture();
+    const other = new TextEncoder().encode("not the manifest");
+    const { report, lines } = await run(f, {
+      serve: (host, cid, bytes) => (host === FILEBASE && cid === f.manifestCid ? other : bytes),
+    });
+    expect(report.ok).toBe(true);
+    expect(report.artifacts.length).toBeGreaterThan(0);
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0]).toMatch(/^WARNING ipfs\.filebase\.io .* served other bytes/);
+    expect(lines.some((l) => l.startsWith("WARNING") && l.includes(FILEBASE))).toBe(true);
+    expect(lines.at(-1)).toBe(ALL_VERIFIED_TEXT);
   });
 });
 
@@ -421,7 +446,7 @@ describe("which CID is fetched (TC-043)", () => {
     const { report, lines } = await run(f);
     expect(report.ok).toBe(false);
     const failed = report.artifacts.filter((c) => c.name === car.name);
-    expect(failed).toHaveLength(2);
+    expect(failed).toHaveLength(HOSTS.length);
     expect(failed.every((c) => !c.ok && c.field === "carCid")).toBe(true);
     expect(lines.some((l) => l.startsWith("FAIL") && l.includes(car.name))).toBe(true);
     expect(lines).not.toContain(ALL_VERIFIED_TEXT);
@@ -466,7 +491,7 @@ describe("size and SHA-256 (TC-041)", () => {
     // artifacts are still checked and the tampered one is named (TC-041).
     expect(report.manifest.every((c) => !c.ok && c.status === 404)).toBe(true);
     const failed = report.artifacts.filter((c) => c.name === part.name);
-    expect(failed).toHaveLength(2);
+    expect(failed).toHaveLength(HOSTS.length);
     for (const c of failed) {
       expect(c.ok).toBe(false);
       expect(c.reason).toMatch(/sha256/);
@@ -488,7 +513,7 @@ describe("size and SHA-256 (TC-041)", () => {
     const { report, lines } = await run(f);
     expect(report.ok).toBe(false);
     const failed = report.artifacts.filter((c) => c.name === part.name);
-    expect(failed).toHaveLength(2);
+    expect(failed).toHaveLength(HOSTS.length);
     for (const c of failed) {
       expect(c.ok).toBe(false);
       expect(c.reason).toMatch(/size/);
@@ -505,11 +530,11 @@ describe("size and SHA-256 (TC-041)", () => {
     const part = f.manifest.artifacts.find((a) => a.kind === "table") as ManifestArtifact;
     const short = await run(f, {
       serve: (host, cid, bytes) =>
-        host === FILEBASE && cid === part.cid ? (bytes as Uint8Array).subarray(0, 100) : bytes,
+        host === ORBITOR && cid === part.cid ? (bytes as Uint8Array).subarray(0, 100) : bytes,
     });
     expect(short.report.ok).toBe(false);
     const shortCheck = short.report.artifacts.find(
-      (c) => c.name === part.name && c.gateway === FILEBASE,
+      (c) => c.name === part.name && c.gateway === ORBITOR,
     );
     expect(shortCheck?.ok).toBe(false);
     expect(shortCheck?.size).toBe(100);
@@ -619,20 +644,40 @@ describe("ALL ARTIFACTS VERIFIED (TC-040)", () => {
     const f = await fixture();
     const part = f.manifest.artifacts.find((a) => a.kind === "table") as ManifestArtifact;
     const { report, lines } = await run(f, {
-      serve: (host, cid, bytes) => (host === FILEBASE && cid === part.cid ? undefined : bytes),
+      serve: (host, cid, bytes) => (host === ORBITOR && cid === part.cid ? undefined : bytes),
     });
     expect(report.ok).toBe(false);
     expect(lines).not.toContain(ALL_VERIFIED_TEXT);
     expect(lines.filter((l) => l.startsWith("FAIL"))).toHaveLength(1);
   });
 
-  it("is never printed when only one of the two gateways was checked", async () => {
+  it("is never printed when only one of the two independent gateways was checked", async () => {
     const f = await fixture();
-    const { report, lines, requests } = await run(f, {}, { gateways: [PINATA] });
+    const { report, lines, requests } = await run(f, {}, { gateways: [PINATA, FILEBASE] });
     expect(report.ok).toBe(false);
-    expect(requests.every((r) => r.host === PINATA)).toBe(true);
+    expect(requests.every((r) => r.host === PINATA || r.host === FILEBASE)).toBe(true);
     expect(lines).not.toContain(ALL_VERIFIED_TEXT);
-    expect(lines.some((l) => l.includes(FILEBASE) && /not checked/.test(l))).toBe(true);
+    expect(lines.some((l) => l.includes(ORBITOR) && /not checked/.test(l))).toBe(true);
+  });
+
+  it("a Filebase-only miss is reported with the storage-host label and does not fail the run (AM-10)", async () => {
+    const f = await fixture();
+    const part = f.manifest.artifacts.find((a) => a.kind === "table") as ManifestArtifact;
+    const { report, lines } = await run(f, {
+      serve: (host, cid, bytes) => (host === FILEBASE && cid === part.cid ? undefined : bytes),
+    });
+    expect(report.ok).toBe(true);
+    expect(lines.at(-1)).toBe(ALL_VERIFIED_TEXT);
+    const miss = report.artifacts.find((c) => c.name === part.name && c.gateway === FILEBASE);
+    expect(miss).toMatchObject({ ok: false, role: "fallback" });
+    expect(
+      lines.some(
+        (l) => l.startsWith("FAIL") && l.includes(FILEBASE) && l.includes(STORAGE_HOST_LABEL),
+      ),
+    ).toBe(true);
+    expect(
+      lines.some((l) => l.startsWith("fallback") && /checks matched; not counted$/.test(l)),
+    ).toBe(true);
   });
 });
 

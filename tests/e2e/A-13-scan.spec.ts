@@ -22,7 +22,7 @@ import {
   publishedTexts,
   withoutPublished,
 } from "./lib/a13.js";
-import { PARKED_GAPS, checkpoint, expect, parkGap, parkedRoute, test } from "./lib/a13-fixtures.js";
+import { checkpoint, expect, parkedRoute, test } from "./lib/a13-fixtures.js";
 import { writeEvidenceSection } from "./lib/a13-evidence.js";
 import {
   AXE_VERSION,
@@ -100,7 +100,7 @@ async function openEverything(
 ): Promise<string[]> {
   note("read the page");
   const seen: string[] = [await pageStrings(page)];
-  // The drawer comes first: clicking the SQL tab unmounts the result rows (mode=sql), so a row
+  // The drawer comes first: clicking the AI tab unmounts the result rows (mode=ai), so a row
   // found afterwards can vanish between the count and the click.
   const row = page.locator(SEL.resultRow).first();
   if ((await row.count()) > 0) {
@@ -135,7 +135,6 @@ async function openEverything(
 
 test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
   test(scenario("073"), async ({ browser, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     test.setTimeout(30 * 60_000);
     // 1. The allowed CID set: every CID of every manifest of runs/index.json.
     const manifests = await fetchAllManifests(oracle.index);
@@ -172,7 +171,7 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
             });
             // 3. Scan text and attributes.
             const all = withoutPublished(texts.join("\n"), published);
-            const phrases = denylistHits(all, denylist, { runCount: oracle.runs.length });
+            const phrases = denylistHits(all, denylist, { runCount: oracle.numbered.length });
             const protoCids = cidTokens(all).filter((t) => prototypeCids.includes(t));
             const foreign = disallowedCidTokens(
               all,
@@ -220,7 +219,6 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
   });
 
   test(scenario("074"), async ({ page, oracle }) => {
-    parkGap(PARKED_GAPS.exploreSearch);
     test.setTimeout(45 * 60_000);
     const MAX_CLICKS = 40;
     const ENABLED = [

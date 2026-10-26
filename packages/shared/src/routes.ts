@@ -17,6 +17,10 @@ export const ROUTES = Object.freeze({
   legalTerms: "/legal/terms",
   comingSoon: "/soon/:item",
   permits: "/permits",
+  // A-16 (frozen interfaces): admin sign-in (email + password) and the admin-only Activity page.
+  // The Runs admin controls live on the existing `runs` route.
+  adminSignIn: "/admin/sign-in",
+  activity: "/activity",
 });
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
@@ -40,5 +44,7 @@ export const EXPLORE_URL_PARAMS = Object.freeze([
   "mode",
   "place",
   "view",
+  // A-16 (PO 2026-10-26): the results page, 1-based (20 rows a page); absent = page 1.
+  "page",
 ] as const);
 export type ExploreUrlParam = (typeof EXPLORE_URL_PARAMS)[number];

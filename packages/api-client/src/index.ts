@@ -24,7 +24,7 @@ export type ApiClient = TRPCClient<AppRouter>;
 export const TRPC_PATH = "/api/trpc";
 
 /** Procedure families that are never batched: one HTTP request per call. */
-export const UNBATCHED_PREFIXES: readonly string[] = ["agent.", "mcpProxy."];
+export const UNBATCHED_PREFIXES: readonly string[] = ["agent.", "mcpProxy.", "explore.search"];
 
 export function isUnbatched(path: string): boolean {
   return UNBATCHED_PREFIXES.some((prefix) => path.startsWith(prefix));

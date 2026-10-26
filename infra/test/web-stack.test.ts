@@ -8,7 +8,12 @@ import { App } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
-import { DEFAULT_PINATA_GATEWAY_HOST, SITE_LINK_CONTEXT_KEYS, WebStack } from "../src/web-stack.js";
+import {
+  DEFAULT_ORBITOR_GATEWAY_HOST,
+  DEFAULT_PINATA_GATEWAY_HOST,
+  SITE_LINK_CONTEXT_KEYS,
+  WebStack,
+} from "../src/web-stack.js";
 import { appUnderTest, cdkJsonContext } from "./helpers.js";
 
 interface EnvironmentVariable {
@@ -55,6 +60,15 @@ describe("CountyLensWeb: A-13 Amplify variables (T009 / T016)", () => {
     });
   });
 
+  it("sets VITE_ORBITOR_GATEWAY_HOST=ipfs.orbitor.dev by default (AM-10: the second independent gateway)", () => {
+    expect(DEFAULT_ORBITOR_GATEWAY_HOST).toBe("ipfs.orbitor.dev");
+    expect(synthWeb()).toMatchObject({
+      VITE_PINATA_GATEWAY_HOST: "gateway.pinata.cloud",
+      VITE_ORBITOR_GATEWAY_HOST: "ipfs.orbitor.dev",
+      VITE_FILEBASE_GATEWAY_HOST: "ipfs.filebase.io",
+    });
+  });
+
   it("takes the three links from CDK context (a switch is a deploy, not a code change)", () => {
     const env = synthWeb({
       "countylens:crmUrl": "https://crm.example.invalid/",
@@ -88,14 +102,32 @@ describe("CountyLensWeb: A-13 Amplify variables (T009 / T016)", () => {
   it("the app as synthesised keeps the Api stack free of the site-link keys", () => {
     const { stacks } = appUnderTest();
     const apiJson = JSON.stringify(Template.fromStack(stacks.api).toJSON());
-    for (const key of ["CRM_URL", "DEMO_VIDEO_URL", "PR_URL", "VITE_PINATA_GATEWAY_HOST"]) {
+    for (const key of [
+      "CRM_URL",
+      "DEMO_VIDEO_URL",
+      "PR_URL",
+      "VITE_PINATA_GATEWAY_HOST",
+      "VITE_ORBITOR_GATEWAY_HOST",
+    ]) {
       expect(apiJson).not.toContain(key);
     }
     expect(webEnv(Template.fromStack(stacks.web))).toMatchObject({
       VITE_PINATA_GATEWAY_HOST: DEFAULT_PINATA_GATEWAY_HOST,
+      VITE_ORBITOR_GATEWAY_HOST: DEFAULT_ORBITOR_GATEWAY_HOST,
       CRM_URL: "",
       DEMO_VIDEO_URL: "",
       PR_URL: "",
     });
+  });
+
+  it("A-16 T021 (AC-6): the build gets VITE_COGNITO_USER_POOL_ID / _CLIENT_ID from CountyLensApi, never a literal", () => {
+    const { stacks } = appUnderTest();
+    const env = webEnv(Template.fromStack(stacks.web));
+    for (const key of ["VITE_COGNITO_USER_POOL_ID", "VITE_COGNITO_USER_POOL_CLIENT_ID"]) {
+      expect(JSON.stringify(env[key]), key).toMatch(/Fn::GetStackOutput|Fn::ImportValue/);
+      expect(JSON.stringify(env[key]), key).toContain("CountyLensApi");
+    }
+    // A standalone Web stack without the pool wired emits neither.
+    expect(synthWeb()).not.toHaveProperty("VITE_COGNITO_USER_POOL_ID");
   });
 });
