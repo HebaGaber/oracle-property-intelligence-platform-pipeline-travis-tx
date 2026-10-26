@@ -49,6 +49,13 @@ describe("A-03-TC-027: fixed UI texts of packages/shared (plan § Fixed texts an
     it("keeps the W1 permits_no_tcad_geoid label (TC-031)", () => {
       expect(COVERAGE_LABELS.permits_no_tcad_geoid).toBe("TCAD id matches no property account");
     });
+
+    it("names the County ownership and coordinates counts in plain words", () => {
+      expect(COVERAGE_LABELS.owner_sales_published).toBe("Ownership sales published");
+      expect(COVERAGE_LABELS.owner_persons_published).toBe("Owners published as persons");
+      expect(COVERAGE_LABELS.owner_companies_published).toBe("Owners published as companies");
+      expect(COVERAGE_LABELS.coordinates_published).toBe("Parcel coordinates published");
+    });
   });
 
   describe("DERIVATION_LABELS (AD-28, Record<Derivation, string>)", () => {

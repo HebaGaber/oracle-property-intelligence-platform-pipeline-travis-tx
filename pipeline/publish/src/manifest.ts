@@ -49,6 +49,44 @@ export const ADDRESS_POINT_LIMITATION =
   "Public coordinates for accounts without a GIS point come from the City of Austin address-point layer only when the situs matches exactly one point on house number and street and the point lies inside the Travis County box (ADR 0004); no geocoder, nearest or fuzzy match is used, and a GIS centroid is never replaced. The layer carries no ZIP or city, so an address shared by two cities stays unmatched.";
 
 /**
+ * County-group coverage keys counted from published rows, like `parcels_published`: the key, the
+ * County table whose rows it counts, and the basis stated in its note. Ownership keys start with
+ * `owner_` and coordinates with `coordinates_`, so the Coverage page files them under those
+ * kinds. They are new keys: owner_unparsed / owner_confidential / owner_no_record are read by
+ * query-core's owner_gap_reason and keep their meaning. Checked, not required, when present.
+ */
+export const COUNTY_ROW_COVERAGE: ReadonlyArray<{
+  readonly key: string;
+  readonly table: string;
+  readonly basis: string;
+}> = [
+  {
+    key: "owner_sales_published",
+    table: "sales_history",
+    basis:
+      "County `sales_history` rows: the TCAD sale and deed records of the published properties",
+  },
+  {
+    key: "owner_persons_published",
+    table: "person",
+    basis:
+      "County `person` rows: owners whose name splits into a person, linked to their property through person_has_property",
+  },
+  {
+    key: "owner_companies_published",
+    table: "company",
+    basis:
+      "County `company` rows: owners whose name reads as a company, linked to their property through company_has_property",
+  },
+  {
+    key: "coordinates_published",
+    table: "geometry",
+    basis:
+      "County `geometry` rows, each linked to one parcel through parcel_has_geometry; a parcel without one has no coordinates",
+  },
+];
+
+/**
  * The required coverage keys per data group (AD-05's five contractor states; data-model.md's
  * three derivations: `published_rows`, `capture_receipt`, `aggregate_match`). `checkInput`
  * requires exactly the union of these for the groups actually present in `input.groups` — never
@@ -561,6 +599,22 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
         `coverage.parcels_published.count ${parcels.count} is not the number of published county property rows (${published})`,
       );
     }
+  }
+  // The ownership and coordinates counts (COUNTY_ROW_COVERAGE): same rule as parcels_published.
+  for (const { key, table } of COUNTY_ROW_COVERAGE) {
+    const given = input.coverage[key];
+    if (given === undefined) continue;
+    const published = rows.get("county")?.[table];
+    if (published === undefined)
+      throw new Error(`coverage.${key} needs the county group's ${table} table`);
+    if (given.derivation !== "published_rows")
+      throw new Error(
+        `coverage.${key}.derivation must be "published_rows", not "${given.derivation}"`,
+      );
+    if (given.count !== published)
+      throw new Error(
+        `coverage.${key}.count ${given.count} is not the number of published county ${table} rows (${published})`,
+      );
   }
   const manifest = RunManifestV1.parse({
     schema: "oracle-travis-run-manifest.v1",

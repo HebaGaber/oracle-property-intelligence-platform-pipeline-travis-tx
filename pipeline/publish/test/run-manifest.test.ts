@@ -9,6 +9,7 @@ import { cidOfBytes, cidOfFile } from "../src/cid.js";
 import { jcsBytes } from "../src/jcs.js";
 import { GAZETTEER_SHA256 } from "@countylens/query-core";
 import {
+  COUNTY_ROW_COVERAGE,
   assertPermitLinkReconciliation,
   buildManifest,
   manifestGroupInputsFromBatches,
@@ -30,7 +31,9 @@ import {
 } from "../src/run-manifest.js";
 import {
   BASE_RUN_ID,
+  COUNTY_EXTRA_TABLES,
   NOT_YET_PUBLISHED,
+  makeBatches,
   put,
   runFixture,
   type RunFixture,
@@ -150,6 +153,144 @@ describe("coverage.parcels_published (task B gap 6)", () => {
       coverage: { parcels_published: { count: 11, derivation: "published_rows" } },
     });
     expect(ok.manifest.coverage.parcels_published?.count).toBe(11);
+  });
+});
+
+describe("coverage ownership and coordinates counts (COUNTY_ROW_COVERAGE)", () => {
+  const countyOnly = (f: RunFixture) =>
+    manifestGroupInputsFromBatches({
+      group: "county",
+      dir: f.countyDir,
+      carPrefix: "travis-county",
+      batches: [1, 2],
+    });
+
+  it("counts the reused county batches' sales, person, company and geometry rows per batch", async () => {
+    const f = await runFixture();
+    const base = RunManifestV1.parse(JSON.parse(Buffer.from(f.baseBytes).toString("utf8")));
+    // The base run carries none of the keys; the county group is reused from its directory.
+    for (const { key } of COUNTY_ROW_COVERAGE) expect(base.coverage[key]).toBeUndefined();
+    const { manifest: m } = await buildRunManifest(config(f), deps(f));
+    const basis = (key: string) => COUNTY_ROW_COVERAGE.find((c) => c.key === key)?.basis ?? "";
+    expect(m.coverage.owner_sales_published).toEqual({
+      count: 21,
+      derivation: "published_rows",
+      note: `b01 9 + b02 12, ${basis("owner_sales_published")}`,
+    });
+    expect(m.coverage.owner_persons_published).toEqual({
+      count: 9,
+      derivation: "published_rows",
+      note: `b01 4 + b02 5, ${basis("owner_persons_published")}`,
+    });
+    expect(m.coverage.owner_companies_published).toEqual({
+      count: 3,
+      derivation: "published_rows",
+      note: `b01 1 + b02 2, ${basis("owner_companies_published")}`,
+    });
+    expect(m.coverage.coordinates_published).toEqual({
+      count: 10,
+      derivation: "published_rows",
+      note: `b01 5 + b02 5, ${basis("coordinates_published")}`,
+    });
+    for (const [key, rows] of [
+      ["owner_sales_published", COUNTY_EXTRA_TABLES.sales_history],
+      ["owner_persons_published", COUNTY_EXTRA_TABLES.person],
+      ["owner_companies_published", COUNTY_EXTRA_TABLES.company],
+      ["coordinates_published", COUNTY_EXTRA_TABLES.geometry],
+    ] as const) {
+      expect(m.coverage[key]?.count).toBe(rows[0] + rows[1]);
+    }
+  });
+
+  it("never reuses the owner gap keys query-core reads, and uses the Coverage page's kind prefixes", () => {
+    const keys = COUNTY_ROW_COVERAGE.map((c) => c.key);
+    for (const k of ["owner_unparsed", "owner_confidential", "owner_no_record", "no_owner_record"])
+      expect(keys).not.toContain(k);
+    for (const k of keys) expect(k.startsWith("owner_") || k.startsWith("coordinates_")).toBe(true);
+  });
+
+  it("a coverageOverrides entry cannot replace a computed count", async () => {
+    const f = await runFixture();
+    const { manifest: m } = await buildRunManifest(
+      config(f, {
+        coverageOverrides: { owner_persons_published: { count: 1, derivation: "published_rows" } },
+      }),
+      deps(f),
+    );
+    expect(m.coverage.owner_persons_published?.count).toBe(9);
+  });
+
+  it("refuses county batches whose export summary lacks a counted table", async () => {
+    const f = await runFixture();
+    const bare = join(f.root, "data/county-bare");
+    await makeBatches({
+      dir: bare,
+      group: "county",
+      prefix: "travis-county",
+      table: "property",
+      rows: [5, 6],
+      salt: "bare",
+    });
+    await expect(buildRunManifest(config(f, { countyDir: bare }), deps(f))).rejects.toThrow(
+      /has no tables\.sales_history\.rows/,
+    );
+  });
+
+  it("buildManifest refuses a count, derivation or table that does not match the published rows", async () => {
+    const f = await runFixture();
+    const { manifest } = await buildRunManifest(config(f), deps(f));
+    const input = {
+      runId: "travis-county-only-test",
+      county: manifest.county,
+      state: manifest.state,
+      fips: manifest.fips,
+      startedAt: manifest.startedAt,
+      finishedAt: manifest.finishedAt,
+      previousManifestCid: null,
+      runDir: f.root,
+      groups: countyOnly(f),
+      sources: manifest.sources.map((s) => ({
+        name: s.name,
+        url: s.url,
+        watermark: s.watermark,
+        receipts: join(
+          f.root,
+          s.name.startsWith("austin") ? DEFAULT_AUSTIN_RECEIPT : DEFAULT_TCAD_RECEIPT,
+        ),
+        limitations: [],
+        delta: { added: 0, changed: 0, removed: 0 },
+      })),
+      profiles: manifest.profiles,
+      ownersRedacted: 0,
+      limitations: [],
+      workTreeStatus: NOT_YET_PUBLISHED,
+    };
+    await expect(
+      buildManifest({
+        ...input,
+        coverage: { coordinates_published: { count: 11, derivation: "published_rows" } },
+      }),
+    ).rejects.toThrow(
+      /coordinates_published\.count 11 is not the number of published county geometry rows \(10\)/,
+    );
+    await expect(
+      buildManifest({
+        ...input,
+        coverage: { owner_sales_published: { count: 21, derivation: "capture_receipt" } },
+      }),
+    ).rejects.toThrow(/owner_sales_published\.derivation must be "published_rows"/);
+    await expect(
+      buildManifest({
+        ...input,
+        groups: [],
+        coverage: { owner_companies_published: { count: 3, derivation: "published_rows" } },
+      }),
+    ).rejects.toThrow(/owner_companies_published needs the county group's company table/);
+    const ok = await buildManifest({
+      ...input,
+      coverage: { owner_companies_published: { count: 3, derivation: "published_rows" } },
+    });
+    expect(ok.manifest.coverage.owner_companies_published?.count).toBe(3);
   });
 });
 

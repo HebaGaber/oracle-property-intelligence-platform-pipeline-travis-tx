@@ -24,6 +24,7 @@ import {
   buildManifest,
   manifestGroupInputsFromBatches,
   ADDRESS_POINT_SOURCE,
+  COUNTY_ROW_COVERAGE,
   type BuildManifestInput,
   type BuiltManifest,
   type ManifestGroupInput,
@@ -79,7 +80,10 @@ export const RunManifestConfig = z
     baseManifest: Dir.default(DEFAULT_BASE_MANIFEST),
     austinReceipt: Dir.default(DEFAULT_AUSTIN_RECEIPT),
     tcadReceipt: Dir.default(DEFAULT_TCAD_RECEIPT),
-    /** Replaces carried-over coverage keys (never `permits_emitted`, which is computed). */
+    /**
+     * Replaces carried-over coverage keys (never `permits_emitted`, `parcels_published` or the
+     * COUNTY_ROW_COVERAGE keys, which are computed from the published rows).
+     */
     coverageOverrides: z
       .record(
         z.string(),
@@ -292,6 +296,22 @@ function publishedRows(
   return { total: rows.reduce((a, b) => a + b, 0), perBatch };
 }
 
+/**
+ * The County group's ownership and coordinates counts (COUNTY_ROW_COVERAGE), from the export
+ * summaries of the county batches this run publishes. A run that reuses an earlier run's county
+ * batches (Run 4, Run 5) counts them from that reused directory, so the keys are never left out.
+ */
+export function countyRowCoverage(
+  countyGroups: readonly ManifestGroupInput[],
+): Record<string, CoverageCount> {
+  const out: Record<string, CoverageCount> = {};
+  for (const { key, table, basis } of COUNTY_ROW_COVERAGE) {
+    const r = publishedRows(countyGroups, table);
+    out[key] = { count: r.total, derivation: "published_rows", note: `${r.perBatch}, ${basis}` };
+  }
+  return out;
+}
+
 /** The base run's profiles plus travis-places when the base names none (a base profile is kept). */
 export function withGazetteerProfile(
   profiles: readonly ManifestProfile[],
@@ -371,6 +391,7 @@ export async function buildRunManifest(
   // Coverage: carried from the base, `permits_emitted` recomputed from the permits tables.
   const emitted = publishedRows(permitsGroups, "property_improvement");
   const parcels = publishedRows(countyGroups, "property");
+  const countyRows = countyRowCoverage(countyGroups);
   const baseEmitted = base.coverage.permits_emitted?.count;
   // Facts-derived permit-link totals first; an explicit coverageOverrides entry wins.
   const overrides: Record<string, CoverageCount> = {
@@ -386,7 +407,11 @@ export async function buildRunManifest(
   const countMoved = emitted.total !== baseEmitted;
   if (countMoved || (facts !== null && permitsRebuilt)) {
     const stale = Object.keys(base.coverage).filter(
-      (k) => k !== "permits_emitted" && k !== "parcels_published" && !(k in overrides),
+      (k) =>
+        k !== "permits_emitted" &&
+        k !== "parcels_published" &&
+        !(k in countyRows) &&
+        !(k in overrides),
     );
     if (stale.length > 0) {
       const why = countMoved
@@ -415,6 +440,8 @@ export async function buildRunManifest(
       derivation: "published_rows",
       note: `${parcels.perBatch}, ${PARCELS_BASIS}`,
     },
+    // Ownership and coordinates rows of the County group; buildManifest() checks each count.
+    ...countyRows,
   };
 
   // The address-point source belongs to the run that used the layer; it is never carried over.

@@ -86,6 +86,11 @@ export const COVERAGE_LABELS = Object.freeze({
   permits_ambiguous_address: "Address matches several parcels",
   permits_address_unmatched: "No TCAD id; address matches no parcel",
   permits_trade_sub_permit: "Trade sub-permits set aside (electrical, plumbing, mechanical)",
+  // County group rows counted from the published tables (pipeline/publish COUNTY_ROW_COVERAGE).
+  owner_sales_published: "Ownership sales published",
+  owner_persons_published: "Owners published as persons",
+  owner_companies_published: "Owners published as companies",
+  coordinates_published: "Parcel coordinates published",
 });
 export type CoverageLabelKey = keyof typeof COVERAGE_LABELS;
 

@@ -41,9 +41,17 @@ export async function makeBatches(options: {
   rows: readonly number[];
   /** Changes every CID (a rebuilt group). */
   salt: string;
+  /** More tables per batch: table name -> rows per batch (same length as `rows`). */
+  extraTables?: Readonly<Record<string, readonly number[]>>;
 }): Promise<void> {
   for (const [i, rows] of options.rows.entries()) {
     const b = String(i + 1).padStart(2, "0");
+    const tableRows: Record<string, number> = { [options.table]: rows };
+    for (const [name, perBatch] of Object.entries(options.extraTables ?? {})) {
+      const n = perBatch[i];
+      if (n === undefined) throw new Error(`extraTables.${name} has no rows for batch ${b}`);
+      tableRows[name] = n;
+    }
     const carRoot = await writeCar(join(options.dir, "cars", `${options.prefix}-b${b}.car`), {
       label: "CountyIndex",
       group: options.group,
@@ -51,20 +59,25 @@ export async function makeBatches(options: {
       salt: options.salt,
     });
     const tablesDir = join(options.dir, "tables", `b${b}`);
-    const bytes = new TextEncoder().encode(`PAR1 ${options.group} ${b} ${options.salt}`);
-    put(join(tablesDir, options.table, "part-00000.parquet"), bytes);
+    const carTables: Record<string, unknown> = {};
+    const summaryTables: Record<string, { rows: number; parts: number }> = {};
+    for (const [name, n] of Object.entries(tableRows)) {
+      const suffix = name === options.table ? "" : ` ${name}`;
+      const bytes = new TextEncoder().encode(`PAR1 ${options.group} ${b} ${options.salt}${suffix}`);
+      put(join(tablesDir, name, "part-00000.parquet"), bytes);
+      carTables[name] = {
+        rows: n,
+        parts: [{ cid: CID.parse(await cidOfBytes(bytes)), rows: n, bytes: bytes.length }],
+      };
+      summaryTables[name] = { rows: n, parts: 1 };
+    }
     const tablesRoot = await writeCar(join(tablesDir, "tables.car"), {
       label: "CountyTables",
       version: 1,
       county_root: carRoot,
       part_size_bytes: PART_SIZE_BYTES,
       codec: "zstd",
-      tables: {
-        [options.table]: {
-          rows,
-          parts: [{ cid: CID.parse(await cidOfBytes(bytes)), rows, bytes: bytes.length }],
-        },
-      },
+      tables: carTables,
     });
     put(
       join(options.dir, "tables", `b${b}-export.json`),
@@ -75,13 +88,21 @@ export async function makeBatches(options: {
         countyRoot: carRoot.toString(),
         partSizeBytes: PART_SIZE_BYTES,
         codec: "zstd",
-        tables: { [options.table]: { rows, parts: 1 } },
-        parts: 1,
+        tables: summaryTables,
+        parts: Object.keys(summaryTables).length,
         exportedAt: "2026-10-23T15:00:00.000Z",
       }),
     );
   }
 }
+
+/** The fixture's county ownership and coordinates rows per batch (b01, b02). */
+export const COUNTY_EXTRA_TABLES = {
+  sales_history: [9, 12],
+  person: [4, 5],
+  company: [1, 2],
+  geometry: [5, 5],
+} as const;
 
 export const SHA = "c".repeat(64);
 export const BASE_RUN_ID = "travis-full-run1-20261023";
@@ -111,6 +132,7 @@ export async function runFixture(permitRows: readonly number[] = [3, 4]): Promis
     table: "property",
     rows: [5, 6],
     salt: "c",
+    extraTables: COUNTY_EXTRA_TABLES,
   });
   await makeBatches({
     dir: permitsV1,
