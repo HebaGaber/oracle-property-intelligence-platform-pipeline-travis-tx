@@ -20,6 +20,8 @@ import {
 } from "react";
 import type { Missing } from "@countylens/contract";
 import {
+  BBB_SEARCH_LINK_LABEL,
+  EXPLORE_TEXTS,
   PERMITS_PAGE_SIZE,
   PERMITS_TEXTS,
   PROGRESS_LABELS,
@@ -183,12 +185,69 @@ function FieldValue({
   );
 }
 
+/**
+ * The contractor: the resolution pill, the name as printed on the permit (never verified), the
+ * BBB search link built from it (BBB blocks automated lookups, so it is a link, never a rating)
+ * and the row's own missing reasons. With no printed name and no reason entry for it, the cell
+ * says the permit printed none (data audit 2026-10-26, rows 1, 9, 17).
+ */
 function ContractorCell({ row }: { readonly row: PermitListRow }): ReactElement {
   const status: StatusKind = row.contractor_resolution === "resolved" ? "verified" : "unavailable";
+  const name = row.contractor_name_as_printed;
+  const nameReason = row.missing.some((m) => m.field === "contractor_name_as_printed");
   return (
-    <span className={styles.value}>
-      <StatusPill status={status} text={row.contractor_resolution} />
-      <Reasons entries={contractorEntries(row)} />
+    <span className={styles.contractor}>
+      <span className={styles.value}>
+        <StatusPill status={status} text={row.contractor_resolution} />
+        {name !== null ? (
+          <span className={styles.printed} data-printed-name="">{`As printed: ${name}`}</span>
+        ) : nameReason ? null : (
+          <span className={styles.note}>{EXPLORE_TEXTS.contractorNotPrinted}</span>
+        )}
+      </span>
+      {row.bbb_url !== null ? (
+        <a
+          className={styles.bbbLink}
+          href={row.bbb_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-bbb-url=""
+        >
+          {BBB_SEARCH_LINK_LABEL}
+        </a>
+      ) : (
+        <span className={styles.note} data-bbb-blocked="">
+          {EXPLORE_TEXTS.bbbBlocked}
+        </span>
+      )}
+      <span className={styles.value}>
+        <Reasons entries={contractorEntries(row)} />
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Issue date (the cell's value, `data-issue-date`) and, under it, the terminal dates and days
+ * open the row carries. A null one is explained by its pill in Missing data, never a blank.
+ */
+function DatesCell({ row }: { readonly row: PermitListRow }): ReactElement {
+  const lines: { key: string; text: string }[] = [];
+  if (row.final_date !== null) lines.push({ key: "final", text: `Final ${row.final_date}` });
+  if (row.permit_close_date !== null && row.permit_close_date !== row.final_date) {
+    lines.push({ key: "closed", text: `Closed ${row.permit_close_date}` });
+  }
+  if (row.open_days !== null) lines.push({ key: "open", text: `Open ${row.open_days} days` });
+  return (
+    <span className={styles.dates}>
+      <span data-issue-date="">
+        <FieldValue row={row} field="issue_date" className={styles.num} />
+      </span>
+      {lines.map((line) => (
+        <span key={line.key} className={styles.dateLine} data-date-line={line.key}>
+          {line.text}
+        </span>
+      ))}
     </span>
   );
 }
@@ -242,7 +301,7 @@ function PermitsTable({ rows }: { readonly rows: readonly PermitListRow[] }): Re
                 <FieldValue row={row} field="status_class" />
               </td>
               <td>
-                <FieldValue row={row} field="issue_date" className={styles.num} />
+                <DatesCell row={row} />
               </td>
               <td>
                 <ContractorCell row={row} />
@@ -295,7 +354,7 @@ function PermitCards({ rows }: { readonly rows: readonly PermitListRow[] }): Rea
                 <FieldValue row={row} field="status_class" />
               </CardRow>
               <CardRow label={COLUMNS[3]}>
-                <FieldValue row={row} field="issue_date" className={styles.num} />
+                <DatesCell row={row} />
               </CardRow>
               <CardRow label={COLUMNS[4]}>
                 <ContractorCell row={row} />
