@@ -251,3 +251,6 @@ export function answerFilterParams(
     sel: null,
   };
 }
+
+/** `run=1`: send the `q` question once on arrival (the drawer's "Ask about this property"). */
+export const RUN_PARAM = "run";

@@ -115,7 +115,7 @@ describe("Property drawer (FR-004b, FR-005, TC-030, TC-032, TC-034)", () => {
       "Street View: coming soon",
     );
     const ask = screen.getByRole("link", { name: /Ask about this property/ });
-    expect(ask.getAttribute("href")).toMatch(/^\/tx\/travis\/explore\?mode=ai&q=/);
+    expect(ask.getAttribute("href")).toMatch(/^\/tx\/travis\/explore\?mode=ai&q=.*&run=1$/);
     expect(decodeURIComponent(ask.getAttribute("href") ?? "")).toContain(row.property_cid);
     const chain = drawer.querySelector("[data-evidence-chain]");
     expect(chain?.querySelectorAll("li")).toHaveLength(4);

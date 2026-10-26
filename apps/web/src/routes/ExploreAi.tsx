@@ -63,6 +63,8 @@ interface Shown {
 }
 
 export interface ExploreAiProps {
+  /** `run=1` on arrival: send the `q` question once without waiting for Ask. */
+  readonly autoRun?: boolean;
   readonly onState: (state: ExplorePageState) => void;
   /** Injected by tests; defaults to the `agent.ask` client. */
   readonly ask?: AskAgent;
@@ -200,9 +202,11 @@ export function ExploreAi({
   collapsed = false,
   results,
   onAnswered,
+  autoRun = false,
 }: ExploreAiProps): ReactElement {
-  // `?q=` (the "What can I ask?" card, the drawer's "Ask about this property") fills the box; it
-  // is never sent until the person presses Ask.
+  // `?q=` (the "What can I ask?" card, the search box) fills the box; it is never sent until the
+  // person presses Ask. PO 2026-10-26: the drawer's "Ask about this property" adds `run=1`, which
+  // sends that question once on arrival (like the Roofing CRM), then leaves the URL.
   const [prompt, setPrompt] = useState(
     () => new URLSearchParams(window.location.search).get("q") ?? "",
   );
@@ -298,6 +302,14 @@ export function ExploreAi({
     row.scrollIntoView?.({ block: "center" });
     row.focus();
   };
+
+  // Once, on arrival: the question the link carried (Explore drops `run` from the URL).
+  const autoSent = useRef(false);
+  useEffect(() => {
+    if (!autoRun || autoSent.current) return;
+    autoSent.current = true;
+    if (prompt.trim() !== "") void send(prompt, {});
+  }, [autoRun, prompt, send]);
 
   const working = state === "working";
   const atLimit = limitReached(used);

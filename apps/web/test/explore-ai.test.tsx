@@ -5,7 +5,7 @@
 // missing-data list, the session counter, and every non-answer state.
 import { rawCid } from "@countylens/query-core";
 import { AI_TEXTS } from "@countylens/shared";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentAskRequest, AgentAskResponse, AgentMatch } from "../src/data/agent-ask";
 import { ExploreAi } from "../src/routes/ExploreAi";
@@ -87,6 +87,28 @@ beforeEach(() => window.sessionStorage.clear());
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+});
+
+describe("Explore · AI auto-run (PO 2026-10-26, the drawer's Ask about this property)", () => {
+  it("sends the question once on arrival with autoRun, never without it", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/tx/travis/explore?mode=ai&q=Tell%20me%20about%20property%20x",
+    );
+    const fn = vi.fn<Ask>(async () => response());
+    const { rerender } = render(<ExploreAi onState={() => undefined} ask={fn} autoRun />);
+    await waitFor(() => expect(aiState()).toBe("answered"));
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn.mock.calls[0]?.[0].prompt).toBe("Tell me about property x");
+    rerender(<ExploreAi onState={() => undefined} ask={fn} autoRun />);
+    expect(fn).toHaveBeenCalledTimes(1);
+    cleanup();
+    const manual = vi.fn<Ask>(async () => response());
+    render(<ExploreAi onState={() => undefined} ask={manual} />);
+    expect(manual).not.toHaveBeenCalled();
+    window.history.replaceState(null, "", "/");
+  });
 });
 
 describe("Explore · AI answered (FR-012)", () => {

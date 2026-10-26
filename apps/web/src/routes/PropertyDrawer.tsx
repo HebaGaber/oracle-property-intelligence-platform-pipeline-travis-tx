@@ -36,7 +36,7 @@ export interface PropertyDrawerProps {
 /** Property390NoImagery board: the Street View box text (no imagery source in this release). */
 export const STREET_VIEW_TEXT = "No street photo yet. The property data below is unaffected.";
 
-/** The question "Ask about this property" puts in the AI box (never sent until Ask). */
+/** The question "Ask about this property" sends to the AI tab at once (`run=1`, PO 2026-10-26). */
 export const askAboutProperty = (cid: string): string =>
   `Tell me about property ${cid}: roof age and its basis, roofing permits, owner tenure, with sources.`;
 
@@ -158,7 +158,10 @@ export function PropertyDrawer({ row, onClose }: PropertyDrawerProps): ReactElem
           <Icon name="view_list" size="medium" />
           Show in the list
         </button>
-        <Link to={askPath(askAboutProperty(row.property_cid))} className={styles.tonalButton}>
+        <Link
+          to={`${askPath(askAboutProperty(row.property_cid))}&run=1`}
+          className={styles.tonalButton}
+        >
           <Icon name="smart_toy" size="medium" />
           Ask about this property
         </Link>

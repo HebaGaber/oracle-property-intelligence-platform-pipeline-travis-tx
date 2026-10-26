@@ -12,7 +12,7 @@ import { useSearchParams } from "react-router";
 import { ExploreDrawerHead, type ExploreMode } from "../components/ExploreDrawerHead";
 import { LinearProgress } from "../components/LinearProgress";
 import { SearchBox } from "../components/SearchBox";
-import { answerFilterParams } from "./ExploreAi.state";
+import { RUN_PARAM, answerFilterParams } from "./ExploreAi.state";
 import { ExploreFilters, type ExplorePageState } from "./ExploreFilters";
 import { patchParams } from "./ExploreFilters.state";
 
@@ -58,6 +58,22 @@ export function Component(): ReactElement {
       { replace: true },
     );
   }, [requested, setParams]);
+  // PO 2026-10-26: the drawer's "Ask about this property" adds `run=1`; the AI tab sends that
+  // question once. Each such link remounts the AI tab (a fresh key) with the new question, and
+  // `run` is dropped so a reload or Back never sends it again.
+  const [askKey, setAskKey] = useState(0);
+  useEffect(() => {
+    if (params.get(RUN_PARAM) !== "1") return;
+    setAskKey((k) => k + 1);
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete(RUN_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [params, setParams]);
   const [state, setState] = useState<ExplorePageState>("loading");
   const onState = useCallback((next: ExplorePageState) => setState(next), []);
   const [collapsed, setCollapsed] = useState(storedCollapsed);
@@ -105,10 +121,12 @@ export function Component(): ReactElement {
       {mode === "ai" ? (
         <Suspense fallback={<LinearProgress label={LOADING_AI} stageText={LOADING_AI} />}>
           <ExploreAi
+            key={askKey}
             onState={onState}
             head={head}
             collapsed={collapsed}
             onAnswered={showAnswerFilters}
+            autoRun={askKey > 0}
             results={<ExploreFilters onState={ignoreState} resultsOnly />}
           />
         </Suspense>
