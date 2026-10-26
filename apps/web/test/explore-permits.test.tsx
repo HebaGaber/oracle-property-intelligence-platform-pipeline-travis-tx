@@ -1,9 +1,9 @@
 // A-13 T026 (AC-5, FR-005; TC-009, TC-031, TC-032, TC-034, TC-035): long-open roofing permits in
 // Explore · Filters. "Open or stalled" + "Open ≥ 5" sorted by open longest send
 // permit=open_or_stalled, openYrs=5, sort=open_desc; while `status_raw` has no lexicon carrier a
-// stalled chip reads "Stalled {x} yrs · source status not published · no lexicon carrier" and an
-// open one "Open {x} yrs · source status not published · no lexicon carrier"; the contractor reads
-// "not published · no lexicon carrier" with its resolution badge; an empty list says "no open
+// stalled chip reads "Stalled {x} yrs · open past expiry, never closed" and an open one
+// "Open {x} yrs · within its permit period"; the contractor reads the no-carrier text with its
+// resolution badge; an empty list says "no open
 // roofing permits in this radius on the current run". The PermitChip and ContractorBadge are
 // tested directly too. Rows are built in the test (never shown as real data).
 import { RUNS_INDEX_SCHEMA } from "@countylens/contract";
@@ -157,7 +157,7 @@ describe("Open and stalled permits (AC-5, FR-005)", () => {
         sort: "open_desc",
       }),
     );
-    const chips = await screen.findAllByText(/yrs · source status not published/);
+    const chips = await screen.findAllByText(/^(Stalled|Open) [\d.]+ yrs · /);
     expect(chips.map((c) => c.closest("[data-permit-chip]")?.textContent)).toEqual([
       EXPLORE_TEXTS.stalledNoCarrier(6.4),
       EXPLORE_TEXTS.openNoCarrier(5.1),

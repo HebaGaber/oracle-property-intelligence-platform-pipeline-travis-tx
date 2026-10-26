@@ -111,12 +111,12 @@ export const EXPLORE_TEXTS = Object.freeze({
   stalledExpired: (x: number): string => `Stalled ${x} yrs · source says Expired`,
   openSourceSays: (x: number, statusRaw: string): string =>
     `Open ${x} yrs · source says ${statusRaw}`,
-  stalledNoCarrier: (x: number): string =>
-    `Stalled ${x} yrs · source status not published · no lexicon carrier`,
-  openNoCarrier: (x: number): string =>
-    `Open ${x} yrs · source status not published · no lexicon carrier`,
+  // PO 2026-10-26: the City's own status word (e.g. Expired) has no field in the published data
+  // model (ADR-0002), so the chip says what the dates show: an expired permit is stalled.
+  stalledNoCarrier: (x: number): string => `Stalled ${x} yrs · open past expiry, never closed`,
+  openNoCarrier: (x: number): string => `Open ${x} yrs · within its permit period`,
   asPrinted: "as printed on permit",
-  noCarrier: "not published · no lexicon carrier",
+  noCarrier: "not in the published data model (status is derived from the permit dates)",
   noOpenPermits: "no open roofing permits in this radius on the current run",
   /** PO 2026-10-26: an open permit includes stalled ones; when every match is stalled, say so. */
   allStalled: (n: number): string =>

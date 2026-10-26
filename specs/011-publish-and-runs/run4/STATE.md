@@ -16,3 +16,15 @@ Restate services: pid 59327 on :9080, started from ../run3-integration (011c-run
 | P7b config | done | 2026-10-26T12:03Z | | node run4/make-config.mjs -> run4/config.json | correctionNote derived from austin-facts.json, logs/p5-compare.log, logs/p5-diff-run3-1.log and a byte compare of the 5 CARs; contractor counts from contractor-coverage.json | |
 | P7 manifest (real) | BLOCKED | 2026-10-26T12:04Z | 2026-10-26T12:04Z | build-run-manifest.ts --config run4/config.json; log logs/p7-manifest-2.log | FAIL exit 1: "working tree is dirty; commit before publishing" (buildManifest clean-tree gate; the manifest records the commit that built it). Nothing written to runs/ | needs approval to commit the builder change |
 | P7/P8 PREVIEW (not the real manifest) | done | 2026-10-26T12:05Z | 2026-10-26T12:08Z | scratchpad preview.mts (clean-tree gate bypassed, manifest written to the scratchpad only); log logs/p7p8-preview.log | preview CID bafkreig76n7d6oiaxwmzu2mpoww4lttnr2mkawmgkqqnekxl7x7cf4hsha (changes after the commit), 285 artifacts (15 car, 15 directory, 255 table), 285 reused from Run 3.1, 0 new, 0 dropped; identity gate PASS: v_roofing_permit 15025 = meta.permit = permits_emitted, 0 of 10792 permit-side properties outside County; previous (Run 3.1) 441961 properties + 15025 permits, missing 0, changed identifier 0, remapped 0 | after commit: real P7 + P8 |
+
+## Publish (2026-10-26, PO approved)
+
+- P9: all 8 publish steps PASS (logs/p9-publish.log, logs/p9-publish-2.log; the first try stopped at
+  the manifest readback because ipfs.filebase.io answered 504 for the fresh CID, the re-run passed).
+  Filebase 30 skipped by receipt, car-files 30 adopted by gateway probe (no re-upload), manifest
+  pinned, CID copy, remote identity gate PASS, release run-travis-full-run4-20261026, index.
+- Pinata: manifest pinned, CID match (specs/016-cost-and-admin/pinata-receipts/travis-full-run4-20261026/).
+- Explore index: built, verified (0 differences) and uploaded under private/explore-index/v1.2/ at
+  about 13:15 UTC, after the index commit had already reached production: Explore, the agent and
+  MCP answered "index not built" for about 10-15 minutes. The index step is now part of
+  p9-publish.sh, before the index commit is pushed.

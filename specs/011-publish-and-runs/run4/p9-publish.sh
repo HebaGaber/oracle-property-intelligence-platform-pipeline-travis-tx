@@ -27,4 +27,16 @@ for step in release index; do
   echo "[p9] $(date -u +%FT%TZ) step $step exit=$rc"
   [ $rc -ne 0 ] && { echo "[p9] STOPPED at $step"; exit $rc; }
 done
+# The per-run Explore index MUST exist before runs/index.json names the run in production: the
+# app, agent and MCP bind the latest run and answer "index not built" without it (Run 4: about
+# 10-15 minutes of that on 2026-10-26 before this step existed). Push the index commit only after
+# this succeeds.
+echo "[p9] $(date -u +%FT%TZ) step explore-index start"
+AWS_PROFILE=assess npx tsx pipeline/publish/scripts/build-explore-index.ts --manifest $MANIFEST \
+  --source local --local-root . --work-dir pipeline/data/runs/explore-index-work --verify --upload \
+  --bucket countylensdata-cidcopye8767d5a-iodtwssrddqs --profile assess \
+  --prefix private/explore-index/v1.2/ --copy-host $CID_COPY_HOST
+rc=$?
+echo "[p9] $(date -u +%FT%TZ) step explore-index exit=$rc"
+[ $rc -ne 0 ] && { echo "[p9] STOPPED at explore-index"; exit $rc; }
 echo "[p9] all steps complete"

@@ -3,7 +3,7 @@
 // and the Property drawer: one `[data-field]` cell per field holding only its value or its
 // missing reason in words (contracts/ui-routes.md), never blank. `MissingSummary` groups the
 // row's `missing` entries by reason and names their fields (ERR-20: "{fields}: {reason}"); a
-// no-carrier entry reads "not published · no lexicon carrier". `RowProvenance` is the § 8 line
+// no-carrier entry reads EXPLORE_TEXTS.noCarrier ("not in the published data model …"). `RowProvenance` is the § 8 line
 // (source, collected, table CID, run) the drawer shows; `CompactProvenance` is its short form for
 // the result rows (host · date, table CID, run; A-16 PO notes). `ResultRow` is the compact
 // clickable Atlas card (Explore390 board); Enter/Space or its Details button open the drawer.

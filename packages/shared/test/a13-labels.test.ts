@@ -80,13 +80,13 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
     expect(EXPLORE_TEXTS.stalledExpired(7)).toBe("Stalled 7 yrs · source says Expired");
     expect(EXPLORE_TEXTS.openSourceSays(6, "Active")).toBe("Open 6 yrs · source says Active");
     expect(EXPLORE_TEXTS.stalledNoCarrier(7)).toBe(
-      "Stalled 7 yrs · source status not published · no lexicon carrier",
+      "Stalled 7 yrs · open past expiry, never closed",
     );
-    expect(EXPLORE_TEXTS.openNoCarrier(6)).toBe(
-      "Open 6 yrs · source status not published · no lexicon carrier",
-    );
+    expect(EXPLORE_TEXTS.openNoCarrier(6)).toBe("Open 6 yrs · within its permit period");
     expect(EXPLORE_TEXTS.asPrinted).toBe("as printed on permit");
-    expect(EXPLORE_TEXTS.noCarrier).toBe("not published · no lexicon carrier");
+    expect(EXPLORE_TEXTS.noCarrier).toBe(
+      "not in the published data model (status is derived from the permit dates)",
+    );
     expect(EXPLORE_TEXTS.noOpenPermits).toBe(
       "no open roofing permits in this radius on the current run",
     );

@@ -70,6 +70,10 @@ export interface ExploreAiProps {
   readonly head?: ReactNode;
   /** The drawer is collapsed to its strip (from 840 px; the question box stays in the DOM). */
   readonly collapsed?: boolean;
+  /** The Explore results list, shown under the answer (PO 2026-10-26). */
+  readonly results?: ReactNode;
+  /** Called with the filters an answer applied, so the results list shows the same search. */
+  readonly onAnswered?: (query: AgentAskResponse["query"]) => void;
 }
 
 /** A missing entry in words: the shared label when the reason is a contract reason, else the
@@ -194,6 +198,8 @@ export function ExploreAi({
   ask = askAgent,
   head,
   collapsed = false,
+  results,
+  onAnswered,
 }: ExploreAiProps): ReactElement {
   // `?q=` (the "What can I ask?" card, the drawer's "Ask about this property") fills the box; it
   // is never sent until the person presses Ask.
@@ -266,6 +272,7 @@ export function ExploreAi({
           writeSessionCount(sessionStorageOrUndefined(), count);
         }
         setShown({ response, prompt: text });
+        if (response.outcome === "answered") onAnswered?.(response.query);
         setDraft({});
         setState(next);
       } catch {
@@ -277,7 +284,7 @@ export function ExploreAi({
         clearTimeout(stop);
       }
     },
-    [ask, used],
+    [ask, used, onAnswered],
   );
 
   const cancel = (): void => {
@@ -554,6 +561,7 @@ export function ExploreAi({
             )}
           </article>
         ) : null}
+        {results}
       </div>
     </div>
   );

@@ -12,7 +12,12 @@ import { useSearchParams } from "react-router";
 import { ExploreDrawerHead, type ExploreMode } from "../components/ExploreDrawerHead";
 import { LinearProgress } from "../components/LinearProgress";
 import { SearchBox } from "../components/SearchBox";
+import { answerFilterParams } from "./ExploreAi.state";
 import { ExploreFilters, type ExplorePageState } from "./ExploreFilters";
+import { patchParams } from "./ExploreFilters.state";
+
+/** The AI tab owns the page state; its embedded results list reports none. */
+const ignoreState = (): void => undefined;
 import styles from "./Explore.module.css";
 
 const ExploreAi = lazy(() => import("./ExploreAi").then((m) => ({ default: m.ExploreAi })));
@@ -65,6 +70,13 @@ export function Component(): ReactElement {
       return p;
     });
   };
+  // PO 2026-10-26: the AI tab keeps the results list; an answer writes the filters it applied into
+  // the URL (the list's single source), so the list shows the answer's whole search.
+  const showAnswerFilters = useCallback(
+    (query: Record<string, unknown>) =>
+      setParams((current) => patchParams(current, answerFilterParams(query)), { replace: true }),
+    [setParams],
+  );
   const head = (
     <ExploreDrawerHead
       mode={mode}
@@ -90,7 +102,13 @@ export function Component(): ReactElement {
       <h2 className={styles.srOnly}>Explore</h2>
       {mode === "ai" ? (
         <Suspense fallback={<LinearProgress label={LOADING_AI} stageText={LOADING_AI} />}>
-          <ExploreAi onState={onState} head={head} collapsed={collapsed} />
+          <ExploreAi
+            onState={onState}
+            head={head}
+            collapsed={collapsed}
+            onAnswered={showAnswerFilters}
+            results={<ExploreFilters onState={ignoreState} resultsOnly />}
+          />
         </Suspense>
       ) : (
         <ExploreFilters onState={onState} head={head} collapsed={collapsed} />

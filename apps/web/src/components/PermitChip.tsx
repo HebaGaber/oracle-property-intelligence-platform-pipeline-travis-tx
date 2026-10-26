@@ -1,7 +1,8 @@
 // The permit chip of an Explore row and the Property drawer (A-13 T027; AC-5, FR-005; contracts/
 // ui-routes.md). An open or stalled roofing permit reads "Stalled {x} yrs · …" / "Open {x} yrs ·
 // …" with {x} = the row's `open_years`; while `status_raw` has no lexicon carrier (ADR-0002) the
-// status part is "source status not published · no lexicon carrier", and once a carrier exists
+// status part says what the dates show ("open past expiry, never closed" for a stalled permit,
+// PO 2026-10-26), and once a carrier exists
 // "source says {status_raw}" ("Expired" for a stalled permit). `data-permit-chip` carries the
 // status class and `data-open-days` the row's exact `open_days`. Any
 // other permit shows its number and status class as published (no chip hook). Render-only.

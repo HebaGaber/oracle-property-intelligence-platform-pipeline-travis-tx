@@ -206,3 +206,48 @@ export function howChips(query: AgentAskResponse["query"]): HowChips {
     .map(([key, value]) => ({ key, text: `${key.replaceAll("_", " ")}: ${scalar(value)}` }));
   return { editable, fixed };
 }
+
+/** The Explore URL filters an answer applied (PO 2026-10-26: the AI tab's results list shows the
+ *  answer's search). Every filter the list reads is set or cleared, so no older filter lingers;
+ *  a key the agent did not apply is cleared. Area: a place name, or a point as `at=lat,lon`. */
+export function answerFilterParams(
+  query: AgentAskResponse["query"],
+): Readonly<Record<string, string | null>> {
+  const num = (key: string): string | null =>
+    typeof query[key] === "number" ? String(query[key]) : null;
+  const area = query["area"];
+  const place =
+    typeof area === "object" &&
+    area !== null &&
+    typeof (area as { place?: unknown }).place === "string"
+      ? (area as { place: string }).place
+      : null;
+  const point =
+    typeof area === "object" &&
+    area !== null &&
+    typeof (area as { lat?: unknown }).lat === "number" &&
+    typeof (area as { lon?: unknown }).lon === "number"
+      ? `${String((area as { lat: number }).lat)},${String((area as { lon: number }).lon)}`
+      : null;
+  const status = query["status_class"];
+  const permit =
+    status === "open_or_stalled"
+      ? "open_stalled"
+      : status === "open" || status === "stalled"
+        ? status
+        : null;
+  const sort = query["sort"];
+  return {
+    place,
+    at: place === null ? point : null,
+    r: num("radius_mi"),
+    roof: num("roof_age_years_min"),
+    permit,
+    openYrs: num("open_years_min"),
+    tenure: num("tenure_years_min"),
+    ooa: query["owner_is_out_of_area"] === true ? "1" : null,
+    sort: sort === "nearest" || sort === "roof_desc" || sort === "open_desc" ? sort : null,
+    page: null,
+    sel: null,
+  };
+}

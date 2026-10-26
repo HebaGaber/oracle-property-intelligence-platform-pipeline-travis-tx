@@ -164,12 +164,16 @@ export function ExploreFilters({
   onState,
   head,
   collapsed = false,
+  resultsOnly = false,
 }: {
   readonly onState: (state: ExplorePageState) => void;
   /** The drawer head (mode tabs and the collapse button), from Explore. */
   readonly head?: ReactNode;
   /** The drawer is collapsed to its strip (from 840 px; the controls stay in the DOM). */
   readonly collapsed?: boolean;
+  /** PO 2026-10-26: the AI tab shows the same results list under its answer, without the filter
+   *  panel (the URL's filters drive it; an answer writes its applied filters there). */
+  readonly resultsOnly?: boolean;
 }): ReactElement {
   const [params, setParams] = useSearchParams();
   const query = useMemo(() => parseExploreQuery(params), [params]);
@@ -238,6 +242,69 @@ export function ExploreFilters({
     !search.isPlaceholderData;
   const select = (cid: string): void => patch({ sel: cid }, false);
 
+  const resultsColumn = (
+    <div className={styles.results}>
+      {/* Explore boards: the "What can I ask?" card only until a search has results. */}
+      {resultsOnly || (data !== undefined && data.total_within_r > 0) ? null : <WelcomeCard />}
+      <p className={styles.area} data-area="">
+        {place === null ? (
+          query.at === null ? null : (
+            `Point ${query.at.lat}, ${query.at.lon}`
+          )
+        ) : place.status === "found" ? (
+          place.label
+        ) : (
+          <span role="alert">{PLACE_NOT_FOUND}</span>
+        )}
+      </p>
+      <p className={styles.engine} data-engine-line="">
+        <Icon name="memory" size="small" />
+        <span>{EXPLORE_TEXTS.engineServer}</span>
+      </p>
+      {bound.kind === "error" ? <ErrorBanner message={runErrorNode(bound.error)} /> : null}
+      {search.isFetching ? <LinearProgress label={SEARCHING} stageText={SEARCHING} /> : null}
+      {search.isError ? (
+        <ErrorBanner
+          message={exploreErrorText(search.error)}
+          onRetry={() => void search.refetch()}
+        />
+      ) : null}
+      {data === undefined && pageState === "loading" ? (
+        <Skeleton variant="cards" count={3} />
+      ) : null}
+      {selMissing ? (
+        <p className={styles.engine} role="status" data-sel-missing="">
+          {EXPLORE_TEXTS.propertyNotInResults}
+        </p>
+      ) : null}
+      {data !== undefined && answered.current !== null ? (
+        <Results
+          key={answeredKey}
+          data={data}
+          header={headerText(data.total_within_r, answered.current.request, answered.current.name)}
+          request={answered.current.request}
+          page={page}
+          pageRows={pageRows}
+          onPage={goTo}
+          onWiden={(r) => patch({ r: String(r) })}
+          onSelect={select}
+          selected={query.sel}
+        />
+      ) : null}
+    </div>
+  );
+  const drawer =
+    selected === undefined ? null : (
+      <PropertyDrawer row={selected} onClose={() => patch({ sel: null }, false)} />
+    );
+  if (resultsOnly)
+    return (
+      <div className={styles.embeddedResults} data-ai-results="">
+        {resultsColumn}
+        {drawer}
+      </div>
+    );
+
   return (
     <div
       className={[
@@ -260,62 +327,8 @@ export function ExploreFilters({
           matchCount={data === undefined ? null : data.total_within_r}
         />
       </div>
-      <div className={styles.results}>
-        {/* Explore boards: the "What can I ask?" card only until a search has results. */}
-        {data !== undefined && data.total_within_r > 0 ? null : <WelcomeCard />}
-        <p className={styles.area} data-area="">
-          {place === null ? (
-            query.at === null ? null : (
-              `Point ${query.at.lat}, ${query.at.lon}`
-            )
-          ) : place.status === "found" ? (
-            place.label
-          ) : (
-            <span role="alert">{PLACE_NOT_FOUND}</span>
-          )}
-        </p>
-        <p className={styles.engine} data-engine-line="">
-          <Icon name="memory" size="small" />
-          <span>{EXPLORE_TEXTS.engineServer}</span>
-        </p>
-        {bound.kind === "error" ? <ErrorBanner message={runErrorNode(bound.error)} /> : null}
-        {search.isFetching ? <LinearProgress label={SEARCHING} stageText={SEARCHING} /> : null}
-        {search.isError ? (
-          <ErrorBanner
-            message={exploreErrorText(search.error)}
-            onRetry={() => void search.refetch()}
-          />
-        ) : null}
-        {data === undefined && pageState === "loading" ? (
-          <Skeleton variant="cards" count={3} />
-        ) : null}
-        {selMissing ? (
-          <p className={styles.engine} role="status" data-sel-missing="">
-            {EXPLORE_TEXTS.propertyNotInResults}
-          </p>
-        ) : null}
-        {data !== undefined && answered.current !== null ? (
-          <Results
-            key={answeredKey}
-            data={data}
-            header={headerText(
-              data.total_within_r,
-              answered.current.request,
-              answered.current.name,
-            )}
-            request={answered.current.request}
-            page={page}
-            pageRows={pageRows}
-            onPage={goTo}
-            onWiden={(r) => patch({ r: String(r) })}
-            onSelect={select}
-            selected={query.sel}
-          />
-        ) : null}
-      </div>
-      {selected === undefined ? null : (
-        <PropertyDrawer row={selected} onClose={() => patch({ sel: null }, false)} />
-      )}
+      {resultsColumn}
+      {drawer}
     </div>
   );
 }
