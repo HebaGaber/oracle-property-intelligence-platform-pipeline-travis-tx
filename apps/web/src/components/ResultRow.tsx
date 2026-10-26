@@ -34,7 +34,10 @@ import { StatusPill } from "./StatusPill";
 import styles from "./ResultRow.module.css";
 
 /** Shown in the permit cell of a property with no roofing permit in the run. */
-export const NO_PERMIT_TEXT = "no roofing permit on this property in the current run";
+/** A row with no permit: the permit source is the City of Austin only (docs/source-limits.md
+ *  § 2), so outside Austin the absence means "not in the data", never "no permit exists". */
+export const NO_PERMIT_TEXT =
+  "No roofing permit in the data (permits cover the City of Austin only)";
 /** Shown where a provenance value is absent from the row. */
 const NOT_IN_ROW = "not in the published row";
 

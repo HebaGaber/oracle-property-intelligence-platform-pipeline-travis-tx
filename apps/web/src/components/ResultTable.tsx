@@ -14,6 +14,7 @@ import { PermitChip } from "./PermitChip";
 import {
   CompactProvenance,
   FieldValue,
+  NO_PERMIT_TEXT,
   PLACEHOLDER_BUILT_YEAR,
   PLACEHOLDER_BUILT_YEAR_NOTE,
   builtYearWords,
@@ -203,10 +204,7 @@ function Row({
       </td>
       <td data-field="permit" className={styles.permit}>
         {row.permit === null ? (
-          <span
-            className={styles.sub}
-            title="No roofing permit on this property in the current run"
-          >
+          <span className={styles.sub} title={NO_PERMIT_TEXT}>
             None
           </span>
         ) : (
