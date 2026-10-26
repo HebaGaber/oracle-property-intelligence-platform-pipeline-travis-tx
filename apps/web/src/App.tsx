@@ -9,6 +9,7 @@ import { ROUTES } from "@countylens/shared/routes";
 import { useMemo, type ReactElement } from "react";
 import { createBrowserRouter, RouterProvider, type RouteObject } from "react-router";
 import { AppShell } from "./components/AppShell";
+import { RouteError } from "./components/RouteError";
 import { ROUTE_LIST } from "./routes/route-list";
 
 function Root(): ReactElement {
@@ -34,8 +35,10 @@ const children: RouteObject[] = ROUTE_LIST.map((entry) =>
 // developer 404 page.
 const notFound: RouteObject = { path: "*", lazy: () => import("./routes/ComingSoon") };
 
+// Any error in a page (or a page file a newer deploy replaced) shows RouteError, never the router's
+// developer screen.
 export const routes: RouteObject[] = [
-  { path: "/", Component: Root, children: [...children, notFound] },
+  { path: "/", Component: Root, ErrorBoundary: RouteError, children: [...children, notFound] },
 ];
 
 export function App(): ReactElement {
