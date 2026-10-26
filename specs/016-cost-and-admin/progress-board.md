@@ -4,7 +4,7 @@ Updated every 15 minutes by the main session. Times are EEST (UTC+3). Session ta
 
 Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the PO · 🛑 PO decision · ⚠️ at risk
 
-**Last update:** 06:56 EEST · **Revised target:** G7 ≈ 07:45; bridge live test on hold until Run 3.1 is done
+**Last update:** 07:10 EEST · **Revised target:** G7 ≈ 07:45; bridge live test on hold until Run 3.1 is done
 
 ## Rounds
 
