@@ -402,7 +402,7 @@ const EMPTY_ENVELOPE = (applied: Record<string, unknown>, extra: Record<string, 
 const DECLARED = (...fields: string[]) => ({
   unpublished: fields.map((field) => ({
     field,
-    reason: field === "owner_is_out_of_area" ? "not_in_export" : "no_lexicon_carrier",
+    reason: field === "owner_is_out_of_area" ? "not_in_export" : "bbb_blocked",
   })),
 });
 const DECLARE_STEP = (...fields: string[]) => ({
@@ -711,7 +711,8 @@ describe("ERR-61..63 follow-up: golden G2/G4/G5 deterministic rules", () => {
     expect(calls.some((q) => q.includes("2024-123456 BP"))).toBe(true);
     expect(result.steps.map((s) => s.tool)).toContain("searchRoofingPermits");
     expect(result.answer).toContain("2024-123456 BP");
-    expect(result.answer).toMatch(/BBB status is not available in the published data/);
+    expect(result.answer).toMatch(/BBB blocks automated lookups/);
+    expect(result.answer).not.toMatch(/not available in the published data/);
     expect(result.missing.map((m) => m.field)).toContain("bbb_status");
     expect(result.outcome).toBe("answered");
   });
@@ -1254,7 +1255,7 @@ describe("final review (donphan): run echo, gazetteer, BBB and unplaced-record r
     expect(gap.missing).toEqual([{ field: "bbb_status", reason: "contractor_unresolved" }]);
   });
 
-  it("bbb_status is listed once: the match's specific reason wins over no_lexicon_carrier", () => {
+  it("bbb_status is listed once: the match's specific reason wins over the generic bbb_blocked", () => {
     const specific = composeStructuredParts(
       [match({ bbb_status: "not_checked", bbb_status_reason: "contractor_unresolved" })],
       [DECLARED("contractor.name_as_printed", "bbb_status")],
@@ -1264,7 +1265,7 @@ describe("final review (donphan): run echo, gazetteer, BBB and unplaced-record r
     ]);
     const generic = composeStructuredParts([], [DECLARED("bbb_status")]);
     expect(generic.missing.filter((m) => m.field === "bbb_status")).toEqual([
-      { field: "bbb_status", reason: "no_lexicon_carrier" },
+      { field: "bbb_status", reason: "bbb_blocked" },
     ]);
   });
 

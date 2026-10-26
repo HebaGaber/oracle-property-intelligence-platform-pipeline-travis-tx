@@ -331,3 +331,48 @@
   line-height: var(--md-sys-typescale-body-small-line-height);
   resize: vertical;
 }
+
+/* HelpMcp1440 board: the client's file name with Copy at the row's end, above the snippet. */
+.fileRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.fileName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-ref-typeface-mono);
+  font-size: var(--md-sys-typescale-body-small-size);
+}
+
+/* search_properties: Input schema beside Example request (tools/call) from 1240 px. */
+.schemaRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.schemaCol {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.blockLabel {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: var(--md-sys-typescale-label-medium-weight);
+  line-height: var(--md-sys-typescale-label-medium-line-height);
+}
+
+@media (min-width: 1240px) {
+  .schemaRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

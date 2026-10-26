@@ -90,7 +90,9 @@ function projectProperty(n: number, row: Row): Record<string, unknown> {
   };
 }
 
-function projectPermit(n: number, row: Row): Record<string, unknown> {
+/** The model-facing permit fields. A-16: the printed contractor name and its BBB search link are
+ *  included (the system prompt tells the model to report the name). */
+export function projectPermit(n: number, row: Row): Record<string, unknown> {
   return {
     n,
     property_cid: row.property_cid,
@@ -103,6 +105,8 @@ function projectPermit(n: number, row: Row): Record<string, unknown> {
       typeof row.contractor === "object" && row.contractor !== null
         ? (row.contractor as Record<string, unknown>).resolution
         : undefined,
+    contractor_name_as_printed: row.contractor_name_as_printed ?? null,
+    bbb_url: row.bbb_url ?? null,
     bbb_status: row.bbb_status,
     bbb_status_reason: row.bbb_status_reason,
   };
@@ -225,7 +229,8 @@ export function createAgentTools(ctx: AgentToolsContext) {
     description:
       "Declare which fields the question asks about that the published export does not carry: " +
       "owner_is_out_of_area (owners living outside the area / absentee owners: the owner's mailing " +
-      "location is not published), bbb_status (BBB rating). The contractor's printed name IS " +
+      "location is not published), bbb_status (BBB rating: BBB blocks automated lookups, so it was " +
+      "not checked; a BBB search link is on each permit with a printed contractor). The contractor's printed name IS " +
       "published (contractor_name_as_printed on each permit row; empty when the permit prints none). Call it in the same step as your search whenever the question asks about any " +
       "of them; the answer then states they are not available.",
     inputSchema: z.object({ fields: z.array(z.enum(fields)).min(1).max(fields.length) }).strict(),

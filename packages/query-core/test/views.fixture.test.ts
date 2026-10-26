@@ -297,10 +297,11 @@ describe("contractor edges (donphan M4)", () => {
       bbb_url: null,
       bbb_rating: null,
       bbb_status: "not_checked",
-      bbb_status_reason: "contractor_unresolved",
+      bbb_status_reason: "source_missing",
     });
-    expect(reasonOf(pmt("pf"), "contractor_name_as_printed")).toBe("contractor_unresolved");
+    expect(reasonOf(pmt("pf"), "contractor_name_as_printed")).toBe("source_missing");
     expect(reasonOf(pmt("pf"), "bbb_url")).toBe("source_missing");
+    // views.sql hard-codes this one (changing it changes viewsSha256); read paths remap it.
     expect(reasonOf(pmt("pf"), "bbb_rating")).toBe("contractor_unresolved");
   });
 
@@ -312,9 +313,9 @@ describe("contractor edges (donphan M4)", () => {
     expect(reasonOf(pmt("pa"), "contractor_company_cid")).toBe("needs_review");
   });
 
-  it("no edge → unresolved with contractor_unresolved", () => {
+  it("no edge → unresolved, the company gap is source_missing (no contractor printed, A-16)", () => {
     expect(pmt("pf")?.contractor_resolution).toBe("unresolved");
-    expect(reasonOf(pmt("pf"), "contractor_company_cid")).toBe("contractor_unresolved");
+    expect(reasonOf(pmt("pf"), "contractor_company_cid")).toBe("source_missing");
   });
 });
 
