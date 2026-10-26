@@ -118,7 +118,7 @@
   font-family: var(--md-ref-typeface-mono);
 }
 
-/* DataCatalog1440 board: "Find a table or field" search, Query in SQL, the field table. */
+/* DataCatalog1440 board: "Find a table or field" search, a link to Explore (the SQL tab was removed, A-16), the field table. */
 .searchRow {
   display: flex;
   flex-wrap: wrap;
@@ -149,12 +149,12 @@
 }
 
 .search:focus-visible,
-.sqlLink:focus-visible {
+.exploreLink:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
-.sqlLink {
+.exploreLink {
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;

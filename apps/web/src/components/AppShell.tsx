@@ -60,10 +60,10 @@ export const DESTINATIONS: readonly Destination[] = [
   { to: ROUTES.dataManifest, label: "Data", icon: "dataset" },
 ];
 
-/** More sheet rows shown only below 600 px (Shell390More board: Coverage and SQL). */
+/** More sheet rows shown only below 600 px (Shell390More board: Coverage; the SQL row was removed
+ *  with the Explore SQL tab by PO decision, A-16). */
 const COMPACT_MORE: readonly { readonly to: string; readonly label: string }[] = [
   { to: ROUTES.coverage, label: "Coverage" },
-  { to: `${ROUTES.explore}?mode=sql`, label: "SQL" },
 ];
 
 function Glyph({ name }: { readonly name: string }): ReactElement {

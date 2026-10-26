@@ -58,7 +58,6 @@
 
 .tab:focus-visible,
 .run:focus-visible,
-.editor:focus-visible,
 .drawer:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
@@ -161,74 +160,6 @@
   font-size: var(--md-sys-typescale-title-medium-size);
   font-weight: var(--md-sys-typescale-title-medium-weight);
   line-height: var(--md-sys-typescale-title-medium-line-height);
-}
-
-.sql {
-  display: grid;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
-.sqlLabel {
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-label-large-font);
-  font-size: var(--md-sys-typescale-label-large-size);
-  font-weight: var(--md-sys-typescale-label-large-weight);
-}
-
-.editor {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: calc(var(--space-9) * 3);
-  padding: var(--space-3);
-  border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-extra-small);
-  color: var(--md-sys-color-on-surface);
-  background: var(--md-sys-color-surface);
-  font-family: var(--md-ref-typeface-mono);
-  font-size: var(--md-sys-typescale-body-medium-size);
-  line-height: var(--md-sys-typescale-body-medium-line-height);
-  resize: vertical;
-}
-
-.sqlError {
-  margin: 0;
-  padding: var(--space-3);
-  border-radius: var(--md-sys-shape-corner-medium);
-  color: var(--md-sys-color-on-error-container);
-  background: var(--md-sys-color-error-container);
-  font-family: var(--md-sys-typescale-body-medium-font);
-  font-size: var(--md-sys-typescale-body-medium-size);
-  line-height: var(--md-sys-typescale-body-medium-line-height);
-  overflow-wrap: anywhere;
-}
-
-.scroll {
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.grid {
-  border-collapse: collapse;
-  color: var(--md-sys-color-on-surface);
-  font-family: var(--md-sys-typescale-body-small-font);
-  font-size: var(--md-sys-typescale-body-small-size);
-  line-height: var(--md-sys-typescale-body-small-line-height);
-  font-variant-numeric: tabular-nums;
-}
-
-.grid th,
-.grid td {
-  padding: var(--space-2);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  text-align: left;
-  white-space: nowrap;
-}
-
-.grid th {
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-ref-typeface-mono);
 }
 
 /* Property drawer (Property1440/390 boards): title block, chip row, Street View box, actions,
@@ -340,31 +271,6 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-}
-
-/* SQL suggestions (ExploreQ-sql board): mono assist chips. */
-.sqlSuggestions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.sqlSuggestion {
-  box-sizing: border-box;
-  min-height: var(--space-9);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-small);
-  color: var(--md-sys-color-on-surface);
-  background: var(--md-sys-color-surface);
-  cursor: pointer;
-  font-family: var(--md-ref-typeface-mono);
-  font-size: var(--md-sys-typescale-body-small-size);
-}
-
-.sqlSuggestion:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
-  outline-offset: 2px;
 }
 
 /* Matches / Close (Explore1440 board): Atlas § 7 segmented tonal tabs with their counts. */

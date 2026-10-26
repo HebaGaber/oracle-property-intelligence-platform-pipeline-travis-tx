@@ -159,9 +159,9 @@ function isBadRequest(error: unknown): boolean {
  */
 export const INDEX_ERROR_TEXTS = Object.freeze({
   index_not_built:
-    "The search index for this run is not built yet, so Filters cannot search it. SQL and the run's published files still work.",
+    "The search index for this run is not built yet, so Filters cannot search it. The run's published files and the Data pages still work.",
   index_stale:
-    "The search index for this run is out of date (built from other view definitions), so Filters cannot search it. SQL and the run's published files still work.",
+    "The search index for this run is out of date (built from other view definitions), so Filters cannot search it. The run's published files and the Data pages still work.",
 });
 
 /** The banner text of a failed explore.search: index, out-of-range or the server's message. */

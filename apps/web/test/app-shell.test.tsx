@@ -234,7 +234,6 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
     );
     expect(compact.map((li) => li.querySelector("a")?.getAttribute("href"))).toEqual([
       "/tx/travis/coverage",
-      "/tx/travis/explore?mode=sql",
       "/admin/sign-in",
     ]);
   });
