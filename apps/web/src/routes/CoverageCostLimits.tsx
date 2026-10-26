@@ -11,6 +11,10 @@
 // net is never read as "no cost"; a source that never became reachable shows "Blocked" with the
 // dates, not a throughput.
 //
+// Style pass (PO 2026-10-26 06:25): Cost reads as the board's two-column resource list (name,
+// the doc's parenthetical and per-use line under it, the fixed figure on the right; who pays and
+// the bill line open with Details), followed by the usage, credits and budget tiles.
+//
 // Compact layout (A-16 PO note 2026-10-26, board Coverage1440 "Source speed and constraints"):
 // full-width tables with fixed column shares; each row shows a short name (the doc's parenthetical
 // as a helper line) and every cell clamped to a few lines, with a per-row "Details" toggle that
@@ -265,6 +269,30 @@ export function CostSection(): ReactElement {
           </p>
         </div>
       )}
+      <div className={runsStyles.tableWrap}>
+        <table
+          role="table"
+          className={`${runsStyles.table} ${styles.stack} ${styles.compact} ${styles.costList}`}
+          aria-label="Deployed resources and idle cost"
+        >
+          <thead role="rowgroup">
+            <tr role="row">
+              <th role="columnheader">Deployed resource</th>
+              <th role="columnheader">Fixed (idle) per month</th>
+              <th role="columnheader">Per use</th>
+              <th role="columnheader">Who pays per use</th>
+              <th role="columnheader">Seen in the bill</th>
+              {TOGGLE_HEAD}
+            </tr>
+          </thead>
+          <tbody role="rowgroup">
+            {cost.rows.map((row) => (
+              <CostTableRow key={row.component} row={row} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* Board order: the resource list, then the bill and budget tiles. */}
       <div className={styles.costTiles}>
         <div className={runsStyles.tile} data-tile="gross">
           <span className={runsStyles.tileLabel}>Gross usage · {cost.gross.window}</span>
@@ -306,29 +334,6 @@ export function CostSection(): ReactElement {
           )}
           <span className={runsStyles.tileLabel}>Owned by the CDK Ops stack</span>
         </div>
-      </div>
-      <div className={runsStyles.tableWrap}>
-        <table
-          role="table"
-          className={`${runsStyles.table} ${styles.stack} ${styles.compact}`}
-          aria-label="Deployed resources and idle cost"
-        >
-          <thead role="rowgroup">
-            <tr role="row">
-              <th role="columnheader">Deployed resource</th>
-              <th role="columnheader">Fixed (idle) per month</th>
-              <th role="columnheader">Per use</th>
-              <th role="columnheader">Who pays per use</th>
-              <th role="columnheader">Seen in the bill</th>
-              {TOGGLE_HEAD}
-            </tr>
-          </thead>
-          <tbody role="rowgroup">
-            {cost.rows.map((row) => (
-              <CostTableRow key={row.component} row={row} />
-            ))}
-          </tbody>
-        </table>
       </div>
       <p className={runsStyles.provenance}>
         <Icon name="info" size="small" />
