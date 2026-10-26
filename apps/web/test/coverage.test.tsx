@@ -240,7 +240,11 @@ describe("Coverage gaps say why, once (FR-002, FR-007, TC-017)", () => {
       expect(card.textContent).toContain(COVERAGE_KIND_MISSING);
       expect(card.querySelector("[data-coverage-key]")).toBeNull();
       expect(card.querySelector("[data-count]")).toBeNull();
-      expect(card.querySelectorAll("[data-status]"), `${id}: one pill`).toHaveLength(1);
+      // PO 2026-10-26: a kind whose rows are published but not counted draws no pill.
+      const published = id === "coordinates" && card.querySelector("[data-table]") !== null;
+      expect(card.querySelectorAll("[data-status]"), `${id}: pills`).toHaveLength(
+        published ? 0 : 1,
+      );
       const reason = COVERAGE_KINDS.find((k) => k.id === id)?.reason;
       if (reason !== null && reason !== undefined) {
         expect(card.querySelector("[data-short]")?.getAttribute("data-short")).toBe(reason);

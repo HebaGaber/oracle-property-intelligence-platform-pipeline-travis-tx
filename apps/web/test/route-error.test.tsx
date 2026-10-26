@@ -52,7 +52,9 @@ describe("RouteError", () => {
     );
     render(<RouterProvider router={router} />);
     expect(await screen.findByRole("heading", { name: "Something went wrong" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Reload" }).getAttribute("href")).toBe(
+      window.location.href,
+    );
     expect(screen.getByRole("link", { name: "Back to the Hub" }).getAttribute("href")).toBe("/");
     expect(document.body.textContent).not.toContain("Hey developer");
   });

@@ -291,3 +291,15 @@
   -webkit-line-clamp: 3;
   line-clamp: 3;
 }
+
+/* Words kept for screen readers and the hosted checks, not drawn. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  font: inherit;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

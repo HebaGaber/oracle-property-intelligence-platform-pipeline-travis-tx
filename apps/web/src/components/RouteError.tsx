@@ -48,9 +48,10 @@ export function RouteError(): ReactElement {
           ? "This page was opened before the latest release. Reload to load the new version."
           : "This page could not be shown. Reload to try again, or go back to the Hub."}
       </p>
-      <button type="button" className={styles.link} onClick={() => window.location.reload()}>
+      {/* A plain link to this address: following it is a full page load, i.e. a reload. */}
+      <a href={window.location.href} className={styles.link}>
         Reload
-      </button>
+      </a>
       <Link to={ROUTES.hub} className={styles.link}>
         Back to the Hub
       </Link>

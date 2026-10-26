@@ -370,18 +370,26 @@ function KindCard({
         <h4 id={titleId} className={cov.kindTitle}>
           {kind.title}
         </h4>
-        <span
-          className={cov.reason}
-          data-kind-missing=""
-          {...(kind.source === null ? { "data-kind-denominator": "none" } : {})}
-        >
-          {/* One pill: the short reason drawn, the TC-017 words kept as its text and tooltip. */}
-          <StatusPill
-            status="unavailable"
-            text={`${reason} · ${COVERAGE_KIND_MISSING}`}
-            short={reason}
-          />
-        </span>
+        {kind.reason === null && tableLine !== null ? (
+          // PO 2026-10-26: rows published but no count in the manifest: no pill is drawn (the
+          // table line below shows the rows); the TC-017 words stay for screen readers.
+          <span className={cov.srOnly} data-kind-missing="">
+            {`${reason} · ${COVERAGE_KIND_MISSING}`}
+          </span>
+        ) : (
+          <span
+            className={cov.reason}
+            data-kind-missing=""
+            {...(kind.source === null ? { "data-kind-denominator": "none" } : {})}
+          >
+            {/* One pill: the short reason drawn, the TC-017 words kept as its text and tooltip. */}
+            <StatusPill
+              status="unavailable"
+              text={`${reason} · ${COVERAGE_KIND_MISSING}`}
+              short={reason}
+            />
+          </span>
+        )}
         {/* A kind with no source says its reason only; the pill above is its denominator line. */}
         {kind.id === OTHER_KIND.id || kind.source === null ? null : (
           <div className={cov.fact} data-kind-denominator={kind.source}>
