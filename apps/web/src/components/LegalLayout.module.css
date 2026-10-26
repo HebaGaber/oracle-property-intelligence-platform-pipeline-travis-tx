@@ -1,11 +1,13 @@
-/* Legal layout (Legal boards): contents as rows of underlined links above the text below 1024 px
-   (only Related below 600 px, as on the 390 board), a side column from 1024 px with the pair
-   centred in the main column; the page title (headline-large), an info banner, and sections
-   separated by space rather than rules. Every target is at least 48 px tall. Tokens only. */
+/* Legal layout (Legal boards): below 600 px the Related links come after the text above a divider
+   (the 390 board's page end); from 600 px the contents are rows of underlined links above the
+   text; from 1024 px a side column with the pair centred in the main column. The board's type:
+   title 28/36 (headline-medium), a body-small provenance line, an info banner, section titles at
+   500 weight (title-medium, the nearest token to the board's 18 px), 16 px between items and
+   24 px before each section. Every target is at least 48 px. Tokens only. */
 
 .layout {
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -14,6 +16,9 @@
   align-content: start;
   gap: var(--space-2);
   min-width: 0;
+  order: 2;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .onPage {
@@ -32,7 +37,7 @@
 
 .tocTitle {
   margin: 0;
-  color: var(--md-sys-color-on-surface);
+  color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-sys-typescale-title-small-font);
   font-size: var(--md-sys-typescale-title-small-size);
   font-weight: var(--md-sys-typescale-title-small-weight);
@@ -49,7 +54,7 @@
 }
 
 /* Each contents and Related link is a 48 x 48 px minimum target at every width (WCAG 2.5.8,
-   A-13-TC-080): short labels such as "Privacy" are widened, not only heightened. */
+   A-13-TC-080): short labels such as "Terms" are widened, not only heightened. */
 .tocLink {
   display: inline-flex;
   align-items: center;
@@ -71,17 +76,35 @@
 .text {
   display: grid;
   align-content: start;
-  gap: var(--space-6);
+  gap: var(--space-4);
   min-width: 0;
 }
 
 .title {
   margin: 0;
   color: var(--md-sys-color-on-surface);
-  font-family: var(--md-sys-typescale-headline-medium-font);
-  font-size: var(--md-sys-typescale-headline-medium-size);
-  font-weight: var(--md-sys-typescale-headline-medium-weight);
-  line-height: var(--md-sys-typescale-headline-medium-line-height);
+  font-family: var(--md-sys-typescale-headline-small-font);
+  font-size: var(--md-sys-typescale-headline-small-size);
+  font-weight: var(--md-sys-typescale-headline-small-weight);
+  line-height: var(--md-sys-typescale-headline-small-line-height);
+}
+
+/* Read by screen readers, not drawn (clip-path, no raw sizes). */
+.srOnly {
+  position: absolute;
+  width: var(--space-1);
+  height: var(--space-1);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.meta {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
 }
 
 .banner {
@@ -93,36 +116,50 @@
   border-radius: var(--md-sys-shape-corner-medium);
   color: var(--status-info);
   background: var(--status-info-container);
-  font-family: var(--md-sys-typescale-body-large-font);
-  font-size: var(--md-sys-typescale-body-large-size);
-  line-height: var(--md-sys-typescale-body-large-line-height);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
 }
 
 .section {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
   min-width: 0;
+  margin-top: var(--space-2);
   scroll-margin-top: var(--space-4);
 }
 
 .sectionTitle {
   margin: 0;
-  font-family: var(--md-sys-typescale-title-large-font);
-  font-size: var(--md-sys-typescale-title-large-size);
-  font-weight: var(--md-sys-typescale-title-large-weight);
-  line-height: var(--md-sys-typescale-title-large-line-height);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-medium-font);
+  font-size: var(--md-sys-typescale-title-medium-size);
+  font-weight: var(--md-sys-typescale-title-medium-weight);
+  line-height: var(--md-sys-typescale-title-medium-line-height);
 }
 
 @media (min-width: 600px) {
+  .toc {
+    order: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+
   .onPage {
     display: grid;
   }
 
   .title {
-    font-family: var(--md-sys-typescale-headline-large-font);
-    font-size: var(--md-sys-typescale-headline-large-size);
-    font-weight: var(--md-sys-typescale-headline-large-weight);
-    line-height: var(--md-sys-typescale-headline-large-line-height);
+    font-family: var(--md-sys-typescale-headline-medium-font);
+    font-size: var(--md-sys-typescale-headline-medium-size);
+    font-weight: var(--md-sys-typescale-headline-medium-weight);
+    line-height: var(--md-sys-typescale-headline-medium-line-height);
+  }
+
+  .banner {
+    font-family: var(--md-sys-typescale-body-large-font);
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: var(--md-sys-typescale-body-large-line-height);
   }
 }
 
