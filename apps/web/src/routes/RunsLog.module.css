@@ -36,12 +36,55 @@ table.log td {
   white-space: nowrap;
 }
 
+/* The run ID is secondary (board shows only the number): one line, cut with an ellipsis, full in
+   the title. */
 .runId {
   display: block;
+  max-width: calc(var(--space-10) * 3);
+  overflow: hidden;
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-ref-typeface-mono);
   font-size: var(--md-sys-typescale-body-small-size);
-  overflow-wrap: break-word;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Time (UTC): the header names the zone, so the cell stays on one line. */
+.log td:first-child {
+  white-space: nowrap;
+}
+
+/* Board RunsLog1440: event chips on the left, run chips and Download CSV on the right. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+/* Atlas outlined button (board "Download CSV"): 48 px target, corner-full. */
+.download {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+}
+
+.download:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 .log td:nth-child(3) {
@@ -81,4 +124,79 @@ table.log td {
   font-family: var(--md-sys-typescale-body-small-font);
   font-size: var(--md-sys-typescale-body-small-size);
   line-height: var(--md-sys-typescale-body-small-line-height);
+}
+
+/* Compact widths (no 390 Log board; D-6): each event is a small card instead of a table row
+   squeezed to a few characters per column: time and status on top, then run, event, source and
+   count. The table roles stay for assistive tech; the header row is visually hidden. */
+@media (max-width: 599px) {
+  .log thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .log,
+  .log tbody {
+    display: block;
+  }
+
+  .log tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "time status"
+      "run run"
+      "event event"
+      "source count";
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .log td,
+  .log td:nth-child(2),
+  .log td:nth-child(3) {
+    min-width: 0;
+    padding: 0;
+    border-top: 0;
+    text-align: start;
+  }
+
+  .log td:nth-child(1) {
+    grid-area: time;
+    font-weight: var(--md-sys-typescale-title-small-weight);
+  }
+
+  .log td:nth-child(2) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--space-2);
+    grid-area: run;
+  }
+
+  .log td:nth-child(3) {
+    grid-area: event;
+  }
+
+  .log td:nth-child(4) {
+    grid-area: source;
+    color: var(--md-sys-color-on-surface-variant);
+  }
+
+  .log td:nth-child(5) {
+    grid-area: count;
+    text-align: end;
+  }
+
+  .log td:nth-child(6) {
+    grid-area: status;
+  }
+
+  .runId {
+    max-width: 100%;
+  }
 }

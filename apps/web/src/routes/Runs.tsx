@@ -19,6 +19,11 @@
 // Run menu (A-16 PO note): choosing a run sets `?run=<runId>` and the pipeline steps, Latest
 // events, What changed and the run card show that run (default: the latest). Sync status always
 // describes the latest run. An unknown `run` shows the latest run and says why.
+// Layout (A-16 F3, PO 2026-10-26): title + Run menu left of Sync status from 1024 px; the
+// pipeline as a Fetch sources panel (each manifest source with its records) and steps 2–5;
+// Timeline (Coming soon entries) beside Latest events; What changed split into totals + CIDs and
+// the per-source rows; the run card in two columns with data groups as a compact grid. The Run
+// menu floats over the page and closes on a choice, on focus leaving it, or on Escape.
 // A react-router lazy route module: it exports `Component` and nothing else.
 import type { ManifestSource, RunManifestV1 } from "@countylens/contract";
 import {
@@ -47,7 +52,7 @@ import { useAdminAccess, useLiveRun } from "../auth/useAdmin";
 import { formatCount, utcTimestamp } from "../data/format";
 import { RUN_STAGE_TEXTS, type LoadedRun, type SelectedRun } from "../data/run-loader";
 import { dataGroupItems, type DataGroupItem } from "../data/data-groups";
-import { runEvents } from "../data/run-events";
+import { runEvents, type RunEvent } from "../data/run-events";
 import { RUNS_INDEX_PATH, runsByFinish, type RunsIndexEntry } from "../data/runs-index";
 import { serverCheckText, useServerCheck } from "../data/server-check";
 import { AdminActions, NotAdminNote } from "./RunsAdmin";
@@ -85,22 +90,17 @@ export function Component(): ReactElement {
 
   return (
     <section aria-label="Runs" data-route="runs" data-state={state.kind} className={styles.page}>
-      <div className={styles.pageHead}>
-        <h2 className={styles.pageTitle}>Pipeline runs</h2>
-        <p className={styles.intro}>
-          Each run fetches every source, checks and joins them, derives roof age and contractors,
-          then publishes a new manifest CID. A run never changes an earlier one. Every count comes
-          from the run&apos;s manifest.
-        </p>
-      </div>
-      {state.kind === "loading" ? (
-        <LinearProgress label={PROGRESS_LABELS.runs} stageText={RUN_STAGE_TEXTS[state.stage]} />
-      ) : null}
-      {state.kind === "error" ? (
-        <ErrorBanner message={runErrorNode(state.error)} onRetry={retry} />
-      ) : null}
-      <div className={styles.cardGrid}>
-        {entries.length > 0 ? <RunList entries={entries} currentId={currentId} /> : null}
+      {/* Board Runs1440: title, Run menu and intro on the left, Sync status on the right. */}
+      <div>
+        <div className={styles.pageHead}>
+          <h2 className={styles.pageTitle}>Pipeline runs</h2>
+          {entries.length > 0 ? <RunList entries={entries} currentId={currentId} /> : null}
+          <p className={styles.intro}>
+            Each run fetches every source, checks and joins them, derives roof age and contractors,
+            then publishes a new manifest CID. A run never changes an earlier one. Every count comes
+            from the run&apos;s manifest.
+          </p>
+        </div>
         {latest === undefined ? null : (
           <SyncStatus
             latest={latest}
@@ -128,18 +128,32 @@ export function Component(): ReactElement {
           />
         )}
       </div>
+      {state.kind === "loading" ? (
+        <LinearProgress label={PROGRESS_LABELS.runs} stageText={RUN_STAGE_TEXTS[state.stage]} />
+      ) : null}
+      {state.kind === "error" ? (
+        <ErrorBanner message={runErrorNode(state.error)} onRetry={retry} />
+      ) : null}
       {selected?.notFound == null ? null : (
         <p className={styles.helperText} role="status" data-run-not-found={selected.notFound}>
           Run <code className={styles.mono}>{selected.notFound}</code> is not in {RUNS_INDEX_PATH} ·
           showing the latest run instead.
         </p>
       )}
-      <ComingSoonEntries ids={["pipeline-diagram", "timeline-scrubber"]} />
       {state.kind === "loading" && latest !== undefined ? <PendingSections state={state} /> : null}
-      {run === undefined || selected === undefined ? null : (
+      {run === undefined || selected === undefined ? (
+        <ComingSoonEntries ids={["pipeline-diagram", "timeline-scrubber"]} />
+      ) : (
         <div className={styles.cardGrid} data-shown-run={run.entry.runId}>
-          <PipelineSteps manifest={run.manifest} manifestCid={run.manifestCid} />
-          <LatestEvents manifest={run.manifest} />
+          <PipelineSteps
+            manifest={run.manifest}
+            manifestCid={run.manifestCid}
+            label={runLabel(selected.number, run.entry.finishedAt)}
+          />
+          <div className={styles.wide}>
+            <Timeline label={runLabel(selected.number, run.entry.finishedAt)} />
+            <LatestEvents manifest={run.manifest} />
+          </div>
           <WhatChanged run={run} number={selected.number} />
           <RunCard run={run} selected={selected} />
         </div>
@@ -183,27 +197,45 @@ function RunList({
     if (menu.current !== null) menu.current.open = false;
   };
   return (
-    <details ref={menu} className={styles.runMenu} data-run-list="">
+    <details
+      ref={menu}
+      className={styles.runMenu}
+      data-run-list=""
+      // The menu floats over the page (board "rsel-menu"): focus leaving it or Escape closes it.
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.open = false;
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") e.currentTarget.open = false;
+      }}
+    >
       <summary className={styles.runMenuSummary} data-current-run={shown?.entry.runId ?? ""}>
         <Icon name="history" size="medium" />
-        <span className={styles.runMenuTitle}>
-          {shown === undefined
-            ? "No runs yet"
-            : `${runLabel(shown.number, shown.entry.finishedAt)}${
-                shown.entry.runId === latestId ? " · latest" : ""
-              }`}
+        <span>
+          <span>
+            {shown === undefined
+              ? "No runs yet"
+              : `${runLabel(shown.number, shown.entry.finishedAt)}${
+                  shown.entry.runId === latestId ? " · latest" : ""
+                }`}
+          </span>
+          {shown === undefined ? null : (
+            <span>
+              {formatUtc(shown.entry.finishedAt)} UTC · {shown.entry.runId}
+            </span>
+          )}
         </span>
         <StatusPill status="info" icon="cloud_done" text="Published" />
         <Icon name="arrow_drop_down" size="medium" />
       </summary>
-      <ul className={styles.runMenuList} aria-label="Runs, newest first">
-        {newestFirst.map(({ entry, number }) => (
-          <li
-            key={entry.manifestCid}
-            className={`${styles.runMenuItem} ${entry.runId === shown?.entry.runId ? styles.runMenuItemCurrent : ""}`}
-            data-run-id={entry.runId}
-          >
-            <span className={styles.itemTitle}>
+      <div>
+        <ul className={styles.runMenuList} aria-label="Runs, newest first">
+          {newestFirst.map(({ entry, number }) => (
+            <li
+              key={entry.manifestCid}
+              className={`${styles.runMenuItem} ${entry.runId === shown?.entry.runId ? styles.runMenuItemCurrent : ""}`}
+              data-run-id={entry.runId}
+            >
               <Link
                 className={styles.runMenuChoice}
                 to={{ search: runSearch(entry.runId, latestId) }}
@@ -211,28 +243,28 @@ function RunList({
                 onClick={close}
                 data-choose-run={entry.runId}
               >
-                <Icon
-                  name={entry.runId === shown?.entry.runId ? "check" : "radio_button_unchecked"}
-                  size="medium"
-                />
+                <span>
+                  {entry.runId === shown?.entry.runId ? <Icon name="check" size="medium" /> : null}
+                </span>
                 <b>
                   {runLabel(number, entry.finishedAt)}
                   {entry.runId === latestId ? " · latest" : ""}
                 </b>
               </Link>
-              <code className={styles.mono}>{entry.runId}</code>
-            </span>
-            <span className={styles.itemBody}>
-              Finished <time dateTime={entry.finishedAt}>{formatUtc(entry.finishedAt)}</time> UTC ·
-              Manifest <CidDisplay cid={entry.manifestCid} /> ·{" "}
-              <Link className={styles.link} to={verifyPath(entry.manifestCid)}>
-                Verify
-              </Link>
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className={styles.itemBody}>{RUNS_TEXTS.numbering}</p>
+              <span>
+                <code className={styles.mono}>{entry.runId}</code>
+                <span>
+                  Manifest <CidDisplay cid={entry.manifestCid} />
+                  <Link className={styles.link} to={verifyPath(entry.manifestCid)}>
+                    Verify
+                  </Link>
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className={styles.itemBody}>{RUNS_TEXTS.numbering}</p>
+      </div>
     </details>
   );
 }
@@ -273,7 +305,7 @@ function SyncStatus({
         <div className={styles.kvRow}>
           <dt>Last sync</dt>
           <dd data-last-sync="">
-            <time dateTime={latest.finishedAt}>{utcTimestamp(latest.finishedAt)}</time> UTC ·{" "}
+            <time dateTime={latest.finishedAt}>{formatUtc(latest.finishedAt)}</time> UTC ·{" "}
             {runLabel(number, latest.finishedAt)}
             {age === "" ? "" : ` · ${age}`}
           </dd>
@@ -315,28 +347,23 @@ function countyCoverage(manifest: RunManifestV1): string {
   return `${pct}% of the TCAD roll · ${formatCount(published.count)} of ${formatCount(total.count)} parcels`;
 }
 
-/** The pipeline as steps, each with one fact the manifest holds (no step timings exist). */
+/**
+ * The pipeline (board "Pipeline · Run N"): step 1 lists every fetched source with its records,
+ * then steps 2–5, each with one fact the manifest holds. No step timings exist, so no times.
+ */
 function PipelineSteps({
   manifest,
   manifestCid,
+  label,
 }: {
   readonly manifest: RunManifestV1;
   readonly manifestCid: string;
+  readonly label: string;
 }): ReactElement {
-  const records = manifest.sources.reduce((sum, s) => sum + s.records, 0);
   const coverageKeys = Object.keys(manifest.coverage).length;
   const tables = manifest.artifacts.filter((a) => a.kind === "table").length;
   const steps: readonly { name: string; icon: string; metric: string }[] = [
-    {
-      name: "Fetch sources",
-      icon: "cloud_download",
-      metric: `${manifest.sources.length} sources · ${formatCount(records)} records`,
-    },
-    {
-      name: "Check and join",
-      icon: "rule",
-      metric: `${coverageKeys} coverage counts recorded`,
-    },
+    { name: "Check and join", icon: "rule", metric: `${coverageKeys} coverage counts recorded` },
     { name: "Derive", icon: "auto_fix_high", metric: `${tables} published table parts` },
     {
       name: "Publish",
@@ -352,26 +379,52 @@ function PipelineSteps({
       data-pipeline-steps=""
     >
       <div>
-        <h3 id="steps-heading" className={styles.sectionTitle}>
-          Pipeline of {manifest.runId}
+        <h3 id="steps-heading" className={styles.cardTitle}>
+          Pipeline · {label}
         </h3>
+        <p className={styles.helperText}>
+          {manifest.sources.length} sources → check and join → derive → publish → verify ·{" "}
+          <span className={styles.mono}>{manifest.runId}</span>
+        </p>
         <p className={styles.helperText}>
           A run that is in the index finished all five steps. The manifest records no per-step
           times.
         </p>
       </div>
-      <ol className={styles.steps}>
+      <ol>
+        <li className={styles.step} data-step="Fetch sources">
+          <span>
+            <span className={styles.stepNumber}>1</span>
+            <b>
+              <Icon name="cloud_download" size="medium" />
+              Fetch sources
+            </b>
+            <span className={styles.itemBody}>
+              {manifest.sources.length} of {manifest.sources.length} done
+            </span>
+          </span>
+          <ul aria-label="Fetched sources">
+            {manifest.sources.map((source) => (
+              <li key={source.name} data-fetch-source={source.name}>
+                <Icon name="check_circle" size="small" />
+                <span>{sourceLabel(source.name)}</span>
+                <span>{formatCount(source.records)}</span>
+              </li>
+            ))}
+          </ul>
+        </li>
         {steps.map((step, i) => (
           <li key={step.name} className={styles.step} data-step={step.name}>
-            <span className={styles.stepNumber}>{i + 1}</span>
-            <span className={styles.stepBody}>
-              <b className={styles.itemTitle}>
-                <Icon name={step.icon} size="medium" />
-                {step.name}
-              </b>
-              <span className={styles.itemBody}>{step.metric}</span>
-              <StatusPill status="verified" text="Done" />
+            <span>
+              <Icon name="check_circle" size="medium" />
+              <span className={styles.stepNumber}>{i + 2}</span>
             </span>
+            <b>
+              <Icon name={step.icon} size="medium" />
+              {step.name}
+            </b>
+            <span className={styles.itemBody}>{step.metric}</span>
+            <span>Done</span>
           </li>
         ))}
       </ol>
@@ -379,12 +432,38 @@ function PipelineSteps({
   );
 }
 
+/**
+ * Board "Timeline · Run N": the manifest has a start, one capture time per source and a finish,
+ * no per-step start and end, so the Gantt chart stays Coming soon and the card shows the run's
+ * own times (the board's "Show as table" view of what exists).
+ */
+function Timeline({ label }: { readonly label: string }): ReactElement {
+  return (
+    <section className={styles.card} aria-labelledby="timeline-heading" data-timeline="">
+      <h3 id="timeline-heading" className={styles.cardTitle}>
+        Timeline · {label}
+      </h3>
+      <p className={styles.helperText}>
+        The manifest records no per-step times, so the chart is not drawn; the run card below gives
+        its start and finish.
+      </p>
+      <ComingSoonEntries ids={["pipeline-diagram", "timeline-scrubber"]} />
+    </section>
+  );
+}
+
+const EVENT_ICONS: Readonly<Record<RunEvent["kind"], { readonly icon: string }>> = {
+  started: { icon: "play_arrow" },
+  captured: { icon: "cloud_download" },
+  finished: { icon: "cloud_upload" },
+};
+
 function LatestEvents({ manifest }: { readonly manifest: RunManifestV1 }): ReactElement {
   const events = runEvents([manifest]).slice(-5).reverse();
   return (
     <section className={styles.card} aria-labelledby="events-heading" data-latest-events="">
       <div className={styles.cardHead}>
-        <h3 id="events-heading" className={styles.sectionTitle}>
+        <h3 id="events-heading" className={styles.cardTitle}>
           Latest events
         </h3>
         <Link className={styles.textLink} to={ROUTES.runsLog}>
@@ -393,10 +472,14 @@ function LatestEvents({ manifest }: { readonly manifest: RunManifestV1 }): React
       </div>
       <ul className={styles.list}>
         {events.map((event, i) => (
-          <li key={i} className={styles.item} data-event={event.kind}>
-            <span className={styles.itemTitle}>{eventLabel(event)}</span>
-            <span className={styles.itemBody}>
-              <time dateTime={event.time}>{formatUtc(event.time)}</time> UTC · {event.runId}
+          <li key={i} data-event={event.kind}>
+            <Icon name={EVENT_ICONS[event.kind].icon} size="small" />
+            <span>
+              <span>{eventLabel(event)}</span>
+              <span className={styles.itemBody}>
+                <time dateTime={event.time}>{formatUtc(event.time)}</time> UTC ·{" "}
+                <span className={styles.mono}>{event.runId}</span>
+              </span>
             </span>
           </li>
         ))}
@@ -415,16 +498,25 @@ function WhatChanged({
   const { manifest, manifestCid } = run;
   const first = manifest.previousManifestCid === null;
   const scale = Math.max(1, ...manifest.sources.map((s) => s.added + s.changed + s.removed));
-  const total = manifest.sources.reduce((sum, s) => sum + s.added + s.changed + s.removed, 0);
+  const sum = (key: "added" | "changed" | "removed"): number =>
+    manifest.sources.reduce((total, s) => total + s[key], 0);
+  const added = sum("added");
+  const changed = sum("changed");
+  const removed = sum("removed");
+  const total = added + changed + removed;
   return (
-    <section className={styles.card} aria-labelledby="changed-heading" data-what-changed="">
+    <section
+      className={`${styles.card} ${styles.wide}`}
+      aria-labelledby="changed-heading"
+      data-what-changed=""
+    >
       <div className={styles.cardHead}>
         <div>
-          <h3 id="changed-heading" className={styles.sectionTitle}>
+          <h3 id="changed-heading" className={styles.cardTitle}>
             What Run {number} changed
           </h3>
           <p className={styles.helperText}>
-            {first ? RUNS_TEXTS.firstRun : "Counted against the previous run's manifest."}
+            {first ? RUNS_TEXTS.firstRun : `Counted against Run ${number - 1}'s manifest.`}
           </p>
         </div>
         {first ? null : (
@@ -437,69 +529,83 @@ function WhatChanged({
           </Link>
         )}
       </div>
-      {first ? null : (
-        <p className={styles.itemBody}>
-          Changes in this run: <b data-total-changes="">{total}</b> records
-        </p>
-      )}
-      <ul className={styles.list} aria-label="Changed records per source">
-        {manifest.sources.map((source) => (
-          <li key={source.name} className={styles.changeRow} data-change-source={source.name}>
-            <span className={styles.itemTitle}>{sourceLabel(source.name)}</span>
-            <span className={styles.count}>{formatCount(source.records)} records</span>
-            {first ? (
-              <span className={styles.helper}>{RUNS_TEXTS.firstRun}</span>
-            ) : (
-              <>
-                <span className={styles.stack} role="group" aria-label={changeAria(source)}>
-                  <ShareBar
-                    tone="added"
-                    value={source.added}
-                    max={scale}
-                    label={`${source.added} added`}
-                  />
-                  <ShareBar
-                    tone="changed"
-                    value={source.changed}
-                    max={scale}
-                    label={`${source.changed} changed`}
-                  />
-                  <ShareBar
-                    tone="removed"
-                    value={source.removed}
-                    max={scale}
-                    label={`${source.removed} removed`}
-                  />
-                </span>
-                <span className={styles.count}>
-                  +{source.added} / ~{source.changed} / −{source.removed}
-                </span>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
-      <dl className={styles.kv}>
-        <div className={styles.kvRow}>
-          <dt>Manifest CID</dt>
-          <dd>
-            <CidDisplay cid={manifestCid} />{" "}
-            <Link className={styles.link} to={verifyPath(manifestCid)}>
-              Verify
-            </Link>
-          </dd>
+      <div>
+        <div>
+          {first ? null : (
+            <p className={styles.itemBody}>
+              Changes in Run {number} vs Run {number - 1} · <b data-total-changes="">{total}</b>{" "}
+              records · added <b>{formatCount(added)}</b> · changed <b>{formatCount(changed)}</b> ·
+              removed <b>{formatCount(removed)}</b>
+            </p>
+          )}
+          <div data-cid-boxes="">
+            <div>
+              <span className={styles.tileLabel}>Manifest CID</span>
+              <span>
+                <CidDisplay cid={manifestCid} />
+                <Link className={styles.link} to={verifyPath(manifestCid)}>
+                  Verify
+                </Link>
+              </span>
+            </div>
+            <div>
+              <span className={styles.tileLabel}>Previous manifest CID</span>
+              <span>
+                {manifest.previousManifestCid === null ? (
+                  RUNS_TEXTS.firstRun
+                ) : (
+                  <CidDisplay cid={manifest.previousManifestCid} />
+                )}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className={styles.kvRow}>
-          <dt>Previous manifest CID</dt>
-          <dd>
-            {manifest.previousManifestCid === null ? (
-              RUNS_TEXTS.firstRun
-            ) : (
-              <CidDisplay cid={manifest.previousManifestCid} />
-            )}
-          </dd>
+        <div>
+          <p className={styles.changeRow} aria-hidden="true">
+            <span>Source</span>
+            <span className={styles.num}>Records</span>
+            <span>Changed records (one scale for this run)</span>
+            <span className={styles.num}>+ / ~ / −</span>
+          </p>
+          <ul className={styles.list} aria-label="Changed records per source">
+            {manifest.sources.map((source) => (
+              <li key={source.name} className={styles.changeRow} data-change-source={source.name}>
+                <span className={styles.itemTitle}>{sourceLabel(source.name)}</span>
+                <span className={styles.count}>{formatCount(source.records)} records</span>
+                {first ? (
+                  <span className={styles.helper}>{RUNS_TEXTS.firstRun}</span>
+                ) : (
+                  <>
+                    <span className={styles.stack} role="group" aria-label={changeAria(source)}>
+                      <ShareBar
+                        tone="added"
+                        value={source.added}
+                        max={scale}
+                        label={`${source.added} added`}
+                      />
+                      <ShareBar
+                        tone="changed"
+                        value={source.changed}
+                        max={scale}
+                        label={`${source.changed} changed`}
+                      />
+                      <ShareBar
+                        tone="removed"
+                        value={source.removed}
+                        max={scale}
+                        label={`${source.removed} removed`}
+                      />
+                    </span>
+                    <span className={styles.count}>
+                      +{source.added} / ~{source.changed} / −{source.removed}
+                    </span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
-      </dl>
+      </div>
     </section>
   );
 }
@@ -532,82 +638,90 @@ function RunCard({
         </h2>
         <FallbackChip source={read.source} />
       </header>
-      <p className={styles.times} data-run-number={selected.number}>
-        {runLabel(selected.number, run.entry.finishedAt)} ·{" "}
-        {selected.isLatest ? "the latest run" : "an earlier run (choose another in the Run menu)"}
-      </p>
-      <p className={styles.provenance}>
-        <Glyph name="description" />
-        <span>
-          Index: this site ({RUNS_INDEX_PATH}) · Manifest: <CidDisplay cid={manifestCid} />
-        </span>
-      </p>
-      <p className={styles.times}>
-        Started {utcTimestamp(manifest.startedAt)} UTC · Finished{" "}
-        {utcTimestamp(manifest.finishedAt)} UTC
-      </p>
-      <div className={styles.state}>
-        <StatusPill status="info" icon="schedule" text={PUBLICATION_STATE_TEXT} />
+      <div>
+        <p className={styles.times} data-run-number={selected.number}>
+          {runLabel(selected.number, run.entry.finishedAt)} ·{" "}
+          {selected.isLatest ? "the latest run" : "an earlier run (choose another in the Run menu)"}
+        </p>
+        <p className={styles.provenance}>
+          <Glyph name="description" />
+          <span>
+            Index: this site ({RUNS_INDEX_PATH}) · Manifest: <CidDisplay cid={manifestCid} />
+          </span>
+        </p>
+        <p className={styles.times}>
+          Started {utcTimestamp(manifest.startedAt)} UTC · Finished{" "}
+          {utcTimestamp(manifest.finishedAt)} UTC
+        </p>
+        <div className={styles.state}>
+          <StatusPill status="info" icon="schedule" text={PUBLICATION_STATE_TEXT} />
+        </div>
+        <p className={styles.times}>{RUNS_TEXTS.nextSync}</p>
+        <p className={styles.itemBody}>
+          <Link className={styles.link} to={ROUTES.runsCompare}>
+            Compare with the previous run
+          </Link>
+        </p>
       </div>
-      <p className={styles.times}>{RUNS_TEXTS.nextSync}</p>
-      <p className={styles.itemBody}>
-        <Link className={styles.link} to={ROUTES.runsCompare}>
-          Compare with the previous run
-        </Link>
-      </p>
 
-      <h3 id="sources-heading" className={styles.sectionTitle}>
-        Sources
-      </h3>
-      <ul className={styles.list} aria-labelledby="sources-heading">
-        {manifest.sources.map((source) => (
-          <SourceItem
-            key={source.name}
-            source={source}
-            firstRun={manifest.previousManifestCid === null}
-          />
-        ))}
-      </ul>
+      <div>
+        <div>
+          <h3 id="sources-heading" className={styles.sectionTitle}>
+            Sources
+          </h3>
+          <ul className={styles.list} aria-labelledby="sources-heading">
+            {manifest.sources.map((source) => (
+              <SourceItem
+                key={source.name}
+                source={source}
+                firstRun={manifest.previousManifestCid === null}
+              />
+            ))}
+          </ul>
 
-      <h3 id="coverage-heading" className={styles.sectionTitle}>
-        Coverage
-      </h3>
-      <ul className={styles.list} aria-labelledby="coverage-heading">
-        {COVERAGE_ROWS.map((key) => (
-          <CoverageRow key={key} coverageKey={key} coverage={manifest.coverage} />
-        ))}
-      </ul>
+          <h3 id="coverage-heading" className={styles.sectionTitle}>
+            Coverage
+          </h3>
+          <ul className={styles.list} aria-labelledby="coverage-heading">
+            {COVERAGE_ROWS.map((key) => (
+              <CoverageRow key={key} coverageKey={key} coverage={manifest.coverage} />
+            ))}
+          </ul>
 
-      <h3 id="groups-heading" className={styles.sectionTitle}>
-        Data groups
-      </h3>
-      <ul className={styles.list} aria-labelledby="groups-heading">
-        {groups.map((item) => (
-          <GroupItem key={item.artifact.name} item={item} />
-        ))}
-      </ul>
+          <h3 id="groups-heading" className={styles.sectionTitle}>
+            Data groups
+          </h3>
+          <ul aria-labelledby="groups-heading">
+            {groups.map((item) => (
+              <GroupItem key={item.artifact.name} item={item} />
+            ))}
+          </ul>
+        </div>
 
-      <h3 id="limitations-heading" className={styles.sectionTitle}>
-        Limitations
-      </h3>
-      <ul className={styles.list} aria-labelledby="limitations-heading">
-        {manifest.limitations.map((text) => (
-          <li key={`run:${text}`} className={`${styles.item} ${styles.itemBody}`}>
-            {text}
-          </li>
-        ))}
-        {manifest.sources.flatMap((source) =>
-          source.limitations.map((text) => (
-            <li
-              key={`${source.name}:${text}`}
-              className={`${styles.item} ${styles.itemBody}`}
-              data-limitation-source={source.name}
-            >
-              <span>{text}</span> · <code className={styles.mono}>{source.name}</code>
-            </li>
-          )),
-        )}
-      </ul>
+        <div>
+          <h3 id="limitations-heading" className={styles.sectionTitle}>
+            Limitations
+          </h3>
+          <ul className={styles.list} aria-labelledby="limitations-heading">
+            {manifest.limitations.map((text) => (
+              <li key={`run:${text}`} className={`${styles.item} ${styles.itemBody}`}>
+                {text}
+              </li>
+            ))}
+            {manifest.sources.flatMap((source) =>
+              source.limitations.map((text) => (
+                <li
+                  key={`${source.name}:${text}`}
+                  className={`${styles.item} ${styles.itemBody}`}
+                  data-limitation-source={source.name}
+                >
+                  <span>{text}</span> · <code className={styles.mono}>{source.name}</code>
+                </li>
+              )),
+            )}
+          </ul>
+        </div>
+      </div>
 
       <ServerCheckLine manifestCid={manifestCid} />
     </article>
