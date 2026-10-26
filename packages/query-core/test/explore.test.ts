@@ -179,6 +179,9 @@ const TABLES: FixtureTables = {
       permit("pb", "2015-000200 BP", null, "2015-03-01"),
     ],
     property_has_property_improvement: [edge(P1, "pa"), edge(P2, "pb")],
+    // A-16: pa prints a contractor (one edge); pb prints none.
+    property_improvement_has_contractor: [edge("pa", "cA")],
+    company: [{ cid: "cA", name: "Roofer A", source_http_request: austinRequest("x") }],
   },
 };
 
@@ -280,6 +283,7 @@ describe("exploreSearchSql over a bound fixture (DuckDB)", { timeout: 30_000 }, 
       name_as_printed: null,
       resolution: "unresolved",
       company_cid: null,
+      bbb_url: null,
     });
     expect(row.provenance.manifest_cid).toBe(fx.bound.manifestCid);
     expect(row.provenance.table_cid).toMatch(/^b/);
@@ -288,9 +292,18 @@ describe("exploreSearchSql over a bound fixture (DuckDB)", { timeout: 30_000 }, 
         { field: "address", reason: "not_in_export" },
         { field: "roof_age_years", reason: "no_roof_date" },
         { field: "permit.status_raw", reason: "no_lexicon_carrier" },
-        { field: "contractor.name_as_printed", reason: "no_lexicon_carrier" },
+        // A-16: the permit printed no contractor; the view's own reason, never no_lexicon_carrier.
+        { field: "contractor.name_as_printed", reason: "source_missing" },
+        { field: "permit.contractor_name_as_printed", reason: "source_missing" },
+        { field: "permit.contractor_company_cid", reason: "source_missing" },
+        { field: "permit.bbb_rating", reason: "source_missing" },
       ]),
     );
+    expect(row.missing).not.toContainEqual({
+      field: "contractor.name_as_printed",
+      reason: "no_lexicon_carrier",
+    });
+    expect(row.bbb_status_reason).toBe("source_missing");
     const fields = row.missing.map((m) => m.field);
     expect(new Set(fields).size).toBe(fields.length);
     const p3 = toExploreRow(
@@ -300,6 +313,92 @@ describe("exploreSearchSql over a bound fixture (DuckDB)", { timeout: 30_000 }, 
     expect(p3.bearing).toBe("E");
     expect(p3.permit).toBeNull();
     expect(p3.contractor).toBeNull();
+  });
+
+  it("A-16: a permit with a printed contractor carries the name and BBB search link; the property carries built year and owner", async () => {
+    const r = await run(base({ radius_mi: 4 }));
+    const p1 = toExploreRow(
+      r.rows.find((x) => x.property_cid === P1) as Record<string, unknown>,
+      CENTRE,
+    );
+    expect(p1.contractor).toMatchObject({
+      name_as_printed: "Roofer A",
+      resolution: "unresolved",
+      company_cid: "cA",
+    });
+    expect(p1.contractor?.bbb_url).toMatch(
+      /^https:\/\/www\.bbb\.org\/search\?.*find_text=Roofer%20A&/,
+    );
+    expect(p1.bbb_status).toBe("blocked");
+    expect(p1.bbb_status_reason).toBe("bbb_blocked");
+    expect(p1.missing.map((m) => m.field)).not.toContain("contractor.name_as_printed");
+    expect(p1.permit?.issue_date).toBe("2019-01-10");
+    // The Explore UI's names (main-session interface note).
+    expect(p1.permit?.contractor_name_as_printed).toBe("Roofer A");
+    expect(p1.permit?.bbb_url).toBe(p1.contractor?.bbb_url);
+    expect(p1.year_built).toBe(1985);
+    expect(p1).toHaveProperty("owner_name");
+    expect(p1).toHaveProperty("last_ownership_transfer_date");
+  });
+});
+
+describe("toExploreRow (pure, A-16 carried fields)", () => {
+  const row = {
+    property_cid: "baguqeeraprop9",
+    latitude: 30.27,
+    longitude: -97.74,
+    distance_m: 100,
+    property_structure_built_year: 1978,
+    owner_name: "JANE DOE",
+    owner_kind: "person",
+    last_ownership_transfer_date: "2004-06-01",
+    missing: [],
+  };
+  it("maps built year, owner name/kind and last transfer date when present", () => {
+    expect(toExploreRow(row, CENTRE)).toMatchObject({
+      year_built: 1978,
+      owner_name: "JANE DOE",
+      owner_kind: "person",
+      last_ownership_transfer_date: "2004-06-01",
+    });
+  });
+  it("keeps them null when absent (the view's missing entry explains why)", () => {
+    const r = toExploreRow(
+      {
+        ...row,
+        property_structure_built_year: null,
+        owner_name: null,
+        missing: [{ field: "owner_name", reason: "no_owner_record" }],
+      },
+      CENTRE,
+    );
+    expect(r.year_built).toBeNull();
+    expect(r.owner_name).toBeNull();
+    expect(r.missing).toContainEqual({ field: "owner_name", reason: "no_owner_record" });
+  });
+  it("remaps an index built before A-16: a permit with no printed contractor reads source_missing", () => {
+    const r = toExploreRow(
+      {
+        ...row,
+        permit_cid: "pz",
+        contractor_name_as_printed: null,
+        contractor_company_cid: null,
+        bbb_status: "not_checked",
+        bbb_status_reason: "contractor_unresolved",
+        permit_missing: [
+          { field: "contractor_name_as_printed", reason: "contractor_unresolved" },
+          { field: "contractor_company_cid", reason: "contractor_unresolved" },
+          { field: "bbb_rating", reason: "contractor_unresolved" },
+        ],
+      },
+      CENTRE,
+    );
+    expect(r.bbb_status_reason).toBe("source_missing");
+    expect(r.missing.filter((m) => m.reason === "contractor_unresolved")).toEqual([]);
+    expect(r.missing).toContainEqual({
+      field: "contractor.name_as_printed",
+      reason: "source_missing",
+    });
   });
 });
 

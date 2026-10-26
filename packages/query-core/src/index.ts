@@ -6,6 +6,8 @@
 export type { QueryEngine, Row } from "./engine.js";
 export * from "./builders.js";
 export * from "./explore.js";
+// A-16: the read-side "no contractor printed" reason remap (the web's Permits page can use it).
+export * from "./contractor-gaps.js";
 export * from "./places.js";
 export * from "./bench-sql.js";
 export { GAZETTEER_SHA256 } from "./sql.generated.js";

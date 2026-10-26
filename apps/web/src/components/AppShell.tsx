@@ -33,7 +33,7 @@ import {
   hasStoredSession,
 } from "./AdminNav";
 import { CountySelect } from "./CountySelect";
-import { HelpMenu } from "./HelpMenu";
+import { AppRows, AppsMenu, HelpMenu, WELCOME_PATH } from "./HelpMenu";
 import { SyncBadge } from "./SyncBadge";
 import { Icon } from "./Icon";
 import styles from "./AppShell.module.css";
@@ -77,6 +77,19 @@ const MORE_ICONS: Readonly<Record<string, string>> = {
   [ROUTES.runsCompare]: "compare_arrows",
   [ROUTES.helpMcp]: "integration_instructions",
 };
+
+/** Shell1440 board (Task B's rail pattern): Explore's modes nested under Explore in the rail while
+ *  Explore is the current page (from 600 px). Builder is the Coming soon item. */
+const EXPLORE_CHILDREN: readonly {
+  readonly to: string;
+  readonly label: string;
+  readonly icon: string;
+  readonly mode?: "filters" | "ai";
+}[] = [
+  { to: ROUTES.explore, label: "Filters", icon: "tune", mode: "filters" },
+  { to: comingSoonPath("builder-mode"), label: "Builder", icon: "rule" },
+  { to: ASK_PATH, label: "AI", icon: "auto_awesome", mode: "ai" },
+];
 
 /** Shell390More board: the legal pages sit in the sheet's footer line, not in the list. */
 const LEGAL_LINKS: readonly { readonly to: string; readonly label: string }[] = [
@@ -172,8 +185,9 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
       onKeyDown={onKeyDown}
     >
       <span className={styles.grabber} aria-hidden="true" />
-      <h2 className={styles.sheetTitle}>Pages</h2>
-      <ul className={styles.sheetList}>
+      {/* Shell390More board: the pages as one outlined list; Coverage and Admin sign-in only
+          where the bottom navigation has no room for them. */}
+      <ul className={styles.sheetCard} aria-label="Pages">
         {COMPACT_MORE.map((page) => (
           <li key={page.to} className={`${styles.sheetRow} ${styles.compactOnly}`}>
             <Icon name={page.icon} />
@@ -194,9 +208,16 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
             </Link>
           </li>
         ))}
+        <li className={`${styles.sheetRow} ${styles.sheetDivided}`}>
+          <Icon name="lightbulb" />
+          <Link to={WELCOME_PATH} className={styles.sheetItem} onClick={onClose}>
+            What can I ask?
+          </Link>
+        </li>
       </ul>
+      {/* Task B's More sheet: the planned items, each row with its tonal "Coming soon" pill. */}
       <h2 className={styles.sheetTitle}>Planned</h2>
-      <ul className={styles.sheetList}>
+      <ul className={styles.sheetList} aria-label="Planned">
         {COMING_SOON_ITEMS.map((item) => (
           <li key={item.id} className={styles.sheetRow}>
             <Icon name="schedule" />
@@ -213,6 +234,11 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
             )}
           </li>
         ))}
+      </ul>
+      {/* Shell390More "Apps" (Task B's Apps group): the app switcher rows. */}
+      <h2 className={styles.sheetTitle}>Apps</h2>
+      <ul className={styles.sheetList} aria-label="Apps">
+        <AppRows onNavigate={onClose} className={styles.appRow} />
       </ul>
       <nav className={styles.sheetFoot} aria-label="Legal">
         {LEGAL_LINKS.map((link) => (
@@ -234,8 +260,10 @@ export function AppShell(): ReactElement {
   }, []);
   // The location slot (county selector) sits at the top of the page region under `/tx/…`; the
   // app bar keeps the title as its only control.
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const inCounty = pathname.startsWith("/tx/");
+  const onExplore = pathname === ROUTES.explore;
+  const aiMode = new URLSearchParams(search).get("mode") === "ai";
   // Legal and Coming soon pages are static and make no data request (A-13 TC-056), so the sync
   // badge, which reads /runs/index.json, is not rendered there (justified board difference).
   const staticPage = pathname.startsWith("/legal/") || pathname.startsWith("/soon/");
@@ -285,10 +313,13 @@ export function AppShell(): ReactElement {
                 {ASK_LABEL}
               </span>
             </Link>
+            <span className={styles.apps}>
+              <AppsMenu />
+            </span>
           </div>
         </header>
         <nav className={styles.nav} aria-label="Primary" inert={moreOpen}>
-          {DESTINATIONS.map((destination) => (
+          {DESTINATIONS.map((destination) => [
             <NavLink
               key={destination.to}
               to={destination.to}
@@ -306,8 +337,30 @@ export function AppShell(): ReactElement {
                 <Glyph name={destination.icon} />
               </span>
               <span className={styles.label}>{destination.label}</span>
-            </NavLink>
-          ))}
+            </NavLink>,
+            destination.to === ROUTES.explore && onExplore
+              ? EXPLORE_CHILDREN.map((child) => {
+                  const current =
+                    child.mode !== undefined && child.mode === (aiMode ? "ai" : "filters");
+                  return (
+                    <Link
+                      key={child.label}
+                      to={child.to}
+                      aria-current={current ? "page" : undefined}
+                      data-nested=""
+                      className={`${styles.item} ${styles.itemNested} ${
+                        current ? styles.itemActive : ""
+                      }`}
+                    >
+                      <span className={styles.pill}>
+                        <Glyph name={child.icon} />
+                      </span>
+                      <span className={styles.label}>{child.label}</span>
+                    </Link>
+                  );
+                })
+              : null,
+          ])}
           <AdminNavItem
             classes={{
               item: `${styles.item} ${styles.compactHidden}`,

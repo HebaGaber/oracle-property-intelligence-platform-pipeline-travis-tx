@@ -23,6 +23,7 @@ import {
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
 import { Icon } from "../components/Icon";
+import { RunSelect } from "../components/RunSelect";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
@@ -43,7 +44,6 @@ import { verifyUrlsFromEnv } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
   runErrorNode,
-  runLabel,
   SourceDeltas,
   loadManifestByCid,
   toRunLoadError,
@@ -177,16 +177,15 @@ function CompareHeader({
   readonly b: number | null;
 }): ReactElement {
   const [params, setParams] = useSearchParams();
-  const choose = (key: "a" | "b", value: string): void => {
+  // The URL keeps run numbers (`?a=&b=`); RunSelect speaks run IDs.
+  const choose = (key: "a" | "b", runId: string | null): void => {
+    const n = entries.findIndex((entry) => entry.runId === runId) + 1;
+    if (n === 0) return;
     const next = new URLSearchParams(params);
-    next.set(key, value);
+    next.set(key, String(n));
     setParams(next);
   };
-  const options = entries.map((entry, i) => (
-    <option key={entry.manifestCid} value={i + 1}>
-      {runLabel(i + 1, entry.finishedAt)}
-    </option>
-  ));
+  const idOf = (n: number): string | null => entries[n - 1]?.runId ?? null;
   return (
     <div className={styles.compareTop}>
       <div className={styles.compareTitle}>
@@ -199,23 +198,21 @@ function CompareHeader({
       </div>
       {entries.length >= 2 ? (
         <span>
-          <select
-            className={styles.select}
-            value={b ?? entries.length}
-            onChange={(e) => choose("b", e.target.value)}
-            aria-label="Newer run"
-          >
-            {options}
-          </select>
+          <RunSelect
+            runs={entries}
+            value={idOf(b ?? entries.length)}
+            onChange={(runId) => choose("b", runId)}
+            label="Newer run"
+            hideLabel
+          />
           <span className={styles.selectLabel}>vs</span>
-          <select
-            className={styles.select}
-            value={a ?? entries.length - 1}
-            onChange={(e) => choose("a", e.target.value)}
-            aria-label="Older run"
-          >
-            {options}
-          </select>
+          <RunSelect
+            runs={entries}
+            value={idOf(a ?? entries.length - 1)}
+            onChange={(runId) => choose("a", runId)}
+            label="Older run"
+            hideLabel
+          />
         </span>
       ) : null}
     </div>

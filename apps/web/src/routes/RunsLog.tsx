@@ -20,6 +20,7 @@ import { Link } from "react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
+import { RunSelect } from "../components/RunSelect";
 import { LinearProgress } from "../components/LinearProgress";
 import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
@@ -32,7 +33,6 @@ import {
   eventLabel,
   loadManifestByCid,
   runErrorNode,
-  runLabel,
   toRunLoadError,
 } from "./Runs.shared";
 import type { RunLoadError } from "./Runs.shared";
@@ -301,34 +301,17 @@ function LogTable({
             </button>
           ) : null}
         </div>
-        <div className={runsStyles.chips} role="group" aria-label="Run">
-          <button
-            type="button"
-            className={runsStyles.chip}
-            aria-pressed={run === "all"}
-            onClick={() => {
-              setRun("all");
-              setPage(1);
-            }}
-          >
-            All runs
-          </button>
-          {[...runIds].reverse().map((r) => (
-            <button
-              key={r.runId}
-              type="button"
-              className={runsStyles.chip}
-              aria-pressed={run === r.runId}
-              title={r.runId}
-              onClick={() => {
-                setRun(r.runId);
-                setPage(1);
-              }}
-            >
-              {runLabel(r.number, r.finishedAt)}
-            </button>
-          ))}
-        </div>
+        <RunSelect
+          runs={runIds}
+          value={run === "all" ? null : run}
+          label="Run"
+          hideLabel
+          allLabel="All runs"
+          onChange={(runId) => {
+            setRun(runId ?? "all");
+            setPage(1);
+          }}
+        />
       </div>
       {actions === null
         ? null
