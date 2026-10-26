@@ -42,6 +42,40 @@
   font-weight: var(--md-sys-typescale-label-large-weight);
 }
 
+/* Shell390ComingSoon board: the other-county card (surface-container, extra-large corner) with
+   its button at the end; it keeps its reading width on wide screens. */
+.countyCard {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-4);
+  max-width: calc(var(--space-10) * 10);
+  padding: var(--space-6);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+}
+
+.clock {
+  color: var(--md-sys-color-primary);
+}
+
+.filled {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: 0 var(--space-6);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  text-decoration: none;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+}
+
+.filled:focus-visible,
 .link:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
