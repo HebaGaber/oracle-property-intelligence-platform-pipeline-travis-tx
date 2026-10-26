@@ -49,7 +49,7 @@ import { LinearProgress } from "../components/LinearProgress";
 import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
 import { useAdminAccess, useLiveRun } from "../auth/useAdmin";
-import { formatCount, utcTimestamp } from "../data/format";
+import { formatCount } from "../data/format";
 import { RUN_STAGE_TEXTS, type LoadedRun, type SelectedRun } from "../data/run-loader";
 import { dataGroupItems, type DataGroupItem } from "../data/data-groups";
 import { runEvents, type RunEvent } from "../data/run-events";
@@ -60,7 +60,7 @@ import {
   eventLabel,
   runErrorNode,
   runLabel,
-  ShareBar,
+  ChangeBar,
   SourceDeltas,
   useRun,
   type RunPageState,
@@ -428,7 +428,48 @@ function PipelineSteps({
           </li>
         ))}
       </ol>
+      <FetchStrip sources={manifest.sources} />
     </section>
+  );
+}
+
+/**
+ * Board strip under the pipeline ("Austin permits · Done · Start · End · Records · Log"), adapted
+ * to what the manifest holds: the fetch step as a whole, its first and last capture time and the
+ * records it fetched, with a link to the full log.
+ */
+function FetchStrip({ sources }: { readonly sources: readonly ManifestSource[] }): ReactElement {
+  const times = sources.map((s) => s.captured_at).sort((a, b) => Date.parse(a) - Date.parse(b));
+  const first = times[0];
+  const last = times[times.length - 1];
+  const records = sources.reduce((total, s) => total + s.records, 0);
+  return (
+    <div className={styles.fetchStrip} data-fetch-strip="">
+      <Icon name="check_circle" size="medium" />
+      <span>
+        <b>Fetch sources · Done</b>
+        <br />
+        {sources.length} sources, each captured once; the manifest keeps one time per source
+      </span>
+      <dl>
+        <div>
+          <dt>First capture</dt>
+          <dd>{first === undefined ? "—" : `${formatUtc(first)} UTC`}</dd>
+        </div>
+        <div>
+          <dt>Last capture</dt>
+          <dd>{last === undefined ? "—" : `${formatUtc(last)} UTC`}</dd>
+        </div>
+        <div>
+          <dt>Records</dt>
+          <dd>{formatCount(records)}</dd>
+        </div>
+      </dl>
+      <Link className={styles.textLink} to={ROUTES.runsLog}>
+        <Icon name="description" size="medium" />
+        Log
+      </Link>
+    </div>
   );
 }
 
@@ -532,11 +573,35 @@ function WhatChanged({
       <div>
         <div>
           {first ? null : (
-            <p className={styles.itemBody}>
-              Changes in Run {number} vs Run {number - 1} · <b data-total-changes="">{total}</b>{" "}
-              records · added <b>{formatCount(added)}</b> · changed <b>{formatCount(changed)}</b> ·
-              removed <b>{formatCount(removed)}</b>
-            </p>
+            <>
+              <p className={styles.itemBody}>
+                Changes in Run {number} vs Run {number - 1} · <b data-total-changes="">{total}</b>{" "}
+                records
+              </p>
+              <ChangeBar
+                added={added}
+                changed={changed}
+                removed={removed}
+                scale={total}
+                label={`${added} added, ${changed} changed, ${removed} removed`}
+              />
+              <ul className={styles.legend} aria-label="Changes by kind">
+                {(
+                  [
+                    ["added", "Added", added],
+                    ["changed", "Changed", changed],
+                    ["removed", "Removed", removed],
+                  ] as const
+                ).map(([tone, name, value]) => (
+                  <li key={tone} data-legend={tone}>
+                    <svg viewBox="0 0 1 1" aria-hidden="true">
+                      <rect className={styles[`fill_${tone}`]} width={1} height={1} />
+                    </svg>
+                    {name} <b>{formatCount(value)}</b>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
           <div data-cid-boxes="">
             <div>
@@ -576,26 +641,13 @@ function WhatChanged({
                   <span className={styles.helper}>{RUNS_TEXTS.firstRun}</span>
                 ) : (
                   <>
-                    <span className={styles.stack} role="group" aria-label={changeAria(source)}>
-                      <ShareBar
-                        tone="added"
-                        value={source.added}
-                        max={scale}
-                        label={`${source.added} added`}
-                      />
-                      <ShareBar
-                        tone="changed"
-                        value={source.changed}
-                        max={scale}
-                        label={`${source.changed} changed`}
-                      />
-                      <ShareBar
-                        tone="removed"
-                        value={source.removed}
-                        max={scale}
-                        label={`${source.removed} removed`}
-                      />
-                    </span>
+                    <ChangeBar
+                      added={source.added}
+                      changed={source.changed}
+                      removed={source.removed}
+                      scale={scale}
+                      label={changeAria(source)}
+                    />
                     <span className={styles.count}>
                       +{source.added} / ~{source.changed} / −{source.removed}
                     </span>
@@ -650,8 +702,8 @@ function RunCard({
           </span>
         </p>
         <p className={styles.times}>
-          Started {utcTimestamp(manifest.startedAt)} UTC · Finished{" "}
-          {utcTimestamp(manifest.finishedAt)} UTC
+          Started <UtcTime iso={manifest.startedAt} /> · Finished{" "}
+          <UtcTime iso={manifest.finishedAt} />
         </p>
         <div className={styles.state}>
           <StatusPill status="info" icon="schedule" text={PUBLICATION_STATE_TEXT} />
@@ -728,6 +780,14 @@ function RunCard({
   );
 }
 
+/**
+ * An instant as the board prints it (`2026-10-25 07:36:00 UTC`, review: no `T…000Z`); the
+ * `<time datetime>` keeps the manifest's own ISO value for tests and assistive tech.
+ */
+function UtcTime({ iso }: { readonly iso: string }): ReactElement {
+  return <time dateTime={iso}>{formatUtc(iso)} UTC</time>;
+}
+
 /** § 7 List item, two lines: the display name (+ manifest id), then records · collected · link. */
 function SourceItem({
   source,
@@ -743,7 +803,7 @@ function SourceItem({
         <code className={styles.mono}>{source.name}</code>
       </span>
       <span className={styles.itemBody}>
-        {formatCount(source.records)} records · collected {utcTimestamp(source.captured_at)} UTC ·{" "}
+        {formatCount(source.records)} records · collected <UtcTime iso={source.captured_at} /> ·{" "}
         {source.watermark === null ? null : <>watermark {source.watermark} · </>}
         <SourceLink url={source.url} className={styles.link} />
       </span>

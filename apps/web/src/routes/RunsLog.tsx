@@ -15,6 +15,7 @@
 // A react-router lazy route module.
 import type { RunManifestV1 } from "@countylens/contract";
 import { PROGRESS_LABELS, ROUTES, RUNS_TEXTS, sourceLabel, isSourceName } from "@countylens/shared";
+import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -174,6 +175,8 @@ export function Component(): ReactElement {
     return () => controller.abort();
   }, [attempt]);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  // The header slot Download CSV renders into (the button needs the table's filtered rows).
+  const [actions, setActions] = useState<HTMLElement | null>(null);
 
   return (
     <section
@@ -183,11 +186,15 @@ export function Component(): ReactElement {
       className={runsStyles.page}
     >
       <div className={runsStyles.pageHead}>
-        <div className={runsStyles.compareTitle}>
-          <Link className={runsStyles.textLink} to={ROUTES.runs} aria-label="Back to runs">
-            <Icon name="arrow_back" size="medium" />
-          </Link>
-          <h2 className={runsStyles.pageTitle}>Pipeline history log</h2>
+        {/* Board RunsLog1440/768: back arrow and title left, Download CSV right. */}
+        <div className={runsStyles.compareTop}>
+          <div className={runsStyles.compareTitle}>
+            <Link className={runsStyles.textLink} to={ROUTES.runs} aria-label="Back to runs">
+              <Icon name="arrow_back" size="medium" />
+            </Link>
+            <h2 className={runsStyles.pageTitle}>Pipeline history log</h2>
+          </div>
+          <span ref={setActions} />
         </div>
         <p className={runsStyles.intro}>
           Every event of every published run, read from each run&apos;s manifest.{" "}
@@ -208,7 +215,7 @@ export function Component(): ReactElement {
           {state.failures.map((failure, i) => (
             <ErrorBanner key={i} message={runErrorNode(failure)} onRetry={retry} />
           ))}
-          <LogTable manifests={state.manifests} numbers={state.numbers} />
+          <LogTable manifests={state.manifests} numbers={state.numbers} actions={actions} />
         </>
       ) : null}
     </section>
@@ -218,7 +225,9 @@ export function Component(): ReactElement {
 function LogTable({
   manifests,
   numbers,
+  actions,
 }: {
+  readonly actions: HTMLElement | null;
   readonly manifests: readonly RunManifestV1[];
   readonly numbers: ReadonlyMap<string, { number: number; finishedAt: string }>;
 }): ReactElement {
@@ -282,7 +291,7 @@ function LogTable({
               aria-pressed={kinds.has(kind)}
               onClick={() => toggleKind(kind)}
             >
-              {label} {all.filter((r) => inRun(r) && r.event.kind === kind).length}
+              {label} · {all.filter((r) => inRun(r) && r.event.kind === kind).length}
             </button>
           ))}
           {filtered ? (
@@ -320,11 +329,16 @@ function LogTable({
             </button>
           ))}
         </div>
-        <button type="button" className={styles.download} onClick={download}>
-          <Icon name="download" size="small" />
-          Download CSV
-        </button>
       </div>
+      {actions === null
+        ? null
+        : createPortal(
+            <button type="button" className={styles.download} onClick={download}>
+              <Icon name="download" size="small" />
+              Download CSV
+            </button>,
+            actions,
+          )}
       <div className={runsStyles.tableWrap}>
         <table className={`${runsStyles.table} ${styles.log}`} aria-label="Run events">
           <thead>
@@ -332,11 +346,12 @@ function LogTable({
               <th aria-sort={newestFirst ? "descending" : "ascending"}>
                 <button
                   type="button"
-                  className={styles.sort}
+                  className={`${styles.sort} ${newestFirst ? "" : styles.sortUp}`}
                   onClick={() => setNewestFirst(!newestFirst)}
                 >
                   Time (UTC)
-                  <Icon name={newestFirst ? "arrow_downward" : "arrow_upward"} size="small" />
+                  {/* The icon subset has arrow_drop_down only; ascending turns it up. */}
+                  <Icon name="arrow_drop_down" size="medium" />
                 </button>
               </th>
               <th>Run</th>

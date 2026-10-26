@@ -1148,3 +1148,155 @@ p.changeRow {
     grid-column: auto;
   }
 }
+
+/* ---- A-16 G2 board round (PO 2026-10-26 05:45): Runs boards matched board by board. ---- */
+
+/* Board "What Run N changed": one bar split into added / changed / removed (blue, cyan, orange
+   as on the board), on one scale for the run; an SVG so widths need no inline style. */
+.changeBar {
+  display: block;
+  width: 100%;
+  height: var(--space-3);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.fill_added {
+  fill: var(--viz-cat-1);
+}
+
+.fill_changed {
+  fill: var(--viz-cat-6);
+}
+
+.fill_removed {
+  fill: var(--viz-cat-2);
+}
+
+/* The legend under the run's total bar: a colour square, the label and the count. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  font-variant-numeric: tabular-nums;
+}
+
+.legend > li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.legend svg {
+  width: var(--space-3);
+  height: var(--space-3);
+}
+
+/* Board selected-source strip under the pipeline, adapted: the fetch step as a whole (the
+   manifest has a capture time per source, no per-step start and end). */
+.fetchStrip {
+  display: grid;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+}
+
+.fetchStrip > [data-icon] {
+  color: var(--status-success);
+}
+
+.fetchStrip dl {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+}
+
+.fetchStrip dd {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  font-variant-numeric: tabular-nums;
+}
+
+.fetchStrip dt {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.fetchStrip b {
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+}
+
+/* The Log link sits top right; the times and records take their own line until 1200 px. */
+.fetchStrip > a {
+  grid-row: 1;
+  grid-column: 3;
+}
+
+.fetchStrip {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+@media (min-width: 1200px) {
+  .fetchStrip {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+
+  .fetchStrip dl {
+    grid-column: auto;
+  }
+
+  .fetchStrip > a {
+    grid-row: auto;
+    grid-column: auto;
+  }
+}
+
+/* Per-source change rows: the bar takes its own line below 600 px, a column from 600 px. */
+.changeRow > .changeBar {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 600px) {
+  .changeRow > .changeBar {
+    grid-column: auto;
+  }
+}
+
+/* Board 1440: an arrow between the pipeline steps when they sit in one row. */
+@media (min-width: 1200px) {
+  [data-pipeline-steps] > ol {
+    column-gap: var(--space-6);
+  }
+
+  [data-pipeline-steps] > ol > li + li {
+    position: relative;
+  }
+
+  [data-pipeline-steps] > ol > li + li::before {
+    position: absolute;
+    top: 50%;
+    right: 100%;
+    width: var(--space-6);
+    color: var(--md-sys-color-on-surface-variant);
+    content: "→" / "";
+    text-align: center;
+    transform: translateY(-50%);
+  }
+}

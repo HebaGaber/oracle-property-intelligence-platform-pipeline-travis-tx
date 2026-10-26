@@ -307,10 +307,7 @@ function RunColumn({
         {formatUtc(manifest.startedAt)} – {formatUtc(manifest.finishedAt)} UTC
       </p>
       <p>
-        Manifest <CidDisplay cid={entry.manifestCid} />
-      </p>
-      <p>
-        Previous{" "}
+        Manifest <CidDisplay cid={entry.manifestCid} /> · previous{" "}
         {manifest.previousManifestCid === null ? (
           <span>{RUNS_TEXTS.firstRun}</span>
         ) : (
