@@ -1,10 +1,10 @@
 // Explore results as the board's compact data table (Explore1440 board; PO 2026-10-26 "fix the
-// table list styling"): one `tr[data-result-row]` per property (`data-property-cid`), one line of
-// values per row: #, the address and owner (or why there is no address, and the short CID), roof age, its basis
-// in short words, confidence, the roofing permit, distance, lat/lon, the compact provenance and a
-// Details button. Values come from the same FieldValue the card and the drawer use, so a missing
-// value shows its short pill with the reason. Row click opens the Property drawer. Shown from
-// 1240 px (Explore picks it); the cards (ResultRow) below. Render-only.
+// table list styling"): one `tr[data-result-row]` per property (`data-property-cid`): #, the
+// address with its lat, lon, roof age, its basis in short words, confidence, the roofing permit,
+// the contractor as printed with its BBB status, the owner with tenure and owner area, distance,
+// the compact provenance and a Details button. Values come from the same FieldValue the card and
+// the drawer use, so a missing value shows its short pill with the reason. Row click opens the
+// Property drawer. Shown from 1240 px (Explore picks it); the cards (ResultRow) below. Render-only.
 import type { ExploreRow } from "@countylens/query-core";
 import type { KeyboardEvent, MouseEvent, ReactElement } from "react";
 import { truncateCid } from "./CidDisplay";
@@ -66,18 +66,17 @@ export function ResultTable({
             <th scope="col" className={styles.num}>
               #
             </th>
-            <th scope="col">Address</th>
+            <th scope="col">Address · lat, lon</th>
             <th scope="col" className={styles.right}>
               Roof
             </th>
             <th scope="col">Basis</th>
             <th scope="col">Conf.</th>
             <th scope="col">Permit</th>
+            <th scope="col">Contractor</th>
+            <th scope="col">Owner</th>
             <th scope="col" className={styles.right}>
               Mi
-            </th>
-            <th scope="col" className={styles.optional}>
-              Lat, lon
             </th>
             <th scope="col" className={styles.optional}>
               Source
@@ -139,20 +138,19 @@ function Row({
     >
       <td className={styles.num}>{n}</td>
       <td>
-        {/* Explore1440 board: the address, then the owner (the CID when there is no address). */}
+        {/* Explore1440 board: the address, then its lat, lon (the short CID when there is no address). */}
         <span className={styles.stack}>
           <span data-field="address" className={styles.address}>
             <FieldValue row={row} field="address" />
           </span>
-          <span className={styles.sub}>
-            {typeof row.owner_name === "string" ? (
-              row.owner_name
-            ) : (
-              <code className={styles.mono} title={row.property_cid}>
-                {truncateCid(row.property_cid)}
-              </code>
-            )}
+          <span data-field="lat_lon" className={`${styles.sub} ${styles.mono}`}>
+            <FieldValue row={row} field="lat_lon" />
           </span>
+          {row.address === null ? (
+            <code className={`${styles.sub} ${styles.mono}`} title={row.property_cid}>
+              {truncateCid(row.property_cid)}
+            </code>
+          ) : null}
         </span>
       </td>
       <td className={styles.right}>
@@ -191,11 +189,42 @@ function Row({
           <FieldValue row={row} field="permit" />
         )}
       </td>
+      <td className={styles.party}>
+        {/* README demo: the contractor as printed on the permit and its BBB status. */}
+        {row.permit === null ? (
+          <span className={styles.sub}>—</span>
+        ) : (
+          <span className={styles.stack}>
+            <span data-field="contractor_name">
+              <FieldValue row={row} field="contractor_name" />
+            </span>
+            <span data-field="bbb" className={styles.sub}>
+              <FieldValue row={row} field="bbb" />
+            </span>
+          </span>
+        )}
+      </td>
+      <td className={styles.party}>
+        <span className={styles.stack}>
+          <span data-field="owner_name">
+            <FieldValue row={row} field="owner_name" />
+          </span>
+          <span className={styles.sub}>
+            <span data-field="tenure_years">
+              <FieldValue row={row} field="tenure_years" />
+            </span>{" "}
+            ·{" "}
+            <span data-field="tenure_basis">
+              <FieldValue row={row} field="tenure_basis" />
+            </span>
+          </span>
+          <span data-field="owner_area_class" className={styles.sub}>
+            <FieldValue row={row} field="owner_area_class" />
+          </span>
+        </span>
+      </td>
       <td data-field="distance" className={`${styles.right} ${styles.nowrap}`}>
         <FieldValue row={row} field="distance" />
-      </td>
-      <td data-field="lat_lon" className={`${styles.mono} ${styles.nowrap} ${styles.optional}`}>
-        <FieldValue row={row} field="lat_lon" />
       </td>
       <td className={`${styles.source} ${styles.optional}`}>
         <CompactProvenance row={row} />

@@ -37,7 +37,9 @@ export interface A13Oracle {
   readonly numbered: readonly RunsIndexEntry[];
   readonly latest: RunsIndexEntry;
   /** Run {n} of the latest run (the numbered runs' 1-based `finishedAt` order). */
-  readonly n: number;
+  readonly n: number | string;
+  /** The latest run's 1-based position among the numbered runs (Compare's `?a=&b=`). */
+  readonly position: number;
   readonly manifestCid: string;
   /** The latest manifest `M`, fetched by CID from Pinata and hash-checked. */
   readonly M: RunManifestV1;
@@ -64,6 +66,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
         numbered: numberedRunsByFinishedAt(index),
         latest,
         n,
+        position: numberedRunsByFinishedAt(index).findIndex((r) => r.runId === latest.runId) + 1,
         manifestCid: latest.manifestCid,
         M: fetched.manifest,
         manifestBytes: fetched.bytes,

@@ -44,6 +44,7 @@ import {
   type GatewayCheck,
 } from "../data/run-chain";
 import { numberedRuns, type RunsIndexEntry } from "../data/runs-index";
+import { numberRuns, runName } from "../data/run-numbers";
 import { VERIFY_GATEWAYS, verifyUrlsFromEnv } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
@@ -64,7 +65,10 @@ const CHECK_LABELS: Readonly<Record<GatewayCheck, string>> = {
 };
 
 interface ComparedRun {
+  /** Position among the numbered runs (the URL's `?a=&b=`). */
   readonly n: number;
+  /** "Run 3.1": the run-ID number every page shows (run-numbers.ts). */
+  readonly label: string;
   readonly entry: RunsIndexEntry;
   readonly manifest: RunManifestV1;
   readonly source: ReadSource;
@@ -124,6 +128,8 @@ function ComparePair({
   const valid = count >= 2 && an >= 1 && bn <= count && an < bn;
   const ea = valid ? entries[an - 1] : undefined;
   const eb = valid ? entries[bn - 1] : undefined;
+  const numbers = numberRuns(entries);
+  const labelOf = (entry: RunsIndexEntry): string => runName(numbers.get(entry.runId) ?? null);
   const header = (
     <>
       <CompareHeader
@@ -167,7 +173,11 @@ function ComparePair({
   return (
     <>
       {header}
-      <TwoRuns key={`${an}-${bn}`} a={{ n: an, entry: ea }} b={{ n: bn, entry: eb }} />
+      <TwoRuns
+        key={`${an}-${bn}`}
+        a={{ n: an, label: labelOf(ea), entry: ea }}
+        b={{ n: bn, label: labelOf(eb), entry: eb }}
+      />
     </>
   );
 }
@@ -234,22 +244,26 @@ function TwoRuns({
   a,
   b,
 }: {
-  readonly a: { readonly n: number; readonly entry: RunsIndexEntry };
-  readonly b: { readonly n: number; readonly entry: RunsIndexEntry };
+  readonly a: { readonly n: number; readonly label: string; readonly entry: RunsIndexEntry };
+  readonly b: { readonly n: number; readonly label: string; readonly entry: RunsIndexEntry };
 }): ReactElement {
   const [state, setState] = useState<PairState>({ kind: "loading" });
-  const { n: an, entry: ea } = a;
-  const { n: bn, entry: eb } = b;
+  const { n: an, label: al, entry: ea } = a;
+  const { n: bn, label: bl, entry: eb } = b;
   useEffect(() => {
     const controller = new AbortController();
     const load = async (run: {
       readonly n: number;
+      readonly label: string;
       readonly entry: RunsIndexEntry;
     }): Promise<ComparedRun> => {
       const loaded = await loadManifestByCid(run.entry.manifestCid, controller.signal);
       return { ...run, manifest: loaded.manifest, source: loaded.read.source };
     };
-    Promise.all([load({ n: an, entry: ea }), load({ n: bn, entry: eb })]).then(
+    Promise.all([
+      load({ n: an, label: al, entry: ea }),
+      load({ n: bn, label: bl, entry: eb }),
+    ]).then(
       ([ra, rb]) => {
         if (!controller.signal.aborted) setState({ kind: "ready", a: ra, b: rb });
       },
@@ -302,7 +316,7 @@ function RunColumn({
     <article aria-labelledby={titleId} data-compare-run={run.n} data-cid={entry.manifestCid}>
       <header className={styles.header}>
         <h3 id={titleId} className={styles.cardTitle}>
-          Run {run.n} · {role}
+          {run.label} · {role}
         </h3>
         <FallbackChip source={run.source} />
       </header>
@@ -339,7 +353,7 @@ function RunColumn({
       </p>
       <details>
         <summary>Sources ({manifest.sources.length})</summary>
-        <ul className={styles.list} aria-label={`Sources of run ${run.n}`}>
+        <ul className={styles.list} aria-label={`Sources of ${run.label}`}>
           {manifest.sources.map((source) => (
             <li key={source.name} className={styles.item} data-source={source.name}>
               <span className={styles.itemTitle}>
@@ -413,8 +427,8 @@ function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRu
           <thead>
             <tr>
               <th>Source</th>
-              <th className={styles.num}>Run {a.n}</th>
-              <th className={styles.num}>Run {b.n}</th>
+              <th className={styles.num}>{a.label}</th>
+              <th className={styles.num}>{b.label}</th>
               <th className={styles.num}>Added</th>
               <th className={styles.num}>Changed</th>
               <th className={styles.num}>Removed</th>
@@ -431,10 +445,10 @@ function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRu
                       <code>{source.name}</code>
                     </span>
                   </td>
-                  <td data-label={`Run ${a.n}`} className={styles.num}>
+                  <td data-label={a.label} className={styles.num}>
                     {prev === undefined ? "not in this run" : formatCount(prev.records)}
                   </td>
-                  <td data-label={`Run ${b.n}`} className={styles.num}>
+                  <td data-label={b.label} className={styles.num}>
                     {formatCount(source.records)}
                   </td>
                   <td data-label="Added" className={styles.num}>
@@ -455,9 +469,9 @@ function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRu
       <p className={styles.provenance} data-artifact-cids="">
         <Icon name="info" size="small" />
         <span>
-          Files by name: {same} kept the same CID, {changed} changed CID, {added} are new in Run{" "}
-          {b.n}, {removed} are not in Run {b.n}. An unchanged file keeps the same CID, so a changed
-          CID always means changed bytes.
+          Files: {same} kept the same CID, {changed} changed CID, {added} are new in {b.label},{" "}
+          {removed} are not in {b.label}. An unchanged file keeps the same CID, so a changed CID
+          always means changed bytes.
         </span>
       </p>
     </section>
@@ -506,7 +520,7 @@ function ImmutabilityChecks({
         {car === undefined ? null : (
           <Link className={styles.textLink} to={verifyPath(car.cid)}>
             <Icon name="download" size="medium" />
-            Directory CAR, Run {b.n}
+            Directory CAR, {b.label}
           </Link>
         )}
         <Link className={styles.textLink} to={verifyPath(b.entry.manifestCid)}>

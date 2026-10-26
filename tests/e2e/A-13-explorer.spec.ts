@@ -438,7 +438,8 @@ test.describe("A-13 explorer · demo lines", () => {
   test(scenario("007"), async ({ page, oracle }) => {
     noteBranch(oracle);
     // Compare speaks run numbers: the numbered runs (no pilot slice), Run N = numbered[N-1].
-    const { numbered, n } = oracle;
+    // Compare's URL speaks positions among the numbered runs; labels use the run-ID number.
+    const { numbered, position: n } = oracle;
     if (numbered.length >= 2) {
       const prev = numbered[n - 2];
       const last = numbered[n - 1];
@@ -742,7 +743,7 @@ test.describe("A-13 explorer · runs and compare", () => {
   test(scenario("015"), async ({ page, oracle }) => {
     noteBranch(oracle);
     test.skip(oracle.numbered.length < 2, "1 numbered run published");
-    const { n } = oracle;
+    const { position: n } = oracle;
     const old = oracle.numbered[n - 2]?.manifestCid ?? "";
     const net = recordRequests(page);
     // 1. orbitor (an independent gateway, AM-10) answers 504 for the old manifest.

@@ -107,6 +107,28 @@ describe("run oracle: runs/index.json from RUNTIME_URL", () => {
     expect(runName(null)).toBe("Pilot slice");
     expect(runName(3)).toBe("Run 3");
   });
+
+  it("takes the number in the run ID: run3-1 is Run 3.1, and the next plain run follows the highest", () => {
+    const index = {
+      schema: "oracle-travis-runs-index.v1",
+      runs: [
+        {
+          runId: "travis-full-run3-20261025",
+          manifestCid: "x3",
+          finishedAt: "2026-10-25T12:00:00Z",
+        },
+        {
+          runId: "travis-full-run3-1-20261025",
+          manifestCid: "x31",
+          finishedAt: "2026-10-25T22:00:00Z",
+        },
+        { runId: "travis-bridge-20261101", manifestCid: "x4", finishedAt: "2026-11-01T00:00:00Z" },
+      ],
+    } as unknown as RunsIndexV1;
+    expect(runNumber(index, "travis-full-run3-1-20261025")).toBe("3.1");
+    expect(runName(runNumber(index, "travis-full-run3-1-20261025"))).toBe("Run 3.1");
+    expect(runNumber(index, "travis-bridge-20261101")).toBe(4);
+  });
 });
 
 describe("manifests by CID from the Pinata gateway (independent of the app's read path)", () => {

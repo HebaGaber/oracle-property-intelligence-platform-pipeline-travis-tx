@@ -80,16 +80,29 @@ export function numberedRunsByFinishedAt(index: RunsIndexV1): RunsIndexEntry[] {
   return runsByFinishedAt(index).filter((r) => !PILOT_RUN_IDS.has(r.runId));
 }
 
-/** Run {n}: the 1-based position of `runId` among the numbered runs; `null` for a pilot run. */
-export function runNumber(index: RunsIndexV1, runId: string): number | null {
+/**
+ * Run {n} (PO 2026-10-26): the number the run ID carries (`…-run3-1-20261025` is "3.1",
+ * `…-run2-20261024` is 2); a run ID without one takes the next whole number after the highest so
+ * far, in `finishedAt` order; `null` for a pilot run. Written apart from the app's run-numbers.ts.
+ */
+export function runNumber(index: RunsIndexV1, runId: string): number | string | null {
   if (!index.runs.some((r) => r.runId === runId))
     throw new Error(`runs/index.json does not list run ${runId}`);
   if (PILOT_RUN_IDS.has(runId)) return null;
-  return numberedRunsByFinishedAt(index).findIndex((r) => r.runId === runId) + 1;
+  let highest = 0;
+  for (const run of numberedRunsByFinishedAt(index)) {
+    const m = run.runId.match(/-run(\d+)(?:-(\d+))?-\d{8}$/);
+    const own: number | string | null =
+      m === null ? null : m[2] === undefined ? Number(m[1]) : `${m[1]}.${m[2]}`;
+    if (typeof own === "number") highest = Math.max(highest, own);
+    const n = own ?? ++highest;
+    if (run.runId === runId) return n;
+  }
+  throw new Error(`run ${runId} is not numbered`);
 }
 
 /** "Run N", or "Pilot slice" for a pilot run. */
-export function runName(n: number | null): string {
+export function runName(n: number | string | null): string {
   return n === null ? "Pilot slice" : `Run ${n}`;
 }
 
