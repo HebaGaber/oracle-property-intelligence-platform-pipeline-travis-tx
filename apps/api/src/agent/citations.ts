@@ -292,3 +292,57 @@ export function unpublishedFromTools(
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------------------
+// A-16 final review: the answer is prose for people. One wording for the address gap (the
+// product's "Address not in the published export", reason not_in_export) and plain labels, never
+// raw field names, in every sentence the user reads.
+// ---------------------------------------------------------------------------------------
+
+export const ADDRESS_NOT_PUBLISHED_TEXT = "Address not in the published export";
+
+/** Plain labels for the field names a tool result or the model may put in prose. */
+export const FIELD_LABELS: Readonly<Record<string, string>> = {
+  "contractor.name_as_printed": "contractor name",
+  contractor_name_as_printed: "contractor name",
+  contractor_company_cid: "contractor company",
+  contractor_resolution: "contractor match",
+  owner_is_out_of_area: "owner lives outside the area",
+  owner_area_class: "owner area",
+  year_built: "year built",
+  property_structure_built_year: "year built",
+  roof_age_years: "roof age",
+  roof_age_basis: "roof age basis",
+  tenure_years: "owner tenure",
+  last_ownership_transfer_date: "last sale or deed date",
+  owner_name: "owner name",
+  bbb_status: "BBB status",
+  bbb_status_reason: "BBB status reason",
+  bbb_rating: "BBB rating",
+  bbb_url: "BBB search link",
+  open_days: "days open",
+  open_years: "years open",
+  status_class: "permit status",
+  unnormalized_address: "address",
+};
+
+/** The plain label of a field name (dots and underscores to spaces when it has no label). */
+export function fieldLabel(field: string): string {
+  return FIELD_LABELS[field] ?? field.replaceAll(".", " ").replaceAll("_", " ");
+}
+
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const RAW_FIELD_RE = new RegExp(
+  `\`?\\b(${Object.keys(FIELD_LABELS)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRe)
+    .join("|")})\\b\`?`,
+  "g",
+);
+
+/** The answer with raw field names replaced by labels and the address wording unified. */
+export function plainWording(answer: string): string {
+  return answer
+    .replace(RAW_FIELD_RE, (_m: string, field: string) => fieldLabel(field))
+    .replace(/not included in the published tables/gi, "not in the published export");
+}
