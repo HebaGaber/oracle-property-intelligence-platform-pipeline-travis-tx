@@ -366,6 +366,24 @@ describe("build: frozen schema and parity (T010)", { timeout: 60_000 }, () => {
     expect(again.reused).toBe(true);
     expect(again.descriptor).toEqual(built.descriptor);
   });
+
+  it("the descriptor keys follow --prefix, and an index built for another prefix is not reused", async () => {
+    await expect(
+      buildExploreIndex({ ...options(fixture, work), prefix: "private/explore-index/v1.2/" }),
+    ).rejects.toThrow(/rerun with --rebuild/);
+    const w = mkdtempSync(join(tmpdir(), "explore-index-prefix-"));
+    try {
+      const v12 = await buildExploreIndex({
+        ...options(fixture, w),
+        prefix: "private/explore-index/v1.2/",
+      });
+      expect(v12.descriptor.files.v_property.key).toBe(
+        `private/explore-index/v1.2/${fixture.manifestCid}/v_property.parquet`,
+      );
+    } finally {
+      rmSync(w, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 describe("hard stops (no partial index)", () => {
