@@ -315,7 +315,6 @@ export function FilterSheet({
                 className={`${styles.segment} ${segment === s.value ? styles.segmentOn : ""}`}
               >
                 <input
-                  className={styles.srOnly}
                   type="radio"
                   name={`${id}-permit`}
                   value={s.value}
@@ -364,7 +363,6 @@ export function FilterSheet({
             </button>
             <label className={`${styles.chip} ${ooaOn ? styles.chipOn : ""}`}>
               <input
-                className={styles.srOnly}
                 type="checkbox"
                 aria-label="Out-of-area owner"
                 checked={ooaOn}

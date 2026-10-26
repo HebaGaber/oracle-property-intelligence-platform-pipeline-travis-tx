@@ -19,7 +19,7 @@
 // - Choosing an earlier run in the Run menu: the list shows every run with its manifest CID and
 //   the Verify and Compare links; viewing an earlier run's full card is not built.
 // A react-router lazy route module: it exports `Component` and nothing else.
-import type { ManifestSource, RunManifestV1, RunsIndexV1 } from "@countylens/contract";
+import type { ManifestSource, RunManifestV1 } from "@countylens/contract";
 import {
   COVERAGE_LABELS,
   DERIVATION_LABELS,
@@ -47,7 +47,7 @@ import { formatCount, utcTimestamp } from "../data/format";
 import { RUN_STAGE_TEXTS, type LoadedRun } from "../data/run-loader";
 import { dataGroupItems, type DataGroupItem } from "../data/data-groups";
 import { runEvents } from "../data/run-events";
-import { RUNS_INDEX_PATH, type RunsIndexEntry } from "../data/runs-index";
+import { RUNS_INDEX_PATH, runsByFinish, type RunsIndexEntry } from "../data/runs-index";
 import { serverCheckText, useServerCheck } from "../data/server-check";
 import { AdminActions, NotAdminNote } from "./RunsAdmin";
 import {
@@ -74,7 +74,7 @@ export function Component(): ReactElement {
   const access = useAdminAccess();
   const live = useLiveRun(access.kind === "admin");
   const run = state.kind === "ready" ? state.run : undefined;
-  const entries = index === undefined ? [] : sortedRuns(index);
+  const entries = index === undefined ? [] : runsByFinish(index);
   const latest = entries[entries.length - 1];
 
   return (
@@ -135,10 +135,6 @@ export function Component(): ReactElement {
       ) : null}
     </section>
   );
-}
-
-function sortedRuns(index: RunsIndexV1): RunsIndexEntry[] {
-  return [...index.runs].sort((a, b) => Date.parse(a.finishedAt) - Date.parse(b.finishedAt));
 }
 
 function PendingSections({

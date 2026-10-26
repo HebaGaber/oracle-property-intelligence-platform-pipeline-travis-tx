@@ -125,9 +125,13 @@ function install(runs: Run[], copyDown = false) {
 }
 
 async function renderManifest(): Promise<void> {
+  await renderManifestAt("/data/manifest");
+}
+
+async function renderManifestAt(path: string): Promise<void> {
   const { Component } = await import("../src/routes/DataManifest");
   render(
-    <MemoryRouter initialEntries={["/data/manifest"]}>
+    <MemoryRouter initialEntries={[path]}>
       <Component />
     </MemoryRouter>,
   );
@@ -213,6 +217,51 @@ describe("Data · Manifest run chain (FR-003d, TC-024)", () => {
       expect(within(item).getAllByRole("button", { name: "Copy CID" }).length).toBeGreaterThan(0);
     }
     expect(items[1]?.textContent).toContain("previous: none");
+  });
+});
+
+describe("Data · Manifest run numbering (D-10)", () => {
+  it("labels each chain link with its runs/index.json number, as the header and Runs do", async () => {
+    // Three runs in the index; only the last two link (run 2 starts a new chain), so chain
+    // position (2, 1) and index number (3, 2) differ.
+    const r1 = await buildRun(1, null);
+    const r2 = await buildRun(2, null);
+    const r3 = await buildRun(3, r2.cid);
+    install([r1, r2, r3]);
+    await renderManifest();
+    const chain = await screen.findByRole("list", { name: "Run chain" });
+    const items = await within(chain).findAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]?.querySelector("[data-chain-label]")?.textContent).toBe("Run 3 · this run");
+    expect(items[1]?.querySelector("[data-chain-label]")?.textContent).toBe("Run 2");
+  });
+});
+
+describe("Data · Manifest run picker", () => {
+  it("lists every indexed run newest first and opens the latest by default", async () => {
+    install([run1, run2]);
+    await renderManifest();
+    const picker = await screen.findByRole("combobox", { name: "Run" });
+    const options = within(picker).getAllByRole("option");
+    expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual([
+      run2.manifest.runId,
+      run1.manifest.runId,
+    ]);
+    expect(options[0]?.textContent).toMatch(/^Run 2 · /);
+    expect((picker as HTMLSelectElement).value).toBe(run2.manifest.runId);
+  });
+
+  it("shows the run named by ?run= (its manifest, artifacts and chain)", async () => {
+    install([run1, run2]);
+    await renderManifestAt(`/data/manifest?run=${run1.manifest.runId}`);
+    const chain = await screen.findByRole("list", { name: "Run chain" });
+    const items = await within(chain).findAllByRole("listitem");
+    expect(items).toHaveLength(1);
+    expect(items[0]?.querySelector(`[data-cid="${run1.cid}"]`)).not.toBeNull();
+    expect(items[0]?.querySelector("[data-chain-label]")?.textContent).toBe("Run 1 · this run");
+    const picker = screen.getByRole("combobox", { name: "Run" }) as HTMLSelectElement;
+    expect(picker.value).toBe(run1.manifest.runId);
+    expect(artifactRows()).toHaveLength(run1.manifest.artifacts.length);
   });
 });
 

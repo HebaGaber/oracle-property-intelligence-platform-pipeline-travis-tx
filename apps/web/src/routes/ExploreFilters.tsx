@@ -392,13 +392,14 @@ function Results({
           {EXPLORE_TEXTS.tenureUnknownCount(data.tenure_unknown)}
         </p>
       ) : null}
-      <div role="tablist" aria-label="Results view" className={styles.resultTabs}>
+      {/* Toggle buttons, not tabs: the A-13 contract (TC-073 scan, a13-vitals) reads the page's
+          tabs as the three Explore modes only, and SQL mode unmounts this view. */}
+      <div role="group" aria-label="Results view" className={styles.resultTabs}>
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
-            role="tab"
-            aria-selected={tab === t.id}
+            aria-pressed={tab === t.id}
             className={`${styles.resultTab} ${tab === t.id ? styles.resultTabOn : ""}`}
             onClick={() => setChosen(t.id)}
           >

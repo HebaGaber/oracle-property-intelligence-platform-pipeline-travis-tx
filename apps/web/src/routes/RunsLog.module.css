@@ -18,12 +18,58 @@
   outline-offset: 2px;
 }
 
+/* D-6: the shared `.table td` sets `overflow-wrap: anywhere`, which lets a cell's min-content
+   shrink to one letter, so at 390/768 the auto table layout crushed every column to 2–3
+   characters. Log cells wrap at word (and hyphen) boundaries only; the table then keeps its
+   natural minimum and scrolls sideways inside `.tableWrap` instead. */
+table.log td {
+  overflow-wrap: break-word;
+}
+
+/* Run: "Run N" on one line over the run ID; Event: room for the label; Status pill: one line. */
+.log td:nth-child(2) {
+  min-width: calc(var(--space-10) + var(--space-6));
+}
+
+.log [data-run-number] {
+  display: block;
+  white-space: nowrap;
+}
+
 .runId {
   display: block;
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-ref-typeface-mono);
   font-size: var(--md-sys-typescale-body-small-size);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+}
+
+.log td:nth-child(3) {
+  min-width: calc(var(--space-10) * 2);
+}
+
+.log td:last-child {
+  white-space: nowrap;
+}
+
+/* A finish event's limitations, collapsed behind a 48 px disclosure. */
+.log details {
+  margin: var(--space-1) 0 0;
+}
+
+.log summary {
+  min-height: var(--space-9);
+  line-height: var(--space-9);
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+}
+
+.log summary:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 .notes {

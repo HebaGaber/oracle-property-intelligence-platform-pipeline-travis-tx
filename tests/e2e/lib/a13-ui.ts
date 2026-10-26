@@ -220,9 +220,13 @@ export function openPermitCountSql(area: SqlArea, days: number): string {
   return `SELECT count(*) AS n FROM v_roofing_permit r JOIN v_property p ON p.property_cid = r.property_cid WHERE r.status_class = 'open' AND r.open_days >= ${days} AND p.latitude IS NOT NULL AND ${haversineM(area)} < ${radiusM}`;
 }
 
-/** {x} of a permit chip: open days / 365.25 to one decimal. */
+/**
+ * {x} of a permit chip: open days / 365.25 to one decimal, rounded down, as the explore.search
+ * contract fixes `open_years` (specs/013-explorer-and-pages/contracts/explore-search.md) and
+ * query-core's toExploreRow computes it.
+ */
 export function openYears(openDays: number): number {
-  return Math.round((openDays / 365.25) * 10) / 10;
+  return Math.floor((openDays / 365.25) * 10) / 10;
 }
 
 /** The numeric {x} of a "Stalled {x} yrs …" / "Open {x} yrs …" chip, or null. */

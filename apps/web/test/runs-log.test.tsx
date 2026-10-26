@@ -161,6 +161,33 @@ describe("Runs · Log", () => {
     expect(within(page).getByText("limitation of test-run-two")).toBeTruthy();
   });
 
+  it("collapses a finish event's limitations behind a disclosure (D-6)", async () => {
+    install();
+    const page = await renderLog();
+    await within(page).findByRole("table", { name: "Run events" });
+    const finish = page.querySelector<HTMLElement>(
+      'tr[data-event="finished"][data-run-id="test-run-two"]',
+    );
+    const details = finish?.querySelector("details");
+    expect(details, "limitations sit in a <details>").not.toBeNull();
+    expect(details?.open).toBe(false);
+    expect(details?.querySelector("summary")?.textContent).toBe("Limitations (1)");
+    expect(details?.textContent).toContain("limitation of test-run-two");
+  });
+
+  it("shows the run number from the index with the run ID as secondary text (D-6)", async () => {
+    install();
+    const page = await renderLog();
+    await within(page).findByRole("table", { name: "Run events" });
+    const started = page.querySelector<HTMLElement>(
+      'tr[data-event="started"][data-run-id="test-run-two"]',
+    );
+    const cell = started?.querySelector("[data-run-number]")?.closest("td");
+    expect(cell?.querySelector("[data-run-number]")?.textContent).toBe("Run 2");
+    expect(cell?.querySelector("[data-run-id-text]")?.textContent).toBe("test-run-two");
+    expect(started?.querySelector("td:last-child [data-status]")).not.toBeNull();
+  });
+
   it("shows the progress bar while loading", async () => {
     vi.stubGlobal(
       "fetch",

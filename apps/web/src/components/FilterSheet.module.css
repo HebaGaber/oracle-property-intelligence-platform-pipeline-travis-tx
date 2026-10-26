@@ -290,6 +290,36 @@ label.chip:focus-within,
   flex: none;
 }
 
+/* D-4: room for the "any time" placeholder of Open ≥ (it was cut to "any tim"). */
+.number[id$="-openYrs"] {
+  width: calc(var(--space-10) * 2);
+}
+
+/* TC-009: a segment / chip's native input covers its whole label (the visible 48 px target),
+   invisible but hit-testable, so a real click (and Playwright's setChecked) reaches it. */
+.segment,
+label.chip {
+  position: relative;
+}
+
+.segment > input,
+label.chip > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  appearance: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .slider {
   flex: 1 1 auto;
   min-width: 0;

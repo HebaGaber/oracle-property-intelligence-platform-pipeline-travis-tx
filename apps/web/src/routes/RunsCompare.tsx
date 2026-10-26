@@ -26,7 +26,7 @@ import {
   type ChainResolves,
   type GatewayCheck,
 } from "../data/run-chain";
-import type { RunsIndexEntry } from "../data/runs-index";
+import { runsByFinish, type RunsIndexEntry } from "../data/runs-index";
 import { verifyUrlsFromEnv } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
@@ -87,9 +87,7 @@ export function Component(): ReactElement {
       ) : null}
       {state.kind === "ready" ? (
         <ComparePair
-          entries={[...state.run.index.runs].sort(
-            (x, y) => Date.parse(x.finishedAt) - Date.parse(y.finishedAt),
-          )}
+          entries={runsByFinish(state.run.index)}
           a={params.get("a")}
           b={params.get("b")}
         />
@@ -374,16 +372,24 @@ function ChangeTable({ a, b }: { readonly a: ComparedRun; readonly b: ComparedRu
               const prev = a.manifest.sources.find((s) => s.name === source.name);
               return (
                 <tr key={source.name} data-change-source={source.name}>
-                  <td>
+                  <td data-label="Source">
                     <code className={styles.mono}>{source.name}</code>
                   </td>
-                  <td className={styles.num}>
+                  <td data-label={`Run ${a.n}`} className={styles.num}>
                     {prev === undefined ? "not in this run" : formatCount(prev.records)}
                   </td>
-                  <td className={styles.num}>{formatCount(source.records)}</td>
-                  <td className={styles.num}>+{source.added}</td>
-                  <td className={styles.num}>~{source.changed}</td>
-                  <td className={styles.num}>−{source.removed}</td>
+                  <td data-label={`Run ${b.n}`} className={styles.num}>
+                    {formatCount(source.records)}
+                  </td>
+                  <td data-label="Added" className={styles.num}>
+                    +{source.added}
+                  </td>
+                  <td data-label="Changed" className={styles.num}>
+                    ~{source.changed}
+                  </td>
+                  <td data-label="Removed" className={styles.num}>
+                    −{source.removed}
+                  </td>
                 </tr>
               );
             })}
