@@ -234,8 +234,8 @@ export function Component({ callTool = tryMcpTool }: HelpMcpProps = {}): ReactEl
       <p className={styles.subtitle}>MCP and API</p>
       <p className={runStyles.itemBody}>
         Ask CountyLens from Claude Desktop, MCP Inspector or any MCP client. The tools read the same
-        published views as Explore; each returns at most {MAX_ROWS} rows. Free-form SQL is not a
-        tool: it runs only in your browser, in Explore.
+        published views as Explore; each returns at most {MAX_ROWS} rows. No tool runs free-form
+        queries.
       </p>
       <div className={styles.layout}>
         <div className={runStyles.card} data-mcp-endpoint="">
