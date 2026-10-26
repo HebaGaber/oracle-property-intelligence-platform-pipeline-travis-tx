@@ -248,9 +248,9 @@ describe("Compare with two runs (FR-001a, TC-007, TC-015)", () => {
     expect(await screen.findByText(RUNS_TEXTS.oldManifestResolves)).toBeDefined();
     const filebase = check.querySelector('[data-gateway="filebase"]');
     await waitFor(() => expect(filebase?.getAttribute("data-check")).toBe("fails"));
-    expect(filebase?.textContent).toContain(VERIFY_TEXTS.fallbackLane);
+    expect(filebase?.textContent).toContain(VERIFY_TEXTS.laneRoles.filebase);
     expect(check.querySelector('[data-gateway="pinata"]')?.textContent).not.toContain(
-      VERIFY_TEXTS.fallbackLane,
+      VERIFY_TEXTS.laneRoles.filebase,
     );
   });
 

@@ -542,7 +542,7 @@ function OldManifestCheck({ cid }: { readonly cid: string }): ReactElement {
             data-check={resolves[gateway]}
           >
             {GATEWAY_LABELS[gateway]}: {CHECK_LABELS[resolves[gateway]]}
-            {isIndependentGateway(gateway) ? null : ` · ${VERIFY_TEXTS.fallbackLane}`}
+            {isIndependentGateway(gateway) ? null : ` · ${VERIFY_TEXTS.laneRoles[gateway]}`}
           </li>
         ))}
       </ul>

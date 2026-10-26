@@ -1,13 +1,15 @@
 #!/usr/bin/env -S npx tsx
 // verify-manifest (A-11 T007/T011, contracts/publish-sequence.md "verify-manifest contract";
 // gateways per AM-10 2026-10-26, which amends AM-01 and P0-14; A-16 T078): independent proof
-// that every published artifact is what the committed manifest says, read from public gateways
-// in two clearly separated roles:
+// that every published artifact is what the committed manifest says. "Independent" means what the
+// README means: a public gateway CountyLens does not operate, with the bytes hash-checked here.
+// Gateways have two roles, and every line carries a plain-facts label (PO wording 2026-10-26):
 //
-//   independent  gateway.pinata.cloud (Pinata's public gateway) and ipfs.orbitor.dev (an
-//                independent operator). An artifact passes ONLY when BOTH match size + SHA-256.
-//   fallback     ipfs.filebase.io, our storage host. Its result is printed alongside, labelled
-//                "storage host, not independent", and never counts as an independent check.
+//   counted   gateway.pinata.cloud  "public gateway · also holds our second copy"
+//             ipfs.orbitor.dev      "public gateway · holds no copy of ours"
+//             An artifact passes ONLY when BOTH match size + SHA-256.
+//   fallback  ipfs.filebase.io      "our main storage host · fallback, not counted"
+//             Its result is printed alongside and never counts toward the verdict.
 //
 // Nothing else is ever read: ipfs.io and dweb.link retired on 2026-09-21 (every request answers
 // 429 with a Sunset header; docs/decisions/0001-read-path.md Finding 3), storacha.link and
@@ -22,7 +24,8 @@
 //
 // `--json <path>` also writes a machine-readable evidence file (schema
 // `verify-manifest-evidence.v1`): per artifact the cid, name, expected size + SHA-256, a
-// per-gateway { role, status, ok, bytes, sha256, ms } map and `independent_ok`, plus a summary.
+// per-gateway { role (counted|fallback), holds_our_copy, label, status, ok, bytes, sha256, ms,
+// resumed } map and `independent_ok` (both counted gateways matched), plus a summary.
 //
 // `--sample` (PO decision 2026-10-25) checks the manifest itself on every gateway exactly as
 // below, then only two artifacts: the smallest table part and the smallest CAR (by size, then
@@ -30,15 +33,19 @@
 // check took about two hours locally because Pinata answers 429, so the hosted job checks a
 // sample. In a sample the CAR is read from Filebase only (Pinata's gateway answers 429 to CAR
 // downloads, and AM-10 keeps the CARs on Filebase plus the GitHub Release, not on Pinata); the
-// output says so plainly: a Filebase-only CAR read is a storage-host read, NOT an independent
-// check. The manifest and the table part are still read from both independent gateways. A sample
-// prints SAMPLE VERIFIED, never ALL ARTIFACTS VERIFIED, and exits 3 when it passes (0 is reserved
-// for a full verification; 1 = a check failed; 2 = usage). The default (no flag) is the full
-// check the operator runs after a publish.
+// output says so plainly: a Filebase-only CAR read is a storage-host read, NOT a counted check.
+// The manifest and the table part are still read from both counted gateways. A sample prints
+// SAMPLE VERIFIED, never ALL ARTIFACTS VERIFIED, and exits 0 when it passes, like a full run (the
+// wording carries the difference; an exit code of 3 broke hosted TC-040, A11-16): 1 = a check
+// failed; 2 = usage. The default (no flag) is the full check the operator runs after a publish.
+//
+// `--resume-from <log>` skips checks a prior run's log shows as ok, keyed by gateway + name + CID
+// (a changed CID is re-fetched). A resumed check is not a fresh read: it is recorded with
+// `resumed: true` and null status/bytes/sha256, and the verdict line says how many were resumed.
 //
 // Order: the manifest itself, by its own raw-leaves CIDv1, from every gateway, compared
 // byte-for-byte with the local file; the run stops before any artifact is checked when either
-// independent gateway does not match, or when any gateway (fallback included) answers 200 with
+// counted gateway does not match, or when any gateway (fallback included) answers 200 with
 // other bytes. Then every artifact: tables by `cid`, car/directory artifacts by `carCid` (never
 // the dag-json root as a file). Every GET retries 429/504/timeout up to MAX_ATTEMPTS (5) with
 // backoff honouring `Retry-After`; TIMEOUT_MS (default 300000 ms) bounds each attempt. A redirect
@@ -46,7 +53,7 @@
 // CID-subdomain redirect such as dweb.link's old `<cid>.ipfs.dweb.link` pattern) — any redirect
 // elsewhere is a failed check, never followed. A miss of any kind marks that check `unverified`
 // and the run exits non-zero; printing `ALL ARTIFACTS VERIFIED` (exit 0) requires the manifest
-// and every artifact to match on BOTH independent gateways. The body is hashed while streaming
+// and every artifact to match on BOTH counted gateways. The body is hashed while streaming
 // (never buffered whole), so an artifact over 50 MB is checked the same way as a small one
 // (NFR-06).
 import { createHash } from "node:crypto";
@@ -89,10 +96,10 @@ export const PINATA_GATEWAY = "https://gateway.pinata.cloud";
 export const ORBITOR_GATEWAY = "https://ipfs.orbitor.dev";
 export const FILEBASE_GATEWAY = "https://ipfs.filebase.io";
 
-/** The independent gateways (AM-10, 2026-10-26, amends AM-01 and P0-14). An artifact passes the
- *  independent check only when every one of these matches size + SHA-256. */
+/** The counted gateways (AM-10, 2026-10-26, amends AM-01 and P0-14): public gateways CountyLens
+ *  does not operate. An artifact passes only when every one of these matches size + SHA-256. */
 export const GATEWAYS: readonly string[] = [PINATA_GATEWAY, ORBITOR_GATEWAY];
-/** The storage host's gateway (AM-10): reported alongside, never counted as independent. */
+/** Our main storage host's gateway (AM-10): reported alongside, never counted. */
 export const FALLBACK_GATEWAYS: readonly string[] = [FILEBASE_GATEWAY];
 /** Every gateway this script may read; anything else is refused before the first request. */
 export const ALLOWED_GATEWAYS: readonly string[] = [...GATEWAYS, ...FALLBACK_GATEWAYS];
@@ -103,7 +110,23 @@ export const NEVER_GATEWAYS: readonly string[] = [
   "https://w3s.link",
   "https://storacha.link",
 ];
-export const STORAGE_HOST_LABEL = "storage host, not independent";
+export const STORAGE_HOST_LABEL = "our main storage host · fallback, not counted";
+/** The plain-facts label printed with every line for each gateway (PO wording 2026-10-26). */
+export const GATEWAY_LABELS: Readonly<Record<string, string>> = {
+  [PINATA_GATEWAY]: "public gateway · also holds our second copy",
+  [ORBITOR_GATEWAY]: "public gateway · holds no copy of ours",
+  [FILEBASE_GATEWAY]: STORAGE_HOST_LABEL,
+};
+/** Whether the gateway's operator holds a copy of our files (Pinata: the AM-10 second copy). */
+export const HOLDS_OUR_COPY: Readonly<Record<string, boolean>> = {
+  [PINATA_GATEWAY]: true,
+  [ORBITOR_GATEWAY]: false,
+  [FILEBASE_GATEWAY]: true,
+};
+
+export function labelOf(gateway: string): string {
+  return GATEWAY_LABELS[gateway] ?? "unknown gateway";
+}
 export const TIMEOUT_MS_DEFAULT = 300_000;
 export const MAX_ATTEMPTS = 5;
 export const ALL_VERIFIED_TEXT = "ALL ARTIFACTS VERIFIED";
@@ -124,7 +147,8 @@ const BACKOFF_CAP_MS = 60_000;
 const RETRYABLE_STATUS = new Set([429, 504]);
 
 export function refusedGatewayText(gateway: string): string {
-  return `Refused gateway ${gateway}: verify-manifest only uses ${GATEWAYS.join(", ")} (independent) and ${FALLBACK_GATEWAYS.join(", ")} (${STORAGE_HOST_LABEL})`;
+  const named = ALLOWED_GATEWAYS.map((g) => `${g} (${labelOf(g)})`);
+  return `Refused gateway ${gateway}: verify-manifest only uses ${named.slice(0, -1).join(", ")} and ${named.at(-1) ?? ""}`;
 }
 
 /** Throws before the first request when `gateways` names anything outside the fixed allowlist. */
@@ -135,10 +159,11 @@ export function assertAllowedGateways(gateways: readonly string[]): void {
   }
 }
 
-export type GatewayRole = "independent" | "fallback";
+/** "counted" = Pinata and orbitor (both must match); "fallback" = Filebase (shown, not counted). */
+export type GatewayRole = "counted" | "fallback";
 
 export function roleOf(gateway: string): GatewayRole {
-  return FALLBACK_GATEWAYS.includes(gateway) ? "fallback" : "independent";
+  return FALLBACK_GATEWAYS.includes(gateway) ? "fallback" : "counted";
 }
 
 /** The wait before the next attempt: `Retry-After` when sent, else full jitter over a capped
@@ -383,14 +408,17 @@ export interface VerifyCheck {
   cid: string;
   field: VerifyField;
   gateway: string;
-  /** "fallback" = the storage host (Filebase): shown, never counted as independent (AM-10). */
+  /** "fallback" = our main storage host (Filebase): shown, never counted (AM-10). */
   role: GatewayRole;
+  /** Null for a resumed check (nothing was fetched this run). */
   status: number | null;
   size: number | null;
   sha256: string | null;
   /** Wall time of the logical GET (retries included); null for a check resumed from a log. */
   ms: number | null;
   ok: boolean;
+  /** Taken from a prior run's log (--resume-from), not fetched this run. */
+  resumed?: true;
   reason?: string;
 }
 
@@ -404,7 +432,7 @@ export interface ArtifactVerdict {
   size: number;
   sha256: string;
   checks: VerifyCheck[];
-  /** Every independent gateway was read and matched. */
+  /** Both counted gateways were read and matched. */
   independentOk: boolean;
   /** The fallback (storage host) matched; null when it was not read. */
   fallbackOk: boolean | null;
@@ -429,6 +457,8 @@ export interface VerifyReport {
   sample?: { checked: number; total: number };
   /** How many artifacts the manifest lists. */
   artifactsListed: number;
+  /** Checks taken from a prior run's log instead of fetched (--resume-from). */
+  resumed: number;
   /** The final verdict line, as printed. */
   verdictText: string;
 }
@@ -447,7 +477,8 @@ export interface VerifyManifestOptions {
   sample?: boolean;
   log?: (line: string) => void;
   /**
-   * Artifact checks to skip, already known-good from a prior run (key: `${gateway}\u0000${name}`).
+   * Artifact checks to skip, already known-good from a prior run (key: resumeKey(gateway, name,
+   * cid); a two-part key without the CID is still honoured for in-process callers).
    * This script has no other persisted state between runs -- a crash, a concurrency change, or
    * any other restart otherwise re-checks every check from zero. Does not skip the manifest
    * self-check (cheap, and correctness-critical to re-verify every run).
@@ -455,17 +486,18 @@ export interface VerifyManifestOptions {
   resumeSkip?: ReadonlySet<string> | undefined;
 }
 
-export function resumeKey(gateway: string, name: string): string {
-  return `${gateway}\u0000${name}`;
+/** The resume key: gateway + name + the CID fetched, so a changed CID is never skipped. */
+export function resumeKey(gateway: string, name: string, cid?: string): string {
+  return cid === undefined ? `${gateway}\u0000${name}` : `${gateway}\u0000${name}\u0000${cid}`;
 }
 
 /** Parses a prior run's log output for `ok` artifact-check lines, for --resume-from. */
 export function parseResumeLog(text: string): Set<string> {
   const skip = new Set<string>();
-  const re = /^ok\s+(\S+)\s+(\S+)\s+(?:cid|carCid)=/;
+  const re = /^ok\s+(\S+)\s+(\S+)\s+(?:cid|carCid)=(\S+)/;
   for (const line of text.split("\n")) {
     const m = re.exec(line);
-    if (m) skip.add(resumeKey(m[1] as string, m[2] as string));
+    if (m) skip.add(resumeKey(m[1] as string, m[2] as string, m[3] as string));
   }
   return skip;
 }
@@ -480,16 +512,16 @@ function formatLine(c: VerifyCheck): string {
   const body = c.ok
     ? `${head} size=${c.size} match sha256 match`
     : `${head} ${c.reason ?? "failed"}`;
-  return c.role === "fallback" ? `${body} [${STORAGE_HOST_LABEL}]` : body;
+  return `${body} [${labelOf(c.gateway)}]`;
 }
 
-/** Folds one artifact's checks into its verdict (AM-10: independent needs every GATEWAYS host). */
+/** Folds one artifact's checks into its verdict (AM-10: both counted GATEWAYS hosts must match). */
 export function verdictOf(
   item: Omit<ArtifactVerdict, "independentOk" | "fallbackOk" | "ok" | "independentCheck">,
   independentCheck: boolean,
 ): ArtifactVerdict {
   const independentOk = GATEWAYS.every((g) =>
-    item.checks.some((c) => c.gateway === g && c.role === "independent" && c.ok),
+    item.checks.some((c) => c.gateway === g && c.role === "counted" && c.ok),
   );
   const fallback = item.checks.filter((c) => c.role === "fallback");
   const fallbackOk = fallback.length === 0 ? null : fallback.every((c) => c.ok);
@@ -528,7 +560,7 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   const manifest = parsed;
   const manifestCid = await cidOfBytes(bytes);
   const manifestSha = createHash("sha256").update(bytes).digest("hex");
-  const independentGateways = gateways.filter((g) => roleOf(g) === "independent");
+  const independentGateways = gateways.filter((g) => roleOf(g) === "counted");
   const fallbackGateways = gateways.filter((g) => roleOf(g) === "fallback");
 
   const manifestChecks: VerifyCheck[] = [];
@@ -576,15 +608,16 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
     manifestVerdict,
     verdicts: [],
     artifactsListed: manifest.artifacts.length,
+    resumed: 0,
     verdictText: "",
   };
-  // Stop when the independent pair does not hold the manifest, or when ANY gateway (fallback
+  // Stop when the counted pair does not hold the manifest, or when ANY gateway (fallback
   // included) answers 200 with other bytes for its CID: that gateway is broken.
   const wrongBytes = manifestChecks.filter((c) => c.status === 200 && !c.ok);
   if (!manifestVerdict.independentOk || wrongBytes.length > 0) {
     const where = [
       ...manifestChecks
-        .filter((c) => !c.ok && (c.role === "independent" || c.status === 200))
+        .filter((c) => !c.ok && (c.role === "counted" || c.status === 200))
         .map((c) => c.gateway),
       ...GATEWAYS.filter((g) => !gateways.includes(g)).map((g) => `${g} (not checked)`),
     ];
@@ -618,30 +651,37 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   const selected = options.sample ? selectSample(manifest.artifacts) : manifest.artifacts;
   if (options.sample)
     report.sample = { checked: selected.length, total: manifest.artifacts.length };
-  /** A sample CAR is read from the storage host only: never an independent check (AM-10). */
+  /** A sample CAR is read from the storage host only: never a counted check (AM-10). */
   const storageOnly = (a: ManifestArtifactLike): boolean =>
     options.sample === true && a.kind === "car";
   let idx = 0;
   for (const artifact of selected) {
     for (const gateway of gateways) {
-      if (storageOnly(artifact) && roleOf(gateway) === "independent") continue;
+      if (storageOnly(artifact) && roleOf(gateway) === "counted") continue;
       const { field, cid } = target(artifact);
-      if (resumeSkip?.has(resumeKey(gateway, artifact.name))) {
+      const fetchedCid = cid ?? artifact.cid;
+      if (
+        resumeSkip?.has(resumeKey(gateway, artifact.name, fetchedCid)) === true ||
+        resumeSkip?.has(resumeKey(gateway, artifact.name)) === true
+      ) {
+        // Nothing is fetched: no status, bytes or hash are claimed for this run.
         const check: VerifyCheck = {
           name: artifact.name,
-          cid: cid ?? artifact.cid,
+          cid: fetchedCid,
           field,
           gateway,
           role: roleOf(gateway),
-          status: 200,
-          size: artifact.size,
-          sha256: artifact.sha256,
+          status: null,
+          size: null,
+          sha256: null,
           ms: null,
           ok: true,
+          resumed: true,
         };
         artifactChecks[idx] = check;
+        report.resumed += 1;
         log(
-          `ok   ${gateway} ${artifact.name} ${field === "manifest" ? "cid" : field}=${check.cid} resumed from a prior run, not re-fetched${check.role === "fallback" ? ` [${STORAGE_HOST_LABEL}]` : ""}`,
+          `ok   ${gateway} ${artifact.name} ${field === "manifest" ? "cid" : field}=${check.cid} resumed from a prior run, not re-fetched [${labelOf(gateway)}]`,
         );
         idx += 1;
         continue;
@@ -735,7 +775,7 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
 
   const missing = GATEWAYS.filter((g) => !gateways.includes(g));
   for (const g of missing)
-    log(`FAIL ${g} not checked: ${ALL_VERIFIED_TEXT} needs both independent gateways`);
+    log(`FAIL ${g} not checked: ${ALL_VERIFIED_TEXT} needs both counted gateways`);
   for (const g of FALLBACK_GATEWAYS.filter((f) => !gateways.includes(f)))
     log(`note ${g} not checked (${STORAGE_HOST_LABEL}; reported only, never required)`);
 
@@ -744,26 +784,30 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   );
   if (fallbackChecks.length > 0)
     log(
-      `fallback ${fallbackGateways.join(", ")} (${STORAGE_HOST_LABEL}): ${fallbackChecks.filter((c) => c.ok).length} of ${fallbackChecks.length} checks matched; not counted as independent`,
+      `fallback ${fallbackGateways.join(", ")} (${STORAGE_HOST_LABEL}): ${fallbackChecks.filter((c) => c.ok).length} of ${fallbackChecks.length} checks matched; not counted`,
     );
   const storageOnlyVerdicts = report.verdicts.filter((v) => !v.independentCheck);
   for (const v of storageOnlyVerdicts)
     log(
-      `note ${v.name} was read from ${FALLBACK_GATEWAYS.join(", ")} only (${STORAGE_HOST_LABEL}): NOT an independent check`,
+      `note ${v.name} was read from ${FALLBACK_GATEWAYS.join(", ")} only (${STORAGE_HOST_LABEL}): NOT a counted check`,
     );
 
   const verdicts = [manifestVerdict, ...report.verdicts];
   const failed = verdicts.filter((v) => !v.ok).length;
   report.ok = failed === 0 && missing.length === 0;
   if (report.ok && report.sample)
-    // The exact text the hosted e2e (A-03-TC-040/043) asserts; the "NOT an independent check"
+    // The exact text the hosted e2e (A-03-TC-040/043) asserts; the "NOT a counted check"
     // note for the Filebase-only CAR is printed on its own line just above.
     report.verdictText = `SAMPLE VERIFIED ${report.sample.checked} of ${report.sample.total} artifacts${
       storageOnlyVerdicts.length > 0 ? " (the CAR on Filebase only)" : ""
     }`;
   else if (report.ok) report.verdictText = ALL_VERIFIED_TEXT;
   else
-    report.verdictText = `VERIFICATION FAILED: ${failed} of ${verdicts.length} artifacts not verified on both independent gateways${missing.length > 0 ? `, ${missing.join(", ")} not checked` : ""}`;
+    report.verdictText = `VERIFICATION FAILED: ${failed} of ${verdicts.length} artifacts not verified on both counted gateways${missing.length > 0 ? `, ${missing.join(", ")} not checked` : ""}`;
+  // A resumed check was not fetched this run: a passing verdict must say so (never a bare
+  // ALL ARTIFACTS VERIFIED built partly from a prior run's log).
+  if (report.ok && report.resumed > 0)
+    report.verdictText += ` (${report.resumed} of ${report.artifacts.length} artifact checks resumed from a prior run, not re-fetched)`;
   log(report.verdictText);
   return report;
 }
@@ -781,6 +825,11 @@ export const EVIDENCE_SCHEMA = "verify-manifest-evidence.v1";
 
 export interface EvidenceGatewayResult {
   role: GatewayRole;
+  /** Whether this gateway's operator holds a copy of our files (Pinata, Filebase: yes). */
+  holds_our_copy: boolean;
+  label: string;
+  /** True when the check was taken from a prior run's log; status/bytes/sha256 are then null. */
+  resumed: boolean;
   status: number | null;
   ok: boolean;
   bytes: number | null;
@@ -823,6 +872,8 @@ export interface Evidence {
     storage_host_only: number;
     fallback_checks: number;
     fallback_ok: number;
+    /** Checks taken from a prior run's log, not fetched this run. */
+    resumed: number;
   };
 }
 
@@ -831,6 +882,9 @@ function evidenceArtifact(v: ArtifactVerdict): EvidenceArtifact {
   for (const c of v.checks)
     gateways[c.gateway] = {
       role: c.role,
+      holds_our_copy: HOLDS_OUR_COPY[c.gateway] ?? false,
+      label: labelOf(c.gateway),
+      resumed: c.resumed === true,
       status: c.status,
       ok: c.ok,
       bytes: c.size,
@@ -881,6 +935,7 @@ export function buildEvidence(report: VerifyReport, generatedAt: Date = new Date
       storage_host_only: verdicts.filter((v) => !v.independentCheck).length,
       fallback_checks: fallback.length,
       fallback_ok: fallback.filter((c) => c.ok).length,
+      resumed: report.resumed,
     },
   };
 }

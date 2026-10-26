@@ -2,7 +2,9 @@
 // keys"). The hosts arrive as `VITE_CID_COPY_HOST` (the CloudFront domain of the CID copy) and
 // `VITE_FILEBASE_GATEWAY_HOST` (`ipfs.filebase.io`) from the Amplify app environment (T043);
 // neither is a secret. Nothing here stores a host literal: a missing key fails loudly, naming
-// it, and `readPathUrls` validates the value as a bare hostname.
+// it, and `readPathUrls` validates the value as a bare hostname. The Verify gateways (Pinata,
+// orbitor) are read in data/verify-lane: Pinata is required like these keys, while orbitor falls
+// back to the literal `ipfs.orbitor.dev` there (AM-10), the one gateway default in the web app.
 import { readPathUrls, type ReadPathHosts, type ReadPathUrls } from "@countylens/shared";
 
 export const CID_COPY_HOST_KEY = "VITE_CID_COPY_HOST";

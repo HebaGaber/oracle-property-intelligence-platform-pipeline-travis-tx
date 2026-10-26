@@ -287,8 +287,8 @@ export function SourceDeltas({
 
 /**
  * "Stored on" (A-16 T076, ARD § 16 AM-10): where the published bytes live. Filebase pins every
- * artifact; Pinata holds a second copy of the manifests and of the table files where the publish
- * receipt recorded one (not every artifact); the run's GitHub Release holds the CARs as the
+ * artifact; Pinata holds a second copy of every run manifest and of the latest run's table files
+ * that fit its free quota (not every artifact); the run's GitHub Release holds the CARs as the
  * re-pinnable backup. Fixed wording from VERIFY_TEXTS; the provenance names the policy.
  */
 export function StoredOn(): ReactElement {
@@ -297,7 +297,7 @@ export function StoredOn(): ReactElement {
       <h3 id="stored-on-heading" className={styles.sectionTitle}>
         {VERIFY_TEXTS.storedOnTitle}
       </h3>
-      <ul className={styles.list} aria-label={VERIFY_TEXTS.storedOnTitle}>
+      <ul className={styles.list}>
         {VERIFY_TEXTS.storedOn.map((line) => (
           <li key={line} className={`${styles.item} ${styles.itemBody}`}>
             {line}

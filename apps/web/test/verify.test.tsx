@@ -1,7 +1,7 @@
 // A-13 T022 (AC-3, AC-7, FR-003, FR-003a–c, FR-016; TC-006, TC-018, TC-020, TC-021, TC-022,
 // TC-023): Data · Verify (`/data/verify/:cid`) and its VerifyLane. Two independent lanes,
 // Pinata and orbitor, then the labelled Filebase fallback lane (ARD § 16 AM-10), each with its
-// exact URL; "verified on two independent gateways" only when Pinata and orbitor both match (a
+// exact URL; "Verified on Pinata and orbitor" only when both counted lanes match (a
 // Filebase-only match never counts); ✓ only when the bytes' size and SHA-256 (and raw CID) equal
 // the manifest; a mismatch shows both values; a readable 429 reads "rate-limited, retrying", an
 // unreadable answer "no readable response (rate-limited or blocked), retrying"; a directory reads
@@ -180,17 +180,27 @@ describe("Data · Verify page (AC-3, FR-003, TC-006, TC-022)", () => {
     ).toEqual(["pinata", "orbitor", "filebase"]);
     expect(result().getAttribute("data-verify-result")).toBe("verified");
     expect(result().textContent).toContain(VERIFY_TEXTS.independentVerified);
-    for (const g of ["pinata", "orbitor"]) {
+    for (const g of ["pinata", "orbitor"] as const) {
       expect(lane(g).getAttribute("data-independent")).toBe("true");
-      expect(lane(g).textContent).toContain(VERIFY_TEXTS.independentLane);
+      expect(lane(g).textContent).toContain(VERIFY_TEXTS.laneRoles[g]);
       expect(lane(g).textContent).toContain(VERIFY_TEXTS.verified);
+      expect(lane(g).textContent).toContain("✓");
+      expect(lane(g).querySelector('[aria-label="verified"]')).not.toBeNull();
     }
+    expect(lane("pinata").textContent).toContain("Public gateway · also holds our second copy");
+    expect(lane("orbitor").textContent).toContain("Public gateway · holds no copy of ours");
+    // The non-counted Filebase lane: neutral info glyph, never the green ✓ (AM-10).
     expect(lane("filebase").getAttribute("data-independent")).toBe("false");
-    expect(lane("filebase").textContent).toContain(VERIFY_TEXTS.fallbackLane);
+    expect(lane("filebase").textContent).toContain("Our main storage host · fallback, not counted");
     expect(lane("filebase").textContent).toContain(VERIFY_TEXTS.fallbackVerified);
     expect(lane("filebase").textContent).not.toContain(VERIFY_TEXTS.verified);
+    expect(lane("filebase").textContent).not.toContain("✓");
+    expect(lane("filebase").querySelector('[aria-label="verified"]')).toBeNull();
+    expect(lane("filebase").querySelector('h4 [data-icon="info"]')).not.toBeNull();
+    expect(result().textContent).toBe(
+      "Verified on Pinata and orbitor · two public gateways CountyLens does not operate; bytes match the manifest",
+    );
     for (const g of ["pinata", "orbitor", "filebase"]) {
-      expect(lane(g).textContent).toContain("✓");
       expect(lane(g).textContent).toContain(manifest.artifacts[1]?.sha256 ?? "x");
       expect(lane(g).textContent).toContain(String(fileBytes.length));
     }
@@ -220,7 +230,7 @@ describe("Data · Verify page (AC-3, FR-003, TC-006, TC-022)", () => {
     await waitFor(() => expect(result().getAttribute("data-verify-result")).toBe("verified"));
   });
 
-  it("a Filebase-only match is never shown as verified on two independent gateways (AM-10)", async () => {
+  it("a Filebase-only match is never shown as verified on two public gateways (AM-10)", async () => {
     install({
       pinata: () => new Response(encode("tampered")),
       orbitor: () => new Response(null, { status: 404 }),
@@ -231,10 +241,54 @@ describe("Data · Verify page (AC-3, FR-003, TC-006, TC-022)", () => {
     await waitFor(() => expect(lane("pinata").getAttribute("data-state")).toBe("mismatch"));
     await waitFor(() => expect(lane("orbitor").getAttribute("data-state")).toBe("failed"));
     await waitFor(() => expect(result().getAttribute("data-verify-result")).toBe("not_verified"));
-    expect(result().textContent).toBe(VERIFY_TEXTS.independentNotVerified("Pinata and orbitor"));
+    expect(result().textContent).toBe(
+      "Not verified on two public gateways · bytes differ on Pinata; no verified answer from orbitor",
+    );
     expect(document.body.textContent).not.toContain(VERIFY_TEXTS.independentVerified);
     expect(lane("filebase").textContent).toContain(VERIFY_TEXTS.fallbackVerified);
     expect(lane("filebase").textContent).not.toContain(VERIFY_TEXTS.verified);
+    expect(lane("filebase").querySelector('[aria-label="verified"]')).toBeNull();
+  });
+
+  it("orders the headings: Counted gateways (Pinata, orbitor as h4), then the fallback group (Filebase h4)", async () => {
+    install();
+    await renderVerify(fileCid);
+    await waitFor(() => expect(lane("orbitor").getAttribute("data-state")).toBe("verified"));
+    const headings = [...document.querySelectorAll("h2, h3, h4")].map(
+      (h) => `${h.tagName.toLowerCase()}:${h.textContent ?? ""}`,
+    );
+    const at = (text: string): number => headings.indexOf(text);
+    expect(at(`h3:${VERIFY_TEXTS.countedLanesTitle}`)).toBeGreaterThan(-1);
+    expect(at(`h3:${VERIFY_TEXTS.countedLanesTitle}`)).toBeLessThan(at("h4:✓Pinata"));
+    expect(at("h4:✓Pinata")).toBeLessThan(at("h4:✓orbitor"));
+    expect(at("h4:✓orbitor")).toBeLessThan(at(`h3:${VERIFY_TEXTS.fallbackLanesTitle}`));
+    expect(at(`h3:${VERIFY_TEXTS.fallbackLanesTitle}`)).toBeLessThan(at("h4:Filebase"));
+    expect(at("h4:Filebase")).toBeLessThan(at(`h3:${VERIFY_TEXTS.storedOnTitle}`));
+  });
+
+  it("a counted lane that gives up after its retries says so, without implying tampering", async () => {
+    // The lane alone with an instant sleep (the page uses the real 2/4/8 s backoff).
+    render(
+      <VerifyLane
+        gateway="pinata"
+        url={`https://${PINATA_HOST}/ipfs/${fileCid}`}
+        target={{
+          cid: fileCid,
+          size: fileBytes.length,
+          sha256: manifest.artifacts[1]?.sha256 ?? "",
+          kind: "table",
+          codec: "raw",
+        }}
+        fetch={async () => new Response(null, { status: 429 })}
+        sleep={async () => undefined}
+      />,
+    );
+    await waitFor(() => expect(lane("pinata").getAttribute("data-state")).toBe("failed"));
+    const reason = lane("pinata").querySelector("[data-lane-reason]");
+    expect(reason?.textContent).toBe(
+      "no readable answer after retries · Pinata may be rate-limiting; try again",
+    );
+    expect(lane("pinata").textContent).not.toMatch(/mismatch|tamper/i);
   });
 
   it("stays pending until both independent lanes end; one match is not enough", async () => {
@@ -253,7 +307,7 @@ describe("Data · Verify page (AC-3, FR-003, TC-006, TC-022)", () => {
     await waitFor(() => expect(result().getAttribute("data-verify-result")).toBe("verified"));
   });
 
-  it("shows the Stored on line: Filebase pin, Pinata copy where recorded, GitHub Release CARs", async () => {
+  it("shows the Stored on line: Filebase pin, Pinata copy within the free quota, GitHub Release CARs", async () => {
     install();
     await renderVerify(fileCid);
     const stored = await waitFor(() => {
@@ -263,9 +317,10 @@ describe("Data · Verify page (AC-3, FR-003, TC-006, TC-022)", () => {
     });
     for (const line of VERIFY_TEXTS.storedOn) expect(stored.textContent).toContain(line);
     expect(stored.textContent).toContain(VERIFY_TEXTS.storedOnProvenance);
-    expect(stored.textContent).toMatch(
-      /Pinata: second copy of the manifest and table files where recorded/,
+    expect(stored.textContent).toContain(
+      "Pinata: second copy of every run manifest and of the latest run's table files that fit the free quota",
     );
+    expect(stored.querySelector("ul")?.hasAttribute("aria-label")).toBe(false);
   });
 
   it("reads `Verify via CAR` for a directory and fetches nothing for it (FR-003c, TC-018)", async () => {

@@ -81,3 +81,9 @@
   line-height: var(--md-sys-typescale-body-small-line-height);
   letter-spacing: var(--md-sys-typescale-body-small-tracking);
 }
+
+.reason {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--md-sys-color-on-surface-variant);
+}

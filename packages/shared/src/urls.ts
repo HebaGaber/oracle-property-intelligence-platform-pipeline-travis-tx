@@ -3,9 +3,14 @@
 // FILEBASE_GATEWAY_HOST, PINATA_GATEWAY_HOST and ORBITOR_GATEWAY_HOST. This module stores no
 // gateway URL and no host literal, and reads no environment: the app passes its validated config
 // in (web: `VITE_CID_COPY_HOST` / `VITE_FILEBASE_GATEWAY_HOST` / `VITE_PINATA_GATEWAY_HOST` /
-// `VITE_ORBITOR_GATEWAY_HOST`; Lambda: `process.env`), so the package stays browser-safe.
-// Verify (ARD § 16 AM-10): Pinata and orbitor are the two independent gateways; Filebase is our
-// storage host, so its lane is a labelled fallback that never counts as independent.
+// `VITE_ORBITOR_GATEWAY_HOST`; Lambda: `process.env`), so the package stays browser-safe. The
+// literal defaults live with the callers: infra web-stack (`DEFAULT_*_GATEWAY_HOST`) and, for
+// orbitor only, apps/web data/verify-lane (`DEFAULT_ORBITOR_GATEWAY_HOST`, used when the build
+// has no VITE_ORBITOR_GATEWAY_HOST; a missing VITE_PINATA_GATEWAY_HOST still
+// fails loudly, an asymmetry kept so a build landing before the Web-stack deploy keeps orbitor).
+// Verify (ARD § 16 AM-10, PO 2026-10-26): Pinata and orbitor are the two counted public gateways
+// CountyLens does not operate (Pinata also holds our second copy, orbitor none); Filebase is our
+// main storage host, so its lane is a labelled fallback that is never counted.
 import { isCidV1 } from "@countylens/contract";
 
 export interface ReadPathHosts {

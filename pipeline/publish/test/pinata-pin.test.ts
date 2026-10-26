@@ -18,8 +18,10 @@ import {
   pinByCid,
   pinataPin,
   pollUntilPinned,
+  READ_TIMEOUT_MS,
   redactJwt,
   unpin,
+  uploadTimeoutMs,
   uploadFile,
   usage,
   type FetchLike,
@@ -372,5 +374,45 @@ describe("redactJwt", () => {
   it("replaces every occurrence and leaves text alone for an empty JWT", () => {
     expect(redactJwt(`a ${JWT} b ${JWT}`, JWT)).toBe("a [redacted] b [redacted]");
     expect(redactJwt("plain", "")).toBe("plain");
+  });
+});
+
+describe("multipart filename and timeouts (T079 review)", () => {
+  it("sends only the basename as the multipart filename; the full path goes in pinataMetadata", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pinata-pin-"));
+    const filePath = join(dir, "part-00000.parquet");
+    writeFileSync(filePath, "x");
+    let fileName: string | undefined;
+    let metadata: unknown;
+    let signal: AbortSignal | null | undefined;
+    const fetch: FetchLike = async (_input, init) => {
+      const form = init?.body as FormData;
+      fileName = (form.get("file") as File).name;
+      metadata = JSON.parse(String(form.get("pinataMetadata")));
+      signal = init?.signal;
+      return jsonResponse(200, { IpfsHash: CID });
+    };
+    const name = "pipeline/data/runs/r/tables/t/part-00000.parquet";
+    await uploadFile(filePath, name, { jwt: JWT, fetch });
+    expect(fileName).toBe("part-00000.parquet");
+    expect(fileName).not.toContain("/");
+    expect(metadata).toEqual({ name });
+    expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("scales the upload timeout with size and bounds reads and unpin", async () => {
+    expect(uploadTimeoutMs(0)).toBe(60_000);
+    expect(uploadTimeoutMs(250_000_000)).toBe(60_000 + 1_000_000);
+    expect(READ_TIMEOUT_MS).toBe(30_000);
+    const signals: Array<AbortSignal | null | undefined> = [];
+    const fetch: FetchLike = async (_input, init) => {
+      signals.push(init?.signal);
+      return jsonResponse(200, { rows: [], pin_count: 0, pin_size_total: 0 });
+    };
+    await isPinned(CID, { jwt: JWT, fetch });
+    await usage({ jwt: JWT, fetch });
+    await unpin(CID, { jwt: JWT, fetch });
+    expect(signals).toHaveLength(3);
+    expect(signals.every((s) => s instanceof AbortSignal)).toBe(true);
   });
 });

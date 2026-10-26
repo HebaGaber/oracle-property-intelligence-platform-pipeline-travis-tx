@@ -1,12 +1,13 @@
 // Data · Verify (`/data/verify/:cid`; A-13 T023, AC-3, AC-7, FR-003, FR-003a–c, FR-016; TC-006,
 // TC-018 … TC-023). The CID is looked up in the latest manifest's artifacts, then along the run
 // chain (each older manifest and its artifacts); a run manifest itself is verified against the
-// size and SHA-256 of the bytes the read path already accepted by CID. The page result, then the
-// two independent lanes (Pinata, orbitor), then the labelled Filebase fallback lane (AM-10;
-// data/verify-lane: plain GET, never the CID copy). "Verified on two independent gateways"
-// depends on Pinata and orbitor only: a Filebase match never counts. "Stored on" closes the
-// page. A CID found nowhere is an error banner, never an empty lane. The manifest read shows the fallback chip when Filebase
-// served it; the lanes are unaffected. A react-router lazy route module.
+// size and SHA-256 of the bytes the read path already accepted by CID. The page result, then
+// "Counted gateways" (Pinata, orbitor: public gateways CountyLens does not operate) and the
+// "Fallback gateway" group (Filebase, our main storage host, never counted), each lane an h4
+// (AM-10; data/verify-lane: plain GET, never the CID copy). "Verified on Pinata and orbitor"
+// depends on those two lanes only. "Stored on" closes the page. A CID found nowhere is an error
+// banner, never an empty lane. The manifest read shows the fallback chip when Filebase served
+// it; the lanes are unaffected. A react-router lazy route module.
 import type { RunManifestV1 } from "@countylens/contract";
 import { PROGRESS_LABELS, VERIFY_TEXTS, type ReadPathUrls } from "@countylens/shared";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
@@ -240,6 +241,7 @@ function Lanes({
       url={verifyLaneUrl(urls, gateway, target.cid)}
       target={target}
       onState={onState}
+      headingLevel={4}
     />
   );
   return (
@@ -252,11 +254,12 @@ function Lanes({
       >
         <StatusPill status={RESULT_STATUS[result.kind]} text={result.text} />
       </p>
+      <h3 className={runStyles.sectionTitle}>{VERIFY_TEXTS.countedLanesTitle}</h3>
       <div className={styles.lanes} data-lanes="independent">
         {VERIFY_INDEPENDENT_GATEWAYS.map(lane)}
       </div>
       <h3 className={runStyles.sectionTitle}>{VERIFY_TEXTS.fallbackLanesTitle}</h3>
-      <div className={styles.lanes} data-lanes="fallback">
+      <div className={`${styles.lanes} ${styles.lanesFull}`} data-lanes="fallback">
         {VERIFY_FALLBACK_GATEWAYS.map(lane)}
       </div>
     </>

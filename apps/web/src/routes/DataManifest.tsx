@@ -131,11 +131,11 @@ function ManifestView({ run }: { readonly run: LoadedRun }): ReactElement {
       </div>
       <RunChain head={manifestCid} headManifest={manifest} numbers={runNumbers(run.index)} />
       <ArtifactTable manifest={manifest} />
-      <StoredOn />
       <Provenance>
         Manifest <CidDisplay cid={manifestCid} /> · run {manifest.runId} · read from{" "}
         {read.source.host}
       </Provenance>
+      <StoredOn />
     </>
   );
 }

@@ -50,7 +50,9 @@ const FILEBASE = "https://ipfs.filebase.io";
 // "retries 504" test at the default, while only the first test had been given a per-test
 // override). Raise the timeout for the whole file instead of per-test so every fixture()-using
 // test gets the same margin.
-vi.setConfig({ testTimeout: 20000 });
+// A-16 T078: three gateways now read every ~50 MB fixture artifact (was two), so 20 s timed out
+// under the full root suite; 90 s keeps the same margin.
+vi.setConfig({ testTimeout: 90_000 });
 
 /** Deterministic pseudo-random bytes from a seed (sha256 chain) — no large literal in the file. */
 function bytesOf(seed: string, length: number): Uint8Array {
@@ -183,7 +185,7 @@ const noSleep = async (): Promise<void> => {};
 const noJitter = (): number => 1;
 
 describe("the fixed gateway allowlist (AM-10, amends AM-01 and P0-14)", () => {
-  it("independent = Pinata + orbitor; Filebase is the separate storage-host fallback", () => {
+  it("counted = Pinata + orbitor; Filebase is the separate storage-host fallback", () => {
     expect([...GATEWAYS]).toEqual([PINATA, ORBITOR]);
     expect([...FALLBACK_GATEWAYS]).toEqual([FILEBASE]);
     expect([...ALLOWED_GATEWAYS]).toEqual([PINATA, ORBITOR, FILEBASE]);
@@ -208,6 +210,9 @@ describe("the fixed gateway allowlist (AM-10, amends AM-01 and P0-14)", () => {
       "https://d111111abcdef8.cloudfront.net",
     ]) {
       expect(() => assertAllowedGateways([other])).toThrow(refusedGatewayText(other));
+      expect(refusedGatewayText(other)).toBe(
+        `Refused gateway ${other}: verify-manifest only uses https://gateway.pinata.cloud (public gateway · also holds our second copy), https://ipfs.orbitor.dev (public gateway · holds no copy of ours) and https://ipfs.filebase.io (our main storage host · fallback, not counted)`,
+      );
     }
   });
 });
@@ -246,6 +251,7 @@ describe("exit code (A11-16)", () => {
     artifacts: [],
     verdicts: [],
     artifactsListed: 0,
+    resumed: 0,
     verdictText: "",
     ...over,
   });
@@ -510,7 +516,7 @@ describe("resume (--resume-from)", () => {
     const resumeSkip = parseResumeLog(lines.join("\n"));
     expect(resumeSkip.size).toBeGreaterThanOrEqual(firstReport.artifacts.length);
     for (const c of firstReport.artifacts)
-      expect(resumeSkip.has(resumeKey(c.gateway, c.name))).toBe(true);
+      expect(resumeSkip.has(resumeKey(c.gateway, c.name, c.cid))).toBe(true);
 
     // The manifest self-check is deliberately never skipped (cheap, correctness-critical), so
     // the fetch here must still work for it -- only the artifact CIDs should go unrequested.
@@ -528,6 +534,45 @@ describe("resume (--resume-from)", () => {
       expect(requests.some((u) => u.includes(c.cid ?? "\u0000"))).toBe(false);
     }
     expect(secondReport.artifacts.length).toBe(firstReport.artifacts.length);
+    // Resumed checks claim nothing about this run's bytes, and the verdict says so.
+    expect(secondReport.artifacts.every((c) => c.resumed === true && c.status === null)).toBe(true);
+    expect(secondReport.artifacts.every((c) => c.size === null && c.sha256 === null)).toBe(true);
+    expect(secondReport.resumed).toBe(secondReport.artifacts.length);
+    expect(secondReport.verdictText).toBe(
+      `${ALL_VERIFIED_TEXT} (${secondReport.resumed} of ${secondReport.artifacts.length} artifact checks resumed from a prior run, not re-fetched)`,
+    );
+    const evidence = buildEvidence(secondReport);
+    expect(evidence.summary.resumed).toBe(secondReport.resumed);
+    expect(evidence.summary.verdict).not.toBe(ALL_VERIFIED_TEXT);
+    const table = evidence.artifacts.find((a) => a.name === f.largeArtifact.name);
+    expect(table?.gateways[PINATA]).toMatchObject({
+      resumed: true,
+      status: null,
+      bytes: null,
+      sha256: null,
+      ok: true,
+    });
+  });
+
+  it("re-fetches a check whose CID changed since the prior log", async () => {
+    const f = await fixture();
+    const lines = [
+      `ok   ${PINATA} ${f.largeArtifact.name} cid=bafkreioldcid size=1 match sha256 match`,
+    ];
+    const resumeSkip = parseResumeLog(lines.join("\n"));
+    expect(resumeSkip.has(resumeKey(PINATA, f.largeArtifact.name, "bafkreioldcid"))).toBe(true);
+    const { fetchImpl, requests } = fakeGateways(f.published);
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      resumeSkip,
+      log: () => {},
+    });
+    expect(report.resumed).toBe(0);
+    expect(requests).toContain(`${PINATA}/ipfs/${f.largeArtifact.cid}`);
+    expect(report.verdictText).toBe(ALL_VERIFIED_TEXT);
   });
 
   it("still fetches checks not present in the resume set", async () => {
@@ -568,7 +613,7 @@ describe("resume (--resume-from)", () => {
   });
 });
 
-describe("AM-10: Filebase is a reported fallback, never an independent check", () => {
+describe("AM-10: Filebase is a reported fallback, never a counted check", () => {
   it("a Filebase-only miss is printed with the storage-host label but does not fail the run", async () => {
     const f = await fixture();
     const lines: string[] = [];
@@ -685,7 +730,7 @@ describe("AM-10: Filebase is a reported fallback, never an independent check", (
   });
 });
 
-describe("--sample: the CAR is a storage-host read, not an independent check", () => {
+describe("--sample: the CAR is a storage-host read, not a counted check", () => {
   it("reads the CAR from Filebase only, says so, and exits 0", async () => {
     const f = await fixture();
     const lines: string[] = [];
@@ -707,9 +752,9 @@ describe("--sample: the CAR is a storage-host read, not an independent check", (
     expect(requests.filter((u) => u.includes(carCid)).every((u) => u.startsWith(FILEBASE))).toBe(
       true,
     );
-    expect(
-      lines.some((l) => /NOT an independent check/.test(l) && l.includes(car?.name ?? "")),
-    ).toBe(true);
+    expect(lines.some((l) => /NOT a counted check/.test(l) && l.includes(car?.name ?? ""))).toBe(
+      true,
+    );
     expect(lines.at(-1)).toBe("SAMPLE VERIFIED 2 of 2 artifacts (the CAR on Filebase only)");
     const table = report.verdicts.find((v) => v.kind === "table");
     expect(table).toMatchObject({ independentCheck: true, independentOk: true });
@@ -757,14 +802,28 @@ describe("--json evidence (T078)", () => {
       ok: true,
     });
     expect(large?.gateways[PINATA]).toMatchObject({
-      role: "independent",
+      role: "counted",
+      holds_our_copy: true,
+      label: "public gateway · also holds our second copy",
+      resumed: false,
       status: 200,
       ok: true,
       bytes: f.largeArtifact.size,
       sha256: f.largeArtifact.sha256,
       ms: 7,
     });
-    expect(large?.gateways[FILEBASE]).toMatchObject({ role: "fallback", status: 404, ok: false });
+    expect(large?.gateways[FILEBASE]).toMatchObject({
+      role: "fallback",
+      holds_our_copy: true,
+      label: "our main storage host · fallback, not counted",
+      status: 404,
+      ok: false,
+    });
+    expect(large?.gateways[ORBITOR]).toMatchObject({
+      role: "counted",
+      holds_our_copy: false,
+      label: "public gateway · holds no copy of ours",
+    });
     expect(evidence.summary).toMatchObject({
       ok: true,
       exit_code: 0,
@@ -776,6 +835,7 @@ describe("--json evidence (T078)", () => {
       storage_host_only: 0,
       fallback_checks: 3,
       fallback_ok: 2,
+      resumed: 0,
     });
 
     const out = join(mkdtempSync(join(tmpdir(), "verify-evidence-")), "nested", "evidence.json");

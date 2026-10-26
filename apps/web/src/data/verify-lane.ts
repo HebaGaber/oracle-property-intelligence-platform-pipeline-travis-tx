@@ -1,7 +1,12 @@
 // Verify lanes (A-13 T014, research R3, data-model.md VerifyLane; AM-10, ERR-15): one lane per
-// public gateway, never the CID copy. Pinata and orbitor are the two independent lanes; Filebase
-// (our pin host) is a labelled fallback lane whose match never counts as independent, so the
-// page result (`independentResult`) reads only the Pinata and orbitor lanes. Each lane makes a "simple" CORS GET
+// public gateway, never the CID copy. Pinata and orbitor are the two counted lanes: public
+// gateways CountyLens does not operate, bytes hash-checked (Pinata also holds our second copy;
+// orbitor holds none). Filebase, our main storage host, is a labelled fallback lane that is
+// shown but never counted, so the page result (`independentResult`) reads only Pinata and
+// orbitor. Unlike Pinata (VITE_PINATA_GATEWAY_HOST is required), orbitor falls back to the
+// literal DEFAULT_ORBITOR_GATEWAY_HOST below when the build has no VITE_ORBITOR_GATEWAY_HOST, so
+// a web build that lands before the Web-stack deploy still shows both counted lanes. Each lane
+// makes a "simple" CORS GET
 // (credentials omitted, no Range, no custom header, so no preflight), hashes the body with
 // WebCrypto SHA-256 and compares size and digest with the manifest; a raw CID must also equal
 // the bytes' raw-leaves CID. ✓ (`verified`) only on a full match; a difference is a `mismatch`
@@ -40,7 +45,7 @@ export const VERIFY_MAX_RETRY_AFTER_MS = 60_000;
 export type VerifyGateway = GatewayName;
 /** Independent lanes first (Pinata, orbitor), then the Filebase fallback lane (AM-10). */
 export const VERIFY_GATEWAYS: readonly VerifyGateway[] = [...INDEPENDENT_GATEWAYS, "filebase"];
-/** The lanes whose match counts towards "verified on two independent gateways". */
+/** The counted lanes: their matches decide "Verified on Pinata and orbitor". */
 export const VERIFY_INDEPENDENT_GATEWAYS: readonly VerifyGateway[] = INDEPENDENT_GATEWAYS;
 /** The labelled fallback lane(s): shown, never counted. */
 export const VERIFY_FALLBACK_GATEWAYS: readonly VerifyGateway[] = VERIFY_GATEWAYS.filter(
@@ -74,7 +79,12 @@ export type LaneState =
       readonly expected: SizeAndDigest;
       readonly text: string;
     }
-  | { readonly kind: "failed"; readonly text: string }
+  | {
+      readonly kind: "failed";
+      readonly text: string;
+      /** `retries`: no readable answer after every try (rate limits, blocking), never tampering. */
+      readonly cause: "retries" | "status";
+    }
   | { readonly kind: "via_car"; readonly text: string };
 
 /** The gateway URL of a lane: `https://{gateway host}/ipfs/{cid}` (never the CID copy). */
@@ -112,8 +122,9 @@ const FINAL_KINDS: ReadonlySet<LaneState["kind"]> = new Set([
 ]);
 
 /**
- * "Verified on two independent gateways" only when Pinata and orbitor both ended `verified`.
- * Any other gateway's state (Filebase) is ignored, so a Filebase-only match is never verified.
+ * "Verified on Pinata and orbitor" only when both counted lanes ended `verified`. Any other
+ * gateway's state (Filebase) is ignored, so a Filebase-only match is never verified. A miss
+ * names each counted lane: "bytes differ on X" for a mismatch, else "no verified answer from X".
  */
 export function independentResult(
   states: Readonly<Partial<Record<VerifyGateway, LaneState>>>,
@@ -128,11 +139,18 @@ export function independentResult(
   if (lanes.some(([, s]) => s === undefined || !FINAL_KINDS.has(s.kind))) {
     return { kind: "pending", text: VERIFY_TEXTS.independentPending };
   }
-  const missed = lanes
-    .filter(([, s]) => s?.kind !== "verified")
-    .map(([g]) => VERIFY_TEXTS.gatewayOperators[g])
-    .join(" and ");
-  return { kind: "not_verified", text: VERIFY_TEXTS.independentNotVerified(missed) };
+  const names = (pick: (s: LaneState | undefined) => boolean): string =>
+    lanes
+      .filter(([, s]) => pick(s))
+      .map(([g]) => VERIFY_TEXTS.gatewayOperators[g])
+      .join(" and ");
+  const differ = names((s) => s?.kind === "mismatch");
+  const noAnswer = names((s) => s?.kind !== "verified" && s?.kind !== "mismatch");
+  const details = [
+    ...(differ === "" ? [] : [VERIFY_TEXTS.bytesDiffer(differ)]),
+    ...(noAnswer === "" ? [] : [VERIFY_TEXTS.noVerifiedAnswer(noAnswer)]),
+  ].join("; ");
+  return { kind: "not_verified", text: VERIFY_TEXTS.independentNotVerified(details) };
 }
 
 export interface RunVerifyLaneOptions {
@@ -227,6 +245,7 @@ export async function runVerifyLane(options: RunVerifyLaneOptions): Promise<Lane
       return report({
         kind: "failed",
         text: VERIFY_TEXTS.notVerified(`${new URL(url).host} answered HTTP ${result.status}`),
+        cause: "status",
       });
     }
     if (result.kind === "oversize") {
@@ -244,6 +263,7 @@ export async function runVerifyLane(options: RunVerifyLaneOptions): Promise<Lane
         return report({
           kind: "failed",
           text: VERIFY_TEXTS.notVerified(`${GAVE_UP[result.reason]} after ${tries} tries`),
+          cause: "retries",
         });
       }
       const delayMs = result.retryAfterMs ?? delay;
@@ -265,5 +285,5 @@ export async function runVerifyLane(options: RunVerifyLaneOptions): Promise<Lane
     }
     return report({ kind: "mismatch", got, expected, text: VERIFY_TEXTS.mismatch(got, expected) });
   }
-  return report({ kind: "failed", text: VERIFY_TEXTS.notVerified("no answer") });
+  return report({ kind: "failed", text: VERIFY_TEXTS.notVerified("no answer"), cause: "retries" });
 }

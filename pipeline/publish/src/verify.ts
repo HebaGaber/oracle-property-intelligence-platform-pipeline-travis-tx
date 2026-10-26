@@ -1,8 +1,11 @@
 // verify-manifest (FR-006, AM-05; gateways per AM-10 2026-10-26, which amends AM-01): independent
 // proof that every published artifact is what the committed manifest says, read from two public
 // gateways that are neither our copy nor our storage host: Pinata's public gateway and
-// ipfs.orbitor.dev (an independent operator). The Filebase gateway (our storage host) may be read
-// as a labelled fallback ("storage host, not independent"); its result is reported but never
+// ipfs.orbitor.dev. "Independent" means a public gateway CountyLens does not operate, with the bytes
+// hash-checked (README); the two are the counted gateways, labelled with plain facts (PO wording
+// 2026-10-26): Pinata "public gateway · also holds our second copy", orbitor "public gateway ·
+// holds no copy of ours". The Filebase gateway may be read as a labelled fallback ("our main
+// storage host · fallback, not counted"); its result is reported but never
 // counts toward the verdict. ipfs.io and dweb.link retired on 2026-09-21
 // (docs/decisions/0001-read-path.md Finding 3); they, the CloudFront CID copy, w3s.link and
 // storacha.link (Storacha uploads ended 2026-04-15) are refused before any request.
@@ -17,7 +20,7 @@
 // size + 1 bytes; TIMEOUT_MS per request; 429/5xx retried up to MAX_ATTEMPTS with Retry-After
 // or capped full jitter; at most CONCURRENCY_PER_GATEWAY requests in flight per gateway. One line
 // per artifact per gateway; `ALL ARTIFACTS VERIFIED` only when the manifest and every artifact
-// match on both independent gateways. The run never writes a file.
+// match on both counted gateways. The run never writes a file.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { RunManifestV1, type ManifestArtifact } from "@countylens/contract";
@@ -39,7 +42,17 @@ export const VERIFY_ALLOWED_GATEWAYS: readonly string[] = [
   ...VERIFY_GATEWAYS,
   ...VERIFY_FALLBACK_GATEWAYS,
 ];
-export const STORAGE_HOST_LABEL = "storage host, not independent";
+export const STORAGE_HOST_LABEL = "our main storage host · fallback, not counted";
+/** The plain-facts label for each host (PO wording 2026-10-26). */
+export const VERIFY_GATEWAY_LABELS: Readonly<Record<string, string>> = {
+  [PINATA_GATEWAY_HOST]: "public gateway · also holds our second copy",
+  [ORBITOR_GATEWAY_HOST]: "public gateway · holds no copy of ours",
+  [FILEBASE_GATEWAY_HOST]: STORAGE_HOST_LABEL,
+};
+
+function labelOf(host: string): string {
+  return VERIFY_GATEWAY_LABELS[host] ?? "unknown gateway";
+}
 /** Per request; the first fetch after an upload is slow (plan R5). */
 export const TIMEOUT_MS = 120_000;
 export const MAX_ATTEMPTS = 5;
@@ -50,7 +63,8 @@ const BACKOFF_CAP_MS = 60_000;
 
 /** The exact refusal (plan § "Fixed texts", TC-042). */
 export function refusedGatewayText(host: string): string {
-  return `Refused gateway ${host}: verify-manifest only uses ${VERIFY_GATEWAYS.join(", ")} (independent) and ${VERIFY_FALLBACK_GATEWAYS.join(", ")} (${STORAGE_HOST_LABEL})`;
+  const named = VERIFY_ALLOWED_GATEWAYS.map((g) => `${g} (${labelOf(g)})`);
+  return `Refused gateway ${host}: verify-manifest only uses ${named.slice(0, -1).join(", ")} and ${named.at(-1) ?? ""}`;
 }
 
 /** Throws the refusal for the first host outside the allowlist. Runs before any request. */
@@ -94,7 +108,7 @@ export interface VerifyCheck {
   field: VerifyField;
   gateway: string;
   /** "fallback" = the storage host: reported, never counted toward the verdict (AM-10). */
-  role: "independent" | "fallback";
+  role: "counted" | "fallback";
   /** The final HTTP status, or null when no response arrived. */
   status: number | null;
   /** Bytes received (at most the expected size + 1), or null without a response. */
@@ -317,11 +331,11 @@ function formatLine(c: VerifyCheck): string {
   const body = c.ok
     ? `${head} size=${c.size} match sha256 match`
     : `${head} ${c.reason ?? "failed"}`;
-  return c.role === "fallback" ? `${body} [${STORAGE_HOST_LABEL}]` : body;
+  return `${body} [${labelOf(c.gateway)}]`;
 }
 
-function roleOf(host: string): "independent" | "fallback" {
-  return VERIFY_FALLBACK_GATEWAYS.includes(host) ? "fallback" : "independent";
+function roleOf(host: string): "counted" | "fallback" {
+  return VERIFY_FALLBACK_GATEWAYS.includes(host) ? "fallback" : "counted";
 }
 
 /** Which CID the byte check fetches (TC-043): never the dag-json root of a car or directory. */
@@ -445,18 +459,18 @@ export async function verifyManifest(options: VerifyOptions): Promise<VerifyRepo
   }
   report.artifacts = await Promise.all(jobs);
 
-  // 3. The verdict: the manifest and every artifact ok on every independent gateway. Fallback
+  // 3. The verdict: the manifest and every artifact ok on every counted gateway. Fallback
   // (storage host) checks are reported in one summary line and never count (AM-10).
   const missing = VERIFY_GATEWAYS.filter((g) => !gateways.includes(g));
   for (const g of missing)
-    log(`FAIL ${g} not checked: ${ALL_VERIFIED_TEXT} needs both independent gateways`);
+    log(`FAIL ${g} not checked: ${ALL_VERIFIED_TEXT} needs both counted gateways`);
   const all = [...report.manifest, ...report.artifacts];
   const fallback = all.filter((c) => c.role === "fallback");
   if (fallback.length > 0)
     log(
-      `fallback ${VERIFY_FALLBACK_GATEWAYS.join(", ")} (${STORAGE_HOST_LABEL}): ${fallback.filter((c) => c.ok).length} of ${fallback.length} checks matched; not counted as independent`,
+      `fallback ${VERIFY_FALLBACK_GATEWAYS.join(", ")} (${STORAGE_HOST_LABEL}): ${fallback.filter((c) => c.ok).length} of ${fallback.length} checks matched; not counted`,
     );
-  const checks = all.filter((c) => c.role === "independent");
+  const checks = all.filter((c) => c.role === "counted");
   const failed = checks.filter((c) => !c.ok).length;
   report.ok = failed === 0 && missing.length === 0;
   if (report.ok) log(ALL_VERIFIED_TEXT);

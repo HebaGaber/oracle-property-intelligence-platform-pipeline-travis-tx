@@ -6,16 +6,24 @@
 // Pinata's CID equals the manifest CID. The Lexicon CARs and directory roots stay on Filebase
 // plus the GitHub Release (AM-10); this module never uploads them.
 //
+// Which manifests: the run manifest, plus (by default) every other run runs/index.json lists, read
+// from runs/<runId>/manifest.json next to the index, plus any --extra-manifest. Fail closed: every
+// manifest must parse as RunManifestV1, be its own exact JCS bytes, and hash to an EXPECTED CID
+// from runs/index.json or the command line (--manifest-cid, `path=cid`); without one the run
+// manifest is refused (exit 2) and an older one is skipped and reported.
+//
 // Per file, in order: (1) the local file is checked first — a table part's size + SHA-256 must
-// equal the manifest entry; a manifest must be its own exact JCS bytes and, when runs/index.json
-// (or `path=cid`) names a CID for it, hash to that CID — else it is skipped and reported, never
-// uploaded; (2) a CID Pinata already lists as pinned is skipped (idempotent re-runs); (3) the
+// equal the manifest entry; a manifest must pass the checks above — else it is skipped and
+// reported, never uploaded; (2) a CID Pinata already lists as pinned is skipped (idempotent re-runs); (3) the
 // budget (bytes and files) is reserved before the upload and the run stops cleanly at the first
 // file that does not fit, listing what was left; (4) after the upload Pinata's `IpfsHash` is
-// compared with the manifest CID: on a mismatch the pin is removed at once and recorded, and when
+// compared with the manifest CID: on a mismatch the pin is removed at once and recorded (unless
+// Pinata says `isDuplicate`: that pin existed before this run and is left alone), and when
 // stop-on-mismatch applies (default for manifests) nothing else is uploaded. One receipt JSON per
-// processed file, plus summary.json. 429/503 answers back off (Retry-After, else capped
-// exponential) for at most MAX_ATTEMPTS; at most 3 uploads run at once.
+// processed file (an existing `pinned` receipt is never overwritten), plus summary-<UTC>.json
+// and summary.json (the latest). 429/503 answers back off (Retry-After, else capped exponential)
+// for at most MAX_ATTEMPTS; a write that times out or answers 500/502/504 is recorded as an
+// error, not resent (a re-run picks it up). At most 3 uploads run at once.
 //
 // The JWT is passed in by the caller (the CLI reads PINATA_JWT from process.env) and is redacted
 // from every message, receipt and summary this module produces.
@@ -28,7 +36,8 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { RunManifestV1 } from "@countylens/contract";
 import { cidOfBytes } from "./cid.js";
 import { jcsBytes } from "./jcs.js";
 import {
@@ -68,6 +77,8 @@ export interface ExtraManifest {
   path: string;
   /** Expected CID given on the command line (`path=cid`); otherwise runs/index.json is used. */
   cid?: string;
+  /** Where `cid` came from, for messages (default "the command line"). */
+  cidSource?: string;
 }
 
 export interface PinataCopyOptions {
@@ -81,8 +92,12 @@ export interface PinataCopyOptions {
   /** Files this run may add; default DEFAULT_QUOTA_FILES minus current pin count. */
   budgetFiles?: number;
   extraManifests?: readonly ExtraManifest[];
-  /** runs/index.json (runId -> manifestCid); used when present. */
+  /** Expected CID of the run manifest when runs/index.json does not list the run yet. */
+  manifestCid?: string;
+  /** runs/index.json (runId -> manifestCid): the expected CIDs, and the default extra manifests. */
   runsIndexPath?: string;
+  /** Also copy every other run's manifest listed in runs/index.json (default true). */
+  indexManifests?: boolean;
   dryRun?: boolean;
   firstOnly?: boolean;
   /** Stop after a mismatch on a manifest (default true) / on a table (default false). */
@@ -102,6 +117,8 @@ export type ItemStatus =
   | "already_pinned"
   | "mismatch_unpinned"
   | "mismatch_unpin_failed"
+  /** Pinata answered another CID with isDuplicate: true — a pin that predates this run; kept. */
+  | "mismatch_preexisting"
   | "error"
   | "skipped_local"
   | "left_budget"
@@ -153,12 +170,18 @@ export interface CopySummary {
   dry_run: boolean;
   first_only: boolean;
   kinds: CopyKind[];
-  budget: { bytes: number; files: number; source: "flag" | "usage" | "default (dry run)" };
+  budget: { bytes: number; files: number; source: string };
   usage_before: PinataUsage | null;
   usage_after: PinataUsage | null;
   counts: Record<ItemStatus, number>;
   bytes: { uploaded: number; pin_size_uploaded: number; left: number };
-  mismatches: Array<{ name: string; cid: string; pinata_cid: string; unpinned: boolean }>;
+  mismatches: Array<{
+    name: string;
+    cid: string;
+    pinata_cid: string;
+    unpinned: boolean;
+    preexisting: boolean;
+  }>;
   skipped: SkippedItem[];
   left: SkippedItem[];
   errors: Array<{ name: string; cid: string; reason: string }>;
@@ -216,19 +239,6 @@ async function sha256OfFile(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-function isArtifactLike(value: unknown): value is ArtifactLike {
-  const a = value as Partial<ArtifactLike> | null;
-  return (
-    typeof a === "object" &&
-    a !== null &&
-    typeof a.name === "string" &&
-    typeof a.cid === "string" &&
-    typeof a.kind === "string" &&
-    typeof a.size === "number" &&
-    typeof a.sha256 === "string"
-  );
-}
-
 function readRunsIndex(path: string | undefined): Map<string, string> {
   const map = new Map<string, string>();
   if (path === undefined || !existsSync(path)) return map;
@@ -247,27 +257,28 @@ interface CheckedManifest {
   problem?: string;
 }
 
-/** Reads a manifest and proves its bytes: exact JCS, and the expected CID when one is known. */
+/**
+ * Reads a manifest and proves its bytes, failing closed: it must parse as RunManifestV1 (so it has
+ * a runId), be its own exact JCS bytes, and hash to an expected CID from the command line or
+ * runs/index.json. With no expected CID it is a problem, never a pass.
+ */
 async function checkManifest(
   path: string,
   expectedCid: string | undefined,
   index: Map<string, string>,
+  cidSource = "the command line",
 ): Promise<CheckedManifest> {
   const bytes = readFileSync(path);
   const cid = await cidOfBytes(bytes);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
-  let parsed: unknown;
+  let raw: unknown;
   try {
-    parsed = JSON.parse(bytes.toString("utf8"));
+    raw = JSON.parse(bytes.toString("utf8"));
   } catch {
-    parsed = undefined;
+    raw = undefined;
   }
-  const runId =
-    typeof (parsed as { runId?: unknown } | undefined)?.runId === "string"
-      ? (parsed as { runId: string }).runId
-      : undefined;
-  const rawArtifacts = (parsed as { artifacts?: unknown } | undefined)?.artifacts;
-  const artifacts = Array.isArray(rawArtifacts) ? rawArtifacts.filter(isArtifactLike) : [];
+  const parsed = RunManifestV1.safeParse(raw);
+  const runId = parsed.success ? parsed.data.runId : undefined;
   const item: CopyItem = {
     kind: "manifest",
     name: runId === undefined ? path : `runs/${runId}/manifest.json`,
@@ -276,15 +287,24 @@ async function checkManifest(
     sha256,
     path,
   };
-  const out: CheckedManifest = { item, runId, artifacts };
-  if (parsed === undefined || !Array.isArray(rawArtifacts)) {
-    out.problem = "not a run manifest (no artifacts[])";
-  } else if (!bytes.equals(Buffer.from(jcsBytes(parsed)))) {
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return {
+      item,
+      runId,
+      artifacts: [],
+      problem: `not a RunManifestV1${first ? ` (${first.path.join(".") || "root"}: ${first.message})` : ""}`,
+    };
+  }
+  const out: CheckedManifest = { item, runId, artifacts: parsed.data.artifacts };
+  const fromIndex = index.get(parsed.data.runId);
+  const expected = expectedCid ?? fromIndex;
+  if (!bytes.equals(Buffer.from(jcsBytes(raw)))) {
     out.problem = "not the exact JCS bytes of its own content";
-  } else {
-    const expected = expectedCid ?? (runId === undefined ? undefined : index.get(runId));
-    if (expected !== undefined && expected !== cid)
-      out.problem = `hashes to ${cid}, but ${expectedCid === undefined ? "runs/index.json" : "the command line"} names ${expected}`;
+  } else if (expected === undefined) {
+    out.problem = `no expected CID: runs/index.json does not list ${parsed.data.runId}; pass the CID on the command line`;
+  } else if (expected !== cid) {
+    out.problem = `hashes to ${cid}, but ${expectedCid === undefined ? "runs/index.json" : cidSource} names ${expected}`;
   }
   return out;
 }
@@ -322,6 +342,7 @@ function emptyCounts(): Record<ItemStatus, number> {
     already_pinned: 0,
     mismatch_unpinned: 0,
     mismatch_unpin_failed: 0,
+    mismatch_preexisting: 0,
     error: 0,
     skipped_local: 0,
     left_budget: 0,
@@ -375,10 +396,10 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
   const index = readRunsIndex(options.runsIndexPath);
   if (!existsSync(options.manifestPath))
     throw new PreconditionError(`${options.manifestPath} does not exist`);
-  const main = await checkManifest(options.manifestPath, undefined, index);
+  const main = await checkManifest(options.manifestPath, options.manifestCid, index);
   if (main.problem !== undefined)
     throw new PreconditionError(`${options.manifestPath}: ${main.problem}`);
-  if (main.runId !== undefined && main.runId !== options.runId)
+  if (main.runId !== options.runId)
     throw new PreconditionError(
       `${options.manifestPath} is run ${main.runId}, not --run-id ${options.runId}`,
     );
@@ -387,8 +408,23 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
   const queue: CopyItem[] = [];
   if (kinds.includes("manifest")) {
     queue.push(main.item);
+    // Older runs from runs/index.json (default), then explicit --extra-manifest, deduplicated.
+    const extras: ExtraManifest[] = [];
+    if ((options.indexManifests ?? true) && options.runsIndexPath !== undefined)
+      for (const [runId, cid] of index)
+        if (runId !== options.runId)
+          extras.push({
+            path: join(dirname(options.runsIndexPath), runId, "manifest.json"),
+            cid,
+            cidSource: "runs/index.json",
+          });
+    for (const extra of options.extraManifests ?? []) {
+      const at = extras.findIndex((e) => resolve(e.path) === resolve(extra.path));
+      if (at >= 0) extras.splice(at, 1);
+      extras.push(extra);
+    }
     if (!firstOnly)
-      for (const extra of options.extraManifests ?? []) {
+      for (const extra of extras) {
         if (!existsSync(extra.path)) {
           skipped.push({
             kind: "manifest",
@@ -400,7 +436,7 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
           log(`skip ${extra.path}: missing on disk`);
           continue;
         }
-        const checked = await checkManifest(extra.path, extra.cid, index);
+        const checked = await checkManifest(extra.path, extra.cid, index, extra.cidSource);
         if (checked.problem !== undefined) {
           skipped.push({
             kind: "manifest",
@@ -433,10 +469,22 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
   // 2. Budget.
   let usageBefore: PinataUsage | null = null;
   if (!dryRun) usageBefore = await withRetry("usage", false, () => usage(pinata));
-  const budgetSource: CopySummary["budget"]["source"] =
-    options.budgetBytes !== undefined ? "flag" : dryRun ? "default (dry run)" : "usage";
-  let bytesLeft = options.budgetBytes ?? DEFAULT_QUOTA_BYTES - (usageBefore?.pinSizeTotal ?? 0);
-  let filesLeft = options.budgetFiles ?? DEFAULT_QUOTA_FILES - (usageBefore?.pinCount ?? 0);
+  // Never more than the quota minus what the account already holds, whatever the flags say.
+  const quotaBytes = DEFAULT_QUOTA_BYTES - (usageBefore?.pinSizeTotal ?? 0);
+  const quotaFiles = DEFAULT_QUOTA_FILES - (usageBefore?.pinCount ?? 0);
+  let bytesLeft = Math.max(0, Math.min(options.budgetBytes ?? Infinity, quotaBytes));
+  let filesLeft = Math.max(0, Math.min(options.budgetFiles ?? Infinity, quotaFiles));
+  const flagged = options.budgetBytes !== undefined || options.budgetFiles !== undefined;
+  const capped =
+    (options.budgetBytes ?? -Infinity) > quotaBytes ||
+    (options.budgetFiles ?? -Infinity) > quotaFiles;
+  const budgetSource = dryRun
+    ? `${flagged ? "flag" : "quota"} (dry run: usage not read)`
+    : flagged
+      ? capped
+        ? "flag, capped at quota minus usage"
+        : "flag"
+      : "quota minus usage";
   const budget = { bytes: bytesLeft, files: filesLeft, source: budgetSource };
   log(
     `budget: ${bytesLeft} bytes, ${filesLeft} files (${budgetSource})${usageBefore ? `; usage before: ${usageBefore.pinCount} pins, ${usageBefore.pinSizeTotal} bytes` : ""}`,
@@ -456,10 +504,21 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
     receipts.push(r);
     if (dryRun) return;
     mkdirSync(receiptsDir, { recursive: true });
-    writeFileSync(
-      join(receiptsDir, `${safeName(r.name)}.json`),
-      `${clean(JSON.stringify(r, null, 2))}\n`,
-    );
+    const file = join(receiptsDir, `${safeName(r.name)}.json`);
+    // The receipt of the upload that actually pinned the file is evidence: a re-run (which finds
+    // the CID already pinned) never overwrites it.
+    if (existsSync(file)) {
+      try {
+        const prior = JSON.parse(readFileSync(file, "utf8")) as { status?: unknown; cid?: unknown };
+        if (prior.status === "pinned" && prior.cid === r.cid) {
+          log(`note ${r.name}: kept the existing pinned receipt`);
+          return;
+        }
+      } catch {
+        // An unreadable prior receipt is replaced.
+      }
+    }
+    writeFileSync(file, `${clean(JSON.stringify(r, null, 2))}\n`);
   }
 
   function receiptOf(item: CopyItem, status: ItemStatus, extra: Partial<Receipt> = {}): Receipt {
@@ -519,17 +578,32 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
       log(`ok   ${item.kind} ${item.name} cid=${item.cid} pinata=${uploaded.cid} match`);
       return true;
     }
-    let unpinned = true;
     let reason = `Pinata returned ${uploaded.cid}, manifest says ${item.cid}`;
-    try {
-      await withRetry(`unpin ${uploaded.cid}`, false, () => unpin(uploaded.cid, pinata));
-    } catch (err) {
-      unpinned = false;
-      reason += `; unpin failed: ${clean(err instanceof Error ? err.message : String(err))}`;
+    const preexisting = uploaded.isDuplicate === true;
+    let unpinned = false;
+    let status: ItemStatus;
+    if (preexisting) {
+      // That CID was pinned on the account before this upload: not ours to remove.
+      reason += "; Pinata reports it as a duplicate of an existing pin, which is left in place";
+      status = "mismatch_preexisting";
+    } else {
+      try {
+        await withRetry(`unpin ${uploaded.cid}`, false, () => unpin(uploaded.cid, pinata));
+        unpinned = true;
+        status = "mismatch_unpinned";
+      } catch (err) {
+        reason += `; unpin failed: ${clean(err instanceof Error ? err.message : String(err))}`;
+        status = "mismatch_unpin_failed";
+      }
     }
-    const status: ItemStatus = unpinned ? "mismatch_unpinned" : "mismatch_unpin_failed";
     counts[status] += 1;
-    mismatches.push({ name: item.name, cid: item.cid, pinata_cid: uploaded.cid, unpinned });
+    mismatches.push({
+      name: item.name,
+      cid: item.cid,
+      pinata_cid: uploaded.cid,
+      unpinned,
+      preexisting,
+    });
     writeReceipt(receiptOf(item, status, { ...pinFields, reason }));
     log(`FAIL MISMATCH ${item.name}: ${reason}${unpinned ? " (unpinned)" : ""}`);
     const stop = item.kind === "manifest" ? stopManifest : stopTable;
@@ -668,10 +742,11 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
   };
   if (!dryRun) {
     mkdirSync(receiptsDir, { recursive: true });
-    writeFileSync(
-      join(receiptsDir, "summary.json"),
-      `${clean(JSON.stringify(summary, null, 2))}\n`,
-    );
+    const text = `${clean(JSON.stringify(summary, null, 2))}\n`;
+    // One summary per run, never overwritten; summary.json is a copy of the latest.
+    const stamp = summary.finished_at.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+    writeFileSync(join(receiptsDir, `summary-${stamp}.json`), text);
+    writeFileSync(join(receiptsDir, "summary.json"), text);
   }
   log(
     `${ok ? "DONE" : "FAILED"}: ${counts.pinned} pinned, ${counts.already_pinned} already pinned, ${mismatches.length} mismatches, ${errors.length} errors, ${skipped.length} skipped, ${left.length} left${stopped ? ` (stopped: ${stopped})` : ""}${dryRun ? " [dry run: nothing uploaded, nothing written]" : ""}`,

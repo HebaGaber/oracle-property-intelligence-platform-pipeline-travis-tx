@@ -77,6 +77,23 @@ export interface PinataPinOptions {
   pollTimeoutMs?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** Per-request timeout for reads and unpin (default READ_TIMEOUT_MS). */
+  requestTimeoutMs?: number;
+}
+
+/** Reads (pinList, usage) and unpin: a small JSON answer. */
+export const READ_TIMEOUT_MS = 30_000;
+/** Upload timeout = base + size at a conservative floor rate, so a big file is not cut short. */
+export const UPLOAD_TIMEOUT_BASE_MS = 60_000;
+export const UPLOAD_FLOOR_BYTES_PER_SEC = 250_000;
+
+/** The upload timeout for a file of `bytes`: 60 s plus the time at 250 kB/s. */
+export function uploadTimeoutMs(bytes: number): number {
+  return UPLOAD_TIMEOUT_BASE_MS + Math.ceil((bytes / UPLOAD_FLOOR_BYTES_PER_SEC) * 1000);
+}
+
+function readSignal(options: PinataPinOptions): AbortSignal {
+  return AbortSignal.timeout(options.requestTimeoutMs ?? READ_TIMEOUT_MS);
 }
 
 export interface PinByCidResult {
@@ -164,7 +181,13 @@ export async function pinByCid(
   };
 }
 
-/** Fallback only: re-uploads the file's bytes so Pinata holds a copy directly. */
+/**
+ * Uploads the file's bytes so Pinata holds a copy directly, as CIDv1. The multipart filename is
+ * the BASENAME only: a filename with "/" can make pinFileToIPFS treat the upload as a folder and
+ * answer a directory CID. The full repo path goes only in `pinataMetadata.name`. Bounded by
+ * uploadTimeoutMs(size); a timeout surfaces as a thrown error (the caller does not resend a write
+ * blind; an idempotent re-run picks it up).
+ */
 export async function uploadFile(
   filePath: string,
   name: string | undefined,
@@ -174,7 +197,7 @@ export async function uploadFile(
   const api = base(options.apiBase);
   const bytes = await readFile(filePath);
   const form = new FormData();
-  const fileName = name ?? basename(filePath);
+  const fileName = basename(name ?? filePath);
   form.append("file", new Blob([bytes]), fileName);
   if (name) form.append("pinataMetadata", JSON.stringify({ name }));
   form.append("pinataOptions", JSON.stringify(PINATA_UPLOAD_OPTIONS));
@@ -182,6 +205,7 @@ export async function uploadFile(
     method: "POST",
     headers: authHeaders(options.jwt),
     body: form,
+    signal: AbortSignal.timeout(uploadTimeoutMs(bytes.length)),
   });
   const text = await response.text();
   if (!response.ok) {
@@ -216,6 +240,7 @@ export async function unpin(cid: string, options: PinataPinOptions): Promise<voi
   const response = await fetchImpl(`${api}${PINATA_UNPIN_PATH}/${encodeURIComponent(cid)}`, {
     method: "DELETE",
     headers: authHeaders(options.jwt),
+    signal: readSignal(options),
   });
   const text = await response.text();
   if (!response.ok) throw httpError(`unpin of ${cid}`, response, text, options.jwt);
@@ -228,6 +253,7 @@ export async function usage(options: PinataPinOptions): Promise<PinataUsage> {
   const response = await fetchImpl(`${api}${PINATA_USAGE_PATH}`, {
     method: "GET",
     headers: authHeaders(options.jwt),
+    signal: readSignal(options),
   });
   const text = await response.text();
   if (!response.ok) throw httpError("userPinnedDataTotal", response, text, options.jwt);
@@ -252,6 +278,7 @@ export async function isPinned(cid: string, options: PinataPinOptions): Promise<
   const response = await fetchImpl(`${api}${PINATA_PIN_LIST_PATH}?${query}`, {
     method: "GET",
     headers: authHeaders(options.jwt),
+    signal: readSignal(options),
   });
   const text = await response.text();
   if (!response.ok) {

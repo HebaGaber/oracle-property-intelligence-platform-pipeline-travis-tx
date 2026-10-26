@@ -49,23 +49,36 @@ export const VERIFY_TEXTS = Object.freeze({
   fallback: (host: string): string => `fallback · ${host}`,
   /** Operator names of the Verify gateways (ARD § 16 AM-10). */
   gatewayOperators: Object.freeze({ pinata: "Pinata", orbitor: "orbitor", filebase: "Filebase" }),
-  /** The role line of an independent lane (Pinata, orbitor). */
-  independentLane: "Independent public gateway · not operated by CountyLens",
-  /** The role line of the Filebase lane: our pin host, so never an independent check. */
-  fallbackLane: "Fallback · storage host, not independent",
-  /** The Filebase lane's ✓ text: a match, but not one of the two independent checks. */
-  fallbackVerified: "Match on the storage host · does not count as an independent check",
-  fallbackLanesTitle: "Fallback lane",
-  /** The page result: both independent lanes matched the manifest. */
-  independentVerified: "Verified on two independent gateways · Pinata and orbitor",
-  independentPending: "Checking the two independent gateways · Pinata and orbitor",
-  /** The page result when at least one independent lane ended without a match. */
-  independentNotVerified: (gateways: string): string =>
-    `Not verified on two independent gateways · no match from ${gateways}`,
+  /**
+   * The role line of each lane: plain facts (PO decision 2026-10-26, AM-10). "Independent" means a
+   * public gateway CountyLens does not operate, bytes hash-checked; Pinata and orbitor are counted.
+   */
+  laneRoles: Object.freeze({
+    pinata: "Public gateway · also holds our second copy",
+    orbitor: "Public gateway · holds no copy of ours",
+    filebase: "Our main storage host · fallback, not counted",
+  }),
+  /** The Filebase lane's text when its bytes match: shown, never counted. */
+  fallbackVerified: "Bytes match the manifest · our storage host, not counted",
+  countedLanesTitle: "Counted gateways",
+  fallbackLanesTitle: "Fallback gateway · not counted",
+  /** A counted lane that ended `failed` after its retries: no readable bytes, not tampering. */
+  laneGaveUp: "no readable answer after retries",
+  pinataGaveUp: "Pinata may be rate-limiting; try again",
+  /** The page result: both counted lanes matched the manifest. */
+  independentVerified:
+    "Verified on Pinata and orbitor · two public gateways CountyLens does not operate; bytes match the manifest",
+  independentPending:
+    "Checking Pinata and orbitor · two public gateways CountyLens does not operate",
+  /** The page result when a counted lane ended without a match; `details` from the two below. */
+  independentNotVerified: (details: string): string =>
+    `Not verified on two public gateways · ${details}`,
+  noVerifiedAnswer: (gateways: string): string => `no verified answer from ${gateways}`,
+  bytesDiffer: (gateways: string): string => `bytes differ on ${gateways}`,
   storedOnTitle: "Stored on",
   storedOn: Object.freeze([
     "Filebase: IPFS pin of every artifact (storage host)",
-    "Pinata: second copy of the manifest and table files where recorded",
+    "Pinata: second copy of every run manifest and of the latest run's table files that fit the free quota",
     "GitHub Release: CAR backup of the run, re-pinnable",
   ] as const),
   storedOnProvenance: "Storage policy · ARD § 16 AM-10",

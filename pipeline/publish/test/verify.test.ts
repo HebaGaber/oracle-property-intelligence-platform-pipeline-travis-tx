@@ -306,7 +306,7 @@ function fetchedCid(a: ManifestArtifact): string {
 }
 
 describe("gateway allowlist (TC-042)", () => {
-  it("independent = Pinata + orbitor (AM-10); Filebase is the separate storage-host fallback", () => {
+  it("counted = Pinata + orbitor (AM-10); Filebase is the separate storage-host fallback", () => {
     expect(PINATA_GATEWAY_HOST).toBe("gateway.pinata.cloud");
     expect(ORBITOR_GATEWAY_HOST).toBe("ipfs.orbitor.dev");
     expect(FILEBASE_GATEWAY_HOST).toBe("ipfs.filebase.io");
@@ -319,7 +319,7 @@ describe("gateway allowlist (TC-042)", () => {
   it("refuses CloudFront, w3s.link, storacha.link, ipfs.io and dweb.link with the exact text, before any request", async () => {
     const f = await fixture();
     for (const host of [CLOUDFRONT, "w3s.link", "storacha.link", "ipfs.io", "dweb.link"]) {
-      const text = `Refused gateway ${host}: verify-manifest only uses gateway.pinata.cloud, ipfs.orbitor.dev (independent) and ipfs.filebase.io (storage host, not independent)`;
+      const text = `Refused gateway ${host}: verify-manifest only uses gateway.pinata.cloud (public gateway · also holds our second copy), ipfs.orbitor.dev (public gateway · holds no copy of ours) and ipfs.filebase.io (our main storage host · fallback, not counted)`;
       expect(refusedGatewayText(host)).toBe(text);
       expect(() => assertAllowedGateways([host])).toThrow(text);
       const gw = fakeGateways(f.published);
@@ -660,7 +660,7 @@ describe("ALL ARTIFACTS VERIFIED (TC-040)", () => {
       ),
     ).toBe(true);
     expect(
-      lines.some((l) => l.startsWith("fallback") && /not counted as independent/.test(l)),
+      lines.some((l) => l.startsWith("fallback") && /checks matched; not counted$/.test(l)),
     ).toBe(true);
   });
 });

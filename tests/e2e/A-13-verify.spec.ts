@@ -45,8 +45,9 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
   };
   const laneUrl = (gw: Gw, cid: string): string => `https://${GW_HOST[gw]()}/ipfs/${cid}`;
 
-  /** Every lane ends ✓ with size and SHA-256 equal to the expected values; the page result reads
-   * verified on the two independent gateways (AM-10). */
+  /** Every lane ends `verified` with size and SHA-256 equal to the expected values; the ✓ shows
+   * only on the counted lanes (Pinata, orbitor), the Filebase lane is `data-independent="false"`
+   * with no ✓, and the page result reads verified on Pinata and orbitor (AM-10). */
   async function expectVerified(
     page: Page,
     cid: string,
@@ -69,7 +70,14 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
         String(size),
       );
       await expect(lane.locator("[data-expected-sha256]")).toHaveAttribute("data-value", sha256);
-      await expect(lane.getByText("✓")).toBeVisible();
+      if (gw === "filebase") {
+        await expect(lane).toHaveAttribute("data-independent", "false");
+        await expect(lane.getByText("✓")).toHaveCount(0);
+        await expect(lane.locator('[aria-label="verified"]')).toHaveCount(0);
+      } else {
+        await expect(lane).toHaveAttribute("data-independent", "true");
+        await expect(lane.getByText("✓")).toBeVisible();
+      }
     }
     await expect(page.locator(SEL.verifyResult)).toHaveAttribute("data-verify-result", "verified");
     await expect(page.locator(SEL.verifyResult)).toContainText(VERIFY_TEXTS.independentVerified);
@@ -220,7 +228,8 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     await expect(filebase).toHaveAttribute("data-state", "verified", { timeout: LANES_DONE_MS });
     await page2.context().close();
 
-    // 7. Pinata 429 every time → stops failed after its tries, no ✓, no digest; Filebase ✓.
+    // 7. Pinata 429 every time → stops failed after its tries, no ✓, no digest, the reason line;
+    //    Filebase matches but is not counted, so the page result is not_verified.
     const page3 = await (await browser.newContext()).newPage();
     let alwaysTries = 0;
     await page3.route(`${pinataUrl}*`, async (route: Route) => {
@@ -238,9 +247,17 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     await expect(failed.locator("[data-got-sha256]")).toHaveCount(0);
     expect(alwaysTries).toBeGreaterThanOrEqual(3);
     expect(alwaysTries).toBeLessThanOrEqual(4);
+    await expect(failed.locator("[data-lane-reason]")).toHaveText(
+      `${VERIFY_TEXTS.laneGaveUp} · ${VERIFY_TEXTS.pinataGaveUp}`,
+    );
     await expect(page3.locator(SEL.lane("filebase"))).toHaveAttribute("data-state", "verified", {
       timeout: LANES_DONE_MS,
     });
+    await expect(page3.locator(SEL.verifyResult)).toHaveAttribute(
+      "data-verify-result",
+      "not_verified",
+      { timeout: LANES_DONE_MS },
+    );
     await checkpoint(page3, "020", 7);
     await page3.context().close();
   });
@@ -258,7 +275,8 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     // 2. Verify.
     await page.goto(verifyPath(artifact.cid));
     await settled(page, "data-verify");
-    // 3. Filebase lane: mismatch with both digests; Pinata ✓.
+    // 3. Filebase lane: mismatch with both digests; Pinata and orbitor ✓, so the page result
+    //    stays verified (Filebase is not counted).
     const lane = page.locator(SEL.lane("filebase"));
     await expect(lane).toHaveAttribute("data-state", "mismatch", { timeout: LANES_DONE_MS });
     await expect(lane.getByText("✓")).toHaveCount(0);
@@ -274,9 +292,12 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
         { size: artifact.size, sha256: artifact.sha256 },
       ),
     );
-    await expect(page.locator(SEL.lane("pinata"))).toHaveAttribute("data-state", "verified", {
-      timeout: LANES_DONE_MS,
-    });
+    for (const gw of ["pinata", "orbitor"] as const) {
+      await expect(page.locator(SEL.lane(gw))).toHaveAttribute("data-state", "verified", {
+        timeout: LANES_DONE_MS,
+      });
+    }
+    await expect(page.locator(SEL.verifyResult)).toHaveAttribute("data-verify-result", "verified");
     await checkpoint(page, "021", 3);
   });
 

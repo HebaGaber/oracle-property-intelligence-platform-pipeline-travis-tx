@@ -30,7 +30,7 @@ const RETIRED_HOSTS = ["ipfs.io", "dweb.link", "w3s.link"];
 
 function refusalText(host: string): string {
   const { PINATA_GATEWAY_HOST, ORBITOR_GATEWAY_HOST, FILEBASE_GATEWAY_HOST } = harnessConfig();
-  return `Refused gateway ${host}: verify-manifest only uses https://${PINATA_GATEWAY_HOST}, https://${ORBITOR_GATEWAY_HOST} (independent) and https://${FILEBASE_GATEWAY_HOST} (storage host, not independent)`;
+  return `Refused gateway ${host}: verify-manifest only uses https://${PINATA_GATEWAY_HOST} (public gateway · also holds our second copy), https://${ORBITOR_GATEWAY_HOST} (public gateway · holds no copy of ours) and https://${FILEBASE_GATEWAY_HOST} (our main storage host · fallback, not counted)`;
 }
 
 /** The independent pair (AM-10): Pinata + orbitor. Filebase is read too, as the labelled fallback. */

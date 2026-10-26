@@ -1,25 +1,28 @@
 // A-16 T079 (AM-10): copy a run's manifest(s) and table files to Pinata as a second copy.
 //
-// RUNBOOK (from the repo root, after Run 3.1 publishes; the JWT goes in the environment only):
+// RUNBOOK (from the repo root, after Run 3.1 publishes and runs/index.json lists it; PINATA_JWT
+// must be exported in the shell beforehand and is never echoed):
 //   1. Probe (uploads ONLY the run manifest, stops; must print "ok ... match"):
-//        set -a; . ~/.config/assessment/pinata.env; set +a   # never echo it
 //        npx tsx pipeline/publish/scripts/pinata-copy.ts --manifest runs/<runId>/manifest.json \
 //          --run-id <runId> --files-root . --first-only
-//   2. Plan the full copy (no network, nothing written):   ...same flags... --dry-run
-//   3. Full copy (manifest first, then older manifests, then table files until the budget):
+//   2. Plan the full copy (no network, nothing written):   ...same flags without --first-only... --dry-run
+//   3. Full copy: the run manifest, then every other run manifest runs/index.json lists (read from
+//      runs/<runId>/manifest.json, each checked against its index CID), then the run's table files
+//      until the budget:
 //        npx tsx pipeline/publish/scripts/pinata-copy.ts --manifest runs/<runId>/manifest.json \
-//          --run-id <runId> --files-root . \
-//          --extra-manifest runs/travis-full-run1-20261023/manifest.json \
-//          --extra-manifest runs/travis-full-run2-20261024/manifest.json
-//   Receipts: specs/016-cost-and-admin/pinata-receipts/<runId>/*.json + summary.json. Re-running
-//   is safe: CIDs already pinned are skipped. Exit 0 ok (a clean budget stop included), 1 a
-//   mismatch or upload error, 2 bad input.
+//          --run-id <runId> --files-root .
+//   If the run is not in runs/index.json yet, add --manifest-cid <cid> (fail closed: no expected
+//   CID, no upload). Receipts: specs/016-cost-and-admin/pinata-receipts/<runId>/*.json, plus
+//   summary-<UTC>.json per run and summary.json (latest). Re-running is safe: CIDs already pinned
+//   are skipped and an existing "pinned" receipt is kept. Exit 0 ok (a clean budget stop
+//   included), 1 a mismatch or upload error, 2 bad input.
 //
-// Flags: --manifest <path> --run-id <id> --files-root <dir> [--kinds manifest,table]
-//   [--budget-bytes <n>] [--budget-files <n>] [--extra-manifest <path>[=<cid>]]...
-//   [--runs-index runs/index.json] [--receipts-root <dir>] [--concurrency 1..3]
-//   [--stop-on-mismatch] (tables too) [--no-stop-on-mismatch] (not even the manifest)
-//   [--dry-run] [--first-only]
+// Flags: --manifest <path> --run-id <id> --files-root <dir> [--manifest-cid <cid>]
+//   [--kinds manifest,table] [--budget-bytes <n>] [--budget-files <n>] (both capped at the
+//   free-plan quota minus current usage) [--extra-manifest <path>[=<cid>]]...
+//   [--runs-index runs/index.json] [--no-index-manifests] [--receipts-root <dir>]
+//   [--concurrency 1..3] [--stop-on-mismatch] (tables too) [--no-stop-on-mismatch] (not even the
+//   manifest) [--dry-run] [--first-only]
 //
 // PINATA_JWT is read from process.env only, never from a file by this script, and is redacted
 // from every line it prints (see ../src/pinata-copy.ts).
@@ -34,7 +37,7 @@ import {
 } from "../src/pinata-copy.js";
 
 const USAGE =
-  "usage: pinata-copy.ts --manifest <runs/<runId>/manifest.json> --run-id <id> --files-root <dir> [--kinds manifest,table] [--budget-bytes N] [--budget-files N] [--extra-manifest <path>[=<cid>]]... [--runs-index <path>] [--receipts-root <dir>] [--concurrency 1..3] [--stop-on-mismatch|--no-stop-on-mismatch] [--dry-run] [--first-only]";
+  "usage: pinata-copy.ts --manifest <runs/<runId>/manifest.json> --run-id <id> --files-root <dir> [--kinds manifest,table] [--budget-bytes N] [--budget-files N] [--manifest-cid <cid>] [--extra-manifest <path>[=<cid>]]... [--runs-index <path>] [--no-index-manifests] [--receipts-root <dir>] [--concurrency 1..3] [--stop-on-mismatch|--no-stop-on-mismatch] [--dry-run] [--first-only]";
 
 class UsageError extends Error {}
 
@@ -53,6 +56,7 @@ export function parseArgs(argv: string[], jwt: string): PinataCopyOptions {
   };
   const valueFlags = new Set([
     "--manifest",
+    "--manifest-cid",
     "--run-id",
     "--files-root",
     "--kinds",
@@ -79,6 +83,12 @@ export function parseArgs(argv: string[], jwt: string): PinataCopyOptions {
     switch (arg) {
       case "--manifest":
         opts.manifestPath = value as string;
+        break;
+      case "--manifest-cid":
+        opts.manifestCid = value as string;
+        break;
+      case "--no-index-manifests":
+        opts.indexManifests = false;
         break;
       case "--run-id":
         opts.runId = value as string;
