@@ -21,7 +21,7 @@
 // describes the latest run. An unknown `run` shows the latest run and says why.
 // Layout (A-16 F3, PO 2026-10-26): title + Run menu left of Sync status from 1024 px; the
 // pipeline as a Fetch sources panel (each manifest source with its records) and steps 2–5;
-// Timeline (Coming soon entries) beside Latest events; What changed split into totals + CIDs and
+// Latest events (the empty Timeline card was removed, PO 2026-10-26); What changed split into totals + CIDs and
 // the per-source rows; the run card in two columns with data groups as a compact grid. The Run
 // menu floats over the page and closes on a choice, on focus leaving it, or on Escape.
 // A react-router lazy route module: it exports `Component` and nothing else.
@@ -163,8 +163,9 @@ export function Component(): ReactElement {
             manifestCid={run.manifestCid}
             label={runLabel(selected.number, run.entry.finishedAt)}
           />
+          {/* PO 2026-10-26: the Timeline card (two Coming soon links, no data for any run) is
+              removed; its planned items stay in the Coming soon sheet. */}
           <div className={styles.wide}>
-            <Timeline label={runLabel(selected.number, run.entry.finishedAt)} />
             <LatestEvents manifest={run.manifest} />
           </div>
           <WhatChanged run={run} number={selected.number} />
@@ -480,26 +481,6 @@ function FetchStrip({
   );
 }
 
-/**
- * Board "Timeline · Run N": the manifest has a start, one capture time per source and a finish,
- * no per-step start and end, so the Gantt chart stays Coming soon and the card shows the run's
- * own times (the board's "Show as table" view of what exists).
- */
-function Timeline({ label }: { readonly label: string }): ReactElement {
-  return (
-    <section className={styles.card} aria-labelledby="timeline-heading" data-timeline="">
-      <h3 id="timeline-heading" className={styles.cardTitle}>
-        Timeline · {label}
-      </h3>
-      <p className={styles.helperText}>
-        The manifest records no per-step times, so the chart is not drawn; the run card below gives
-        its start and finish.
-      </p>
-      <ComingSoonEntries ids={["pipeline-diagram", "timeline-scrubber"]} />
-    </section>
-  );
-}
-
 const EVENT_ICONS: Readonly<Record<RunEvent["kind"], { readonly icon: string }>> = {
   started: { icon: "play_arrow" },
   captured: { icon: "cloud_download" },
@@ -507,7 +488,12 @@ const EVENT_ICONS: Readonly<Record<RunEvent["kind"], { readonly icon: string }>>
 };
 
 function LatestEvents({ manifest }: { readonly manifest: RunManifestV1 }): ReactElement {
-  const events = runEvents([manifest]).slice(-5).reverse();
+  // Only this run's own captures: one carried over from an earlier run is that run's event.
+  const own = new Set(fetchedIn(manifest).map((s) => s.name));
+  const events = runEvents([manifest])
+    .filter((event) => event.kind !== "captured" || own.has(event.source))
+    .slice(-5)
+    .reverse();
   return (
     <section className={styles.card} aria-labelledby="events-heading" data-latest-events="">
       <div className={styles.cardHead}>

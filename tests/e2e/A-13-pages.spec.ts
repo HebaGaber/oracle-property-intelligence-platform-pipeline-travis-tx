@@ -602,9 +602,10 @@ const ENTRY: Record<
   "street-view": { url: () => exploreUrl(EXPLORE, WIDE), prep: openFirstProperty },
   "saved-searches": { url: () => EXPLORE, prep: openMoreSheet },
   "similar-properties": { url: () => exploreUrl(EXPLORE, WIDE), prep: openFirstProperty },
-  "pipeline-diagram": { url: () => ROUTES.runs },
+  // PO 2026-10-26: the Runs page's empty Timeline card is gone; both are in the Planned list.
+  "pipeline-diagram": { url: () => EXPLORE, prep: openMoreSheet },
   "area-matrix": { url: () => EXPLORE, prep: openMoreSheet },
-  "timeline-scrubber": { url: () => ROUTES.runs },
+  "timeline-scrubber": { url: () => EXPLORE, prep: openMoreSheet },
   "gateway-race": { url: (o) => verifyPath(o.manifestCid) },
 };
 
