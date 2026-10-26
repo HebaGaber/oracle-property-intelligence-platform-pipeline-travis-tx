@@ -162,10 +162,7 @@
         "antiBot": "The story context records HTTP 403 on publicinformation (2026-10-17 and 2026-10-19); the A-01 catalog shows the listing as available. The 403 evidence file was not found under docs/evidence/blocked/, so the 403 stays unconfirmed here",
         "optimisation": "Not used as a feed",
         "status": "blocked",
-        "blockedDates": [
-          "2026-10-17",
-          "2026-10-19"
-        ],
+        "blockedDates": ["2026-10-17", "2026-10-19"],
         "missingReason": null
       },
       {
@@ -225,11 +222,7 @@
         "antiBot": "Cloudflare challenge; never solved, no identity change, no retry; 0 requests since (A-07 gap, PO decision 2026-10-22)",
         "optimisation": "None possible; the official API application is not filed (PO decision 2026-10-20)",
         "status": "blocked",
-        "blockedDates": [
-          "2026-10-17",
-          "2026-10-19",
-          "2026-10-20"
-        ],
+        "blockedDates": ["2026-10-17", "2026-10-19", "2026-10-20"],
         "missingReason": null
       },
       {
