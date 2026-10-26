@@ -11,7 +11,14 @@ import type { KeyboardEvent, MouseEvent, ReactElement } from "react";
 import { truncateCid } from "./CidDisplay";
 import { Icon } from "./Icon";
 import { PermitChip } from "./PermitChip";
-import { CompactProvenance, FieldValue, plainWords } from "./ResultRow";
+import {
+  CompactProvenance,
+  FieldValue,
+  PLACEHOLDER_BUILT_YEAR,
+  PLACEHOLDER_BUILT_YEAR_NOTE,
+  builtYearWords,
+  plainWords,
+} from "./ResultRow";
 import styles from "./ResultTable.module.css";
 
 /** The roof-age basis in the board's short words ("year built 1934"); null when unknown. */
@@ -20,7 +27,7 @@ export function shortBasis(row: ExploreRow): string | null {
   if (basis === null || basis === "unknown") return null;
   const words = basis === "built_year" ? "year built" : plainWords(basis);
   return basis !== "permit" && typeof row.year_built === "number"
-    ? `${words} ${String(row.year_built)}`
+    ? `${words} ${builtYearWords(row.year_built)}`
     : words;
 }
 
@@ -170,7 +177,11 @@ function Row({
           <span
             data-field="roof_age_basis"
             className={`${styles.sub} ${styles.basis}`}
-            title={row.roof_age_basis ?? "the run has no roof-age basis for this property"}
+            title={
+              row.year_built === PLACEHOLDER_BUILT_YEAR && row.roof_age_basis === "built_year"
+                ? PLACEHOLDER_BUILT_YEAR_NOTE
+                : (row.roof_age_basis ?? "the run has no roof-age basis for this property")
+            }
           >
             {basis ?? "basis unknown"}
           </span>

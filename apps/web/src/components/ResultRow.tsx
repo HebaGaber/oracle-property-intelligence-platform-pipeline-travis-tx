@@ -142,6 +142,18 @@ export const PLAIN_WORDS: Readonly<Record<string, string>> = {
 
 export const plainWords = (code: string): string => PLAIN_WORDS[code] ?? code.replaceAll("_", " ");
 
+/**
+ * TCAD's built year 1900 is a placeholder for old buildings of unknown year: Run 3.1 has 233
+ * structures in 1900 against 1 in 1899 and 5 in 1901. A roof age from it is shown as approximate.
+ */
+export const PLACEHOLDER_BUILT_YEAR = 1900;
+export const PLACEHOLDER_BUILT_YEAR_NOTE =
+  "1900 is a frequent TCAD default for old buildings of unknown year, so this age is approximate";
+
+/** "1934", or "1900 (approx.)" for TCAD's placeholder year. */
+export const builtYearWords = (year: number): string =>
+  year === PLACEHOLDER_BUILT_YEAR ? `${String(year)} (approx.)` : String(year);
+
 /** "Owned 1 yr", "Owned 12 yrs", "Owned < 1 yr". */
 export const ownedText = (years: number): string =>
   years < 1 ? "Owned < 1 yr" : `Owned ${String(years)} ${years === 1 ? "yr" : "yrs"}`;
@@ -267,7 +279,7 @@ export function FieldValue({
         // Task B B-03 / audit #15: the roof dates from the building, with its year when carried.
         <span title="built_year">
           {typeof extras(row).year_built === "number"
-            ? `Year built ${String(extras(row).year_built)} (no reroof permit found)`
+            ? `Year built ${builtYearWords(extras(row).year_built as number)} (no reroof permit found)`
             : "Year built (no reroof permit found)"}
         </span>
       ) : (
@@ -703,7 +715,9 @@ export function ResultRow({
         {/* Final review: year built and owner on the card when the row carries them (the
             drawer's Owner and Roof sections hold the fields with their reasons). */}
         {typeof extras(row).year_built === "number" ? (
-          <span className={styles.meta}>{`Year built ${String(extras(row).year_built)}`}</span>
+          <span
+            className={styles.meta}
+          >{`Year built ${builtYearWords(extras(row).year_built as number)}`}</span>
         ) : null}
         {typeof extras(row).owner_name === "string" ? (
           <span className={styles.meta}>{extras(row).owner_name}</span>

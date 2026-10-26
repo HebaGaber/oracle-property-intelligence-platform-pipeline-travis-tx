@@ -80,6 +80,11 @@ export const COVERAGE_LABELS = Object.freeze({
   permits_no_tcad_geoid: "TCAD id matches no property account",
   // tcad_id null and no usable address (street + ZIP5) to fall back on.
   permits_no_tcad_id: "No TCAD id or usable address on source record",
+  // The other permit → parcel reconciliation outcomes (pipeline/oracle-runtime/travis/permits/link.ts).
+  permits_ambiguous_geoid: "TCAD id shared by several accounts, address did not decide",
+  permits_ambiguous_address: "Address matches several parcels",
+  permits_address_unmatched: "No TCAD id; address matches no parcel",
+  permits_trade_sub_permit: "Trade sub-permits set aside (electrical, plumbing, mechanical)",
 });
 export type CoverageLabelKey = keyof typeof COVERAGE_LABELS;
 

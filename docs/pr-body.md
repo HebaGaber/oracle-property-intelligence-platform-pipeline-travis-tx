@@ -9,9 +9,9 @@ All nine stories (A-01 to A-04, A-07, A-11, A-13, A-14, A-16) are merged on `fea
 | What | Where |
 | --- | --- |
 | Runtime | https://countylens.aldarraj.com |
-| Test credentials | The demo path is public, no login. An admin test account (`/admin/sign-in`: run controls, Activity) is available to evaluators on request; its password is not posted here |
+| Test credentials | The demo path is public, no login. The admin test account (`/admin/sign-in`: run controls, Activity) and the MCP bearer token are sent privately to the hiring contact with this submission (never in the repository) |
 | Demo video | Not recorded yet (release step R7) |
-| MCP server | `POST https://s7h96zfam0.execute-api.eu-north-1.amazonaws.com/mcp` with a bearer token; six read-only tools; connection guide and a live "Try a tool" at `/help/mcp` (no token needed). A reviewer token for MCP Inspector or Claude Desktop is shared with evaluators on request, never in the repository |
+| MCP server | `POST https://s7h96zfam0.execute-api.eu-north-1.amazonaws.com/mcp` with a bearer token; six read-only tools; connection guide and a live "Try a tool" at `/help/mcp` (no token needed). The token for MCP Inspector or Claude Desktop is in the private evaluator packet |
 | Latest run | Run 3.1 `travis-full-run3-1-20261025`: [`runs/travis-full-run3-1-20261025/manifest.json`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/runs/travis-full-run3-1-20261025/manifest.json), manifest CID `bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai`, previous (Run 3) `bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm` |
 | Run history | [`runs/index.json`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/runs/index.json): pilot slice (2026-10-21), Run 1 (10-23), Run 2 (10-24), Run 3 (10-25), Run 3.1 (10-25, a correction of Run 3); each manifest names its predecessor (`previousManifestCid`) |
 | Independent verification | `npx tsx scripts/verify-manifest.ts runs/travis-full-run3-1-20261025/manifest.json --sample` fetches by CID from Pinata and orbitor (public gateways this project does not operate) and checks size and SHA-256 |
@@ -75,6 +75,8 @@ Gate log: [`docs/traceability.md`](https://github.com/HebaGaber/oracle-property-
 | Second independent pin and independent public gateways | Pinata holds all 5 run manifests and 201 of Run 3.1's 255 table files with identical CIDs; Pinata and orbitor verify by CID; CARs on GitHub Releases |
 | Out-of-area owner filter | Run 3.1 publishes owner mailing ZIP; 7,056 out-of-area owners with roofs ≥ 20 yrs within 5 mi of Austin |
 | Street addresses | Run 3.1 publishes situs text; Explore, the drawer and the agent show it |
+| Duplicate / identity reconciliation not visible | Coverage · "Reconciliation": each Austin permit matched to one TCAD parcel or why not (36,568 shared TCAD ids, 89 ambiguous addresses, 29,480 unmatched addresses, 275,830 ids on no property account, 31,824 without id, 2,362 trade sub-permits set aside) |
+| Roof ages from TCAD's placeholder year 1900 | 233 structures carry 1900 (1 in 1899, 5 in 1901): shown as "1900 (approx.)", and the agent lists nearest first |
 | SQL panel first query | The SQL tab was removed by PO decision; the Catalog and the MCP tools cover structured queries |
 | "Open" permits | An open permit includes stalled ones (open past expiry, never closed), PO decision 2026-10-26 |
 

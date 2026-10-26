@@ -18,7 +18,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { LinearProgress } from "../components/LinearProgress";
 import { Provenance } from "../components/Provenance";
-import { ownedText, plainWords } from "../components/ResultRow";
+import { builtYearWords, ownedText, plainWords } from "../components/ResultRow";
 import { StatusPill } from "../components/StatusPill";
 import {
   askAgent,
@@ -154,7 +154,8 @@ function Match({ match }: { readonly match: AgentMatch }): ReactElement {
       `roof ${match.roof_age_years} yrs (${match.roof_age_basis === undefined ? "basis not stated" : plainWords(match.roof_age_basis)}${match.roof_age_confidence === undefined ? "" : `, ${match.roof_age_confidence} confidence`})`,
     );
   }
-  if (typeof extra.year_built === "number") facts.push(`Year built ${extra.year_built}`);
+  if (typeof extra.year_built === "number")
+    facts.push(`Year built ${builtYearWords(extra.year_built)}`);
   if (typeof extra.owner_name === "string") facts.push(`Owner ${extra.owner_name}`);
   if (typeof extra.tenure_years === "number") facts.push(ownedText(extra.tenure_years));
   if (match.permit_number !== undefined) facts.push(`permit ${match.permit_number}`);

@@ -74,6 +74,22 @@ export const COVERAGE_KINDS: readonly CoverageKind[] = Object.freeze([
     reason: null,
   },
   {
+    // README "reconcile duplicate entities": how each Austin permit record was matched to one TCAD
+    // parcel, or why it was not linked (shared ids, ambiguous or unmatched addresses), from the
+    // run's internal match. Listed before Permit so these keys are claimed here.
+    id: "reconciliation",
+    title: "Reconciliation · permits matched to TCAD parcels",
+    prefixes: [
+      "permits_ambiguous_",
+      "permits_address_unmatched",
+      "permits_no_tcad_",
+      "permits_trade_sub_permit",
+    ],
+    source: "austin-3syk-w9eu",
+    table: "property_improvement/property_improvement",
+    reason: null,
+  },
+  {
     id: "permit",
     title: "Permit",
     prefixes: ["permits_", "roof_age_"],

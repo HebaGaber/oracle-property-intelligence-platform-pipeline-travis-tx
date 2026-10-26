@@ -85,6 +85,18 @@ describe("ResultTable", () => {
     );
   });
 
+  it("labels TCAD's placeholder built year 1900 as approximate", () => {
+    render(
+      <ResultTable
+        rows={[row({ roof_age_basis: "built_year", roof_age_years: 126, year_built: 1900 })]}
+        first={1}
+        onSelect={() => undefined}
+        selected={null}
+      />,
+    );
+    expect(cell("roof_age_basis")).toBe("year built 1900 (approx.)");
+  });
+
   it("a property without a permit shows a dash for the contractor, not a blank", () => {
     render(
       <ResultTable
