@@ -18,7 +18,8 @@ describe("route targets", () => {
     expect(paths).toContain("/");
     expect(paths).toContain("/runs/compare?a=1&b=1");
     expect(paths).toContain("/data/verify/bafkreitest");
-    expect(paths).toContain("/tx/travis/explore?mode=sql");
+    expect(paths).toContain("/tx/travis/explore");
+    expect(paths.some((p) => p.includes("mode=sql"))).toBe(false);
     expect(paths).toContain("/permits");
     expect(paths.filter((p) => p.startsWith("/soon/")).length).toBe(
       comingSoonItems().filter((i) => i.linked).length,

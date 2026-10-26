@@ -4,7 +4,6 @@
 .page {
   display: grid;
   gap: var(--space-5);
-  max-width: calc(var(--space-10) * 15);
 }
 
 .title {

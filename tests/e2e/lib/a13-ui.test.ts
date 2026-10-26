@@ -9,7 +9,6 @@ import {
   ExploreSearchResult,
   a11Branch,
   a13EvidenceName,
-  areaCountSql,
   chipYears,
   directoryArtifact,
   expectedBbbText,
@@ -46,19 +45,12 @@ describe("evidence names and titles", () => {
   });
 });
 
-describe("explore URLs and SQL", () => {
+describe("explore URLs", () => {
   it("keeps the case's parameter order and a readable at", () => {
     expect(exploreUrl("/tx/travis/explore", { at: "30.2672,-97.7431", r: 25, view: "list" })).toBe(
       "/tx/travis/explore?at=30.2672,-97.7431&r=25&view=list",
     );
     expect(exploreUrl("/tx/travis/explore")).toBe("/tx/travis/explore");
-  });
-
-  it("builds a read-only count over v_property", () => {
-    const sql = areaCountSql({ lat: 30.4, lon: -97.6, radiusMi: 5 }, ["p.roof_age_years >= 15"]);
-    expect(sql).toMatch(/^SELECT count\(\*\) AS n FROM v_property p WHERE /);
-    expect(sql).toContain("p.roof_age_years >= 15");
-    expect(sql).toContain(String(5 * 1609.344));
   });
 });
 

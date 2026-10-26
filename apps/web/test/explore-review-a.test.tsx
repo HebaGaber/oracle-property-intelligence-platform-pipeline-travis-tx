@@ -241,7 +241,9 @@ describe("A-16 AC-13: index errors and the owner-area notice", () => {
       await renderExplore("?place=pflugerville&r=5");
       const alert = await screen.findByRole("alert");
       expect(alert.textContent).toContain(words);
-      expect(alert.textContent).toContain("SQL and the run's published files still work");
+      expect(alert.textContent).toContain(
+        "The run's published files and the Data pages still work",
+      );
       expect(alert.textContent).not.toContain(`(${code})`);
     },
   );

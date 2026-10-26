@@ -344,6 +344,25 @@ describe("Explore · Filters rows (AC-4, AC-7, FR-007, FR-022, NFR-003)", () => 
   });
 });
 
+describe("Explore tabs after the SQL tab was removed (A-16, PO decision)", () => {
+  it("offers only Filters and AI", async () => {
+    await renderExplore("");
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Filters", "AI"]);
+    expect(screen.getByRole("tab", { name: "Filters" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("replaces an old ?mode=sql link with Filters and keeps the other parameters", async () => {
+    await renderExplore("?mode=sql&place=pflugerville&r=5");
+    await waitFor(() => expect(lastLocation).toBe("/tx/travis/explore?place=pflugerville&r=5"));
+    expect(screen.queryByRole("tab", { name: "SQL" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Filters" }).getAttribute("aria-selected")).toBe("true");
+    await waitFor(() =>
+      expect(header()?.textContent).toBe(EXPLORE_TEXTS.headerNoRoof(2, 5, "Pflugerville")),
+    );
+  });
+});
+
 describe("Explore · Filters URL state (FR-004a, TC-029)", () => {
   it("restores every control from the URL and falls back from view=map to the list", async () => {
     await renderExplore(

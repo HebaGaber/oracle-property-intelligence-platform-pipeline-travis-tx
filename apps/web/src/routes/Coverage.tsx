@@ -149,17 +149,22 @@ function CoverageCards({ run }: { readonly run: LoadedRun }): ReactElement {
       <KpiTiles run={run} kinds={kinds} byKind={byKind} number={number} />
       <LoadedVsTotal manifest={manifest} manifestCid={manifestCid} />
       <h3 className={styles.sectionTitle}>Counts by record kind</h3>
-      {kinds.map((kind) => (
-        <KindCard
-          key={kind.id}
-          kind={kind}
-          rows={byKind.get(kind.id) ?? []}
-          manifest={manifest}
-          manifestCid={manifestCid}
-        />
-      ))}
-      <AreaCard />
-      <KnownLimitations manifest={manifest} />
+      {/* A-16 PO note: the kind cards sit two per row from 1024 px and stack below. */}
+      <div className={styles.cardGrid}>
+        {kinds.map((kind) => (
+          <KindCard
+            key={kind.id}
+            kind={kind}
+            rows={byKind.get(kind.id) ?? []}
+            manifest={manifest}
+            manifestCid={manifestCid}
+          />
+        ))}
+      </div>
+      <div className={styles.cardGrid}>
+        <AreaCard />
+        <KnownLimitations manifest={manifest} />
+      </div>
     </>
   );
 }

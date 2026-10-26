@@ -454,8 +454,8 @@ describe("Catalog: find a table or field (A-16 T050, DataCatalog1440 board)", ()
     fireEvent.change(find, { target: { value: "nothing_like_this" } });
     expect(names()).toEqual([]);
     expect(screen.getByRole("status").textContent).toContain("nothing_like_this");
-    expect(screen.getByRole("link", { name: "Query in SQL" }).getAttribute("href")).toBe(
-      "/tx/travis/explore?mode=sql",
+    expect(screen.getByRole("link", { name: "Search in Explore" }).getAttribute("href")).toBe(
+      "/tx/travis/explore",
     );
   });
 });

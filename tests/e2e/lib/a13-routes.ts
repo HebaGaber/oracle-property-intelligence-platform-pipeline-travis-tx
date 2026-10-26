@@ -46,7 +46,7 @@ type RouteKey = keyof typeof ROUTES;
 
 /**
  * Every route of route-list.ts as a URL to open. `/data/verify/:cid` takes the latest manifest CID,
- * `/runs/compare` the TC-086 query, Explore adds its `?mode=sql` variant, and `/soon/:item` expands to
+ * `/runs/compare` the TC-086 query, and `/soon/:item` expands to
  * every linked Coming soon item. The other-county catch-all is TC-071's, not a route to scan.
  */
 export function routeTargets(
@@ -68,15 +68,13 @@ export function routeTargets(
       case "runsCompare":
         out.push({ key, path: `${path}?a=1&b=1` });
         break;
-      case "explore":
-        out.push({ key, path }, { key: "explore-sql", path: `${path}?mode=sql` });
-        break;
       case "comingSoon":
         for (const item of items.filter((i) => i.linked)) {
           out.push({ key: `soon-${item.id}`, path: comingSoonPath(item.id) });
         }
         break;
       case "hub":
+      case "explore":
       case "runs":
       case "runsLog":
       case "coverage":

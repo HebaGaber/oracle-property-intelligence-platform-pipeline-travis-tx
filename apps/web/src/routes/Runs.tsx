@@ -16,8 +16,9 @@
 // - Fresh / Stale / Rate-limited / Failed pills: no freshness threshold is defined for the product
 //   (the board's 8 days is a sample value) and a published run is by definition complete, so the
 //   pill reads "Published". Running / failed / stopped come live from the bridge (admin only).
-// - Choosing an earlier run in the Run menu: the list shows every run with its manifest CID and
-//   the Verify and Compare links; viewing an earlier run's full card is not built.
+// Run menu (A-16 PO note): choosing a run sets `?run=<runId>` and the pipeline steps, Latest
+// events, What changed and the run card show that run (default: the latest). Sync status always
+// describes the latest run. An unknown `run` shows the latest run and says why.
 // A react-router lazy route module: it exports `Component` and nothing else.
 import type { ManifestSource, RunManifestV1 } from "@countylens/contract";
 import {
@@ -31,8 +32,8 @@ import {
   verifyPath,
   type CoverageLabelKey,
 } from "@countylens/shared";
-import type { ReactElement } from "react";
-import { Link } from "react-router";
+import { useRef, type ReactElement } from "react";
+import { Link, useSearchParams } from "react-router";
 import { ComingSoonEntries } from "../components/ComingSoonEntry";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
@@ -44,7 +45,7 @@ import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
 import { useAdminAccess, useLiveRun } from "../auth/useAdmin";
 import { formatCount, utcTimestamp } from "../data/format";
-import { RUN_STAGE_TEXTS, type LoadedRun } from "../data/run-loader";
+import { RUN_STAGE_TEXTS, type LoadedRun, type SelectedRun } from "../data/run-loader";
 import { dataGroupItems, type DataGroupItem } from "../data/data-groups";
 import { runEvents } from "../data/run-events";
 import { RUNS_INDEX_PATH, runsByFinish, type RunsIndexEntry } from "../data/runs-index";
@@ -56,7 +57,7 @@ import {
   runLabel,
   ShareBar,
   SourceDeltas,
-  useLatestRun,
+  useRun,
   type RunPageState,
 } from "./Runs.shared";
 import styles from "./Runs.module.css";
@@ -70,12 +71,17 @@ const COVERAGE_NOT_REPORTED = "Not reported in this run's manifest";
 const DAY_MS = 86_400_000;
 
 export function Component(): ReactElement {
-  const { state, retry, index } = useLatestRun();
+  const [params] = useSearchParams();
+  const requested = params.get("run");
+  const { state, retry, index } = useRun(requested);
   const access = useAdminAccess();
   const live = useLiveRun(access.kind === "admin");
   const run = state.kind === "ready" ? state.run : undefined;
+  const selected = state.kind === "ready" ? state.selected : undefined;
   const entries = index === undefined ? [] : runsByFinish(index);
   const latest = entries[entries.length - 1];
+  // While a chosen run loads, the menu already marks it (the URL is the source of truth).
+  const currentId = selected?.entry.runId ?? requested ?? latest?.runId;
 
   return (
     <section aria-label="Runs" data-route="runs" data-state={state.kind} className={styles.page}>
@@ -93,42 +99,50 @@ export function Component(): ReactElement {
       {state.kind === "error" ? (
         <ErrorBanner message={runErrorNode(state.error)} onRetry={retry} />
       ) : null}
-      {entries.length > 0 ? <RunList entries={entries} /> : null}
-      {latest === undefined ? null : (
-        <SyncStatus
-          latest={latest}
-          number={entries.length}
-          run={run}
-          adminSlot={
-            access.kind === "admin" ? (
-              <AdminActions access={access} liveState={live.state} refresh={live.refresh} />
-            ) : access.kind === "signed-out" ? (
-              <Link className={styles.textLink} to={ROUTES.adminSignIn}>
-                <Icon name="admin_panel_settings" size="medium" />
-                Admin sign-in
-              </Link>
-            ) : access.kind === "checking" ? (
-              <p className={styles.helperText} data-admin-note="checking">
-                Checking admin access…
-              </p>
-            ) : (
-              <NotAdminNote
-                kind={access.kind}
-                email={"identity" in access ? access.identity.email : null}
-              />
-            )
-          }
-        />
+      <div className={styles.cardGrid}>
+        {entries.length > 0 ? <RunList entries={entries} currentId={currentId} /> : null}
+        {latest === undefined ? null : (
+          <SyncStatus
+            latest={latest}
+            number={entries.length}
+            run={selected?.isLatest === false ? "earlier" : run}
+            adminSlot={
+              access.kind === "admin" ? (
+                <AdminActions access={access} liveState={live.state} refresh={live.refresh} />
+              ) : access.kind === "signed-out" ? (
+                <Link className={styles.textLink} to={ROUTES.adminSignIn}>
+                  <Icon name="admin_panel_settings" size="medium" />
+                  Admin sign-in
+                </Link>
+              ) : access.kind === "checking" ? (
+                <p className={styles.helperText} data-admin-note="checking">
+                  Checking admin access…
+                </p>
+              ) : (
+                <NotAdminNote
+                  kind={access.kind}
+                  email={"identity" in access ? access.identity.email : null}
+                />
+              )
+            }
+          />
+        )}
+      </div>
+      {selected?.notFound == null ? null : (
+        <p className={styles.helperText} role="status" data-run-not-found={selected.notFound}>
+          Run <code className={styles.mono}>{selected.notFound}</code> is not in {RUNS_INDEX_PATH} ·
+          showing the latest run instead.
+        </p>
       )}
       <ComingSoonEntries ids={["pipeline-diagram", "timeline-scrubber"]} />
       {state.kind === "loading" && latest !== undefined ? <PendingSections state={state} /> : null}
-      {run === undefined ? null : (
-        <>
+      {run === undefined || selected === undefined ? null : (
+        <div className={styles.cardGrid} data-shown-run={run.entry.runId}>
           <PipelineSteps manifest={run.manifest} manifestCid={run.manifestCid} />
           <LatestEvents manifest={run.manifest} />
-          <WhatChanged run={run} number={entries.length} />
-          <RunCard run={run} />
-        </>
+          <WhatChanged run={run} number={selected.number} />
+          <RunCard run={run} selected={selected} />
+        </div>
       )}
       {state.kind === "loading" && latest === undefined ? (
         <Skeleton variant="cards" count={1} />
@@ -149,27 +163,63 @@ function PendingSections({
   );
 }
 
-/** The Run menu of the board: every run, newest first, with its manifest CID (from the index). */
-function RunList({ entries }: { readonly entries: readonly RunsIndexEntry[] }): ReactElement {
+/**
+ * The Run menu of the board: every run, newest first, with its manifest CID (from the index).
+ * Each run's title links to `?run=<runId>`; the shown run is marked (`aria-current`, a check).
+ */
+function RunList({
+  entries,
+  currentId,
+}: {
+  readonly entries: readonly RunsIndexEntry[];
+  readonly currentId: string | undefined;
+}): ReactElement {
   const newestFirst = entries.map((entry, i) => ({ entry, number: i + 1 })).reverse();
-  const latest = newestFirst[0];
+  const latestId = newestFirst[0]?.entry.runId;
+  const shown = newestFirst.find(({ entry }) => entry.runId === currentId) ?? newestFirst[0];
+  const menu = useRef<HTMLDetailsElement>(null);
+  // The router follows the link (so open-in-new-tab works); the menu closes on the choice.
+  const close = (): void => {
+    if (menu.current !== null) menu.current.open = false;
+  };
   return (
-    <details className={styles.runMenu} data-run-list="">
-      <summary className={styles.runMenuSummary}>
+    <details ref={menu} className={styles.runMenu} data-run-list="">
+      <summary className={styles.runMenuSummary} data-current-run={shown?.entry.runId ?? ""}>
         <Icon name="history" size="medium" />
         <span className={styles.runMenuTitle}>
-          {latest === undefined
+          {shown === undefined
             ? "No runs yet"
-            : `${runLabel(latest.number, latest.entry.finishedAt)} · latest`}
+            : `${runLabel(shown.number, shown.entry.finishedAt)}${
+                shown.entry.runId === latestId ? " · latest" : ""
+              }`}
         </span>
         <StatusPill status="info" icon="cloud_done" text="Published" />
         <Icon name="arrow_drop_down" size="medium" />
       </summary>
       <ul className={styles.runMenuList} aria-label="Runs, newest first">
         {newestFirst.map(({ entry, number }) => (
-          <li key={entry.manifestCid} className={styles.runMenuItem} data-run-id={entry.runId}>
+          <li
+            key={entry.manifestCid}
+            className={`${styles.runMenuItem} ${entry.runId === shown?.entry.runId ? styles.runMenuItemCurrent : ""}`}
+            data-run-id={entry.runId}
+          >
             <span className={styles.itemTitle}>
-              <b>{runLabel(number, entry.finishedAt)}</b>
+              <Link
+                className={styles.runMenuChoice}
+                to={{ search: runSearch(entry.runId, latestId) }}
+                aria-current={entry.runId === shown?.entry.runId ? "true" : undefined}
+                onClick={close}
+                data-choose-run={entry.runId}
+              >
+                <Icon
+                  name={entry.runId === shown?.entry.runId ? "check" : "radio_button_unchecked"}
+                  size="medium"
+                />
+                <b>
+                  {runLabel(number, entry.finishedAt)}
+                  {entry.runId === latestId ? " · latest" : ""}
+                </b>
+              </Link>
               <code className={styles.mono}>{entry.runId}</code>
             </span>
             <span className={styles.itemBody}>
@@ -187,6 +237,11 @@ function RunList({ entries }: { readonly entries: readonly RunsIndexEntry[] }): 
   );
 }
 
+/** The `/runs` query for a run: none for the latest (the default), else `?run=<runId>`. */
+function runSearch(runId: string, latestId: string | undefined): string {
+  return runId === latestId ? "" : `?${new URLSearchParams({ run: runId }).toString()}`;
+}
+
 function ageText(finishedAt: string, now: number): string {
   const days = Math.floor((now - Date.parse(finishedAt)) / DAY_MS);
   if (Number.isNaN(days) || days < 0) return "";
@@ -201,7 +256,8 @@ function SyncStatus({
 }: {
   readonly latest: RunsIndexEntry;
   readonly number: number;
-  readonly run: LoadedRun | undefined;
+  /** The latest run once read; "earlier" while the page shows an earlier run's manifest. */
+  readonly run: LoadedRun | "earlier" | undefined;
   readonly adminSlot: ReactElement;
 }): ReactElement {
   const age = ageText(latest.finishedAt, Date.now());
@@ -229,7 +285,11 @@ function SyncStatus({
         <div className={styles.kvRow}>
           <dt>County coverage</dt>
           <dd data-county-coverage="">
-            {run === undefined ? "Reading the manifest…" : countyCoverage(run.manifest)}
+            {run === undefined
+              ? "Reading the manifest…"
+              : run === "earlier"
+                ? "Not shown · an earlier run is open; choose the latest in the Run menu"
+                : countyCoverage(run.manifest)}
           </dd>
         </div>
       </dl>
@@ -286,7 +346,11 @@ function PipelineSteps({
     { name: "Verify", icon: "verified", metric: "Check it yourself on the Verify page" },
   ];
   return (
-    <section className={styles.card} aria-labelledby="steps-heading" data-pipeline-steps="">
+    <section
+      className={`${styles.card} ${styles.wide}`}
+      aria-labelledby="steps-heading"
+      data-pipeline-steps=""
+    >
       <div>
         <h3 id="steps-heading" className={styles.sectionTitle}>
           Pipeline of {manifest.runId}
@@ -451,17 +515,27 @@ function Glyph({ name }: { readonly name: string }): ReactElement {
   );
 }
 
-function RunCard({ run }: { readonly run: LoadedRun }): ReactElement {
+function RunCard({
+  run,
+  selected,
+}: {
+  readonly run: LoadedRun;
+  readonly selected: SelectedRun;
+}): ReactElement {
   const { manifest, manifestCid, read } = run;
   const groups = dataGroupItems(manifest);
   return (
-    <article className={styles.card} aria-labelledby="run-title">
+    <article className={`${styles.card} ${styles.wide}`} aria-labelledby="run-title">
       <header className={styles.header}>
         <h2 id="run-title" className={styles.title}>
           {manifest.runId}
         </h2>
         <FallbackChip source={read.source} />
       </header>
+      <p className={styles.times} data-run-number={selected.number}>
+        {runLabel(selected.number, run.entry.finishedAt)} ·{" "}
+        {selected.isLatest ? "the latest run" : "an earlier run (choose another in the Run menu)"}
+      </p>
       <p className={styles.provenance}>
         <Glyph name="description" />
         <span>

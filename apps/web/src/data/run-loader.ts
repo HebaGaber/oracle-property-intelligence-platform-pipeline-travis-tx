@@ -60,6 +60,37 @@ export async function loadRun(options: LoadRunOptions): Promise<LoadedRun> {
   return { index, entry, manifest, manifestCid, read };
 }
 
+/** The run a page shows: the requested run of the index, else the latest one. */
+export interface SelectedRun {
+  readonly entry: RunsIndexEntry;
+  /** 1-based number in `finishedAt` order (the numbering contract, RUNS_TEXTS.numbering). */
+  readonly number: number;
+  readonly isLatest: boolean;
+  /** The requested run ID when the index has no such run (the page then shows the latest). */
+  readonly notFound: string | null;
+}
+
+/**
+ * The Run menu's choice (A-16 PO note, `/runs?run=<runId>`): the entry with `runId`, or the
+ * latest run when no run is requested or the index has no such run (`notFound` names it, so the
+ * page can say why it shows another run instead of a blank).
+ */
+export function selectRun(index: RunsIndexV1, runId: string | null): SelectedRun {
+  const ordered = [...index.runs].sort(
+    (a, b) => Date.parse(a.finishedAt) - Date.parse(b.finishedAt),
+  );
+  const latest = latestRun(index);
+  const wanted =
+    runId === null || runId === "" ? undefined : ordered.find((r) => r.runId === runId);
+  const entry = wanted ?? latest;
+  return {
+    entry,
+    number: ordered.indexOf(entry) + 1,
+    isLatest: entry === latest,
+    notFound: wanted === undefined && runId !== null && runId !== "" ? runId : null,
+  };
+}
+
 /** The error-banner text for a failed load (plan § "Fixed texts"; FR-002, FR-005(c)). */
 export function runErrorMessage(error: unknown): string {
   if (error instanceof RunIndexError) return runIndexText(error.reason);

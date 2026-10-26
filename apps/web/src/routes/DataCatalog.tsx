@@ -198,13 +198,13 @@ export function Component(): ReactElement {
               value={find}
               onChange={(e) => setFind(e.target.value)}
             />
-            <Link className={styles.sqlLink} to={`${ROUTES.explore}?mode=sql`}>
-              Query in SQL
+            <Link className={styles.exploreLink} to={ROUTES.explore}>
+              Search in Explore
             </Link>
           </div>
           <p className={runsStyles.itemBody} data-views-note="">
-            In SQL and MCP use the views (v_property, v_roofing_permit, v_contractor, v_run); these
-            are the published tables they read.
+            In MCP use the views (v_property, v_roofing_permit, v_contractor, v_run); these are the
+            published tables they read.
           </p>
           {shownTables.length === 0 && tables.length > 0 ? (
             <p className={runsStyles.itemBody} role="status">
