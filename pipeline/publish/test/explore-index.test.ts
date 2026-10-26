@@ -327,7 +327,7 @@ describe("build: frozen schema and parity (T010)", { timeout: 60_000 }, () => {
         );
         expect(file).toEqual(view);
       }
-      expect((await describeRelation(db, "v_property")).length).toBe(31);
+      expect((await describeRelation(db, "v_property")).length).toBe(34); // contract v1.2
     } finally {
       db.close();
     }
