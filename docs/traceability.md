@@ -152,6 +152,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G4 | stories/A-16-cost-and-admin.md | rev 2 (2026-10-26) | FAIL (4) → FAIL (1, C-11 pending PO) → PASS 11/11, `docs/gates/G4-A-16-precheck.md`; PO exceptions: sizing (Part 3 added), AC-1 billed-days window, AC-6 email + password from Task B | Ready (HebaGaber) | 2026-10-26 |
 | G5 | specs/016-cost-and-admin (spec, plan, tasks) | 2026-10-26 | FAIL (7) → FAIL (1, C-10 analyze H1) → PASS with PO exception, `docs/gates/G5-A-16-precheck.md`; `/speckit-analyze` 0 CRITICAL, 6 HIGH fixed, H1 five builder groups = PO exception; ADR-0001 amendment 1 accepted | Approved (HebaGaber) | 2026-10-26 |
 | G6 | testplans/A-16-test-cases.md | v1.0 | PASS, `docs/gates/G6-A-16-precheck.md` | Approved (HebaGaber) | 2026-10-26 |
+| PO decision | scripts/bundle-size.ts total-JS gate | 2026-10-26 | 300 KB → 310 KB gzipped for the board-matched UI and the Task B search box port; Hub first-load limit 150 KB unchanged (130.8 KB) | Approved (HebaGaber) | 2026-10-26 |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
 
