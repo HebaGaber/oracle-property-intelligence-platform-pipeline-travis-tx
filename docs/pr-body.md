@@ -58,7 +58,7 @@ Every row carries its source URL, capture time, table CID and run; every missing
 | A-11 Full county by CID, incremental runs | Merged, G7 approved |
 | A-13 Explorer UI and pages | Merged, G7 approved |
 | A-14 Agent and MCP server | Merged, G7 approved |
-| A-16 Zero idle cost, admin, prototype parity, full-county index | Merged 2026-10-26, G7 approved; demo polish (Explore drawer and results table, rail and footer, Coverage, data-binding audit fixes) on `016c-demo-polish` |
+| A-16 Zero idle cost, admin, prototype parity, full-county index | Merged 2026-10-26, G7 approved; demo polish merged the same day (Explore drawer and results table, rail with MCP and Coming soon, legal footer, Coverage, data-binding audit fixes) |
 
 Gate log: [`docs/traceability.md`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/traceability.md). Progress board and git graph: [`docs/progress.md`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/progress.md). Every carried item with its outcome: [`docs/evidence/A-16.md` § Closure](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/evidence/A-16.md).
 
