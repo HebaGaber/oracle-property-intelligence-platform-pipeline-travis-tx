@@ -11,16 +11,17 @@
 import { ROUTES, comingSoonPath } from "@countylens/shared/routes";
 import { PAGE_TEXTS } from "@countylens/shared/texts";
 import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type FormEvent,
   type KeyboardEvent,
   type ReactElement,
   type UIEvent,
 } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { COMING_SOON_ITEMS } from "../content/coming-soon";
 import { MORE_PAGES } from "../routes/route-list";
 
@@ -93,38 +94,36 @@ function Glyph({ name }: { readonly name: string }): ReactElement {
   );
 }
 
-/** Shell1440 board: the app bar's search box (from 1024 px). It hands the text to Explore's AI tab
- *  (`?mode=ai&q=`), which fills its question box; nothing is sent until the person presses Ask. */
-export const SEARCH_LABEL = "Ask about Travis County properties";
+/** Shell1440 board: the app bar's search box (from 1024 px; A-16 port of Task B's combobox).
+ *  The combobox module (gazetteer suggestions) loads on first focus, so the shell stays small;
+ *  until then this placeholder field stands in with the same label. */
+export const SEARCH_LABEL = "Search a place, ZIP or permit, or ask a question";
+
+const SearchBox = lazy(() => import("./SearchBox").then((m) => ({ default: m.SearchBox })));
 
 function HeaderSearch(): ReactElement {
-  const navigate = useNavigate();
-  const [text, setText] = useState("");
-  const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    const q = text.trim();
-    const target = q === "" ? ASK_PATH : `${ASK_PATH}&q=${encodeURIComponent(q)}`;
-    setText("");
-    // The AI tab reads `q` when it mounts; already on it, a fresh load is the way to refill it.
-    const { pathname, search } = window.location;
-    if (pathname === ROUTES.explore && new URLSearchParams(search).get("mode") === "ai") {
-      window.location.assign(target);
-      return;
-    }
-    void navigate(target);
-  };
-  return (
-    <form role="search" aria-label="Search" className={styles.search} onSubmit={onSubmit}>
-      <Icon name="auto_awesome" size="medium" />
+  const [live, setLive] = useState<string | null>(null);
+  const field = (
+    <div role="search" className={styles.search}>
+      <Icon name="location_on" size="medium" />
       <input
-        type="search"
+        type="text"
+        role="combobox"
+        aria-expanded={false}
         className={styles.searchInput}
         aria-label={SEARCH_LABEL}
         placeholder={SEARCH_LABEL}
-        value={text}
-        onChange={(event) => setText(event.target.value)}
+        value={live ?? ""}
+        onFocus={() => setLive((t) => t ?? "")}
+        onChange={(event) => setLive(event.target.value)}
       />
-    </form>
+    </div>
+  );
+  if (live === null) return field;
+  return (
+    <Suspense fallback={field}>
+      <SearchBox initialText={live} autoFocus className={styles.search} />
+    </Suspense>
   );
 }
 

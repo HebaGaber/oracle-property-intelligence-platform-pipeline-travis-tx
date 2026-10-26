@@ -127,6 +127,7 @@
 }
 
 .value[data-field="permit"],
+.value[data-field="roof_age_basis"],
 .value[data-field="contractor_resolution"] {
   white-space: normal;
 }
