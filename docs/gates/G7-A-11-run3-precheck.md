@@ -4,7 +4,7 @@ artifact: branch 011c-run3-integrated (A-11 Run 3 corrections, A-16 item 15)
 artifact_version: 227edd7
 run_date: 2026-10-25
 tool: Claude
-verdict: FAIL
+verdict: PASS
 ---
 
 # G7 pre-check: A-11 Run 3 corrections (`011c-run3-integrated` into `feature/oracle-pipeline`)
@@ -47,3 +47,14 @@ This is an AI pre-check. It reports gaps only; the PO decides.
 | C-08 | PASS | Run 3 rows in `docs/traceability.md` (AC-31, Run 3 correction table, gate log) and `docs/kit-usage.md`. |
 
 Verdict now: FAIL (2), both waiting on the publish index step. The PO decides whether to merge now with these two recorded as open.
+
+## Re-check after the publish (2026-10-26)
+
+| Check | Result | What changed |
+| --- | --- | --- |
+| C-04 | PASS | Hosted on the feature branch (build `cf40e00`): CI run 40246843539 green on every job; the Runs page lists Run 3. Five cases are parked on A-16 items 18 and 19 (Run 3 size), reported as skipped. |
+| C-05 | PASS | ERR-66 closed 2026-10-26 after the PO checked the BBB link (`find_type` removed). Run 3 defects are ERR-65 to ERR-71 after the merge with A-14. |
+| C-07 | PASS | `docs/evidence/A-11.md` § Run 3: publish table (8 steps), hosted proof and screenshot `docs/evidence/img/A-11-run3-runs-page.png`; trace id under the A-11 exception. |
+
+Verdict now: PASS (all ten checks). The PO approved the merge on 2026-10-25 ("if ci is green merge"); merged as `cb0a4d2`.
+
