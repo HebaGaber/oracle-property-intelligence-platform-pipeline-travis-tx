@@ -362,6 +362,14 @@ describe("Explore tabs after the SQL tab was removed (A-16, PO decision)", () =>
       expect(header()?.textContent).toBe(EXPLORE_TEXTS.headerNoRoof(2, 5, "Pflugerville")),
     );
   });
+
+  it("drops the last AI question when the tab changes, so the AI tab opens afresh (PO 2026-10-26)", async () => {
+    await renderExplore("?mode=ai&q=old%20question&place=pflugerville&r=5");
+    fireEvent.click(await screen.findByRole("tab", { name: "Filters" }));
+    await waitFor(() => expect(lastLocation).toContain("mode=filters"));
+    expect(lastLocation).not.toMatch(/[?&]q=/);
+    expect(lastLocation).toContain("place=pflugerville");
+  });
 });
 
 describe("Explore · Filters URL state (FR-004a, TC-029)", () => {

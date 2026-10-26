@@ -66,6 +66,8 @@ export function Component(): ReactElement {
     setParams((current) => {
       const p = new URLSearchParams(current);
       p.set("mode", next);
+      // PO 2026-10-26: the AI tab opens afresh; a question it was handed (`q`) is not kept.
+      p.delete("q");
       if (p.get("view") === "map") p.set("view", "list");
       return p;
     });

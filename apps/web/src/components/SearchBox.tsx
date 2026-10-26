@@ -1,8 +1,8 @@
 // The search box (A-16, ported from Task B B-03 SearchBox): a WAI-ARIA 1.2 list-autocomplete
 // combobox. Focus stays in the input; options are reached with ArrowUp/ArrowDown through
 // aria-activedescendant, Enter picks the active (or first enabled) option, Escape closes the list
-// and then clears the text. A place or ZIP sets the Explore area (`place=`, dropping `at` and
-// `sel`); a permit number, TCAD parcel id or any other text opens the AI tab with the question
+// and then clears the text. A place or ZIP sets the Explore area (`place=`, dropping `at`, `sel`
+// and the last AI question `q`); a permit number, TCAD parcel id or any other text opens the AI tab with the question
 // filled in (nothing is sent until Ask). The list sits above the page and the drawer while the box
 // has focus and stays inside the viewport. The shell loads this module on first focus.
 import { ROUTES } from "@countylens/shared/routes";
@@ -21,7 +21,8 @@ export function targetFor(option: SearchOption, current: URL): string | null {
       current.pathname === ROUTES.explore
         ? new URLSearchParams(current.search)
         : new URLSearchParams();
-    for (const key of ["at", "sel", "mode"]) p.delete(key);
+    // PO 2026-10-26: a new search starts the AI tab afresh, so the last question (`q`) goes too.
+    for (const key of ["at", "sel", "mode", "q"]) p.delete(key);
     p.set("place", option.place);
     return `${ROUTES.explore}?${p.toString()}`;
   }

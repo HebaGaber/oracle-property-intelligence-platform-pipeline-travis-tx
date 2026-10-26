@@ -116,7 +116,10 @@ describe("ResultTable", () => {
       <ResultTable
         rows={[
           row({
-            permit: { ...row({}).permit!, contractor_name_as_printed: null },
+            permit: {
+              ...(row({}).permit as NonNullable<ExploreRow["permit"]>),
+              contractor_name_as_printed: null,
+            },
             contractor: { name_as_printed: null, resolution: "unresolved", company_cid: null },
             bbb_status: "not_checked",
             bbb_status_reason: "BBB lookups are not run for this county yet",

@@ -60,6 +60,11 @@ describe("searchSuggest", () => {
     expect(target).toContain("r=3");
     expect(target).not.toMatch(/[?&](at|sel)=/);
     expect(targetFor(tcad, url)).toMatch(/mode=ai&q=/);
+    // A new place starts the AI tab afresh: the last question does not survive the search.
+    const asked = new URL("https://x/tx/travis/explore?mode=ai&q=old%20question&place=Austin&r=5");
+    const next = targetFor(zip, asked) ?? "";
+    expect(next).toContain("place=78753");
+    expect(next).not.toMatch(/[?&](q|mode)=/);
   });
 });
 
