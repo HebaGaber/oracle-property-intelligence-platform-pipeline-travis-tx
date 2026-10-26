@@ -13,7 +13,7 @@ export const AS_PUBLISHED = "[As published]";
 export const DERIVED = "[Derived]";
 const ELEPHANT_CLI = "elephant-cli";
 /** Missing-data reason for a field contract/v1 does not describe. */
-export const MEANING_MISSING = "not described in contract/v1";
+export const MEANING_MISSING = "not described in the data contract";
 
 /** Columns elephant-cli's export-tables adds to every row (not lexicon properties). */
 const EXPORT_COLUMNS: Readonly<Record<string, string>> = {

@@ -75,7 +75,11 @@ export const BBB_RATING_NOT_PUBLISHED_LABEL = "BBB rating not published (BBB blo
  */
 export const COVERAGE_LABELS = Object.freeze({
   permits_emitted: "Permits published",
-  permits_no_tcad_geoid: "No TCAD id on source record",
+  // pipeline/oracle-runtime/travis/permits/link.ts: the permit's TCAD id is on no real-property
+  // account and its address matches none either (label audit 2026-10-26; was "No TCAD id …").
+  permits_no_tcad_geoid: "TCAD id matches no property account",
+  // tcad_id null and no usable address (street + ZIP5) to fall back on.
+  permits_no_tcad_id: "No TCAD id or usable address on source record",
 });
 export type CoverageLabelKey = keyof typeof COVERAGE_LABELS;
 
@@ -104,8 +108,9 @@ export const RUN_INDEX_TEXTS = Object.freeze({
   empty: "No runs published yet",
 });
 
-/** Permit rows rendered per page: all rows stay in memory, one page is in the DOM. */
-export const PERMITS_PAGE_SIZE = 200;
+/** Permit rows rendered per page: all rows stay in memory, one page is in the DOM. Twenty keeps
+ *  the page a few screens tall (200 rows made it 53,000–73,000 px). */
+export const PERMITS_PAGE_SIZE = 20;
 
 /** Permits-page empty state and error banners (TC-029; engine failure; unreadable rows). */
 export const PERMITS_TEXTS = Object.freeze({

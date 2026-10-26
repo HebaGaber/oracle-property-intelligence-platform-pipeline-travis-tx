@@ -1,10 +1,11 @@
 // A-13 T039 (G3): Runs · Log (`/runs/log`), US9, AC-12, FR-012; TC-057. Every event of every
-// manifest in runs/index.json (run-events), ascending by time, each with its run ID. Texts and
-// source names come from the fixtures and @countylens/shared; no network.
+// manifest in runs/index.json (run-events), newest first (the Time header sorts ascending),
+// each with its run ID. Texts and source names come from the fixtures and @countylens/shared;
+// no network.
 import { RUN_MANIFEST_SCHEMA, RUNS_INDEX_SCHEMA, type RunManifestV1 } from "@countylens/contract";
 import { rawCid } from "@countylens/query-core";
 import { SOURCE_LABELS } from "@countylens/shared";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvents } from "../src/data/run-events";
@@ -130,12 +131,12 @@ afterEach(() => {
 });
 
 describe("Runs · Log", () => {
-  it("lists every event of every run, ascending by time, each with its run ID", async () => {
+  it("lists every event of every run, newest first, each with its run ID", async () => {
     install();
     const page = await renderLog();
     await within(page).findByRole("table", { name: "Run events" });
     expect(page.getAttribute("data-state")).toBe("ready");
-    const expected = runEvents(runs.map((r) => r.manifest));
+    const expected = runEvents(runs.map((r) => r.manifest)).reverse();
     expect(expected).toHaveLength(7);
     const items = page.querySelectorAll<HTMLElement>("tr[data-event]");
     expect([...items].map((li) => li.getAttribute("data-time"))).toEqual(
@@ -148,6 +149,20 @@ describe("Runs · Log", () => {
       expected.map((e) => e.kind),
     );
     for (const li of items) expect(li.textContent).toContain(li.getAttribute("data-run-id"));
+  });
+
+  it("sorts oldest first from the Time header (A-13 AC-12)", async () => {
+    install();
+    const page = await renderLog();
+    await within(page).findByRole("table", { name: "Run events" });
+    const header = within(page).getByRole("columnheader", { name: /Time \(UTC\)/ });
+    expect(header.getAttribute("aria-sort")).toBe("descending");
+    fireEvent.click(within(header).getByRole("button"));
+    expect(header.getAttribute("aria-sort")).toBe("ascending");
+    const times = [...page.querySelectorAll<HTMLElement>("tr[data-event]")].map((tr) =>
+      tr.getAttribute("data-time"),
+    );
+    expect(times).toEqual(runEvents(runs.map((r) => r.manifest)).map((e) => e.time));
   });
 
   it("names the captured source and shows the run's limitations on its finish event", async () => {

@@ -3,14 +3,13 @@
 // Event, Source, Count, Status pill), a pager and Download CSV. Every event of every run in
 // runs/index.json comes only from manifest timestamps (data/run-events): a run's start, each
 // source's capture, and its finish with the run's limitations; nothing is invented. Order is
-// ascending by time by default (A-13 AC-12); the Time header sorts the other way.
+// newest first by default, as on the board; the Time header sorts ascending (A-13 AC-12).
 // Justified differences from the board: the board's "Verified", "Records added", "Warning" and
 // "Schema checked" events are not in a manifest (it cannot carry its own publish or verify time),
 // so the chips are the three kinds that exist; the status pill is "Done" (or "Done with
 // limitations" for a finish that carries notes), never a rate-limit or blocked pill the data does
 // not record. An unreadable index is one banner; an unreadable manifest is a banner naming its CID
-// while the other runs still list. Oldest first stays the default (the board shows newest first)
-// because A-13 TC-057 reads the list ascending. Below 840 px each event is a small card (time and
+// while the other runs still list. Below 840 px each event is a small card (time and
 // status, run, event, source and count) instead of a squeezed table row (D-6).
 // A react-router lazy route module.
 import type { RunManifestV1 } from "@countylens/contract";
@@ -240,7 +239,7 @@ function LogTable({
   const all = useMemo(() => buildRows(manifests, numbers), [manifests, numbers]);
   const [kinds, setKinds] = useState<ReadonlySet<Kind>>(new Set());
   const [run, setRun] = useState<string>("all");
-  const [newestFirst, setNewestFirst] = useState(false);
+  const [newestFirst, setNewestFirst] = useState(true);
   const [page, setPage] = useState(1);
 
   const runIds = [...numbers.entries()].map(([runId, v]) => ({ runId, ...v }));

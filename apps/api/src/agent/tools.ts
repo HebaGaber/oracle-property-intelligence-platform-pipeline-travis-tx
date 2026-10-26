@@ -81,6 +81,8 @@ function projectProperty(n: number, row: Row): Record<string, unknown> {
   return {
     n,
     property_cid: row.cid,
+    // Contract v1.2 publishes the situs text (Run 3.1: 441,940 of 441,961 properties).
+    address: row.unnormalized_address ?? null,
     dist_mi: row.dist_mi,
     roof_age_years: row.roof_age_years,
     roof_age_basis: row.roof_age_basis,

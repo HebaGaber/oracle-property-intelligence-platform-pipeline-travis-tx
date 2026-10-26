@@ -295,16 +295,16 @@ describe("scripts/bundle-size.ts", () => {
     expect(existsSync(bundleScript), "ENOENT scripts/bundle-size.ts").toBe(true);
   });
 
-  it("limits the gzipped assets/*.js total to 315 KB by default (PO, A-16 and AM-10)", async () => {
+  it("limits the gzipped assets/*.js total to 320 KB by default (PO, A-16, AM-10, demo polish)", async () => {
     const { DEFAULT_LIMIT_BYTES } = await loadBundle();
-    expect(DEFAULT_LIMIT_BYTES).toBe(315 * 1024);
+    expect(DEFAULT_LIMIT_BYTES).toBe(320 * 1024);
   });
 
   it("fails when the gzipped total of the app chunks is over the limit", async () => {
     const { checkBundle } = await loadBundle();
-    const report = checkBundle({ distDir: makeDist({ "index-a1.js": 160, "vendor-b2.js": 160 }) });
+    const report = checkBundle({ distDir: makeDist({ "index-a1.js": 170, "vendor-b2.js": 170 }) });
     expect(report.ok).toBe(false);
-    expect(report.totalGzipBytes).toBeGreaterThan(315 * 1024);
+    expect(report.totalGzipBytes).toBeGreaterThan(320 * 1024);
     expect(report.files.map((f) => f.name).sort()).toEqual(["index-a1.js", "vendor-b2.js"]);
   });
 
@@ -356,7 +356,7 @@ describe("scripts/bundle-size.ts", () => {
     const r = runBundle(["--dist", makeDist({ "index-a1.js": 200, "vendor-b2.js": 200 })]);
     expect(r.status).toBe(1);
     expect(r.out).toMatch(/bundle-size: FAIL/);
-    expect(r.out).toMatch(/limit 322560/);
+    expect(r.out).toMatch(/limit 327680/);
   });
 
   it("as a CLI exits 0 under the limit", () => {

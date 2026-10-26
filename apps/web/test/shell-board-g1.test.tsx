@@ -4,7 +4,8 @@
 // - the app bar is one 64 px row at every width (no wrapping second row for the county chip);
 // - the Apps menu (grid icon, from 600 px) switches apps: CountyLens current, Roofing CRM linked
 //   only from an https crmUrl, otherwise "Coming soon · Not deployed yet";
-// - Explore's modes (Filters, Builder, AI) sit nested under Explore in the rail, on Explore only;
+// - Explore's modes (Filters, AI) sit nested under Explore in the rail, on Explore only (Builder is
+//   a Coming soon item of the More sheet, PO 2026-10-26);
 // - the More sheet groups the pages in one card, the planned items with a tonal "Coming soon"
 //   pill, then Apps;
 // - another county's URL names the county in a centred dialog-style card;
@@ -110,22 +111,17 @@ describe("G1 · app bar (Shell1440, Welcome390)", () => {
 });
 
 describe("G1 · rail (Shell1440; Task B CrmShell1440)", () => {
-  it("nests Filters, Builder and AI under Explore on Explore only, the current mode marked", async () => {
+  it("nests Filters and AI under Explore on Explore only, the current mode marked", async () => {
     stubFetch(null);
     await renderAt("/tx/travis/explore?mode=ai");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     const nested = [...nav.querySelectorAll<HTMLAnchorElement>("a[data-nested]")];
-    expect(nested.map((a) => a.lastElementChild?.textContent)).toEqual([
-      "Filters",
-      "Builder",
-      "AI",
-    ]);
+    expect(nested.map((a) => a.lastElementChild?.textContent)).toEqual(["Filters", "AI"]);
     expect(nested.map((a) => a.getAttribute("href"))).toEqual([
       "/tx/travis/explore",
-      "/soon/builder-mode",
       "/tx/travis/explore?mode=ai",
     ]);
-    expect(nested[2]?.getAttribute("aria-current")).toBe("page");
+    expect(nested[1]?.getAttribute("aria-current")).toBe("page");
     expect(nested[0]?.getAttribute("aria-current")).toBeNull();
     cleanup();
     await renderAt("/runs");
@@ -142,7 +138,7 @@ describe("G1 · rail (Shell1440; Task B CrmShell1440)", () => {
 });
 
 describe("G1 · More sheet (Shell390More; Task B MoreSheet)", () => {
-  it("pages in one card, then Planned with tonal Coming soon pills, then Apps", async () => {
+  it("compact pages in one card, then Planned with tonal Coming soon pills, then Apps", async () => {
     stubFetch(null);
     await renderAt("/runs");
     fireEvent.click(
@@ -153,9 +149,8 @@ describe("G1 · More sheet (Shell390More; Task B MoreSheet)", () => {
     const sheet = screen.getByRole("dialog", { name: "More" });
     const lists = [...sheet.querySelectorAll("ul")].map((ul) => ul.getAttribute("aria-label"));
     expect(lists).toEqual(["Pages", "Planned", "Apps"]);
-    expect(within(sheet).getByRole("link", { name: "What can I ask?" }).getAttribute("href")).toBe(
-      "/tx/travis/explore?welcome=1",
-    );
+    // PO 2026-10-26: "What can I ask?" lives in the header help menu, not the sheet.
+    expect(within(sheet).queryByRole("link", { name: "What can I ask?" })).toBeNull();
     const shell = css("components/AppShell.module.css");
     expect(shell).toMatch(/\.soon \{[^}]*background: var\(--status-unavailable-container\);/s);
     expect(shell).toMatch(

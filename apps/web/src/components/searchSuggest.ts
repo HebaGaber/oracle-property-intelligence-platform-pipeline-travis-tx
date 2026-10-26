@@ -121,5 +121,6 @@ function tcad(value: string): SearchOption {
   };
 }
 
-/** "Try" examples for the empty box: gazetteer entries only (no data value is invented here). */
-export const SEARCH_SAMPLES: readonly string[] = ["Pflugerville", "78753", "Round Rock"];
+/** "Try" examples for the empty box: gazetteer entries only (no data value is invented here),
+ *  chosen where the City of Austin permit source has long-open roofing permits (Run 3.1). */
+export const SEARCH_SAMPLES: readonly string[] = ["Austin", "78704", "78702"];

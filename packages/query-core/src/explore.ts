@@ -125,7 +125,8 @@ export function exploreSearchSql(input: ExploreSearchInput): ExploreSql {
     open_days AS permit_open_days, issue_date AS permit_issue_date,
     final_date AS permit_final_date, contractor_resolution, contractor_company_cid,
     contractor_name_as_printed, bbb_url, bbb_status, bbb_status_reason,
-    table_cid AS permit_table_cid, missing AS permit_missing,
+    table_cid AS permit_table_cid, source_url AS permit_source_url,
+    captured_at AS permit_captured_at, missing AS permit_missing,
     row_number() OVER (
       PARTITION BY property_cid
       ORDER BY (status_class IN ('open', 'stalled')) DESC NULLS LAST, open_days DESC NULLS LAST,
@@ -157,7 +158,7 @@ base AS (
     k.permit_cid, k.permit_number, k.permit_status, k.permit_status_class, k.permit_open_days,
     k.permit_issue_date, k.permit_final_date, k.contractor_resolution, k.contractor_company_cid,
     k.contractor_name_as_printed, k.bbb_url, k.bbb_status, k.bbb_status_reason,
-    k.permit_table_cid, k.permit_missing
+    k.permit_table_cid, k.permit_source_url, k.permit_captured_at, k.permit_missing
   FROM box b
   ${join} k ON k.permit_property_cid = b.property_cid AND k.permit_rank = 1${
     propertyWhere.length > 0 ? `\n  WHERE ${propertyWhere.join("\n    AND ")}` : ""
@@ -214,6 +215,10 @@ export interface ExplorePermit {
   /** The exact `open_days` of v_roofing_permit (an integer); `open_years` is its rounded-down view. */
   readonly open_days: number | null;
   readonly table_cid: string | null;
+  /** The permit's own provenance (v_roofing_permit `source_url`, `captured_at`): the evidence chain
+   *  of a permit-based roof age cites the permit source, not the property's. */
+  readonly source_url?: string | null;
+  readonly captured_at?: string | null;
   /** A-16: v_roofing_permit `issue_date` / `final_date` (YYYY-MM-DD); null with the view's reason. */
   readonly issue_date?: string | null;
   readonly final_date?: string | null;
@@ -235,8 +240,9 @@ export interface ExploreContractor {
 
 export interface ExploreRow {
   readonly property_cid: string;
-  /** Not in the published export (ADR-0002): always null with `not_in_export`. */
-  readonly address: null;
+  /** v_property `unnormalized_address` (situs text; Run 3.1 publishes it for 441,940 of 441,961
+   *  properties). Null with `not_in_export` when the run's export has none for the property. */
+  readonly address: string | null;
   readonly dist_mi: number;
   /** 8-point compass bearing from the centre ("N", "NE", …). */
   readonly bearing: string;
@@ -323,9 +329,10 @@ export function toExploreRow(row: Row, centre: { lat: number; lon: number }): Ex
   // A-16: an index built before the derive.ts fix says contractor_unresolved for "none printed".
   const noContractor = hasPermit && noContractorPrinted(contractorName, row.contractor_company_cid);
 
+  const address = str(row.unnormalized_address);
   const missing: MissingEntry[] = [
     ...missingList(row.missing),
-    { field: "address", reason: "not_in_export" },
+    ...(address === null ? [{ field: "address", reason: "not_in_export" }] : []),
   ];
   if (hasPermit) {
     const permitMissing = missingList(row.permit_missing).map((m) => ({
@@ -348,7 +355,7 @@ export function toExploreRow(row: Row, centre: { lat: number; lon: number }): Ex
 
   return {
     property_cid: str(row.property_cid) ?? "",
-    address: null,
+    address,
     dist_mi: Math.round(((num(row.distance_m) ?? 0) / METRES_PER_MILE) * 1000) / 1000,
     bearing: compassBearing(centre, { lat, lon }),
     lat,
@@ -365,6 +372,8 @@ export function toExploreRow(row: Row, centre: { lat: number; lon: number }): Ex
           open_years: openDays === null ? null : Math.floor((openDays / DAYS_PER_YEAR) * 10) / 10,
           open_days: openDays === null ? null : Math.trunc(openDays),
           table_cid: str(row.permit_table_cid),
+          source_url: str(row.permit_source_url),
+          captured_at: str(row.permit_captured_at),
           issue_date: str(row.permit_issue_date),
           final_date: str(row.permit_final_date),
           contractor_name_as_printed: contractorName,

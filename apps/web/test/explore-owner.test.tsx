@@ -159,10 +159,10 @@ describe("Tenure and out-of-area owners (AC-8, FR-008)", () => {
     const [first, second] = [...document.querySelectorAll<HTMLElement>("[data-result-row]")];
     expect(first?.querySelector('[data-field="tenure_years"]')?.textContent).toContain("14");
     expect(first?.querySelector('[data-field="tenure_basis"]')?.textContent).toBe(
-      "latest_dated_sale",
+      "latest dated sale",
     );
     expect(first?.querySelector('[data-field="owner_area_class"]')?.textContent).toBe(
-      "out_of_state",
+      "out of state",
     );
     expect(second?.querySelector('[data-field="owner_area_class"]')?.textContent).toBe(
       EXPLORE_TEXTS.ownerAreaUnknown,

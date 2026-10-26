@@ -4,6 +4,7 @@
 // Source-level checks (no browser): no Google font URL anywhere, every @font-face file exists as
 // a real woff2, the icon subset covers every icon name the code uses, font-display values, and the
 // built dist/index.html when a build exists.
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -124,6 +125,17 @@ describe("Material Symbols subset", () => {
     expect(missing, "add to public/fonts/icons.json and refetch the subset").toEqual([]);
   });
 
+  // The subset keeps one URL per icon set: a regenerated file under an old name let browsers
+  // that cached the earlier subset draw new icons as their clipped first letter.
+  it("names its file after the first 8 hex of its SHA-256, so a new icon set gets a new URL", () => {
+    const url = /url\(\s*["']?(\/fonts\/material-symbols-rounded-subset-[^"')]+)/.exec(
+      fontsCss,
+    )?.[1];
+    const file = join(FONTS, (url ?? "").replace("/fonts/", ""));
+    const digest = createHash("sha256").update(readFileSync(file)).digest("hex").slice(0, 8);
+    expect(url).toBe(`/fonts/material-symbols-rounded-subset-${digest}.woff2`);
+  });
+
   it("does not carry names the source no longer uses", () => {
     const stale = recorded.filter((name) => !used().has(name));
     expect(stale).toEqual([]);
@@ -140,7 +152,8 @@ describe("built dist/index.html", () => {
     expect(hrefs).toEqual(
       expect.arrayContaining([
         "/fonts/roboto-latin.woff2",
-        "/fonts/material-symbols-rounded-subset.woff2",
+        // The symbols subset's URL as fonts.css names it (fingerprinted, see above).
+        /url\(\s*["']?(\/fonts\/material-symbols-rounded-subset-[^"')]+)/.exec(fontsCss)?.[1],
       ]),
     );
     for (const tag of preloads) {

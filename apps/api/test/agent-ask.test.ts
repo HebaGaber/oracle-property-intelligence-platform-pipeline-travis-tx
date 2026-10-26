@@ -474,9 +474,11 @@ describe("ERR-61/62: a changed filter is stated, never silent", () => {
 });
 
 describe("ERR-62/63: contract missing[] names and honest owner-location statement", () => {
-  it("owner_is_out_of_area filter -> missing lists it and the answer says not in the published export", async () => {
+  // Label audit 2026-10-26: contract v1.2 publishes the owner mailing ZIP, so an applied
+  // out-of-area filter is not a gap; only a run whose search says owner_area not_published is.
+  it("owner_is_out_of_area filter on a run that publishes owner area -> not listed as missing", async () => {
     const loop: RunModelLoop = async () => ({
-      text: "No properties matched; the dataset had good coverage.",
+      text: "No properties matched these filters.",
       steps: [
         {
           tool: "searchProperties",
@@ -493,12 +495,38 @@ describe("ERR-62/63: contract missing[] names and honest owner-location statemen
       { prompt: "Homes near Lakeway with owners outside the area?" },
       baseDeps({ runModelLoop: loop }),
     );
+    expect(result.missing.some((m) => m.field === "owner_is_out_of_area")).toBe(false);
+    expect(result.answer).not.toMatch(/cannot tell which owners live outside the area/);
+    expect(result.query).toMatchObject({ radius_mi: 5 });
+  });
+
+  it("owner_area not_published notice -> missing lists it and the answer says not in the published export", async () => {
+    const loop: RunModelLoop = async () => ({
+      text: "No properties matched; the dataset had good coverage.",
+      steps: [
+        {
+          tool: "searchProperties",
+          input: { tenure_years_min: 10, owner_is_out_of_area: true },
+          summary: "",
+        },
+      ],
+      toolOutputs: [
+        {
+          ...EMPTY_ENVELOPE({ radius_mi: 5, tenure_years_min: 10, owner_is_out_of_area: true }),
+          owner_area: { status: "not_published" },
+        },
+      ],
+      totalTokens: 10,
+    });
+    const result = await runAgentAsk(
+      { prompt: "Homes near Lakeway with owners outside the area?" },
+      baseDeps({ runModelLoop: loop }),
+    );
     expect(result.missing).toContainEqual({
       field: "owner_is_out_of_area",
       reason: "not_in_export",
     });
     expect(result.answer).toMatch(/not in the published export/);
-    expect(result.query).toMatchObject({ radius_mi: 5 });
   });
 
   it("contractor/BBB questions flag the contract names, not the column names", async () => {

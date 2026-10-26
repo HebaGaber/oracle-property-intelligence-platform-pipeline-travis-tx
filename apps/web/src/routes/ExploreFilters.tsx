@@ -19,13 +19,15 @@ import { resolvePlace, searchPlaces, type ResolvedPlace } from "@countylens/quer
 import { EXPLORE_TEXTS } from "@countylens/shared";
 import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@countylens/api-client/react";
-import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { FilterSheet, type FilterKey, type FilterPatch } from "../components/FilterSheet";
 import { Icon } from "../components/Icon";
 import { LinearProgress } from "../components/LinearProgress";
 import { ResultRow } from "../components/ResultRow";
+import { ResultTable } from "../components/ResultTable";
+import { useMinWidth } from "../data/use-min-width";
 import { WelcomeCard } from "../components/WelcomeCard";
 import { Skeleton } from "../components/Skeleton";
 import { RunIndexError, latestRun, loadRunsIndex, runIndexText } from "../data/runs-index";
@@ -160,8 +162,14 @@ function ownerAreaNotice(data: unknown): string | null {
 
 export function ExploreFilters({
   onState,
+  head,
+  collapsed = false,
 }: {
   readonly onState: (state: ExplorePageState) => void;
+  /** The drawer head (mode tabs and the collapse button), from Explore. */
+  readonly head?: ReactNode;
+  /** The drawer is collapsed to its strip (from 840 px; the controls stay in the DOM). */
+  readonly collapsed?: boolean;
 }): ReactElement {
   const [params, setParams] = useSearchParams();
   const query = useMemo(() => parseExploreQuery(params), [params]);
@@ -232,10 +240,16 @@ export function ExploreFilters({
 
   return (
     <div
-      className={selected === undefined ? styles.layout : `${styles.layout} ${styles.withDrawer}`}
+      className={[
+        styles.layout,
+        selected === undefined ? "" : styles.withDrawer,
+        collapsed ? styles.collapsed : "",
+      ].join(" ")}
     >
-      <div className={styles.filters}>
+      <div className={styles.filters} data-drawer={collapsed ? "collapsed" : "open"}>
+        {head}
         <FilterSheet
+          hiddenWide={collapsed}
           folded={selected !== undefined}
           value={value}
           openOrStalled={isOpenOrStalled(query.permit)}
@@ -308,6 +322,9 @@ export function ExploreFilters({
 
 type ResultsTab = "matches" | "close";
 
+/** The board's table needs the 1440 layout; narrower screens (and unit tests) get cards. */
+const TABLE_MIN_WIDTH = 1240;
+
 /** Task B pager: 1, the pages around the current one, the last page, with gaps (1-based). */
 export function pageNumbers(current: number, pages: number): readonly (number | "gap")[] {
   const keep = [...new Set([1, pages, current - 1, current, current + 1])]
@@ -344,6 +361,7 @@ function Results({
   readonly selected: string | null;
 }): ReactElement {
   const zero = data.total_within_r === 0;
+  const wide = useMinWidth(TABLE_MIN_WIDTH);
   const [chosen, setChosen] = useState<ResultsTab | null>(null);
   // With no match the Close tab opens (the board's "Close 3"); a choice sticks until the next search.
   const tab: ResultsTab = chosen ?? (zero ? "close" : "matches");
@@ -435,14 +453,28 @@ function Results({
         )
       ) : zero ? null : (
         <>
-          {/* Task B listing: one card per property at every width (B-03 ResultsList). */}
-          <ul className={styles.list} aria-label="Results">
-            {pageRows.map((row) => (
-              <li key={row.property_cid} className={styles.item}>
-                <ResultRow row={row} onSelect={onSelect} selected={selected === row.property_cid} />
-              </li>
-            ))}
-          </ul>
+          {/* Explore1440 board: the compact table from 1240 px; Task B's cards below (B-03). */}
+          {wide ? (
+            <ResultTable
+              rows={pageRows}
+              first={first}
+              onSelect={onSelect}
+              selected={selected}
+              runId={data.as_of.runId}
+            />
+          ) : (
+            <ul className={styles.list} aria-label="Results">
+              {pageRows.map((row) => (
+                <li key={row.property_cid} className={styles.item}>
+                  <ResultRow
+                    row={row}
+                    onSelect={onSelect}
+                    selected={selected === row.property_cid}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
           <nav className={styles.pager} aria-label="Result pages" data-results-pager="">
             <span className={styles.engine} data-showing="" aria-live="polite">
               {pageRows.length > 0 ? showingText(first, last, data.total_within_r) : null}

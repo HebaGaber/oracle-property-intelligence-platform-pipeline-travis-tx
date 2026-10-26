@@ -354,14 +354,11 @@
 .facts > div {
   min-width: 0;
 }
-
-/* "Loaded vs each source's own total": count, bar and share stacked in one cell. */
-.totalCell {
+/* "Loaded vs each source's own total": count {
   display: grid;
   gap: var(--space-1);
   min-width: 0;
 }
-
 /* ---- A-16 style pass (PO 2026-10-26 06:25, boards Coverage1440/768/390) ---- */
 
 /* Page head: title and intro on the left, the run button and Download CSV on the right; the
@@ -441,28 +438,13 @@
   padding-bottom: var(--space-3);
   vertical-align: middle;
 }
-
-/* Data cell: the row's status icon, then the source name (title-small). */
-.dataCell {
+/* Data cell: the row's status icon {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
   color: var(--md-sys-color-on-surface-variant);
-}
-
-.dataCell b {
-  min-width: 0;
-  color: var(--md-sys-color-on-surface);
-  font-family: var(--md-sys-typescale-title-small-font);
-  font-size: var(--md-sys-typescale-title-small-size);
-  font-weight: var(--md-sys-typescale-title-small-weight);
-  overflow-wrap: anywhere;
-}
-
-/* Board "Missing" swatch and "No source" cell: hatched, never a filled share. */
-.hatchBar,
-.hatchPanel {
+}/* Board "Missing" swatch and "No source" cell: hatched {
   background-color: var(--md-sys-color-surface-container-high);
   background-image: repeating-linear-gradient(
     45deg,
@@ -470,21 +452,6 @@
     transparent 2px 6px
   );
 }
-
-.hatchBar {
-  display: block;
-  height: var(--space-2);
-  border-radius: var(--md-sys-shape-corner-extra-small);
-}
-
-.hatchPanel {
-  display: grid;
-  place-items: center;
-  min-height: calc(var(--space-10) * 3);
-  padding: var(--space-4);
-  border-radius: var(--md-sys-shape-corner-small);
-}
-
 /* Cost tiles (board "Last bill" and "Budget alert"): filled, no outline. */
 .costTiles > div {
   border-color: transparent;

@@ -126,6 +126,26 @@ function Cell({
 
 const unknownRoof = (basis: string | null): boolean => basis === null || basis === "unknown";
 
+/** Contract enum codes in plain words (hosted review 2026-10-26: no raw `snake_case` in the UI);
+ *  the code stays in the tooltip. Unlisted codes show with spaces for underscores. */
+export const PLAIN_WORDS: Readonly<Record<string, string>> = {
+  permit: "reroof permit",
+  new_construction: "new build",
+  sale_date: "date of the latest sale",
+  deed_date: "date of the latest deed",
+  in_county: "in Travis County",
+  regional: "in the region, outside Travis County",
+  out_of_area: "outside the region",
+  resolved: "matched to a registered company",
+  unresolved: "not matched to a registered company",
+};
+
+export const plainWords = (code: string): string => PLAIN_WORDS[code] ?? code.replaceAll("_", " ");
+
+/** "Owned 1 yr", "Owned 12 yrs", "Owned < 1 yr". */
+export const ownedText = (years: number): string =>
+  years < 1 ? "Owned < 1 yr" : `Owned ${String(years)} ${years === 1 ? "yr" : "yrs"}`;
+
 /**
  * A-16 data audit (#2, #9, #15, #16): optional fields the Explore row carries once the query-core
  * row mapping adds them. Read defensively: absent (an older API) means "not in this row yet", null
@@ -223,16 +243,16 @@ export function FieldValue({
 }): ReactElement | null {
   switch (field) {
     case "address":
-      return (
-        row.address ?? (
-          // Audit #18: the carrier exists; the run's export omits the situs text.
-          <Gap
-            text={EXPLORE_TEXTS.addressNotInExport}
-            short="No address"
-            reason={missingFor(row, "address")?.reason ?? "not_in_export"}
-            field="address"
-          />
-        )
+      return row.address !== null ? (
+        <>{row.address}</>
+      ) : (
+        // Audit #18: the carrier exists; the run's export omits the situs text for this property.
+        <Gap
+          text={EXPLORE_TEXTS.addressNotInExport}
+          short="No address"
+          reason={missingFor(row, "address")?.reason ?? "not_in_export"}
+          field="address"
+        />
       );
     case "roof_age_years":
       return row.roof_age_years === null ? (
@@ -251,7 +271,7 @@ export function FieldValue({
             : "Year built (no reroof permit found)"}
         </span>
       ) : (
-        <>{row.roof_age_basis}</>
+        <span title={row.roof_age_basis ?? undefined}>{plainWords(row.roof_age_basis ?? "")}</span>
       );
     case "roof_age_confidence":
       return row.roof_age_confidence === null ? (
@@ -356,13 +376,13 @@ export function FieldValue({
           reason={missingFor(row, "tenure_years")?.reason}
         />
       ) : (
-        <>{row.tenure_years < 1 ? "Owned < 1 yr" : `Owned ${row.tenure_years} yrs`}</>
+        <>{ownedText(row.tenure_years)}</>
       );
     case "tenure_basis":
       return row.tenure_basis === null ? (
         <Gap text={EXPLORE_TEXTS.tenureUnknown} short={TENURE_SHORT} />
       ) : (
-        <>{row.tenure_basis}</>
+        <span title={row.tenure_basis}>{plainWords(row.tenure_basis)}</span>
       );
     case "owner_area_class":
       // Contract v1.2: the run says why (e.g. zip_not_zcta); the generic text only when it does not.
@@ -373,7 +393,7 @@ export function FieldValue({
           reason={missingFor(row, "owner_area_class")?.reason}
         />
       ) : (
-        <>{row.owner_area_class}</>
+        <span title={row.owner_area_class}>{plainWords(row.owner_area_class)}</span>
       );
   }
 }

@@ -82,7 +82,14 @@ describe("app shell routes (A-13 T015: every route of contracts/ui-routes.md, la
       expect(route?.element, `${entry.path}.element`).toBeUndefined();
       expect(route?.Component, `${entry.path}.Component`).toBeUndefined();
     }
-    expect(children).toHaveLength(ROUTE_LIST.length);
+    // Plus the `*` catch-all ("Page not found").
+    expect(children).toHaveLength(ROUTE_LIST.length + 1);
+  });
+
+  it("an unknown address renders Page not found inside the shell", async () => {
+    await renderAt("/no-such-page");
+    const main = await screen.findByRole("main");
+    expect(await within(main).findByRole("heading", { name: "Page not found" })).toBeTruthy();
   });
 
   it("covers every route of the contract (ROUTES in packages/shared), /permits kept", () => {
@@ -221,7 +228,7 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
     }
   });
 
-  it("marks Coverage hidden below 600 px and lists Coverage and SQL in More for compact", async () => {
+  it("marks Coverage and MCP hidden below 600 px and lists them in More for compact", async () => {
     await renderAt("/runs");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     const coverage = within(nav).getByRole("link", { name: /Coverage/ });
@@ -235,11 +242,12 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
     );
     expect(compact.map((li) => li.querySelector("a")?.getAttribute("href"))).toEqual([
       "/tx/travis/coverage",
+      "/help/mcp",
       "/admin/sign-in",
     ]);
   });
 
-  it("offers the destinations Explore, Runs, Coverage, Data and More, and marks the current one", async () => {
+  it("offers the destinations Explore, Runs, Coverage, Data, MCP and More, and marks the current one", async () => {
     await renderAt("/runs");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     const links = within(nav).getAllByRole("link");
@@ -248,6 +256,7 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
       expect.stringContaining("Runs"),
       expect.stringContaining("Coverage"),
       expect.stringContaining("Data"),
+      expect.stringContaining("MCP"),
       expect.stringContaining("Admin"),
     ]);
     expect(links.map((l) => l.getAttribute("href"))).toEqual([
@@ -255,6 +264,7 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
       "/runs",
       "/tx/travis/coverage",
       "/data/manifest",
+      "/help/mcp",
       "/admin/sign-in",
     ]);
     expect(links[1]?.getAttribute("aria-current")).toBe("page");
@@ -262,10 +272,16 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
     const more = within(nav).getByRole("button", { name: "More" });
     expect(more.getAttribute("aria-expanded")).toBe("false");
     expect(within(nav).queryByRole("link", { name: "Permits" })).toBeNull();
-    expect(DESTINATIONS.map((d) => d.label)).toEqual(["Explore", "Runs", "Coverage", "Data"]);
+    expect(DESTINATIONS.map((d) => d.label)).toEqual([
+      "Explore",
+      "Runs",
+      "Coverage",
+      "Data",
+      "MCP",
+    ]);
   });
 
-  it("More opens a sheet listing every Coming soon item and the other pages; Escape closes it", async () => {
+  it("More opens a sheet listing every Coming soon item; the legal links are in the page footer; Escape closes it", async () => {
     await renderAt("/runs");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     fireEvent.click(within(nav).getByRole("button", { name: "More" }));
@@ -281,8 +297,15 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
       else expect(hrefs).not.toContain(`/soon/${item.id}`); // AI-user sign-in: listed, not linked
     }
     expect(within(sheet).getByText("AI-user sign-in")).toBeTruthy();
-    for (const path of ["/data/catalog", "/runs/log", "/help/mcp", "/legal/data"])
-      expect(hrefs).toContain(path);
+    // PO 2026-10-26: pages reachable from their own page or the help menu left the sheet.
+    for (const path of ["/data/catalog", "/runs/log", "/runs/compare", "/legal/data"])
+      expect(hrefs).not.toContain(path);
+    const legal = screen.getByRole("navigation", { name: "Legal" });
+    expect(
+      within(legal)
+        .getAllByRole("link")
+        .map((l) => l.getAttribute("href")),
+    ).toEqual(["/legal/terms", "/legal/privacy", "/legal/data"]);
     expect(within(sheet).getAllByText(PAGE_TEXTS.comingSoon).length).toBe(COMING_SOON_ITEMS.length);
     fireEvent.keyDown(sheet, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "More" })).toBeNull();

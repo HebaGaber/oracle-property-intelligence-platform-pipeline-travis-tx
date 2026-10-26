@@ -45,7 +45,8 @@ function row(n: number, overrides: Partial<PermitListRow> = {}): PermitListRow {
     permit_number: `TEST-000${n}`,
     improvement_status: "Permitted",
     status_class: "open",
-    issue_date: `2026-09-0${n}`,
+    // Newer for a lower n: ROWS below is already in the page's newest-first order.
+    issue_date: `2026-09-0${10 - n}`,
     final_date: null,
     permit_close_date: null,
     open_days: 30 - n,
@@ -382,7 +383,7 @@ describe("ready (FR-003, TC-020…025): the single page of permits with provenan
     const cells = (i: number) => within(rows[i] as HTMLElement).getAllByRole("cell");
     expect(cells(0)[1]?.textContent?.trim()).toBe("Permitted");
     expect(cells(0)[2]?.textContent?.trim()).toBe("open");
-    expect(cells(0)[3]?.querySelector("[data-issue-date]")?.textContent?.trim()).toBe("2026-09-01");
+    expect(cells(0)[3]?.querySelector("[data-issue-date]")?.textContent?.trim()).toBe("2026-09-09");
     expect(cells(1)[1]?.textContent?.trim()).toBe(MISSING_REASON_LABELS.enum_lacks_value);
     expect(cells(1)[2]?.textContent?.trim()).toBe("stalled");
     expect(cells(2)[2]?.textContent?.trim()).toBe(MISSING_REASON_LABELS.needs_review);

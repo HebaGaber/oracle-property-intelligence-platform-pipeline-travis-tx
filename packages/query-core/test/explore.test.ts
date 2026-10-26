@@ -258,6 +258,21 @@ describe("exploreSearchSql over a bound fixture (DuckDB)", { timeout: 30_000 }, 
     }
   });
 
+  it("toExploreRow carries the published situs address, with no not_in_export entry", async () => {
+    const r = await run(base({ radius_mi: 4 }));
+    const p2 = r.rows.find((x) => x.property_cid === P2) as Record<string, unknown>;
+    const row = toExploreRow(
+      { ...p2, unnormalized_address: "1509 NORTHWOOD RD, AUSTIN, TX 78703" },
+      CENTRE,
+    );
+    expect(row.address).toBe("1509 NORTHWOOD RD, AUSTIN, TX 78703");
+    expect(row.missing.some((m) => m.field === "address")).toBe(false);
+    expect(toExploreRow(p2, CENTRE).missing).toContainEqual({
+      field: "address",
+      reason: "not_in_export",
+    });
+  });
+
   it("toExploreRow maps a row: provenance, miles + bearing, permit, and a missing reason for every gap", async () => {
     const r = await run(base({ radius_mi: 4 }));
     const p2 = r.rows.find((x) => x.property_cid === P2);

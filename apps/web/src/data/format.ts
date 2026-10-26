@@ -1,6 +1,6 @@
 // Display helpers of the pages (A-03 T042, G-C3). Timestamps are shown as the manifest's own
 // UTC ISO strings with a "UTC" suffix (TC-010 step 4);
-// counts are printed as plain digits so tests can compare them with the manifest's numbers.
+// counts are grouped with thousands separators (en-US) and shown with `tabular-nums`.
 
 /** The ISO instant in UTC: the manifest value itself when it already ends in `Z`. */
 export function utcTimestamp(iso: string): string {
@@ -9,7 +9,12 @@ export function utcTimestamp(iso: string): string {
   return Number.isNaN(ms) ? iso : new Date(ms).toISOString();
 }
 
-/** A manifest count as digits (no grouping), shown with `tabular-nums`. */
+/** A manifest count with thousands separators ("2,381,886"), shown with `tabular-nums`. */
 export function formatCount(count: number): string {
-  return String(count);
+  return count.toLocaleString("en-US");
+}
+
+/** A byte size with thousands separators and its unit ("103,835 bytes"). */
+export function formatBytes(size: number): string {
+  return `${formatCount(size)} bytes`;
 }

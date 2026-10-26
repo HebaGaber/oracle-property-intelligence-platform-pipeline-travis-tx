@@ -1,9 +1,9 @@
-// Paging helpers for the hosted Permits page (A-11: the full-county list is paged, 200 rows per
+// Paging helpers for the hosted Permits page (A-11: the full-county list is paged, 20 rows per
 // page, because one page of ~15,000 rows built ~950,000 DOM elements and froze slower browsers).
 //
 // DOM contract these helpers read (apps/web/src/routes/Permits.page.tsx):
 // - `<nav aria-label="Permits pages">` holds `<p data-testid="permits-range" data-first data-last
-//   data-total>` with the text `Showing 1–200 of 15,025` and the buttons `Previous page` /
+//   data-total>` with the text `Showing 1–20 of 15,025` and the buttons `Previous page` /
 //   `Next page` (disabled at the ends).
 // - `table tbody tr` (from 600 px) or the cards list (below 600 px) renders only the current
 //   page's rows: min(PERMITS_PAGE_SIZE, rows left).

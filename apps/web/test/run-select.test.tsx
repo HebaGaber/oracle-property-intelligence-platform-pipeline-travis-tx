@@ -71,6 +71,24 @@ describe("the one numbering rule (RUNS_TEXTS.numbering)", () => {
     expect(runNumbers(index).get(next.runId)).toBe(4);
   });
 
+  it("a correction run takes the number in its run ID (Run 3.1), and the next run is Run 4", () => {
+    const fix = {
+      runId: "travis-full-run3-1-20261025",
+      manifestCid: "bafk31",
+      finishedAt: "2026-10-25T22:55:00.000Z",
+    };
+    const next = {
+      runId: "travis-bridge-20261101",
+      manifestCid: "bafk4",
+      finishedAt: "2026-11-01T00:00:00Z",
+    };
+    const index = { ...REAL_INDEX, runs: [...REAL, fix, next] } as RunsIndexV1;
+    expect(runNumbers(index).get(fix.runId)).toBe("3.1");
+    expect(runName(runNumbers(index).get(fix.runId) ?? null)).toBe("Run 3.1");
+    expect(runNumbers(index).get(next.runId)).toBe(4);
+    expect(latestChip([...REAL, fix]).name).toBe("Run 3.1");
+  });
+
   it("the header and Hub chip name the latest run Run 3", () => {
     expect(latestChip(REAL).name).toBe("Run 3");
   });

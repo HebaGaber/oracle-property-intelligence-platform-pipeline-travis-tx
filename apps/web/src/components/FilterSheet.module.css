@@ -56,10 +56,17 @@
 
 .label {
   color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-label-large-font);
-  font-size: var(--md-sys-typescale-label-large-size);
-  font-weight: var(--md-sys-typescale-label-large-weight);
-  line-height: var(--md-sys-typescale-label-large-line-height);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: var(--md-sys-typescale-label-medium-weight);
+  line-height: var(--md-sys-typescale-label-medium-line-height);
+}
+
+/* Explore1440 board: "Open ≥ [any time]" and "Tenure [ ] yrs" sit on one line. */
+.inline {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--space-3);
 }
 
 .inputRow {
@@ -79,9 +86,9 @@
   border-radius: var(--md-sys-shape-corner-extra-small);
   color: var(--md-sys-color-on-surface);
   background: var(--md-sys-color-surface);
-  font-family: var(--md-sys-typescale-body-large-font);
-  font-size: var(--md-sys-typescale-body-large-size);
-  line-height: var(--md-sys-typescale-body-large-line-height);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
 }
 
 .unit,
@@ -178,30 +185,7 @@
   gap: var(--space-2);
 }
 
-/* A-16 T050 (Explore1440 board): panel header, chip rows, segmented permit, suggestions, footer. */
-/* Explore · Filters board (13.png): the "Filters · query" header sits on its own row, ruled off
-   from the controls. */
-.panelTitle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--md-sys-color-on-surface);
-  font-family: var(--md-sys-typescale-title-medium-font);
-  font-size: var(--md-sys-typescale-title-medium-size);
-  font-weight: var(--md-sys-typescale-title-medium-weight);
-  line-height: var(--md-sys-typescale-title-medium-line-height);
-}
-
-.panelSub {
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-body-small-font);
-  font-size: var(--md-sys-typescale-body-small-size);
-  font-weight: var(--md-sys-typescale-body-small-weight);
-}
-
+/* A-16 T050 (Explore1440 board): chip rows, segmented permit, suggestions, footer. */
 .group {
   display: grid;
   gap: var(--space-2);
@@ -212,7 +196,7 @@
 }
 
 .group > legend {
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
   padding: 0;
 }
 
@@ -222,7 +206,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .chip,
@@ -236,7 +220,14 @@
 
 .chip {
   padding: 0 var(--space-3);
+  border-color: var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-surface);
+}
+
+/* The roof presets and "Other" share one row (Explore1440 board). */
+.chips > .number {
+  width: calc(var(--space-10) + var(--space-5));
 }
 
 .chip.chipOn,
@@ -345,15 +336,15 @@ label.chip > input {
   justify-content: flex-start;
   box-sizing: border-box;
   min-height: var(--space-9);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
   color: var(--md-sys-color-on-surface);
   background: var(--md-sys-color-surface);
   cursor: pointer;
-  font-family: var(--md-sys-typescale-body-medium-font);
-  font-size: var(--md-sys-typescale-body-medium-size);
-  line-height: var(--md-sys-typescale-body-medium-line-height);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
   text-align: left;
 }
 
@@ -406,8 +397,25 @@ label.chip > input {
     display: none;
   }
 
+  /* Inside the Explore drawer the panel is the drawer's own surface, not a card in a card. */
   .panel {
     display: grid;
+    gap: var(--space-3);
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  /* The match count and Clear stay in view at the drawer's foot. */
+  .footer {
+    position: sticky;
+    bottom: calc(-1 * var(--space-3));
+    padding-bottom: var(--space-2);
+    background: var(--md-sys-color-surface);
+  }
+
+  .hiddenWide {
+    display: none;
   }
 
   /* Property drawer open (Property1440 board): the controls fold behind the button again. */

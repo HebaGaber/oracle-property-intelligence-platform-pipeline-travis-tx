@@ -22,7 +22,7 @@
 //   SOURCE_LABELS[name] (the TCAD item also shows its `name`), `{records} records` (plain or
 //   en-US grouped digits), its `captured_at` instant (see above) and a link whose href is
 //   `source.url`.
-// - Coverage rows: `[data-coverage="{key}"]` with COVERAGE_LABELS[key], `String(count)` and
+// - Coverage rows: `[data-coverage="{key}"]` with COVERAGE_LABELS[key], the grouped count and
 //   DERIVATION_LABELS[derivation] as visible text (not a tooltip).
 // - Data groups: a list with accessible name `Data groups`, one `listitem` per `directory`
 //   artifact with the group name and `[data-cid="{directory.cid}"]`.
@@ -283,7 +283,9 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       const row = coverageRow(page, "permits_emitted");
       await expect(row).toHaveCount(1);
       await expect(row.getByText(COVERAGE_LABELS.permits_emitted, { exact: true })).toBeVisible();
-      await expect(row.getByText(String(published.count), { exact: true })).toBeVisible();
+      await expect(
+        row.getByText(published.count.toLocaleString("en-US"), { exact: true }),
+      ).toBeVisible();
       expect(published.derivation, "permits_emitted is counted from published rows").toBe(
         "published_rows",
       );
@@ -424,7 +426,9 @@ test.describe("A-03 Runs page (FR-002, FR-009)", () => {
       await expect(
         row.getByText(COVERAGE_LABELS.permits_no_tcad_geoid, { exact: true }),
       ).toBeVisible();
-      await expect(row.getByText(String(noTcad.count), { exact: true })).toBeVisible();
+      await expect(
+        row.getByText(noTcad.count.toLocaleString("en-US"), { exact: true }),
+      ).toBeVisible();
       await row.scrollIntoViewIfNeeded();
       await checkpoint(page, "031", "2-3-no-tcad-geoid-count");
 

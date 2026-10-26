@@ -40,7 +40,11 @@ interface Fixture {
 }
 let fx: Fixture;
 
-async function build(withExport: boolean, extra: readonly string[] = []): Promise<Fixture> {
+async function build(
+  withExport: boolean,
+  extra: readonly string[] = [],
+  dirs: readonly string[] = ["tables/county"],
+): Promise<Fixture> {
   const names = [
     "tables/county/property/part-00000.parquet",
     "tables/county/property/part-00001.parquet",
@@ -73,15 +77,17 @@ async function build(withExport: boolean, extra: readonly string[] = []): Promis
       },
     ],
     artifacts: [
-      {
-        name: "tables/county",
-        cid: await rawCid(encode("dir")),
-        codec: "dag-pb",
-        size: 5,
-        sha256: SHA,
-        kind: "directory",
-        carCid: await rawCid(encode("dir-car")),
-      },
+      ...(await Promise.all(
+        dirs.map(async (name) => ({
+          name,
+          cid: await rawCid(encode(`dir ${name}`)),
+          codec: "dag-pb" as const,
+          size: 5,
+          sha256: SHA,
+          kind: "directory" as const,
+          carCid: await rawCid(encode(`dir-car ${name}`)),
+        })),
+      )),
       ...parts.map((p, i) => ({
         name: p.name,
         cid: p.cid,
@@ -229,6 +235,22 @@ describe("Catalog: one row per table (TC-053)", () => {
     fx = await build(false);
   });
 
+  it("does not say it when the run ships batched table directories (Run 3.1 layout)", async () => {
+    fx = await build(
+      false,
+      [],
+      [
+        "pipeline/data/runs/r/publish/county-batched/tables/b01",
+        "pipeline/data/runs/r/publish/permits-batched/tables/b02",
+      ],
+    );
+    install();
+    const page = await renderCatalog();
+    await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
+    expect(screen.queryByText(PAGE_TEXTS.tableExportMissing)).toBeNull();
+    fx = await build(false);
+  });
+
   it("reads each footer from the CID copy host, never from a gateway fallback list", async () => {
     const page = await renderCatalog();
     await vi.waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
@@ -266,7 +288,7 @@ describe("Catalog: field table and derived columns (A-16, DataCatalog1440 board)
       "tcad-2026-certified-json",
       "[As published]",
     ]);
-    expect(cells(property, "year_built")[2]).toBe("not described in contract/v1");
+    expect(cells(property, "year_built")[2]).toBe("not described in the data contract");
     const permit = detailOf(page, "property_improvement.property_improvement");
     expect(cells(permit, "improvement_type").slice(2)).toEqual([
       "Lexicon improvement type",

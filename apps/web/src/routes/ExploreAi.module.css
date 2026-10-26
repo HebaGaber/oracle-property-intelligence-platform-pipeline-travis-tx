@@ -280,3 +280,10 @@
   gap: var(--space-2);
   margin: 0;
 }
+
+/* The Explore drawer is collapsed: from 840 px the question box is hidden (kept in the DOM). */
+@media (min-width: 840px) {
+  .hiddenWide {
+    display: none;
+  }
+}

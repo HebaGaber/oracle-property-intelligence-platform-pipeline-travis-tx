@@ -21,6 +21,7 @@ import {
   MissingSummary,
   PropertyFields,
   RowProvenance,
+  plainWords,
   type RowField,
 } from "../components/ResultRow";
 import { StatusPill } from "../components/StatusPill";
@@ -58,7 +59,16 @@ export function PropertyDrawer({ row, onClose }: PropertyDrawerProps): ReactElem
   useEffect(() => {
     ref.current?.focus();
   }, [row.property_cid]);
-  const p = row.provenance;
+  // Label audit 2026-10-26 (finding 3): a roof dated by a reroof permit cites the permit's own
+  // source, capture time and table; any other basis cites the property record.
+  const permitBased = row.roof_age_basis === "permit" && row.permit !== null;
+  const p = permitBased
+    ? {
+        source_url: row.permit?.source_url ?? null,
+        captured_at: row.permit?.captured_at ?? null,
+        table_cid: row.permit?.table_cid ?? null,
+      }
+    : row.provenance;
   const showInList = (): void => {
     const target = document.querySelector<HTMLElement>(
       `[data-result-row][data-property-cid="${CSS.escape(row.property_cid)}"]`,
@@ -162,7 +172,7 @@ export function PropertyDrawer({ row, onClose }: PropertyDrawerProps): ReactElem
           <li>
             {row.roof_age_basis === null || row.roof_age_basis === "unknown"
               ? EXPLORE_TEXTS.roofUnknown
-              : row.roof_age_basis}
+              : plainWords(row.roof_age_basis)}
           </li>
           <li>
             <Icon name="arrow_forward" size="small" />

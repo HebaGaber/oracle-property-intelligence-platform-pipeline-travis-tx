@@ -40,7 +40,13 @@ interface LimitsDoc {
 const cost = parseCost(readFileSync(COST_DOC, "utf8")) as CostDoc;
 const limits = parseLimits(readFileSync(LIMITS_DOC, "utf8")) as LimitsDoc;
 
-const money = (n: number): string => `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(4)}`;
+// The page shows the doc's Cost Explorer figures in cents; under a cent (non-zero) reads "< $0.01".
+const money = (n: number): string => {
+  const abs = Math.abs(n);
+  return `${n < 0 ? "-" : ""}${abs > 0 && abs < 0.005 ? "< $0.01" : `$${abs.toFixed(2)}`}`;
+};
+const cents = (text: string): string =>
+  text.replace(/\$(\d+\.\d{3,})/g, (_, amount: string) => money(Number(amount)));
 
 async function openCoverage(page: Page): Promise<void> {
   await page.goto(ROUTES.coverage);
@@ -141,7 +147,9 @@ test.describe("A-16 Cost and Limits on Coverage", () => {
       );
       await expect(tr, row.component).toHaveCount(1);
       if (row.idle !== null) {
-        await expect(tr.locator('[data-label="Fixed (idle) per month"]')).toHaveText(row.idle);
+        await expect(tr.locator('[data-label="Fixed (idle) per month"]')).toHaveText(
+          cents(row.idle),
+        );
       }
       if (row.whoPays !== null) {
         await expect(tr.locator('[data-label="Who pays per use"]')).toHaveText(row.whoPays);

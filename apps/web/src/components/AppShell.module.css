@@ -356,12 +356,6 @@ a.sheetItem:hover {
   box-shadow: var(--md-sys-elevation-level1);
 }
 
-.sheetDivided {
-  margin-top: var(--space-1);
-  padding-top: var(--space-1);
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-}
-
 /* The app-switcher rows (HelpMenu's AppRows) laid out like the other sheet rows. */
 .appRow {
   border-radius: var(--md-sys-shape-corner-full);
@@ -448,6 +442,12 @@ a.sheetItem:hover {
 
   .compactOnly {
     display: none;
+  }
+
+  /* With the compact pages hidden, "Planned" opens the sheet: no rule above it. */
+  .sheetCard.compactOnly + .sheetTitle {
+    padding-top: 0;
+    border-top: 0;
   }
 
   .sheet {
@@ -537,22 +537,27 @@ a.sheetItem:hover {
   padding-left: var(--space-9);
 }
 
-.sheetFoot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--space-4);
-  padding-top: var(--space-2);
+/* PO 2026-10-26: the legal links at the foot of every page (they left the More sheet). */
+.footer {
+  margin-top: var(--space-6);
+  padding: var(--space-3) 0;
   border-top: 1px solid var(--md-sys-color-outline-variant);
 }
 
-.sheetFootLink {
+.footerLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-4);
+}
+
+.footerLink {
   display: inline-flex;
   align-items: center;
   min-width: var(--space-9);
   min-height: var(--space-9);
   color: var(--md-sys-color-primary);
-  font-family: var(--md-sys-typescale-body-medium-font);
-  font-size: var(--md-sys-typescale-body-medium-size);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
 }
 
 @media (min-width: 600px) {

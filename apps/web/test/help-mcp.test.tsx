@@ -2,7 +2,12 @@
 // (no SQL tool). A-14 T034: "Try a tool" runs the chosen tool through the server-side proxy
 // (`mcpProxy.callTool`, injected here as a fake `callTool`; the real client is tested against a
 // fake fetch). It shows the server's result, truncation, provenance and errors, never a sample.
-import { EXPLORE_BOUNDS, PERMIT_FILTERS, EXPLORE_SORTS } from "@countylens/query-core";
+import {
+  EXPLORE_BOUNDS,
+  EXPLORE_SORTS,
+  PROPERTY_STATUS_CLASSES,
+  SearchPropertiesInput,
+} from "@countylens/query-core";
 import { MCP_TRY_TEXTS } from "@countylens/shared";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
@@ -50,7 +55,7 @@ describe("Help · MCP (FR-023, TC-042)", () => {
     expect(section?.getAttribute("data-state")).toBe("ready");
   });
 
-  it("shows search_properties' input from the query-core bounds, never hand-typed copies", async () => {
+  it("shows search_properties' input as the tool's own arguments, with query-core's bounds", async () => {
     await renderHelp();
     const tool = document.querySelector('[data-tool="search_properties"]') as HTMLElement;
     // TC-042: the real schema is marked [data-schema] inside its [data-tool].
@@ -62,14 +67,33 @@ describe("Help · MCP (FR-023, TC-042)", () => {
         el.textContent ?? "",
       ]),
     );
+    // Exactly the MCP tool's argument names, in its schema's order (not Explore URL keys).
+    expect([...params.keys()]).toEqual(Object.keys(SearchPropertiesInput.shape));
+    for (const key of ["roof", "permit", "openYrs", "tenure", "ooa"])
+      expect(params.has(key)).toBe(false);
     expect(params.get("radius_mi")).toContain(`${EXPLORE_BOUNDS.radiusMi[0]}`);
     expect(params.get("radius_mi")).toContain(`${EXPLORE_BOUNDS.radiusMi[1]}`);
-    expect(params.get("roof")).toContain(`${EXPLORE_BOUNDS.roof[1]}`);
-    expect(params.get("openYrs")).toContain(`${EXPLORE_BOUNDS.openYrs[1]}`);
-    expect(params.get("tenure")).toContain(`${EXPLORE_BOUNDS.tenure[1]}`);
-    for (const value of [...PERMIT_FILTERS, ...EXPLORE_SORTS]) {
-      expect(tool.textContent).toContain(value);
-    }
+    expect(params.get("roof_age_years_min")).toContain(`${EXPLORE_BOUNDS.roof[1]}`);
+    expect(params.get("open_years_min")).toContain(`${EXPLORE_BOUNDS.openYrs[1]}`);
+    expect(params.get("tenure_years_min")).toContain("1 to 100");
+    expect(params.get("limit")).toContain("default 50");
+    for (const value of PROPERTY_STATUS_CLASSES)
+      expect(params.get("status_class")).toContain(value);
+    for (const value of EXPLORE_SORTS) expect(params.get("sort")).toContain(value);
+    // The bounds shown are the Zod schema's own.
+    const shape = SearchPropertiesInput.shape;
+    expect([shape.radius_mi.minValue, shape.radius_mi.maxValue]).toEqual([
+      ...EXPLORE_BOUNDS.radiusMi,
+    ]);
+    expect(shape.roof_age_years_min.unwrap().maxValue).toBe(EXPLORE_BOUNDS.roof[1]);
+    expect(shape.open_years_min.unwrap().maxValue).toBe(EXPLORE_BOUNDS.openYrs[1]);
+    expect([
+      shape.tenure_years_min.unwrap().minValue,
+      shape.tenure_years_min.unwrap().maxValue,
+    ]).toEqual([1, 100]);
+    expect(shape.sort.unwrap().options).toEqual([...EXPLORE_SORTS]);
+    expect(shape.status_class.unwrap().options).toEqual([...PROPERTY_STATUS_CLASSES]);
+    expect(SearchPropertiesInput.parse({ area: { place: "Austin" }, radius_mi: 1 }).limit).toBe(50);
     // The five tools whose Zod schemas are not in query-core say so instead of inventing one.
     for (const name of [
       "list_permits",

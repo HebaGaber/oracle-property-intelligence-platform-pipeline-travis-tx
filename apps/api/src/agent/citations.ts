@@ -272,7 +272,8 @@ export const UNPUBLISHED_FIELDS = {
 export type UnpublishedField = keyof typeof UNPUBLISHED_FIELDS;
 
 /** `missing[]` entries from structured tool results only: the `declareUnpublished` tool's
- *  `unpublished` list, an `owner_area: not_published` notice, and an applied out-of-area filter. */
+ *  `unpublished` list and an `owner_area: not_published` notice. An applied out-of-area filter is
+ *  not a gap: contract v1.2 publishes the owner mailing ZIP it reads (label audit 2026-10-26). */
 export function unpublishedFromTools(
   toolOutputs: readonly Record<string, unknown>[],
 ): { field: string; reason: string }[] {
@@ -286,8 +287,6 @@ export function unpublishedFromTools(
     }
     const ownerArea = output.owner_area;
     if (isObject(ownerArea) && ownerArea.status === "not_published")
-      out.push({ field: "owner_is_out_of_area", reason: UNPUBLISHED_FIELDS.owner_is_out_of_area });
-    if (isObject(output.applied) && output.applied.owner_is_out_of_area === true)
       out.push({ field: "owner_is_out_of_area", reason: UNPUBLISHED_FIELDS.owner_is_out_of_area });
   }
   return out;

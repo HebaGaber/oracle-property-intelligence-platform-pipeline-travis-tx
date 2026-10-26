@@ -26,9 +26,10 @@ import { gzipSync } from "node:zlib";
 
 // 310 KB since A-16 (PO decision 2026-10-26): the board-matched UI and the Task B search box
 // port; 315 KB since AM-10 (PO decision 2026-10-26): the Verify page's two counted gateways,
-// fallback lane and Stored on card (+1.6 KB). The Hub first-load graph limit (150 KB) is
-// unchanged and is what a first visit loads.
-export const DEFAULT_LIMIT_BYTES = 315 * 1024;
+// fallback lane and Stored on card (+1.6 KB); 320 KB since the demo polish (PO decision
+// 2026-10-26): the Explore results table and drawer head, and the rewritten Coverage page. The Hub
+// first-load graph limit (150 KB) is unchanged and is what a first visit loads.
+export const DEFAULT_LIMIT_BYTES = 320 * 1024;
 export const DEFAULT_DIST = "apps/web/dist";
 export const DUCKDB_CHUNK = /duckdb/i;
 

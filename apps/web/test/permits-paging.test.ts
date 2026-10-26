@@ -1,6 +1,7 @@
 // A-11: client-side paging of the Permits list. All rows stay in memory (the count check in
-// resolvePermitsState is unchanged); only PERMITS_PAGE_SIZE rows are in the DOM at a time, so a
-// full-county run (about 15,000 rows) does not freeze the browser. Rows below are in-test inputs.
+// resolvePermitsState is unchanged); only PERMITS_PAGE_SIZE rows (newest first) are in the DOM
+// at a time, so a full-county run (about 15,000 rows) does not freeze the browser. Rows below
+// are in-test inputs.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -79,66 +80,89 @@ afterEach(() => {
 });
 
 describe("Permits paging (table)", () => {
-  it("uses a page size of 200", () => {
-    expect(PERMITS_PAGE_SIZE).toBe(200);
+  it("uses a page size of 20", () => {
+    expect(PERMITS_PAGE_SIZE).toBe(20);
   });
 
-  it("shows 1-200 of N with 200 rows and Previous disabled on the first page", async () => {
-    await renderReady(450);
-    expect(range().textContent).toBe("Showing 1–200 of 450");
-    expect(range().textContent).toBe(PERMITS_TEXTS.showing(1, 200, 450));
+  it("shows 1-20 of N with 20 rows and Previous disabled on the first page", async () => {
+    await renderReady(45);
+    expect(range().textContent).toBe("Showing 1–20 of 45");
+    expect(range().textContent).toBe(PERMITS_TEXTS.showing(1, 20, 45));
     expect(range().getAttribute("data-first")).toBe("1");
-    expect(range().getAttribute("data-last")).toBe("200");
-    expect(range().getAttribute("data-total")).toBe("450");
-    expect(bodyRows()).toBe(200);
+    expect(range().getAttribute("data-last")).toBe("20");
+    expect(range().getAttribute("data-total")).toBe("45");
+    expect(bodyRows()).toBe(20);
     expect(prev().disabled).toBe(true);
     expect(next().disabled).toBe(false);
     expect(screen.getAllByRole("navigation", { name: "Permits pages" })).toHaveLength(1);
   });
 
-  it("Next moves to 201-400, then to the partial last page, where Next is disabled", async () => {
-    await renderReady(450);
+  it("Next moves to 21-40, then to the partial last page, where Next is disabled", async () => {
+    await renderReady(45);
     fireEvent.click(next());
-    expect(range().textContent).toBe("Showing 201–400 of 450");
-    expect(bodyRows()).toBe(200);
+    expect(range().textContent).toBe("Showing 21–40 of 45");
+    expect(bodyRows()).toBe(20);
     expect(prev().disabled).toBe(false);
     fireEvent.click(next());
-    expect(range().textContent).toBe("Showing 401–450 of 450");
-    expect(range().getAttribute("data-last")).toBe("450");
-    expect(bodyRows()).toBe(50);
+    expect(range().textContent).toBe("Showing 41–45 of 45");
+    expect(range().getAttribute("data-last")).toBe("45");
+    expect(bodyRows()).toBe(5);
     expect(next().disabled).toBe(true);
     expect(prev().disabled).toBe(false);
     const first = document.querySelector("table tbody tr td");
-    expect(first?.textContent).toContain("TEST-000401");
+    expect(first?.textContent).toContain("TEST-000041");
     fireEvent.click(prev());
-    expect(range().textContent).toBe("Showing 201–400 of 450");
-    // Three pages of 200 rows render in jsdom: about 5 s on a slow CI runner, so give it room.
-  }, 30_000);
+    expect(range().textContent).toBe("Showing 21–40 of 45");
+  });
 
-  it("with 200 or fewer rows the pager shows and both buttons are disabled", async () => {
-    await renderReady(37);
-    expect(range().textContent).toBe("Showing 1–37 of 37");
-    expect(bodyRows()).toBe(37);
+  it("lists the newest permit first: issue_date descending, undated last, ties in engine order", async () => {
+    stubViewport(true);
+    const rows = [
+      { ...row(1), issue_date: "1978-03-01" },
+      { ...row(2), issue_date: null },
+      { ...row(3), issue_date: "2026-08-15" },
+      { ...row(4), issue_date: "2001-01-01" },
+      { ...row(5), issue_date: "2026-08-15" },
+    ];
+    const data: PermitsLoaded = { ...loadedOf(0), permitsEmitted: rows.length, rows };
+    render(createElement(PermitsPage, { load: () => Promise.resolve(data) }));
+    await waitFor(() => expect(screen.getByTestId("permits-range")).toBeTruthy());
+    const numbers = [...document.querySelectorAll("table tbody tr")].map(
+      (tr) => tr.querySelector("td")?.textContent ?? "",
+    );
+    expect(numbers.map((n) => n.match(/TEST-\d+/)?.[0])).toEqual([
+      "TEST-000003",
+      "TEST-000005",
+      "TEST-000004",
+      "TEST-000001",
+      "TEST-000002",
+    ]);
+  });
+
+  it("with 20 or fewer rows the pager shows and both buttons are disabled", async () => {
+    await renderReady(17);
+    expect(range().textContent).toBe("Showing 1–17 of 17");
+    expect(bodyRows()).toBe(17);
     expect(prev().disabled).toBe(true);
     expect(next().disabled).toBe(true);
   });
 
   it("formats large totals with thousands separators but plain data attributes", async () => {
     await renderReady(1500);
-    expect(range().textContent).toBe("Showing 1–200 of 1,500");
+    expect(range().textContent).toBe("Showing 1–20 of 1,500");
     expect(range().getAttribute("data-total")).toBe("1500");
   });
 });
 
 describe("Permits paging (cards)", () => {
   it("renders one page of cards below 600 px", async () => {
-    await renderReady(250, false);
+    await renderReady(25, false);
     const list = screen.getByRole("list", { name: "Permits" });
-    expect(within(list).getAllByRole("listitem")).toHaveLength(200);
+    expect(within(list).getAllByRole("listitem")).toHaveLength(20);
     expect(document.querySelector("table")).toBeNull();
     fireEvent.click(next());
-    expect(range().textContent).toBe("Showing 201–250 of 250");
-    expect(within(list).getAllByRole("listitem")).toHaveLength(50);
+    expect(range().textContent).toBe("Showing 21–25 of 25");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(5);
     expect(next().disabled).toBe(true);
   });
 });
