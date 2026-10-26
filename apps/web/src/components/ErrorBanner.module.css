@@ -22,6 +22,8 @@
   font-weight: var(--md-sys-typescale-body-medium-weight);
   line-height: var(--md-sys-typescale-body-medium-line-height);
   letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+  /* A CID or URL in the message wraps inside the banner instead of widening the page. */
+  overflow-wrap: anywhere;
 }
 
 .retry {

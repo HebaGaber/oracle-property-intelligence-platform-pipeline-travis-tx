@@ -131,8 +131,8 @@ const unknownRoof = (basis: string | null): boolean => basis === null || basis =
 export const PLAIN_WORDS: Readonly<Record<string, string>> = {
   permit: "reroof permit",
   new_construction: "new build",
-  sale_date: "date of the latest sale",
-  deed_date: "date of the latest deed",
+  sale_date: "latest sale",
+  deed_date: "latest deed",
   in_county: "in Travis County",
   regional: "in the region, outside Travis County",
   out_of_area: "outside the region",

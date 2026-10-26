@@ -70,6 +70,12 @@
   .values {
     grid-template-columns: auto minmax(0, 1fr);
   }
+
+  /* A 64-character SHA-256 sits on its own full-width line under its label (board DataVerify1440
+     stacks long values); beside the label it broke off its last characters at 1440. */
+  .values .digest {
+    grid-column: 1 / -1;
+  }
 }
 
 .role {

@@ -14,6 +14,8 @@ export interface PermitChipProps {
   readonly permit: ExplorePermit;
   /** The source's status text once a lexicon carrier exists; null/absent while it has none. */
   readonly statusRaw?: string | null;
+  /** Results table: show "Stalled {x} yrs" only; the full text stays the pill's text and tooltip. */
+  readonly compact?: boolean;
 }
 
 export function permitChipText(permit: ExplorePermit, statusRaw: string | null): string | null {
@@ -30,7 +32,11 @@ export function permitChipText(permit: ExplorePermit, statusRaw: string | null):
   return null;
 }
 
-export function PermitChip({ permit, statusRaw = null }: PermitChipProps): ReactElement {
+export function PermitChip({
+  permit,
+  statusRaw = null,
+  compact = false,
+}: PermitChipProps): ReactElement {
   const text = permitChipText(permit, statusRaw);
   if (text === null) {
     return (
@@ -41,7 +47,15 @@ export function PermitChip({ permit, statusRaw = null }: PermitChipProps): React
   }
   return (
     <span data-permit-chip={permit.status_class ?? ""} data-open-days={permit.open_days ?? ""}>
-      <StatusPill status={permit.status_class === "stalled" ? "warning" : "info"} text={text} />
+      <StatusPill
+        status={permit.status_class === "stalled" ? "warning" : "info"}
+        text={text}
+        short={
+          compact
+            ? `${permit.status_class === "stalled" ? "Stalled" : "Open"} ${String(permit.open_years)} yrs`
+            : undefined
+        }
+      />
     </span>
   );
 }

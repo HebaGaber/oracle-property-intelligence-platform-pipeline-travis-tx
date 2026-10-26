@@ -38,13 +38,14 @@
   letter-spacing: var(--md-sys-typescale-body-small-tracking);
 }
 
+/* The header of every data table in the app (Runs, Log, Permits): title-small on the band. */
 .table th {
   padding: var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--md-sys-color-outline);
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-label-medium-font);
-  font-size: var(--md-sys-typescale-label-medium-size);
-  font-weight: var(--md-sys-typescale-label-medium-weight);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
   text-align: left;
   white-space: nowrap;
 }
@@ -209,9 +210,9 @@
   overflow-wrap: anywhere;
 }
 
-/* Run chain cards (board RunChain): newest first, the current run filled; below 768 px they
-   stack with a down arrow between them, from 768 px they sit in one row with right arrows (a
-   longer chain scrolls inside the card, never the page). */
+/* Run chain cards (board RunChain): newest first, the current run filled; below 1024 px they
+   stack with a down arrow between them (at 768 a row clipped the fourth card), from 1024 px they
+   sit in one row with right arrows (a longer chain scrolls inside the card, never the page). */
 .chainCards {
   display: grid;
   gap: var(--space-7);
@@ -278,7 +279,7 @@
   font-size: var(--md-sys-typescale-body-medium-size);
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .chainCards {
     grid-auto-columns: minmax(calc(var(--space-10) * 2.5), 1fr);
     grid-auto-flow: column;

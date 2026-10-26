@@ -179,12 +179,6 @@
   overflow-wrap: anywhere;
 }
 
-.presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
 /* A-16 T050 (Explore1440 board): chip rows, segmented permit, suggestions, footer. */
 .group {
   display: grid;
@@ -363,6 +357,14 @@ label.chip > input {
   font-family: var(--md-sys-typescale-body-medium-font);
   font-size: var(--md-sys-typescale-body-medium-size);
   line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+/* Explore1440 board: the number reads as a title, the words after it as body text. */
+.count > strong {
+  font-family: var(--md-sys-typescale-title-large-font);
+  font-size: var(--md-sys-typescale-title-large-size);
+  font-weight: var(--md-sys-typescale-title-large-weight);
+  line-height: var(--md-sys-typescale-title-large-line-height);
 }
 
 .textButton {

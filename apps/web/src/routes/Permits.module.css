@@ -10,12 +10,15 @@
   min-width: 0;
 }
 
+/* The page title of every board page (headline-medium, as Runs and Data). */
 .title {
   margin: 0;
-  font-size: var(--md-sys-typescale-title-medium-size);
-  font-weight: var(--md-sys-typescale-title-medium-weight);
-  line-height: var(--md-sys-typescale-title-medium-line-height);
-  letter-spacing: var(--md-sys-typescale-title-medium-tracking);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-headline-medium-font);
+  font-size: var(--md-sys-typescale-headline-medium-size);
+  font-weight: var(--md-sys-typescale-headline-medium-weight);
+  line-height: var(--md-sys-typescale-headline-medium-line-height);
+  letter-spacing: var(--md-sys-typescale-headline-medium-tracking);
 }
 
 .value {
@@ -221,10 +224,15 @@
   white-space: nowrap;
 }
 
-/* From 1200 px the seven columns share the card width (no sideways scroll). */
+/* From 1200 px the seven columns share the card width (no sideways scroll); Missing data is
+   the widest so its pills sit two to a line instead of one per line. */
 @media (min-width: 1200px) {
   .table {
     table-layout: fixed;
+  }
+
+  .table th {
+    white-space: normal;
   }
 
   .table th:nth-child(1) {
@@ -232,11 +240,11 @@
   }
 
   .table th:nth-child(2) {
-    width: 10%;
+    width: 8%;
   }
 
   .table th:nth-child(3) {
-    width: 8%;
+    width: 6%;
   }
 
   .table th:nth-child(4) {
@@ -244,11 +252,11 @@
   }
 
   .table th:nth-child(5) {
-    width: 19%;
+    width: 15%;
   }
 
   .table th:nth-child(6) {
-    width: 23%;
+    width: 33%;
   }
 }
 

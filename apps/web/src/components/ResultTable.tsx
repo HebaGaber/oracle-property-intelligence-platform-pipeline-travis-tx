@@ -1,14 +1,16 @@
 // Explore results as the board's compact data table (Explore1440 board; PO 2026-10-26 "fix the
 // table list styling"): one `tr[data-result-row]` per property (`data-property-cid`): #, the
-// address with its lat, lon, roof age, its basis in short words, confidence, the roofing permit,
-// the contractor as printed with its BBB status, the owner with tenure and owner area, distance,
-// the compact provenance and a Details button. Values come from the same FieldValue the card and
-// the drawer use, so a missing value shows its short pill with the reason. Row click opens the
-// Property drawer. Shown from 1240 px (Explore picks it); the cards (ResultRow) below. Render-only.
+// address with its distance and lat, lon, the roof (age, basis in short words, confidence), the
+// roofing permit (compact chip and number), the contractor as printed with its BBB status, the
+// owner with tenure and owner area, the compact provenance and a Details button. Values come from
+// the same FieldValue the card and the drawer use, so a missing value shows its short pill with
+// the reason. Row click opens the Property drawer. Shown from 1360 px (Explore picks it); the
+// cards (ResultRow) below. Render-only.
 import type { ExploreRow } from "@countylens/query-core";
 import type { KeyboardEvent, MouseEvent, ReactElement } from "react";
 import { truncateCid } from "./CidDisplay";
 import { Icon } from "./Icon";
+import { PermitChip } from "./PermitChip";
 import { CompactProvenance, FieldValue, plainWords } from "./ResultRow";
 import styles from "./ResultTable.module.css";
 
@@ -66,18 +68,11 @@ export function ResultTable({
             <th scope="col" className={styles.num}>
               #
             </th>
-            <th scope="col">Address · lat, lon</th>
-            <th scope="col" className={styles.right}>
-              Roof
-            </th>
-            <th scope="col">Basis</th>
-            <th scope="col">Conf.</th>
+            <th scope="col">Address · distance</th>
+            <th scope="col">Roof · basis · confidence</th>
             <th scope="col">Permit</th>
             <th scope="col">Contractor</th>
             <th scope="col">Owner</th>
-            <th scope="col" className={styles.right}>
-              Mi
-            </th>
             <th scope="col" className={styles.optional}>
               Source
             </th>
@@ -143,8 +138,14 @@ function Row({
           <span data-field="address" className={styles.address}>
             <FieldValue row={row} field="address" />
           </span>
-          <span data-field="lat_lon" className={`${styles.sub} ${styles.mono}`}>
-            <FieldValue row={row} field="lat_lon" />
+          <span className={styles.sub}>
+            <span data-field="distance">
+              <FieldValue row={row} field="distance" />
+            </span>{" "}
+            ·{" "}
+            <span data-field="lat_lon" className={styles.mono}>
+              <FieldValue row={row} field="lat_lon" />
+            </span>
           </span>
           {row.address === null ? (
             <code className={`${styles.sub} ${styles.mono}`} title={row.property_cid}>
@@ -153,40 +154,55 @@ function Row({
           ) : null}
         </span>
       </td>
-      <td className={styles.right}>
-        <span className={styles.roof}>
-          <span className={`${styles.marker} ${roofTone(row.roof_age_years)}`} aria-hidden="true" />
-          <span data-field="roof_age_years">
-            <FieldValue row={row} field="roof_age_years" />
-          </span>
-        </span>
-      </td>
-      <td
-        data-field="roof_age_basis"
-        className={styles.basis}
-        title={row.roof_age_basis ?? undefined}
-      >
-        {basis ?? <FieldValue row={row} field="roof_age_basis" />}
-      </td>
       <td>
-        {row.roof_age_confidence === null ? (
-          <span data-field="roof_age_confidence">
-            <FieldValue row={row} field="roof_age_confidence" />
+        {/* Roof age, its basis and the confidence in one column, so the table fits beside the
+            drawer; an unknown basis says so in words, never a dash. */}
+        <span className={styles.stack}>
+          <span className={styles.roof}>
+            <span
+              className={`${styles.marker} ${roofTone(row.roof_age_years)}`}
+              aria-hidden="true"
+            />
+            <span data-field="roof_age_years">
+              <FieldValue row={row} field="roof_age_years" />
+            </span>
           </span>
-        ) : (
           <span
-            className={`${styles.conf} ${confidenceClass(row.roof_age_confidence)}`}
-            data-field="roof_age_confidence"
+            data-field="roof_age_basis"
+            className={`${styles.sub} ${styles.basis}`}
+            title={row.roof_age_basis ?? "the run has no roof-age basis for this property"}
           >
-            {row.roof_age_confidence}
+            {basis ?? "basis unknown"}
           </span>
-        )}
+          {row.roof_age_confidence === null ? (
+            <span data-field="roof_age_confidence">
+              <FieldValue row={row} field="roof_age_confidence" />
+            </span>
+          ) : (
+            <span>
+              <span
+                className={`${styles.conf} ${confidenceClass(row.roof_age_confidence)}`}
+                data-field="roof_age_confidence"
+              >
+                {row.roof_age_confidence}
+              </span>
+            </span>
+          )}
+        </span>
       </td>
       <td data-field="permit" className={styles.permit}>
         {row.permit === null ? (
-          <span className={styles.sub}>No roofing permit</span>
+          <span
+            className={styles.sub}
+            title="No roofing permit on this property in the current run"
+          >
+            None
+          </span>
         ) : (
-          <FieldValue row={row} field="permit" />
+          <span className={styles.stack}>
+            <PermitChip permit={row.permit} compact />
+            <span className={`${styles.sub} ${styles.mono}`}>{row.permit.number}</span>
+          </span>
         )}
       </td>
       <td className={styles.party}>
@@ -222,9 +238,6 @@ function Row({
             <FieldValue row={row} field="owner_area_class" />
           </span>
         </span>
-      </td>
-      <td data-field="distance" className={`${styles.right} ${styles.nowrap}`}>
-        <FieldValue row={row} field="distance" />
       </td>
       <td className={`${styles.source} ${styles.optional}`}>
         <CompactProvenance row={row} />

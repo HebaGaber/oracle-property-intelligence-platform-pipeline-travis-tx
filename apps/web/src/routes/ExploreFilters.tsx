@@ -6,7 +6,7 @@
 // {place} · roof ≥ {years} yrs" for the search that answered, "tenure unknown: {n}" with the
 // tenure filter, the result cards (ResultRow) or, with zero results, the empty line and Close
 // matches with "+{miles_outside} mi", the engine line, and the Property drawer for `sel`. A-16
-// T050 (Explore1440/768/390 boards): Matches / Close tabs, the results table from 1240 px (cards
+// T050 (Explore1440/768/390 boards): Matches / Close tabs, the results table from 1360 px (cards
 // below), a pager over the server's pages instead of "Load more", "{n} properties match" in the
 // filter panel and the first-visit "What can I ask?" card. Not a route module: Explore.tsx
 // mounts it.
@@ -322,8 +322,9 @@ export function ExploreFilters({
 
 type ResultsTab = "matches" | "close";
 
-/** The board's table needs the 1440 layout; narrower screens (and unit tests) get cards. */
-const TABLE_MIN_WIDTH = 1240;
+/** The board's table needs the 1440 layout (below 1360 px nine columns do not fit beside the
+ *  drawer); narrower screens (and unit tests) get cards. */
+const TABLE_MIN_WIDTH = 1360;
 
 /** Task B pager: 1, the pages around the current one, the last page, with gaps (1-based). */
 export function pageNumbers(current: number, pages: number): readonly (number | "gap")[] {
@@ -460,7 +461,7 @@ function Results({
         )
       ) : zero ? null : (
         <>
-          {/* Explore1440 board: the compact table from 1240 px; Task B's cards below (B-03). */}
+          {/* Explore1440 board: the compact table from 1360 px; Task B's cards below (B-03). */}
           {wide ? (
             <ResultTable
               rows={pageRows}

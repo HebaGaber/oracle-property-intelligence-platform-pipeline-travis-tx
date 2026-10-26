@@ -258,7 +258,7 @@ function SyncStatus({
   return (
     <section className={styles.card} aria-labelledby="sync-heading" data-sync-status="">
       <div className={styles.cardHead}>
-        <h3 id="sync-heading" className={styles.sectionTitle}>
+        <h3 id="sync-heading" className={styles.cardTitle}>
           Sync status
         </h3>
         <StatusPill status="info" icon="cloud_done" text="Published" />
@@ -299,14 +299,22 @@ function SyncStatus({
 }
 
 /** Parcels with data out of the TCAD roll, only from manifest keys; else the reason it is missing. */
+/** The TCAD roll total: a `source_total:` coverage key when the run has one, else the records the
+ *  run read from the TCAD source at capture (`sources[].records`, the roll's own count). */
+function tcadRollTotal(manifest: RunManifestV1): number | undefined {
+  const key = manifest.coverage["source_total:tcad-2026-certified-json"]?.count;
+  if (key !== undefined) return key;
+  return manifest.sources.find((s) => s.name === "tcad-2026-certified-json")?.records;
+}
+
 function countyCoverage(manifest: RunManifestV1): string {
   const published = manifest.coverage["parcels_published"];
-  const total = manifest.coverage["source_total:tcad-2026-certified-json"];
-  if (published === undefined || total === undefined || total.count === 0) {
+  const total = tcadRollTotal(manifest);
+  if (published === undefined || total === undefined || total === 0) {
     return "Not available · this run's manifest has no parcel count with the TCAD roll total";
   }
-  const pct = ((published.count / total.count) * 100).toFixed(1);
-  return `${pct}% of the TCAD roll · ${formatCount(published.count)} of ${formatCount(total.count)} parcels`;
+  const pct = ((published.count / total) * 100).toFixed(1);
+  return `${pct}% of the TCAD roll · ${formatCount(published.count)} of ${formatCount(total)} parcels`;
 }
 
 /**

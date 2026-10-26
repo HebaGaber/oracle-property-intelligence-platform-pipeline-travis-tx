@@ -167,7 +167,7 @@ function Match({ match }: { readonly match: AgentMatch }): ReactElement {
   const cid = match.property_cid ?? match.permit_cid;
   return (
     <li id={`ai-match-${match.n}`} tabIndex={-1} className={styles.match} data-match={match.n}>
-      <span className={styles.matchNo}>[{match.n}]</span>
+      <span className={styles.matchNo}>{match.n}</span>
       <div className={styles.matchBody}>
         {cid === undefined ? null : <CidDisplay cid={cid} />}
         <p className={styles.facts}>{facts.length === 0 ? match.table : facts.join(" · ")}</p>
@@ -401,141 +401,148 @@ export function ExploreAi({
         {response !== undefined &&
         (state === "answered" || state === "no_results") &&
         chips !== null ? (
+          // ExploreQ-ai board: from 1240 px the answer on the left, the numbered matches on the right.
           <article className={styles.result} aria-label="Answer">
-            {state === "no_results" ? (
-              <>
-                <h3 className={styles.heading}>{AI_TEXTS.noResults}</h3>
-                <p className={styles.note}>{AI_TEXTS.noResultsBody}</p>
-              </>
-            ) : null}
-            {/* Explore · AI board: the question, then the prose as headings, paragraphs, items and
+            <div className={styles.answerMain}>
+              {state === "no_results" ? (
+                <>
+                  <h3 className={styles.heading}>{AI_TEXTS.noResults}</h3>
+                  <p className={styles.note}>{AI_TEXTS.noResultsBody}</p>
+                </>
+              ) : null}
+              {/* Explore · AI board: the question, then the prose as headings, paragraphs, items and
               an amber caveat banner (a safe Markdown subset; no raw markers, no HTML). */}
-            <h3 className={styles.question}>
-              <Icon name="smart_toy" size="medium" />
-              {shown?.prompt ?? prompt}
-            </h3>
-            <div className={styles.answer} data-answer="">
-              {answerBlocks(response.answer).map((block, i) => {
-                const inline = answerInline(block.text, response.matches.length).map((part, j) =>
-                  part.kind === "text" ? (
-                    <span key={j}>{part.text}</span>
-                  ) : part.kind === "strong" ? (
-                    <strong key={j}>{part.text}</strong>
-                  ) : (
-                    <a
-                      key={j}
-                      href={`#ai-match-${part.n}`}
-                      className={styles.cite}
-                      data-cite={part.n}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        jump(part.n);
-                      }}
-                    >
-                      [{part.n}]
-                    </a>
-                  ),
-                );
-                if (block.kind === "heading")
-                  return (
-                    <h4 key={i} className={styles.answerHeading}>
-                      {inline}
-                    </h4>
+              <h3 className={styles.question}>
+                <Icon name="smart_toy" size="medium" />
+                {shown?.prompt ?? prompt}
+              </h3>
+              <div className={styles.answer} data-answer="">
+                {answerBlocks(response.answer).map((block, i) => {
+                  const inline = answerInline(block.text, response.matches.length).map((part, j) =>
+                    part.kind === "text" ? (
+                      <span key={j}>{part.text}</span>
+                    ) : part.kind === "strong" ? (
+                      <strong key={j}>{part.text}</strong>
+                    ) : (
+                      <a
+                        key={j}
+                        href={`#ai-match-${part.n}`}
+                        className={styles.cite}
+                        data-cite={part.n}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          jump(part.n);
+                        }}
+                      >
+                        [{part.n}]
+                      </a>
+                    ),
                   );
-                if (block.kind === "caveat")
-                  return (
-                    <p key={i} className={styles.caveat} role="note">
-                      <Icon name="warning" size="medium" />
-                      <span>{inline}</span>
-                    </p>
-                  );
-                if (block.kind === "item")
-                  return (
-                    <p key={i} className={styles.answerItem}>
-                      {inline}
-                    </p>
-                  );
-                return <p key={i}>{inline}</p>;
-              })}
-            </div>
+                  if (block.kind === "heading")
+                    return (
+                      <h4 key={i} className={styles.answerHeading}>
+                        {inline}
+                      </h4>
+                    );
+                  if (block.kind === "caveat")
+                    return (
+                      <p key={i} className={styles.caveat} role="note">
+                        <Icon name="warning" size="medium" />
+                        <span>{inline}</span>
+                      </p>
+                    );
+                  if (block.kind === "item")
+                    return (
+                      <p key={i} className={styles.answerItem}>
+                        {inline}
+                      </p>
+                    );
+                  return <p key={i}>{inline}</p>;
+                })}
+              </div>
 
-            {response.run === undefined ? null : (
-              <p className={styles.note} data-run="">
-                {AI_TEXTS.searchedRun} <code>{response.run.run_id}</code> · {AI_TEXTS.runAsOf}{" "}
-                {response.run.as_of.slice(0, 10)} · {AI_TEXTS.runManifest}{" "}
-                <CidDisplay cid={response.run.manifest_cid} />
-              </p>
-            )}
-
-            <section className={styles.how} aria-label={AI_TEXTS.howTitle}>
-              <h3 className={styles.heading}>{AI_TEXTS.howTitle}</h3>
-              {response.how === "" ? null : <p className={styles.note}>{response.how}</p>}
-              <ul className={styles.chips}>
-                {chips.editable.map(({ chip, value }) => (
-                  <li key={chip.key} className={styles.chip} data-chip={chip.key}>
-                    <label htmlFor={`ai-chip-${chip.key}`}>
-                      {chip.label} ({chip.unit})
-                    </label>
-                    <input
-                      id={`ai-chip-${chip.key}`}
-                      type="number"
-                      inputMode="decimal"
-                      className={styles.chipInput}
-                      min={chip.min}
-                      max={chip.max}
-                      step={chip.step}
-                      value={draft[chip.key] ?? String(value)}
-                      onChange={(event) => setDraft({ ...draft, [chip.key]: event.target.value })}
-                    />
-                  </li>
-                ))}
-                {chips.fixed.map((chip) => (
-                  <li key={chip.key} className={styles.chipFixed} data-chip={chip.key}>
-                    {chip.text}
-                  </li>
-                ))}
-              </ul>
-              {chips.editable.length === 0 ? null : (
-                <div className={styles.actions}>
-                  <button
-                    type="button"
-                    className={styles.ask}
-                    disabled={changed.length === 0 || atLimit}
-                    onClick={() =>
-                      void send(
-                        shown?.prompt ?? prompt,
-                        Object.fromEntries(changed.map(([key, value]) => [key, Number(value)])),
-                      )
-                    }
-                  >
-                    Ask again
-                  </button>
-                  <span className={styles.note}>{AI_TEXTS.howHelp}</span>
-                </div>
+              {response.run === undefined ? null : (
+                <p className={styles.note} data-run="">
+                  {AI_TEXTS.searchedRun} <code>{response.run.run_id}</code> · {AI_TEXTS.runAsOf}{" "}
+                  {response.run.as_of.slice(0, 10)} · {AI_TEXTS.runManifest}{" "}
+                  <CidDisplay cid={response.run.manifest_cid} />
+                </p>
               )}
-            </section>
 
-            <section className={styles.missing} aria-label={AI_TEXTS.missingTitle}>
-              <h3 className={styles.heading}>{AI_TEXTS.missingTitle}</h3>
-              {response.missing.length === 0 ? (
-                <p className={styles.note}>{AI_TEXTS.noMissing}</p>
-              ) : (
-                <ul className={styles.list} data-missing="">
-                  {response.missing.map((m) => (
-                    <li key={`${m.field}:${m.reason}`} data-field={m.field} data-reason={m.reason}>
-                      <StatusPill
-                        status="unavailable"
-                        text={`${fieldWords(m.field)}: ${missingText(m.field, m.reason)}`}
-                        data={{ field: m.field, reason: m.reason }}
+              <section className={styles.how} aria-label={AI_TEXTS.howTitle}>
+                <h3 className={styles.heading}>{AI_TEXTS.howTitle}</h3>
+                {response.how === "" ? null : <p className={styles.note}>{response.how}</p>}
+                <ul className={styles.chips}>
+                  {chips.editable.map(({ chip, value }) => (
+                    <li key={chip.key} className={styles.chip} data-chip={chip.key}>
+                      <label htmlFor={`ai-chip-${chip.key}`}>
+                        {chip.label} ({chip.unit})
+                      </label>
+                      <input
+                        id={`ai-chip-${chip.key}`}
+                        type="number"
+                        inputMode="decimal"
+                        className={styles.chipInput}
+                        min={chip.min}
+                        max={chip.max}
+                        step={chip.step}
+                        value={draft[chip.key] ?? String(value)}
+                        onChange={(event) => setDraft({ ...draft, [chip.key]: event.target.value })}
                       />
                     </li>
                   ))}
+                  {chips.fixed.map((chip) => (
+                    <li key={chip.key} className={styles.chipFixed} data-chip={chip.key}>
+                      {chip.text}
+                    </li>
+                  ))}
                 </ul>
-              )}
-            </section>
+                {chips.editable.length === 0 ? null : (
+                  <div className={styles.actions}>
+                    <button
+                      type="button"
+                      className={styles.ask}
+                      disabled={changed.length === 0 || atLimit}
+                      onClick={() =>
+                        void send(
+                          shown?.prompt ?? prompt,
+                          Object.fromEntries(changed.map(([key, value]) => [key, Number(value)])),
+                        )
+                      }
+                    >
+                      Ask again
+                    </button>
+                    <span className={styles.note}>{AI_TEXTS.howHelp}</span>
+                  </div>
+                )}
+              </section>
+
+              <section className={styles.missing} aria-label={AI_TEXTS.missingTitle}>
+                <h3 className={styles.heading}>{AI_TEXTS.missingTitle}</h3>
+                {response.missing.length === 0 ? (
+                  <p className={styles.note}>{AI_TEXTS.noMissing}</p>
+                ) : (
+                  <ul className={styles.list} data-missing="">
+                    {response.missing.map((m) => (
+                      <li
+                        key={`${m.field}:${m.reason}`}
+                        data-field={m.field}
+                        data-reason={m.reason}
+                      >
+                        <StatusPill
+                          status="unavailable"
+                          text={`${fieldWords(m.field)}: ${missingText(m.field, m.reason)}`}
+                          data={{ field: m.field, reason: m.reason }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
 
             {response.matches.length === 0 ? null : (
-              <section aria-label={AI_TEXTS.sourcesTitle}>
+              <section className={styles.sources} aria-label={AI_TEXTS.sourcesTitle}>
                 <h3 className={styles.heading}>{AI_TEXTS.sourcesTitle}</h3>
                 <ol className={styles.matches} data-matches="">
                   {response.matches.map((match) => (

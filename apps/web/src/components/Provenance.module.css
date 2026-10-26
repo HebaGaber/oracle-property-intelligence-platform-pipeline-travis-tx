@@ -1,9 +1,11 @@
 /* Provenance line (A-03 T055): Atlas § 8, body-small, on-surface-variant, leading icon. Long
    URLs and CIDs wrap inside the line (no horizontal scroll at 390 px). */
 
+/* The icon sits on the first text line's baseline: a 48 px CID copy button in that line made it
+   48 px tall, and a top-aligned icon floated above the text. */
 .line {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   gap: var(--space-1);
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-sys-typescale-body-small-font);
@@ -12,10 +14,6 @@
   line-height: var(--md-sys-typescale-body-small-line-height);
   letter-spacing: var(--md-sys-typescale-body-small-tracking);
   overflow-wrap: anywhere;
-}
-
-.line > :first-child {
-  margin-top: var(--space-1);
 }
 
 .text {

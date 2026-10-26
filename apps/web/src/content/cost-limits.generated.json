@@ -179,7 +179,7 @@
       },
       {
         "source": "Austin Socrata permits 3syk-w9eu",
-        "throughput": "Discovery sample: 120,043 rows/min (median of 3 pages). Full backfill: 1,313.84 rows/s (about 78,800/min)",
+        "throughput": "Discovery measurement: 120,043 rows/min (median of 3 pages). Full backfill: 1,313.84 rows/s (about 78,800/min)",
         "pageSize": "Keyset pages $order=:id, 50,000 rows per page (about 88 MB), no app token",
         "fullCapture": "Backfill: 48 pages, 2,381,226 rows, 1,812 s (about 31 min), 2026-10-21. Incremental Run 3 (2026-10-25): 48 pages, 2,381,886 rows read, about 36 min, 10,582 rows written, relink about 6 min",
         "rateLimit": "At most 1 request/s, project User-Agent, page timeout 5 min, up to 5 attempts with backoff (1 s base, 60 s cap, full jitter)",

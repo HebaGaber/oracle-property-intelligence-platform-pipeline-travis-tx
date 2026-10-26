@@ -21,7 +21,7 @@
 }
 
 .table th {
-  padding: var(--space-2) var(--space-2);
+  padding: var(--space-2) var(--space-1);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-sys-typescale-label-medium-font);
@@ -32,7 +32,7 @@
 }
 
 .table td {
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-1);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   vertical-align: middle;
 }
@@ -148,15 +148,13 @@
   max-width: calc(var(--space-10) * 3);
 }
 
-/* Host · date on one line, the table CID on the next: each part stays whole, the cell may break
-   between them so the table fits its pane (a one-line cell overlapped the Details button). */
+/* The provenance wraps inside its column so the table fits its pane (a one-line cell ran past
+   the card edge and under the Details button). */
 .source {
+  min-width: calc(var(--space-10) * 2);
   color: var(--md-sys-color-on-surface-variant);
   font-size: var(--md-sys-typescale-label-small-size);
-}
-
-.source [data-provenance] > span {
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 /* Every row of a page comes from the same run, named once in the caption: the row keeps its run

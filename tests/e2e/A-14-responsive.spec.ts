@@ -24,10 +24,12 @@ const MIN_TAP_TARGET_PX = 48;
 const GUTTER_PX = 16;
 const SESSION_KEY = "countylens.ai.questions";
 
+// sourcesBeside: board ExploreQ-ai puts the numbered matches in a column right of the answer from
+// 1240 px; below that they follow the answer.
 const WIDTHS = [
-  { name: "mobile", width: 390, height: 844 },
-  { name: "tablet", width: 768, height: 1024 },
-  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844, sourcesBeside: false },
+  { name: "tablet", width: 768, height: 1024, sourcesBeside: false },
+  { name: "desktop", width: 1440, height: 900, sourcesBeside: true },
 ] as const;
 
 // ---- canned responses (shape of AgentAskResponse; placeholders, never presented as real data) ----
@@ -318,6 +320,27 @@ for (const bp of WIDTHS) {
               if (!b || b.x < 0 || b.x + b.width > bp.width + 1)
                 problems.push("source link outside the viewport");
             }
+            // Layout: the matches beside the answer (wide) or under it, and one-line number badges.
+            const answerBox = await panelOf(page).locator("[data-answer]").boundingBox();
+            const sourcesBox = await panelOf(page)
+              .getByRole("region", { name: AI_TEXTS.sourcesTitle })
+              .boundingBox();
+            if (!answerBox || !sourcesBox) problems.push("answer or sources not laid out");
+            else if (bp.sourcesBeside && sourcesBox.x < answerBox.x + answerBox.width)
+              problems.push(`sources start at ${Math.round(sourcesBox.x)}, inside the answer`);
+            else if (!bp.sourcesBeside && sourcesBox.y < answerBox.y + answerBox.height)
+              problems.push(`sources at y ${Math.round(sourcesBox.y)} are not under the answer`);
+            const badgeLines = await panelOf(page)
+              .locator("[data-match] > span:first-child")
+              .evaluateAll((els) =>
+                els.map((el) => {
+                  const range = document.createRange();
+                  range.selectNodeContents(el);
+                  return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+                }),
+              );
+            for (const lines of badgeLines)
+              if (lines > 1) problems.push(`match number wraps onto ${lines} lines`);
             const chip = panelOf(page).locator('[data-chip="radius_mi"] input');
             const cb = await chip.boundingBox();
             if (!cb || cb.height < MIN_TAP_TARGET_PX - 0.5)

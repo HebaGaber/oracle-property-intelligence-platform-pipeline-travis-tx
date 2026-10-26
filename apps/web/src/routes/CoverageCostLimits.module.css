@@ -3,7 +3,6 @@
      clamped to three lines; the row's native Details disclosure lifts the clamp in CSS (no
      script: the JS bundle budget is nearly spent, so the rules below key on structure).
    - `.stack`: below 840 px each row stacks as label/value lines (board Coverage390).
-   - `.kindGrid`: "Counts by record kind" cards filling the width, one line per coverage key.
    Tokens only; no auto margins. */
 .notice {
   display: flex;
@@ -41,9 +40,7 @@
   min-width: 0;
 }
 
-.compact td > div,
-.kindGrid li > span:nth-child(3),
-.facts > div:last-child {
+.compact td > div {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -51,15 +48,7 @@
   line-clamp: 3;
 }
 
-.kindGrid li > span:nth-child(3),
-.facts > div:last-child {
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-}
-
-.compact tr:has(details[open]) td > div,
-.kindGrid article:has(details[open]) li > span:nth-child(3),
-.kindGrid article:has(details[open]) .facts > div:last-child {
+.compact tr:has(details[open]) td > div {
   display: block;
   overflow: visible;
   -webkit-line-clamp: none;
@@ -123,7 +112,6 @@
 
 /* Atlas text button on a native summary, 48 px target; no disclosure marker. */
 .compact summary,
-.kindGrid summary,
 [data-section="limitations"] summary {
   box-sizing: border-box;
   display: inline-flex;
@@ -142,26 +130,22 @@
 }
 
 .compact summary::-webkit-details-marker,
-.kindGrid summary::-webkit-details-marker,
 [data-section="limitations"] summary::-webkit-details-marker {
   display: none;
 }
 
 .compact summary:hover,
-.kindGrid summary:hover,
 [data-section="limitations"] summary:hover {
   background: var(--md-sys-color-surface-container-high);
 }
 
 .compact summary:focus-visible,
-.kindGrid summary:focus-visible,
 [data-section="limitations"] summary:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
 .compact details[open] summary,
-.kindGrid details[open] summary,
 [data-section="limitations"] details[open] summary {
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
@@ -264,101 +248,6 @@
   outline-offset: 2px;
 }
 
-/* ---- Counts by record kind ---- */
-.kindGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-4);
-  align-items: start;
-  min-width: 0;
-}
-
-@media (min-width: 600px) {
-  .kindGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1200px) {
-  .kindGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-.kindGrid > article {
-  align-content: start;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-/* Card head: the kind title and its Details disclosure. */
-.kindGrid > article > div:first-child {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  min-height: var(--space-9);
-}
-
-.kindGrid ul {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* One coverage key: label and count on a line, derivation · collected · note below. */
-.kindGrid li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 0 var(--space-3);
-  padding: var(--space-2) 0;
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-}
-
-.kindGrid li > span:first-child {
-  min-width: 0;
-  font-family: var(--md-sys-typescale-title-small-font);
-  font-size: var(--md-sys-typescale-title-small-size);
-  font-weight: var(--md-sys-typescale-title-small-weight);
-  line-height: var(--md-sys-typescale-title-small-line-height);
-  overflow-wrap: anywhere;
-}
-
-.kindGrid li > span:nth-child(2) {
-  white-space: nowrap;
-}
-
-.kindGrid li > span:nth-child(3) {
-  grid-column: 1 / -1;
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-body-small-font);
-  font-size: var(--md-sys-typescale-body-small-size);
-  line-height: var(--md-sys-typescale-body-small-line-height);
-  overflow-wrap: anywhere;
-}
-
-.facts {
-  display: grid;
-  gap: var(--space-1);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-body-small-font);
-  font-size: var(--md-sys-typescale-body-small-size);
-  line-height: var(--md-sys-typescale-body-small-line-height);
-  overflow-wrap: anywhere;
-}
-
-.facts > div {
-  min-width: 0;
-}
-/* "Loaded vs each source's own total": count {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 0;
-}
 /* ---- A-16 style pass (PO 2026-10-26 06:25, boards Coverage1440/768/390) ---- */
 
 /* Page head: title and intro on the left, the run button and Download CSV on the right; the
@@ -437,20 +326,6 @@
   padding-top: var(--space-3);
   padding-bottom: var(--space-3);
   vertical-align: middle;
-}
-/* Data cell: the row's status icon {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
-  color: var(--md-sys-color-on-surface-variant);
-}/* Board "Missing" swatch and "No source" cell: hatched {
-  background-color: var(--md-sys-color-surface-container-high);
-  background-image: repeating-linear-gradient(
-    45deg,
-    var(--md-sys-color-outline-variant) 0 2px,
-    transparent 2px 6px
-  );
 }
 /* Cost tiles (board "Last bill" and "Budget alert"): filled, no outline. */
 .costTiles > div {

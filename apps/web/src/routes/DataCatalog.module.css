@@ -430,6 +430,7 @@
 .partsSummary {
   display: inline-flex;
   align-items: center;
+  min-width: var(--space-9);
   min-height: var(--space-9);
   color: var(--md-sys-color-primary);
   cursor: pointer;
