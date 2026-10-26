@@ -24,6 +24,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatUtc } from "../src/components/Provenance";
 import { BOTH_HOSTS_DOWN_TEXT } from "../src/data/fetch-by-cid";
 
 const COPY_HOST = "copy.example.test";
@@ -337,8 +338,16 @@ describe("Runs page: the run card (TC-010)", () => {
     expect(within(card).getByRole("heading", { level: 2 }).textContent).toBe(
       fixture.manifest.runId,
     );
-    expect(card.textContent).toContain(`Started ${fixture.manifest.startedAt} UTC`);
-    expect(card.textContent).toContain(`Finished ${fixture.manifest.finishedAt} UTC`);
+    // G2 board round: the instant reads like the board (no T…Z) in a <time datetime={ISO}>.
+    for (const [word, iso] of [
+      ["Started", fixture.manifest.startedAt],
+      ["Finished", fixture.manifest.finishedAt],
+    ] as const) {
+      expect(card.textContent).toContain(`${word} ${formatUtc(iso)} UTC`);
+      expect(card.querySelector(`time[datetime="${iso}"]`)?.textContent).toBe(
+        `${formatUtc(iso)} UTC`,
+      );
+    }
   });
 
   it("shows the manifest CID in data-cid with a middle-truncated text and a copy button that copies the full CID", async () => {
@@ -421,7 +430,8 @@ describe("Runs page: sources in manifest order (TC-011)", () => {
 
     expect(within(austin).getByText(SOURCE_LABELS["austin-3syk-w9eu"])).toBeDefined();
     expect(austin.textContent).toContain(`${source0.records} records`);
-    expect(austin.textContent).toContain(`collected ${source0.captured_at} UTC`);
+    expect(austin.textContent).toContain(`collected ${formatUtc(source0.captured_at)} UTC`);
+    expect(austin.querySelector(`time[datetime="${source0.captured_at}"]`)).not.toBeNull();
     // TC-002 step 3: the source's watermark is shown, labelled, as published.
     expect(source0.watermark).not.toBeNull();
     expect(austin.textContent).toContain(`watermark ${source0.watermark}`);
