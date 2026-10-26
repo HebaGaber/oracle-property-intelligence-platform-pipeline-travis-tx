@@ -85,7 +85,7 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
   it("Coverage, Catalog, Hub, Coming soon, county, Help · MCP", () => {
     expect(COVERAGE_TEXTS.denominatorMissing).toBe("denominator not in this run's manifest");
     expect(COVERAGE_TEXTS.denominatorMissingFor("tcad-2026-certified-json")).toBe(
-      "denominator not in this run's manifest · A-01 source tcad-2026-certified-json",
+      "denominator not in this run's manifest · source tcad-2026-certified-json",
     );
     expect(PAGE_TEXTS.comingSoonNotDeployed).toBe("Coming soon · Not deployed yet");
     expect(PAGE_TEXTS.comingSoon).toBe("Coming soon");

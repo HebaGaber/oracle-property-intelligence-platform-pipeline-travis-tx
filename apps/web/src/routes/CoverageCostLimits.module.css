@@ -387,8 +387,7 @@
   gap: var(--space-2);
 }
 
-/* Atlas outlined buttons, 48 px targets: the run (a link to Runs) and Download CSV. */
-.runButton,
+/* Atlas outlined button, 48 px target: Download CSV (the run is the shared RunSelect). */
 .outlined {
   box-sizing: border-box;
   display: inline-flex;
@@ -408,20 +407,10 @@
   cursor: pointer;
 }
 
-/* The run reads as a menu field (board "Run 3 · current ▾"): small corner, on-surface text. */
-.runButton {
-  padding: 0 var(--space-2) 0 var(--space-4);
-  border-color: var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-small);
-  color: var(--md-sys-color-on-surface);
-}
-
-.runButton:hover,
 .outlined:hover {
   background: var(--md-sys-color-surface-container-high);
 }
 
-.runButton:focus-visible,
 .outlined:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;

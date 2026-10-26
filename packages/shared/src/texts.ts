@@ -97,7 +97,7 @@ export const COVERAGE_TEXTS = Object.freeze({
   kindAbsent: "not in this run's coverage section",
   denominatorMissing: "denominator not in this run's manifest",
   denominatorMissingFor: (source: string): string =>
-    `denominator not in this run's manifest · A-01 source ${source}`,
+    `denominator not in this run's manifest · source ${source}`,
 });
 
 /** Hub, Catalog, Coming soon, county selector and Help · MCP. */

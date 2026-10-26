@@ -5,7 +5,7 @@
 // - run-events: startedAt, each sources[].captured_at, finishedAt + limitations, time-ordered
 //   across runs;
 // - coverage-rows: unknown keys tolerated; a missing `source_total:{source}` key gives
-//   "denominator not in this run's manifest · A-01 source {name}";
+//   "denominator not in this run's manifest · source {name}";
 // - site-links: https only, an invalid or empty value is hidden;
 // - parquet-meta: columns, types and rows from a real Parquet footer read by Range;
 // - verify-lane: the data-model state machine (✓ only when size and digest match; 429 and

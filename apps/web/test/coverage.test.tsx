@@ -2,7 +2,7 @@
 // (`/tx/travis/coverage`). One card per record kind; every count is a manifest `coverage` key
 // (`data-coverage-key`) with its derivation label, note, collection time, source table and
 // provenance; a kind the section lacks says so in words; each source's denominator reads
-// "denominator not in this run's manifest · A-01 source {name}" until the manifest carries a
+// "denominator not in this run's manifest · source {name}" until the manifest carries a
 // `source_total:{source}` key. Fixture built in the test; fetches are vi.fn, no network.
 import { RUN_MANIFEST_SCHEMA, RUNS_INDEX_SCHEMA, type RunManifestV1 } from "@countylens/contract";
 import { rawCid } from "@countylens/query-core";
@@ -221,7 +221,7 @@ describe("Coverage gaps say why (FR-002, FR-007, TC-017)", () => {
     }
   });
 
-  it("shows `denominator not in this run's manifest · A-01 source {name}` per source without a total", async () => {
+  it("shows `denominator not in this run's manifest · source {name}` per source without a total", async () => {
     const built = await buildRun();
     install(built);
     await renderCoverage();
@@ -245,7 +245,7 @@ describe("Coverage gaps say why (FR-002, FR-007, TC-017)", () => {
 
     const region = screen.getByRole("region", { name: /own total/i });
     const row = region.querySelector<HTMLElement>('[data-denominator="austin-3syk-w9eu"]');
-    expect(row?.textContent).toContain("4321");
+    expect(row?.textContent).toContain("4,321");
     expect(row?.textContent).not.toContain(COVERAGE_TEXTS.denominatorMissing);
     expect(
       within(region).getByText(COVERAGE_TEXTS.denominatorMissingFor("tcad-2026-certified-json")),
@@ -291,7 +291,7 @@ describe("Each kind card shows its own denominator (FR-002, AC-2)", () => {
     for (const id of ["permit", "contractor"]) {
       const el = kind(id).querySelector<HTMLElement>("[data-kind-denominator]");
       expect(el?.getAttribute("data-kind-denominator")).toBe("austin-3syk-w9eu");
-      expect(el?.textContent).toContain("4321");
+      expect(el?.textContent).toContain("4,321");
       expect(el?.textContent).toContain(DERIVATION_LABELS["capture_receipt"]);
       expect(el?.textContent).toContain("2026-10-21 08:01:00 UTC");
       expect(el?.textContent).not.toContain(COVERAGE_TEXTS.denominatorMissing);
