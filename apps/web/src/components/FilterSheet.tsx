@@ -50,7 +50,9 @@ const SUGGESTIONS: readonly { readonly text: string; readonly patch: FilterPatch
 ];
 
 export type FilterKey = "place" | "r" | "roof" | "permit" | "openYrs" | "tenure" | "ooa" | "sort";
-export type FilterPatch = Partial<Record<FilterKey | "at" | "sel", string | boolean | null>>;
+export type FilterPatch = Partial<
+  Record<FilterKey | "at" | "sel" | "page", string | boolean | null>
+>;
 
 /** One numeric control: its explore.search bounds, whether it takes whole numbers only, and whether an empty box means "no filter". */
 interface NumberSpec {

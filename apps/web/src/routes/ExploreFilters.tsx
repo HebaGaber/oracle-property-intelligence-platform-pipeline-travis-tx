@@ -15,27 +15,19 @@ import { resolvePlace, searchPlaces, type ResolvedPlace } from "@countylens/quer
 import { EXPLORE_TEXTS } from "@countylens/shared";
 import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@countylens/api-client/react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactElement,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useSearchParams } from "react-router";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { FilterSheet, type FilterKey, type FilterPatch } from "../components/FilterSheet";
 import { Icon } from "../components/Icon";
 import { LinearProgress } from "../components/LinearProgress";
 import { ResultRow } from "../components/ResultRow";
-import { ResultTable } from "../components/ResultTable";
 import { WelcomeCard } from "../components/WelcomeCard";
 import { Skeleton } from "../components/Skeleton";
 import { RunIndexError, latestRun, loadRunsIndex, runIndexText } from "../data/runs-index";
 import {
   DEFAULT_RADIUS_MI,
+  EXPLORE_PAGE_ROWS,
   SEARCH_DEBOUNCE_MS,
   isOpenOrStalled,
   parseExploreQuery,
@@ -120,26 +112,6 @@ interface AskedSearch {
   readonly name: string;
 }
 
-/** The Explore1440 board's data table from this width (it needs about 900 px of pane); compact cards below. */
-export const RESULTS_TABLE_QUERY = "(min-width: 1240px)";
-
-function useMediaQuery(query: string): boolean {
-  const subscribe = useCallback(
-    (onChange: () => void) => {
-      if (typeof window.matchMedia !== "function") return () => undefined;
-      const list = window.matchMedia(query);
-      list.addEventListener("change", onChange);
-      return () => list.removeEventListener("change", onChange);
-    },
-    [query],
-  );
-  const getSnapshot = useCallback(
-    () => typeof window.matchMedia === "function" && window.matchMedia(query).matches,
-    [query],
-  );
-  return useSyncExternalStore(subscribe, getSnapshot, () => false);
-}
-
 /** "Showing {first}–{last} of {total}" under the results (board pager). */
 export const showingText = (first: number, last: number, total: number): string =>
   `Showing ${first.toLocaleString("en-US")}–${last.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}`;
@@ -212,16 +184,8 @@ export function ExploreFilters({
     answered.current = debounced;
   }
   const answeredKey = answered.current === null ? "" : JSON.stringify(answered.current.request);
-  // The pager: page 0 is the main search; a later page is its own explore.search call.
-  const [pager, setPager] = useState<{ key: string; page: number }>({ key: "", page: 0 });
-  const page = pager.key === answeredKey ? pager.page : 0;
-  const pageSearch = useQuery({
-    ...trpc.explore.search.queryOptions(
-      page > 0 && answered.current !== null ? { ...answered.current.request, page } : skipToken,
-    ),
-    retry: false,
-  });
-  const goTo = (next: number): void => setPager({ key: answeredKey, page: next });
+  // The pager (PO 2026-10-26): 20 rows a page; the URL's `page` is part of the search request.
+  const page = answered.current?.request.page ?? 0;
 
   const pageState: ExplorePageState =
     bound.kind === "error" || search.isError
@@ -231,9 +195,15 @@ export function ExploreFilters({
         : "ready";
   useEffect(() => onState(pageState), [pageState, onState]);
 
+  // A filter change starts again on page 1; the pager and the drawer keep the page.
   const patch = (values: FilterPatch, replace = true): void => {
-    setParams((current) => patchParams(current, values), { replace });
+    const keep = "page" in values || "sel" in values;
+    setParams((current) => patchParams(current, keep ? values : { ...values, page: null }), {
+      replace,
+    });
   };
+  const goTo = (next: number): void =>
+    patch({ page: next > 0 ? String(next + 1) : null, sel: null }, false);
   const value = (key: FilterKey): string => {
     if (key === "r") return params.get("r") ?? String(DEFAULT_RADIUS_MI);
     if (key === "sort") return query.sort;
@@ -242,8 +212,7 @@ export function ExploreFilters({
   };
 
   const data: ExploreResult | undefined = search.data;
-  const pageRows: readonly ExploreRow[] =
-    page === 0 ? (data?.rows ?? []) : (pageSearch.data?.rows ?? []);
+  const pageRows: readonly ExploreRow[] = data?.rows ?? [];
   const all: readonly ExploreRow[] = data
     ? [...pageRows, ...data.close_matches.map((c) => c.row)]
     : [];
@@ -319,15 +288,6 @@ export function ExploreFilters({
             request={answered.current.request}
             page={page}
             pageRows={pageRows}
-            pageState={
-              page === 0
-                ? "ready"
-                : pageSearch.isError
-                  ? "error"
-                  : pageSearch.data
-                    ? "ready"
-                    : "loading"
-            }
             onPage={goTo}
             onSelect={select}
             selected={query.sel}
@@ -343,13 +303,25 @@ export function ExploreFilters({
 
 type ResultsTab = "matches" | "close";
 
+/** Task B pager: 1, the pages around the current one, the last page, with gaps (1-based). */
+export function pageNumbers(current: number, pages: number): readonly (number | "gap")[] {
+  const keep = [...new Set([1, pages, current - 1, current, current + 1])]
+    .filter((n) => n >= 1 && n <= pages)
+    .sort((a, b) => a - b);
+  const items: (number | "gap")[] = [];
+  keep.forEach((n, i) => {
+    if (i > 0 && n - (keep[i - 1] ?? n) > 1) items.push("gap");
+    items.push(n);
+  });
+  return items;
+}
+
 function Results({
   data,
   header,
   request,
   page,
   pageRows,
-  pageState,
   onPage,
   onSelect,
   selected,
@@ -357,15 +329,14 @@ function Results({
   readonly data: ExploreResult;
   readonly header: string;
   readonly request: ExploreSearchRequest;
+  /** 0-based. */
   readonly page: number;
   readonly pageRows: readonly ExploreRow[];
-  readonly pageState: "loading" | "ready" | "error";
   readonly onPage: (page: number) => void;
   readonly onSelect: (cid: string) => void;
   readonly selected: string | null;
 }): ReactElement {
   const zero = data.total_within_r === 0;
-  const table = useMediaQuery(RESULTS_TABLE_QUERY);
   const [chosen, setChosen] = useState<ResultsTab | null>(null);
   // With no match the Close tab opens (the board's "Close 3"); a choice sticks until the next search.
   const tab: ResultsTab = chosen ?? (zero ? "close" : "matches");
@@ -375,10 +346,9 @@ function Results({
   const noOpen =
     (request.permit === "open" || request.permit === "open_or_stalled") &&
     !data.rows.some((r) => r.permit?.status_class === "open");
-  const pageSize = data.rows.length;
-  const first = page * pageSize + 1;
-  const last = Math.min(data.total_within_r, page * pageSize + pageRows.length);
-  const pages = pageSize === 0 ? 1 : Math.ceil(data.total_within_r / pageSize);
+  const first = page * EXPLORE_PAGE_ROWS + 1;
+  const last = Math.min(data.total_within_r, page * EXPLORE_PAGE_ROWS + pageRows.length);
+  const pages = Math.max(1, Math.ceil(data.total_within_r / EXPLORE_PAGE_ROWS));
   const tabs: readonly { readonly id: ResultsTab; readonly label: string; readonly n: number }[] = [
     { id: "matches", label: "Matches", n: data.total_within_r },
     { id: "close", label: "Close", n: data.close_matches.length },
@@ -400,7 +370,7 @@ function Results({
         </p>
       ) : null}
       {/* Toggle buttons, not tabs: the A-13 contract (TC-073 scan, a13-vitals) reads the page's
-          tabs as the three Explore modes only, and SQL mode unmounts this view. */}
+          tabs as the Explore modes only. */}
       <div role="group" aria-label="Results view" className={styles.resultTabs}>
         {tabs.map((t) => (
           <button
@@ -446,30 +416,17 @@ function Results({
         )
       ) : zero ? null : (
         <>
-          {pageState === "loading" ? <Skeleton variant="cards" count={3} /> : null}
-          {pageState === "error" ? (
-            <ErrorBanner message={EXPLORE_TEXTS.loadMoreFailed} onRetry={() => onPage(page)} />
-          ) : null}
-          {pageState !== "ready" ? null : table ? (
-            <ResultTable rows={pageRows} first={first} onSelect={onSelect} selected={selected} />
-          ) : (
-            <ul className={styles.list} aria-label="Results">
-              {pageRows.map((row) => (
-                <li key={row.property_cid} className={styles.item}>
-                  <ResultRow
-                    row={row}
-                    onSelect={onSelect}
-                    selected={selected === row.property_cid}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-          <nav className={styles.pager} aria-label="Result pages">
+          {/* Task B listing: one card per property at every width (B-03 ResultsList). */}
+          <ul className={styles.list} aria-label="Results">
+            {pageRows.map((row) => (
+              <li key={row.property_cid} className={styles.item}>
+                <ResultRow row={row} onSelect={onSelect} selected={selected === row.property_cid} />
+              </li>
+            ))}
+          </ul>
+          <nav className={styles.pager} aria-label="Result pages" data-results-pager="">
             <span className={styles.engine} data-showing="" aria-live="polite">
-              {pageState === "ready" && pageRows.length > 0
-                ? showingText(first, last, data.total_within_r)
-                : null}
+              {pageRows.length > 0 ? showingText(first, last, data.total_within_r) : null}
             </span>
             <button
               type="button"
@@ -480,9 +437,24 @@ function Results({
             >
               <Icon name="chevron_left" />
             </button>
-            <span className={styles.pageNumber} aria-current="page">
-              {page + 1}
-            </span>
+            {pageNumbers(page + 1, pages).map((item, i) =>
+              item === "gap" ? (
+                <span key={`gap-${String(i)}`} className={styles.gap} aria-hidden="true">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={item}
+                  type="button"
+                  className={`${styles.pageButton} ${item === page + 1 ? styles.pageOn : ""}`}
+                  aria-label={`Page ${String(item)}`}
+                  {...(item === page + 1 ? { "aria-current": "page" as const } : {})}
+                  onClick={() => onPage(item - 1)}
+                >
+                  {item}
+                </button>
+              ),
+            )}
             <button
               type="button"
               className={styles.pageButton}
