@@ -6,13 +6,13 @@ story: A-11
 test_case: pipeline/oracle-runtime test/travis/permits/write-group.test.ts ("publishes a person-only contractor as company.name as printed", "keeps the printed company when both a company and a person are printed")
 ac_reference: A-11
 severity: Medium
-status: Fixed in code; Property Improvement group rebuilt for Run 3.1 (travis-full-run3-1-20261025)
+status: Closed - published in Run 3.1 (travis-full-run3-1-20261025)
 found_by: Task B (Roofing CRM) Run 3 data-gap questions, question 3, for HebaGaber
 found_date: 2026-10-25
 fix_branch: 011e-run3-1-permit-contractors
 fix_commit: pending
 retest_date: 2026-10-26
-closed_date: pending
+closed_date: 2026-10-26 (Run 3.1 published)
 ---
 
 # ERR-72: A permit that prints only a contractor person publishes no contractor

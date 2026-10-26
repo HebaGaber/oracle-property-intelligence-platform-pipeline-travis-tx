@@ -6,13 +6,13 @@ story: A-11
 test_case: packages/query-core tests (views over a run with address columns and without); trial export compare in specs/011-publish-and-runs/run3-1/
 ac_reference: A-04 AC-1 (situs address), FU-A-01-contract-address-contractor
 severity: High
-status: Fixed for Run 3.1 (travis-full-run3-1-20261025), contract v1.2
+status: Closed - published in Run 3.1 (travis-full-run3-1-20261025), contract v1.2
 found_by: Task B (Roofing CRM) Run 3 data-gap questions 1 and 2, for HebaGaber
 found_date: 2026-10-25
 fix_branch: 011e-run3-1-permit-contractors
 fix_commit: dfe2cbb (contract v1.2), review fixes on 011e-run3-1-permit-contractors after 4549e54
 retest_date: 2026-10-26
-closed_date: pending
+closed_date: 2026-10-26 (Run 3.1 published)
 ---
 
 # ERR-74: Property address and owner mailing ZIP are not in the published tables

@@ -6,13 +6,13 @@ story: A-11
 test_case: pipeline/local-stack test/contractor-coverage.test.ts; pipeline/publish test/run-manifest.test.ts ("a correction run can drop carried notes by prefix and replace a source's limitations")
 ac_reference: A-11, A-07 AC-7
 severity: Low
-status: Fixed in Run 3.1 manifest (travis-full-run3-1-20261025)
+status: Closed - published in Run 3.1 (travis-full-run3-1-20261025)
 found_by: Task A investigation of Task B's Run 3 question 4, for HebaGaber
 found_date: 2026-10-26
 fix_branch: 011e-run3-1-permit-contractors
 fix_commit: pending
 retest_date: 2026-10-26
-closed_date: pending
+closed_date: 2026-10-26 (Run 3.1 published)
 ---
 
 # ERR-73: The Run 3 manifest says the Comptroller registry is not loaded
