@@ -4,7 +4,7 @@ Updated every 15 minutes by the main session. Times are EEST (UTC+3). Session ta
 
 Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the PO · 🛑 PO decision · ⚠️ at risk
 
-**Last update:** 04:25 EEST · **Revised target:** G7 ≈ 05:00; bridge live test on hold until Run 3.1 is done
+**Last update:** 04:40 EEST · **Revised target:** G7 ≈ 05:15; bridge live test on hold until Run 3.1 is done
 
 ## Rounds
 
@@ -32,14 +32,14 @@ Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the
 | P2 | Batch 2 push (admin UI/API, index read path, rest of parity) → preview | Me | R3 | B-G2a, B-G2b, B-G4, D1 | 25 m | 02:35 | ✅ pushed 1b7f627 02:42; CI + preview building |
 | RV | One review round in parallel while P2 builds: `/code-review medium` + metagross, machamp, audino (≥ 75) | Me + reviewers | R3 | P2 pushed | 20 m | 02:15 | ✅ audino 82, metagross 81, machamp 78, /code-review medium 10 findings |
 | UP | Unpark A-13/A-14 tests (T053/T026) | G2b | R3 | B-G4i live on preview | 5 m | 02:50 | ✅ 28 parkGap calls removed (68a7701) |
-| T1 | Hosted Playwright on the preview: A-16 specs, unparked cases, responsive; index p95 20 cold + 20 warm; golden G1–G6 on Run 2 | Me | R3 | P2, UP, U1 | 20 m | 03:35 | CI on 1b7f627 closed: 25 of 28 unparked pass; TC-004/023/081 re-parked (PO exceptions); 4 quick fixes with builder |
-| T2 | Parity re-run (smeargle) on the preview, after-fix verdicts | Me | R3 | P2 | 15 m (parallel with T1) | 03:10 | ✅ parity after: 10 Match, 6 Justified, 36 Differs; 4 layout bugs being fixed, rest recorded |
+| T1 | Hosted Playwright on the preview: A-16 specs, unparked cases, responsive; index p95 20 cold + 20 warm; golden G1–G6 on Run 2 | Me | R3 | P2, UP, U1 | 20 m | 05:00 | 🔄 CI on 5554665 |
+| T2 | Parity re-run (smeargle) on the preview, after-fix verdicts | Me | R3 | P2 | 15 m (parallel with T1) | 05:05 | 🔄 final hosted parity review (waits for preview 5554665) |
 | BR | ✋ PO starts local stack + bridge; admin Start (`dry_run`) → SQS → bridge → Restate → "Running"; stop bridge → expired; DLQ email | Me + PO | R3 | D1, U1, B-G3 | 15 m (parallel with T1) | after Run 3.1 | ⏸ on hold (PO): waits for the Run 3.1 session to finish with the local Query DB |
 | FX | Fixes from review and hosted tests (ERR-75+), re-tests | builders | R3 | RV, T1, T2 | 15 m | 02:35 | ✅ ERR-75, 76, 77, 78 closed or fixed; Api redeployed 02:55 (ERR-78 prompt) |
 | EV | Evidence `docs/evidence/A-16.md` (Closure table), cost/limits final + ✋ billing screenshot, statuses, PR body, kit-usage, converge | Me (+ PO screenshot) | R3 | T1, BR | 15 m (parallel with FX) | 03:40 | 🔄 closure table, PR gaps, review log done; test report after final CI |
 | UI1 | PO UI notes: fluid layout, Runs switcher, remove SQL tab + tests (builder B); short missing pills, Manifest run picker (builder A) | 2 builders | R3 | — | 30 m | 03:45 | ✅ builders A + B merged (891fc5a pushed 03:39); SQL tab removed with 5 tests by PO decision |
-| UI2 | Parallel responsive review + fix round, 5 agents by page family, local build; then one push + final smeargle review | 5 agents | R3 | UI1 merged | 40 m | 04:20 | 🔄 F1, F2, F3, F5 merged (bundle 299.2/300 KB); F4 Coverage/Data/Permits running |
-| G7 | G7 pre-check → 🛑 G7 → merge `--no-ff` → `progress.sh` → push | Me + PO | R3 | FX, EV | 10 m | 03:45 | ⏳ |
+| UI2 | Parallel responsive review + fix round, 5 agents by page family, local build; then one push + final smeargle review | 5 agents | R3 | UI1 merged | 40 m | 04:20 | ✅ 5 families merged + Task B search/property port; bundle gate 310 KB (PO); pushed 5554665 04:37 |
+| G7 | G7 pre-check → 🛑 G7 → merge `--no-ff` → `progress.sh` → push | Me + PO | R3 | FX, EV | 10 m | 05:15 | ⏳ |
 
 ## Decisions and actions still needed from the PO
 
