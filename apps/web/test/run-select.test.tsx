@@ -7,6 +7,7 @@ import { RunSelect } from "../src/components/RunSelect";
 import { latestChip } from "../src/data/hub-index";
 import {
   PILOT_RUN_IDS,
+  compareQuery,
   numberedRuns,
   runDate,
   runName,
@@ -156,5 +157,30 @@ describe("RunSelect", () => {
     expect(
       document.querySelector('[data-icon="arrow_drop_down"]')?.getAttribute("aria-hidden"),
     ).toBe("true");
+  });
+});
+
+describe("compareQuery (label review 2026-10-26)", () => {
+  it("speaks Compare's positions, so a run named 3.1 is not read as position 3", () => {
+    const index = {
+      ...REAL_INDEX,
+      runs: [
+        ...REAL_INDEX.runs,
+        {
+          runId: "travis-full-run3-1-20261025",
+          manifestCid: "bafk31",
+          finishedAt: "2026-10-25T23:00:00Z",
+        },
+        {
+          runId: "travis-full-run4-20261026",
+          manifestCid: "bafk4",
+          finishedAt: "2026-10-26T11:47:00Z",
+        },
+      ],
+    } as RunsIndexV1;
+    expect(compareQuery(index, "travis-full-run3-1-20261025", "travis-full-run4-20261026")).toBe(
+      "?a=4&b=5",
+    );
+    expect(compareQuery(index, PILOT, "travis-full-run4-20261026")).toBe("");
   });
 });

@@ -579,12 +579,13 @@ test.describe("A-13 explorer · demo lines", () => {
     }
     // 5. The open-permit section.
     const open = result.rows.filter((r) => r.permit?.status_class === "open");
-    if (open.length === 0 && result.total_within_r > 0) {
+    const allShown = result.total_within_r <= result.rows.length;
+    if (open.length === 0 && result.total_within_r > 0 && allShown) {
       // PO 2026-10-26: an open permit includes stalled ones; every match is stalled here.
       await expect(
         page.getByText(EXPLORE_TEXTS.allStalled(result.total_within_r), { exact: true }),
       ).toBeVisible();
-    } else if (open.length === 0) {
+    } else if (result.total_within_r === 0) {
       await expect(page.getByText(EXPLORE_TEXTS.noOpenPermits, { exact: true })).toBeVisible();
     }
     // 6. Counts equal the evidence file (A-11) / the API total otherwise. Run 3
@@ -601,7 +602,7 @@ test.describe("A-13 explorer · demo lines", () => {
       await expect(page.locator(SEL.resultRow)).toHaveCount(
         Math.min(result.total_within_r, result.rows.length),
       );
-      if (result.total_within_r > 0 && open.length === 0) {
+      if (result.total_within_r > 0 && open.length === 0 && allShown) {
         await expect(
           page.getByText(EXPLORE_TEXTS.allStalled(result.total_within_r), { exact: true }),
         ).toBeVisible();

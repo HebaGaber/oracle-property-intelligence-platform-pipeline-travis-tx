@@ -151,9 +151,12 @@ describe("run-chain", () => {
 });
 
 describe("run-events", () => {
-  it("one started, one captured per source and one finished event per run, with limitations", () => {
+  it("one started, one captured per source fetched in the run and one finished event, with limitations", () => {
     const events = runEvents([MANIFEST]);
-    expect(events).toHaveLength(MANIFEST.sources.length + 2);
+    const own = MANIFEST.sources.filter(
+      (s) => Date.parse(s.captured_at) >= Date.parse(MANIFEST.startedAt),
+    );
+    expect(events).toHaveLength(own.length + 2);
     expect(events.find((e) => e.kind === "started")).toEqual({
       time: MANIFEST.startedAt,
       runId: MANIFEST.runId,
@@ -165,13 +168,28 @@ describe("run-events", () => {
       kind: "finished",
       limitations: MANIFEST.limitations,
     });
-    for (const s of MANIFEST.sources)
+    for (const s of own)
       expect(events).toContainEqual({
         time: s.captured_at,
         runId: MANIFEST.runId,
         kind: "captured",
         source: s.name,
       });
+  });
+
+  it("leaves out a source carried over from an earlier run (captured before this run started)", () => {
+    const [kept, ...rest] = MANIFEST.sources;
+    if (kept === undefined) throw new Error("fixture has no source");
+    const run = {
+      ...MANIFEST,
+      startedAt: "2026-10-26T10:47:00.000Z",
+      sources: [
+        { ...kept, captured_at: "2026-10-26T11:32:51.992Z" },
+        ...rest.map((s) => ({ ...s, captured_at: "2026-10-22T05:48:41.000Z" })),
+      ],
+    };
+    const captured = runEvents([run]).filter((e) => e.kind === "captured");
+    expect(captured.map((e) => e.source)).toEqual([kept.name]);
   });
 
   it("is time-ordered across runs, whatever order the manifests come in", () => {

@@ -93,6 +93,18 @@ export function numberedRuns(index: RunsIndexV1): RunsIndexEntry[] {
 }
 
 /**
+ * The Compare page's query for two runs (label review 2026-10-26): Compare reads `a` and `b` as
+ * positions among the numbered runs oldest first, not as run-ID numbers ("3.1" is position 4), so
+ * a link built from run names opened the wrong pair. Empty when either run is not numbered.
+ */
+export function compareQuery(index: RunsIndexV1, olderRunId: string, newerRunId: string): string {
+  const runs = numberedRuns(index);
+  const a = runs.findIndex((r) => r.runId === olderRunId) + 1;
+  const b = runs.findIndex((r) => r.runId === newerRunId) + 1;
+  return a === 0 || b === 0 ? "" : `?a=${a}&b=${b}`;
+}
+
+/**
  * Each run's number by run ID (RUNS_TEXTS.numbering, run-numbers.ts): 1..n over the non-pilot
  * runs in finish order, `null` for the pilot slice. The same "Run N" the header badge, Hub, Runs,
  * Compare, Log, Coverage, Catalog and the Manifest chain show.

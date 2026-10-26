@@ -385,8 +385,11 @@ function Results({
   // stalled ones, so when rows came back and all are stalled the page says that instead.
   const permitFilter = request.permit === "open" || request.permit === "open_or_stalled";
   const anyOpen = data.rows.some((r) => r.permit?.status_class === "open");
-  const allStalled = permitFilter && !anyOpen && data.total_within_r > 0;
-  const noOpen = permitFilter && !anyOpen && !allStalled;
+  // Label review 2026-10-26: "all N are stalled" only when every match is among the answered
+  // rows; with more matches than rows the page cannot know, so it says nothing.
+  const allStalled =
+    permitFilter && !anyOpen && data.total_within_r > 0 && data.total_within_r <= data.rows.length;
+  const noOpen = permitFilter && data.total_within_r === 0;
   const first = page * EXPLORE_PAGE_ROWS + 1;
   const last = Math.min(data.total_within_r, page * EXPLORE_PAGE_ROWS + pageRows.length);
   const pages = Math.max(1, Math.ceil(data.total_within_r / EXPLORE_PAGE_ROWS));

@@ -61,6 +61,7 @@ import {
   runsByFinish,
   type RunNumber,
   type RunsIndexEntry,
+  compareQuery,
 } from "../data/runs-index";
 import { serverCheckText, useServerCheck } from "../data/server-check";
 import { AdminActions, NotAdminNote } from "./RunsAdmin";
@@ -370,17 +371,30 @@ function PipelineSteps({
               Fetch sources
             </b>
             <span className={styles.itemBody}>
-              {manifest.sources.length} of {manifest.sources.length} done
+              {fetchedIn(manifest).length} fetched ·{" "}
+              {manifest.sources.length - fetchedIn(manifest).length} carried over
             </span>
           </span>
           <ul aria-label="Fetch step: records per feed">
-            {manifest.sources.map((source) => (
-              <li key={source.name} data-fetch-source={source.name}>
-                <Icon name="check_circle" size="small" />
-                <span>{sourceLabel(source.name)}</span>
-                <span>{formatCount(source.records)}</span>
-              </li>
-            ))}
+            {manifest.sources.map((source) => {
+              const fetched = fetchedIn(manifest).includes(source);
+              return (
+                <li
+                  key={source.name}
+                  data-fetch-source={source.name}
+                  data-fetched={fetched ? "yes" : "no"}
+                >
+                  <Icon name={fetched ? "check_circle" : "history"} size="small" />
+                  <span>
+                    {sourceLabel(source.name)}
+                    {fetched
+                      ? ""
+                      : ` · carried over, captured ${formatUtc(source.captured_at)} UTC`}
+                  </span>
+                  <span>{formatCount(source.records)}</span>
+                </li>
+              );
+            })}
           </ul>
         </li>
         {steps.map((step, i) => (
@@ -398,7 +412,10 @@ function PipelineSteps({
           </li>
         ))}
       </ol>
-      <FetchStrip sources={manifest.sources} />
+      <FetchStrip
+        sources={fetchedIn(manifest)}
+        carried={manifest.sources.length - fetchedIn(manifest).length}
+      />
     </section>
   );
 }
@@ -408,7 +425,22 @@ function PipelineSteps({
  * to what the manifest holds: the fetch step as a whole, its first and last capture time and the
  * records it fetched, with a link to the full log.
  */
-function FetchStrip({ sources }: { readonly sources: readonly ManifestSource[] }): ReactElement {
+/**
+ * The sources this run captured itself (label review 2026-10-26): a capture time at or after the
+ * run's start. The others were carried over unchanged from an earlier run.
+ */
+function fetchedIn(manifest: RunManifestV1): readonly ManifestSource[] {
+  const start = Date.parse(manifest.startedAt);
+  return manifest.sources.filter((s) => Date.parse(s.captured_at) >= start);
+}
+
+function FetchStrip({
+  sources,
+  carried,
+}: {
+  readonly sources: readonly ManifestSource[];
+  readonly carried: number;
+}): ReactElement {
   const times = sources.map((s) => s.captured_at).sort((a, b) => Date.parse(a) - Date.parse(b));
   const first = times[0];
   const last = times[times.length - 1];
@@ -419,7 +451,9 @@ function FetchStrip({ sources }: { readonly sources: readonly ManifestSource[] }
       <span>
         <b>Fetch sources · Done</b>
         <br />
-        {sources.length} sources, each captured once; the manifest keeps one time per source
+        {sources.length === 0
+          ? "No source fetched in this run; every source is carried over"
+          : `${sources.length} fetched in this run${carried > 0 ? `, ${carried} carried over from earlier runs` : ""}; one capture time per source`}
       </span>
       <dl>
         <div>
@@ -431,7 +465,7 @@ function FetchStrip({ sources }: { readonly sources: readonly ManifestSource[] }
           <dd>{last === undefined ? "—" : `${formatUtc(last)} UTC`}</dd>
         </div>
         <div>
-          <dt>Records</dt>
+          <dt>Records fetched</dt>
           <dd>{formatCount(records)}</dd>
         </div>
       </dl>
@@ -541,7 +575,7 @@ function WhatChanged({
         {!comparable ? null : (
           <Link
             className={styles.textLink}
-            to={`${ROUTES.runsCompare}?a=${previousNumber}&b=${number}`}
+            to={`${ROUTES.runsCompare}${compareQuery(run.index, previous?.runId ?? "", run.entry.runId)}`}
           >
             <Icon name="compare_arrows" size="medium" />
             Compare {name} with {previousName}
@@ -687,7 +721,16 @@ function RunCard({
         </div>
         <p className={styles.times}>{RUNS_TEXTS.nextSync}</p>
         <p className={styles.itemBody}>
-          <Link className={styles.link} to={ROUTES.runsCompare}>
+          {/* The shown run (`?run=` may pick an earlier one) against its own predecessor. */}
+          <Link
+            className={styles.link}
+            to={`${ROUTES.runsCompare}${compareQuery(
+              run.index,
+              run.index.runs.find((r) => r.manifestCid === manifest.previousManifestCid)?.runId ??
+                "",
+              run.entry.runId,
+            )}`}
+          >
             Compare with the previous run
           </Link>
         </p>

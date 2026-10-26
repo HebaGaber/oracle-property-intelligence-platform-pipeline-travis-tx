@@ -26,12 +26,16 @@ const RANK: Record<RunEvent["kind"], number> = { started: 0, captured: 1, finish
 export function runEvents(manifests: readonly RunManifestV1[]): RunEvent[] {
   const events: RunEvent[] = manifests.flatMap((m): RunEvent[] => [
     { time: m.startedAt, runId: m.runId, kind: "started" },
-    ...m.sources.map((s): RunEvent => ({
-      time: s.captured_at,
-      runId: m.runId,
-      kind: "captured",
-      source: s.name,
-    })),
+    // Label review 2026-10-26: a source captured before this run started was carried over from
+    // an earlier run (Run 4 kept TCAD from 2026-10-22); its capture is that run's event, not this one's.
+    ...m.sources
+      .filter((s) => Date.parse(s.captured_at) >= Date.parse(m.startedAt))
+      .map((s): RunEvent => ({
+        time: s.captured_at,
+        runId: m.runId,
+        kind: "captured",
+        source: s.name,
+      })),
     { time: m.finishedAt, runId: m.runId, kind: "finished", limitations: m.limitations },
   ]);
   return events

@@ -202,6 +202,8 @@ function CompareHeader({
     setParams(next);
   };
   const idOf = (n: number): string | null => entries[n - 1]?.runId ?? null;
+  const numbers = numberRuns(entries);
+  const nameOf = (n: number): string => runName(numbers.get(idOf(n) ?? "") ?? null);
   return (
     <div className={styles.compareTop}>
       <div className={styles.compareTitle}>
@@ -209,7 +211,10 @@ function CompareHeader({
           <Icon name="arrow_back" size="medium" />
         </Link>
         <h2 className={styles.pageTitle}>
-          {a === null || b === null ? "Runs · Compare" : `Run ${b} vs Run ${a}`}
+          {a === null || b === null
+            ? "Runs · Compare"
+            : // The runs' own names (Run 4 vs Run 3.1), not their positions in the URL.
+              `${nameOf(b)} vs ${nameOf(a)}`}
         </h2>
       </div>
       {entries.length >= 2 ? (
@@ -311,7 +316,8 @@ function RunColumn({
   const { manifest, entry } = run;
   const titleId = `compare-run-${run.n}`;
   const totalSize = manifest.artifacts.reduce((sum, a) => sum + a.size, 0);
-  const car = manifest.artifacts.find((a) => a.kind === "car");
+  const cars = manifest.artifacts.filter((a) => a.kind === "car");
+  const car = cars[0];
   return (
     <article aria-labelledby={titleId} data-compare-run={run.n} data-cid={entry.manifestCid}>
       <header className={styles.header}>
@@ -346,7 +352,8 @@ function RunColumn({
           <>
             {" · "}
             <Link className={styles.link} to={verifyPath(car.cid)} data-car-link={car.cid}>
-              CAR
+              {/* A batched run publishes one CAR per batch; the link opens the first. */}
+              {cars.length > 1 ? `CAR 1 of ${cars.length}` : "CAR"}
             </Link>
           </>
         )}
@@ -486,7 +493,8 @@ function ImmutabilityChecks({
   readonly a: ComparedRun;
   readonly b: ComparedRun;
 }): ReactElement {
-  const car = b.manifest.artifacts.find((x) => x.kind === "car");
+  const cars = b.manifest.artifacts.filter((x) => x.kind === "car");
+  const car = cars[0];
   const checks: readonly { ok: boolean; icon: string; text: string }[] = [
     {
       ok: a.entry.manifestCid !== b.entry.manifestCid,
@@ -520,7 +528,7 @@ function ImmutabilityChecks({
         {car === undefined ? null : (
           <Link className={styles.textLink} to={verifyPath(car.cid)}>
             <Icon name="download" size="medium" />
-            Directory CAR, {b.label}
+            {cars.length > 1 ? `CAR 1 of ${cars.length}, ${b.label}` : `CAR, ${b.label}`}
           </Link>
         )}
         <Link className={styles.textLink} to={verifyPath(b.entry.manifestCid)}>

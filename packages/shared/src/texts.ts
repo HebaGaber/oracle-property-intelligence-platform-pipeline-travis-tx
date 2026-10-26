@@ -23,9 +23,9 @@ export const RUNS_TEXTS = Object.freeze({
   oldManifestResolves: "old manifest still resolves on Pinata and orbitor",
   /** Compare with one run, and the delta column of a first run. */
   firstRun: "first run · nothing to compare against",
-  /** The numbering contract of `a`/`b` on Compare, the Hub chip and every "Run N" (PO 2026-10-26): the non-pilot runs of runs/index.json numbered 1..n by finishedAt; A-03's pilot slice is listed but never numbered. */
+  /** The numbering contract of `a`/`b` on Compare, the Hub chip and every "Run N" (PO 2026-10-26): the number in each non-pilot run's ID (run-numbers.ts); A-03's pilot slice is listed but never numbered. */
   numbering:
-    "Run n is the n-th full-county run in runs/index.json, by finish time; the first small test slice is listed as Pilot slice and not numbered",
+    "Run numbers come from the run ID (Run 3.1 corrects Run 3); a run ID without one takes the next number by finish time; the first small test slice is listed as Pilot slice and not numbered",
   indexUnavailable: (reason: string): string => `Run index unavailable · ${reason}`,
   manifestUnavailable: (cid: string, reason: string): string =>
     `Manifest unavailable · ${cid} · ${reason}`,
