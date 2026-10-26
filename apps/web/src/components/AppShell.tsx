@@ -97,7 +97,7 @@ function Glyph({ name }: { readonly name: string }): ReactElement {
 /** Shell1440 board: the app bar's search box (from 1024 px; A-16 port of Task B's combobox).
  *  The combobox module (gazetteer suggestions) loads on first focus, so the shell stays small;
  *  until then this placeholder field stands in with the same label. */
-export const SEARCH_LABEL = "Search a place, ZIP or permit, or ask a question";
+export const SEARCH_LABEL = "Search CountyLens: town, ZIP, permit or a question";
 
 const SearchBox = lazy(() => import("./SearchBox").then((m) => ({ default: m.SearchBox })));
 
