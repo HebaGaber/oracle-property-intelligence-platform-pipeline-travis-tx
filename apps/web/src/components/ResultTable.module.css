@@ -147,9 +147,14 @@
   max-width: calc(var(--space-10) * 3);
 }
 
+/* Host · date on one line, the table CID on the next: each part stays whole, the cell may break
+   between them so the table fits its pane (a one-line cell overlapped the Details button). */
 .source {
   color: var(--md-sys-color-on-surface-variant);
   font-size: var(--md-sys-typescale-label-small-size);
+}
+
+.source [data-provenance] > span {
   white-space: nowrap;
 }
 
