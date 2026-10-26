@@ -8,7 +8,7 @@
 // react-router lazy route module.
 import type { ManifestArtifact, RunManifestV1 } from "@countylens/contract";
 import { PROGRESS_LABELS, VERIFY_TEXTS, verifyPath } from "@countylens/shared";
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 import { DataTabs } from "../components/DataTabs";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -20,13 +20,13 @@ import { Skeleton } from "../components/Skeleton";
 import { Icon } from "../components/Icon";
 import { loadRunChain, type RunChainLink } from "../data/run-chain";
 import type { LoadedRun } from "../data/run-loader";
-import { runNumbers, runsByFinish } from "../data/runs-index";
+import { RunSelect } from "../components/RunSelect";
+import { runNumbers } from "../data/runs-index";
 import { VERIFY_MAX_BYTES } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
   runErrorNode,
   loadManifestByCid,
-  runLabel,
   toRunLoadError,
   useLatestRun,
   type RunLoadError,
@@ -69,28 +69,21 @@ export function Component(): ReactElement {
     >
       {/* Board DataManifest1440: the title left, the Run picker and manifest.json download right. */}
       <div className={runStyles.cardHead}>
-        <h2 className={runStyles.title}>Data · Manifest</h2>
+        <h2 className={styles.pageTitle}>Data</h2>
         <div className={runStyles.header}>
           {latest && (
-            <select
-              className={runStyles.select}
-              aria-label="Run"
+            <RunSelect
+              runs={latest.index.runs}
               value={entry?.runId ?? latest.entry.runId}
-              onChange={(e) => setParams({ run: e.target.value })}
-            >
-              {runsByFinish(latest.index)
-                .map((r, i) => (
-                  <option key={r.runId} value={r.runId}>
-                    {runLabel(i + 1, r.finishedAt)}
-                  </option>
-                ))
-                .reverse()}
-            </select>
+              onChange={(runId) => setParams(runId === null ? {} : { run: runId })}
+              label="Run"
+              hideLabel
+            />
           )}
           {shown ? (
             // manifest.json: the CID-checked bytes on the host that served this read.
             <a
-              className={runStyles.chip}
+              className={styles.download}
               href={shown.read.partUrl({ name: "manifest.json", cid: shown.manifestCid })}
               download={`manifest-${shown.manifest.runId}.json`}
             >
@@ -121,13 +114,13 @@ function ManifestView({ run }: { readonly run: LoadedRun }): ReactElement {
   const { manifest, manifestCid, read } = run;
   return (
     <>
-      <div className={runStyles.header}>
-        <span className={runStyles.itemBody}>
+      <RunChain head={manifestCid} headManifest={manifest} numbers={runNumbers(run.index)}>
+        {/* Board RunChain: the summary strip under the run cards. */}
+        <span>
           Run {manifest.runId} · manifest <CidDisplay cid={manifestCid} />
         </span>
         <FallbackChip source={read.source} />
-      </div>
-      <RunChain head={manifestCid} headManifest={manifest} numbers={runNumbers(run.index)} />
+      </RunChain>
       <ArtifactTable manifest={manifest} />
       <Provenance>
         Manifest <CidDisplay cid={manifestCid} /> · run {manifest.runId} · read from{" "}
@@ -146,7 +139,9 @@ function RunChain({
   head,
   headManifest,
   numbers,
+  children,
 }: {
+  readonly children: ReactNode;
   readonly head: string;
   readonly headManifest: RunManifestV1;
   /** "Run N" by run ID, from runs/index.json (the header badge, Runs and Log numbering). */
@@ -170,9 +165,14 @@ function RunChain({
 
   return (
     <section className={runStyles.card} aria-labelledby="chain-heading">
-      <h3 id="chain-heading" className={runStyles.sectionTitle}>
-        Run chain
-      </h3>
+      <div className={styles.cardHead}>
+        <h3 id="chain-heading" className={styles.cardTitle}>
+          Run chain
+        </h3>
+        <span className={runStyles.itemBody}>
+          Newest first · each manifest links to the one before it (previousManifestCid)
+        </span>
+      </div>
       {state.kind === "loading" ? <Skeleton variant="cards" count={1} /> : null}
       {state.kind === "error" ? <ErrorBanner message={runErrorNode(state.error)} /> : null}
       {state.kind === "ready" ? (
@@ -188,8 +188,8 @@ function RunChain({
                 Run {numbers.get(link.runId) ?? "not in the index"}
                 {i === 0 ? <span className={styles.chainThis}> · this run</span> : null}
               </span>
-              <span className={runStyles.itemTitle}>
-                <code className={runStyles.mono}>{link.runId}</code>
+              <code className={styles.chainRunId}>{link.runId}</code>
+              <span className={styles.chainCid}>
                 <CidDisplay cid={link.manifestCid} />
               </span>
               <span className={runStyles.itemBody}>
@@ -204,6 +204,7 @@ function RunChain({
               </span>
               <span>
                 <Link className={styles.actionLink} to={verifyPath(link.manifestCid)}>
+                  <Icon name="verified" size="small" />
                   Verify
                 </Link>
               </span>
@@ -211,6 +212,7 @@ function RunChain({
           ))}
         </ul>
       ) : null}
+      <div className={styles.strip}>{children}</div>
     </section>
   );
 }
@@ -252,8 +254,8 @@ const tail = (name: string): string => name.split("/").slice(-3).join("/");
  */
 function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): ReactElement {
   return (
-    <section className={runStyles.card} aria-labelledby="artifacts-heading">
-      <h3 id="artifacts-heading" className={runStyles.sectionTitle}>
+    <section className={styles.tableCard} aria-labelledby="artifacts-heading">
+      <h3 id="artifacts-heading" className={styles.cardTitle}>
         Artifacts ({manifest.artifacts.length})
       </h3>
       <div className={`${styles.scroll} ${styles.artifactScroll}`} data-artifact-scroll="">
@@ -268,7 +270,7 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
               </th>
               <th scope="col">SHA-256</th>
               <th scope="col">CAR</th>
-              <th scope="col">Check</th>
+              <th scope="col">Verify</th>
               <th scope="col">Details</th>
             </tr>
           </thead>
@@ -276,7 +278,7 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
             {manifest.artifacts.map((artifact) => (
               <tr key={artifact.name} data-artifact={artifact.name}>
                 <td title={artifact.name}>
-                  <span className={styles.mono}>
+                  <span className={styles.name}>
                     <span>{artifact.name.slice(0, -tail(artifact.name).length)}</span>
                     {tail(artifact.name)}
                   </span>
@@ -309,10 +311,12 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
                 <td>
                   {!needsCar(artifact) ? (
                     <Link className={styles.actionLink} to={verifyPath(artifact.cid)}>
+                      <Icon name="verified" size="small" />
                       Verify
                     </Link>
                   ) : artifact.carCid !== undefined ? (
                     <Link className={styles.actionLink} to={verifyPath(artifact.carCid)}>
+                      <Icon name="inventory_2" size="small" />
                       {VERIFY_TEXTS.viaCar}
                     </Link>
                   ) : (
@@ -325,6 +329,11 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
           </tbody>
         </table>
       </div>
+      {/* Board DataManifest1440 footer strip; every row stays in the scrolled panel above. */}
+      <p className={styles.tableFoot}>
+        {manifest.artifacts.length} artifacts · directories and files over{" "}
+        {VERIFY_MAX_BYTES / 1024 / 1024} MB verify through their CAR
+      </p>
     </section>
   );
 }
