@@ -12,7 +12,13 @@ const m = JSON.parse(readFileSync(process.env.MANIFEST, "utf8"));
 const host = process.env.CID_COPY_HOST;
 if (!host) throw new Error("CID_COPY_HOST repository variable is not set");
 const sha = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
-const items = m.artifacts.map((a) => ({
+// FETCH_UNITS (optional): only the files of these upload units (<group>-bNN-car / <group>-bNN-tables).
+const wanted = (process.env.FETCH_UNITS ?? "").split(",").filter((u) => u !== "");
+const unitOf = (a) => {
+  const k = a.name.match(/(county|permits)-batched\/(?:cars\/travis-(?:county|permits)-|tables\/)(b\d+)/);
+  return k ? `${k[1]}-${k[2]}-${a.kind === "car" ? "car" : "tables"}` : "";
+};
+const items = m.artifacts.filter((a) => wanted.length === 0 || wanted.includes(unitOf(a))).map((a) => ({
   path: a.kind === "directory" ? join(a.name, "tables.car") : a.name,
   key: a.kind === "table" ? a.cid : a.carCid,
   size: a.size,

@@ -1,7 +1,9 @@
-# A-11 Run 3.1, one-off (PO 2026-10-26): publish steps 2 (Filebase), 3 (car-files) and 7 (release)
-# from a GitHub runner, because Filebase uploads from the laptop hang. Every file is rebuilt from
-# the public CID copy (written by step 5 from the laptop) and checked against the manifest's size
-# and sha256 before any upload; elephant-cli refuses a folder whose root differs from the manifest.
+# A-11 Run 3.1, one-off (PO 2026-10-26): publish step 2 (Filebase) on 3 parallel runners, then
+# steps 3 (car-files) and 7 (release), from the public CID copy (written by step 5 from the laptop).
+# Every file is checked against the manifest's size and sha256 before any upload; elephant-cli
+# refuses a folder whose root differs from the manifest. Items already pinned on Filebase (county
+# b01-b05) are not in any runner's list, so nothing is uploaded twice. Each runner uploads its CAR
+# before the table folder that links to it.
 # Runs only on a push to this branch; this branch is never merged. No AWS credentials are used.
 # Filebase keys come from repository secrets and are never printed; GITHUB_TOKEN is the job's own.
 name: run3-1-cloud-publish
@@ -17,47 +19,80 @@ concurrency:
   group: run3-1-cloud-publish
   cancel-in-progress: false
 
+env:
+  RUN_ID: travis-full-run3-1-20261025
+  MANIFEST: runs/travis-full-run3-1-20261025/manifest.json
+  CID_COPY_HOST: ${{ vars.CID_COPY_HOST }}
+  TARGET: 011e-run3-1-permit-contractors
+  RECEIPTS: specs/011-publish-and-runs/upload-receipts/travis-full-run3-1-20261025
+
 jobs:
-  publish:
+  filebase:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      RUN_ID: travis-full-run3-1-20261025
-      MANIFEST: runs/travis-full-run3-1-20261025/manifest.json
-      CID_COPY_HOST: ${{ vars.CID_COPY_HOST }}
-      TARGET: 011e-run3-1-permit-contractors
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: 1
+            units: county-b06-tables,county-b07-tables,permits-b01-car,permits-b01-tables
+          - runner: 2
+            units: county-b08-tables,county-b09-tables,permits-b02-car,permits-b02-tables,permits-b03-car,permits-b03-tables
+          - runner: 3
+            units: county-b10-tables,permits-b04-car,permits-b04-tables,permits-b05-car,permits-b05-tables
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: pnpm
-
-      - name: pnpm install
-        run: pnpm install --frozen-lockfile
-
-      - name: Rebuild the run's files from the CID copy (size + sha256 checked)
+      - run: pnpm install --frozen-lockfile
+      - name: Fetch this runner's files from the CID copy (size + sha256 checked)
+        env:
+          FETCH_UNITS: ${{ matrix.units }}
         run: node .github/run3-1/fetch-from-copy.mjs
-
-      - name: Step 2 Filebase (tables folders and permit CARs; county CARs are Run 3's)
+      - name: Step 2 Filebase, this runner's units only
         env:
           FILEBASE_ACCESS_KEY: ${{ secrets.FILEBASE_ACCESS_KEY }}
           FILEBASE_SECRET_KEY: ${{ secrets.FILEBASE_SECRET_KEY }}
           FILEBASE_BUCKET: ${{ secrets.FILEBASE_BUCKET }}
+          PUBLISH_FILEBASE_UNITS: ${{ matrix.units }}
         run: |
           export NODE_OPTIONS="--import $(node -e "console.log(require('path').dirname(require.resolve('tsx'))+'/loader.mjs')") --import $PWD/pipeline/publish/scripts/fetch-retry.ts"
+          mine() { for u in ${PUBLISH_FILEBASE_UNITS//,/ }; do [ -f "$RECEIPTS/$u.json" ] || return 1; done; }
           for round in 1 2 3; do
+            # The step reports the units left to the other runners; this runner checks its own receipts.
             npx tsx pipeline/publish/scripts/publish-run.ts --manifest "$MANIFEST" --run-id "$RUN_ID" \
               --cli "$PWD/node_modules/.bin/elephant-cli" --copy-host "$CID_COPY_HOST" \
-              --release-target "$TARGET" --repo "$GITHUB_REPOSITORY" --step filebase && exit 0
-            echo "filebase round $round failed; finished units keep their receipts"
+              --release-target "$TARGET" --repo "$GITHUB_REPOSITORY" --step filebase || true
+            mine && { echo "runner ${{ matrix.runner }}: all its units have receipts"; exit 0; }
+            echo "round $round: some units of this runner have no receipt yet"
           done
           exit 1
+      - name: Keep this runner's receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run3-1-receipts-filebase-${{ matrix.runner }}
+          path: ${{ env.RECEIPTS }}/
+          if-no-files-found: warn
 
-      - name: Step 3 car-files
+  finish:
+    needs: filebase
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Fetch every file from the CID copy (size + sha256 checked)
+        run: node .github/run3-1/fetch-from-copy.mjs
+      - name: Step 3 car-files (county CARs adopted from Run 3's receipts)
         env:
           FILEBASE_ACCESS_KEY: ${{ secrets.FILEBASE_ACCESS_KEY }}
           FILEBASE_SECRET_KEY: ${{ secrets.FILEBASE_SECRET_KEY }}
@@ -68,7 +103,6 @@ jobs:
           export NODE_OPTIONS="--import $(node -e "console.log(require('path').dirname(require.resolve('tsx'))+'/loader.mjs')") --import $PWD/pipeline/publish/scripts/fetch-retry.ts"
           npx tsx pipeline/publish/scripts/publish-run.ts --manifest "$MANIFEST" --run-id "$RUN_ID" \
             --copy-host "$CID_COPY_HOST" --release-target "$TARGET" --repo "$GITHUB_REPOSITORY" --step car-files
-
       - name: Step 7 GitHub release (Run 3's identical county CAR assets reused)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,11 +110,10 @@ jobs:
           npx tsx pipeline/publish/scripts/publish-run.ts --manifest "$MANIFEST" --run-id "$RUN_ID" \
             --copy-host "$CID_COPY_HOST" --release-target "$TARGET" --repo "$GITHUB_REPOSITORY" \
             --release-reuse-tag run-travis-full-run3-20261025 --step release
-
       - name: Keep the receipts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: run3-1-receipts
-          path: specs/011-publish-and-runs/upload-receipts/travis-full-run3-1-20261025/
+          name: run3-1-receipts-finish
+          path: ${{ env.RECEIPTS }}/
           if-no-files-found: warn
