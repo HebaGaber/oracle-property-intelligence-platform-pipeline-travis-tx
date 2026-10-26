@@ -3,7 +3,7 @@
 // byte-compare line per gateway, one line per artifact per gateway, the fixed refusal for
 // a non-allowlisted host, and the success line. At full-county scale (225 table parts, 15 CARs,
 // about 2.8 GB) a full verification takes hours, so the hosted cases run `--sample` (PO 2026-10-25):
-// the manifest and the smallest table part on both gateways plus the smallest CAR on Filebase
+// the manifest and the smallest table part on Pinata + orbitor (AM-10; Filebase as fallback) plus the smallest CAR on Filebase
 // (Pinata rate-limits CAR downloads, story A-16 item 14), ending with
 // `SAMPLE VERIFIED 2 of N artifacts (the CAR on Filebase only)`, never ALL ARTIFACTS VERIFIED. The two negative cases run
 // verifyManifest in-process: a tampered manifest has a CID no gateway holds, so the script could
@@ -29,13 +29,19 @@ const SAMPLE_SUCCESS = /^SAMPLE VERIFIED 2 of \d+ artifacts \(the CAR on Filebas
 const RETIRED_HOSTS = ["ipfs.io", "dweb.link", "w3s.link"];
 
 function refusalText(host: string): string {
-  const { PINATA_GATEWAY_HOST, FILEBASE_GATEWAY_HOST } = harnessConfig();
-  return `Refused gateway ${host}: verify-manifest only uses https://${PINATA_GATEWAY_HOST}, https://${FILEBASE_GATEWAY_HOST}`;
+  const { PINATA_GATEWAY_HOST, ORBITOR_GATEWAY_HOST, FILEBASE_GATEWAY_HOST } = harnessConfig();
+  return `Refused gateway ${host}: verify-manifest only uses https://${PINATA_GATEWAY_HOST}, https://${ORBITOR_GATEWAY_HOST} (independent) and https://${FILEBASE_GATEWAY_HOST} (storage host, not independent)`;
 }
 
+/** The independent pair (AM-10): Pinata + orbitor. Filebase is read too, as the labelled fallback. */
 function gateways(): string[] {
-  const { PINATA_GATEWAY_HOST, FILEBASE_GATEWAY_HOST } = harnessConfig();
-  return [PINATA_GATEWAY_HOST, FILEBASE_GATEWAY_HOST];
+  const { PINATA_GATEWAY_HOST, ORBITOR_GATEWAY_HOST } = harnessConfig();
+  return [PINATA_GATEWAY_HOST, ORBITOR_GATEWAY_HOST];
+}
+
+/** Every host the script reads: the independent pair plus the Filebase fallback. */
+function allGateways(): string[] {
+  return [...gateways(), harnessConfig().FILEBASE_GATEWAY_HOST];
 }
 
 /** Hosts the script must never talk to: our CID copy and the retired or non-independent gateways. */
@@ -115,7 +121,7 @@ async function verifyTampered(
     sample: true,
     // The sampled artifact this case does not test is not fetched again (the live Pinata gateway
     // answers 429 to repeated CAR downloads); TC-040 and TC-043 already verify it for real.
-    resumeSkip: new Set(gateways().map((g) => resumeKey(`https://${g}`, skipName))),
+    resumeSkip: new Set(allGateways().map((g) => resumeKey(`https://${g}`, skipName))),
     fetch: fetchImpl,
     timeoutMs: 120_000,
     log: (line) => out.push(line),
@@ -142,7 +148,7 @@ test.describe("A-03 verify-manifest (FR-006)", () => {
     ).toBe(true);
   });
 
-  test.describe("A-03-TC-040 verify-manifest via Pinata + Filebase prints ALL ARTIFACTS VERIFIED", () => {
+  test.describe("A-03-TC-040 verify-manifest via Pinata + orbitor (Filebase fallback) prints ALL ARTIFACTS VERIFIED", () => {
     test("@scenario:A-03-TC-040", async ({ run }) => {
       const result = await verify([committedManifestPath(run.runId), "--sample"], "tc-040");
       const out = lines(result.output);

@@ -18,7 +18,9 @@
 // endpoint itself (`pinning/pinByHash`) is reachable but 403s with `NO_SCOPES_FOUND` for this
 // key -- a real admin-scope gap, not a missing feature -- so this module still attempts it
 // first (the "ideally pin-by-CID without re-upload" path) and falls back to re-uploading bytes
-// only when it fails, exactly as it would for any other key that lacks that one scope:
+// only when it fails, exactly as it would for any other key that lacks that one scope. (Later
+// finding, A-11 run log 2026-10-24: on the free plan pin-by-hash is `PAID_FEATURE_ONLY`, so AM-10
+// makes the file upload below the only path; pipeline/publish/src/pinata-copy.ts drives it.)
 //   - pin by CID (no bytes re-uploaded; content must already be fetchable from public IPFS):
 //       POST https://api.pinata.cloud/pinning/pinByHash
 //       body: { hashToPin: <cid>, pinataMetadata?: { name } }
@@ -26,6 +28,14 @@
 //     was given):
 //       POST https://api.pinata.cloud/pinning/pinFileToIPFS
 //       multipart: file, pinataMetadata? (JSON string { name })
+//     plus pinataOptions (JSON string {"cidVersion":1}, A-16 T079 / AM-10): without it Pinata
+//     answers a CIDv0 `Qm…` hash, which can never equal our CIDv1 manifest CIDs. A probe on
+//     2026-10-26 proved that with it Pinata returns exactly our CID for the Run 3 manifest (raw
+//     codec `bafkrei…`) and a 3 MB dag-pb table part (`bafybeic23v2…sldry`).
+//   - unpin (used at once when an upload's CID does not equal the manifest CID):
+//       DELETE https://api.pinata.cloud/pinning/unpin/<cid>
+//   - account usage (the free plan is about 1 GB and 500 files):
+//       GET https://api.pinata.cloud/data/userPinnedDataTotal -> { pin_count, pin_size_total }
 //   - poll/confirm (the legacy pin-jobs listing; a non-empty, non-"pin_queued" row for the CID
 //     under ?status=pinned is Pinata's own documented "already pinned" signal):
 //       GET https://api.pinata.cloud/data/pinList?hashContains=<cid>&status=pinned
@@ -41,6 +51,22 @@ export const PINATA_API = "https://api.pinata.cloud";
 export const PINATA_PIN_BY_HASH_PATH = "/pinning/pinByHash";
 export const PINATA_UPLOAD_PATH = "/pinning/pinFileToIPFS";
 export const PINATA_PIN_LIST_PATH = "/data/pinList";
+export const PINATA_UNPIN_PATH = "/pinning/unpin";
+export const PINATA_USAGE_PATH = "/data/userPinnedDataTotal";
+/** Sent with every upload: our CIDs are CIDv1 (constitution: CIDv1 only). */
+export const PINATA_UPLOAD_OPTIONS = { cidVersion: 1 } as const;
+
+/** A non-OK Pinata response; `message` is already JWT-redacted. `status` drives retry/backoff. */
+export class PinataHttpError extends Error {
+  readonly status: number;
+  readonly retryAfter: string | null;
+  constructor(message: string, status: number, retryAfter: string | null) {
+    super(message);
+    this.name = "PinataHttpError";
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
 
 export interface PinataPinOptions {
   /** The bearer token. Read by the CALLER from PINATA_JWT; never read from process.env here. */
@@ -61,6 +87,17 @@ export interface PinByCidResult {
 export interface UploadResult {
   id: string | undefined;
   cid: string;
+  /** Pinata's `PinSize` (bytes it counts against the quota), when sent. */
+  pinSize?: number;
+  /** Pinata's `Timestamp` (when the pin was recorded), when sent. */
+  timestamp?: string;
+  /** Pinata's `isDuplicate`: the CID was already pinned on this account. */
+  isDuplicate?: boolean;
+}
+
+export interface PinataUsage {
+  pinCount: number;
+  pinSizeTotal: number;
 }
 
 export interface PinataPinResult {
@@ -71,7 +108,8 @@ export interface PinataPinResult {
   polledMs: number;
 }
 
-function redactJwt(text: string, jwt: string): string {
+/** Replaces every occurrence of the JWT with `[redacted]`. Use on any text that may quote it. */
+export function redactJwt(text: string, jwt: string): string {
   return jwt ? text.split(jwt).join("[redacted]") : text;
 }
 
@@ -81,6 +119,14 @@ function authHeaders(jwt: string): Record<string, string> {
 
 function base(url: string | undefined): string {
   return (url ?? PINATA_API).replace(/\/+$/, "");
+}
+
+function httpError(what: string, response: Response, text: string, jwt: string): PinataHttpError {
+  return new PinataHttpError(
+    `${what} failed: ${response.status} ${response.statusText}: ${redactJwt(text.slice(0, 500), jwt)}`,
+    response.status,
+    response.headers.get("retry-after"),
+  );
 }
 
 async function parseJson(text: string, jwt: string, what: string): Promise<unknown> {
@@ -108,9 +154,7 @@ export async function pinByCid(
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(
-      `pinByHash of ${cid} failed: ${response.status} ${response.statusText}: ${redactJwt(text.slice(0, 500), options.jwt)}`,
-    );
+    throw httpError(`pinByHash of ${cid}`, response, text, options.jwt);
   }
   const parsed = await parseJson(text, options.jwt, `pinByHash of ${cid}`);
   const data = parsed as { id?: unknown; status?: unknown };
@@ -133,6 +177,7 @@ export async function uploadFile(
   const fileName = name ?? basename(filePath);
   form.append("file", new Blob([bytes]), fileName);
   if (name) form.append("pinataMetadata", JSON.stringify({ name }));
+  form.append("pinataOptions", JSON.stringify(PINATA_UPLOAD_OPTIONS));
   const response = await fetchImpl(`${api}${PINATA_UPLOAD_PATH}`, {
     method: "POST",
     headers: authHeaders(options.jwt),
@@ -140,18 +185,63 @@ export async function uploadFile(
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(
-      `pinFileToIPFS of ${filePath} failed: ${response.status} ${response.statusText}: ${redactJwt(text.slice(0, 500), options.jwt)}`,
-    );
+    throw httpError(`pinFileToIPFS of ${filePath}`, response, text, options.jwt);
   }
   const parsed = await parseJson(text, options.jwt, `pinFileToIPFS of ${filePath}`);
-  const data = parsed as { ID?: unknown; IpfsHash?: unknown };
+  const data = parsed as {
+    ID?: unknown;
+    IpfsHash?: unknown;
+    PinSize?: unknown;
+    Timestamp?: unknown;
+    isDuplicate?: unknown;
+  };
   if (typeof data.IpfsHash !== "string") {
     throw new Error(
       `pinFileToIPFS of ${filePath} returned no IpfsHash: ${redactJwt(text.slice(0, 200), options.jwt)}`,
     );
   }
-  return { id: typeof data.ID === "string" ? data.ID : undefined, cid: data.IpfsHash };
+  return {
+    id: typeof data.ID === "string" ? data.ID : undefined,
+    cid: data.IpfsHash,
+    ...(typeof data.PinSize === "number" ? { pinSize: data.PinSize } : {}),
+    ...(typeof data.Timestamp === "string" ? { timestamp: data.Timestamp } : {}),
+    ...(typeof data.isDuplicate === "boolean" ? { isDuplicate: data.isDuplicate } : {}),
+  };
+}
+
+/** Removes a pin (used at once when an upload came back with a CID other than the manifest's). */
+export async function unpin(cid: string, options: PinataPinOptions): Promise<void> {
+  const fetchImpl = options.fetch ?? fetch;
+  const api = base(options.apiBase);
+  const response = await fetchImpl(`${api}${PINATA_UNPIN_PATH}/${encodeURIComponent(cid)}`, {
+    method: "DELETE",
+    headers: authHeaders(options.jwt),
+  });
+  const text = await response.text();
+  if (!response.ok) throw httpError(`unpin of ${cid}`, response, text, options.jwt);
+}
+
+/** The account's current pin count and total pinned bytes (the free-plan quota inputs). */
+export async function usage(options: PinataPinOptions): Promise<PinataUsage> {
+  const fetchImpl = options.fetch ?? fetch;
+  const api = base(options.apiBase);
+  const response = await fetchImpl(`${api}${PINATA_USAGE_PATH}`, {
+    method: "GET",
+    headers: authHeaders(options.jwt),
+  });
+  const text = await response.text();
+  if (!response.ok) throw httpError("userPinnedDataTotal", response, text, options.jwt);
+  const parsed = (await parseJson(text, options.jwt, "userPinnedDataTotal")) as {
+    pin_count?: unknown;
+    pin_size_total?: unknown;
+  };
+  const pinCount = Number(parsed.pin_count);
+  const pinSizeTotal = Number(parsed.pin_size_total);
+  if (!Number.isFinite(pinCount) || !Number.isFinite(pinSizeTotal))
+    throw new Error(
+      `userPinnedDataTotal returned no pin_count/pin_size_total: ${redactJwt(text.slice(0, 200), options.jwt)}`,
+    );
+  return { pinCount, pinSizeTotal };
 }
 
 /** Pinata's own "already pinned" signal: the CID appears in `pinList?status=pinned`. */
@@ -165,9 +255,7 @@ export async function isPinned(cid: string, options: PinataPinOptions): Promise<
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(
-      `pinList for ${cid} failed: ${response.status} ${response.statusText}: ${redactJwt(text.slice(0, 500), options.jwt)}`,
-    );
+    throw httpError(`pinList for ${cid}`, response, text, options.jwt);
   }
   const parsed = await parseJson(text, options.jwt, `pinList for ${cid}`);
   const rows = (parsed as { rows?: unknown[] }).rows;

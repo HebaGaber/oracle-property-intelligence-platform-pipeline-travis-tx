@@ -109,6 +109,7 @@ describe("run-chain manifest cap", () => {
     cidCopyHost: "copy.test",
     filebaseGatewayHost: "filebase.test",
     pinataGatewayHost: "pinata.test",
+    orbitorGatewayHost: "orbitor.test",
   });
   it("a manifest answer over the cap fails without being read in full", async () => {
     const states: { cancelled: boolean }[] = [];
@@ -121,8 +122,8 @@ describe("run-chain manifest cap", () => {
       "bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy",
       { urls, fetch: f },
     );
-    expect(r).toEqual({ pinata: "fails", filebase: "fails" });
-    expect(states.map((x) => x.cancelled)).toEqual([true, true]);
+    expect(r).toEqual({ pinata: "fails", orbitor: "fails", filebase: "fails" });
+    expect(states.map((x) => x.cancelled)).toEqual([true, true, true]);
     expect(RUN_MANIFEST_MAX_BYTES).toBe(1024 * 1024);
   });
 });

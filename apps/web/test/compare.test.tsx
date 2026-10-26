@@ -1,12 +1,13 @@
 // A-13 T018 (AC-1, FR-001a, FR-001b, FR-016; TC-007, TC-014, TC-015): Runs · Compare
 // (`/runs/compare?a=&b=`). With one published run it says why nothing can be compared and links
 // to that run; with two it shows both manifest CIDs, the `previousManifestCid` link between them
-// and "old manifest still resolves on Pinata and Filebase" only after both public gateways
-// answered for the old CID with its own bytes. Fixtures are built in the test (real raw-leaves
+// and "old manifest still resolves on Pinata and orbitor" only after both independent gateways
+// answered for the old CID with its own bytes; Filebase is checked and listed as the labelled
+// fallback but never decides the text (ARD § 16 AM-10). Fixtures are built in the test (real raw-leaves
 // CIDs of test bytes, never shown as real data); fetches are vi.fn, no network.
 import { RUN_MANIFEST_SCHEMA, RUNS_INDEX_SCHEMA, type RunManifestV1 } from "@countylens/contract";
 import { rawCid } from "@countylens/query-core";
-import { RUNS_TEXTS } from "@countylens/shared";
+import { RUNS_TEXTS, VERIFY_TEXTS } from "@countylens/shared";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +15,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 const COPY_HOST = "copy.example.test";
 const FILEBASE_HOST = "ipfs.filebase.io";
 const PINATA_HOST = "pinata.example.test";
+const ORBITOR_HOST = "orbitor.example.test";
 
 const encode = (text: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(text);
 
@@ -80,7 +82,7 @@ type Handler = (cid: string) => Response | Promise<Response>;
 
 function installFetch(
   runs: Run[],
-  hosts: { copy?: Handler; filebase?: Handler; pinata?: Handler },
+  hosts: { copy?: Handler; filebase?: Handler; pinata?: Handler; orbitor?: Handler },
 ) {
   const byCid = new Map(runs.map((r) => [r.cid, r.bytes]));
   const serve: Handler = (cid) => {
@@ -95,6 +97,7 @@ function installFetch(
     if (parsed.host === COPY_HOST) return (hosts.copy ?? serve)(cid);
     if (parsed.host === FILEBASE_HOST) return (hosts.filebase ?? serve)(cid);
     if (parsed.host === PINATA_HOST) return (hosts.pinata ?? serve)(cid);
+    if (parsed.host === ORBITOR_HOST) return (hosts.orbitor ?? serve)(cid);
     throw new TypeError(`unexpected request ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -114,6 +117,7 @@ beforeEach(() => {
   vi.stubEnv("VITE_CID_COPY_HOST", COPY_HOST);
   vi.stubEnv("VITE_FILEBASE_GATEWAY_HOST", FILEBASE_HOST);
   vi.stubEnv("VITE_PINATA_GATEWAY_HOST", PINATA_HOST);
+  vi.stubEnv("VITE_ORBITOR_GATEWAY_HOST", ORBITOR_HOST);
 });
 
 afterEach(() => {
@@ -184,7 +188,7 @@ describe("Compare with two runs (FR-001a, TC-007, TC-015)", () => {
     );
   });
 
-  it("shows `old manifest still resolves on Pinata and Filebase` only after both gateways answered", async () => {
+  it("shows `old manifest still resolves on Pinata and orbitor` only after both independent gateways answered", async () => {
     let releasePinata: (r: Response) => void = () => undefined;
     const pinataAnswer = new Promise<Response>((resolve) => {
       releasePinata = resolve;
@@ -205,14 +209,16 @@ describe("Compare with two runs (FR-001a, TC-007, TC-015)", () => {
     const checks = fetchMock.mock.calls
       .map(([input]) => new URL(urlOf(input), "https://app.test"))
       .filter((u) => u.pathname.endsWith(run1.cid) && u.host !== COPY_HOST);
-    expect(new Set(checks.map((u) => u.host))).toEqual(new Set([PINATA_HOST, FILEBASE_HOST]));
+    expect(new Set(checks.map((u) => u.host))).toEqual(
+      new Set([PINATA_HOST, ORBITOR_HOST, FILEBASE_HOST]),
+    );
   });
 
-  it("withholds the text and shows the failed gateway when Filebase answers 504; re-check shows it", async () => {
-    let filebaseUp = false;
+  it("withholds the text and shows the failed gateway when orbitor answers 504; re-check shows it", async () => {
+    let orbitorUp = false;
     installFetch([run1, run2], {
-      filebase: (cid) =>
-        filebaseUp && cid === run1.cid
+      orbitor: (cid) =>
+        orbitorUp && cid === run1.cid
           ? new Response(run1.bytes)
           : cid === run1.cid
             ? new Response(null, { status: 504 })
@@ -221,15 +227,31 @@ describe("Compare with two runs (FR-001a, TC-007, TC-015)", () => {
     await renderCompare("?a=1&b=2");
     const check = await screen.findByRole("region", { name: /old manifest/i });
     await waitFor(() =>
-      expect(check.querySelector('[data-gateway="filebase"]')?.getAttribute("data-check")).toBe(
+      expect(check.querySelector('[data-gateway="orbitor"]')?.getAttribute("data-check")).toBe(
         "fails",
       ),
     );
     expect(screen.queryByText(RUNS_TEXTS.oldManifestResolves)).toBeNull();
 
-    filebaseUp = true;
+    orbitorUp = true;
     fireEvent.click(within(check).getByRole("button", { name: /re-check/i }));
     expect(await screen.findByText(RUNS_TEXTS.oldManifestResolves)).toBeDefined();
+  });
+
+  it("a Filebase failure does not withhold the text; Filebase is listed as the fallback (AM-10)", async () => {
+    installFetch([run1, run2], {
+      filebase: (cid) =>
+        cid === run1.cid ? new Response(null, { status: 504 }) : new Response(run2.bytes),
+    });
+    await renderCompare("?a=1&b=2");
+    const check = await screen.findByRole("region", { name: /old manifest/i });
+    expect(await screen.findByText(RUNS_TEXTS.oldManifestResolves)).toBeDefined();
+    const filebase = check.querySelector('[data-gateway="filebase"]');
+    await waitFor(() => expect(filebase?.getAttribute("data-check")).toBe("fails"));
+    expect(filebase?.textContent).toContain(VERIFY_TEXTS.fallbackLane);
+    expect(check.querySelector('[data-gateway="pinata"]')?.textContent).not.toContain(
+      VERIFY_TEXTS.fallbackLane,
+    );
   });
 
   it("defaults to the latest run and the one before it", async () => {

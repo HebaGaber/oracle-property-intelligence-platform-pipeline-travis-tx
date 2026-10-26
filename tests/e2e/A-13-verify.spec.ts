@@ -1,5 +1,5 @@
 // A-13 Part 1 Verify cases (T032; testplans/A-13-test-cases.md § 8 "Data · Manifest and Verify"):
-// TC-006, TC-018 … TC-024. They hit the two public gateways (Pinata, Filebase), which rate-limit,
+// TC-006, TC-018 … TC-024. They hit the public gateways (Pinata, orbitor, Filebase), which rate-limit,
 // so they run serially on one worker: `test.describe.configure({ mode: "serial" })` plus the tag
 // `@a13-verify`, so CI runs them with `--grep @a13-verify --workers=1`. Faults (429, unreadable
 // responses, flipped bytes, CID copy down) are injected with page.route() in this browser only;
@@ -34,18 +34,24 @@ import { harnessConfig, runtimeUrl, sha256Hex } from "./lib/runtime.js";
 
 const PINATA = (): string => harnessConfig().PINATA_GATEWAY_HOST;
 const FILEBASE = (): string => harnessConfig().FILEBASE_GATEWAY_HOST;
+const ORBITOR = (): string => harnessConfig().ORBITOR_GATEWAY_HOST;
 const FORBIDDEN_HOSTS = ["ipfs.io", "dweb.link", "w3s.link"];
-/** Both lanes, with retries (2 + 4 + 8 s) and 30 s per try. */
+/** All lanes, with retries (2 + 4 + 8 s) and 30 s per try. */
 const LANES_DONE_MS = 150_000;
 
 test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
   test.describe.configure({ mode: "serial" });
 
-  type Gw = "pinata" | "filebase";
-  const laneUrl = (gw: Gw, cid: string): string =>
-    `https://${gw === "pinata" ? PINATA() : FILEBASE()}/ipfs/${cid}`;
+  type Gw = "pinata" | "orbitor" | "filebase";
+  const GW_HOST: Readonly<Record<Gw, () => string>> = {
+    pinata: PINATA,
+    orbitor: ORBITOR,
+    filebase: FILEBASE,
+  };
+  const laneUrl = (gw: Gw, cid: string): string => `https://${GW_HOST[gw]()}/ipfs/${cid}`;
 
-  /** Both lanes end ✓ with size and SHA-256 equal to the expected values. */
+  /** Every lane ends ✓ with size and SHA-256 equal to the expected values; the page result reads
+   * verified on the two independent gateways (AM-10). */
   async function expectVerified(
     page: Page,
     cid: string,
@@ -54,6 +60,7 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
   ): Promise<void> {
     for (const [gw, operator] of [
       ["pinata", "Pinata"],
+      ["orbitor", "orbitor"],
       ["filebase", "Filebase"],
     ] as const) {
       const lane = page.locator(SEL.lane(gw));
@@ -69,6 +76,8 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
       await expect(lane.locator("[data-expected-sha256]")).toHaveAttribute("data-value", sha256);
       await expect(lane.getByText("✓")).toBeVisible();
     }
+    await expect(page.locator(SEL.verifyResult)).toHaveAttribute("data-verify-result", "verified");
+    await expect(page.locator(SEL.verifyResult)).toContainText(VERIFY_TEXTS.independentVerified);
   }
 
   /** Request times of the page's requests to `url` (prefix match). */
@@ -88,7 +97,7 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
   function isCidCopy(url: URL, oracle: A13Oracle, siteHost: string): boolean {
     const configured = harnessConfig().CID_COPY_HOST;
     if (configured !== undefined) return url.host === configured;
-    if ([PINATA(), FILEBASE(), siteHost].includes(url.host)) return false;
+    if ([PINATA(), ORBITOR(), FILEBASE(), siteHost].includes(url.host)) return false;
     if (url.href.includes(oracle.manifestCid)) return true;
     return oracle.M.artifacts.some(
       (a) => url.href.includes(a.cid) || (a.carCid !== undefined && url.href.includes(a.carCid)),
@@ -100,16 +109,16 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     // 1. Data · Manifest.
     await page.goto(ROUTES.dataManifest);
     const section = await ready(page, "data-manifest");
-    // 2. Verify on the test-data row → /data/verify/{cid}, two lanes.
+    // 2. Verify on the test-data row → /data/verify/{cid}: two independent lanes + the Filebase fallback.
     await section
       .locator(SEL.artifactRow(artifact.name))
       .getByRole("link", { name: "Verify", exact: true })
       .click();
     await expect(page).toHaveURL((u) => u.pathname === verifyPath(artifact.cid));
     await ready(page, "data-verify");
-    await expect(page.locator("[data-lane]")).toHaveCount(2);
+    await expect(page.locator("[data-lane]")).toHaveCount(3);
     await checkpoint(page, "006", 2);
-    // 3–5. Both lanes finish ✓ with the manifest's size and digest.
+    // 3–5. Every lane finishes ✓ with the manifest's size and digest.
     await expectVerified(page, artifact.cid, artifact.size, artifact.sha256);
     await checkpoint(page, "006", 5, { fullPage: true });
   });
@@ -127,7 +136,8 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     expect((await link.getAttribute("href")) ?? "").toContain(dir.carCid ?? "<no carCid>");
     await expect(row.getByRole("link", { name: "Verify", exact: true })).toHaveCount(0);
     const fetched = net.requests.filter(
-      (r) => [PINATA(), FILEBASE()].includes(r.url.host) && r.url.pathname.includes(dir.cid),
+      (r) =>
+        [PINATA(), ORBITOR(), FILEBASE()].includes(r.url.host) && r.url.pathname.includes(dir.cid),
     );
     expect(fetched.map((r) => r.url.href)).toEqual([]);
     await checkpoint(page, "018", 3);
@@ -282,10 +292,10 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
     page.on("request", (r) => {
       if (r.url().includes(artifact.cid)) seen.push(r);
     });
-    // 2. Verify; wait for both lanes.
+    // 2. Verify; wait for every lane.
     await page.goto(verifyPath(artifact.cid));
     await settled(page, "data-verify");
-    for (const gw of ["pinata", "filebase"] as const) {
+    for (const gw of ["pinata", "orbitor", "filebase"] as const) {
       await expect(page.locator(SEL.lane(gw))).not.toHaveAttribute(
         "data-state",
         /idle|fetching|retrying/,
@@ -295,14 +305,14 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
       );
     }
     await checkpoint(page, "022", 2);
-    // 3. Only Pinata and Filebase; plain GET, no Range, no custom header, no cookie, no preflight.
+    // 3. Only Pinata, orbitor and Filebase; plain GET, no Range, no custom header, no cookie, no preflight.
     const site = new URL(page.url()).host;
     const gatewayRequests = seen.filter((r) => new URL(r.url()).host !== site);
     expect(gatewayRequests.length).toBeGreaterThan(0);
     const copyHost = harnessConfig().CID_COPY_HOST;
     for (const r of gatewayRequests) {
       const host = new URL(r.url()).host;
-      expect([PINATA(), FILEBASE()], r.url()).toContain(host);
+      expect([PINATA(), ORBITOR(), FILEBASE()], r.url()).toContain(host);
       expect(FORBIDDEN_HOSTS).not.toContain(host);
       if (copyHost !== undefined) expect(host).not.toBe(copyHost);
       expect(r.method(), r.url()).toBe("GET");
@@ -369,7 +379,7 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
       .poll(() => page.evaluate(() => navigator.clipboard.readText()))
       .toBe(oracle.manifestCid);
     await checkpoint(page, "024", 3);
-    // 4. Verify → two lanes for the manifest file.
+    // 4. Verify → the lanes for the manifest file.
     await latest.getByRole("link", { name: "Verify", exact: true }).click();
     await expect(page).toHaveURL((u) => u.pathname === verifyPath(oracle.manifestCid));
     await expectVerified(

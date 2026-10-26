@@ -4,10 +4,13 @@
 // computed in this page. The lane runs data/verify-lane's state machine on mount (a simple CORS
 // GET, never the CID copy; backoff 2/4/8 s) and shows each state: retrying → "rate-limited,
 // retrying" or "no readable response (rate-limited or blocked), retrying"; ✓ only in `verified`;
-// a mismatch shows both values. `data-lane` / `data-state` are the hooks the hosted tests read.
+// a mismatch shows both values. Each lane names its role (AM-10): Pinata and orbitor are
+// independent gateways; Filebase is the storage host, a labelled fallback whose ✓ never counts
+// as an independent check (`data-independent`). `data-lane` / `data-state` are the hooks the
+// hosted tests read; `onState` reports each state to the page result.
 // `fetch` and `sleep` are injectable for the unit tests only.
-import { VERIFY_TEXTS } from "@countylens/shared";
-import { useEffect, useState, type ReactElement } from "react";
+import { VERIFY_TEXTS, isIndependentGateway } from "@countylens/shared";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import {
   runVerifyLane,
   type LaneState,
@@ -17,10 +20,8 @@ import {
 import { StatusPill } from "./StatusPill";
 import styles from "./VerifyLane.module.css";
 
-export const GATEWAY_OPERATORS: Readonly<Record<VerifyGateway, string>> = {
-  pinata: "Pinata",
-  filebase: "Filebase",
-};
+export const GATEWAY_OPERATORS: Readonly<Record<VerifyGateway, string>> =
+  VERIFY_TEXTS.gatewayOperators;
 
 export interface VerifyLaneProps {
   readonly gateway: VerifyGateway;
@@ -29,6 +30,8 @@ export interface VerifyLaneProps {
   readonly target: VerifyTarget;
   readonly fetch?: typeof fetch;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** Every state of this lane, for the page result (independent lanes only count). */
+  readonly onState?: (gateway: VerifyGateway, state: LaneState) => void;
 }
 
 export function VerifyLane({
@@ -37,25 +40,35 @@ export function VerifyLane({
   target,
   fetch: fetchImpl,
   sleep,
+  onState,
 }: VerifyLaneProps): ReactElement {
   const [state, setState] = useState<LaneState>({ kind: "idle" });
+  // A ref, so a new callback identity never restarts the lane's fetch.
+  const report = useRef(onState);
+  useEffect(() => {
+    report.current = onState;
+  });
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "idle" });
+    report.current?.(gateway, { kind: "idle" });
     runVerifyLane({
       url,
       target,
       signal: controller.signal,
       onState: (next) => {
-        if (!controller.signal.aborted) setState(next);
+        if (controller.signal.aborted) return;
+        setState(next);
+        report.current?.(gateway, next);
       },
       ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
       ...(sleep === undefined ? {} : { sleep }),
     }).catch(() => undefined);
     return () => controller.abort();
-  }, [url, target, fetchImpl, sleep]);
+  }, [gateway, url, target, fetchImpl, sleep]);
 
   const titleId = `lane-${gateway}`;
+  const independent = isIndependentGateway(gateway);
   const gotSize =
     state.kind === "verified" ? state.size : state.kind === "mismatch" ? state.got.size : 0;
   const gotSha =
@@ -66,6 +79,7 @@ export function VerifyLane({
       aria-labelledby={titleId}
       data-lane={gateway}
       data-state={state.kind}
+      data-independent={independent ? "true" : "false"}
     >
       <h3 id={titleId} className={styles.title}>
         {state.kind === "verified" ? (
@@ -75,6 +89,13 @@ export function VerifyLane({
         ) : null}
         {GATEWAY_OPERATORS[gateway]}
       </h3>
+      <p className={styles.role} data-lane-role="">
+        {independent ? (
+          VERIFY_TEXTS.independentLane
+        ) : (
+          <StatusPill status="info" text={VERIFY_TEXTS.fallbackLane} />
+        )}
+      </p>
       <p className={styles.url}>
         <code>{url}</code>
       </p>
@@ -100,21 +121,26 @@ export function VerifyLane({
           </>
         ) : null}
       </dl>
-      <LaneStatus state={state} />
+      <LaneStatus state={state} independent={independent} />
     </section>
   );
 }
 
 /** One persistent polite region: its children change, so every state (final ones too) is spoken. */
-function LaneStatus({ state }: { readonly state: LaneState }): ReactElement {
+interface LaneStatusProps {
+  readonly state: LaneState;
+  readonly independent: boolean;
+}
+
+function LaneStatus({ state, independent }: LaneStatusProps): ReactElement {
   return (
     <p className={styles.status} role="status" aria-live="polite">
-      <LaneStatusBody state={state} />
+      <LaneStatusBody state={state} independent={independent} />
     </p>
   );
 }
 
-function LaneStatusBody({ state }: { readonly state: LaneState }): ReactElement {
+function LaneStatusBody({ state, independent }: LaneStatusProps): ReactElement {
   switch (state.kind) {
     case "idle":
     case "fetching":
@@ -127,7 +153,11 @@ function LaneStatusBody({ state }: { readonly state: LaneState }): ReactElement 
         </>
       );
     case "verified":
-      return <StatusPill status="verified" text={VERIFY_TEXTS.verified} />;
+      return independent ? (
+        <StatusPill status="verified" text={VERIFY_TEXTS.verified} />
+      ) : (
+        <StatusPill status="info" text={VERIFY_TEXTS.fallbackVerified} />
+      );
     case "mismatch":
     case "failed":
       return (

@@ -217,4 +217,20 @@ describe("Data · Manifest fallback (FR-016)", () => {
     expect(screen.getAllByText(`fallback · ${FILEBASE_HOST}`).length).toBeGreaterThan(0);
     expect(artifactRows()).toHaveLength(run1.manifest.artifacts.length);
   });
+
+  it("says where the bytes are stored: Filebase pin, Pinata copy where recorded, GitHub Release CARs (AM-10)", async () => {
+    install([run1]);
+    await renderManifest();
+    await screen.findByRole("table");
+    const stored = document.querySelector<HTMLElement>("[data-stored-on]");
+    expect(stored).not.toBeNull();
+    expect(
+      within(stored as HTMLElement)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual([...VERIFY_TEXTS.storedOn]);
+    expect(stored?.textContent).toContain(VERIFY_TEXTS.storedOnProvenance);
+    // The Pinata line never claims every artifact.
+    expect(VERIFY_TEXTS.storedOn[1]).toContain("where recorded");
+  });
 });

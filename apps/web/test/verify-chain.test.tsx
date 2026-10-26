@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const COPY_HOST = "copy.example.test";
 const FILEBASE_HOST = "ipfs.filebase.io";
 const PINATA_HOST = "gateway.pinata.test";
+const ORBITOR_HOST = "ipfs.orbitor.test";
 const encode = (t: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(t);
 
 async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
@@ -65,6 +66,7 @@ beforeEach(() => {
   vi.stubEnv("VITE_CID_COPY_HOST", COPY_HOST);
   vi.stubEnv("VITE_FILEBASE_GATEWAY_HOST", FILEBASE_HOST);
   vi.stubEnv("VITE_PINATA_GATEWAY_HOST", PINATA_HOST);
+  vi.stubEnv("VITE_ORBITOR_GATEWAY_HOST", ORBITOR_HOST);
 });
 afterEach(() => {
   cleanup();

@@ -19,7 +19,8 @@ export function shortHash(value: string): string {
 /** Runs, Compare and the run index. */
 export const RUNS_TEXTS = Object.freeze({
   nextSync: "Next sync: none · scheduler off by default",
-  oldManifestResolves: "old manifest still resolves on Pinata and Filebase",
+  /** Shown only when both independent gateways (Pinata, orbitor) served the bytes (AM-10). */
+  oldManifestResolves: "old manifest still resolves on Pinata and orbitor",
   /** Compare with one run, and the delta column of a first run. */
   firstRun: "first run · nothing to compare against",
   /** The numbering contract of `a`/`b` on Compare and of the Hub chip: run n = the n-th entry of runs/index.json ordered by finishedAt (1-based). */
@@ -46,6 +47,28 @@ export const VERIFY_TEXTS = Object.freeze({
   notVerified: (detail: string): string => `Not verified · ${detail}`,
   /** The Warning pill when a gateway other than the copy served the bytes. */
   fallback: (host: string): string => `fallback · ${host}`,
+  /** Operator names of the Verify gateways (ARD § 16 AM-10). */
+  gatewayOperators: Object.freeze({ pinata: "Pinata", orbitor: "orbitor", filebase: "Filebase" }),
+  /** The role line of an independent lane (Pinata, orbitor). */
+  independentLane: "Independent public gateway · not operated by CountyLens",
+  /** The role line of the Filebase lane: our pin host, so never an independent check. */
+  fallbackLane: "Fallback · storage host, not independent",
+  /** The Filebase lane's ✓ text: a match, but not one of the two independent checks. */
+  fallbackVerified: "Match on the storage host · does not count as an independent check",
+  fallbackLanesTitle: "Fallback lane",
+  /** The page result: both independent lanes matched the manifest. */
+  independentVerified: "Verified on two independent gateways · Pinata and orbitor",
+  independentPending: "Checking the two independent gateways · Pinata and orbitor",
+  /** The page result when at least one independent lane ended without a match. */
+  independentNotVerified: (gateways: string): string =>
+    `Not verified on two independent gateways · no match from ${gateways}`,
+  storedOnTitle: "Stored on",
+  storedOn: Object.freeze([
+    "Filebase: IPFS pin of every artifact (storage host)",
+    "Pinata: second copy of the manifest and table files where recorded",
+    "GitHub Release: CAR backup of the run, re-pinnable",
+  ] as const),
+  storedOnProvenance: "Storage policy · ARD § 16 AM-10",
 });
 
 /** Explore · Filters, the result rows, permits, owners and the SQL panel. */

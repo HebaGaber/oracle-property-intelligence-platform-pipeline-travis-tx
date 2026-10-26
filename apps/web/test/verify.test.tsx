@@ -1,6 +1,8 @@
 // A-13 T022 (AC-3, AC-7, FR-003, FR-003a–c, FR-016; TC-006, TC-018, TC-020, TC-021, TC-022,
-// TC-023): Data · Verify (`/data/verify/:cid`) and its VerifyLane. Two lanes, Pinata then
-// Filebase, each with its exact URL; ✓ only when the bytes' size and SHA-256 (and raw CID) equal
+// TC-023): Data · Verify (`/data/verify/:cid`) and its VerifyLane. Two independent lanes,
+// Pinata and orbitor, then the labelled Filebase fallback lane (ARD § 16 AM-10), each with its
+// exact URL; "verified on two independent gateways" only when Pinata and orbitor both match (a
+// Filebase-only match never counts); ✓ only when the bytes' size and SHA-256 (and raw CID) equal
 // the manifest; a mismatch shows both values; a readable 429 reads "rate-limited, retrying", an
 // unreadable answer "no readable response (rate-limited or blocked), retrying"; a directory reads
 // "Verify via CAR" and fetches nothing; no request ever goes to the CID copy for the artifact.
@@ -16,6 +18,7 @@ import { VerifyLane } from "../src/components/VerifyLane";
 const COPY_HOST = "copy.example.test";
 const FILEBASE_HOST = "ipfs.filebase.io";
 const PINATA_HOST = "gateway.pinata.test";
+const ORBITOR_HOST = "ipfs.orbitor.test";
 const encode = (text: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(text);
 
 async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
@@ -88,7 +91,9 @@ const urlOf = (input: RequestInfo | URL): string =>
 
 type Gateway = (url: URL) => Response | Promise<Response>;
 
-function install(opts: { pinata?: Gateway; filebase?: Gateway; copyDown?: boolean } = {}) {
+function install(
+  opts: { pinata?: Gateway; orbitor?: Gateway; filebase?: Gateway; copyDown?: boolean } = {},
+) {
   const serve: Gateway = (url) =>
     url.pathname.endsWith(manifestCid)
       ? new Response(manifestBytes)
@@ -110,6 +115,7 @@ function install(opts: { pinata?: Gateway; filebase?: Gateway; copyDown?: boolea
       return opts.copyDown === true ? new Response(null, { status: 503 }) : serve(parsed);
     }
     if (parsed.host === PINATA_HOST) return (opts.pinata ?? serve)(parsed);
+    if (parsed.host === ORBITOR_HOST) return (opts.orbitor ?? serve)(parsed);
     if (parsed.host === FILEBASE_HOST) {
       return parsed.pathname.endsWith(manifestCid)
         ? serve(parsed)
@@ -142,7 +148,14 @@ beforeEach(() => {
   vi.stubEnv("VITE_CID_COPY_HOST", COPY_HOST);
   vi.stubEnv("VITE_FILEBASE_GATEWAY_HOST", FILEBASE_HOST);
   vi.stubEnv("VITE_PINATA_GATEWAY_HOST", PINATA_HOST);
+  vi.stubEnv("VITE_ORBITOR_GATEWAY_HOST", ORBITOR_HOST);
 });
+
+const result = (): HTMLElement => {
+  const el = document.querySelector<HTMLElement>("[data-verify-result]");
+  expect(el, "page result").not.toBeNull();
+  return el as HTMLElement;
+};
 
 afterEach(() => {
   cleanup();
@@ -151,16 +164,32 @@ afterEach(() => {
 });
 
 describe("Data · Verify page (AC-3, FR-003, TC-006, TC-022)", () => {
-  it("shows two ✓ lanes with the exact Pinata and Filebase URLs and the compared values", async () => {
+  it("shows ✓ lanes with the exact Pinata, orbitor and Filebase URLs and the compared values", async () => {
     const fetchMock = install();
     await renderVerify(fileCid);
 
-    await waitFor(() => expect(lane("pinata").getAttribute("data-state")).toBe("verified"));
-    await waitFor(() => expect(lane("filebase").getAttribute("data-state")).toBe("verified"));
+    for (const g of ["pinata", "orbitor", "filebase"]) {
+      await waitFor(() => expect(lane(g).getAttribute("data-state")).toBe("verified"));
+    }
     expect(lane("pinata").textContent).toContain(`https://${PINATA_HOST}/ipfs/${fileCid}`);
+    expect(lane("orbitor").textContent).toContain(`https://${ORBITOR_HOST}/ipfs/${fileCid}`);
     expect(lane("filebase").textContent).toContain(`https://${FILEBASE_HOST}/ipfs/${fileCid}`);
-    for (const g of ["pinata", "filebase"]) {
+    // Independent lanes first, the Filebase fallback lane last (AM-10).
+    expect(
+      [...document.querySelectorAll<HTMLElement>("[data-lane]")].map((el) => el.dataset.lane),
+    ).toEqual(["pinata", "orbitor", "filebase"]);
+    expect(result().getAttribute("data-verify-result")).toBe("verified");
+    expect(result().textContent).toContain(VERIFY_TEXTS.independentVerified);
+    for (const g of ["pinata", "orbitor"]) {
+      expect(lane(g).getAttribute("data-independent")).toBe("true");
+      expect(lane(g).textContent).toContain(VERIFY_TEXTS.independentLane);
       expect(lane(g).textContent).toContain(VERIFY_TEXTS.verified);
+    }
+    expect(lane("filebase").getAttribute("data-independent")).toBe("false");
+    expect(lane("filebase").textContent).toContain(VERIFY_TEXTS.fallbackLane);
+    expect(lane("filebase").textContent).toContain(VERIFY_TEXTS.fallbackVerified);
+    expect(lane("filebase").textContent).not.toContain(VERIFY_TEXTS.verified);
+    for (const g of ["pinata", "orbitor", "filebase"]) {
       expect(lane(g).textContent).toContain("✓");
       expect(lane(g).textContent).toContain(manifest.artifacts[1]?.sha256 ?? "x");
       expect(lane(g).textContent).toContain(String(fileBytes.length));
@@ -168,7 +197,9 @@ describe("Data · Verify page (AC-3, FR-003, TC-006, TC-022)", () => {
     const fileRequests = fetchMock.mock.calls
       .map(([input]) => new URL(urlOf(input), "https://app.test"))
       .filter((u) => u.pathname.endsWith(fileCid));
-    expect(new Set(fileRequests.map((u) => u.host))).toEqual(new Set([PINATA_HOST, FILEBASE_HOST]));
+    expect(new Set(fileRequests.map((u) => u.host))).toEqual(
+      new Set([PINATA_HOST, ORBITOR_HOST, FILEBASE_HOST]),
+    );
     for (const [, init] of fetchMock.mock.calls.filter(([i]) => urlOf(i).endsWith(fileCid))) {
       expect(init?.credentials).toBe("omit");
       expect(init?.headers).toBeUndefined();
@@ -185,13 +216,65 @@ describe("Data · Verify page (AC-3, FR-003, TC-006, TC-022)", () => {
     );
     expect(lane("filebase").textContent).not.toContain("✓");
     await waitFor(() => expect(lane("pinata").getAttribute("data-state")).toBe("verified"));
+    // A Filebase mismatch does not change the independent result (AM-10).
+    await waitFor(() => expect(result().getAttribute("data-verify-result")).toBe("verified"));
+  });
+
+  it("a Filebase-only match is never shown as verified on two independent gateways (AM-10)", async () => {
+    install({
+      pinata: () => new Response(encode("tampered")),
+      orbitor: () => new Response(null, { status: 404 }),
+    });
+    await renderVerify(fileCid);
+
+    await waitFor(() => expect(lane("filebase").getAttribute("data-state")).toBe("verified"));
+    await waitFor(() => expect(lane("pinata").getAttribute("data-state")).toBe("mismatch"));
+    await waitFor(() => expect(lane("orbitor").getAttribute("data-state")).toBe("failed"));
+    await waitFor(() => expect(result().getAttribute("data-verify-result")).toBe("not_verified"));
+    expect(result().textContent).toBe(VERIFY_TEXTS.independentNotVerified("Pinata and orbitor"));
+    expect(document.body.textContent).not.toContain(VERIFY_TEXTS.independentVerified);
+    expect(lane("filebase").textContent).toContain(VERIFY_TEXTS.fallbackVerified);
+    expect(lane("filebase").textContent).not.toContain(VERIFY_TEXTS.verified);
+  });
+
+  it("stays pending until both independent lanes end; one match is not enough", async () => {
+    let releaseOrbitor: (r: Response) => void = () => undefined;
+    const orbitorAnswer = new Promise<Response>((resolve) => {
+      releaseOrbitor = resolve;
+    });
+    install({ orbitor: () => orbitorAnswer });
+    await renderVerify(fileCid);
+
+    await waitFor(() => expect(lane("pinata").getAttribute("data-state")).toBe("verified"));
+    await waitFor(() => expect(lane("filebase").getAttribute("data-state")).toBe("verified"));
+    expect(result().getAttribute("data-verify-result")).toBe("pending");
+    expect(result().textContent).toBe(VERIFY_TEXTS.independentPending);
+    await act(async () => releaseOrbitor(new Response(fileBytes)));
+    await waitFor(() => expect(result().getAttribute("data-verify-result")).toBe("verified"));
+  });
+
+  it("shows the Stored on line: Filebase pin, Pinata copy where recorded, GitHub Release CARs", async () => {
+    install();
+    await renderVerify(fileCid);
+    const stored = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>("[data-stored-on]");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    for (const line of VERIFY_TEXTS.storedOn) expect(stored.textContent).toContain(line);
+    expect(stored.textContent).toContain(VERIFY_TEXTS.storedOnProvenance);
+    expect(stored.textContent).toMatch(
+      /Pinata: second copy of the manifest and table files where recorded/,
+    );
   });
 
   it("reads `Verify via CAR` for a directory and fetches nothing for it (FR-003c, TC-018)", async () => {
     const fetchMock = install();
     await renderVerify(dirCid);
     await waitFor(() => expect(lane("pinata").getAttribute("data-state")).toBe("via_car"));
+    expect(lane("orbitor").textContent).toContain(VERIFY_TEXTS.viaCar);
     expect(lane("filebase").textContent).toContain(VERIFY_TEXTS.viaCar);
+    expect(result().getAttribute("data-verify-result")).toBe("via_car");
     expect(fetchMock.mock.calls.some(([input]) => urlOf(input).endsWith(dirCid))).toBe(false);
   });
 
@@ -200,6 +283,7 @@ describe("Data · Verify page (AC-3, FR-003, TC-006, TC-022)", () => {
     await renderVerify(fileCid);
     expect((await screen.findAllByText(`fallback · ${FILEBASE_HOST}`)).length).toBeGreaterThan(0);
     await waitFor(() => expect(lane("pinata").getAttribute("data-state")).toBe("verified"));
+    await waitFor(() => expect(lane("orbitor").getAttribute("data-state")).toBe("verified"));
     await waitFor(() => expect(lane("filebase").getAttribute("data-state")).toBe("verified"));
   });
 

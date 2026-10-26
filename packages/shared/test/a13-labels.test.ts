@@ -19,7 +19,7 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
   it("Runs, Compare and the run index", () => {
     expect(RUNS_TEXTS.nextSync).toBe("Next sync: none · scheduler off by default");
     expect(RUNS_TEXTS.oldManifestResolves).toBe(
-      "old manifest still resolves on Pinata and Filebase",
+      "old manifest still resolves on Pinata and orbitor",
     );
     expect(RUNS_TEXTS.firstRun).toBe("first run · nothing to compare against");
     expect(RUNS_TEXTS.indexUnavailable("HTTP 404")).toBe("Run index unavailable · HTTP 404");
@@ -40,6 +40,26 @@ describe("A-13 fixed strings equal contracts/ui-routes.md", () => {
         { size: 12, sha256: "cccc3333dddd4444" },
       ),
     ).toBe("Mismatch · size 10 vs 12 · SHA-256 aaaa…2222 vs cccc…4444");
+  });
+
+  it("Verify gateways (ARD § 16 AM-10): two independent lanes, Filebase a labelled fallback", () => {
+    expect(VERIFY_TEXTS.gatewayOperators).toEqual({
+      pinata: "Pinata",
+      orbitor: "orbitor",
+      filebase: "Filebase",
+    });
+    expect(VERIFY_TEXTS.fallbackLane).toBe("Fallback · storage host, not independent");
+    expect(VERIFY_TEXTS.independentVerified).toBe(
+      "Verified on two independent gateways · Pinata and orbitor",
+    );
+    expect(VERIFY_TEXTS.independentNotVerified("orbitor")).toBe(
+      "Not verified on two independent gateways · no match from orbitor",
+    );
+    expect(VERIFY_TEXTS.storedOn).toEqual([
+      "Filebase: IPFS pin of every artifact (storage host)",
+      "Pinata: second copy of the manifest and table files where recorded",
+      "GitHub Release: CAR backup of the run, re-pinnable",
+    ]);
   });
 
   it("Explore", () => {

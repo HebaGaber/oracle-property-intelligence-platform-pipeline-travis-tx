@@ -20,7 +20,14 @@ export {
   type Derivation,
 } from "./labels.js";
 export { SOURCE_LABELS, isSourceName, sourceLabel, type SourceName } from "./sources.js";
-export { readPathUrls, type GatewayName, type ReadPathHosts, type ReadPathUrls } from "./urls.js";
+export {
+  INDEPENDENT_GATEWAYS,
+  isIndependentGateway,
+  readPathUrls,
+  type GatewayName,
+  type ReadPathHosts,
+  type ReadPathUrls,
+} from "./urls.js";
 export {
   AI_TEXTS,
   MCP_TRY_TEXTS,
