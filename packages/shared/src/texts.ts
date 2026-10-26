@@ -62,6 +62,10 @@ export const VERIFY_TEXTS = Object.freeze({
   /** The Filebase lane's text when its bytes match: shown, never counted. */
   fallbackVerified: "Bytes match the manifest · our storage host, not counted",
   countedLanesTitle: "Counted gateways",
+  /** Why the counted gateways are not the README's examples (docs/decisions/0001-read-path.md,
+   *  Finding 3: every request answers 429 with a Sunset header since 2026-09-21). */
+  retiredGatewaysNote:
+    "ipfs.io and dweb.link stopped serving HTTP content on 2026-09-21 (every request answers 429 with a Sunset header), so Verify uses Pinata and orbitor: two public gateways this project does not operate. Each fetches the CID from the IPFS network and the browser checks the size and SHA-256 against the manifest.",
   fallbackLanesTitle: "Fallback gateway · not counted",
   /** A counted lane that ended `failed` after its retries: no readable bytes, not tampering. */
   laneGaveUp: "no readable answer after retries",

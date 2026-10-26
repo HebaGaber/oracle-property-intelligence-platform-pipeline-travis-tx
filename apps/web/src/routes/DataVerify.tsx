@@ -263,6 +263,9 @@ function Lanes({
         <StatusPill status={independentResultStatus(result)} text={result.text} />
       </p>
       <h3 className={runStyles.sectionTitle}>{VERIFY_TEXTS.countedLanesTitle}</h3>
+      <p className={runStyles.helperText} data-retired-gateways="">
+        {VERIFY_TEXTS.retiredGatewaysNote}
+      </p>
       <div className={styles.lanes} data-lanes="independent">
         {VERIFY_INDEPENDENT_GATEWAYS.map(lane)}
       </div>
