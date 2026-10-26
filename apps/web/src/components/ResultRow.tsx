@@ -4,17 +4,27 @@
 // missing reason in words (contracts/ui-routes.md), never blank. `MissingSummary` groups the
 // row's `missing` entries by reason and names their fields (ERR-20: "{fields}: {reason}"); a
 // no-carrier entry reads "not published · no lexicon carrier". `RowProvenance` is the § 8 line
-// (source, collected, table CID, run). `ResultRow` is the clickable Atlas card; Enter/Space or its
-// Details button open the drawer. Every value comes from the explore.search row. Render-only.
+// (source, collected, table CID, run) the drawer shows; `CompactProvenance` is its short form for
+// the result rows (host · date, table CID, run; A-16 PO notes). `ResultRow` is the compact
+// clickable Atlas card (Explore390 board); Enter/Space or its Details button open the drawer.
+// Every value comes from the explore.search row. Render-only.
 import { MISSING_REASONS, type MissingReason as Reason } from "@countylens/contract";
 import type { ExploreRow, MissingEntry } from "@countylens/query-core";
 import { EXPLORE_TEXTS, missingLabel } from "@countylens/shared";
-import type { KeyboardEvent, MouseEvent, ReactElement, ReactNode } from "react";
-import { CidDisplay } from "./CidDisplay";
+import {
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { safeHttpUrl } from "../data/safe-url";
+import { CidDisplay, truncateCid } from "./CidDisplay";
 import { ContractorBadge } from "./ContractorBadge";
+import { Icon } from "./Icon";
 import { MissingReason } from "./MissingReason";
 import { PermitChip } from "./PermitChip";
-import { Provenance } from "./Provenance";
+import { Provenance, formatUtc } from "./Provenance";
 import { StatusPill } from "./StatusPill";
 import styles from "./ResultRow.module.css";
 
@@ -196,7 +206,8 @@ export function FieldValue({
     case "distance":
       return <>{`${row.dist_mi} mi ${row.bearing}`}</>;
     case "lat_lon":
-      return <>{`${row.lat}, ${row.lon}`}</>;
+      // 5 decimals (about 1 m), so float noise such as 30.266854499999997 never shows.
+      return <>{`${Number(row.lat.toFixed(5))}, ${Number(row.lon.toFixed(5))}`}</>;
     case "permit":
       return row.permit === null ? (
         <span>{NO_PERMIT_TEXT}</span>
@@ -283,14 +294,23 @@ const CARD_FIELDS: readonly RowField[] = [
   "owner_area_class",
 ];
 
-export function PropertyFields({ row }: { readonly row: ExploreRow }): ReactElement {
+/** The row's fields (default: every field) as a description list; absent permit/contractor cells are skipped. */
+export function PropertyFields({
+  row,
+  fields = CARD_FIELDS,
+}: {
+  readonly row: ExploreRow;
+  readonly fields?: readonly RowField[];
+}): ReactElement {
   return (
     <dl className={styles.fields}>
-      {CARD_FIELDS.filter((f) => hasField(row, f)).map((field) => (
-        <Cell key={field} label={FIELD_LABELS[field]} field={field}>
-          <FieldValue row={row} field={field} />
-        </Cell>
-      ))}
+      {fields
+        .filter((f) => hasField(row, f))
+        .map((field) => (
+          <Cell key={field} label={FIELD_LABELS[field]} field={field}>
+            <FieldValue row={row} field={field} />
+          </Cell>
+        ))}
     </dl>
   );
 }
@@ -359,6 +379,65 @@ export function RowProvenance({ row }: { readonly row: ExploreRow }): ReactEleme
   );
 }
 
+/** A source URL's host ("traviscad.org") for the compact line; null when it is not a URL. */
+export function sourceHost(url: string | null): string | null {
+  if (url === null) return null;
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The compact § 8 line of a result (PO 2026-10-26: no long URLs in the rows): the source host as a
+ * link with the full URL as its tooltip, the collected date (UTC time as tooltip), the table CID
+ * (truncated, full in `data-cid`/tooltip; the Property drawer has the copy button) and the run.
+ */
+export function CompactProvenance({ row }: { readonly row: ExploreRow }): ReactElement {
+  const p = row.provenance;
+  const host = sourceHost(p.source_url);
+  const href = p.source_url === null ? undefined : safeHttpUrl(p.source_url);
+  const notInRow = <Gap text={NOT_IN_ROW} short="Not in row" />;
+  return (
+    <div data-provenance="" className={styles.prov}>
+      <span className={styles.provLine}>
+        <Icon name="description" size="small" />
+        {p.source_url === null ? (
+          notInRow
+        ) : href !== undefined && host !== null ? (
+          <a href={href} title={p.source_url} rel="noopener noreferrer" target="_blank">
+            {host}
+          </a>
+        ) : (
+          <span title={p.source_url}>{host ?? p.source_url}</span>
+        )}
+        {" · "}
+        {p.captured_at === null ? (
+          notInRow
+        ) : (
+          <time dateTime={p.captured_at} title={`collected ${formatUtc(p.captured_at)} UTC`}>
+            {p.captured_at.slice(0, 10)}
+          </time>
+        )}
+      </span>
+      <span className={styles.provLine}>
+        table{" "}
+        {p.table_cid === null ? (
+          notInRow
+        ) : (
+          <code className={styles.mono} data-cid={p.table_cid} title={p.table_cid}>
+            {truncateCid(p.table_cid)}
+          </code>
+        )}
+      </span>
+      <span className={styles.provLine} title={p.run_id ?? undefined}>
+        run {p.run_id ?? notInRow}
+      </span>
+    </div>
+  );
+}
+
 export interface ResultRowProps {
   readonly row: ExploreRow;
   readonly onSelect?: (propertyCid: string) => void;
@@ -367,12 +446,23 @@ export interface ResultRowProps {
   readonly inRadius?: boolean;
 }
 
+/** The fields the compact card keeps behind its expand button (the rest show in its summary). */
+const MORE_FIELDS: readonly RowField[] = CARD_FIELDS.filter(
+  (f) => !["address", "distance", "roof_age_years", "roof_age_confidence", "permit"].includes(f),
+);
+
+/**
+ * A compact result card (Explore390 board): the address and distance, Details and expand icon
+ * buttons, the roof and permit chips, then the compact provenance; every other field and the
+ * grouped missing data sit behind the expand button. Each `[data-field]` appears once.
+ */
 export function ResultRow({
   row,
   onSelect,
   selected = false,
   inRadius = true,
 }: ResultRowProps): ReactElement {
+  const [open, setOpen] = useState(false);
   const select = (): void => onSelect?.(row.property_cid);
   const onClick = (event: MouseEvent<HTMLElement>): void => {
     if ((event.target as Element).closest("a, button") !== null) return;
@@ -398,17 +488,57 @@ export function ResultRow({
     >
       <header className={styles.head}>
         <h4 id={titleId} className={styles.title}>
-          Property <CidDisplay cid={row.property_cid} />
+          <span data-field="address">
+            <FieldValue row={row} field="address" />
+          </span>{" "}
+          <code className={styles.mono} title={row.property_cid}>
+            {truncateCid(row.property_cid)}
+          </code>
         </h4>
+        <span className={styles.meta} data-field="distance">
+          <FieldValue row={row} field="distance" />
+        </span>
         {onSelect === undefined ? null : (
-          <button type="button" className={styles.details} onClick={select}>
-            Details
+          <button
+            type="button"
+            className={styles.iconButton}
+            onClick={select}
+            aria-label={`Details, property ${row.property_cid}`}
+          >
+            <Icon name="info" />
           </button>
         )}
+        <button
+          type="button"
+          className={styles.iconButton}
+          aria-expanded={open}
+          aria-controls={`${titleId}-more`}
+          aria-label="All fields"
+          onClick={() => setOpen((o) => !o)}
+        >
+          <Icon name="arrow_drop_down" />
+        </button>
       </header>
-      <PropertyFields row={row} />
-      <MissingSummary row={row} />
-      <RowProvenance row={row} />
+      <div className={styles.chips}>
+        <span className={styles.roof}>
+          <Icon name="roofing" size="small" />
+          <span data-field="roof_age_years">
+            <FieldValue row={row} field="roof_age_years" />
+          </span>
+          <span aria-hidden="true">·</span>
+          <span data-field="roof_age_confidence">
+            <FieldValue row={row} field="roof_age_confidence" />
+          </span>
+        </span>
+        <span className={styles.meta} data-field="permit">
+          <FieldValue row={row} field="permit" />
+        </span>
+      </div>
+      <div id={`${titleId}-more`} className={styles.more} hidden={!open}>
+        <PropertyFields row={row} fields={MORE_FIELDS} />
+        <MissingSummary row={row} />
+      </div>
+      <CompactProvenance row={row} />
     </article>
   );
 }

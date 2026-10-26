@@ -116,7 +116,10 @@ test.describe("A-03-TC-NF-03 responsive 390 / 768 / 1440, Atlas tokens only", ()
             if (target.name === "runs") {
               await expect
                 .soft(
-                  page.locator(`[data-cid="${run.manifestCid}"]`).first(),
+                  page
+                    .locator(`article [data-cid="${run.manifestCid}"]`)
+                    .filter({ visible: true })
+                    .first(),
                   `${label}: run card shows the manifest CID`,
                 )
                 .toBeVisible();

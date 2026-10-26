@@ -22,9 +22,9 @@
   align-items: center;
   box-sizing: border-box;
   min-height: var(--space-9);
-  padding: 0 0 0 var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-3);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-small);
+  border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface-variant);
 }
@@ -83,7 +83,8 @@
   line-height: var(--md-sys-typescale-body-medium-line-height);
 }
 
-@media (min-width: 1024px) {
+/* From 1280 px: below it the app bar also holds the search box. */
+@media (min-width: 1280px) {
   .entry {
     display: inline-flex;
   }

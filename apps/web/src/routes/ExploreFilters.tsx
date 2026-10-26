@@ -6,7 +6,7 @@
 // {place} · roof ≥ {years} yrs" for the search that answered, "tenure unknown: {n}" with the
 // tenure filter, the result cards (ResultRow) or, with zero results, the empty line and Close
 // matches with "+{miles_outside} mi", the engine line, and the Property drawer for `sel`. A-16
-// T050 (Explore1440/768/390 boards): Matches / Close tabs, the results table from 840 px (cards
+// T050 (Explore1440/768/390 boards): Matches / Close tabs, the results table from 1240 px (cards
 // below), a pager over the server's pages instead of "Load more", "{n} properties match" in the
 // filter panel and the first-visit "What can I ask?" card. Not a route module: Explore.tsx
 // mounts it.
@@ -120,8 +120,8 @@ interface AskedSearch {
   readonly name: string;
 }
 
-/** The Explore1440 board's data table from this width; cards below. */
-export const RESULTS_TABLE_QUERY = "(min-width: 840px)";
+/** The Explore1440 board's data table from this width (it needs about 900 px of pane); compact cards below. */
+export const RESULTS_TABLE_QUERY = "(min-width: 1240px)";
 
 function useMediaQuery(query: string): boolean {
   const subscribe = useCallback(
@@ -258,9 +258,12 @@ export function ExploreFilters({
   const select = (cid: string): void => patch({ sel: cid }, false);
 
   return (
-    <div className={styles.layout}>
+    <div
+      className={selected === undefined ? styles.layout : `${styles.layout} ${styles.withDrawer}`}
+    >
       <div className={styles.filters}>
         <FilterSheet
+          folded={selected !== undefined}
           value={value}
           openOrStalled={isOpenOrStalled(query.permit)}
           ooa={query.ooa}
@@ -303,9 +306,6 @@ export function ExploreFilters({
             {EXPLORE_TEXTS.propertyNotInResults}
           </p>
         ) : null}
-        {selected === undefined ? null : (
-          <PropertyDrawer row={selected} onClose={() => patch({ sel: null }, false)} />
-        )}
         {data !== undefined && answered.current !== null ? (
           <Results
             key={answeredKey}
@@ -333,6 +333,9 @@ export function ExploreFilters({
           />
         ) : null}
       </div>
+      {selected === undefined ? null : (
+        <PropertyDrawer row={selected} onClose={() => patch({ sel: null }, false)} />
+      )}
     </div>
   );
 }
@@ -366,8 +369,11 @@ function Results({
   // With no match the Close tab opens (the board's "Close 3"); a choice sticks until the next search.
   const tab: ResultsTab = chosen ?? (zero ? "close" : "matches");
   const showTenureUnknown = request.tenure !== undefined;
-  // AC-5 / D-9: with the open-or-stalled filter active and no rows, say so in the fixed words.
-  const permitFilter = request.permit !== undefined;
+  // AC-5 / D-9 / TC-009 step 5: with a permit filter that takes open permits and no open permit
+  // among the answered rows (none at all, or only stalled ones), say so in the fixed words.
+  const noOpen =
+    (request.permit === "open" || request.permit === "open_or_stalled") &&
+    !data.rows.some((r) => r.permit?.status_class === "open");
   const pageSize = data.rows.length;
   const first = page * pageSize + 1;
   const last = Math.min(data.total_within_r, page * pageSize + pageRows.length);
@@ -407,13 +413,11 @@ function Results({
           </button>
         ))}
       </div>
+      {noOpen ? <p className={styles.empty}>{EXPLORE_TEXTS.noOpenPermits}</p> : null}
       {zero ? (
-        <>
-          {permitFilter ? <p className={styles.empty}>{EXPLORE_TEXTS.noOpenPermits}</p> : null}
-          <p className={styles.empty}>
-            {EXPLORE_TEXTS.zeroResults(request.radius_mi, data.close_matches.length)}
-          </p>
-        </>
+        <p className={styles.empty}>
+          {EXPLORE_TEXTS.zeroResults(request.radius_mi, data.close_matches.length)}
+        </p>
       ) : null}
       {tab === "close" ? (
         data.close_matches.length === 0 ? (

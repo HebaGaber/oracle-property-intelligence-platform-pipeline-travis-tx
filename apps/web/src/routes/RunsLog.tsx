@@ -9,9 +9,13 @@
 // so the chips are the three kinds that exist; the status pill is "Done" (or "Done with
 // limitations" for a finish that carries notes), never a rate-limit or blocked pill the data does
 // not record. An unreadable index is one banner; an unreadable manifest is a banner naming its CID
-// while the other runs still list. A react-router lazy route module.
+// while the other runs still list. Oldest first stays the default (the board shows newest first)
+// because A-13 TC-057 reads the list ascending. Below 600 px each event is a small card (time and
+// status, run, event, source and count) instead of a squeezed table row (D-6).
+// A react-router lazy route module.
 import type { RunManifestV1 } from "@countylens/contract";
-import { PROGRESS_LABELS, RUNS_TEXTS, sourceLabel, isSourceName } from "@countylens/shared";
+import { PROGRESS_LABELS, ROUTES, RUNS_TEXTS, sourceLabel, isSourceName } from "@countylens/shared";
+import { Link } from "react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
@@ -179,7 +183,12 @@ export function Component(): ReactElement {
       className={runsStyles.page}
     >
       <div className={runsStyles.pageHead}>
-        <h2 className={runsStyles.pageTitle}>Pipeline history log</h2>
+        <div className={runsStyles.compareTitle}>
+          <Link className={runsStyles.textLink} to={ROUTES.runs} aria-label="Back to runs">
+            <Icon name="arrow_back" size="medium" />
+          </Link>
+          <h2 className={runsStyles.pageTitle}>Pipeline history log</h2>
+        </div>
         <p className={runsStyles.intro}>
           Every event of every published run, read from each run&apos;s manifest.{" "}
           {RUNS_TEXTS.nextSync}
@@ -252,7 +261,7 @@ function LogTable({
 
   return (
     <div className={runsStyles.card}>
-      <div className={runsStyles.cardHead}>
+      <div className={styles.filters}>
         <div className={runsStyles.chips} role="group" aria-label="Event kind">
           <button
             type="button"
@@ -283,38 +292,38 @@ function LogTable({
             </button>
           ) : null}
         </div>
-        <button type="button" className={runsStyles.chip} onClick={download}>
-          <Icon name="download" size="small" />
-          Download CSV
-        </button>
-      </div>
-      <div className={runsStyles.chips} role="group" aria-label="Run">
-        <button
-          type="button"
-          className={runsStyles.chip}
-          aria-pressed={run === "all"}
-          onClick={() => {
-            setRun("all");
-            setPage(1);
-          }}
-        >
-          All runs
-        </button>
-        {[...runIds].reverse().map((r) => (
+        <div className={runsStyles.chips} role="group" aria-label="Run">
           <button
-            key={r.runId}
             type="button"
             className={runsStyles.chip}
-            aria-pressed={run === r.runId}
-            title={r.runId}
+            aria-pressed={run === "all"}
             onClick={() => {
-              setRun(r.runId);
+              setRun("all");
               setPage(1);
             }}
           >
-            {runLabel(r.number, r.finishedAt)}
+            All runs
           </button>
-        ))}
+          {[...runIds].reverse().map((r) => (
+            <button
+              key={r.runId}
+              type="button"
+              className={runsStyles.chip}
+              aria-pressed={run === r.runId}
+              title={r.runId}
+              onClick={() => {
+                setRun(r.runId);
+                setPage(1);
+              }}
+            >
+              {runLabel(r.number, r.finishedAt)}
+            </button>
+          ))}
+        </div>
+        <button type="button" className={styles.download} onClick={download}>
+          <Icon name="download" size="small" />
+          Download CSV
+        </button>
       </div>
       <div className={runsStyles.tableWrap}>
         <table className={`${runsStyles.table} ${styles.log}`} aria-label="Run events">
@@ -346,13 +355,13 @@ function LogTable({
                 data-run-id={row.event.runId}
               >
                 <td className={runsStyles.num}>
-                  <time dateTime={row.event.time}>{formatUtc(row.event.time)} UTC</time>
+                  <time dateTime={row.event.time}>{formatUtc(row.event.time)}</time>
                 </td>
                 <td>
                   <span data-run-number="">
                     {row.runNumber === null ? "" : `Run ${row.runNumber}`}
                   </span>
-                  <span className={styles.runId} data-run-id-text="">
+                  <span className={styles.runId} data-run-id-text="" title={row.event.runId}>
                     {row.event.runId}
                   </span>
                 </td>
@@ -374,9 +383,7 @@ function LogTable({
                 <td>
                   <StatusPill
                     status={row.limited ? "warning" : row.done === "Started" ? "info" : "verified"}
-                    icon={
-                      row.done === "Started" ? "play_circle" : row.limited ? "warning" : "check"
-                    }
+                    icon={row.done === "Started" ? "play_arrow" : row.limited ? "warning" : "check"}
                     text={row.done}
                   />
                 </td>

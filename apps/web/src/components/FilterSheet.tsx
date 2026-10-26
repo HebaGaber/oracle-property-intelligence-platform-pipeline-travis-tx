@@ -97,6 +97,8 @@ export interface FilterSheetProps {
   readonly notFoundText: string;
   /** The answered search's total within the radius ("{n} properties match"); null while none. */
   readonly matchCount?: number | null;
+  /** True while the Property drawer is open: the controls fold behind "Filters" at every width. */
+  readonly folded?: boolean;
 }
 
 export function FilterSheet({
@@ -107,6 +109,7 @@ export function FilterSheet({
   suggest,
   notFoundText,
   matchCount = null,
+  folded = false,
 }: FilterSheetProps): ReactElement {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -199,7 +202,7 @@ export function FilterSheet({
   const radius = drafts.r ?? value("r");
 
   return (
-    <div className={styles.sheet}>
+    <div className={folded ? `${styles.sheet} ${styles.folded}` : styles.sheet}>
       <button
         type="button"
         className={styles.toggle}
