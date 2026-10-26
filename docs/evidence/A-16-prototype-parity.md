@@ -183,3 +183,98 @@ Boards are `ExploreQ-*` (1440), `ExploreQ390-*`, `ExploreQ768-*`. Hosted compari
 | AdminSignIn | "Code sent" state | Email + password; success goes to Runs | AC-6 amended (Task B sign-in, PO 2026-10-26) |
 | RunsAdmin1440 | One primary button | Start, Stop and Retry always visible to the admin; a dry-run checkbox | AC-6 lists all three; dry run keeps demos from publishing by accident |
 | Activity | Top lists, query-log table | Three metrics + questions per day, each linked to its Logs Insights query | AC-10 scope; the API returns only those |
+
+
+## After the A-16 fixes (smeargle re-check, preview `1b7f627`, 2026-10-26 03:00 EEST)
+
+Scope "demo path first" (PO). 52 cells: **10 Match, 6 Justified, 36 Differs** before the last fix round. The four layout bugs it found (D-4 Explore table overflow, D-6 Runs · Log letter-by-letter wrapping, D-7 Compare at 390, D-10 run numbering in the Manifest chain) and the Coverage · Cost copy (D-9) were fixed in the final round; the remaining Differs are layout and feature gaps against a larger design, recorded as the A-16 exception "prototype parity beyond the demo path" (below). No horizontal page scroll, no console error and no target under 48 px on any cell.
+
+# A-16 AC-12 parity re-check (after fixes)
+
+Preview: https://016-cost-and-admin.d2lx0utip89u18.amplifyapp.com (`/build.json` sha 1b7f6272…, branch 016-cost-and-admin), light theme, 2026-10-26.
+Boards: baseline captures reused from `scratchpad/parity/board/` (`design/prototype` has not changed since `3f4de6f`; served over local http with roofing-crm Atlas bundle.css as the baseline did).
+Side-by-sides (board left, preview right): `scratchpad/parity-after/img/<family>-<width>.png`; raw captures `app/` (first viewport plus `-tall` = full scroll container, capped at 7000 px); text dumps `txt/`; metrics `metrics.json`.
+Loads: one per page per width, plus one extra Explore load per width to open the drawer (the first click hit the copy button). Data values were not compared.
+
+## Global checks (all 49 page loads)
+- Horizontal page scroll: **none** at any width (document and main scroll container both fit).
+- Console errors / page errors: **0**.
+- Targets < 48 px: none except four 1×1 visually hidden radio/checkbox inputs on Explore 1440 (their labels are the targets); one inline text link on Legal Data. No real gaps.
+- Wide content inside its own scroller (not page scroll): Explore 1440 results table 1606 px wide in a ~970 px column; Compare/Log/Manifest/Coverage tables at 390.
+- Broken states: see D-6, D-7, D-9 (Log/Compare tables crushed at 390 and 1440, Explore missing-reason pill wraps into a circle, Run numbering mismatch).
+
+## Matrix
+
+| Family | 1440 | 768 | 390 |
+|---|---|---|---|
+| Shell / header / nav | Differs: no header search box or apps grid; no footer strip; help menu lacks Keyboard shortcuts (D-1) | Differs: same (D-1) | Differs: county is a native select, not the location sheet; More sheet labels and icons differ (D-1, D-2) |
+| Hub (structure and copy) | Differs (low): no Watch demo / Pull requests buttons or app icon tiles; otherwise order and copy match (D-3) | Differs (low): same (D-3) | Differs (low): same (D-3) |
+| Welcome card | Match: the same title, intro, three questions and "Got it" (shown inline, not as an overlay) | Match | Match |
+| Explore workspace (filters, table, tabs, pager) | Differs: the table has 10 cramped columns and is wider than its pane, rows are about 150 px tall, the missing-address pill wraps into a circle, 200 rows per page, no radius/pager footer bar, "Open ≥" placeholder is cut off (D-4) | Differs: a long card per property instead of the compact table, 200 per page (D-4) | Differs: cards about 750 px tall, no results summary bar, place chip or radius above the list, no Edit-query FAB (D-4) |
+| Property drawer | Differs: chips, Street View box, Show in list, Ask and the Roof evidence chain now match. Missing: Google Maps link; Permit/Owner/Location/Metadata sections (a generic Fields grid instead); the drawer replaces the results instead of sitting beside them (D-5) | Differs: same (D-5) | Differs: same, plus an inline card instead of a bottom sheet with a grabber, and a "Close" text button instead of copy-link + X (D-5) |
+| Runs | Differs (low): order (picker, Sync status, Pipeline, Latest events, What changed) matches, and Gantt is Justified. The layout is one column instead of the board's two, and a long run-detail block follows that the board does not have: 15 "Data groups" batch rows and raw Limitations text (D-8) | Differs (low): same (D-8) | Differs (low): extra run-detail block (D-8) |
+| Runs · Compare | Differs: the two runs are long stacked blocks instead of 3 compact summary cards in a row; the change table comes after them (D-7) | Differs: same (D-7) | Differs: the change table at 390 breaks source ids letter by letter ("austi n- 3syk-"), Removed column is cut off; the board stacks per-source rows (D-7) |
+| Runs · Log | Differs: chips, table, pager and CSV match the board, but the Run column wraps the raw run id letter by letter, status pills wrap ("Sta rte d"), long Limitations bullets make rows 100–300 px tall, and the default sort is oldest first (the board shows newest first) (D-6) | Differs: same (D-6) | Differs: **broken**: the table is crushed to 2–3 characters per line, so one row runs to thousands of px (D-6) |
+| Coverage (incl. Cost and Limits) | Differs: KPI tiles, Loaded-vs-total table, Known limitations, Source speed and Cost match in order. Gross/Credits tiles and missing area heatmap are Justified. "Counts by record kind" is a long run of text cards repeating the table; Source-speed cells are paragraphs; the Cost Filebase row shows a local config path and "this draft" (D-9) | Differs: same (D-9) | Differs: same; it stacks without overflow (D-9) |
+| Data · Manifest | Differs: tabs and Run-chain cards now match. The chain labels the latest run "Run 3" while the header, Runs and Log call it "Run 4"; the artifact table lists all 285 full paths with no pager; no Run picker or manifest.json download (D-10) | Differs: same (D-10) | Differs: same (D-10) |
+| Data · Catalog | Differs: search and Query in SQL added, but it is still a grid of cards with CID chips. It has no table list on the left with a field table (Field/Type/Meaning/Source/Licence), no Copy schema and no v_roofing_permit box (D-11) | Differs: same (D-11) | Differs: same (D-11) |
+| Data · Verify | Differs (low): Pinata/Filebase lanes instead of ipfs.io/dweb.link are Justified (architecture: ipfs.io retired, pinning gateways). No file-picker chips, no Verify button, no "Checking on 2 public gateways" banner (D-12) | Differs (low): same (D-12) | Differs (low): same (D-12) |
+| AdminSignIn | Justified: email + password + "Sign in" replaces the email-code flow (parity doc, AC-6 amended). Icon, title, intro, info banner and Cognito note match | Justified | Justified |
+| Activity | Justified: admin-only; a signed-out visit shows the admin sign-in gate (correct). The signed-in layout could not be compared without admin credentials; the reduced metrics are in the parity doc (AC-10) | Justified | Justified |
+| Help · MCP (structure and copy) | Differs (low): Endpoint, Access, Tools (6), Connect a client (3 tabs), Try a tool are all present. "Connect a client" comes after Tools, not beside Endpoint/Access; no per-tool input-schema table or example request/response (D-13) | Differs (low): same (D-13) | Differs (low): same (D-13) |
+| Legal · Data (structure and copy) | Match: TOC, info banner, Sources and licences table, How to cite and Corrections, plus Access rules | Match | Match |
+| Legal · Privacy | Match: the same 6 sections and TOC; the banner text is the Data page's ("links to each publisher's own terms") | Match | n/a (no 390 board) |
+| Legal · Terms | Match: same TOC (the board's "Contact" is missing; there is no contact channel) | Match | n/a |
+
+**Counts (52 cells): Match 10 · Justified 6 · Differs 36** (of which 12 are low-severity: Hub, Runs, Verify, Help MCP).
+
+## Differs list (fixable)
+
+- **D-1 Shell header and footer** (all widths). Board: header has a global Search box (390: search icon/pill) and an apps-grid icon; the help menu includes "Keyboard shortcuts"; every desktop page has a footer strip "Terms · Privacy · Data licences · Street View: coming soon". Preview: county select + "Other counties and states · Coming soon" link, sync badge, help, Ask. There is no search, no apps grid and no footer (footer links only on Hub). Files: `apps/web/src/components/AppShell.tsx`, `HelpMenu.tsx`.
+- **D-2 County picker and More sheet (390).** Board: a "Choose a location" bottom sheet with Texas / Other states groups and Live / Coming soon pills; the More sheet has icon rows (Coverage, SQL, What can I ask?, Glossary, MCP and API docs, Apps, Admin sign-in, Settings) plus footer links. Preview: native `<select>`; More sheet is a plain text list "Pages" (Coverage, SQL, Admin sign-in, Runs · Compare, Runs · Log, Data · Catalog, Help · MCP, Legal ×3) + "Planned", no icons. Files: `components/CountySelect.tsx`, `AppShell.tsx` (`MoreSheet`), `routes/route-list.ts`.
+- **D-3 Hub.** Board run line has "Watch demo" and "Pull requests" actions and icon tiles on the app cards; preview has neither. File: `routes/Hub.tsx`.
+- **D-4 Explore results.** Board: a compact 9-row table (Address, Roof+chip, Basis, Conf. pill, Permit, Mi, Lat/lon, icons). Pages are small; the footer bar holds "Showing 1–9 of 9", radius slider, pager and download. 768 uses a 4-column table; 390 has a summary line, place chip, radius slider, Filters chip, compact rows with Roof/permit chips, an Edit-query FAB and a pager. Preview problems:
+  - 1440: 10 columns (adds Owner, Contractor, full Source URL). The table is 1606 px wide in a ~970 px pane, cells wrap to 4–8 lines and rows are about 150 px tall. The "not published · no lexicon carrier" pill wraps into a circle ("publishe d").
+  - 768 and 390: full field-grid cards (about 470/750 px each).
+  - All widths: 200 rows per page ("Showing 1–200 of 28,062"). The "Open ≥" input placeholder is cut off ("any tim").
+
+  Files: `components/ResultTable.tsx` / `.module.css`, `components/ResultRow.tsx`, `routes/ExploreFilters.tsx` (page size, footer bar).
+- **D-5 Property drawer.**
+  - Missing on all widths: the "Open the area in Google Maps" link (lat/lon are available) and the grouped Permit / Owner / Location / Metadata sections (the preview shows a generic "Fields" grid).
+  - 1440 and 768: the drawer replaces the results column; on the board the list stays beside it.
+  - 390: no bottom sheet with a grabber; copy-link + X icons are replaced by a "Close" text button.
+  - Not counted as gaps (Justified): the title is "Property bagu…" because addresses are not published (real data), and Open in CRM is missing because the CRM is not deployed.
+
+  File: `routes/PropertyDrawer.tsx`.
+- **D-6 Runs · Log table (high).**
+  - Run column prints the raw run id in mono and wraps it letter by letter; the board shows just "3", so the id should be secondary or a tooltip.
+  - Status pills wrap ("Sta rte d", "Do ne wit h lim ita tio ns"); they need `white-space: nowrap`.
+  - "Run finished" rows embed long Limitations bullet lists; collapse them.
+  - Default sort is oldest first; the board shows newest first.
+  - At 390 the table is not adapted: each column is 2–3 characters wide and one row spans thousands of px. Use a stacked list or a scroll wrapper with min column widths.
+
+  Files: `routes/RunsLog.tsx`, `RunsLog.module.css`.
+- **D-7 Runs · Compare.** Board: 3 summary cards in a row (previous, current, CAR available), then the change table, then Immutability checks. Preview: two full-width run blocks (manifest, finished, previous manifest URL, artifacts path, per-source lines) with large gaps, then the table, then the checks. At 390 the change table wraps source ids letter by letter and the Removed column is cut off; the board 390 stacks per-source rows. Files: `routes/RunsCompare.tsx`, `Runs.module.css`.
+- **D-8 Runs (low).** Board 1440 puts Sync status at the right of the title, Pipeline and fetch-source list side by side, and Latest events beside the timeline. Preview: one column. Below "What Run 4 changed" the preview adds a run-detail block (Sources, Coverage, 15 "Data groups" batch rows with CIDs, long Limitations text) the board does not have; consider collapsing it. Files: `routes/Runs.tsx`, `Runs.shared.tsx`.
+- **D-9 Coverage.**
+  - "Counts by record kind" (Property, Ownership, Permit, Contractor, BBB, Business, Places, Coordinates) is a series of long text cards with repeated missing-reason pills and manifest lines. It repeats the "Loaded vs each source's own total" table, where the board uses one table with bars and status pills.
+  - "Source speed and constraints" cells are full paragraphs (rows 200–400 px tall).
+  - Copy issues in the Cost Filebase row: "~/.config/assessment/filebase.env exists with FILEBASE_ACCESS_KEY, FILEBASE_SECRET_KEY, FILEBASE_BUCKET … No dashboard was opened for this draft". This publishes a local path and env-var names (no values) plus draft wording. Also, the "Cognito user pool (Part 2, not deployed)" row may be stale now that admin sign-in exists.
+
+  Files: `routes/Coverage.tsx`, `Coverage.kinds.ts`, `CoverageCostLimits.tsx` (or its cost data source / `docs/cost.md` extract).
+- **D-10 Data · Manifest.**
+  - **Run numbering mismatch:** the Run chain labels travis-full-run3-20261025 "Run 3 · this run", but the header badge, Runs, Compare and Log call it "Run 4 · Oct 25". The chain numbers by chain position (3 manifests linked) instead of `runs/index.json` position.
+  - Artifact table: all 285 rows with full pipeline paths and no pager (board: short names with descriptions, pager "1–7 of 13").
+  - No Run picker and no manifest.json download.
+  - Dates print "…Z UTC" twice.
+
+  File: `routes/DataManifest.tsx`.
+- **D-11 Data · Catalog.** The board has a list of tables on the left (icons, row counts) with a detail pane on the right: a field table (Field, Type, Meaning, Source, Licence), Query in SQL and Copy schema buttons, and a "v_roofing_permit reads this table and adds" box. The preview is a 2-column grid of table cards (size, rows, CID chips, "N columns") with no field table and no Copy schema. File: `routes/DataCatalog.tsx`.
+- **D-12 Data · Verify (low).** Board: file-picker chips (file, size), a primary "Verify" button and a "Checking on 2 public gateways…" banner above the two lanes. Preview: verification runs on load for the CID in the URL, with no picker or button. The gateway names are Justified. Files: `routes/DataVerify.tsx`, `components/VerifyLane.tsx`.
+- **D-13 Help · MCP (low).** Board order: Endpoint | Access | Connect a client cards across the top, then Tools list | tool detail (input-schema table, example request, response) | Try a tool. Preview: Endpoint, Access, Tools (text list), Connect a client, Try a tool (one JSON box). File: `routes/HelpMcp.tsx`.
+- Minor copy: the Legal · Privacy banner reuses the Data page sentence ("links to each publisher's own terms"); the board's banner is privacy-specific. File: `routes/LegalPrivacy.tsx` / `content/legal.ts`.
+
+
+### Remaining differences (exception, PO scope "demo path first")
+
+Not built in A-16: header search and apps grid; native county select; More sheet icons; Hub demo/PR buttons; Explore compact 9-column table with small pages (the product keeps 200-row pages for the full county and field cards at 768/390); drawer Google Maps link and Permit/Owner/Location sections; Runs two-column layout; Compare summary cards; Catalog field table and Copy schema; Verify file picker; Help MCP schema table. Each is a design difference, not a broken state; none hides data or a missing reason.
