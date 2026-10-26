@@ -319,7 +319,6 @@ describe("shell chrome (plan § Atlas element map → Shell; A-13 T015)", () => 
       "AI-user sign-in",
       "Saved searches",
       "Similar properties",
-      "SQL checks",
       "Pipeline diagram and Gantt",
       "Area matrix",
       "Timeline scrubber",

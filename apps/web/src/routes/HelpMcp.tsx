@@ -384,7 +384,7 @@ export function Component({ callTool = tryMcpTool }: HelpMcpProps = {}): ReactEl
                   </div>
                 ) : (
                   <span className={styles.pending} data-schema-pending="">
-                    Input schema: published with the MCP server in story A-14.
+                    Input schema: listed by the MCP server's tools/list.
                   </span>
                 )}
               </li>
