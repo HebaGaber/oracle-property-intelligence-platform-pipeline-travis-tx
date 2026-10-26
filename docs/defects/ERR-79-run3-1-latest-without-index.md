@@ -2,7 +2,7 @@
 id: ERR-79
 story: A-16
 severity: High
-status: Open
+status: Closed
 found: 2026-10-26 08:40 EEST
 found_by: Run 3.1 session message + A-16 main session
 ---
@@ -26,6 +26,9 @@ Same class as ERR-76: publishing a run and building its index are two separate o
 
 Follow-up to stop a repeat: the publish runbook gets an "index built" step before `runs/index.json` is updated (release sweep).
 
-## Re-test
+## Re-test (2026-10-26, about 10:10 EEST)
 
-Pending.
+- v1.2 indexes built from published CIDs, verified (`EXCEPT ALL` 0 on all four views) and uploaded under `private/explore-index/v1.2/`: Run 3.1 131 s, Run 3 269 s, Run 2 155 s, Run 1 69 s; `v_property` 441,961 on each, `v_roofing_permit` 15,025 (Run 1: 0, the known A-11 Run 1 join defect).
+- Tool fixes found on the way: the index prefix may carry one version folder (`21ec33d`), and the build writes the `--prefix` keys into `index.json` (`19b9729`).
+- CountyLensApi deployed (PO approved; `cdk diff`: three Lambdas' code and `EXPLORE_INDEX_PREFIX` only), 191 s.
+- Hosted A-16 projects on the preview: a16-county and a16-closure 7 of 7 (Run 3.1 is the latest run: Explore p95, agent D-10/D-11, MCP and the CID check pass). The first full run right after the deploy had one HTTP 503 in 80 timed Explore calls (cold Lambdas loading the new index); the rerun had none.

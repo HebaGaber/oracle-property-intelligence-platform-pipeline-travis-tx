@@ -12,16 +12,23 @@ moscow: Must
 branch: 016-cost-and-admin
 spec: specs/016-cost-and-admin/
 depends_on: [A-03, A-11, A-13, A-14]
-size_days: 2   # sizing exception requested at G4 (Part 3 added 2026-10-26); see Gate G4 notes
+size_days: 2 # sizing exception requested at G4 (Part 3 added 2026-10-26); see Gate G4 notes
 agents:
   design: [metagross, machamp]
-  builder: [metagross, machamp]   # AGENT-MAP: metagross (cost page, sign-in, UI, API), machamp (cost jobs, queue, DLQ, bridge)
+  builder: [metagross, machamp] # AGENT-MAP: metagross (cost page, sign-in, UI, API), machamp (cost jobs, queue, DLQ, bridge)
   reviewers: [metagross, machamp, audino]
   verify: "`docs/cost.md` + billing screenshot; Playwright admin sign-in + Start run reaches the bridge; non-admin gets 403"
-skills: [build-frontend-backends, build-batch-workflows, frontend-bug-fix, responsive-design-tests, apply-engineering-guidelines]
+skills:
+  [
+    build-frontend-backends,
+    build-batch-workflows,
+    frontend-bug-fix,
+    responsive-design-tests,
+    apply-engineering-guidelines,
+  ]
 ui: true
-status: Ready
-gate: G4
+status: Done
+gate: G7
 qc_testability_signoff: true
 created: 2026-10-19
 merged: 2026-10-21
@@ -31,14 +38,14 @@ merged: 2026-10-21
 
 **Merged story (2026-10-21).** This story now holds two former stories so the six-stage loop runs once: **A-16** (zero idle cost and source limits, Must) and **A-17** (admin sign-in and run commands, Should). The original files are in [stories/merged/](merged/) for history; this file is the one to plan, build and gate. Every AC keeps its old ID in brackets, for example `(A-17 AC-2)`, so older evidence and reviews still trace.
 
-| Field | Value |
-| --- | --- |
-| Evaluation point | A4 (primary) · A1 · A3 |
-| Demo line(s) | D-1 (opening claim), D-4 ("without requiring Oracle-hosted database infrastructure"); the admin part needs no demo line and supports D-2 by showing how a run is started |
-| Agents | design `metagross`, `machamp` · builder `metagross` (cost page, sign-in, UI, API), `machamp` (cost jobs, queue, DLQ, bridge) · reviewers `metagross`, `machamp`, `audino` · verify `docs/cost.md` + billing screenshot; Playwright admin sign-in + Start run reaches the bridge; non-admin gets 403 (source: [AGENT-MAP.md](../../assessment-guide/AGENT-MAP.md) § 4) |
-| Depends on | A-03, A-11 (full publish and incremental runs, which now include the former A-12), A-13 (Explorer pages), A-14 (agent outcome events, MCP; added 2026-10-26, D-1) |
-| Size | 2 days (0.5 + 1.5) |
-| Branch | `016-cost-and-admin`, merged into `feature/oracle-pipeline` |
+| Field            | Value                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Evaluation point | A4 (primary) · A1 · A3                                                                                                                                                                                                                                                                                                                                                |
+| Demo line(s)     | D-1 (opening claim), D-4 ("without requiring Oracle-hosted database infrastructure"); the admin part needs no demo line and supports D-2 by showing how a run is started                                                                                                                                                                                              |
+| Agents           | design `metagross`, `machamp` · builder `metagross` (cost page, sign-in, UI, API), `machamp` (cost jobs, queue, DLQ, bridge) · reviewers `metagross`, `machamp`, `audino` · verify `docs/cost.md` + billing screenshot; Playwright admin sign-in + Start run reaches the bridge; non-admin gets 403 (source: [AGENT-MAP.md](../../assessment-guide/AGENT-MAP.md) § 4) |
+| Depends on       | A-03, A-11 (full publish and incremental runs, which now include the former A-12), A-13 (Explorer pages), A-14 (agent outcome events, MCP; added 2026-10-26, D-1)                                                                                                                                                                                                     |
+| Size             | 2 days (0.5 + 1.5)                                                                                                                                                                                                                                                                                                                                                    |
+| Branch           | `016-cost-and-admin`, merged into `feature/oracle-pipeline`                                                                                                                                                                                                                                                                                                           |
 
 ## Context
 
@@ -57,6 +64,7 @@ As the **evaluator**, I want **to see on the hosted Coverage page what CountyLen
 As the **Oracle operator**, I want **to sign in with my email and password and start, stop or retry an incremental run from the Runs page, and see recent activity**, so that **I can refresh Travis County data on demand while the Query DB stays private on my machine**.
 
 When done:
+
 - **Part 1:** `docs/cost.md` (component, idle cost, cost per use, who pays) with real numbers from Cost Explorer and Filebase, plus a Budgets/Cost Explorer screenshot; `docs/source-limits.md` (throughput, rate limits, anti-bot posture, slow sites, BBB limits) from the A-01 to A-11 measurements; both shown on the Coverage page's Cost and Limits sections. CDK assertions enforce the cost rules.
 - **Part 2:** A Cognito user pool with email + password sign-in (copied from Task B, PO 2026-10-26), self sign-up off, and an `admin` group. An `adminProcedure` that verifies the JWT with `aws-jwt-verify`. `admin.runs.start / stop / retry` send a command to an SQS queue (15-minute expiry, cancel by command ID) with a DLQ and one alarm that emails the operator through SNS. A local bridge in `pipeline/` polls the queue outbound and starts the Restate `CountyIngest` workflow. It writes `runs/live.json`, a small admin S3 status object. The Activity page shows `admin.activity.summary / list` from the query log through Logs Insights, cached 5 minutes. Admin controls appear only after sign-in.
 
@@ -100,35 +108,35 @@ When done:
 
 ## Requirements
 
-| REQ | Requirement | Traces to |
-| --- | --- | --- |
-| FR-001 | (A-16 FR-001) System MUST document idle and per-use cost per component from billing data | AC-1 |
-| FR-002 | (A-16 FR-002) CDK MUST assert the zero-idle-cost rules | AC-2 |
-| FR-003 | (A-16 FR-003) System MUST document measured limits for every source | AC-3 |
-| FR-004 | (A-16 FR-004) Coverage page MUST show both documents' numbers with dates | AC-4 |
-| FR-005 | (A-16 FR-005) Page MUST show reasons for unavailable cost data | AC-5 |
-| FR-006 | (A-17 FR-001) System MUST sign in admins with Cognito email + password and show admin controls only to them | AC-6 |
-| FR-007 | (A-17 FR-002) System MUST deliver run commands through SQS to an outbound-polling bridge | AC-7 |
-| FR-008 | (A-17 FR-003) System MUST reject non-admin and expired tokens on every admin procedure | AC-8 |
-| FR-009 | (A-17 FR-004) System MUST expire unpicked commands and alarm on DLQ messages | AC-9 |
-| FR-010 | (A-17 FR-005) System MUST show Activity from the query log with links to its queries | AC-10 |
-| FR-011 | System MUST match each prototype board at 390/768/1440 or record the reason | AC-12 |
-| FR-012 | Explore, the agent and MCP MUST read a per-run index built from published CIDs only | AC-13 |
-| FR-013 | Every carried gap MUST be closed or recorded as a PO-approved exception | AC-14 |
-| NFR-001 | (A-16 NFR-001) $0.00 fixed per month while idle; $10 budget alert (NFR-02) | AC-1, AC-2, AC-11 |
-| NFR-002 | (A-16 NFR-002) Responsive at 390/768/1440, Atlas only (NFR-08) | AC-4, AC-6 |
-| NFR-003 | (A-17 NFR-001) Activity p95 < 3 s cached; command pickup ≤ 60 s while the bridge runs | AC-7, AC-10 |
-| NFR-004 | (A-17 NFR-002) Least-privilege IAM; no token in logs; WCAG 2.2 AA | AC-6, AC-8 |
+| REQ     | Requirement                                                                                                 | Traces to         |
+| ------- | ----------------------------------------------------------------------------------------------------------- | ----------------- |
+| FR-001  | (A-16 FR-001) System MUST document idle and per-use cost per component from billing data                    | AC-1              |
+| FR-002  | (A-16 FR-002) CDK MUST assert the zero-idle-cost rules                                                      | AC-2              |
+| FR-003  | (A-16 FR-003) System MUST document measured limits for every source                                         | AC-3              |
+| FR-004  | (A-16 FR-004) Coverage page MUST show both documents' numbers with dates                                    | AC-4              |
+| FR-005  | (A-16 FR-005) Page MUST show reasons for unavailable cost data                                              | AC-5              |
+| FR-006  | (A-17 FR-001) System MUST sign in admins with Cognito email + password and show admin controls only to them | AC-6              |
+| FR-007  | (A-17 FR-002) System MUST deliver run commands through SQS to an outbound-polling bridge                    | AC-7              |
+| FR-008  | (A-17 FR-003) System MUST reject non-admin and expired tokens on every admin procedure                      | AC-8              |
+| FR-009  | (A-17 FR-004) System MUST expire unpicked commands and alarm on DLQ messages                                | AC-9              |
+| FR-010  | (A-17 FR-005) System MUST show Activity from the query log with links to its queries                        | AC-10             |
+| FR-011  | System MUST match each prototype board at 390/768/1440 or record the reason                                 | AC-12             |
+| FR-012  | Explore, the agent and MCP MUST read a per-run index built from published CIDs only                         | AC-13             |
+| FR-013  | Every carried gap MUST be closed or recorded as a PO-approved exception                                     | AC-14             |
+| NFR-001 | (A-16 NFR-001) $0.00 fixed per month while idle; $10 budget alert (NFR-02)                                  | AC-1, AC-2, AC-11 |
+| NFR-002 | (A-16 NFR-002) Responsive at 390/768/1440, Atlas only (NFR-08)                                              | AC-4, AC-6        |
+| NFR-003 | (A-17 NFR-001) Activity p95 < 3 s cached; command pickup ≤ 60 s while the bridge runs                       | AC-7, AC-10       |
+| NFR-004 | (A-17 NFR-002) Least-privilege IAM; no token in logs; WCAG 2.2 AA                                           | AC-6, AC-8        |
 
 ## Prototype reference (mandatory if the story has UI)
 
-| Element | Value |
-| --- | --- |
-| Claude Design screens, Part 1 | `design/prototype/Coverage1440.dc.html` (Cost section), `Coverage768.dc.html`, `Coverage390.dc.html`, `CoverageStates.dc.html` |
-| Claude Design screens, Part 2 | `design/prototype/AdminSignIn1440.dc.html` (+ 768, 390), `design/prototype/RunsAdmin1440.dc.html`, `design/prototype/Activity1440.dc.html` (+ 768, 390), `design/prototype/ActivityStates.dc.html` |
-| Part 3 (AC-12) | Every board in `design/prototype/` that maps to a route (inventory in `docs/evidence/A-16-prototype-parity.md`); light theme only (PO 2026-10-26) |
-| States covered | Cost: populated · partial (as of yesterday) · unavailable with reason. Admin: signed out · signed in (the board's "code sent" state does not apply to password sign-in; recorded as Justified in the parity matrix) · running · bridge offline · expired · empty activity · error |
-| Design system | `assessment-guide/design-system/` (Atlas, Material 3, mobile-first) |
+| Element                       | Value                                                                                                                                                                                                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Design screens, Part 1 | `design/prototype/Coverage1440.dc.html` (Cost section), `Coverage768.dc.html`, `Coverage390.dc.html`, `CoverageStates.dc.html`                                                                                                                                                    |
+| Claude Design screens, Part 2 | `design/prototype/AdminSignIn1440.dc.html` (+ 768, 390), `design/prototype/RunsAdmin1440.dc.html`, `design/prototype/Activity1440.dc.html` (+ 768, 390), `design/prototype/ActivityStates.dc.html`                                                                                |
+| Part 3 (AC-12)                | Every board in `design/prototype/` that maps to a route (inventory in `docs/evidence/A-16-prototype-parity.md`); light theme only (PO 2026-10-26)                                                                                                                                 |
+| States covered                | Cost: populated · partial (as of yesterday) · unavailable with reason. Admin: signed out · signed in (the board's "code sent" state does not apply to password sign-in; recorded as Justified in the parity matrix) · running · bridge offline · expired · empty activity · error |
+| Design system                 | `assessment-guide/design-system/` (Atlas, Material 3, mobile-first)                                                                                                                                                                                                               |
 
 ## Demo Script
 
@@ -160,6 +168,7 @@ A-11 (Run 1, full publish) merged with seven recorded, deliberate gaps — track
 
 18. **Explore SQL tab takes about 96 s to bind Run 3 (from A-11 Run 3, PO 2026-10-26: known gap).** Measured on the hosted feature site (commit `2af013c`): the in-browser DuckDB binds every published table of the latest run, about 1,500 CloudFront requests and 15 MB, all 200/206, ready after about 96 s (Run 2 fitted in 60 s). Hosted tests that open the SQL tab time out at 60 s: A-13-TC-066, A-13-TC-080 (explore-sql at 390) and A-13-TC-083 (CI run 40243665046). The "lazy SQL" work on `016-cost-and-admin` should fix it; the tests keep their 60 s limit. Parked until then (`PARKED_GAPS.sqlTabBind` in `tests/e2e/lib/a13-fixtures.ts`): TC-066 is skipped as "Parked", and TC-080 and TC-083 skip only the explore-sql route with a "parked" note in the report; unpark by deleting the parkGap call and the PARKED_ROUTES entry when this item closes.
 19. **Run 3 size: Catalog footers and the Filebase fallback (from A-11 Run 3, PO 2026-10-26: known gap, parked).** Run 3 has 255 table parts, 24 tables and 983 MB of tables (Run 2: 225, 21, 556 MB). Each of these hosted cases passed once and failed twice on Run 3 (CI runs 40242647867, 40243665046, 40246031481): A-13-TC-053, where the Catalog's Parquet footers do not all arrive within the 2-minute test budget (rows fill in, slowly); and A-03-TC-034, where the forced Filebase fallback downloads about 1 GB and Filebase drops some requests ("Failed to fetch"). Both are parked (`PARKED_GAPS.catalogFooters`; a `test.fixme` in `tests/e2e/fallback.spec.ts`) until A-16's lazy loading lands; unpark by deleting those lines.
+
 ## Carried forward from A-13 (known gaps to close here)
 
 A-13 (Explorer UI and content pages) was closed on 2026-10-25 with the gaps below, by PO decision "go to option 3 and document the gaps in A-16" (record: `docs/decisions/DEC-A-13-explore-full-county.md`). Every one of them was measured on the hosted site against the real Run 2 (441,961 properties, 15,025 permits); none was hidden or faked.
@@ -190,41 +199,41 @@ A-14 (agent, AI tab and MCP server) was closed on 2026-10-25 with the gaps below
 
 Each carried item has one stable ID. The plan assigns each to a builder group or proposes it as an exception; G7 reads this table against `docs/evidence/A-16.md` § Closure.
 
-| ID | Item (short) | Planned outcome |
-| --- | --- | --- |
-| A11-1 | Sequence-runner batching wired through the gated publish | Close (Part 2 bridge path) or Exception if the bridge only starts the permits refresh |
-| A11-2 | Runs 2 and 3 | Run 2 done; Run 3 from the A-11 Run 3 work (merged 2026-10-25, publish pending PO) |
-| A11-3 | Second independent pin | Exception on hold (PO 2026-10-26: alternatives first) |
-| A11-4 | Full gateway verification of Run 1 | Close with a fresh verify log, or Exception (gateway rate limits) |
-| A11-5 | Atlas registration | Exception (external, no access) |
-| A11-6 | Manifest reconciliation of the 5 permit-exclusion keys | Close |
-| A11-8 | Publish/resume hardening from the A-11 reviews | Exception for the minor items; Majors closed |
-| A11-9 | Fallback too-large message | Close |
-| A11-10 | A-11 `/code-review medium` findings (a)–(e) | Close (b), (c), (e); (a) policy noted; (d) Close |
-| A11-11 | Permits first-load time; tighten the 60 s limit | Close (measure after paging) |
-| A11-12 | smeargle on Permits and Runs | Close (AC-12 parity run) |
-| A11-14 | Second independent pin + independent public gateway, 10 county CARs on the newest Release | On hold with A11-3 (PO 2026-10-26); attaching the county CARs to the Release is closed here (Me) |
-| A11-15 | Run 3 published (index step) | PO go-ahead for the `index` step; then closes A11-2 and A13-4 |
-| A11-16 | `/code-review medium` findings on the Run 3 corrections | Close `verify-manifest --sample` exit code, `openDaysReason` default, untimed downloads (G3); data-precedence findings Exception (change only from Run 4) |
-| A11-17 | Reviewer findings R2–R11 on Run 3 | Close R4–R6 publish tooling (G3, with A11-10b) and R10–R11 labels/docs (Me); R2, R3, R8, R9 Exception (Run 4 data) |
-| A11-18 | Explore SQL tab binds all of Run 3 (~96 s) | Close via A13-2 lazy binding; unparked, hosted CI decides |
-| A11-19 | Run 3 size: Catalog footers and Filebase fallback | Exception (parked by the Run 3 session; not addressed in A-16) |
-| A13-1 | Explore search on the full county | Close (AC-13 index) |
-| A13-2 | SQL panel first query | Close (lazy binding) |
-| A13-3 | LCP on manifest-driven pages | Close (run list first) |
-| A13-4 | Run 3 | Same as A11-2 |
-| A13-5 | County counts in the manifest coverage | Close if Run 3 publishes them, else Exception |
-| A13-6 | Lambda timeout, throttle, duration alarm | Close |
-| A13-7 | Review follow-ups (copy, Retry, focus ring, ci-watch) | Close |
-| A13-8 | Parked hosted tests | Close (unparked by AC-13) |
-| A14-1 | Agent and MCP on the full county | Close (AC-13 index) |
-| A14-2 | MCP burst 503 | Exception unless the PO accepts a paid WAF rule (breaks AC-2 "no WAF") |
-| A14-3 | Shared Lambda concurrency of 10 | Close with throttles and alarms; quota increase noted |
-| A14-4 | Golden queries on zero rows | Close (rerun on the full county) |
-| A14-5 | Honesty sentences from wording | Close (Task B's structured empty outcomes) |
-| A14-6 | Ten convergence tasks | Close the spend-alarm wiring and the run-lookup reason; rest Exception (minor) |
-| A14-7 | Permits with no property row dropped | Close with a raw-table count in the index header |
-| A14-8 | Final-review items | Close the MCP per-call deadline and the runs-index cache; rest Exception (minor) |
+| ID     | Item (short)                                                                              | Planned outcome                                                                                                                                           |
+| ------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A11-1  | Sequence-runner batching wired through the gated publish                                  | Close (Part 2 bridge path) or Exception if the bridge only starts the permits refresh                                                                     |
+| A11-2  | Runs 2 and 3                                                                              | Run 2 done; Run 3 from the A-11 Run 3 work (merged 2026-10-25, publish pending PO)                                                                        |
+| A11-3  | Second independent pin                                                                    | Exception on hold (PO 2026-10-26: alternatives first)                                                                                                     |
+| A11-4  | Full gateway verification of Run 1                                                        | Close with a fresh verify log, or Exception (gateway rate limits)                                                                                         |
+| A11-5  | Atlas registration                                                                        | Exception (external, no access)                                                                                                                           |
+| A11-6  | Manifest reconciliation of the 5 permit-exclusion keys                                    | Close                                                                                                                                                     |
+| A11-8  | Publish/resume hardening from the A-11 reviews                                            | Exception for the minor items; Majors closed                                                                                                              |
+| A11-9  | Fallback too-large message                                                                | Close                                                                                                                                                     |
+| A11-10 | A-11 `/code-review medium` findings (a)–(e)                                               | Close (b), (c), (e); (a) policy noted; (d) Close                                                                                                          |
+| A11-11 | Permits first-load time; tighten the 60 s limit                                           | Close (measure after paging)                                                                                                                              |
+| A11-12 | smeargle on Permits and Runs                                                              | Close (AC-12 parity run)                                                                                                                                  |
+| A11-14 | Second independent pin + independent public gateway, 10 county CARs on the newest Release | On hold with A11-3 (PO 2026-10-26); attaching the county CARs to the Release is closed here (Me)                                                          |
+| A11-15 | Run 3 published (index step)                                                              | PO go-ahead for the `index` step; then closes A11-2 and A13-4                                                                                             |
+| A11-16 | `/code-review medium` findings on the Run 3 corrections                                   | Close `verify-manifest --sample` exit code, `openDaysReason` default, untimed downloads (G3); data-precedence findings Exception (change only from Run 4) |
+| A11-17 | Reviewer findings R2–R11 on Run 3                                                         | Close R4–R6 publish tooling (G3, with A11-10b) and R10–R11 labels/docs (Me); R2, R3, R8, R9 Exception (Run 4 data)                                        |
+| A11-18 | Explore SQL tab binds all of Run 3 (~96 s)                                                | Close via A13-2 lazy binding; unparked, hosted CI decides                                                                                                 |
+| A11-19 | Run 3 size: Catalog footers and Filebase fallback                                         | Exception (parked by the Run 3 session; not addressed in A-16)                                                                                            |
+| A13-1  | Explore search on the full county                                                         | Close (AC-13 index)                                                                                                                                       |
+| A13-2  | SQL panel first query                                                                     | Close (lazy binding)                                                                                                                                      |
+| A13-3  | LCP on manifest-driven pages                                                              | Close (run list first)                                                                                                                                    |
+| A13-4  | Run 3                                                                                     | Same as A11-2                                                                                                                                             |
+| A13-5  | County counts in the manifest coverage                                                    | Close if Run 3 publishes them, else Exception                                                                                                             |
+| A13-6  | Lambda timeout, throttle, duration alarm                                                  | Close                                                                                                                                                     |
+| A13-7  | Review follow-ups (copy, Retry, focus ring, ci-watch)                                     | Close                                                                                                                                                     |
+| A13-8  | Parked hosted tests                                                                       | Close (unparked by AC-13)                                                                                                                                 |
+| A14-1  | Agent and MCP on the full county                                                          | Close (AC-13 index)                                                                                                                                       |
+| A14-2  | MCP burst 503                                                                             | Exception unless the PO accepts a paid WAF rule (breaks AC-2 "no WAF")                                                                                    |
+| A14-3  | Shared Lambda concurrency of 10                                                           | Close with throttles and alarms; quota increase noted                                                                                                     |
+| A14-4  | Golden queries on zero rows                                                               | Close (rerun on the full county)                                                                                                                          |
+| A14-5  | Honesty sentences from wording                                                            | Close (Task B's structured empty outcomes)                                                                                                                |
+| A14-6  | Ten convergence tasks                                                                     | Close the spend-alarm wiring and the run-lookup reason; rest Exception (minor)                                                                            |
+| A14-7  | Permits with no property row dropped                                                      | Close with a raw-table count in the index header                                                                                                          |
+| A14-8  | Final-review items                                                                        | Close the MCP per-call deadline and the runs-index cache; rest Exception (minor)                                                                          |
 
 ## Out of scope
 
@@ -243,18 +252,18 @@ Each carried item has one stable ID. The plan assigns each to a builder group or
 
 ## Gate G4: Story ready for planning
 
-| # | Criterion | Status |
-| --- | --- | --- |
-| G4-1 | Front matter complete (parent FEAT, eval point, branch, priority, **agents and skills from AGENT-MAP.md**) | ☑ |
-| G4-2 | "As a / I want / So that" stated, with an independent test | ☑ |
-| G4-3 | Every AC is Given / When / Then, and its testable box is ticked | ☑ |
-| G4-4 | One scale AC and one missing-data or error AC | ☑ |
-| G4-5 | At least two edge cases | ☑ |
-| G4-6 | Every requirement traces to an AC; NFRs have thresholds | ☑ |
-| G4-7 | Prototype screen linked (UI stories) | ☑ |
-| G4-8 | Dependencies done, or stubbed with **real** sample data | ☑ |
-| G4-9 | No `[NEEDS CLARIFICATION]` left | ☑ |
-| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ |
+| #     | Criterion                                                                                                  | Status |
+| ----- | ---------------------------------------------------------------------------------------------------------- | ------ |
+| G4-1  | Front matter complete (parent FEAT, eval point, branch, priority, **agents and skills from AGENT-MAP.md**) | ☑      |
+| G4-2  | "As a / I want / So that" stated, with an independent test                                                 | ☑      |
+| G4-3  | Every AC is Given / When / Then, and its testable box is ticked                                            | ☑      |
+| G4-4  | One scale AC and one missing-data or error AC                                                              | ☑      |
+| G4-5  | At least two edge cases                                                                                    | ☑      |
+| G4-6  | Every requirement traces to an AC; NFRs have thresholds                                                    | ☑      |
+| G4-7  | Prototype screen linked (UI stories)                                                                       | ☑      |
+| G4-8  | Dependencies done, or stubbed with **real** sample data                                                    | ☑      |
+| G4-9  | No `[NEEDS CLARIFICATION]` left                                                                            | ☑      |
+| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS                                                      | ☑      |
 
 ### Gate G4 notes
 
