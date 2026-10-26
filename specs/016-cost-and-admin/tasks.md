@@ -74,6 +74,16 @@ Format: `[ID] [P?] [Group] Description — files — AC / Closure ID`. `[P]` = c
 - [ ] T072 [Me] A11-4 fresh sample verify log of Run 1 and Run 2 (operator tool, small sample per PO 2026-10-25); A11-10(a) and A11-8 minors written as Exceptions; A13-5 county counts: Closed if Run 3 publishes them, else Exception; A11-14 county CARs attached to the newest Release; A11-17 R10–R11 labels/docs — `docs/evidence/A-16.md`, `docs/sources.md`
 - [ ] T073 [Me] A14-4 golden queries G1–G6 rerun on the full county after T016 — `docs/evidence/A-16.md`, `docs/reports/A-16-test-report.md`
 
+### G5 · second copy + independent gateways (AM-10, branch `016b-second-copy-and-gateways`) — A11-3, A11-14
+
+- [ ] T074 [Me] AM-10 in `docs/architecture-constitution.md` § 16 (draft 2026-10-26; ✋ PO approves the wording, then version bump)
+- [ ] T075 [P] [metagross] `packages/shared/src/urls.ts`: gateway name `orbitor`, host key `ORBITOR_GATEWAY_HOST` / `VITE_ORBITOR_GATEWAY_HOST` (default `ipfs.orbitor.dev`), tests
+- [ ] T076 [metagross] Verify page (`apps/web/src/data/verify-lane.ts`, `VerifyLane.tsx`, `DataVerify.tsx`, `DataManifest.tsx`, `RunsCompare.tsx`): independent lanes Pinata + orbitor; Filebase as a labelled fallback lane that never counts as independent; a "Stored on" line (Filebase pin, Pinata copy, GitHub Release backup) with provenance; tests (after T075)
+- [ ] T077 [P] [metagross] `infra/src/web-stack.ts`: `VITE_ORBITOR_GATEWAY_HOST` env var on the Amplify app, tests (after T075)
+- [ ] T078 [P] [oracle] `scripts/verify-manifest.ts`: `GATEWAYS` = Pinata + orbitor, Filebase fallback reported separately; a JSON evidence file option; tests
+- [ ] T079 [P] [oracle] `pipeline/publish/scripts/pinata-copy.ts` (+ `src/pinata-pin.ts` `cidVersion: 1`): upload manifests and a chosen set of table files, compare each CID with the manifest, unpin a mismatch, stop at the quota budget, write a receipt per file under `specs/016-cost-and-admin/pinata-receipts/<runId>/`; fake-fetch tests, no real network
+- [ ] T080 [Me] After Run 3.1 publishes: run T079 on Run 3.1 (manifest first, stop on mismatch), then T078 on the same set; evidence in `docs/evidence/A-16.md`, $0 row in `docs/cost.md`, A11-3 / A11-14 rows in the Closure table, PR known-gap wording
+
 ## Phase 3 · Finalise docs (Me, parallel with Phase 2)
 
 - [ ] T070 [Me] Read the bill again after the deploy, ✋ PO takes the Cost Explorer screenshot (`docs/evidence/img/A-16-billing.png`), finalise `docs/cost.md` (FR-001: Part 2 rows after deploy, older `assessment usd` budget note, shared-account upper bound) and `docs/source-limits.md` (FR-003: TCAD 403 and Bedrock 10 rpm evidence links or "no evidence file" marked) — `docs/cost.md`, `docs/source-limits.md`
