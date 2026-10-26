@@ -118,9 +118,33 @@
   font-weight: var(--md-sys-typescale-body-small-weight);
 }
 
-@media (min-width: 840px) {
+/* From 768 px the chain is one outlined list with divider rows, as the CRM leads list draws its
+   rows: run label | run ID and CID | finished and previous | Verify. */
+@media (min-width: 768px) {
   .chainCards {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
+    background: var(--md-sys-color-surface);
+    overflow: hidden;
+  }
+
+  .chainCard {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 2fr) auto;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border: 0;
+    border-radius: 0;
+    background: var(--md-sys-color-surface);
+  }
+
+  .chainCard + .chainCard {
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .chainCurrent {
+    background: var(--md-sys-color-secondary-container);
   }
 }
 

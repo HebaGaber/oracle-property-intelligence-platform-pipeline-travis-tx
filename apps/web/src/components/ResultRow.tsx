@@ -28,17 +28,20 @@ const NO_CARRIER = "no_lexicon_carrier";
 /** A gap pill: the reason in words, with the entry's field and reason as data. */
 function Gap({
   text,
+  short,
   reason,
   field,
 }: {
   readonly text: string;
+  /** The compact visible label; `text` stays the pill's text and tooltip. */
+  readonly short?: string | undefined;
   readonly reason?: string | undefined;
   readonly field?: string | undefined;
 }): ReactElement {
   const data: Record<string, string> = {};
   if (reason !== undefined) data["reason"] = reason;
   if (field !== undefined) data["field"] = field;
-  return <StatusPill status="unavailable" text={text} data={data} />;
+  return <StatusPill status="unavailable" text={text} data={data} short={short} />;
 }
 
 const isReason = (reason: string): reason is Reason =>
@@ -48,13 +51,28 @@ function missingFor(row: ExploreRow, field: string): MissingEntry | undefined {
   return row.missing.find((m) => m.field === field);
 }
 
-/** A gap for `field`: its own missing entry's label when the row has one, else `fallback`. */
-function gapFor(row: ExploreRow, field: string, fallback: string): ReactElement {
+const ROOF_SHORT = "Roof age unknown";
+const TENURE_SHORT = "Tenure unknown";
+const BBB_SHORT = {
+  not_checked: "BBB not checked",
+  blocked: "BBB blocked",
+  not_found: "No BBB profile",
+} as const;
+
+/** A roof gap for `field`: its own missing entry's label when the row has one, else roofUnknown. */
+function gapFor(row: ExploreRow, field: string): ReactElement {
   const entry = missingFor(row, field);
   if (entry !== undefined && isReason(entry.reason) && entry.reason !== NO_CARRIER) {
-    return <MissingReason field={entry.field} reason={entry.reason} />;
+    return <MissingReason field={entry.field} reason={entry.reason} short={ROOF_SHORT} />;
   }
-  return <Gap text={fallback} reason={entry?.reason} field={entry?.field} />;
+  return (
+    <Gap
+      text={EXPLORE_TEXTS.roofUnknown}
+      short={ROOF_SHORT}
+      reason={entry?.reason}
+      field={entry?.field}
+    />
+  );
 }
 
 export function bbbText(status: string | null, reason: string | null): string | null {
@@ -151,6 +169,7 @@ export function FieldValue({
         row.address ?? (
           <Gap
             text={EXPLORE_TEXTS.noCarrier}
+            short="No address"
             reason={missingFor(row, "address")?.reason}
             field="address"
           />
@@ -158,19 +177,19 @@ export function FieldValue({
       );
     case "roof_age_years":
       return row.roof_age_years === null ? (
-        gapFor(row, "roof_age_years", EXPLORE_TEXTS.roofUnknown)
+        gapFor(row, "roof_age_years")
       ) : (
         <>{`${row.roof_age_years} yrs`}</>
       );
     case "roof_age_basis":
       return unknownRoof(row.roof_age_basis) ? (
-        gapFor(row, "roof_age_basis", EXPLORE_TEXTS.roofUnknown)
+        gapFor(row, "roof_age_basis")
       ) : (
         <>{row.roof_age_basis}</>
       );
     case "roof_age_confidence":
       return row.roof_age_confidence === null ? (
-        gapFor(row, "roof_age_confidence", EXPLORE_TEXTS.roofUnknown)
+        gapFor(row, "roof_age_confidence")
       ) : (
         <>{row.roof_age_confidence}</>
       );
@@ -186,12 +205,18 @@ export function FieldValue({
       );
     case "status_raw":
       return row.permit === null ? null : (
-        <Gap text={EXPLORE_TEXTS.noCarrier} reason={NO_CARRIER} field="permit.status_raw" />
+        <Gap
+          text={EXPLORE_TEXTS.noCarrier}
+          short="Status not published"
+          reason={NO_CARRIER}
+          field="permit.status_raw"
+        />
       );
     case "contractor_name":
       return row.contractor === null ? null : (
         <Gap
           text={EXPLORE_TEXTS.noCarrier}
+          short="Name not published"
           reason={NO_CARRIER}
           field="contractor.name_as_printed"
         />
@@ -206,26 +231,35 @@ export function FieldValue({
       return row.bbb_status === "not_checked" ||
         row.bbb_status === "blocked" ||
         row.bbb_status === "not_found" ? (
-        <Gap text={bbb} reason={`bbb_${row.bbb_status}`} field="bbb_status" />
+        <Gap
+          text={bbb}
+          short={BBB_SHORT[row.bbb_status]}
+          reason={`bbb_${row.bbb_status}`}
+          field="bbb_status"
+        />
       ) : (
         <>{bbb}</>
       );
     }
     case "tenure_years":
       return row.tenure_years === null ? (
-        <Gap text={EXPLORE_TEXTS.tenureUnknown} reason={missingFor(row, "tenure_years")?.reason} />
+        <Gap
+          text={EXPLORE_TEXTS.tenureUnknown}
+          short={TENURE_SHORT}
+          reason={missingFor(row, "tenure_years")?.reason}
+        />
       ) : (
         <>{`${row.tenure_years} yrs`}</>
       );
     case "tenure_basis":
       return row.tenure_basis === null ? (
-        <Gap text={EXPLORE_TEXTS.tenureUnknown} />
+        <Gap text={EXPLORE_TEXTS.tenureUnknown} short={TENURE_SHORT} />
       ) : (
         <>{row.tenure_basis}</>
       );
     case "owner_area_class":
       return row.owner_area_class === null || row.owner_area_class === "unknown" ? (
-        <Gap text={EXPLORE_TEXTS.ownerAreaUnknown} />
+        <Gap text={EXPLORE_TEXTS.ownerAreaUnknown} short="Owner area unknown" />
       ) : (
         <>{row.owner_area_class}</>
       );
@@ -284,7 +318,11 @@ export function MissingSummary({ row }: { readonly row: ExploreRow }): ReactElem
           >
             <code className={styles.fieldNames}>{fields.join(", ")}</code>
             {reason === NO_CARRIER || !isReason(reason) ? (
-              <Gap text={label} reason={reason} />
+              <Gap
+                text={label}
+                short={reason === NO_CARRIER ? "Not published" : undefined}
+                reason={reason}
+              />
             ) : (
               <MissingReason field={fields[0] ?? ""} reason={reason} />
             )}
@@ -308,9 +346,13 @@ export function RowProvenance({ row }: { readonly row: ExploreRow }): ReactEleme
         />
       ) : (
         <Provenance>
-          Source: {p.source_url ?? <Gap text={NOT_IN_ROW} />} · table{" "}
-          {p.table_cid === null ? <Gap text={NOT_IN_ROW} /> : <CidDisplay cid={p.table_cid} />} ·
-          run {p.run_id ?? <Gap text={NOT_IN_ROW} />}
+          Source: {p.source_url ?? <Gap text={NOT_IN_ROW} short="Not in row" />} · table{" "}
+          {p.table_cid === null ? (
+            <Gap text={NOT_IN_ROW} short="Not in row" />
+          ) : (
+            <CidDisplay cid={p.table_cid} />
+          )}{" "}
+          · run {p.run_id ?? <Gap text={NOT_IN_ROW} short="Not in row" />}
         </Provenance>
       )}
     </div>

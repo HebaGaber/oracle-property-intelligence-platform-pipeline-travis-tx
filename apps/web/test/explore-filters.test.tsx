@@ -293,6 +293,27 @@ describe("Explore · Filters rows (AC-4, AC-7, FR-007, FR-022, NFR-003)", () => 
     );
     expect(field(b, "bbb")?.textContent).toBe(EXPLORE_TEXTS.bbbBlocked);
     expect(field(c, "bbb")?.textContent).toBe(EXPLORE_TEXTS.bbbNotFound);
+    // Compact pills: a short visible label (data-short), the full reason as text and tooltip.
+    const pill = (el: HTMLElement, name: string): Element | null | undefined =>
+      field(el, name)?.querySelector("[data-status]");
+    for (const [name, short, full] of [
+      ["address", "No address", EXPLORE_TEXTS.noCarrier],
+      ["roof_age_basis", "Roof age unknown", EXPLORE_TEXTS.roofUnknown],
+      ["tenure_years", "Tenure unknown", EXPLORE_TEXTS.tenureUnknown],
+      ["owner_area_class", "Owner area unknown", EXPLORE_TEXTS.ownerAreaUnknown],
+      ["contractor_name", "Name not published", EXPLORE_TEXTS.noCarrier],
+      ["status_raw", "Status not published", EXPLORE_TEXTS.noCarrier],
+      [
+        "bbb",
+        "BBB not checked",
+        EXPLORE_TEXTS.bbbNotChecked("BBB lookups are not run for this county yet"),
+      ],
+    ] as const) {
+      expect(pill(a, name)?.getAttribute("data-short"), name).toBe(short);
+      expect(pill(a, name)?.getAttribute("title"), name).toBe(full);
+    }
+    expect(pill(b, "bbb")?.getAttribute("data-short")).toBe("BBB blocked");
+    expect(pill(c, "bbb")?.getAttribute("data-short")).toBe("No BBB profile");
   });
 
   it("names the field of every missing-data pill and groups identical reasons (ERR-20)", async () => {

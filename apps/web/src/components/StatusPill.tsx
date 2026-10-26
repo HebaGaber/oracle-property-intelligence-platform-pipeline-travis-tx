@@ -27,14 +27,31 @@ export interface StatusPillProps {
   readonly icon?: string;
   /** Extra `data-*` attributes on the pill (MissingReason adds `field` and `reason`). */
   readonly data?: Readonly<Record<string, string>>;
+  /**
+   * A compact visible label ("No address"): drawn instead of `text`, which stays the pill's text
+   * content (screen readers, tests) and its tooltip.
+   */
+  readonly short?: string | undefined;
 }
 
-export function StatusPill({ status, text, icon, data = {} }: StatusPillProps): ReactElement {
+export function StatusPill({
+  status,
+  text,
+  icon,
+  data = {},
+  short,
+}: StatusPillProps): ReactElement {
   const dataAttributes = Object.fromEntries(
     Object.entries(data).map(([key, value]) => [`data-${key}`, value]),
   );
   return (
-    <span className={`${styles.pill} ${styles[status]}`} data-status={status} {...dataAttributes}>
+    <span
+      className={`${styles.pill} ${styles[status]}`}
+      data-status={status}
+      data-short={short}
+      title={short && text}
+      {...dataAttributes}
+    >
       <Icon name={icon ?? STATUS_ICONS[status]} size="small" />
       <span className={styles.text}>{text}</span>
     </span>

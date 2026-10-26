@@ -9,7 +9,7 @@
 import type { ManifestArtifact, RunManifestV1 } from "@countylens/contract";
 import { PROGRESS_LABELS, VERIFY_TEXTS, verifyPath } from "@countylens/shared";
 import { useEffect, useState, type ReactElement } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { DataTabs } from "../components/DataTabs";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
@@ -21,12 +21,13 @@ import { StatusPill } from "../components/StatusPill";
 import { utcTimestamp } from "../data/format";
 import { loadRunChain, type RunChainLink } from "../data/run-chain";
 import type { LoadedRun } from "../data/run-loader";
-import { runNumbers } from "../data/runs-index";
+import { runNumbers, runsByFinish } from "../data/runs-index";
 import { VERIFY_MAX_BYTES } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
   runErrorNode,
   loadManifestByCid,
+  runLabel,
   toRunLoadError,
   useLatestRun,
   type RunLoadError,
@@ -39,6 +40,27 @@ const NO_CAR_TEXT = "no CAR listed for this artifact";
 
 export function Component(): ReactElement {
   const { state, retry } = useLatestRun();
+  // The run picker: `?run={runId}` shows that indexed run's manifest; no parameter (or an
+  // unknown run) shows the latest.
+  const [params, setParams] = useSearchParams();
+  const latest = state.kind === "ready" ? state.run : undefined;
+  const wanted = params.get("run");
+  const entry = latest?.index.runs.find(
+    (r) => r.runId === wanted && r.runId !== latest.entry.runId,
+  );
+  const [other, setOther] = useState<LoadedRun | RunLoadError>();
+  useEffect(() => {
+    setOther(undefined);
+    if (latest === undefined || entry === undefined) return;
+    const controller = new AbortController();
+    loadManifestByCid(entry.manifestCid, controller.signal).then(
+      (read) => !controller.signal.aborted && setOther({ ...latest, entry, ...read }),
+      (error: unknown) => !controller.signal.aborted && setOther(toRunLoadError(error)),
+    );
+    return () => controller.abort();
+  }, [latest, entry]);
+  const failed = other && !("manifest" in other) ? other : undefined;
+  const shown = entry ? (failed ? undefined : (other as LoadedRun | undefined)) : latest;
   return (
     <section
       aria-label="Data · Manifest"
@@ -47,10 +69,25 @@ export function Component(): ReactElement {
       className={styles.page}
     >
       <h2 className={runStyles.title}>Data · Manifest</h2>
-      <DataTabs
-        current="manifest"
-        verifyCid={state.kind === "ready" ? state.run.manifestCid : null}
-      />
+      <DataTabs current="manifest" verifyCid={shown?.manifestCid ?? null} />
+      {latest && (
+        <select
+          className={runStyles.select}
+          aria-label="Run"
+          value={entry?.runId ?? latest.entry.runId}
+          onChange={(e) => setParams({ run: e.target.value })}
+        >
+          {runsByFinish(latest.index)
+            .map((r, i) => (
+              <option key={r.runId} value={r.runId}>
+                {runLabel(i + 1, r.finishedAt)}
+              </option>
+            ))
+            .reverse()}
+        </select>
+      )}
+      {failed && <ErrorBanner message={runErrorNode(failed)} />}
+      {entry && !other && <Skeleton variant="rows" />}
       {state.kind === "loading" ? (
         <>
           <LinearProgress label={PROGRESS_LABELS.runs} stageText={RUN_STAGE_TEXTS[state.stage]} />
@@ -60,7 +97,7 @@ export function Component(): ReactElement {
       {state.kind === "error" ? (
         <ErrorBanner message={runErrorNode(state.error)} onRetry={retry} />
       ) : null}
-      {state.kind === "ready" ? <ManifestView run={state.run} /> : null}
+      {shown ? <ManifestView run={shown} /> : null}
     </section>
   );
 }
