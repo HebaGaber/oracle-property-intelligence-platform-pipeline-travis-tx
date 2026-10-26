@@ -10,7 +10,7 @@
 // limitations" for a finish that carries notes), never a rate-limit or blocked pill the data does
 // not record. An unreadable index is one banner; an unreadable manifest is a banner naming its CID
 // while the other runs still list. Oldest first stays the default (the board shows newest first)
-// because A-13 TC-057 reads the list ascending. Below 600 px each event is a small card (time and
+// because A-13 TC-057 reads the list ascending. Below 840 px each event is a small card (time and
 // status, run, event, source and count) instead of a squeezed table row (D-6).
 // A react-router lazy route module.
 import type { RunManifestV1 } from "@countylens/contract";
