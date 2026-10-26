@@ -149,8 +149,8 @@ function CoverageCards({ run }: { readonly run: LoadedRun }): ReactElement {
       <KpiTiles run={run} kinds={kinds} byKind={byKind} number={number} />
       <LoadedVsTotal manifest={manifest} manifestCid={manifestCid} />
       <h3 className={styles.sectionTitle}>Counts by record kind</h3>
-      {/* A-16 PO note: the kind cards sit two per row from 1024 px and stack below. */}
-      <div className={styles.cardGrid}>
+      {/* A-16 PO notes: the kind cards fill the width (three per row at 1440, one at 390). */}
+      <div className={costStyles.kindGrid}>
         {kinds.map((kind) => (
           <KindCard
             key={kind.id}
@@ -257,6 +257,9 @@ function tableParts(manifest: RunManifestV1, table: string): ManifestArtifact[] 
   return manifest.artifacts.filter((a) => a.kind === "table" && a.name.startsWith(prefix));
 }
 
+// A-16 PO note 2026-10-26: one compact card per kind. Each coverage key is one line (label and
+// count), its derivation, collection time and note below, the note clamped to two lines until
+// "Details" opens the card; the kind's denominator, source and table are short fact lines.
 function KindCard({
   kind,
   rows,
@@ -272,24 +275,30 @@ function KindCard({
   const source =
     kind.source === null ? undefined : manifest.sources.find((s) => s.name === kind.source);
   const parts = kind.table === null ? [] : tableParts(manifest, kind.table);
+  const long = rows.some((row) => row.note !== null) || parts.length > 2;
   return (
     <article className={styles.card} aria-labelledby={titleId} data-kind={kind.id}>
-      <h3 id={titleId} className={styles.sectionTitle}>
-        {kind.title}
-      </h3>
+      <div>
+        <h3 id={titleId} className={styles.sectionTitle}>
+          {kind.title}
+        </h3>
+        {long ? (
+          <details>
+            <summary>Details</summary>
+          </details>
+        ) : null}
+      </div>
       {rows.length === 0 ? (
         <StatusPill status="unavailable" text={COVERAGE_KIND_MISSING} />
       ) : (
-        <ul className={styles.list} aria-labelledby={titleId}>
+        <ul aria-labelledby={titleId}>
           {rows.map((row) => (
-            <li key={row.key} className={styles.coverageRow} data-coverage-key={row.key}>
-              <span className={styles.coverageLabel}>
-                {row.label === row.key ? keyWords(row.key) : row.label}
-              </span>
+            <li key={row.key} data-coverage-key={row.key}>
+              <span>{row.label === row.key ? keyWords(row.key) : row.label}</span>
               <span className={styles.count} data-count={row.count}>
                 {formatCount(row.count)}
               </span>
-              <span className={styles.helper}>
+              <span>
                 <span>{row.derivationLabel}</span>
                 {source === undefined ? null : (
                   <>
@@ -309,21 +318,21 @@ function KindCard({
         </ul>
       )}
       {kind.id === OTHER_KIND.id ? null : (
-        <>
-          <p className={styles.itemBody} data-kind-denominator={kind.source ?? "none"}>
+        <div className={costStyles.facts}>
+          <div data-kind-denominator={kind.source ?? "none"}>
             {denominatorNode(kind, manifest, source)}
-          </p>
-          <p className={styles.itemBody}>
+          </div>
+          <div>
             {source === undefined ? (
               <StatusPill status="unavailable" text={COVERAGE_SOURCE_MISSING} />
             ) : (
-              <>
+              <span>
                 Collected <time dateTime={source.captured_at}>{formatUtc(source.captured_at)}</time>{" "}
                 UTC · <code className={styles.mono}>{source.name}</code>
-              </>
+              </span>
             )}
-          </p>
-          <div className={styles.itemBody}>
+          </div>
+          <div>
             {kind.table === null || parts.length === 0 ? (
               <StatusPill status="unavailable" text={COVERAGE_TABLE_MISSING} />
             ) : (
@@ -338,7 +347,7 @@ function KindCard({
               </span>
             )}
           </div>
-        </>
+        </div>
       )}
       <Provenance>
         Manifest <CidDisplay cid={manifestCid} /> · run {manifest.runId}
@@ -435,29 +444,33 @@ function LoadedVsTotal({
                     {formatCount(loaded)}
                   </td>
                   <td data-label="Out of the source's own total">
-                    {row.count === null ? (
-                      <StatusPill status="unavailable" text={row.missingText ?? ""} />
-                    ) : (
-                      <>
-                        <span className={styles.count} data-count={row.count}>
-                          {formatCount(row.count)}
-                        </span>
-                        {share === null ? null : (
-                          <ShareBar
-                            value={Math.min(100, share)}
-                            max={100}
-                            label={`${share.toFixed(1)} percent loaded`}
-                          />
-                        )}
-                        <span className={styles.helper}>
-                          {share === null ? "" : `${share.toFixed(1)}% · `}
-                          {row.derivation === null ? "" : DERIVATION_LABELS[row.derivation]}
-                        </span>
-                      </>
-                    )}
+                    <div className={costStyles.totalCell}>
+                      {row.count === null ? (
+                        <StatusPill status="unavailable" text={row.missingText ?? ""} />
+                      ) : (
+                        <>
+                          <span className={styles.count} data-count={row.count}>
+                            {formatCount(row.count)}
+                          </span>
+                          {share === null ? null : (
+                            <ShareBar
+                              value={Math.min(100, share)}
+                              max={100}
+                              label={`${share.toFixed(1)} percent loaded`}
+                            />
+                          )}
+                          <span className={styles.helper}>
+                            {share === null ? "" : `${share.toFixed(1)}% · `}
+                            {row.derivation === null ? "" : DERIVATION_LABELS[row.derivation]}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </td>
                   <td data-label="Collected">
-                    <time dateTime={row.capturedAt}>{formatUtc(row.capturedAt)}</time> UTC
+                    <span>
+                      <time dateTime={row.capturedAt}>{formatUtc(row.capturedAt)}</time> UTC
+                    </span>
                   </td>
                   <td data-label="Provenance">
                     <Link className={styles.link} to={verifyPath(manifestCid)}>
@@ -488,6 +501,9 @@ function AreaCard(): ReactElement {
   );
 }
 
+/** Known limitations show the first five; CSS shows the rest when "Show all" is open (A-16). */
+const LIMITATIONS_SHOWN = 5;
+
 function KnownLimitations({ manifest }: { readonly manifest: RunManifestV1 }): ReactElement {
   const items: { key: string; text: string; source: string | null }[] = [
     ...manifest.limitations.map((text) => ({ key: `run:${text}`, text, source: null })),
@@ -517,6 +533,11 @@ function KnownLimitations({ manifest }: { readonly manifest: RunManifestV1 }): R
           ))}
         </ul>
       )}
+      {items.length > LIMITATIONS_SHOWN ? (
+        <details>
+          <summary>Show all {items.length} limitations</summary>
+        </details>
+      ) : null}
     </section>
   );
 }

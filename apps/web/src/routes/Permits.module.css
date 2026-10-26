@@ -219,6 +219,24 @@
   min-width: calc(var(--space-10) * 4);
 }
 
+/* A-16 PO note 2026-10-26: columns keep a readable width instead of crushing the pills one word
+   per line (rows ran to 800 px at 768); the table scrolls inside its own frame when narrower. */
+.table td:first-child {
+  white-space: nowrap;
+}
+
+.table td:nth-child(4) {
+  white-space: nowrap;
+}
+
+.table td:nth-child(5) {
+  min-width: calc(var(--space-10) * 4);
+}
+
+.table td:nth-child(6) {
+  min-width: calc(var(--space-10) * 6);
+}
+
 @media (min-width: 600px) {
   .page {
     gap: var(--space-6);

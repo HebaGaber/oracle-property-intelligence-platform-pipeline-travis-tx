@@ -2,17 +2,26 @@
    container (the page never scrolls sideways at 390), mono CIDs and digests, 48 px action links.
    Atlas tokens only. */
 
+/* A-16 PO note 2026-10-26: the page uses the whole content width (no max-width that left the
+   panels stuck to the left at 1440). */
 .page {
   display: grid;
   gap: var(--space-4);
   min-width: 0;
-  max-width: calc(var(--space-10) * 20);
 }
 
 .scroll {
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
+}
+
+/* The artifact list scrolls inside a bounded panel with a sticky header (board: one screen). */
+.artifactScroll {
+  max-height: 70vh;
+  overflow-y: auto;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
 }
 
 .table {
@@ -157,5 +166,103 @@
 @media (min-width: 840px) {
   .lanes {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* The manifest.json link wears the outlined chip of Runs, without a link underline. */
+.page a[download] {
+  text-decoration: none;
+}
+
+.artifactScroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.artifactScroll td:first-child {
+  min-width: calc(var(--space-10) * 4);
+}
+
+/* The shared folder stays in each name for screen readers and text reads, hidden on screen. */
+.artifactScroll td:first-child > span > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Below 600 px each artifact is a card of label/value lines (board Data390). */
+@media (max-width: 599px) {
+  .artifactScroll thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .artifactScroll table,
+  .artifactScroll tbody,
+  .artifactScroll tr {
+    display: block;
+  }
+
+  .artifactScroll tr {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .artifactScroll td {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0;
+    border-bottom: 0;
+    text-align: start;
+  }
+
+  .artifactScroll td::before {
+    color: var(--md-sys-color-on-surface-variant);
+  }
+
+  /* The column names, from CSS so the rows carry no extra markup (bundle budget). */
+  .artifactScroll td:nth-child(2)::before {
+    content: "CID";
+  }
+
+  .artifactScroll td:nth-child(3)::before {
+    content: "Codec";
+  }
+
+  .artifactScroll td:nth-child(4)::before {
+    content: "Size";
+  }
+
+  .artifactScroll td:nth-child(5)::before {
+    content: "SHA-256";
+  }
+
+  .artifactScroll td:nth-child(6)::before {
+    content: "CAR";
+  }
+
+  .artifactScroll td:nth-child(7)::before {
+    content: "Check";
+  }
+
+  .artifactScroll td:first-child {
+    display: block;
+    min-width: 0;
+    padding-bottom: var(--space-1);
+    font-weight: var(--md-sys-typescale-title-small-weight);
+  }
+
+  .artifactScroll td:first-child::before {
+    content: none;
   }
 }

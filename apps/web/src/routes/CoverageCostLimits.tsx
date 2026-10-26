@@ -10,11 +10,18 @@
 // partial day is shown apart as partial; gross usage and credits are shown apart so the $0.00
 // net is never read as "no cost"; a source that never became reachable shows "Blocked" with the
 // dates, not a throughput.
+//
+// Compact layout (A-16 PO note 2026-10-26, board Coverage1440 "Source speed and constraints"):
+// full-width tables with fixed column shares; each row shows a short name (the doc's parenthetical
+// as a helper line) and every cell clamped to a few lines, with a per-row "Details" toggle that
+// opens the full doc text. The clamp is visual only: every cell keeps the doc's whole text, so the
+// page still says exactly what the docs say. Below 840 px each row stacks as label/value lines.
 // Justified differences from the board: the board's "Last bill · September" tile is the docs'
 // "Gross usage" window (real figures, a window of billed days rather than a calendar month); the
 // board's "Cost evidence: cost.json" link is the docs file named in the source line, since no
-// cost.json is built at deploy time.
-import type { ReactElement } from "react";
+// cost.json is built at deploy time; the board's short cells ("~50,000 rows/min") are sample
+// text, so the doc's measured sentences are shown, clamped.
+import type { ReactElement, ReactNode } from "react";
 import { Icon } from "../components/Icon";
 import { StatusPill } from "../components/StatusPill";
 import raw from "../content/cost-limits.generated.json";
@@ -29,6 +36,74 @@ export function usd(value: number): string {
   const text = `$${Math.abs(value).toFixed(4)}`;
   return value < 0 ? `-${text}` : text;
 }
+
+/**
+ * "Travis County GIS layer 6 (tcad_gis)" → ["Travis County GIS layer 6", " ", "tcad_gis"]: the
+ * short label, the exact space before the last parenthetical and its text, so that label + space +
+ * "(" + detail + ")" is the doc's name again, character for character.
+ */
+function splitName(name: string): readonly [string, string, string | null] {
+  const match = /^(.+?)(\s*)\(([^()]+)\)$/.exec(name);
+  return match === null ? [name, "", null] : [match[1] ?? name, match[2] ?? "", match[3] ?? null];
+}
+
+/** A table cell; inside a `.compact` table CSS clamps its content until the row is opened. */
+function Cell({
+  label,
+  children,
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <td role="cell" data-label={label}>
+      <div>{children}</div>
+    </td>
+  );
+}
+
+/** The first cell of a compact row: the short name, its parenthetical as a helper line (CSS). */
+function NameCell({
+  label,
+  name,
+}: {
+  readonly label: string;
+  readonly name: string;
+}): ReactElement {
+  const [short, space, detail] = splitName(name);
+  return (
+    <td role="cell" data-label={label}>
+      <span>
+        <b>{short}</b>
+        {detail === null ? null : (
+          <>
+            {space}
+            <span>({detail})</span>
+          </>
+        )}
+      </span>
+    </td>
+  );
+}
+
+/**
+ * The last cell of a compact row: a native disclosure whose open state lifts the row's clamps in
+ * CSS (`tr:has(details[open])`), so the toggle costs no script (bundle budget).
+ */
+const TOGGLE_CELL = (
+  <td role="cell" data-label="Full text">
+    <details>
+      <summary>Details</summary>
+    </details>
+  </td>
+);
+
+/** The header cell over the toggles (named for screen readers, no visible text). */
+const TOGGLE_HEAD = (
+  <th role="columnheader">
+    <span>Full text</span>
+  </th>
+);
 
 export function SourceSpeed(): ReactElement {
   const { limits } = DATA;
@@ -50,7 +125,7 @@ export function SourceSpeed(): ReactElement {
       <div className={runsStyles.tableWrap}>
         <table
           role="table"
-          className={`${runsStyles.table} ${styles.stack}`}
+          className={`${runsStyles.table} ${styles.stack} ${styles.compact}`}
           aria-label="Source limits"
         >
           <thead role="rowgroup">
@@ -61,6 +136,7 @@ export function SourceSpeed(): ReactElement {
               <th role="columnheader">Rate limit</th>
               <th role="columnheader">Full capture</th>
               <th role="columnheader">Constraints</th>
+              {TOGGLE_HEAD}
             </tr>
           </thead>
           <tbody role="rowgroup">
@@ -75,83 +151,86 @@ export function SourceSpeed(): ReactElement {
         <span>
           Throughput and times are measurements from the run log. &quot;Not available&quot; says why
           a figure was never measured; &quot;Blocked&quot; lists the days the source refused access.
+          Details opens the full text of a row.
         </span>
       </p>
-      <h4 className={runsStyles.sectionTitle}>Publication and read path</h4>
-      <div className={runsStyles.tableWrap}>
-        <table
-          role="table"
-          className={`${runsStyles.table} ${styles.stack}`}
-          aria-label="Publication and read path"
-        >
-          <thead role="rowgroup">
-            <tr role="row">
-              <th role="columnheader">Step</th>
-              <th role="columnheader">Measured</th>
-              <th role="columnheader">Limit and effect</th>
-            </tr>
-          </thead>
-          <tbody role="rowgroup">
-            {limits.readPath.map((row) => (
-              <tr role="row" key={row.step} data-path-step={row.step}>
-                <td role="cell" data-label="Step">
-                  {row.step}
-                </td>
-                <td role="cell" data-label="Measured">
-                  {row.measured}
-                </td>
-                <td role="cell" data-label="Limit and effect">
-                  {row.limit}
-                </td>
+      {/* Folded by default (PO note: compact page); a native disclosure, no script. */}
+      <details>
+        <summary className={runsStyles.sectionTitle}>
+          Publication and read path · {limits.readPath.length} steps
+        </summary>
+        <div className={runsStyles.tableWrap}>
+          <table
+            role="table"
+            className={`${runsStyles.table} ${styles.stack}`}
+            aria-label="Publication and read path"
+          >
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader">Step</th>
+                <th role="columnheader">Measured</th>
+                <th role="columnheader">Limit and effect</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody role="rowgroup">
+              {limits.readPath.map((row) => (
+                <PathRow key={row.step} row={row} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </section>
+  );
+}
+
+type PathStep = (typeof DATA)["limits"]["readPath"][number];
+
+function PathRow({ row }: { readonly row: PathStep }): ReactElement {
+  return (
+    <tr role="row" data-path-step={row.step}>
+      <NameCell label="Step" name={row.step} />
+      <Cell label="Measured">{row.measured}</Cell>
+      <Cell label="Limit and effect">{row.limit}</Cell>
+    </tr>
   );
 }
 
 function LimitTableRow({ row }: { readonly row: LimitRow }): ReactElement {
   return (
     <tr role="row" data-limit-source={row.source} data-status={row.status}>
-      <td role="cell" data-label="Source">
-        {row.source}
+      <NameCell label="Source" name={row.source} />
+      <Cell label="Access and page size">{row.pageSize}</Cell>
+      <td role="cell" data-label="Throughput">
+        <div>
+          {row.status === "blocked" ? (
+            <StatusPill status="error" icon="block" text="Blocked" />
+          ) : row.status === "not_measured" ? (
+            <StatusPill
+              status="unavailable"
+              text={`Not available · ${row.missingReason ?? ""}`}
+              data={{ field: "throughput" }}
+            />
+          ) : (
+            row.throughput
+          )}
+          {row.status === "blocked" ? (
+            <span className={runsStyles.helper} data-blocked-dates={row.blockedDates.join(",")}>
+              {" "}
+              refused on {row.blockedDates.join(", ")}
+            </span>
+          ) : null}
+        </div>
       </td>
-      <td role="cell" data-label="Access and page size">
-        {row.pageSize}
-      </td>
-      <td role="cell" data-label="Throughput" className={runsStyles.num}>
-        {row.status === "blocked" ? (
-          <StatusPill status="error" icon="block" text="Blocked" />
-        ) : row.status === "not_measured" ? (
-          <StatusPill
-            status="unavailable"
-            text={`Not available · ${row.missingReason ?? ""}`}
-            data={{ field: "throughput" }}
-          />
-        ) : (
-          row.throughput
-        )}
-        {row.status === "blocked" ? (
-          <span className={runsStyles.helper} data-blocked-dates={row.blockedDates.join(",")}>
-            {" "}
-            refused on {row.blockedDates.join(", ")}
-          </span>
-        ) : null}
-      </td>
-      <td role="cell" data-label="Rate limit">
-        {row.rateLimit}
-      </td>
-      <td role="cell" data-label="Full capture" className={runsStyles.num}>
-        {row.fullCapture}
-      </td>
-      <td role="cell" data-label="Constraints">
+      <Cell label="Rate limit">{row.rateLimit}</Cell>
+      <Cell label="Full capture">{row.fullCapture}</Cell>
+      <Cell label="Constraints">
         {row.antiBot}
         {row.optimisation === null ? null : (
           <span className={runsStyles.helper}> · Applied: {row.optimisation}</span>
         )}
-      </td>
+      </Cell>
+      {TOGGLE_CELL}
     </tr>
   );
 }
@@ -185,7 +264,7 @@ export function CostSection(): ReactElement {
           </p>
         </div>
       )}
-      <div className={runsStyles.tiles}>
+      <div className={styles.costTiles}>
         <div className={runsStyles.tile} data-tile="gross">
           <span className={runsStyles.tileLabel}>Gross usage · {cost.gross.window}</span>
           {cost.gross.usd === null ? (
@@ -222,7 +301,7 @@ export function CostSection(): ReactElement {
               text={`Not available · ${cost.budget.missingReason ?? ""}`}
             />
           ) : (
-            <b className={runsStyles.tileBig}>{cost.budget.text}</b>
+            <b className={runsStyles.sectionTitle}>{cost.budget.text}</b>
           )}
           <span className={runsStyles.tileLabel}>Owned by the CDK Ops stack</span>
         </div>
@@ -230,7 +309,7 @@ export function CostSection(): ReactElement {
       <div className={runsStyles.tableWrap}>
         <table
           role="table"
-          className={`${runsStyles.table} ${styles.stack}`}
+          className={`${runsStyles.table} ${styles.stack} ${styles.compact}`}
           aria-label="Deployed resources and idle cost"
         >
           <thead role="rowgroup">
@@ -240,6 +319,7 @@ export function CostSection(): ReactElement {
               <th role="columnheader">Per use</th>
               <th role="columnheader">Who pays per use</th>
               <th role="columnheader">Seen in the bill</th>
+              {TOGGLE_HEAD}
             </tr>
           </thead>
           <tbody role="rowgroup">
@@ -264,10 +344,8 @@ function CostTableRow({ row }: { readonly row: CostRow }): ReactElement {
   const filebase = row.idle === null;
   return (
     <tr role="row" data-cost-row={row.component}>
-      <td role="cell" data-label="Deployed resource">
-        {row.component}
-      </td>
-      <td role="cell" data-label="Fixed (idle) per month">
+      <NameCell label="Deployed resource" name={row.component} />
+      <Cell label="Fixed (idle) per month">
         {filebase ? (
           <StatusPill
             status="unavailable"
@@ -277,16 +355,11 @@ function CostTableRow({ row }: { readonly row: CostRow }): ReactElement {
         ) : (
           row.idle
         )}
-      </td>
-      <td role="cell" data-label="Per use">
-        {row.perUse}
-      </td>
-      <td role="cell" data-label="Who pays per use">
-        {row.whoPays}
-      </td>
-      <td role="cell" data-label="Seen in the bill">
-        {row.seenInBill}
-      </td>
+      </Cell>
+      <Cell label="Per use">{row.perUse}</Cell>
+      <Cell label="Who pays per use">{row.whoPays}</Cell>
+      <Cell label="Seen in the bill">{row.seenInBill}</Cell>
+      {TOGGLE_CELL}
     </tr>
   );
 }

@@ -15,10 +15,9 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { CidDisplay } from "../components/CidDisplay";
 import { FallbackChip } from "../components/FallbackChip";
 import { LinearProgress } from "../components/LinearProgress";
-import { Provenance } from "../components/Provenance";
+import { Provenance, formatUtc } from "../components/Provenance";
 import { Skeleton } from "../components/Skeleton";
-import { StatusPill } from "../components/StatusPill";
-import { utcTimestamp } from "../data/format";
+import { Icon } from "../components/Icon";
 import { loadRunChain, type RunChainLink } from "../data/run-chain";
 import type { LoadedRun } from "../data/run-loader";
 import { runNumbers, runsByFinish } from "../data/runs-index";
@@ -68,24 +67,40 @@ export function Component(): ReactElement {
       data-state={state.kind}
       className={styles.page}
     >
-      <h2 className={runStyles.title}>Data · Manifest</h2>
+      {/* Board DataManifest1440: the title left, the Run picker and manifest.json download right. */}
+      <div className={runStyles.cardHead}>
+        <h2 className={runStyles.title}>Data · Manifest</h2>
+        <div className={runStyles.header}>
+          {latest && (
+            <select
+              className={runStyles.select}
+              aria-label="Run"
+              value={entry?.runId ?? latest.entry.runId}
+              onChange={(e) => setParams({ run: e.target.value })}
+            >
+              {runsByFinish(latest.index)
+                .map((r, i) => (
+                  <option key={r.runId} value={r.runId}>
+                    {runLabel(i + 1, r.finishedAt)}
+                  </option>
+                ))
+                .reverse()}
+            </select>
+          )}
+          {shown ? (
+            // manifest.json: the CID-checked bytes on the host that served this read.
+            <a
+              className={runStyles.chip}
+              href={shown.read.partUrl({ name: "manifest.json", cid: shown.manifestCid })}
+              download={`manifest-${shown.manifest.runId}.json`}
+            >
+              <Icon name="download" size="small" />
+              manifest.json
+            </a>
+          ) : null}
+        </div>
+      </div>
       <DataTabs current="manifest" verifyCid={shown?.manifestCid ?? null} />
-      {latest && (
-        <select
-          className={runStyles.select}
-          aria-label="Run"
-          value={entry?.runId ?? latest.entry.runId}
-          onChange={(e) => setParams({ run: e.target.value })}
-        >
-          {runsByFinish(latest.index)
-            .map((r, i) => (
-              <option key={r.runId} value={r.runId}>
-                {runLabel(i + 1, r.finishedAt)}
-              </option>
-            ))
-            .reverse()}
-        </select>
-      )}
       {failed && <ErrorBanner message={runErrorNode(failed)} />}
       {entry && !other && <Skeleton variant="rows" />}
       {state.kind === "loading" ? (
@@ -178,7 +193,7 @@ function RunChain({
                 <CidDisplay cid={link.manifestCid} />
               </span>
               <span className={runStyles.itemBody}>
-                finished {utcTimestamp(link.finishedAt)} UTC ·{" "}
+                finished {formatUtc(link.finishedAt)} UTC ·{" "}
                 {link.previousManifestCid === null ? (
                   "previous: none"
                 ) : (
@@ -217,20 +232,33 @@ function needsCar(artifact: ManifestArtifact): boolean {
   return artifact.kind === "directory" || artifact.size > VERIFY_MAX_BYTES;
 }
 
+/** The last three path segments of an artifact name ("b01/address/part-00000.parquet"). */
+const tail = (name: string): string => name.split("/").slice(-3).join("/");
+
+/**
+ * A-16 PO note 2026-10-26 (board DataManifest1440): the artifact table spans the card, each name
+ * shows its last three path segments (batch, table, file); the leading folders stay in the row as
+ * visually hidden text and in the cell's tooltip, so the row still reads as its full manifest
+ * name. The table scrolls inside a bounded panel with a sticky header instead of running for
+ * thousands of pixels (the board's pager would hide rows; every artifact stays a row because the
+ * hosted checks find each one by its manifest name). Below 600 px each row is a card (Data390).
+ */
 function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): ReactElement {
   return (
     <section className={runStyles.card} aria-labelledby="artifacts-heading">
       <h3 id="artifacts-heading" className={runStyles.sectionTitle}>
         Artifacts ({manifest.artifacts.length})
       </h3>
-      <div className={styles.scroll}>
+      <div className={`${styles.scroll} ${styles.artifactScroll}`} data-artifact-scroll="">
         <table className={styles.table} aria-label="Artifacts">
           <thead>
             <tr>
               <th scope="col">Name</th>
               <th scope="col">CID</th>
               <th scope="col">Codec</th>
-              <th scope="col">Size</th>
+              <th scope="col" className={styles.num}>
+                Size
+              </th>
               <th scope="col">SHA-256</th>
               <th scope="col">CAR</th>
               <th scope="col">Check</th>
@@ -239,7 +267,12 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
           <tbody>
             {manifest.artifacts.map((artifact) => (
               <tr key={artifact.name} data-artifact={artifact.name}>
-                <td className={styles.mono}>{artifact.name}</td>
+                <td title={artifact.name}>
+                  <span className={styles.mono}>
+                    <span>{artifact.name.slice(0, -tail(artifact.name).length)}</span>
+                    {tail(artifact.name)}
+                  </span>
+                </td>
                 <td>
                   <CidDisplay cid={artifact.cid} />
                 </td>
@@ -258,7 +291,7 @@ function ArtifactTable({ manifest }: { readonly manifest: RunManifestV1 }): Reac
                 </td>
                 <td>
                   {artifact.carCid === undefined ? (
-                    <StatusPill status="unavailable" text={NO_CAR_TEXT} />
+                    NO_CAR_TEXT
                   ) : (
                     <span data-car-cid={artifact.carCid}>
                       <CidDisplay cid={artifact.carCid} />
