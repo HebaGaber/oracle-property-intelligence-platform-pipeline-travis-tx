@@ -42,6 +42,7 @@ export function clean(cell) {
       .replace(/\*\*/g, "")
       .replace(/`/g, "")
       // Internal story IDs (A-01, A-13 …) stay in the docs, never on the page.
+      .replace(/,\s*A-\d{2}(?=\))/g, "")
       .replace(/\s*\(A-\d{2}[^)]*\)/g, "")
       .replace(/\bA-\d{2}\b\s*/g, "")
       .replace(/\s+/g, " ")

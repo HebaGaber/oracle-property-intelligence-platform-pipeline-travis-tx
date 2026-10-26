@@ -114,6 +114,9 @@ export const EXPLORE_TEXTS = Object.freeze({
   asPrinted: "as printed on permit",
   noCarrier: "not published · no lexicon carrier",
   noOpenPermits: "no open roofing permits in this radius on the current run",
+  /** PO 2026-10-26: an open permit includes stalled ones; when every match is stalled, say so. */
+  allStalled: (n: number): string =>
+    `All ${n.toLocaleString("en-US")} matching permits are stalled: still open past their expiry date, never closed.`,
   tenureUnknownCount: (n: number): string => `tenure unknown: ${n.toLocaleString("en-US")}`,
   engineBrowser: "DuckDB-WASM in your browser · read-only",
   engineServer: "DuckDB on the server · same views",

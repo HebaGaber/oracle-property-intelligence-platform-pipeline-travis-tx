@@ -367,10 +367,12 @@ function Results({
   const tab: ResultsTab = chosen ?? (zero ? "close" : "matches");
   const showTenureUnknown = request.tenure !== undefined;
   // AC-5 / D-9 / TC-009 step 5: with a permit filter that takes open permits and no open permit
-  // among the answered rows (none at all, or only stalled ones), say so in the fixed words.
-  const noOpen =
-    (request.permit === "open" || request.permit === "open_or_stalled") &&
-    !data.rows.some((r) => r.permit?.status_class === "open");
+  // among the answered rows, say so in the fixed words. PO 2026-10-26: an open permit includes
+  // stalled ones, so when rows came back and all are stalled the page says that instead.
+  const permitFilter = request.permit === "open" || request.permit === "open_or_stalled";
+  const anyOpen = data.rows.some((r) => r.permit?.status_class === "open");
+  const allStalled = permitFilter && !anyOpen && data.total_within_r > 0;
+  const noOpen = permitFilter && !anyOpen && !allStalled;
   const first = page * EXPLORE_PAGE_ROWS + 1;
   const last = Math.min(data.total_within_r, page * EXPLORE_PAGE_ROWS + pageRows.length);
   const pages = Math.max(1, Math.ceil(data.total_within_r / EXPLORE_PAGE_ROWS));
@@ -410,6 +412,11 @@ function Results({
         ))}
       </div>
       {noOpen ? <p className={styles.empty}>{EXPLORE_TEXTS.noOpenPermits}</p> : null}
+      {allStalled ? (
+        <p className={styles.engine} data-all-stalled="">
+          {EXPLORE_TEXTS.allStalled(data.total_within_r)}
+        </p>
+      ) : null}
       {zero ? (
         <>
           <p className={styles.empty}>

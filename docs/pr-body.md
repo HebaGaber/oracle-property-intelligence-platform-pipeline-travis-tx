@@ -2,6 +2,8 @@
 
 All nine stories (A-01 to A-04, A-07, A-11, A-13, A-14, A-16) are merged on `feature/oracle-pipeline`, each through gates G4 to G7. The full Travis County dataset is published to IPFS as CIDv1 artifacts in five immutable runs, explored on a hosted site, queried by a source-backed agent and an MCP server, and served with **$0.00 fixed monthly cost**.
 
+**Oracle and builder, both by the candidate.** As Oracle: discovered the sources, ran the county pipeline five times (pilot, Runs 1–3, the Run 3.1 correction), published every run with `elephant-cli` as CIDv1 artifacts, pinned them on Filebase and Pinata and verified them by CID on public gateways. As builder: the CountyLens app, the DuckDB query API, the source-backed agent, the MCP server and the zero-idle-cost AWS stacks, each story through gates G4–G7.
+
 ## Links
 
 | What | Where |
@@ -9,7 +11,7 @@ All nine stories (A-01 to A-04, A-07, A-11, A-13, A-14, A-16) are merged on `fea
 | Runtime | https://countylens.aldarraj.com |
 | Test credentials | The demo path is public, no login. An admin test account (`/admin/sign-in`: run controls, Activity) is available to evaluators on request; its password is not posted here |
 | Demo video | Not recorded yet (release step R7) |
-| MCP server | `POST https://s7h96zfam0.execute-api.eu-north-1.amazonaws.com/mcp` with a bearer token; six read-only tools; connection guide and a live "Try a tool" at `/help/mcp` |
+| MCP server | `POST https://s7h96zfam0.execute-api.eu-north-1.amazonaws.com/mcp` with a bearer token; six read-only tools; connection guide and a live "Try a tool" at `/help/mcp` (no token needed). A reviewer token for MCP Inspector or Claude Desktop is shared with evaluators on request, never in the repository |
 | Latest run | Run 3.1 `travis-full-run3-1-20261025`: [`runs/travis-full-run3-1-20261025/manifest.json`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/runs/travis-full-run3-1-20261025/manifest.json), manifest CID `bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai`, previous (Run 3) `bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm` |
 | Run history | [`runs/index.json`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/runs/index.json): pilot slice (2026-10-21), Run 1 (10-23), Run 2 (10-24), Run 3 (10-25), Run 3.1 (10-25, a correction of Run 3); each manifest names its predecessor (`previousManifestCid`) |
 | Independent verification | `npx tsx scripts/verify-manifest.ts runs/travis-full-run3-1-20261025/manifest.json --sample` fetches by CID from Pinata and orbitor (public gateways this project does not operate) and checks size and SHA-256 |
@@ -21,11 +23,13 @@ All nine stories (A-01 to A-04, A-07, A-11, A-13, A-14, A-16) are merged on `fea
 | Properties (TCAD real-property accounts) with coordinates, year built, roof age basis | 441,961 of the 493,246-parcel roll (R accounts; personal property and mobile homes out of scope) | TCAD 2026 certified export, Travis County GIS |
 | Situs addresses | 441,940 of 441,961 properties | TCAD, City of Austin address points (466,149) |
 | Ownership: owner names, last dated sale or deed, tenure, owner mailing ZIP (out-of-area) | mailing ZIP for 408,833 of 409,205 mailing addresses | TCAD |
-| Roofing permits with status, issue/final dates, open duration, printed contractor | 15,025 roofing permits of 2,381,886 City of Austin permit records read | data.austintexas.gov `3syk-w9eu` |
+| Roofing permits with status, issue/final dates, open duration, printed contractor | 15,025 roofing permits of 2,381,886 City of Austin permit records read. **City of Austin only**: the 22 other Travis jurisdictions release permits only through records requests, which were not filed ([`docs/source-limits.md`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/source-limits.md)) | data.austintexas.gov `3syk-w9eu` |
 | Contractor reconciliation against the Texas Comptroller registry | 342,333 registry rows; 130 candidate, 112 conflicting matches (run-level counts) | data.texas.gov `9cir-efmm` |
 | BBB ratings | Not collected: bbb.org refuses automated access (HTTP 403); each permit carries a BBB search link instead | — |
 
 Every row carries its source URL, capture time, table CID and run; every missing value carries a reason.
+
+**IPFS retention.** Every artifact of every run is pinned on Filebase. Pinata (a second, independent provider) holds all five run manifests and 201 of Run 3.1's 255 table files with identical CIDs; the CARs of every full run (directory roots included) are attached to the GitHub Releases, so any IPFS node can `ipfs dag import` a snapshot without re-encoding. For a directory artifact the manifest's size and SHA-256 describe its CAR (`carCid`).
 
 ## Demo transcript, step by step
 

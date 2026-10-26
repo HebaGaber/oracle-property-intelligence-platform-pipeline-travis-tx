@@ -170,6 +170,15 @@ describe("Open and stalled permits (AC-5, FR-005)", () => {
     expect(document.querySelectorAll("[data-contractor-resolution]")).toHaveLength(2);
   });
 
+  it("says every match is stalled (still open past expiry) when rows came back and none is open", async () => {
+    api.search.mockImplementation(async () =>
+      result([permitRow(0, "stalled", 6), permitRow(1, "stalled", 7)]),
+    );
+    await renderExplore("?place=austin&r=5&permit=open_stalled&openYrs=5");
+    expect(await screen.findByText(EXPLORE_TEXTS.allStalled(2))).toBeDefined();
+    expect(screen.queryByText(EXPLORE_TEXTS.noOpenPermits)).toBeNull();
+  });
+
   it("says `no open roofing permits in this radius on the current run` for an empty open list", async () => {
     api.search.mockImplementation(async () => ({ ...result([]), total_within_r: 0 }));
     await renderExplore("?place=pflugerville&r=5&permit=open&openYrs=5");

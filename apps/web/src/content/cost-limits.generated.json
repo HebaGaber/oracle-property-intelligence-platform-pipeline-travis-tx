@@ -159,7 +159,7 @@
         "pageSize": "Zip files listed on the public-information page",
         "fullCapture": "Not measured (reason: the incremental path reads Austin, not the supplement)",
         "rateLimit": "One identified request",
-        "antiBot": "The story context records HTTP 403 on publicinformation (2026-10-17 and 2026-10-19); the catalog shows the listing as available. The 403 evidence file was not found under docs/evidence/blocked/, so the 403 stays unconfirmed here",
+        "antiBot": "HTTP 403 on publicinformation was reported on 2026-10-17 and 2026-10-19, but no response was saved, so it is unconfirmed; the listing itself is reachable. The runs do not need these exports (the Austin incremental path reads Austin permits)",
         "optimisation": "Not used as a feed",
         "status": "blocked",
         "blockedDates": ["2026-10-17", "2026-10-19"],
@@ -179,7 +179,7 @@
       },
       {
         "source": "Austin Socrata permits 3syk-w9eu",
-        "throughput": ": 120,043 rows/min (median of 3 pages). backfill: 1,313.84 rows/s (about 78,800/min)",
+        "throughput": "Discovery sample: 120,043 rows/min (median of 3 pages). Full backfill: 1,313.84 rows/s (about 78,800/min)",
         "pageSize": "Keyset pages $order=:id, 50,000 rows per page (about 88 MB), no app token",
         "fullCapture": "Backfill: 48 pages, 2,381,226 rows, 1,812 s (about 31 min), 2026-10-21. Incremental Run 3 (2026-10-25): 48 pages, 2,381,886 rows read, about 36 min, 10,582 rows written, relink about 6 min",
         "rateLimit": "At most 1 request/s, project User-Agent, page timeout 5 min, up to 5 attempts with backoff (1 s base, 60 s cap, full jitter)",
@@ -203,7 +203,7 @@
       },
       {
         "source": "Texas Comptroller franchise-tax holders 9cir-efmm",
-        "throughput": "327,439 rows/min (median of 3 pages, )",
+        "throughput": "327,439 rows/min (median of 3 pages)",
         "pageSize": "Socrata, 50,000 rows per page, no app token",
         "fullCapture": "Projected 0.017 h for 342,334 Travis-coded rows; registry load of 342,333 rows ran as job travis-a07-identity-registry-20261022184652 (duration not recorded here)",
         "rateLimit": "Same Socrata etiquette; incremental by :updated_at",
@@ -227,7 +227,7 @@
       },
       {
         "source": "Overture places",
-        "throughput": "Not measured (reason: optional source, licence gate decided in )",
+        "throughput": "Not measured (reason: optional source with no licence decision yet)",
         "pageSize": "Bulk files",
         "fullCapture": "Not measured",
         "rateLimit": "n/a",
@@ -235,7 +235,7 @@
         "optimisation": "Bulk download only",
         "status": "not_measured",
         "blockedDates": [],
-        "missingReason": "optional source, licence gate decided in"
+        "missingReason": "optional source with no licence decision yet"
       },
       {
         "source": "Contractor licensing (TDLR)",
