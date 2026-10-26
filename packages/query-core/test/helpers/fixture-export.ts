@@ -133,8 +133,10 @@ export async function bindFixture(
       // column (a later export that emits oneOf properties) by giving any address row a value.
       const cols = [
         ...columnsOf(table),
-        ...(table === "address" && partRows.some((p) => p.some((r) => "postal_code" in r))
-          ? ([["postal_code", "VARCHAR"]] as [string, string][])
+        ...(table === "address"
+          ? (["postal_code", "state_code", "unnormalized_address"]
+              .filter((c) => partRows.some((p) => p.some((r) => c in r)))
+              .map((c) => [c, "VARCHAR"]) as [string, string][])
           : []),
       ];
       for (const [i, rows] of partRows.entries()) {

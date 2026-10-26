@@ -292,9 +292,9 @@ describe("parquet-meta", () => {
     const footer = await readParquetFooter("https://copy.host.test/part", PARQUET.length, {
       fetch: rangeFetch(ranges),
     });
-    // Oracle: DuckDB read_parquet over the same file gives count(*) = 20 and 58 columns (contract v1.1, A-11 Run 3).
+    // Oracle: DuckDB read_parquet over the same file gives count(*) = 20 and 61 columns (contract v1.2, A-11 Run 3.1).
     expect(footer.rows).toBe(20);
-    expect(footer.columns).toHaveLength(58);
+    expect(footer.columns).toHaveLength(61);
     expect(footer.columns.map((c) => c.name)).toEqual(
       expect.arrayContaining(["permit_number", "property_cid", "manifest_cid"]),
     );

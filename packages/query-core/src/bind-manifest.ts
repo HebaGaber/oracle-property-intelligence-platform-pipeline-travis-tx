@@ -70,6 +70,8 @@ export const REQUIRED_TABLES: readonly RequiredTable[] = [
   // written before Run 3 has no such edge; it binds as an empty typed relation.
   edge("county", "person_has_property"),
   edge("county", "company_has_property"),
+  // v1.2: the situs address record of the property (its text is read through meta.address_fields).
+  edge("county", "property_has_address"),
   edge("county", "person_has_mailing_address"),
   edge("county", "company_has_mailing_address"),
   {
@@ -446,20 +448,28 @@ export async function bindManifest(
     tables.push({ group: r.group, table: r.table, emitted: false, parts: [] });
   }
 
-  // meta.address_zip: the mailing ZIP of every address, from county.address.postal_code when the
-  // export carries that column (it does not yet), else an empty relation, so views.sql never
-  // names a column that may not exist.
-  // address is a top-level oneOf: export-tables emits identity columns only (ADR-0002 R7), so
-  // it is deliberately not a REQUIRED_TABLE (its absence or shape never fails a bind).
+  // meta.address_fields: the address text, ZIP and state of every address record, from the
+  // county.address columns the export carries. elephant-cli export-tables emits address's fields
+  // only with the oneOf-columns patch (Run 3.1, pipeline/publish/patches/); an earlier run's
+  // address table has identity columns only, so each missing column binds as NULL and views.sql
+  // never names a column that may not exist. meta.address_zip (the mailing ZIP) reads from it.
+  // address is deliberately not a REQUIRED_TABLE (its absence or shape never fails a bind).
   if (wanted("county.address")) {
     const cols = emitted.has("county.address")
       ? await engine.all("DESCRIBE SELECT * FROM county.address")
       : [];
-    const hasZip = cols.some((c) => String(c.column_name) === "postal_code");
+    const has = (name: string) => cols.some((c) => String(c.column_name) === name);
+    const field = (name: string) =>
+      has(name)
+        ? `CAST(any_value(${name}) AS VARCHAR) AS ${name}`
+        : `CAST(NULL AS VARCHAR) AS ${name}`;
     await engine.run(
-      hasZip
-        ? `CREATE OR REPLACE TABLE meta.address_zip AS SELECT cid, CAST(any_value(postal_code) AS VARCHAR) AS postal_code FROM county.address GROUP BY cid`
-        : "CREATE OR REPLACE TABLE meta.address_zip (cid VARCHAR, postal_code VARCHAR)",
+      cols.length > 0
+        ? `CREATE OR REPLACE TABLE meta.address_fields AS SELECT cid, ${["unnormalized_address", "postal_code", "state_code"].map(field).join(", ")} FROM county.address GROUP BY cid`
+        : "CREATE OR REPLACE TABLE meta.address_fields (cid VARCHAR, unnormalized_address VARCHAR, postal_code VARCHAR, state_code VARCHAR)",
+    );
+    await engine.run(
+      "CREATE OR REPLACE VIEW meta.address_zip AS SELECT cid, postal_code FROM meta.address_fields",
     );
   }
 
