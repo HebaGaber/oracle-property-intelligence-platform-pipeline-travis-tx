@@ -210,6 +210,7 @@ function LimitTableRow({ row }: { readonly row: LimitRow }): ReactElement {
               status="unavailable"
               text={`Not available · ${row.missingReason ?? ""}`}
               data={{ field: "throughput" }}
+              short="Not available"
             />
           ) : (
             row.throughput
@@ -351,6 +352,7 @@ function CostTableRow({ row }: { readonly row: CostRow }): ReactElement {
             status="unavailable"
             text={`Filebase usage: not available · ${row.missingReason ?? ""}`}
             data={{ field: "filebase_usage" }}
+            short="Filebase usage: not available"
           />
         ) : (
           row.idle
