@@ -30,8 +30,11 @@ import { bindOnce, getEngine, ownerAreaPublished } from "../engine/duckdb-node.j
 import { isIndexUnavailable } from "../engine/explore-index.js";
 import { lazyViewEngine, type BindViews } from "../engine/lazy-views.js";
 import {
+  ADDRESS_NOT_PUBLISHED_TEXT,
   EMPTY_OUTCOME_SENTENCES,
   UNPUBLISHED_FIELDS,
+  fieldLabel,
+  plainWording,
   createCitationRegistry,
   emptyOutcomeOf,
   unpublishedFromTools,
@@ -432,6 +435,11 @@ const CONTRACT_MISSING_NAMES: Record<string, string> = {
   bbb_rating: "bbb_status",
 };
 
+/** A-16: questions asking for a street address (not in the published export). */
+export function asksAddress(question: string): boolean {
+  return /\b(street )?address(es)?\b/i.test(question) && !/mailing/i.test(question);
+}
+
 /** ERR-64: questions about contractors / BBB (not answerable from the published export). */
 export function asksContractorOrBbb(question: string): boolean {
   return /contractor|\bbbb\b|better business/i.test(question);
@@ -567,7 +575,7 @@ export function composeStructuredParts(
   const unplacedSentences = [...unplaced.entries()].map(([key, n]) =>
     UNPLACED_REASONS[key] !== undefined
       ? UNPLACED_REASONS[key].sentence(n)
-      : `${n} ${n === 1 ? "record was" : "records were"} left out because ${key.replaceAll("_", " ")} is unknown.`,
+      : `${n} ${n === 1 ? "record was" : "records were"} left out because ${fieldLabel(key)} is unknown.`,
   );
 
   return {
@@ -676,7 +684,9 @@ function buildSystemPrompt(input: AgentAskInput): string {
     "that has one, and say 'no contractor printed on this permit' for rows where it is empty;",
     "never say contractor names are unavailable in general. Whenever the question asks about",
     "owners outside the area or a BBB rating, call declareUnpublished with those fields in the",
-    "same step as your search.",
+    "same step as your search. Street addresses are not published: say exactly",
+    "'Address not in the published export'. Write plain words, never field names (say",
+    "'contractor name', 'owner lives outside the area', 'year built', not the column names).",
     "Read vague durations as numbers: 'many years' or 'a long time' means open_years_min 5 (at",
     "least 5 years) unless the user gives a number; say the threshold you applied. If the",
     "question asks for owners outside/out of the area, still run the search with the other",
@@ -1049,6 +1059,8 @@ export async function runAgentAsk(
         "The contractor name is not printed in the published source (contractor not printed).",
       );
     }
+    if (asksAddress(input.prompt) && !/address not in the published export/i.test(cleaned))
+      extra.push(`${ADDRESS_NOT_PUBLISHED_TEXT}.`);
     missing = dedupeMissing(missing);
     extra.push(...composed.unplacedSentences);
     const emptyOutcome = emptyOutcomeOf(matches.length, result.toolOutputs);
@@ -1063,7 +1075,8 @@ export async function runAgentAsk(
     });
 
     return {
-      answer: [cleaned, ...extra].join(" ").trim(),
+      // A-16: one address wording, plain labels instead of raw field names.
+      answer: plainWording([cleaned, ...extra].join(" ").trim()),
       how,
       steps: result.steps,
       matches,

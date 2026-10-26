@@ -566,9 +566,25 @@ export function getSchema(rawInput: z.input<typeof GetSchemaInput> = {}): {
       missingReason: c.missingReason,
     })),
   }));
-  const uncarried = input.view
-    ? { [input.view]: (UNCARRIED as Record<string, unknown>)[input.view] ?? [] }
-    : UNCARRIED;
+  // A-16: each not_in_export entry carries the product's plain wording for MCP clients.
+  const withText = (entries: readonly { field: string; reason: string }[]) =>
+    entries.map((e) =>
+      e.reason === "not_in_export"
+        ? {
+            ...e,
+            reason_text:
+              /address|city_name|postal_code$/.test(e.field) && !e.field.startsWith("owner_")
+                ? "Address not in the published export"
+                : "Not in the published export",
+          }
+        : e,
+    );
+  const all = Object.fromEntries(
+    Object.entries(UNCARRIED as Record<string, readonly { field: string; reason: string }[]>).map(
+      ([view, entries]) => [view, withText(entries)],
+    ),
+  );
+  const uncarried = input.view ? { [input.view]: all[input.view] ?? [] } : all;
   const tool_inputs = Object.fromEntries(
     Object.entries(TOOL_SCHEMAS).map(([name, schema]) => [name, z.toJSONSchema(schema)]),
   );

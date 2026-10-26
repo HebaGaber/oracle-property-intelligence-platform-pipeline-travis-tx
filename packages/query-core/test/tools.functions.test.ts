@@ -531,3 +531,17 @@ describe("getSchema", () => {
     ]);
   });
 });
+
+describe("getSchema reason texts (A-16)", () => {
+  it("address fields say 'Address not in the published export'", () => {
+    const result = getSchema({ view: "v_property" });
+    const entries = (result.uncarried as Record<string, { field: string; reason_text?: string }[]>)
+      .v_property;
+    expect(entries?.find((e) => e.field === "unnormalized_address")?.reason_text).toBe(
+      "Address not in the published export",
+    );
+    expect(entries?.find((e) => e.field === "owner_mailing_postal_code")?.reason_text).toBe(
+      "Not in the published export",
+    );
+  });
+});
