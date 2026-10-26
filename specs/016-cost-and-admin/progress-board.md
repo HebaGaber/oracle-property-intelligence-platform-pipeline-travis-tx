@@ -4,7 +4,7 @@ Updated every 15 minutes by the main session. Times are EEST (UTC+3). Session ta
 
 Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the PO · 🛑 PO decision · ⚠️ at risk
 
-**Last update:** 06:25 EEST · **Revised target:** G7 ≈ 07:30 (PO style pass from design screenshots added 06:25); bridge live test on hold until Run 3.1 is done
+**Last update:** 06:40 EEST · **Revised target:** G7 ≈ 07:30; bridge live test on hold until Run 3.1 is done
 
 ## Rounds
 
@@ -41,8 +41,8 @@ Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the
 | UI2 | Parallel responsive review + fix round, 5 agents by page family, local build; then one push + final smeargle review | 5 agents | R3 | UI1 merged | 40 m | 04:20 | ✅ 5 families merged + Task B search/property port; bundle gate 310 KB (PO); pushed 5554665 04:37 |
 | UI3 | PO: Explore 20 rows per page, Task B listing style and order | F2 agent | R3 | CI on 2ef20ab closed | 30 m | 06:00 | 🔄 |
 | UI4 | Board-by-board round reusing Task B layouts (G1 shell/Hub, G2 Runs, G3 Coverage/Data, G4 admin/Legal; Explore done) | 4 agents | R3 | — | 45 m | 06:30 | 🔄 Explore, G2 Runs, G4 admin/Legal merged; G1 shell/Hub and G3 Coverage/Data running; shared RunSelect dropdown (PO) in progress |
-| DA1 | Unavailable-field audit: 32 places, 14 correct, 18 fixes (back end, Explore UI, Coverage) | 3 agents | R3 | audit ✅ | 40 m | 06:40 | 🔄 Explore UI part merged; back end and Coverage parts running |
-| UI5 | PO style pass from design screenshots (style only): Explore filters + AI answer rendering, header, Catalog, Manifest/Verify, Coverage, Runs; shared RunSelect | 7 agents | R3 | — | 45 m | 07:10 | 🔄 |
+| DA1 | Unavailable-field audit: 32 places, 14 correct, 18 fixes (back end, Explore UI, Coverage) | 3 agents | R3 | audit ✅ | 40 m | 06:40 | ✅ back end merged (API redeploy pending with the next push); Permits columns with the Coverage/Permits worker |
+| UI5 | PO style pass from design screenshots (style only): Explore filters + AI answer rendering, header, Catalog, Manifest/Verify, Coverage, Runs; shared RunSelect | 7 agents | R3 | — | 45 m | 07:10 | 🔄 merged: Explore (AI answer rendering, filters), header, RunSelect + Runs, Manifest/Verify; running: Catalog, Coverage/Permits |
 | G7 | G7 pre-check → 🛑 G7 → merge `--no-ff` → `progress.sh` → push | Me + PO | R3 | FX, EV | 10 m | 05:15 | ⏳ |
 
 ## Decisions and actions still needed from the PO
