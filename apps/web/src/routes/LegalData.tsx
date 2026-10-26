@@ -19,8 +19,9 @@ import styles from "./LegalData.module.css";
 export function Component(): ReactElement {
   return (
     <section aria-label="Legal · Data sources" data-route="legal-data" className={styles.page}>
-      <h2 className={styles.title}>Legal · Data sources</h2>
       <LegalLayout
+        title="Legal · Data sources"
+        measure="wide"
         current={ROUTES.legalData}
         banner={LEGAL_NOT_ADVICE}
         intro={
@@ -34,7 +35,7 @@ export function Component(): ReactElement {
             id: "sources",
             title: "Sources and licences",
             body: (
-              <>
+              <div className={styles.sourceTable}>
                 <div className={styles.sourceHead} aria-hidden="true">
                   <span>Source</span>
                   <span>Provides</span>
@@ -61,7 +62,7 @@ export function Component(): ReactElement {
                     </li>
                   ))}
                 </ul>
-              </>
+              </div>
             ),
           },
           {

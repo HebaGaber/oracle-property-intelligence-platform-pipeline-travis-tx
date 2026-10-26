@@ -1,16 +1,9 @@
-/* Legal pages (A-13 T038): static text on Atlas cards; tokens only. */
+/* Legal pages (A-13 T038; A-16 T050 per the Legal boards): static text; the layout, title, banner
+   and sections come from components/LegalLayout. Tokens only. */
 .page {
   display: grid;
   gap: var(--space-4);
-}
-
-.title {
-  margin: 0;
-  font-family: var(--md-sys-typescale-headline-small-font);
-  font-size: var(--md-sys-typescale-headline-small-size);
-  font-weight: var(--md-sys-typescale-headline-small-weight);
-  line-height: var(--md-sys-typescale-headline-small-line-height);
-  color: var(--md-sys-color-on-surface);
+  min-width: 0;
 }
 
 .body {
@@ -33,34 +26,6 @@
   overflow-wrap: anywhere;
 }
 
-.card {
-  box-sizing: border-box;
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-medium);
-  background: var(--md-sys-color-surface-container-lowest);
-  color: var(--md-sys-color-on-surface);
-}
-
-.sectionTitle {
-  margin: 0;
-  font-family: var(--md-sys-typescale-title-medium-font);
-  font-size: var(--md-sys-typescale-title-medium-size);
-  font-weight: var(--md-sys-typescale-title-medium-weight);
-  line-height: var(--md-sys-typescale-title-medium-line-height);
-  letter-spacing: var(--md-sys-typescale-title-medium-tracking);
-}
-
-.list {
-  display: grid;
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
 .rules {
   display: grid;
   gap: var(--space-2);
@@ -71,26 +36,25 @@
   line-height: var(--md-sys-typescale-body-large-line-height);
 }
 
-.item {
-  display: grid;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--md-sys-color-outline-variant);
+/* Sources and licences (LegalData boards): one outlined surface. Below 840 px each source is a
+   stacked row in a card (the 390 board's list); from 840 px a table with a filled header row
+   (Source · Provides · Licence or terms), as on the 768 and 1440 boards. */
+.sourceTable {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-lowest);
 }
 
-.item:first-child {
-  padding-top: 0;
-  border-top: none;
-}
-
-/* A-16 T050 (LegalData boards): the sources as table-like rows (Source · Provides · Licence or
-   terms) from 840 px, stacked below; an inline link inside a sentence. */
 .sourceHead {
   display: none;
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-label-medium-font);
-  font-size: var(--md-sys-typescale-label-medium-size);
-  font-weight: var(--md-sys-typescale-label-medium-weight);
+  padding: var(--space-4);
+  border-radius: var(--md-sys-shape-corner-large) var(--md-sys-shape-corner-large) 0 0;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
 }
 
 .sourceRows {
@@ -103,9 +67,13 @@
 .sourceRow {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--md-sys-color-outline-variant);
   overflow-wrap: anywhere;
+}
+
+.sourceRow:first-child {
+  border-top: 0;
 }
 
 .sourceRow > span {
@@ -125,6 +93,10 @@
 
   .sourceHead {
     display: grid;
+  }
+
+  .sourceRow:first-child {
+    border-top: 1px solid var(--md-sys-color-outline-variant);
   }
 }
 
