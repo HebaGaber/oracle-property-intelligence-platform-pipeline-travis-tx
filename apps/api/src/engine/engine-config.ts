@@ -9,6 +9,8 @@ export const REQUIRED_ENGINE_ENV_KEYS = ["CID_COPY_BUCKET", "READPATH_PRIVATE_PR
 
 /** `private/<name>/`: the only prefix the bench may read (research R-02, contracts/storage.md). */
 const PRIVATE_PREFIX = /^private\/[a-z0-9-]+\/$/;
+/** The Explore index: `private/<name>/` plus an optional views-version folder (`v1.2/`). */
+const INDEX_PREFIX = /^private\/[a-z0-9-]+\/(?:v[0-9]+(?:\.[0-9]+)*\/)?$/;
 
 const EngineEnv = z.object({
   CID_COPY_BUCKET: z.string().min(1),
@@ -17,7 +19,7 @@ const EngineEnv = z.object({
   // Lambdas). Optional: unset means "no index", so only small runs can be served.
   EXPLORE_INDEX_PREFIX: z
     .string()
-    .regex(PRIVATE_PREFIX, "must match private/<name>/")
+    .regex(INDEX_PREFIX, "must match private/<name>/ or private/<name>/v<version>/")
     .optional()
     .or(z.literal("").transform(() => undefined)),
 });

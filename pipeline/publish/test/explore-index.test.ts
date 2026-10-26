@@ -254,6 +254,19 @@ describe("index key layout and descriptor (T003, frozen interface)", () => {
     expect(() => indexKeys(EXPLORE_INDEX_PREFIX, "../escape")).toThrow();
   });
 
+  it("a views-version folder is allowed (private/explore-index/v1.2/), nothing deeper or other", () => {
+    expect(indexKeys("private/explore-index/v1.2/", fixture.manifestCid).indexJson).toBe(
+      `private/explore-index/v1.2/${fixture.manifestCid}/index.json`,
+    );
+    for (const bad of [
+      "private/explore-index/v1.2/x/",
+      "private/explore-index/1.2/",
+      "private/explore-index/v1.2",
+      "private/a/b/",
+    ])
+      expect(() => indexKeys(bad, fixture.manifestCid), bad).toThrow(/private/);
+  });
+
   it("the written index.json parses as the strict IndexDescriptor and binds the manifest CID, view SQL and source parts", () => {
     const json = JSON.parse(readFileSync(join(built.dir, "index.json"), "utf8"));
     const d = IndexDescriptor.parse(json);
