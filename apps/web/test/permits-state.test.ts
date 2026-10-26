@@ -8,7 +8,9 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  BBB_SEARCH_LINK_LABEL,
   CONTRACTOR_NOT_PRINTED_LABEL,
+  EXPLORE_TEXTS,
   MISSING_REASON_LABELS,
   PERMITS_TEXTS,
   PROGRESS_LABELS,
@@ -43,7 +45,12 @@ function row(n: number, overrides: Partial<PermitListRow> = {}): PermitListRow {
     improvement_status: "Permitted",
     status_class: "open",
     issue_date: `2026-09-0${n}`,
+    final_date: null,
+    permit_close_date: null,
+    open_days: 30 - n,
     contractor_resolution: "unresolved",
+    contractor_name_as_printed: null,
+    bbb_url: null,
     cid: cid(`permit${n}`),
     source_url: `https://source.test/TEST-000${n}`,
     captured_at: "2026-10-20T14:02:05Z",
@@ -317,6 +324,50 @@ describe("ready (FR-003, TC-020…025): the single page of permits with provenan
     expect(okPill?.textContent?.trim()).toBe("resolved");
   });
 
+  it("shows the printed contractor name with its BBB search link, else says none was printed (data audit rows 1, 9, 17)", async () => {
+    stubViewport(true);
+    const printed = row(1, {
+      contractor_name_as_printed: "TEST ROOFING CO",
+      bbb_url: "https://www.bbb.org/search?find_text=TEST%20ROOFING%20CO",
+      missing: [],
+    });
+    renderPage(immediate(loaded({ rows: [printed, row(2, { missing: [] })], permitsEmitted: 2 })));
+    const rows = (await screen.findByRole("table")).querySelectorAll("tbody tr");
+    const contractor = (i: number): HTMLElement =>
+      within(rows[i] as HTMLElement).getAllByRole("cell")[4] as HTMLElement;
+
+    expect(within(contractor(0)).getByText("As printed: TEST ROOFING CO")).toBeTruthy();
+    const link = within(contractor(0)).getByRole("link", { name: BBB_SEARCH_LINK_LABEL });
+    expect(link.getAttribute("href")).toBe(printed.bbb_url);
+    expect(link.getAttribute("rel")).toContain("noopener");
+
+    expect(within(contractor(1)).getByText(EXPLORE_TEXTS.contractorNotPrinted)).toBeTruthy();
+    expect(within(contractor(1)).getByText(EXPLORE_TEXTS.bbbBlocked)).toBeTruthy();
+    expect(within(contractor(1)).queryByRole("link")).toBeNull();
+  });
+
+  it("shows the final and close dates and days open under the issue date when the row has them", async () => {
+    stubViewport(true);
+    const closed = row(1, {
+      status_class: "closed",
+      final_date: "2026-09-20",
+      permit_close_date: "2026-09-22",
+      open_days: null,
+      missing: [],
+    });
+    renderPage(immediate(loaded({ rows: [closed, row(2, { missing: [] })], permitsEmitted: 2 })));
+    const rows = (await screen.findByRole("table")).querySelectorAll("tbody tr");
+    const dates = (i: number): HTMLElement =>
+      within(rows[i] as HTMLElement).getAllByRole("cell")[3] as HTMLElement;
+    expect([...dates(0).querySelectorAll("[data-date-line]")].map((el) => el.textContent)).toEqual([
+      "Final 2026-09-20",
+      "Closed 2026-09-22",
+    ]);
+    expect([...dates(1).querySelectorAll("[data-date-line]")].map((el) => el.textContent)).toEqual([
+      "Open 28 days",
+    ]);
+  });
+
   it("shows the displayed fields' values, or their Missing-reason label in the same cell", async () => {
     stubViewport(true);
     renderPage(immediate(loaded()));
@@ -324,7 +375,7 @@ describe("ready (FR-003, TC-020…025): the single page of permits with provenan
     const cells = (i: number) => within(rows[i] as HTMLElement).getAllByRole("cell");
     expect(cells(0)[1]?.textContent?.trim()).toBe("Permitted");
     expect(cells(0)[2]?.textContent?.trim()).toBe("open");
-    expect(cells(0)[3]?.textContent?.trim()).toBe("2026-09-01");
+    expect(cells(0)[3]?.querySelector("[data-issue-date]")?.textContent?.trim()).toBe("2026-09-01");
     expect(cells(1)[1]?.textContent?.trim()).toBe(MISSING_REASON_LABELS.enum_lacks_value);
     expect(cells(1)[2]?.textContent?.trim()).toBe("stalled");
     expect(cells(2)[2]?.textContent?.trim()).toBe(MISSING_REASON_LABELS.needs_review);

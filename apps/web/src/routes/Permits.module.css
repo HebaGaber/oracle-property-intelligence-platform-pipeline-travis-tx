@@ -370,3 +370,53 @@
     gap: var(--space-6);
   }
 }
+
+/* A-16 style pass (PO 2026-10-26 06:25, board family): the contractor cell stacks the
+   resolution pill with the printed name, the BBB search link (a 48 px target) and the row's
+   reasons; the date cell shows the issue date with the final/closed dates and days open under it
+   in body-small. */
+.contractor,
+.dates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.printed {
+  min-width: 0;
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
+  overflow-wrap: anywhere;
+}
+
+.note,
+.dateLine {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+}
+
+.dateLine {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bbbLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-9);
+  color: var(--md-sys-color-primary);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+}
+
+.bbbLink:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}

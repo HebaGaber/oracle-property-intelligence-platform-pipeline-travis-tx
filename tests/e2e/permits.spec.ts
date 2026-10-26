@@ -43,7 +43,9 @@
 import type { Page, TestInfo } from "@playwright/test";
 import { MISSING_REASONS, Missing, VIEWS, type RunManifestV1 } from "@countylens/contract";
 import {
+  BBB_SEARCH_LINK_LABEL,
   CONTRACTOR_NOT_PRINTED_LABEL,
+  EXPLORE_TEXTS,
   MISSING_REASON_LABELS,
   PERMITS_TEXTS,
   PROGRESS_LABELS,
@@ -496,8 +498,10 @@ function auditPageRows(page: Page, params: AuditParams): Promise<RowAudit> {
       const cells = tds.map((td) => normalize(visible(td)));
       if (tds.length !== p.columns) flag("columns", index, `${tds.length} cells`);
 
-      // Issue date: a real calendar date in YYYY-MM-DD that is not after the run's as_of.
-      const issue = cells[3] ?? "";
+      // Issue date: a real calendar date in YYYY-MM-DD that is not after the run's as_of. The cell
+      // also lists the final/close dates and days open under it (A-16), so read its value element.
+      const issueEl = tds[3]?.querySelector("[data-issue-date]");
+      const issue = issueEl ? normalize(visible(issueEl)) : (cells[3] ?? "");
       const parsed = /^\d{4}-\d{2}-\d{2}$/.test(issue) ? new Date(`${issue}T00:00:00Z`) : null;
       if (
         !parsed ||
@@ -1033,14 +1037,19 @@ test.describe("A-03 Permits list (FR-003, FR-005, FR-008, FR-011)", () => {
         }
 
         // Step 4: nothing else in the cell: no raw contractor name shown as if resolved.
+        // Since A-16 the cell also shows the name as printed ("As printed: …", never as resolved),
+        // the BBB search link or the BBB-blocked note, and the not-printed note.
         const allowed = new Set([
           state,
           MISSING_REASON_LABELS.contractor_unresolved,
           CONTRACTOR_NOT_PRINTED_LABEL,
           MISSING_REASON_LABELS.no_lexicon_carrier,
+          BBB_SEARCH_LINK_LABEL,
+          EXPLORE_TEXTS.bbbBlocked,
+          EXPLORE_TEXTS.contractorNotPrinted,
         ]);
         expect(
-          leaves.filter((leaf) => !allowed.has(leaf)),
+          leaves.filter((leaf) => !allowed.has(leaf) && !leaf.startsWith("As printed: ")),
           `row ${index}: contractor cell shows only the state and its labels`,
         ).toEqual([]);
         if (row.pills.contractor_name_raw) {

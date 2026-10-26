@@ -16,7 +16,17 @@ export interface PermitListRow {
   readonly status_class: StatusClass | null;
   /** YYYY-MM-DD. */
   readonly issue_date: string | null;
+  /** YYYY-MM-DD; null with a `missing` entry (not_closed, source_missing, needs_review). */
+  readonly final_date: string | null;
+  /** YYYY-MM-DD. */
+  readonly permit_close_date: string | null;
+  /** Days from issue to as_of for open and stalled permits; null when finished or implausible. */
+  readonly open_days: number | null;
   readonly contractor_resolution: ContractorResolution;
+  /** The contractor name as printed on the permit (not verified against any registry). */
+  readonly contractor_name_as_printed: string | null;
+  /** A BBB search URL built from the printed name; never fetched. */
+  readonly bbb_url: string | null;
   readonly cid: string;
   readonly source_url: string | null;
   /** ISO 8601 UTC (manifest `sources[].captured_at`). */
@@ -43,7 +53,12 @@ const schema = RoofingPermitRow.pick({
   improvement_status: true,
   status_class: true,
   issue_date: true,
+  final_date: true,
+  permit_close_date: true,
+  open_days: true,
   contractor_resolution: true,
+  contractor_name_as_printed: true,
+  bbb_url: true,
   cid: true,
   source_url: true,
   captured_at: true,

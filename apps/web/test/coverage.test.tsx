@@ -167,6 +167,45 @@ describe("Coverage counts come only from the manifest (FR-002, TC-016)", () => {
     expect(permit.textContent).toContain(built.manifest.runId);
     expect(kind("property").querySelector(`[data-cid="${built.propertyPart}"]`)).not.toBeNull();
   });
+
+  it("finds a full-county run's batched parts (`…/tables/bNN/<table>/…`), contractor links included", async () => {
+    const built = await buildRun();
+    const batched = (dir: string, table: string, cid: string) => ({
+      name: `pipeline/data/runs/r3/${dir}/tables/b01/${table}/part-00000.parquet`,
+      cid,
+      codec: "raw" as const,
+      size: 10,
+      sha256: "0".repeat(64),
+      kind: "table" as const,
+    });
+    const manifest: RunManifestV1 = {
+      ...built.manifest,
+      artifacts: [
+        batched("county-batched", "property", built.propertyPart),
+        batched("county-batched", "parcel", built.propertyPart),
+        batched("permits-batched", "property_improvement", built.permitsPart),
+        batched("permits-batched", "property_improvement_has_contractor", built.permitsPart),
+      ],
+    };
+    const bytes = encode(JSON.stringify(manifest));
+    const manifestCid = await rawCid(bytes);
+    const index = JSON.stringify({
+      schema: RUNS_INDEX_SCHEMA,
+      runs: [{ runId: manifest.runId, manifestCid, finishedAt: manifest.finishedAt }],
+    });
+    install({ ...built, manifest, bytes, manifestCid, index });
+    await renderCoverage();
+    await screen.findAllByRole("article");
+
+    expect(kind("property").querySelector("[data-table]")?.getAttribute("data-table")).toBe(
+      "county/property",
+    );
+    const contractor = kind("contractor").querySelector("[data-table]");
+    expect(contractor?.getAttribute("data-table")).toBe(
+      "property_improvement/property_improvement_has_contractor",
+    );
+    expect(contractor?.querySelector(`[data-cid="${built.permitsPart}"]`)).not.toBeNull();
+  });
 });
 
 describe("Coverage gaps say why (FR-002, FR-007, TC-017)", () => {
