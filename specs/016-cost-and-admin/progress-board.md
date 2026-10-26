@@ -4,7 +4,7 @@ Updated every 15 minutes by the main session. Times are EEST (UTC+3). Session ta
 
 Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the PO · 🛑 PO decision · ⚠️ at risk
 
-**Last update:** 03:25 EEST · **Revised target:** G7 ≈ 04:30 (PO UI notes + a parallel responsive review/fix round added 03:15); bridge live test on hold until Run 3.1 is done
+**Last update:** 03:41 EEST · **Revised target:** G7 ≈ 04:45; bridge live test on hold until Run 3.1 is done
 
 ## Rounds
 
@@ -37,8 +37,8 @@ Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the
 | BR | ✋ PO starts local stack + bridge; admin Start (`dry_run`) → SQS → bridge → Restate → "Running"; stop bridge → expired; DLQ email | Me + PO | R3 | D1, U1, B-G3 | 15 m (parallel with T1) | after Run 3.1 | ⏸ on hold (PO): waits for the Run 3.1 session to finish with the local Query DB |
 | FX | Fixes from review and hosted tests (ERR-75+), re-tests | builders | R3 | RV, T1, T2 | 15 m | 02:35 | ✅ ERR-75, 76, 77, 78 closed or fixed; Api redeployed 02:55 (ERR-78 prompt) |
 | EV | Evidence `docs/evidence/A-16.md` (Closure table), cost/limits final + ✋ billing screenshot, statuses, PR body, kit-usage, converge | Me (+ PO screenshot) | R3 | T1, BR | 15 m (parallel with FX) | 03:40 | 🔄 closure table, PR gaps, review log done; test report after final CI |
-| UI1 | PO UI notes: fluid layout, Runs switcher, remove SQL tab + tests (builder B); short missing pills, Manifest run picker (builder A) | 2 builders | R3 | — | 30 m | 03:45 | 🔄 |
-| UI2 | Parallel responsive review + fix round, 5 agents by page family, local build; then one push + final smeargle review | 5 agents | R3 | UI1 merged | 40 m | 04:20 | ⏳ |
+| UI1 | PO UI notes: fluid layout, Runs switcher, remove SQL tab + tests (builder B); short missing pills, Manifest run picker (builder A) | 2 builders | R3 | — | 30 m | 03:45 | ✅ builders A + B merged (891fc5a pushed 03:39); SQL tab removed with 5 tests by PO decision |
+| UI2 | Parallel responsive review + fix round, 5 agents by page family, local build; then one push + final smeargle review | 5 agents | R3 | UI1 merged | 40 m | 04:20 | 🔄 5 agents (F1 shell/Hub, F2 Explore, F3 Runs, F4 Coverage/Data, F5 admin/Legal) reviewing + fixing |
 | G7 | G7 pre-check → 🛑 G7 → merge `--no-ff` → `progress.sh` → push | Me + PO | R3 | FX, EV | 10 m | 03:45 | ⏳ |
 
 ## Decisions and actions still needed from the PO
