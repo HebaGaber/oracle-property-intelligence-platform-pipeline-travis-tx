@@ -21,7 +21,7 @@ Format: `[ID] [P?] [Group] Description — files — AC / Closure ID`. `[P]` = c
 - [x] T002 [P] [G1] Admin router I/O schemas (`admin.me`, `admin.run.start/stop/retry`, `admin.activity.summary`) and env-name constants (`VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_USER_POOL_CLIENT_ID`, `COUNTYLENS_ADMIN_QUEUE_URL`, `EXPLORE_INDEX_PREFIX`) and `EXPLORE_SEARCH_THROTTLE` — `apps/api/src/routers/admin.ts` (schemas only), `infra/src/config.ts` — AC-6, AC-8 — done `3e435b5`
 - [x] T003 [P] [G4] Index schema + key layout `private/explore-index/<manifestCid>/` + `IndexDescriptor` Zod (manifest CID, part CIDs + SHA-256, `viewsSha256`) — `pipeline/publish/src/explore-index.ts` — AC-13 — done `a137d5e`
 - [x] T004 [P] [G2a] Routes `/admin/sign-in`, `/activity` and the `cost-limits.generated.json` row schema — `packages/shared/src/routes.ts`, `apps/web/src/content/cost-limits.schema.ts` — AC-4, AC-6 — done `6f966ff`
-- [x] T005 [Me] ADR-0001 read-path amendment (private derived per-run index built only from published CIDs; PO option a, 2026-10-26) — `docs/decisions/0001-read-path.md`, `docs/architecture-constitution.md` — AC-13 — done `21aaa32`, accepted `ffc86fe`; constitution row AM-11 (0.2.5)
+- [x] T005 [Me] ADR-0001 read-path amendment (private derived per-run index built only from published CIDs; PO option a, 2026-10-26) — `docs/decisions/0001-read-path.md`, `docs/architecture-constitution.md` — AC-13 — done `21aaa32`, accepted `ffc86fe`; constitution row AM-11 (0.2.6)
 
 **Checkpoint:** commit `A-16: wave 1 frozen interfaces`; all groups rebase on it.
 
