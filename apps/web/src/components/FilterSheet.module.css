@@ -296,10 +296,13 @@ label.chip:focus-within,
 }
 
 /* TC-009: a segment / chip's native input covers its whole label (the visible 48 px target),
-   invisible but hit-testable, so a real click (and Playwright's setChecked) reaches it. */
+   invisible but hit-testable, so a real click (and Playwright's setChecked) reaches it.
+   TC-072: content-box sizing, so the 48 px min-height is the padding box the input fills (with
+   border-box the 1 px borders left the input 46 px tall). */
 .segment,
 label.chip {
   position: relative;
+  box-sizing: content-box;
 }
 
 .segment > input,
@@ -400,6 +403,20 @@ label.chip > input {
   }
 
   .panel {
+    display: grid;
+  }
+
+  /* Property drawer open (Property1440 board): the controls fold behind the button again. */
+  .folded .toggle {
+    display: block;
+    justify-self: start;
+  }
+
+  .folded .panel {
+    display: none;
+  }
+
+  .folded .panel.open {
     display: grid;
   }
 }
