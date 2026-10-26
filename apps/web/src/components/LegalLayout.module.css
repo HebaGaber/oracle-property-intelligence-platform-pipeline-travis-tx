@@ -1,5 +1,7 @@
-/* Legal layout (Legal boards): contents column (sticky from 1024 px), info banner on
-   secondary-container, sections separated by outline-variant rules. Tokens only. */
+/* Legal layout (Legal boards): contents as rows of underlined links above the text below 1024 px
+   (only Related below 600 px, as on the 390 board), a side column from 1024 px with the pair
+   centred in the main column; the page title (headline-large), an info banner, and sections
+   separated by space rather than rules. Every target is at least 48 px tall. Tokens only. */
 
 .layout {
   display: grid;
@@ -14,16 +16,33 @@
   min-width: 0;
 }
 
+.onPage {
+  display: none;
+}
+
+.onPage,
+.related {
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.related {
+  display: grid;
+}
+
 .tocTitle {
   margin: 0;
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-label-large-font);
-  font-size: var(--md-sys-typescale-label-large-size);
-  font-weight: var(--md-sys-typescale-label-large-weight);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  line-height: var(--md-sys-typescale-title-small-line-height);
 }
 
 .tocList {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-4);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -34,16 +53,11 @@
   align-items: center;
   box-sizing: border-box;
   min-height: var(--space-9);
-  padding: 0 var(--space-3);
-  border-radius: var(--md-sys-shape-corner-full);
-  color: var(--md-sys-color-on-surface);
-  text-decoration: none;
+  color: var(--md-sys-color-primary);
+  text-decoration: underline;
   font-family: var(--md-sys-typescale-body-medium-font);
   font-size: var(--md-sys-typescale-body-medium-size);
-}
-
-.tocLink:hover {
-  background: var(--md-sys-color-surface-container);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
 }
 
 .tocLink:focus-visible {
@@ -53,48 +67,88 @@
 
 .text {
   display: grid;
-  gap: var(--space-4);
+  align-content: start;
+  gap: var(--space-6);
   min-width: 0;
+}
+
+.title {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-headline-medium-font);
+  font-size: var(--md-sys-typescale-headline-medium-size);
+  font-weight: var(--md-sys-typescale-headline-medium-weight);
+  line-height: var(--md-sys-typescale-headline-medium-line-height);
 }
 
 .banner {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin: 0;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--md-sys-shape-corner-medium);
-  color: var(--md-sys-color-on-secondary-container);
-  background: var(--md-sys-color-secondary-container);
-  font-family: var(--md-sys-typescale-body-medium-font);
-  font-size: var(--md-sys-typescale-body-medium-size);
-  line-height: var(--md-sys-typescale-body-medium-line-height);
+  color: var(--status-info);
+  background: var(--status-info-container);
+  font-family: var(--md-sys-typescale-body-large-font);
+  font-size: var(--md-sys-typescale-body-large-size);
+  line-height: var(--md-sys-typescale-body-large-line-height);
 }
 
 .section {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-3);
   min-width: 0;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--md-sys-color-outline-variant);
   scroll-margin-top: var(--space-4);
 }
 
 .sectionTitle {
   margin: 0;
-  font-family: var(--md-sys-typescale-title-medium-font);
-  font-size: var(--md-sys-typescale-title-medium-size);
-  font-weight: var(--md-sys-typescale-title-medium-weight);
-  line-height: var(--md-sys-typescale-title-medium-line-height);
+  font-family: var(--md-sys-typescale-title-large-font);
+  font-size: var(--md-sys-typescale-title-large-size);
+  font-weight: var(--md-sys-typescale-title-large-weight);
+  line-height: var(--md-sys-typescale-title-large-line-height);
 }
 
+@media (min-width: 600px) {
+  .onPage {
+    display: grid;
+  }
+
+  .title {
+    font-family: var(--md-sys-typescale-headline-large-font);
+    font-size: var(--md-sys-typescale-headline-large-size);
+    font-weight: var(--md-sys-typescale-headline-large-weight);
+    line-height: var(--md-sys-typescale-headline-large-line-height);
+  }
+}
+
+/* Side contents column, the pair centred in the main column (no auto margins: the grid centres
+   its tracks). Text column: the board's 944 px for the sources table, 720 px for prose. */
 @media (min-width: 1024px) {
   .layout {
-    grid-template-columns: calc(var(--space-10) * 4) minmax(0, 1fr);
+    justify-content: center;
+    gap: var(--space-10);
+  }
+
+  .wide {
+    grid-template-columns: calc(var(--space-10) * 3) minmax(0, calc(var(--space-10) * 15));
+  }
+
+  .prose {
+    grid-template-columns: calc(var(--space-10) * 4) minmax(
+        0,
+        calc(var(--space-10) * 11 + var(--space-4))
+      );
   }
 
   .toc {
     position: sticky;
     top: 0;
+    gap: var(--space-5);
+  }
+
+  .tocList {
+    display: grid;
   }
 }

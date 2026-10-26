@@ -1,15 +1,84 @@
-/* Activity (A-16 T044; boards Activity1440/768/390): stat tiles, a query disclosure and the empty
-   state. Cards, tiles, meters and chips come from Runs.module.css. Tokens only. */
+/* Activity (A-16 T044; boards Activity1440/768/390): page header with Download CSV on the right,
+   the summary card and the per-day card side by side from 1200 px (the board's two panels),
+   filled borderless stat tiles (two columns at 390, three from 600), a query disclosure and the
+   empty state. Cards, meters and the section title come from Runs.module.css. Tokens only. */
+.head {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+}
+
+.download {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: 0 var(--space-6);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+  white-space: nowrap;
+}
+
+.download:hover {
+  background: var(--md-sys-color-surface-container);
+}
+
+.download:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.panels {
+  display: grid;
+  gap: var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
+
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+
 .metrics {
   display: grid;
   gap: var(--space-3);
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* The board's stat tile: surface-container-high, no outline (overrides Runs .tile). */
+.metrics > li {
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 0;
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.metrics > li > b,
+.metrics > li > a {
+  font-family: var(--md-sys-typescale-headline-small-font);
+  font-size: var(--md-sys-typescale-headline-small-size);
+  line-height: var(--md-sys-typescale-headline-small-line-height);
+}
+
 .metricLink {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: var(--space-9);
   color: var(--md-sys-color-primary);
   text-decoration: underline;
 }
@@ -56,13 +125,29 @@
 }
 
 @media (min-width: 600px) {
+  .head {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: start;
+  }
+
   .metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .metrics > li {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .metrics > li > b,
+  .metrics > li > a {
+    font-family: var(--md-sys-typescale-headline-medium-font);
+    font-size: var(--md-sys-typescale-headline-medium-size);
+    line-height: var(--md-sys-typescale-headline-medium-line-height);
   }
 }
 
 @media (min-width: 1200px) {
-  .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .panels {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   }
 }

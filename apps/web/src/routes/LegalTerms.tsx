@@ -6,16 +6,15 @@ import type { ReactElement } from "react";
 import { Link } from "react-router";
 import { ROUTES } from "@countylens/shared/routes";
 import { LegalLayout } from "../components/LegalLayout";
-import { LEGAL_NOT_ADVICE } from "../content/legal";
 import styles from "./LegalData.module.css";
 
 export function Component(): ReactElement {
   return (
     <section aria-label="Legal · Terms" data-route="legal-terms" className={styles.page}>
-      <h2 className={styles.title}>Legal · Terms</h2>
       <LegalLayout
+        title="Legal · Terms"
         current={ROUTES.legalTerms}
-        banner={LEGAL_NOT_ADVICE}
+        banner="These terms describe how CountyLens may be used. They are not legal advice."
         sections={[
           {
             id: "what",
