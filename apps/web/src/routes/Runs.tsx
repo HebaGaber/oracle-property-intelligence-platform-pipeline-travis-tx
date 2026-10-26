@@ -194,22 +194,27 @@ function RunList({
   const latestId = entries[entries.length - 1]?.runId;
   const shown = entries.find((entry) => entry.runId === currentId) ?? entries[entries.length - 1];
   return (
+    // Board "rsel": one outlined card, done glyph, the run (dropdown) over its finish time and run
+    // ID, the publication pill on the right.
     <div className={styles.runPick} data-run-list="" data-current-run={shown?.runId ?? ""}>
-      <RunSelect
-        runs={entries}
-        value={shown?.runId ?? null}
-        label="Run"
-        hideLabel
-        onChange={(runId) => {
-          if (runId !== null) void navigate({ search: runSearch(runId, latestId) });
-        }}
-      />
-      {shown === undefined ? null : (
-        <span className={styles.itemBody}>
-          <StatusPill status="info" icon="cloud_done" text="Published" />
-          {formatUtc(shown.finishedAt)} UTC · <span className={styles.mono}>{shown.runId}</span>
-        </span>
-      )}
+      <Icon name="check_circle" size="medium" />
+      <span>
+        <RunSelect
+          runs={entries}
+          value={shown?.runId ?? null}
+          label="Run"
+          hideLabel
+          onChange={(runId) => {
+            if (runId !== null) void navigate({ search: runSearch(runId, latestId) });
+          }}
+        />
+        {shown === undefined ? null : (
+          <span title={shown.runId}>
+            {formatUtc(shown.finishedAt)} UTC · {shown.runId}
+          </span>
+        )}
+      </span>
+      <StatusPill status="info" icon="cloud_done" text="Published" />
     </div>
   );
 }

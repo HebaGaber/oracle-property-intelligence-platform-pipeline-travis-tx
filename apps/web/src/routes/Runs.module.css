@@ -299,21 +299,62 @@
   line-height: var(--md-sys-typescale-label-large-line-height);
 }
 
-/* The run picker (RunSelect) with the shown run's pill, finish time and run ID beside it. */
+/* The run picker (board "rsel"): one outlined card with the done glyph, the run dropdown (its own
+   border dropped) over the finish time and run ID, and the publication pill. */
 .runPick {
-  display: flex;
-  flex-wrap: wrap;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-2) var(--space-3);
+  gap: 0 var(--space-3);
+  justify-self: start;
+  width: min(100%, calc(var(--space-10) * 7));
+  padding: 0 var(--space-3);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
 }
 
-.runPick > span:last-child {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
+.runPick:focus-within {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.runPick > [data-icon] {
+  color: var(--status-success);
+}
+
+.runPick > span:nth-child(2) {
+  display: grid;
   min-width: 0;
-  overflow-wrap: anywhere;
+}
+
+.runPick select {
+  padding-left: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+}
+
+.runPick select:hover {
+  background: transparent;
+}
+
+.runPick select:focus-visible {
+  outline: none;
+}
+
+.runPick > span:nth-child(2) > span + span {
+  overflow: hidden;
+  padding-bottom: var(--space-1);
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Key / value rows (Atlas kv): label on the left, value on the right from 600 px. */
@@ -1167,4 +1208,10 @@ p.changeRow {
     text-align: center;
     transform: translateY(-50%);
   }
+}
+
+/* Sync status (board): compact key / value rows without dividers. */
+[data-sync-status] .kvRow {
+  padding: var(--space-1) 0;
+  border-top: 0;
 }
