@@ -219,6 +219,7 @@ describe("buildRunManifest", () => {
         dropLimitationPrefixes: ["county published_rows"],
         sourceLimitations: { [first.name]: ["one GET per permit"] },
         registryNote: "Comptroller registry loaded 2026-10-22",
+        // the carried fixed note is replaced, never listed next to the registry note
         correctionNote: "Run 3.1 note",
       }),
       deps(f),
@@ -272,7 +273,32 @@ describe("buildRunManifest", () => {
         config(f, { contractorCoverage: path, coverageOverrides: overrides(byState) }),
         deps(f),
       ),
+    ).rejects.toThrow(/states sum to 7, not its 8 permits/);
+    writeFileSync(path, JSON.stringify({ permits: 8, byState: { ...byState, unresolved: 5 } }));
+    await expect(
+      buildRunManifest(
+        config(f, { contractorCoverage: path, coverageOverrides: overrides(byState) }),
+        deps(f),
+      ),
     ).rejects.toThrow(/8 permits but 7 are published/);
+    writeFileSync(path, JSON.stringify({ permits: 7, byState: { resolved: 0, unresolved: 7 } }));
+    await expect(
+      buildRunManifest(
+        config(f, { contractorCoverage: path, coverageOverrides: overrides(byState) }),
+        deps(f),
+      ),
+    ).rejects.toThrow(/no count for: candidate, ambiguous, conflicting/);
+  });
+
+  it("registryNote replaces a carried 'baseline not loaded' note, never lists both", async () => {
+    const f = await runFixture();
+    const { manifest: m } = await buildRunManifest(
+      config(f, { registryNote: "Comptroller registry loaded 2026-10-22 (342333 rows, x)" }),
+      deps(f),
+    );
+    const austin = m.sources[0]?.limitations ?? [];
+    expect(austin).not.toContain("Comptroller baseline not loaded (A-07)");
+    expect(austin.filter((l) => l.startsWith("Comptroller registry loaded"))).toHaveLength(1);
   });
 
   it("refuses sourceLimitations for a source the base does not carry", async () => {

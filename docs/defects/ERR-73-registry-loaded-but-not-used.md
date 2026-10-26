@@ -32,4 +32,6 @@ Counts and notes only. No published row changes: the per-permit resolution is no
 
 ## Result (Run 3.1, 15,025 published permits)
 
-resolved 0 · candidate 130 · ambiguous 0 · conflicting 112 · unresolved 14,783 (10,473 print no contractor, 4,310 names match no registry legal name). Sum 15,025.
+resolved 0 · candidate 130 · ambiguous 0 · conflicting 112 · unresolved 14,783 (10,473 print no contractor, 4,310 permits whose published name matches no registry legal name). Sum 15,025. `conflicting` follows the resolver: the name matches registry legal names and none of them is active.
+
+**Not reconciled (follow-up, A-16):** the Run 3 coverage review (`docs/reviews/run3-coverage-task-a.md`) reported 375 permits matching a Comptroller name by an exact normalised-name query, and A-07's ledger 311 candidate + 78 conflicting over all 22,084 reroof permits in the Query DB. Run 3.1 counts 242 (130 + 112) over the 15,025 published permits and their published names. The populations differ (Query DB vs published permits; company names only vs company-else-person), and the review's query method is not recorded, so the gap is unexplained. Run-level counts only; no row changes.

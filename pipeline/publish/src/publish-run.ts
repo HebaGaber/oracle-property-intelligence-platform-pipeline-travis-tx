@@ -469,6 +469,11 @@ function filebaseStep(deps: FilebaseStepDeps): StepImpl {
       const env = deps.loadEnv();
       const secrets = secretValues(env);
       const units = new Map(uploadUnits(ctx.manifest).map((u) => [u.id, u]));
+      const unknown = (deps.units ?? []).filter((id) => !units.has(id));
+      if (unknown.length > 0)
+        throw new Error(
+          `PUBLISH_FILEBASE_UNITS names units the manifest does not have: ${unknown.join(", ")}`,
+        );
       const order = deps.reverse === true ? [...pending].reverse() : pending;
       for (const item of order) {
         const unit = units.get(item.id);
@@ -479,6 +484,16 @@ function filebaseStep(deps: FilebaseStepDeps): StepImpl {
         }
         if (!unitSelected(unit.id, deps.units)) {
           deps.log(`skip ${unit.id} (another runner uploads it)`);
+          continue;
+        }
+        // A tables folder links its batch CAR (county_root): Filebase pins it recursively, so the
+        // folder waits until a receipt records that CAR (Run 3.1: a folder uploaded first never pinned).
+        if (
+          unit.kind === "tables" &&
+          unit.carCid !== undefined &&
+          !scanUploadReceipts(ctx.receiptsRoot).some((r) => sameCid(r.root, unit.carCid as string))
+        ) {
+          deps.log(`skip ${unit.id} (waiting for its CAR ${unit.carCid} to have a receipt)`);
           continue;
         }
         const final = join(ctx.receiptsDir, `${unit.id}.json`);
@@ -608,7 +623,9 @@ function carFilesStep(deps: CarFilesStepDeps): StepImpl {
           continue;
         }
         if (deps.presentOnly === true && !existsSync(target.path)) {
-          items.push({ id, action: "skip", reason: "file not fetched yet (no receipt written)" });
+          // Still "run": it has no receipt, so the step's completion check and the index gate count
+          // it as open (code review 2026-10-26). execute() leaves it for a later call.
+          items.push({ id, action: "run", reason: "file not fetched yet (no receipt written)" });
           continue;
         }
         if (probe && deps.skipProbe !== true) {

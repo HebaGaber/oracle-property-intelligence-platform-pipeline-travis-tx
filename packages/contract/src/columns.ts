@@ -309,7 +309,7 @@ const V_PROPERTY: readonly Column[] = [
   enumCol(
     "owner_area_class",
     false,
-    "derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2)",
+    "derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code: Runs 1 to 3; from Run 3.1 it does, v1.2); a mailing address without a ZIP reads source_missing",
     "Owner mailing area class",
     null,
   ),
@@ -347,7 +347,7 @@ const V_PROPERTY: readonly Column[] = [
     "string",
     V,
     true,
-    "address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated",
+    "address.postal_code (first 5 characters) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated; reasons no_mailing_address, source_missing (address without a ZIP), not_in_export (Runs 1 to 3) or the owner reason",
     "Owner mailing ZIP",
     "no_mailing_address",
   ),

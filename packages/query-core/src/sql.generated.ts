@@ -183,8 +183,8 @@ owner_mailing AS (
 mailing AS (
   SELECT om.property_cid,
     CAST(count(DISTINCT om.address_cid) AS INTEGER) AS n_mailing,
-    CAST(count(DISTINCT az.postal_code) AS INTEGER) AS n_zip,
-    nullif(array_to_string(list_sort(list_distinct(list(left(az.postal_code, 5)))), '; '), '')
+    CAST(count(DISTINCT af.postal_code) AS INTEGER) AS n_zip,
+    nullif(array_to_string(list_sort(list_distinct(list(left(af.postal_code, 5)))), '; '), '')
       AS mailing_zips,
     nullif(array_to_string(list_sort(list_distinct(list(af.state_code))), '; '), '')
       AS mailing_states,
@@ -192,9 +192,8 @@ mailing AS (
          WHEN bool_or(za.area_class = 'regional') THEN 'regional'
          WHEN bool_or(za.area_class = 'out_of_area') THEN 'out_of_area' END AS area_class
   FROM owner_mailing om
-  LEFT JOIN meta.address_zip az ON az.cid = om.address_cid
   LEFT JOIN meta.address_fields af ON af.cid = om.address_cid
-  LEFT JOIN meta.zcta_area za ON za.zcta = left(az.postal_code, 5)
+  LEFT JOIN meta.zcta_area za ON za.zcta = left(af.postal_code, 5)
   GROUP BY om.property_cid
 ),
 -- The situs address text of each property (v1.2), one per property (the smallest address cid
@@ -327,8 +326,8 @@ SELECT
       THEN miss('property_structure_built_year', 'source_missing') END,
     CASE WHEN unnormalized_address IS NULL THEN miss('unnormalized_address',
       CASE WHEN address_text_emitted THEN 'source_missing' ELSE 'not_in_export' END) END,
-    miss('city_name', 'source_missing'),
-    miss('postal_code', 'source_missing'),
+    miss('city_name', CASE WHEN address_text_emitted THEN 'source_missing' ELSE 'not_in_export' END),
+    miss('postal_code', CASE WHEN address_text_emitted THEN 'source_missing' ELSE 'not_in_export' END),
     CASE WHEN latitude IS NULL THEN miss('latitude', 'no_coordinates') END,
     CASE WHEN longitude IS NULL THEN miss('longitude', 'no_coordinates') END,
     CASE WHEN coordinate_source = 'none' THEN miss('coordinate_source', 'no_coordinates') END,

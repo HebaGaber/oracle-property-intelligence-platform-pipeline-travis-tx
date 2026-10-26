@@ -349,7 +349,7 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
       WHEN coalesce(n_mailing, 0) = 0 THEN 'no_mailing_address'
       WHEN NOT zips_emitted THEN 'not_in_export'
       WHEN NOT lookup_loaded THEN 'out_of_scope'
-      WHEN n_zip = 0 THEN 'no_mailing_address'
+      WHEN n_zip = 0 THEN 'source_missing'
       ELSE 'zip_not_zcta' END`,
   // v1.2: why an owner mailing ZIP/state is empty (no owner, no mailing address, or an export
   // without address fields).

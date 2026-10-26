@@ -180,8 +180,11 @@ function resolvePermitContractor(
   permitNumber: string,
   identity: ContractorIdentityInput,
 ): ResolverState {
-  const raw = row.contractor_company_name;
-  const rawContractorName = raw !== undefined && raw !== null && raw.trim() !== "" ? raw : null;
+  // The name the permit publishes (ERR-72: the company, else the contractor person; placeholders
+  // such as N/A count as none), so the run's five-state totals describe the published names.
+  const rawContractorName =
+    publishedContractorName(row.contractor_company_name) ??
+    publishedContractorName(row.contractor_full_name);
   return resolveContractor({
     permitKey: permitNumber,
     rawContractorName,

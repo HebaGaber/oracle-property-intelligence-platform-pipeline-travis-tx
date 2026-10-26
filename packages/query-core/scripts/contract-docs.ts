@@ -205,15 +205,19 @@ then the companies (by name), each once, separated by \`; \`. A property with no
 \`owner_unparsed\`, \`owner_confidential\` (TCAD confidentiality flag, P0-15) or \`no_owner_record\`,
 read from the manifest \`coverage\` counts \`owner_unparsed\`, \`owner_confidential\` and
 \`owner_no_record\` (when more than one is non-zero the row cannot be told apart and lists
-\`needs_review\`). \`no_dated_sale\` is a tenure reason only. A run written before Run 3 has no
+\`needs_review\`). **Known gap (Runs 3 and 3.1, PO decision):** their manifests carry none of these
+three counts, so every property without an owner reads \`no_owner_record\`, including the 15,410
+§25.025 confidential owners (counted in the TCAD source limitation) and about 17,160 owner names the
+Run 3 splitter could not parse. \`no_dated_sale\` is a tenure reason only. A run written before Run 3 has no
 property-owner edges: its current owners are the persons and companies of the latest dated sale
 (the latest dated sale is the current owner), so the same rows keep reading.
 
 ## Contractor
 
 \`contractor_resolution\` is \`resolved\` only when the permit has exactly one
-\`property_improvement_has_contractor\` edge; with several edges no company is picked: the row is
-\`unresolved\` and lists \`{field: "contractor_company_cid", reason: "needs_review"}\`. The AD-24
+\`property_improvement_has_contractor\` edge **and** that company carries an official registry id
+(see v1.1: a name as printed never does, so every Austin permit reads \`unresolved\`); with several
+edges no company is picked: the row is \`unresolved\` and lists \`{field: "contractor_company_cid", reason: "needs_review"}\`. The AD-24
 five-state totals (\`contractor_resolved\`, \`contractor_candidate\`, \`contractor_ambiguous\`,
 \`contractor_conflicting\`, \`contractor_unresolved\`) are in the manifest \`coverage\`.
 
@@ -230,7 +234,7 @@ official registry id, which no Austin permit prints). No phone or address is pub
 person (\`contractor_full_name\`) publishes that person's name the same way, as \`company.name\` as
 printed (the lexicon links a permit's contractor to a company only, so no person record is
 written); a printed company always wins. \`company.name\` can therefore hold an individual's name.
-No column changes, so this stays v1.1.
+ERR-72 itself adds no column.
 
 On \`v_roofing_permit\`: \`contractor_name_as_printed\` (the printed contractor name, null with
 \`contractor_unresolved\`), \`bbb_status\` = \`blocked\` with \`bbb_status_reason\` = \`bbb_blocked\` when a
@@ -257,10 +261,13 @@ different places; the same ZIPs now drive \`owner_area_class\`. The fields come 
 \`address\` class the columns of its two shapes; the CAR files are unchanged. An earlier run binds
 the three columns as null with \`not_in_export\`. The situs \`city_name\` and \`postal_code\` stay gaps
 with \`source_missing\`: TCAD prints the situs as one line, so they are inside
-\`unnormalized_address\`. This reason now applies to every run, including runs bound before v1.2
-(they read \`not_in_export\` before), because the cause is the source, not the export. An owner with
-a mailing address that lacks a ZIP or state reads \`source_missing\`; \`no_mailing_address\` means the
-owner has none. Details: \`docs/defects/ERR-74-address-not-in-tables.md\`.
+\`unnormalized_address\`; a run whose export has no address fields (Runs 1 to 3) still lists them
+as \`not_in_export\`. An owner whose mailing address lacks a ZIP or state reads \`source_missing\` on
+\`owner_mailing_*\` and \`owner_area_class\`; \`no_mailing_address\` means the owner has none; with no
+owner the owner reason is passed through. Run 3.1 fill: situs text on 441,940 of 441,961 properties;
+an owner mailing ZIP on 408,780 properties (409,389 have an owner); 24,532 mailing addresses carry a
+state other than TX, a few of them foreign provinces, whose postal code is still cut to 5 characters.
+Details: \`docs/defects/ERR-74-address-not-in-tables.md\`.
 
 ## Manifest coverage and profiles for consumers
 

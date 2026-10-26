@@ -187,7 +187,8 @@ describe("owner_area_class when the export carries address.postal_code", () => {
     expect(p(NOMAIL)).toMatchObject({ owner_area_class: "unknown", owner_is_out_of_area: null });
     expect(reasonOf(p(NOMAIL), "owner_area_class")).toBe("no_mailing_address");
     expect(reasonOf(p(NOMAIL), "owner_is_out_of_area")).toBe("no_mailing_address");
-    expect(reasonOf(p(NOZIP), "owner_area_class")).toBe("no_mailing_address");
+    // a mailing address without a ZIP: the record exists, its ZIP does not (porygon 2026-10-26)
+    expect(reasonOf(p(NOZIP), "owner_area_class")).toBe("source_missing");
     expect(reasonOf(p(NOTZCTA), "owner_area_class")).toBe("zip_not_zcta");
     // no owner at all: the owner reason is the area reason
     expect(p(NOSALE)?.owner_area_class).toBe("unknown");
@@ -246,6 +247,9 @@ describe("v1.2 address columns (Run 3.1 export with address fields)", () => {
     });
     expect(reasonOf(p(IN), "unnormalized_address")).toBe("not_in_export");
     expect(reasonOf(p(IN), "owner_mailing_postal_code")).toBe("not_in_export");
+    // the situs city/ZIP of an export without address fields: not exported (code review 2026-10-26)
+    expect(reasonOf(p(IN), "city_name")).toBe("not_in_export");
+    expect(reasonOf(p(IN), "postal_code")).toBe("not_in_export");
   });
 });
 

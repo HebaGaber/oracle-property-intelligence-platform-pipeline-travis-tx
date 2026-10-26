@@ -419,11 +419,19 @@ export async function buildRunManifest(
     const report = JSON.parse(
       readFileSync(resolvePath(repoRoot, config.contractorCoverage), "utf8"),
     ) as { permits: number; byState: Record<string, number> };
+    const STATES = ["resolved", "candidate", "ambiguous", "conflicting", "unresolved"];
+    const missing = STATES.filter((s) => typeof report.byState?.[s] !== "number");
+    if (missing.length > 0)
+      throw new Error(`contractorCoverage has no count for: ${missing.join(", ")}`);
+    const sum = STATES.reduce((n, s) => n + (report.byState[s] as number), 0);
+    if (sum !== report.permits)
+      throw new Error(`contractorCoverage states sum to ${sum}, not its ${report.permits} permits`);
     if (report.permits !== emitted.total)
       throw new Error(
         `contractorCoverage counts ${report.permits} permits but ${emitted.total} are published`,
       );
-    for (const [state, n] of Object.entries(report.byState)) {
+    for (const state of STATES) {
+      const n = report.byState[state];
       const got = coverage[`contractor_${state}`]?.count;
       if (got !== n)
         throw new Error(

@@ -409,6 +409,12 @@ function source(input: ManifestSourceInput, fixedNote: string): ManifestSource {
   // via sourceInputFromDelta/computeSourceDelta); otherwise A-03's walking-skeleton default —
   // the first run of this contract, where everything this capture reports is new.
   const delta = input.delta ?? { added: records, changed: 0, removed: 0 };
+  // A run that states its own registry note (ERR-73) drops a carried "baseline not loaded" note,
+  // so the two never stand side by side.
+  const carried =
+    fixedNote !== COMPTROLLER_LIMITATION
+      ? input.limitations.filter((l) => l !== COMPTROLLER_LIMITATION)
+      : [...input.limitations];
   return {
     name: input.name,
     url: input.url,
@@ -418,9 +424,7 @@ function source(input: ManifestSourceInput, fixedNote: string): ManifestSource {
     added: delta.added,
     changed: delta.changed,
     removed: delta.removed,
-    limitations: input.limitations.includes(fixedNote)
-      ? [...input.limitations]
-      : [...input.limitations, fixedNote],
+    limitations: carried.includes(fixedNote) ? carried : [...carried, fixedNote],
   };
 }
 

@@ -122,15 +122,19 @@ then the companies (by name), each once, separated by `; `. A property with no o
 `owner_unparsed`, `owner_confidential` (TCAD confidentiality flag, P0-15) or `no_owner_record`,
 read from the manifest `coverage` counts `owner_unparsed`, `owner_confidential` and
 `owner_no_record` (when more than one is non-zero the row cannot be told apart and lists
-`needs_review`). `no_dated_sale` is a tenure reason only. A run written before Run 3 has no
+`needs_review`). **Known gap (Runs 3 and 3.1, PO decision):** their manifests carry none of these
+three counts, so every property without an owner reads `no_owner_record`, including the 15,410
+§25.025 confidential owners (counted in the TCAD source limitation) and about 17,160 owner names the
+Run 3 splitter could not parse. `no_dated_sale` is a tenure reason only. A run written before Run 3 has no
 property-owner edges: its current owners are the persons and companies of the latest dated sale
 (the latest dated sale is the current owner), so the same rows keep reading.
 
 ## Contractor
 
 `contractor_resolution` is `resolved` only when the permit has exactly one
-`property_improvement_has_contractor` edge; with several edges no company is picked: the row is
-`unresolved` and lists `{field: "contractor_company_cid", reason: "needs_review"}`. The AD-24
+`property_improvement_has_contractor` edge **and** that company carries an official registry id
+(see v1.1: a name as printed never does, so every Austin permit reads `unresolved`); with several
+edges no company is picked: the row is `unresolved` and lists `{field: "contractor_company_cid", reason: "needs_review"}`. The AD-24
 five-state totals (`contractor_resolved`, `contractor_candidate`, `contractor_ambiguous`,
 `contractor_conflicting`, `contractor_unresolved`) are in the manifest `coverage`.
 
@@ -147,7 +151,7 @@ official registry id, which no Austin permit prints). No phone or address is pub
 person (`contractor_full_name`) publishes that person's name the same way, as `company.name` as
 printed (the lexicon links a permit's contractor to a company only, so no person record is
 written); a printed company always wins. `company.name` can therefore hold an individual's name.
-No column changes, so this stays v1.1.
+ERR-72 itself adds no column.
 
 On `v_roofing_permit`: `contractor_name_as_printed` (the printed contractor name, null with
 `contractor_unresolved`), `bbb_status` = `blocked` with `bbb_status_reason` = `bbb_blocked` when a
@@ -174,10 +178,13 @@ different places; the same ZIPs now drive `owner_area_class`. The fields come fr
 `address` class the columns of its two shapes; the CAR files are unchanged. An earlier run binds
 the three columns as null with `not_in_export`. The situs `city_name` and `postal_code` stay gaps
 with `source_missing`: TCAD prints the situs as one line, so they are inside
-`unnormalized_address`. This reason now applies to every run, including runs bound before v1.2
-(they read `not_in_export` before), because the cause is the source, not the export. An owner with
-a mailing address that lacks a ZIP or state reads `source_missing`; `no_mailing_address` means the
-owner has none. Details: `docs/defects/ERR-74-address-not-in-tables.md`.
+`unnormalized_address`; a run whose export has no address fields (Runs 1 to 3) still lists them
+as `not_in_export`. An owner whose mailing address lacks a ZIP or state reads `source_missing` on
+`owner_mailing_*` and `owner_area_class`; `no_mailing_address` means the owner has none; with no
+owner the owner reason is passed through. Run 3.1 fill: situs text on 441,940 of 441,961 properties;
+an owner mailing ZIP on 408,780 properties (409,389 have an owner); 24,532 mailing addresses carry a
+state other than TX, a few of them foreign provinces, whose postal code is still cut to 5 characters.
+Details: `docs/defects/ERR-74-address-not-in-tables.md`.
 
 ## Manifest coverage and profiles for consumers
 
@@ -293,11 +300,11 @@ Two further notes from the pilot export:
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
 | `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown | never empty |
 | `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale) | `no_owner_record` |
-| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
+| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code: Runs 1 to 3; from Run 3.1 it does, v1.2); a mailing address without a ZIP reads source_missing | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
 | `unnormalized_address` | `VARCHAR` | yes | Property (situs) address as printed | address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP) | `source_missing` |
-| `owner_mailing_postal_code` | `VARCHAR` | yes | Owner mailing ZIP | address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated | `no_mailing_address` |
+| `owner_mailing_postal_code` | `VARCHAR` | yes | Owner mailing ZIP | address.postal_code (first 5 characters) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated; reasons no_mailing_address, source_missing (address without a ZIP), not_in_export (Runs 1 to 3) or the owner reason | `no_mailing_address` |
 | `owner_mailing_state_code` | `VARCHAR` | yes | Owner mailing state | address.state_code of the same mailing addresses; distinct values sorted, '; '-separated | `no_mailing_address` |
 | `property_source_url` | `VARCHAR` | yes | The property's uRL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
 | `property_captured_at` | `TIMESTAMP WITH TIME ZONE` | no | The property's when that source was captured (source-level, not per record) | manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt) | never empty |
@@ -328,11 +335,11 @@ Two further notes from the pilot export:
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
 | `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown | never empty |
 | `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale) | `no_owner_record` |
-| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
+| `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code: Runs 1 to 3; from Run 3.1 it does, v1.2); a mailing address without a ZIP reads source_missing | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
 | `unnormalized_address` | `VARCHAR` | yes | Property (situs) address as printed | address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP) | `source_missing` |
-| `owner_mailing_postal_code` | `VARCHAR` | yes | Owner mailing ZIP | address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated | `no_mailing_address` |
+| `owner_mailing_postal_code` | `VARCHAR` | yes | Owner mailing ZIP | address.postal_code (first 5 characters) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated; reasons no_mailing_address, source_missing (address without a ZIP), not_in_export (Runs 1 to 3) or the owner reason | `no_mailing_address` |
 | `owner_mailing_state_code` | `VARCHAR` | yes | Owner mailing state | address.state_code of the same mailing addresses; distinct values sorted, '; '-separated | `no_mailing_address` |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
 | `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
