@@ -532,14 +532,23 @@ test.describe("A-13 explorer · demo lines", () => {
     if (open.length === 0) {
       await expect(page.getByText(EXPLORE_TEXTS.noOpenPermits, { exact: true })).toBeVisible();
     }
-    // 6. Counts equal the evidence file (A-11) / zero rows today.
+    // 6. Counts equal the evidence file (A-11) / the API total otherwise. Run 3
+    // (travis-full-run3-20261025) publishes open days, so permits open ≥ 5 years now exist
+    // (176 near this point, 548 county-wide on 2026-10-26): the page must agree with
+    // explore.search, not with a fixed 0.
     const stalled = result.rows.filter((r) => r.permit?.status_class === "stalled").length;
     if (oracle.branch === "a11" && area.recorded !== null) {
       expect({ stalled, open: open.length }).toEqual(area.recorded);
     } else {
-      expect(result.total_within_r, "today: no permit open ≥ 5 years").toBe(0);
-      await expect(page.locator(SEL.resultRow)).toHaveCount(0);
-      await expect(page.getByText(EXPLORE_TEXTS.noOpenPermits, { exact: true })).toBeVisible();
+      expect(intOf(await page.locator(SEL.header).innerText()), "header = API total").toBe(
+        result.total_within_r,
+      );
+      await expect(page.locator(SEL.resultRow)).toHaveCount(
+        Math.min(result.total_within_r, result.rows.length),
+      );
+      if (result.total_within_r === 0 || open.length === 0) {
+        await expect(page.getByText(EXPLORE_TEXTS.noOpenPermits, { exact: true })).toBeVisible();
+      }
     }
     await checkpoint(page, "009", 6, { fullPage: true });
   });

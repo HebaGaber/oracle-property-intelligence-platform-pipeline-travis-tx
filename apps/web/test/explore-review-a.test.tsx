@@ -343,7 +343,9 @@ describe("Place combobox keyboard (finding 15)", () => {
     fireEvent.change(box, { target: { value: "Aus" } });
     await within(places()).findAllByRole("option");
     fireEvent.keyDown(box, { key: "Escape" });
-    expect((box as HTMLInputElement).value).toBe("");
+    // Escape drops the typed text; the box shows the chosen place again (A-16: it mirrors `place=`).
+    expect((box as HTMLInputElement).value).not.toBe("Aus");
+    expect(second).toContain((box as HTMLInputElement).value);
     expect(within(places()).queryAllByRole("option")).toHaveLength(0);
   });
 });

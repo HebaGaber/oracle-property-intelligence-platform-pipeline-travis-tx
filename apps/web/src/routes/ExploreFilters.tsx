@@ -274,7 +274,8 @@ export function ExploreFilters({
         />
       </div>
       <div className={styles.results}>
-        <WelcomeCard />
+        {/* Explore boards: the "What can I ask?" card only until a search has results. */}
+        {data !== undefined && data.total_within_r > 0 ? null : <WelcomeCard />}
         <p className={styles.area} data-area="">
           {place === null ? (
             query.at === null ? null : (

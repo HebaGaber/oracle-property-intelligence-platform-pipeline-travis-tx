@@ -113,7 +113,9 @@ export function FilterSheet({
 }: FilterSheetProps): ReactElement {
   const id = useId();
   const [open, setOpen] = useState(false);
-  const [text, setText] = useState("");
+  // null while not editing: the box then shows the URL's place (so a pick from the header search
+  // box, which only sets `place=`, fills it too).
+  const [text, setText] = useState<string | null>(null);
   const [active, setActive] = useState(-1);
   // What the person is typing in a number box, until they leave it (the URL only takes valid numbers).
   const [drafts, setDrafts] = useState<Partial<Record<FilterKey, string>>>({});
@@ -135,12 +137,16 @@ export function FilterSheet({
   const ooaOn = pending.ooa ?? ooa;
   const roofUrl = value("roof");
   const tenureUrl = value("tenure");
-  const typed = text.trim();
+  const typed = (text ?? "").trim();
   const options = typed === "" ? [] : suggest(typed);
   const listId = `${id}-places`;
+  const placeUrl = value("place");
+  const current = placeUrl === "" ? undefined : suggest(placeUrl)[0];
+  const placeName =
+    current === undefined ? placeUrl : current.kind === "zcta" ? current.id : current.name;
 
   const choose = (placeId: string): void => {
-    setText("");
+    setText(null);
     setActive(-1);
     onPatch({ place: placeId, at: null, sel: null });
   };
@@ -148,7 +154,7 @@ export function FilterSheet({
   const onPlaceKey = (event: KeyboardEvent<HTMLInputElement>): void => {
     const count = options.length;
     if (event.key === "Escape") {
-      setText("");
+      setText(null);
       setActive(-1);
     } else if (event.key === "ArrowDown" && count > 0) {
       event.preventDefault();
@@ -235,7 +241,7 @@ export function FilterSheet({
               : {})}
             autoComplete="off"
             placeholder="Travis County place or ZIP"
-            value={text}
+            value={text ?? placeName}
             onChange={(e) => {
               setText(e.target.value);
               setActive(-1);

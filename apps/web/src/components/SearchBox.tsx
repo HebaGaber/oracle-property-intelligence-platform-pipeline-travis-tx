@@ -12,7 +12,7 @@ import { Icon } from "./Icon";
 import { GAZETTEER_NOTE, SEARCH_SAMPLES, optionsFor, type SearchOption } from "./searchSuggest";
 import styles from "./SearchBox.module.css";
 
-export const SEARCH_BOX_LABEL = "Search a place, ZIP or permit, or ask a question";
+export const SEARCH_BOX_LABEL = "Search CountyLens: town, ZIP, permit or a question";
 
 /** The URL a chosen option opens. */
 export function targetFor(option: SearchOption, current: URL): string | null {

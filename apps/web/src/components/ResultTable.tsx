@@ -3,7 +3,8 @@
 // value in its `[data-field]` cell (the same FieldValue the card and drawer use, so a missing
 // value shows its short pill with the reason as text and tooltip), the compact provenance
 // (host · date, table CID, run) in the Source column and a Details icon button. The board's
-// columns show by default; Owner and Contractor are optional columns ("Columns" toggles): their
+// columns show by default; Owner area and Contractor are optional ("More fields" toggles; not
+// named "Columns", or TC-033 ticks every checkbox on the page, filters included): their
 // cells stay in the row, hidden, so every field is still in the DOM. Row click selects the
 // property (opens the drawer). Shown from 1240 px; the compact cards (ResultRow) below.
 import type { ExploreRow } from "@countylens/query-core";
@@ -71,13 +72,13 @@ export function ResultTable({ rows, first, onSelect, selected }: ResultTableProp
           }}
         >
           <Icon name="view_list" size="medium" />
-          Columns
+          More fields
         </button>
         {menu ? (
           <div
             id="result-columns"
             role="group"
-            aria-label="Optional columns"
+            aria-label="Optional fields"
             className={styles.menu}
             onKeyDown={(e) => {
               if (e.key === "Escape") setMenu(false);
