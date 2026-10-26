@@ -4,10 +4,12 @@
 // validates the whole file against `RunsIndexV1`; an index this reader accepts but that schema
 // rejects shows the chip here and the full banner there.
 import { browserFetch, requestInit } from "./http";
+import { numberRuns, runName } from "./run-numbers";
 
 export const HUB_INDEX_PATH = "/runs/index.json";
 
 export interface HubRun {
+  readonly runId: string;
   readonly manifestCid: string;
   readonly finishedAt: string;
 }
@@ -44,22 +46,29 @@ export async function loadHubRuns(signal?: AbortSignal): Promise<HubRun[]> {
   return runs.map((run): HubRun => {
     if (
       !isRecord(run) ||
+      typeof run.runId !== "string" ||
       typeof run.manifestCid !== "string" ||
       typeof run.finishedAt !== "string" ||
       Number.isNaN(Date.parse(run.finishedAt))
     ) {
       throw new HubIndexError("the run index could not be read from this site");
     }
-    return { manifestCid: run.manifestCid, finishedAt: run.finishedAt };
+    return { runId: run.runId, manifestCid: run.manifestCid, finishedAt: run.finishedAt };
   });
 }
 
-/** `n` (1-based position in `finishedAt` order) and the instant of the latest run. */
+/**
+ * The latest run's name ("Run N" or "Pilot slice", the one rule in run-numbers.ts) and instant;
+ * the header badge and the Hub chip show it.
+ */
 export function latestChip(runs: readonly HubRun[]): {
-  readonly n: number;
+  readonly name: string;
   readonly finishedAt: string;
 } {
   const ordered = [...runs].sort((a, b) => Date.parse(a.finishedAt) - Date.parse(b.finishedAt));
   const latest = ordered[ordered.length - 1] as HubRun;
-  return { n: ordered.length, finishedAt: latest.finishedAt };
+  return {
+    name: runName(numberRuns(runs).get(latest.runId) ?? null),
+    finishedAt: latest.finishedAt,
+  };
 }

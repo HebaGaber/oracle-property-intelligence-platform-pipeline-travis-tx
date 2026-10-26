@@ -54,7 +54,14 @@ import { formatCount } from "../data/format";
 import { RUN_STAGE_TEXTS, type LoadedRun, type SelectedRun } from "../data/run-loader";
 import { dataGroupItems, type DataGroupItem } from "../data/data-groups";
 import { runEvents, type RunEvent } from "../data/run-events";
-import { RUNS_INDEX_PATH, runsByFinish, type RunsIndexEntry } from "../data/runs-index";
+import {
+  RUNS_INDEX_PATH,
+  runName,
+  runNumbers,
+  runsByFinish,
+  type RunNumber,
+  type RunsIndexEntry,
+} from "../data/runs-index";
 import { serverCheckText, useServerCheck } from "../data/server-check";
 import { AdminActions, NotAdminNote } from "./RunsAdmin";
 import {
@@ -105,7 +112,7 @@ export function Component(): ReactElement {
         {latest === undefined ? null : (
           <SyncStatus
             latest={latest}
-            number={entries.length}
+            number={index === undefined ? null : (runNumbers(index).get(latest.runId) ?? null)}
             run={selected?.isLatest === false ? "earlier" : run}
             adminSlot={
               access.kind === "admin" ? (
@@ -237,7 +244,7 @@ function SyncStatus({
   adminSlot,
 }: {
   readonly latest: RunsIndexEntry;
-  readonly number: number;
+  readonly number: RunNumber;
   /** The latest run once read; "earlier" while the page shows an earlier run's manifest. */
   readonly run: LoadedRun | "earlier" | undefined;
   readonly adminSlot: ReactElement;
@@ -484,10 +491,18 @@ function WhatChanged({
   number,
 }: {
   readonly run: LoadedRun;
-  readonly number: number;
+  readonly number: RunNumber;
 }): ReactElement {
   const { manifest, manifestCid } = run;
   const first = manifest.previousManifestCid === null;
+  // The previous run by its manifest CID, named by the one rule (the pilot slice is unnumbered).
+  const previous = run.index.runs.find((r) => r.manifestCid === manifest.previousManifestCid);
+  const previousNumber =
+    previous === undefined ? null : (runNumbers(run.index).get(previous.runId) ?? null);
+  const name = runName(number);
+  const previousName = previous === undefined ? "the previous run" : runName(previousNumber);
+  // Compare takes numbered runs only (RUNS_TEXTS.numbering).
+  const comparable = !first && number !== null && previousNumber !== null;
   const scale = Math.max(1, ...manifest.sources.map((s) => s.added + s.changed + s.removed));
   const sum = (key: "added" | "changed" | "removed"): number =>
     manifest.sources.reduce((total, s) => total + s[key], 0);
@@ -504,19 +519,19 @@ function WhatChanged({
       <div className={styles.cardHead}>
         <div>
           <h3 id="changed-heading" className={styles.cardTitle}>
-            What Run {number} changed
+            What {name} changed
           </h3>
           <p className={styles.helperText}>
-            {first ? RUNS_TEXTS.firstRun : `Counted against Run ${number - 1}'s manifest.`}
+            {first ? RUNS_TEXTS.firstRun : `Counted against ${previousName}'s manifest.`}
           </p>
         </div>
-        {first ? null : (
+        {!comparable ? null : (
           <Link
             className={styles.textLink}
-            to={`${ROUTES.runsCompare}?a=${number - 1}&b=${number}`}
+            to={`${ROUTES.runsCompare}?a=${previousNumber}&b=${number}`}
           >
             <Icon name="compare_arrows" size="medium" />
-            Compare Run {number} with Run {number - 1}
+            Compare {name} with {previousName}
           </Link>
         )}
       </div>
@@ -525,8 +540,7 @@ function WhatChanged({
           {first ? null : (
             <>
               <p className={styles.itemBody}>
-                Changes in Run {number} vs Run {number - 1} · <b data-total-changes="">{total}</b>{" "}
-                records
+                Changes in {name} vs {previousName} · <b data-total-changes="">{total}</b> records
               </p>
               <ChangeBar
                 added={added}
@@ -641,7 +655,7 @@ function RunCard({
         <FallbackChip source={read.source} />
       </header>
       <div>
-        <p className={styles.times} data-run-number={selected.number}>
+        <p className={styles.times} data-run-number={selected.number ?? "pilot"}>
           {runLabel(selected.number, run.entry.finishedAt)} ·{" "}
           {selected.isLatest ? "the latest run" : "an earlier run (choose another in the Run menu)"}
         </p>

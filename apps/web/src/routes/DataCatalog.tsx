@@ -42,7 +42,7 @@ import {
   type ParquetColumn,
 } from "../data/parquet-meta";
 import type { LoadedRun } from "../data/run-loader";
-import { runNumbers, runsByFinish } from "../data/runs-index";
+import { runName as runNameOf, runNumbers, runsByFinish, type RunNumber } from "../data/runs-index";
 import { COVERAGE_KINDS } from "./Coverage.kinds";
 import { kindOf } from "./Coverage.kinds";
 import { RUN_STAGE_TEXTS, runLabel, useRun } from "./Runs.shared";
@@ -213,9 +213,11 @@ export function Component(): ReactElement {
 
   const entries = index === undefined ? [] : runsByFinish(index);
   const latestId = entries.at(-1)?.runId;
-  const numbers = index === undefined ? new Map<string, number>() : runNumbers(index);
-  const runNumber = run === null ? undefined : numbers.get(run.entry.runId);
-  const runName = runNumber === undefined ? `Run ${run?.manifest.runId ?? ""}` : `Run ${runNumber}`;
+  const numbers = index === undefined ? new Map<string, RunNumber>() : runNumbers(index);
+  const shownName =
+    run === null || !numbers.has(run.entry.runId)
+      ? `Run ${run?.manifest.runId ?? ""}`
+      : runNameOf(numbers.get(run.entry.runId) ?? null);
 
   const choose = (patch: Record<string, string>): void => {
     const next = new URLSearchParams(params);
@@ -294,11 +296,14 @@ export function Component(): ReactElement {
             }}
           >
             {entries
-              .map((r, i) => (
-                <option key={r.runId} value={r.runId}>
-                  {r.runId === latestId ? `Run ${i + 1} · current` : runLabel(i + 1, r.finishedAt)}
-                </option>
-              ))
+              .map((r) => {
+                const n = numbers.get(r.runId) ?? null;
+                return (
+                  <option key={r.runId} value={r.runId}>
+                    {r.runId === latestId ? `${runNameOf(n)} · current` : runLabel(n, r.finishedAt)}
+                  </option>
+                );
+              })
               .reverse()}
           </select>
         ) : null}
@@ -374,7 +379,7 @@ export function Component(): ReactElement {
               </div>
               <div className={styles.captionRow}>
                 <span className={styles.caption}>
-                  elephant-cli tables · {runName} · one per class
+                  elephant-cli tables · {shownName} · one per class
                 </span>
                 {/* Data390: the list folds away on a phone; from 600 px it is always open. */}
                 <button
@@ -475,7 +480,7 @@ export function Component(): ReactElement {
                 result={results.get(selected.table)}
                 published={publishedRowsFor(selected, run.manifest)}
                 manifest={run.manifest}
-                runName={runName}
+                runName={shownName}
                 copied={copied}
                 onCopy={copySchema}
               />

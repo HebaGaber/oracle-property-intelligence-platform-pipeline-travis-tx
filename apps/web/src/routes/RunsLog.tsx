@@ -26,7 +26,15 @@ import { Skeleton } from "../components/Skeleton";
 import { StatusPill } from "../components/StatusPill";
 import { formatUtc } from "../components/Provenance";
 import { formatCount } from "../data/format";
-import { RunIndexError, loadRunsIndex, runIndexText, runsByFinish } from "../data/runs-index";
+import {
+  RunIndexError,
+  loadRunsIndex,
+  runIndexText,
+  runName,
+  runNumbers,
+  runsByFinish,
+  type RunNumber,
+} from "../data/runs-index";
 import { runEvents, type RunEvent } from "../data/run-events";
 import {
   RUN_STAGE_TEXTS,
@@ -45,7 +53,7 @@ type LogState =
       readonly kind: "ready";
       readonly manifests: readonly RunManifestV1[];
       /** 1-based run number and finish time by run ID, from the index order. */
-      readonly numbers: ReadonlyMap<string, { number: number; finishedAt: string }>;
+      readonly numbers: ReadonlyMap<string, { number: RunNumber; finishedAt: string }>;
       readonly failures: readonly RunLoadError[];
     }
   | { readonly kind: "error"; readonly error: RunLoadError };
@@ -68,9 +76,13 @@ async function loadAll(signal: AbortSignal): Promise<LogState> {
     if (result.status === "fulfilled") manifests.push(result.value.manifest);
     else failures.push(toRunLoadError(result.reason));
   }
-  // The shared numbering (runsByFinish order, as runNumbers): "Run N" matches the header and Runs.
+  // The one numbering rule (runNumbers): "Run N" / "Pilot slice" match the header and Runs.
+  const byId = runNumbers(index);
   const numbers = new Map(
-    runsByFinish(index).map((run, i) => [run.runId, { number: i + 1, finishedAt: run.finishedAt }]),
+    runsByFinish(index).map((run) => [
+      run.runId,
+      { number: byId.get(run.runId) ?? null, finishedAt: run.finishedAt },
+    ]),
   );
   return { kind: "ready", manifests, numbers, failures };
 }
@@ -87,7 +99,8 @@ const KINDS: readonly { kind: Kind; label: string }[] = [
 
 interface LogRow {
   readonly event: RunEvent;
-  readonly runNumber: number | null;
+  /** "Run N" or "Pilot slice" (runName); "" when the index does not list the run. */
+  readonly runName: string;
   readonly what: string;
   readonly source: string;
   readonly count: string;
@@ -97,16 +110,17 @@ interface LogRow {
 
 function buildRows(
   manifests: readonly RunManifestV1[],
-  numbers: ReadonlyMap<string, { number: number; finishedAt: string }>,
+  numbers: ReadonlyMap<string, { number: RunNumber; finishedAt: string }>,
 ): LogRow[] {
   const byRun = new Map(manifests.map((m) => [m.runId, m]));
   return runEvents(manifests).map((event) => {
     const manifest = byRun.get(event.runId);
-    const runNumber = numbers.get(event.runId)?.number ?? null;
+    const listed = numbers.get(event.runId);
+    const runNumber = listed === undefined ? "" : runName(listed.number);
     if (event.kind === "started") {
       return {
         event,
-        runNumber,
+        runName: runNumber,
         what: eventLabel(event),
         source: "Manual or scheduled start",
         count: `${manifest?.sources.length ?? 0} sources`,
@@ -118,7 +132,7 @@ function buildRows(
       const source = manifest?.sources.find((s) => s.name === event.source);
       return {
         event,
-        runNumber,
+        runName: runNumber,
         what: "Source captured",
         source: isSourceName(event.source) ? sourceLabel(event.source) : event.source,
         count: source === undefined ? "–" : formatCount(source.records),
@@ -128,7 +142,7 @@ function buildRows(
     }
     return {
       event,
-      runNumber,
+      runName: runNumber,
       what: eventLabel(event),
       source: "Manifest and run index",
       count: `${manifest?.artifacts.length ?? 0} artifacts`,
@@ -143,15 +157,7 @@ const csvCell = (value: string): string => `"${value.replaceAll('"', '""')}"`;
 function toCsv(rows: readonly LogRow[]): string {
   const head = ["Time (UTC)", "Run", "Run ID", "Event", "Source", "Count", "Status"];
   const lines = rows.map((r) =>
-    [
-      formatUtc(r.event.time),
-      r.runNumber === null ? "" : String(r.runNumber),
-      r.event.runId,
-      r.what,
-      r.source,
-      r.count,
-      r.done,
-    ]
+    [formatUtc(r.event.time), r.runName, r.event.runId, r.what, r.source, r.count, r.done]
       .map(csvCell)
       .join(","),
   );
@@ -229,7 +235,7 @@ function LogTable({
 }: {
   readonly actions: HTMLElement | null;
   readonly manifests: readonly RunManifestV1[];
-  readonly numbers: ReadonlyMap<string, { number: number; finishedAt: string }>;
+  readonly numbers: ReadonlyMap<string, { number: RunNumber; finishedAt: string }>;
 }): ReactElement {
   const all = useMemo(() => buildRows(manifests, numbers), [manifests, numbers]);
   const [kinds, setKinds] = useState<ReadonlySet<Kind>>(new Set());
@@ -356,9 +362,7 @@ function LogTable({
                   <time dateTime={row.event.time}>{formatUtc(row.event.time)}</time>
                 </td>
                 <td>
-                  <span data-run-number="">
-                    {row.runNumber === null ? "" : `Run ${row.runNumber}`}
-                  </span>
+                  <span data-run-number="">{row.runName}</span>
                   <span className={styles.runId} data-run-id-text="" title={row.event.runId}>
                     {row.event.runId}
                   </span>

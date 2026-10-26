@@ -22,8 +22,9 @@ export const RUNS_TEXTS = Object.freeze({
   oldManifestResolves: "old manifest still resolves on Pinata and Filebase",
   /** Compare with one run, and the delta column of a first run. */
   firstRun: "first run · nothing to compare against",
-  /** The numbering contract of `a`/`b` on Compare and of the Hub chip: run n = the n-th entry of runs/index.json ordered by finishedAt (1-based). */
-  numbering: "Run n is the n-th entry of runs/index.json, ordered by finish time",
+  /** The numbering contract of `a`/`b` on Compare, the Hub chip and every "Run N" (PO 2026-10-26): the non-pilot runs of runs/index.json numbered 1..n by finishedAt; A-03's pilot slice is listed but never numbered. */
+  numbering:
+    "Run n is the n-th full run in runs/index.json, by finish time; the A-03 pilot slice is listed as Pilot slice and not numbered",
   indexUnavailable: (reason: string): string => `Run index unavailable · ${reason}`,
   manifestUnavailable: (cid: string, reason: string): string =>
     `Manifest unavailable · ${cid} · ${reason}`,
@@ -106,8 +107,8 @@ export const PAGE_TEXTS = Object.freeze({
   travisOnly: "CountyLens has data for Travis County, TX only",
   catalogUnavailable: (reason: string): string => `Catalog unavailable · ${reason}`,
   tableExportMissing: "table export not in this run's manifest",
-  /** "Run {n} · {finishedAt as YYYY-MM-DD HH:mm UTC}"; n is the 1-based index position. */
-  hubChip: (n: number, finishedAt: string): string => `Run ${n} · ${utcMinute(finishedAt)}`,
+  /** "{Run N | Pilot slice} · {finishedAt as YYYY-MM-DD HH:mm UTC}"; the name follows RUNS_TEXTS.numbering. */
+  hubChip: (name: string, finishedAt: string): string => `${name} · ${utcMinute(finishedAt)}`,
 });
 
 /** Help · MCP "Try a tool" (A-14 T034): fixed wording of every state. */

@@ -171,7 +171,7 @@ test.describe("A-13 scan", { tag: "@a13-scan" }, () => {
             });
             // 3. Scan text and attributes.
             const all = withoutPublished(texts.join("\n"), published);
-            const phrases = denylistHits(all, denylist, { runCount: oracle.runs.length });
+            const phrases = denylistHits(all, denylist, { runCount: oracle.numbered.length });
             const protoCids = cidTokens(all).filter((t) => prototypeCids.includes(t));
             const foreign = disallowedCidTokens(
               all,

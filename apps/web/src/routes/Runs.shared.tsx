@@ -19,7 +19,14 @@ import {
   type RunStage,
   type SelectedRun,
 } from "../data/run-loader";
-import { RUNS_INDEX_PATH, RunIndexError, loadRunsIndex, runIndexText } from "../data/runs-index";
+import {
+  RUNS_INDEX_PATH,
+  RunIndexError,
+  loadRunsIndex,
+  runIndexText,
+  runName,
+  type RunNumber,
+} from "../data/runs-index";
 
 export { RUN_STAGE_TEXTS };
 
@@ -291,12 +298,12 @@ export function shortDay(iso: string): string {
 }
 
 /**
- * `Run 3 · Oct 24` (parity matrix R7): the run's 1-based number in `runs/index.json` order (the
- * numbering contract, RUNS_TEXTS.numbering) and its finish day in UTC. The run ID stays visible
+ * `Run 3 · Oct 24` or `Pilot slice · Oct 21` (parity matrix R7): the run's name from the one rule
+ * (runName, runNumbers; RUNS_TEXTS.numbering) and its finish day in UTC. The run ID stays visible
  * beside it where the page has room.
  */
-export function runLabel(number: number, finishedAt: string): string {
-  return `Run ${number} · ${shortDay(finishedAt)}`;
+export function runLabel(number: RunNumber, finishedAt: string): string {
+  return `${runName(number)} · ${shortDay(finishedAt)}`;
 }
 
 /** The Log and Latest events wording of a manifest-derived event. */

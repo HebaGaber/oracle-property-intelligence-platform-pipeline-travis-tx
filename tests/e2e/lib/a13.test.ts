@@ -20,6 +20,8 @@ import {
   loadPlaceholderDenylist,
   pinataManifestUrl,
   prototypeCidTokens,
+  numberedRunsByFinishedAt,
+  runName,
   runNumber,
   truncateCid,
 } from "./a13.js";
@@ -81,6 +83,29 @@ describe("run oracle: runs/index.json from RUNTIME_URL", () => {
     expect(runNumber(index, "b")).toBe(3);
     expect(() => runNumber(index, "missing")).toThrow(/missing/);
     expect(() => latestRunEntry({ ...index, runs: [] })).toThrow(/no runs/);
+  });
+
+  it("the A-03 pilot slice is listed but never numbered; the full runs are Run 1..n", () => {
+    const pilot = {
+      runId: "travis-202609-permits-20261021t103516z",
+      manifestCid: first.manifestCid,
+      finishedAt: "2026-10-21T10:40:00Z",
+    };
+    const run = (id: string, day: string) => ({
+      runId: id,
+      manifestCid: first.manifestCid,
+      finishedAt: `2026-10-${day}T00:00:00Z`,
+    });
+    const index = {
+      schema: committedIndex.schema,
+      runs: [pilot, run("r1", "23"), run("r2", "24"), run("r3", "25")],
+    } as RunsIndexV1;
+    expect(runNumber(index, pilot.runId)).toBeNull();
+    expect(runNumber(index, "r1")).toBe(1);
+    expect(runNumber(index, "r3")).toBe(3);
+    expect(numberedRunsByFinishedAt(index).map((r) => r.runId)).toEqual(["r1", "r2", "r3"]);
+    expect(runName(null)).toBe("Pilot slice");
+    expect(runName(3)).toBe("Run 3");
   });
 });
 
