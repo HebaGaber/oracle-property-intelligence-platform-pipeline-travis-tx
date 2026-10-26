@@ -46,6 +46,7 @@ describe("MissingReason", () => {
       // D-9 (additive, donphan M1): why an owner is missing although a dated sale exists.
       "owner_unparsed",
       "owner_confidential",
+      "superseded_by_later_permit",
     ]);
     expect(MissingReason.options).toEqual([...MISSING_REASONS]);
   });

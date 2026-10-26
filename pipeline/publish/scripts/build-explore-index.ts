@@ -5,7 +5,7 @@
 //     --manifest runs/travis-full-run2-20261024/manifest.json [--expect-cid bafk…] \
 //     --source cidcopy|local [--local-root <repo root holding pipeline/data>] \
 //     --work-dir <dir> [--verify] [--upload --bucket <name> | CID_COPY_BUCKET] [--profile assess] \
-//     [--prefix private/explore-index/v1.2/] [--max-fetch-gb 2] [--rebuild] [--copy-host <host>]
+//     [--prefix private/explore-index/v1.3/] [--max-fetch-gb 2] [--rebuild] [--copy-host <host>]
 //
 // Flow (design § 7, ported from Task B's plan/fetchPart/buildIndex, no Lambda or Step Functions:
 // 160–190 objects, ~75 s, one operator at a time):
@@ -99,7 +99,7 @@ export interface BuildOptions {
   readonly copyHost?: string | undefined;
   readonly maxFetchGb?: number | undefined;
   readonly rebuild?: boolean | undefined;
-  /** The S3 prefix the index keys are written for (default `private/explore-index/v1.2/`). */
+  /** The S3 prefix the index keys are written for (default `private/explore-index/v1.3/`). */
   readonly prefix?: string | undefined;
   readonly threads?: number | undefined;
   readonly memoryLimit?: string | undefined;

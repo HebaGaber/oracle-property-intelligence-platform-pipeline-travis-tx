@@ -206,9 +206,10 @@ describe("status_class (generated status map, scoped to the profile's jurisdicti
     expect(d.finalDateReason("open")).toBe("not_closed");
     expect(d.finalDateReason("closed")).toBe("source_missing");
     expect(d.finalDateReason(null)).toBe("needs_review");
-    expect(await sql(`final_date_reason('stalled')`)).toBe("not_closed");
-    expect(await sql(`final_date_reason('closed')`)).toBe("source_missing");
-    expect(await sql(`final_date_reason(NULL::VARCHAR)`)).toBe("needs_review");
+    expect(await sql(`final_date_reason('stalled', false)`)).toBe("not_closed");
+    expect(await sql(`final_date_reason('closed', false)`)).toBe("source_missing");
+    expect(await sql(`final_date_reason('closed', true)`)).toBe("superseded_by_later_permit");
+    expect(await sql(`final_date_reason(NULL::VARCHAR, false)`)).toBe("needs_review");
   });
 
   it.each([

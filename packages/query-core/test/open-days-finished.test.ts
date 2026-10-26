@@ -84,12 +84,18 @@ beforeAll(async () => {
 afterAll(() => fx.close());
 
 describe("open_days for finished permits (ERR-70)", () => {
-  it("a stalled or open permit with a plausible final_date has no interval and keeps its class", () => {
+  it("a permit with a plausible final_date has no interval; with no City status it is closed", () => {
     for (const n of ["x1", "x3"]) {
       expect(row(n)?.open_days, n).toBeNull();
       expect(reason(n), n).toBe("not_open");
     }
-    expect(row("x1")).toMatchObject({ status_class: "stalled", final_date: "1985-03-11" });
+    // PO 2026-10-26: no City status word + an accepted completion date = finished (closed); a City
+    // status word ("Permitted") is never overridden.
+    expect(row("x1")).toMatchObject({
+      status_class: "closed",
+      is_open: false,
+      final_date: "1985-03-11",
+    });
     expect(row("x3")).toMatchObject({ status_class: "open", is_open: true });
   });
 

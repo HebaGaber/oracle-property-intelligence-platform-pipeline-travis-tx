@@ -36,6 +36,7 @@ export const MISSING_REASON_LABELS = Object.freeze({
   enum_lacks_value: "Status has no matching value (e.g. Expired)",
   owner_unparsed: "Owner name could not be parsed",
   owner_confidential: "Owner is confidential (TCAD)",
+  superseded_by_later_permit: "Superseded by a later finished roofing permit",
 } satisfies Record<MissingReason, string>);
 
 /**

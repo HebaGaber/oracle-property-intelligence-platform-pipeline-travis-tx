@@ -37,7 +37,9 @@ export const EXPLORE_INDEX_ROOT = "private/explore-index/";
  * contract views changes `viewsSha256`, and indexes are never overwritten, so each views version
  * gets its own folder (v1.2: contract v1.2, Run 3.1).
  */
-export const EXPLORE_INDEX_PREFIX = `${EXPLORE_INDEX_ROOT}v1.2/`;
+// v1.3 (PO 2026-10-26): the views class a date-guessed permit closed when it finished or a later
+// roofing permit superseded it; an index built with other views is refused (viewsSha256).
+export const EXPLORE_INDEX_PREFIX = `${EXPLORE_INDEX_ROOT}v1.3/`;
 /** `s3://<CID-copy bucket>/live/live.json`: written by the laptop bridge only (AC-7, AC-9). */
 export const LIVE_STATUS_KEY = "live/live.json";
 /** The one Cognito group whose members may call admin.* (AC-6, AC-8). */

@@ -406,11 +406,28 @@ base AS (
   LEFT JOIN meta.part part ON part.name = pm._part
   WHERE pm.improvement_type = 'Roofing' AND pm.improvement_action = 'Replacement'
 ),
+-- The latest issue date among the property's finished roofing permits (an accepted completion
+-- date), then the two corrections of the date-based class (derive.ts status_class_final).
+finished AS (
+  SELECT *,
+    max(CASE WHEN terminal_date_accepted(final_date, issue_date, as_of) THEN issue_date END)
+      OVER (PARTITION BY property_cid) AS last_finished_issue
+  FROM base
+),
+classed AS (
+  SELECT * REPLACE (
+      status_class_final(status_class, improvement_status, issue_date, final_date, as_of,
+        last_finished_issue) AS status_class),
+    status_class AS status_class_guess,
+    superseded_by_later_permit(status_class, improvement_status, issue_date, final_date, as_of,
+      last_finished_issue) AS superseded
+  FROM finished
+),
 derived AS (
   SELECT *,
     contractor_resolution(contractor_registry_id) AS contractor_resolution,
     open_days(status_class, issue_date, as_of, final_date) AS open_days
-  FROM base
+  FROM classed
 )
 SELECT
   permit_cid,
@@ -450,12 +467,13 @@ SELECT
     CASE WHEN permit_number IS NULL THEN miss('permit_number', 'source_missing') END,
     CASE WHEN request_identifier IS NULL THEN miss('request_identifier', 'source_missing') END,
     CASE WHEN improvement_status IS NULL
-      THEN miss('improvement_status', status_missing_reason(status_class)) END,
+      THEN miss('improvement_status', status_missing_reason(status_class_guess)) END,
     CASE WHEN status_class IS NULL THEN miss('status_class', 'needs_review') END,
     miss('status_raw', 'no_lexicon_carrier'),
     miss('expiry_date', 'no_lexicon_carrier'),
     CASE WHEN issue_date IS NULL THEN miss('issue_date', 'source_missing') END,
-    CASE WHEN final_date IS NULL THEN miss('final_date', final_date_reason(status_class)) END,
+    CASE WHEN final_date IS NULL
+      THEN miss('final_date', final_date_reason(status_class, superseded)) END,
     CASE WHEN permit_close_date IS NULL THEN miss('permit_close_date', 'source_missing') END,
     CASE WHEN final_inspection_date IS NULL
       THEN miss('final_inspection_date', 'source_missing') END,

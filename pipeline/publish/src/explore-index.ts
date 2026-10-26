@@ -27,7 +27,7 @@ export const EXPLORE_INDEX_SCHEMA = "countylens-explore-index.v1";
 /** Default `EXPLORE_INDEX_PREFIX` (frozen-interfaces.md). */
 // Must equal infra/src/config.ts EXPLORE_INDEX_PREFIX, the folder the API reads (2026-10-26: the
 // bridge built without --prefix and would have written the index where the API never looks).
-export const EXPLORE_INDEX_PREFIX = "private/explore-index/v1.2/";
+export const EXPLORE_INDEX_PREFIX = "private/explore-index/v1.3/";
 /** The four views, in CONTRACT_VIEWS order; one Parquet file each. */
 export const EXPLORE_INDEX_VIEWS: readonly ContractView[] = CONTRACT_VIEWS;
 export const INDEX_JSON = "index.json";

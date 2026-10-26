@@ -377,8 +377,25 @@ export const DERIVE_MACROS: Readonly<Record<string, string>> = {
       WHERE sm.jurisdiction = juris
         AND sm.improvement_status IS NOT DISTINCT FROM status
         AND (status IS NOT NULL OR issue_date IS NOT NULL))`,
+  // PO 2026-10-26 (found by the Roofing CRM team): status_class_of guesses a permit with no City
+  // status word from its issue date alone. Two corrections, only for that guess, never for a City
+  // status word: (1) an accepted completion date means the permit finished; (2) a later roofing
+  // permit on the same property that finished supersedes it (`last_finished_issue`: the latest
+  // issue date among the property's finished roofing permits).
+  status_class_final: `(cls, status, issue_date, final_date, as_of, last_finished_issue) AS CASE
+      WHEN status IS NULL AND cls IN ('open', 'stalled')
+        AND terminal_date_accepted(final_date, issue_date, as_of) THEN 'closed'
+      WHEN status IS NULL AND cls IN ('open', 'stalled')
+        AND superseded_by_later_permit(cls, status, issue_date, final_date, as_of, last_finished_issue)
+        THEN 'closed'
+      ELSE cls END`,
+  superseded_by_later_permit: `(cls, status, issue_date, final_date, as_of, last_finished_issue) AS
+      coalesce(status IS NULL AND cls IN ('open', 'stalled')
+        AND NOT terminal_date_accepted(final_date, issue_date, as_of)
+        AND issue_date < last_finished_issue, false)`,
   is_open: "(cls) AS coalesce(cls = 'open', false)",
-  final_date_reason: `(cls) AS CASE WHEN cls IS NULL THEN 'needs_review'
+  final_date_reason: `(cls, superseded) AS CASE WHEN cls IS NULL THEN 'needs_review'
+      WHEN superseded THEN 'superseded_by_later_permit'
       WHEN cls = 'closed' THEN 'source_missing' ELSE 'not_closed' END`,
   open_days: `(cls, issue_date, as_of, final_date) AS CASE
       WHEN cls IN ('open', 'stalled') AND issue_date IS NOT NULL AND final_date IS NULL

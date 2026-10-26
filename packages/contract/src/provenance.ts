@@ -29,6 +29,9 @@ export const MISSING_REASONS = [
   "owner_unparsed",
   /** The owner is withheld because a TCAD confidentiality flag is set (P0-15). */
   "owner_confidential",
+  /** A permit with no City status and no completion date whose property has a later finished
+   *  roofing permit: classed closed, superseded by that permit (PO 2026-10-26). */
+  "superseded_by_later_permit",
 ] as const;
 
 export const MissingReason = z.enum(MISSING_REASONS);

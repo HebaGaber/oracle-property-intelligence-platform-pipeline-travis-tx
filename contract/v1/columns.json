@@ -1578,6 +1578,7 @@
     "out_of_scope",
     "enum_lacks_value",
     "owner_unparsed",
-    "owner_confidential"
+    "owner_confidential",
+    "superseded_by_later_permit"
   ]
 }

@@ -51,6 +51,7 @@ const SPEC_LABELS: Record<MissingReason, string> = {
   enum_lacks_value: "Status has no matching value (e.g. Expired)",
   owner_unparsed: "Owner name could not be parsed",
   owner_confidential: "Owner is confidential (TCAD)",
+  superseded_by_later_permit: "Superseded by a later finished roofing permit",
 };
 
 /** The pilot manifest's CID (contract/v1/README.md): a real base32 CIDv1. */
@@ -66,20 +67,20 @@ const HOSTS = {
 
 describe("A-03-TC-027: label map covers every reason in missingReasons (FR-011)", () => {
   describe("MISSING_REASON_LABELS", () => {
-    it("contract/v1/columns.json missingReasons is the contract's MISSING_REASONS (21)", () => {
+    it("contract/v1/columns.json missingReasons is the contract's MISSING_REASONS (22)", () => {
       const columns = readJson("contract/v1/columns.json") as { missingReasons: string[] };
       expect(columns.missingReasons).toEqual([...MISSING_REASONS]);
-      expect(MISSING_REASONS).toHaveLength(21);
+      expect(MISSING_REASONS).toHaveLength(22);
     });
 
-    it("labels 21 of 21 reasons with the spec table strings, verbatim", () => {
+    it("labels 22 of 22 reasons with the spec table strings, verbatim", () => {
       const gaps: string[] = [];
       for (const reason of MISSING_REASONS) {
         const label = MISSING_REASON_LABELS[reason];
         if (label !== SPEC_LABELS[reason]) gaps.push(`${reason}: ${JSON.stringify(label)}`);
       }
       expect(gaps).toEqual([]);
-      expect(Object.keys(MISSING_REASON_LABELS)).toHaveLength(21);
+      expect(Object.keys(MISSING_REASON_LABELS)).toHaveLength(22);
     });
 
     it("has no label for a reason outside the closed list", () => {
