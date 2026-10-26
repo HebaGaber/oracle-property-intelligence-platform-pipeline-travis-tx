@@ -178,7 +178,10 @@ function VerifyView({ run, cid }: { readonly run: LoadedRun; readonly cid: strin
       {state.kind === "found" ? (
         <>
           {/* Board DataVerify1440: the file card (name, then CID · size · codec · digest). */}
-          <article className={styles.tableCard} aria-labelledby="verify-target">
+          <article
+            className={`${styles.tableCard} ${styles.targetCard}`}
+            aria-labelledby="verify-target"
+          >
             <h3 id="verify-target" className={styles.cardTitle}>
               {state.found.name}
             </h3>

@@ -20,13 +20,13 @@ import { Skeleton } from "../components/Skeleton";
 import { Icon } from "../components/Icon";
 import { loadRunChain, type RunChainLink } from "../data/run-chain";
 import type { LoadedRun } from "../data/run-loader";
-import { runNumbers, runsByFinish } from "../data/runs-index";
+import { RunSelect } from "../components/RunSelect";
+import { runNumbers } from "../data/runs-index";
 import { VERIFY_MAX_BYTES } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
   runErrorNode,
   loadManifestByCid,
-  runLabel,
   toRunLoadError,
   useLatestRun,
   type RunLoadError,
@@ -72,20 +72,13 @@ export function Component(): ReactElement {
         <h2 className={styles.pageTitle}>Data</h2>
         <div className={runStyles.header}>
           {latest && (
-            <select
-              className={styles.runSelect}
-              aria-label="Run"
+            <RunSelect
+              runs={latest.index.runs}
               value={entry?.runId ?? latest.entry.runId}
-              onChange={(e) => setParams({ run: e.target.value })}
-            >
-              {runsByFinish(latest.index)
-                .map((r, i) => (
-                  <option key={r.runId} value={r.runId}>
-                    {runLabel(i + 1, r.finishedAt)}
-                  </option>
-                ))
-                .reverse()}
-            </select>
+              onChange={(runId) => setParams(runId === null ? {} : { run: runId })}
+              label="Run"
+              hideLabel
+            />
           )}
           {shown ? (
             // manifest.json: the CID-checked bytes on the host that served this read.
