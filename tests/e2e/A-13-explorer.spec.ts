@@ -401,10 +401,11 @@ test.describe("A-13 explorer · demo lines", () => {
 
   test(scenario("007"), async ({ page, oracle }) => {
     noteBranch(oracle);
-    const { runs, n } = oracle;
-    if (runs.length >= 2) {
-      const prev = runs[n - 2];
-      const last = runs[n - 1];
+    // Compare speaks run numbers: the numbered runs (no pilot slice), Run N = numbered[N-1].
+    const { numbered, n } = oracle;
+    if (numbered.length >= 2) {
+      const prev = numbered[n - 2];
+      const last = numbered[n - 1];
       if (prev === undefined || last === undefined) throw new Error("run index out of order");
       // 1. Compare n-1 with n.
       await page.goto(`${ROUTES.runsCompare}?a=${n - 1}&b=${n}`);
@@ -671,9 +672,10 @@ test.describe("A-13 explorer · runs and compare", () => {
   });
 
   test(scenario("014"), async ({ page, oracle }) => {
-    const first = oracle.runs[0];
-    if (first === undefined) throw new Error("runs/index.json lists no runs");
-    // 1. Serve the index with only its first (real) entry.
+    // Run 1, the first numbered run (the pilot slice has no number, so Compare cannot name it).
+    const first = oracle.numbered[0];
+    if (first === undefined) throw new Error("runs/index.json lists no numbered runs");
+    // 1. Serve the index with only Run 1 (a real entry).
     await page.route("**/runs/index.json*", async (route) => {
       const res = await route.fetch();
       const body = (await res.json()) as { runs: unknown[] };
@@ -698,9 +700,9 @@ test.describe("A-13 explorer · runs and compare", () => {
 
   test(scenario("015"), async ({ page, oracle }) => {
     noteBranch(oracle);
-    test.skip(oracle.runs.length < 2, "1 run published");
+    test.skip(oracle.numbered.length < 2, "1 numbered run published");
     const { n } = oracle;
-    const old = oracle.runs[n - 2]?.manifestCid ?? "";
+    const old = oracle.numbered[n - 2]?.manifestCid ?? "";
     const net = recordRequests(page);
     // 1. Filebase answers 504 for the old manifest.
     await page.route(`https://${FILEBASE()}/ipfs/${old}*`, (route) =>

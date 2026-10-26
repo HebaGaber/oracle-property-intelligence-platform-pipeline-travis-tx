@@ -1,4 +1,5 @@
-// Header sync badge (A-16 T050; ShellStates board): the latest published run as "Run N · Mon D",
+// Header sync badge (A-16 T050; ShellStates board): the latest published run as "Run N · Mon D"
+// (or "Pilot slice · Mon D"; the name from latestChip, the one numbering rule),
 // read from /runs/index.json only (the Hub's light reader), linking to Runs. States from the board
 // that real data can fill: loading ("Checking sync…"), populated, no runs ("No runs yet for this
 // county") and unavailable ("Sync status unavailable" with Retry). Stale, partial and rate-limited
@@ -15,8 +16,8 @@ export const SYNC_TEXTS = Object.freeze({
   empty: "No runs yet for this county",
   unavailable: "Sync status unavailable",
   retry: "Retry",
-  run: (n: number, finishedAt: string): string =>
-    `Run ${n} · ${new Date(finishedAt).toLocaleDateString("en-US", {
+  run: (name: string, finishedAt: string): string =>
+    `${name} · ${new Date(finishedAt).toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       timeZone: "UTC",
@@ -37,8 +38,8 @@ export function SyncBadge(): ReactElement {
     loadHubRuns(controller.signal).then(
       (runs) => {
         if (controller.signal.aborted) return;
-        const { n, finishedAt } = latestChip(runs);
-        setState({ kind: "ready", text: SYNC_TEXTS.run(n, finishedAt), finishedAt });
+        const { name, finishedAt } = latestChip(runs);
+        setState({ kind: "ready", text: SYNC_TEXTS.run(name, finishedAt), finishedAt });
       },
       (error: unknown) => {
         if (controller.signal.aborted) return;

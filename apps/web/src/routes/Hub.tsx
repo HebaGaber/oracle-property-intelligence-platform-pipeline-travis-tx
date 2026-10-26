@@ -81,9 +81,9 @@ export function Component(): ReactElement {
     const controller = new AbortController();
     loadHubRuns(controller.signal).then(
       (runs) => {
-        const { n, finishedAt } = latestChip(runs);
+        const { name, finishedAt } = latestChip(runs);
         if (!controller.signal.aborted)
-          setChip({ kind: "ready", text: PAGE_TEXTS.hubChip(n, finishedAt) });
+          setChip({ kind: "ready", text: PAGE_TEXTS.hubChip(name, finishedAt) });
       },
       (error: unknown) => {
         if (controller.signal.aborted) return;

@@ -2,10 +2,11 @@
 // there is no other info than the run and its date — consistent across pages"). A native
 // `<select>` (keyboard and screen-reader behaviour for free) styled as an Atlas outlined field,
 // 48 px, with a decorative chevron instead of the browser's. Runs are listed newest first as
-// "Run N · Mon D, YYYY" (runOptionLabel; numbers in `runsByFinish` order), the latest marked
+// "Run N · Mon D, YYYY" or "Pilot slice · Mon D, YYYY" (runOptionLabel, runNumbers), the latest marked
 // "· latest". The page owns the value (the URL): `onChange` gets the chosen run ID, or `null` for
 // the optional "all runs" choice. Render-only.
 import { useId, type ReactElement } from "react";
+import { byFinish, numberRuns } from "../data/run-numbers";
 import { runOptionLabel, type RunsIndexEntry } from "../data/runs-index";
 import { Icon } from "./Icon";
 import styles from "./RunSelect.module.css";
@@ -35,10 +36,12 @@ export function RunSelect({
   allLabel,
 }: RunSelectProps): ReactElement {
   const id = useId();
-  // Oldest first by finish time, the order every page numbers runs in (runsByFinish).
-  const numbered = [...runs]
-    .sort((a, b) => Date.parse(a.finishedAt) - Date.parse(b.finishedAt))
-    .map((entry, i) => ({ entry, number: i + 1 }));
+  // Oldest first by finish time; numbers from the one rule (runNumbers: the pilot is unnumbered).
+  const numbers = numberRuns(runs);
+  const numbered = byFinish(runs).map((entry) => ({
+    entry,
+    number: numbers.get(entry.runId) ?? null,
+  }));
   const latestId = numbered[numbered.length - 1]?.entry.runId;
   const known = value !== null && numbered.some(({ entry }) => entry.runId === value);
   const selected = known ? value : allLabel === undefined ? (latestId ?? ALL) : ALL;

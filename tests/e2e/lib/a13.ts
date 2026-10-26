@@ -66,11 +66,31 @@ export function latestRunEntry(index: RunsIndexV1): RunsIndexEntry {
   return latest;
 }
 
-/** Run {n}: the 1-based position of `runId` in `finishedAt` order. */
-export function runNumber(index: RunsIndexV1, runId: string): number {
-  const position = runsByFinishedAt(index).findIndex((r) => r.runId === runId);
-  if (position < 0) throw new Error(`runs/index.json does not list run ${runId}`);
-  return position + 1;
+/**
+ * The pilot runs (PO 2026-10-26 06:55): listed, never numbered, shown as "Pilot slice". A-03's
+ * 14-property walking-skeleton slice. Kept here, apart from the app's PILOT_RUN_IDS, so the oracle
+ * does not reuse the code under test.
+ */
+export const PILOT_RUN_IDS: ReadonlySet<string> = new Set([
+  "travis-202609-permits-20261021t103516z",
+]);
+
+/** The numbered runs in `finishedAt` order: Run N is entry N-1 (no pilot run). */
+export function numberedRunsByFinishedAt(index: RunsIndexV1): RunsIndexEntry[] {
+  return runsByFinishedAt(index).filter((r) => !PILOT_RUN_IDS.has(r.runId));
+}
+
+/** Run {n}: the 1-based position of `runId` among the numbered runs; `null` for a pilot run. */
+export function runNumber(index: RunsIndexV1, runId: string): number | null {
+  if (!index.runs.some((r) => r.runId === runId))
+    throw new Error(`runs/index.json does not list run ${runId}`);
+  if (PILOT_RUN_IDS.has(runId)) return null;
+  return numberedRunsByFinishedAt(index).findIndex((r) => r.runId === runId) + 1;
+}
+
+/** "Run N", or "Pilot slice" for a pilot run. */
+export function runName(n: number | null): string {
+  return n === null ? "Pilot slice" : `Run ${n}`;
 }
 
 export interface PinataOptions {

@@ -68,7 +68,7 @@ describe("Hub: the two cards and the run chip (TC-001)", () => {
     install({});
     const page = await renderHub();
     expect(page.getAttribute("data-route")).toBe("hub");
-    const chip = await screen.findByText(PAGE_TEXTS.hubChip(2, "2026-10-21T10:40:59.000Z"));
+    const chip = await screen.findByText(PAGE_TEXTS.hubChip("Run 2", "2026-10-21T10:40:59.000Z"));
     expect(chip.textContent).toBe("Run 2 · 2026-10-21 10:40 UTC");
     expect(page.getAttribute("data-state")).toBe("ready");
     expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe(ROUTES.explore);

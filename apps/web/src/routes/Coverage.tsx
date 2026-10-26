@@ -43,6 +43,7 @@ import {
 } from "../data/coverage-rows";
 import { formatCount } from "../data/format";
 import type { LoadedRun } from "../data/run-loader";
+import { runNumbers, type RunNumber } from "../data/runs-index";
 import {
   COVERAGE_KINDS,
   COVERAGE_KIND_MISSING,
@@ -99,12 +100,9 @@ export function Component(): ReactElement {
   );
 }
 
-function runNumber(run: LoadedRun): number {
-  const sorted = [...run.index.runs].sort(
-    (a, b) => Date.parse(a.finishedAt) - Date.parse(b.finishedAt),
-  );
-  const at = sorted.findIndex((r) => r.manifestCid === run.manifestCid);
-  return at === -1 ? sorted.length : at + 1;
+/** The shown run's number by the one rule (runNumbers; `null` for the pilot slice). */
+function runNumber(run: LoadedRun): RunNumber {
+  return runNumbers(run.index).get(run.entry.runId) ?? null;
 }
 
 const csvCell = (value: string): string => `"${value.replaceAll('"', '""')}"`;
@@ -191,7 +189,7 @@ function KpiTiles({
   readonly run: LoadedRun;
   readonly kinds: readonly CoverageKind[];
   readonly byKind: ReadonlyMap<string, readonly CoverageRow[]>;
-  readonly number: number;
+  readonly number: RunNumber;
 }): ReactElement {
   const { manifest } = run;
   const listed = kinds.filter((k) => k.id !== OTHER_KIND.id);

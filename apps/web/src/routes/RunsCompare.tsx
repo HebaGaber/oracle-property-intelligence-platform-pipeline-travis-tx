@@ -39,7 +39,7 @@ import {
   type ChainResolves,
   type GatewayCheck,
 } from "../data/run-chain";
-import { runsByFinish, type RunsIndexEntry } from "../data/runs-index";
+import { numberedRuns, type RunsIndexEntry } from "../data/runs-index";
 import { verifyUrlsFromEnv } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
@@ -92,9 +92,11 @@ export function Component(): ReactElement {
       {state.kind === "error" ? (
         <ErrorBanner message={runErrorNode(state.error)} onRetry={retry} />
       ) : null}
+      {/* The numbered runs only (RUNS_TEXTS.numbering): `?a=N` is Run N; the pilot slice is not
+          offered here (the URL speaks run numbers, and the pilot has none). */}
       {state.kind === "ready" ? (
         <ComparePair
-          entries={runsByFinish(state.run.index)}
+          entries={numberedRuns(state.run.index)}
           a={params.get("a")}
           b={params.get("b")}
         />

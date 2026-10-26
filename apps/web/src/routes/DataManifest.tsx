@@ -21,7 +21,7 @@ import { Icon } from "../components/Icon";
 import { loadRunChain, type RunChainLink } from "../data/run-chain";
 import type { LoadedRun } from "../data/run-loader";
 import { RunSelect } from "../components/RunSelect";
-import { runNumbers } from "../data/runs-index";
+import { runName, runNumbers, type RunNumber } from "../data/runs-index";
 import { VERIFY_MAX_BYTES } from "../data/verify-lane";
 import {
   RUN_STAGE_TEXTS,
@@ -144,8 +144,8 @@ function RunChain({
   readonly children: ReactNode;
   readonly head: string;
   readonly headManifest: RunManifestV1;
-  /** "Run N" by run ID, from runs/index.json (the header badge, Runs and Log numbering). */
-  readonly numbers: ReadonlyMap<string, number>;
+  /** Run numbers by run ID (runNumbers: `null` is the pilot slice), the header and Runs numbering. */
+  readonly numbers: ReadonlyMap<string, RunNumber>;
 }): ReactElement {
   const [state, setState] = useState<ChainState>({ kind: "loading" });
   useEffect(() => {
@@ -185,7 +185,9 @@ function RunChain({
               data-cid={link.manifestCid}
             >
               <span className={styles.chainLabel} data-chain-label="">
-                Run {numbers.get(link.runId) ?? "not in the index"}
+                {numbers.has(link.runId)
+                  ? runName(numbers.get(link.runId) ?? null)
+                  : "Run not in the index"}
                 {i === 0 ? <span className={styles.chainThis}> · this run</span> : null}
               </span>
               <code className={styles.chainRunId}>{link.runId}</code>
