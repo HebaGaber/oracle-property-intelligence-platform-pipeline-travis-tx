@@ -1,6 +1,61 @@
-/* Explore results data table (Explore1440/768 boards): Atlas § 7 data table, body-small cells,
-   label-medium headers, outline-variant row dividers, selected row on secondary-container. The
-   table scrolls sideways inside its own box so the page never does. Tokens only. */
+/* Explore results data table (Explore1440 board; PO notes 2026-10-26: compact rows): Atlas § 7
+   data table, body-small cells, label-medium headers, outline-variant row dividers, selected row
+   on secondary-container. Values keep whole words on one line where they fit; the table scrolls
+   sideways inside its own box (only with optional columns on), so the page never does. Tokens
+   only. */
+
+.box {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.columns,
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  color: var(--md-sys-color-on-surface-variant);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+}
+
+.menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.check input {
+  width: var(--space-5);
+  height: var(--space-5);
+  margin: 0;
+  accent-color: var(--md-sys-color-primary);
+  font: inherit;
+}
+
+.columns:focus-visible,
+.check:focus-within {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
 
 .scroll {
   min-width: 0;
@@ -23,15 +78,16 @@
 
 .table th,
 .table td {
-  padding: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .table th {
   position: sticky;
   top: 0;
+  padding-block: var(--space-3);
   background: var(--md-sys-color-surface-container-low);
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-sys-typescale-label-medium-font);
@@ -40,17 +96,16 @@
   white-space: nowrap;
 }
 
+.table [hidden] {
+  display: none;
+}
+
 .row {
   cursor: pointer;
 }
 
 .row:hover {
   background-color: var(--md-sys-color-surface-container-low);
-}
-
-.row:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--md-sys-color-primary);
 }
 
 .selected {
@@ -63,40 +118,51 @@
 
 .stack {
   display: grid;
-  gap: var(--space-1);
-  min-width: calc(var(--space-10) + var(--space-6));
+  gap: 0;
 }
 
-/* D-4: word-level wrapping only. `overflow-wrap: anywhere` let every cell's min-content shrink
-   to one letter, so the 1440 table (wider than its pane) broke values and pills letter by letter
-   into 4–8 line cells; now cells keep whole words and the table scrolls inside `.scroll`. */
+/* Whole values on one line (D-4: no letter-by-letter breaks); the permit chip may wrap. */
 .value {
-  overflow-wrap: break-word;
+  white-space: nowrap;
+}
+
+.value[data-field="permit"],
+.value[data-field="contractor_resolution"] {
+  white-space: normal;
 }
 
 .muted {
   color: var(--md-sys-color-on-surface-variant);
 }
 
-/* The row provenance: a fixed-width column where only the long source URL may break mid-word. */
+.cid {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-ref-typeface-mono);
+  font-size: var(--md-sys-typescale-body-small-size);
+}
+
+/* The compact provenance wraps between its parts, never inside one. */
 .source {
-  min-width: calc(var(--space-10) * 4);
-  overflow-wrap: anywhere;
+  min-width: calc(var(--space-10) * 2 + var(--space-7));
+  max-width: calc(var(--space-10) * 3 + var(--space-7));
 }
 
 .details {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   box-sizing: border-box;
+  width: var(--space-9);
   min-width: var(--space-9);
+  height: var(--space-9);
   min-height: var(--space-9);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--md-sys-color-outline);
+  padding: 0;
+  border: 0;
   border-radius: var(--md-sys-shape-corner-full);
-  color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-surface-variant);
   background: transparent;
   cursor: pointer;
-  font-family: var(--md-sys-typescale-label-large-font);
-  font-size: var(--md-sys-typescale-label-large-size);
-  font-weight: var(--md-sys-typescale-label-large-weight);
+  font: inherit;
 }
 
 .details:focus-visible {
