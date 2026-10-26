@@ -9,6 +9,7 @@ import { CertStack } from "./cert-stack.js";
 import { PROJECT_TAG_KEY, type InfraConfig } from "./config.js";
 import { DataStack } from "./data-stack.js";
 import { OpsStack } from "./ops-stack.js";
+import { ScheduledRunStack } from "./stacks/scheduled-run-stack.js";
 import { SchedulerStack } from "./stacks/scheduler-stack.js";
 import { WebStack } from "./web-stack.js";
 
@@ -20,6 +21,8 @@ export interface CountyLensStacks {
   readonly cert: CertStack;
   /** A-11 G-SCHED: DISABLED-by-default scheduler, no dependents (never blocks AM-02 order). */
   readonly scheduler: SchedulerStack;
+  /** One scheduled Start for the laptop bridge, only when COUNTYLENS_SCHEDULED_RUN_* is set. */
+  readonly scheduledRun?: ScheduledRunStack;
 }
 
 /** The Ops stack needs the alarm and budget recipient; it is never in git (CI variable, PO shell). */
@@ -111,10 +114,30 @@ export function createCountyLensStacks(app: App, config: InfraConfig): CountyLen
     "G-SCHED: reads the CID-copy bucket/CloudFront SSM parameters",
   );
 
+  // PO 2026-10-26: one scheduled Start on the admin queue (its own stack: deploying it changes
+  // nothing else). Synthesized only when the four COUNTYLENS_SCHEDULED_RUN_* values are set.
+  const scheduledRun =
+    config.scheduledRun === undefined
+      ? undefined
+      : new ScheduledRunStack(app, "CountyLensScheduledRun", {
+          ...base,
+          run: config.scheduledRun,
+          description:
+            "CountyLens: one EventBridge Scheduler Start on the admin command queue for the laptop bridge; an at() schedule fires once, then delete this stack.",
+        });
+
   Tags.of(app).add(PROJECT_TAG_KEY, config.projectName);
   Validations.of(app).addPlugins(
     new AwsSolutionsChecks(app, { verbose: true, writeSuppressionsToCloudFormation: true }),
   );
 
-  return { data, api, web, ops, cert, scheduler };
+  return {
+    data,
+    api,
+    web,
+    ops,
+    cert,
+    scheduler,
+    ...(scheduledRun === undefined ? {} : { scheduledRun }),
+  };
 }

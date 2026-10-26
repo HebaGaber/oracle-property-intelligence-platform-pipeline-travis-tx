@@ -30,7 +30,15 @@ pnpm --filter @countylens/bridge start
 After the first successful `publish` run the bridge remembers the last two values in
 `pipeline/data/bridge/state.json`, so only the first start needs them. Optional:
 `BRIDGE_MANIFEST_CONFIG` (a `build-run-manifest.ts --config` file with `coverageOverrides`),
-`RESTATE_INGRESS_URL` (default `http://localhost:8080`).
+`RESTATE_INGRESS_URL` (default `http://localhost:8080`), `BRIDGE_RELEASE_REUSE_TAGS` (comma-separated
+earlier release tags whose identical CARs the release step reuses instead of re-uploading, e.g.
+`run-travis-full-run4-20261026,run-travis-full-run3-1-20261025,run-travis-full-run3-20261025`) and
+`BRIDGE_RELEASE_TARGET` (the branch the release tag points at, e.g. `feature/oracle-pipeline`).
+
+A scheduled start (PO 2026-10-26) arrives the same way as the admin Start: the
+`CountyLensScheduledRun` stack (deployed only with `COUNTYLENS_SCHEDULED_RUN_*` set) puts one
+command on the queue at a fixed UTC time. The bridge must be polling then; the command expires
+15 minutes later otherwise. Delete that stack after it has fired.
 
 If the manifest step fails with "Supply coverageOverrides for: contractor_..., permits_trade_sub_permit",
 the incremental refresh changed the published permit rows, so the carried coverage keys no longer

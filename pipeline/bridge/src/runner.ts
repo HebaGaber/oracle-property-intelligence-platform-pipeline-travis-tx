@@ -61,6 +61,13 @@ export interface RunnerConfig {
   manifestConfig?: string | undefined;
   /** CID copy host for publish-run.ts (--copy-host); CID_COPY_HOST is also read by the script. */
   copyHost?: string | undefined;
+  /**
+   * Earlier release tags whose identical CAR assets the release step reuses instead of
+   * re-uploading (BRIDGE_RELEASE_REUSE_TAGS, comma-separated; Run 4 passed Run 3.1's and Run 3's).
+   */
+  releaseReuseTags?: readonly string[] | undefined;
+  /** Branch the release tag points at (BRIDGE_RELEASE_TARGET; default: the current branch). */
+  releaseTarget?: string | undefined;
 }
 
 export interface RunnerDeps {
@@ -163,6 +170,12 @@ export function createRunner(deps: RunnerDeps): CommandRunner {
       runId,
       ...(c.copyHost === undefined ? [] : ["--copy-host", c.copyHost]),
       ...extra,
+    ];
+
+    // The release step's options, as Run 4's p9-publish.sh passed them.
+    const releaseArgs = [
+      ...(c.releaseReuseTags ?? []).flatMap((tag) => ["--release-reuse-tag", tag]),
+      ...(c.releaseTarget === undefined ? [] : ["--release-target", c.releaseTarget]),
     ];
 
     const steps: { name: string; run: () => Promise<void> }[] = [
@@ -358,7 +371,13 @@ export function createRunner(deps: RunnerDeps): CommandRunner {
         : PUBLISH_STEP_ORDER.flatMap((step) => {
             const publish = {
               name: `publish-${step}`,
-              run: () => sh(`publish-${step}`, "npx", publishArgs(["--step", step]), c.repoRoot),
+              run: () =>
+                sh(
+                  `publish-${step}`,
+                  "npx",
+                  publishArgs(["--step", step, ...(step === "release" ? releaseArgs : [])]),
+                  c.repoRoot,
+                ),
             };
             // machamp review M1: a bridge-published run gets its Explore index right after the
             // CID copy holds its parts, before the run is listed, so it is searchable at once.

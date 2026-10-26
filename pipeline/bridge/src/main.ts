@@ -62,6 +62,11 @@ async function main(): Promise<void> {
       run1PidsFile: `${REPO_ROOT}/specs/011-publish-and-runs/run1-permit-pids.txt`,
       manifestConfig: process.env["BRIDGE_MANIFEST_CONFIG"],
       copyHost: process.env["CID_COPY_HOST"],
+      releaseReuseTags: process.env["BRIDGE_RELEASE_REUSE_TAGS"]
+        ?.split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag !== ""),
+      releaseTarget: process.env["BRIDGE_RELEASE_TARGET"],
     },
     exec: makeExec(`${bridgeDir}/logs`, () => runTag),
     restate: createRestateRunner({

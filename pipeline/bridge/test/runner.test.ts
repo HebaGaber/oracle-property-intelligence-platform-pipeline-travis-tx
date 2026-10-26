@@ -217,6 +217,28 @@ describe("runner (publish)", () => {
       expect(l).not.toContain("--dry-run");
   });
 
+  it("passes the release reuse tags and target to the release step only (as Run 4's p9-publish.sh)", async () => {
+    const c = command({ mode: "publish", commandId: "12345678-1234-4234-8234-123456789012" });
+    const h = harness({
+      config: {
+        releaseReuseTags: ["run-travis-full-run4-20261026", "run-travis-full-run3-1-20261025"],
+        releaseTarget: "feature/oracle-pipeline",
+      },
+    });
+    h.files.writeText(
+      `${REPO}/pipeline/data/bridge/work/${runIdFor(c, new Date(T0))}/affected-pids.txt`,
+      "p2\n",
+    );
+    expect((await h.runner(c)).outcome).toBe("succeeded");
+    const lines = h.calls.map(cmdLine).filter((l) => l.includes("publish-run.ts"));
+    const release = must(lines.find((l) => l.includes("--step release")));
+    expect(release).toContain("--release-reuse-tag run-travis-full-run4-20261026");
+    expect(release).toContain("--release-reuse-tag run-travis-full-run3-1-20261025");
+    expect(release).toContain("--release-target feature/oracle-pipeline");
+    for (const l of lines.filter((x) => !x.includes("--step release")))
+      expect(l).not.toContain("--release-");
+  });
+
   it("builds and uploads the Explore index right after the CID copy, before the run is listed (review M1)", async () => {
     const c = command({ mode: "publish", commandId: "12345678-1234-4234-8234-123456789012" });
     const h = harness();

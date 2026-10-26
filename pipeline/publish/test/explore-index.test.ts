@@ -244,10 +244,10 @@ afterAll(() => {
 describe("index key layout and descriptor (T003, frozen interface)", () => {
   it("keys live under private/explore-index/<manifestCid>/ with index.json and one file per view", () => {
     const keys = indexKeys(EXPLORE_INDEX_PREFIX, fixture.manifestCid);
-    expect(keys.indexJson).toBe(`private/explore-index/${fixture.manifestCid}/index.json`);
+    expect(keys.indexJson).toBe(`private/explore-index/v1.2/${fixture.manifestCid}/index.json`);
     expect(Object.values(keys.files)).toEqual(
       ["v_property", "v_roofing_permit", "v_contractor", "v_run"].map(
-        (v) => `private/explore-index/${fixture.manifestCid}/${v}.parquet`,
+        (v) => `private/explore-index/v1.2/${fixture.manifestCid}/${v}.parquet`,
       ),
     );
     expect(() => indexKeys("ipfs/", fixture.manifestCid)).toThrow(/private/);
@@ -369,16 +369,16 @@ describe("build: frozen schema and parity (T010)", { timeout: 60_000 }, () => {
 
   it("the descriptor keys follow --prefix, and an index built for another prefix is not reused", async () => {
     await expect(
-      buildExploreIndex({ ...options(fixture, work), prefix: "private/explore-index/v1.2/" }),
+      buildExploreIndex({ ...options(fixture, work), prefix: "private/explore-index/" }),
     ).rejects.toThrow(/rerun with --rebuild/);
     const w = mkdtempSync(join(tmpdir(), "explore-index-prefix-"));
     try {
       const v12 = await buildExploreIndex({
         ...options(fixture, w),
-        prefix: "private/explore-index/v1.2/",
+        prefix: "private/explore-index/",
       });
       expect(v12.descriptor.files.v_property.key).toBe(
-        `private/explore-index/v1.2/${fixture.manifestCid}/v_property.parquet`,
+        `private/explore-index/${fixture.manifestCid}/v_property.parquet`,
       );
     } finally {
       rmSync(w, { recursive: true, force: true });
@@ -549,7 +549,7 @@ describe("upload (If-None-Match, index.json last, idempotent)", () => {
         log: () => undefined,
       }),
     ).toBe("uploaded");
-    const root = `private/explore-index/${fixture.manifestCid}/`;
+    const root = `private/explore-index/v1.2/${fixture.manifestCid}/`;
     expect(s3.puts).toEqual([
       ...["v_property", "v_roofing_permit", "v_contractor", "v_run"].map(
         (v) => `${root}${v}.parquet`,
@@ -572,7 +572,7 @@ describe("upload (If-None-Match, index.json last, idempotent)", () => {
     const s3 = fakeS3();
     const other = { ...built.descriptor, viewsSha256: "f".repeat(64) };
     s3.objects.set(
-      `b/private/explore-index/${fixture.manifestCid}/index.json`,
+      `b/private/explore-index/v1.2/${fixture.manifestCid}/index.json`,
       new TextEncoder().encode(JSON.stringify(other)),
     );
     expect(decideUpload(other, built.descriptor)).toBe("conflict");
@@ -591,7 +591,7 @@ describe("upload (If-None-Match, index.json last, idempotent)", () => {
   it("a Parquet key left by an earlier build with other bytes stops before index.json is written", async () => {
     const s3 = fakeS3();
     s3.objects.set(
-      `b/private/explore-index/${fixture.manifestCid}/v_property.parquet`,
+      `b/private/explore-index/v1.2/${fixture.manifestCid}/v_property.parquet`,
       new Uint8Array([1, 2, 3]),
     );
     await expect(

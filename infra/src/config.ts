@@ -92,6 +92,14 @@ const EnvSchema = z.object({
     emptyToUndefined,
     z.email("OPERATOR_EMAIL must be an email address (alarm and budget recipient)").optional(),
   ),
+  // PO 2026-10-26: one scheduled Start (CountyLensScheduledRun). All four or none.
+  COUNTYLENS_SCHEDULED_RUN_AT: z.preprocess(emptyToUndefined, z.string().optional()),
+  COUNTYLENS_SCHEDULED_RUN_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  COUNTYLENS_SCHEDULED_RUN_SINCE: z.preprocess(emptyToUndefined, z.string().optional()),
+  COUNTYLENS_SCHEDULED_RUN_MODE: z.preprocess(
+    emptyToUndefined,
+    z.enum(["publish", "dry_run"]).optional(),
+  ),
 });
 
 const ContextSchema = z.object({
@@ -122,6 +130,13 @@ export interface InfraConfig {
   readonly operatorEmail?: string;
   /** Amplify source: GitHub `owner/repo` and the production branch. */
   readonly github: { readonly repository: string; readonly ref: string };
+  /** One scheduled Start of the incremental run (COUNTYLENS_SCHEDULED_RUN_*); absent = none. */
+  readonly scheduledRun?: {
+    readonly at: string;
+    readonly commandId: string;
+    readonly sinceRunId: string;
+    readonly mode: "publish" | "dry_run";
+  };
 }
 
 export type ContextReader = (key: string) => unknown;
@@ -152,6 +167,18 @@ export function loadConfig(
     throw new Error(`infra config: ${formatIssues(issues)}`);
   }
   const { CDK_DEFAULT_REGION, CDK_DEFAULT_ACCOUNT, OPERATOR_EMAIL } = parsedEnv.data;
+  const run = {
+    at: parsedEnv.data.COUNTYLENS_SCHEDULED_RUN_AT,
+    commandId: parsedEnv.data.COUNTYLENS_SCHEDULED_RUN_ID,
+    sinceRunId: parsedEnv.data.COUNTYLENS_SCHEDULED_RUN_SINCE,
+    mode: parsedEnv.data.COUNTYLENS_SCHEDULED_RUN_MODE,
+  };
+  const given = Object.values(run).filter((v) => v !== undefined).length;
+  if (given !== 0 && given !== 4) {
+    throw new Error(
+      "infra config: set all four COUNTYLENS_SCHEDULED_RUN_* (AT, ID, SINCE, MODE) or none",
+    );
+  }
   const allowed = parsedContext.data[CONTEXT_KEYS.allowedRegions];
   if (!allowed.includes(CDK_DEFAULT_REGION)) {
     throw new RegionNotAllowedError(CDK_DEFAULT_REGION, allowed);
@@ -165,5 +192,18 @@ export function loadConfig(
       repository: parsedContext.data[CONTEXT_KEYS.githubRepository],
       ref: parsedContext.data[CONTEXT_KEYS.githubRef],
     },
+    ...(run.at !== undefined &&
+    run.commandId !== undefined &&
+    run.sinceRunId !== undefined &&
+    run.mode !== undefined
+      ? {
+          scheduledRun: {
+            at: run.at,
+            commandId: run.commandId,
+            sinceRunId: run.sinceRunId,
+            mode: run.mode,
+          },
+        }
+      : {}),
   };
 }
