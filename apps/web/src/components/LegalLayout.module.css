@@ -55,7 +55,6 @@
   display: grid;
   gap: var(--space-4);
   min-width: 0;
-  max-width: calc(var(--space-10) * 12);
 }
 
 .banner {

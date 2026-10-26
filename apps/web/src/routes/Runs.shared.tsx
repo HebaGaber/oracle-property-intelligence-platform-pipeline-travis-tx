@@ -1,6 +1,6 @@
 // Shared pieces of the run pages (A-13 T020/T021/T023: Runs, Compare, Coverage, Manifest,
-// Verify). One load path: same-origin `/runs/index.json` → its latest entry → the manifest by CID
-// through the CID copy with the labelled Filebase fallback (fetch-by-cid, FR-016). A failure is
+// Verify). One load path: same-origin `/runs/index.json` → its latest entry (or the run the Runs
+// menu chose) → the manifest by CID through the CID copy with the labelled Filebase fallback (fetch-by-cid, FR-016). A failure is
 // either the index (FR-021 "Run index unavailable · {reason}", with a link to the file) or the
 // manifest ("Manifest unavailable · {cid} · {reason}", the full CID in `data-cid`). The reason is
 // the A-03 text (RUN_INDEX_TEXTS, BOTH_HOSTS_DOWN_TEXT, a CID mismatch) as its own element, so
@@ -14,16 +14,12 @@ import { loadManifest, type LoadedManifest } from "../data/manifest";
 import {
   RUN_STAGE_TEXTS,
   runErrorMessage,
+  selectRun,
   type LoadedRun,
   type RunStage,
+  type SelectedRun,
 } from "../data/run-loader";
-import {
-  RUNS_INDEX_PATH,
-  RunIndexError,
-  latestRun,
-  loadRunsIndex,
-  runIndexText,
-} from "../data/runs-index";
+import { RUNS_INDEX_PATH, RunIndexError, loadRunsIndex, runIndexText } from "../data/runs-index";
 
 export { RUN_STAGE_TEXTS };
 
@@ -40,7 +36,7 @@ export class RunLoadFailure extends Error {
 
 export type RunPageState =
   | { readonly kind: "loading"; readonly stage: RunStage }
-  | { readonly kind: "ready"; readonly run: LoadedRun }
+  | { readonly kind: "ready"; readonly run: LoadedRun; readonly selected: SelectedRun }
   | { readonly kind: "error"; readonly error: RunLoadError };
 
 /** The manifest by CID through the configured read path (copy, then the Filebase fallback). */
@@ -65,6 +61,19 @@ export async function loadLatestRun(
   onStage?: (stage: RunStage) => void,
   onIndex?: (index: LoadedRun["index"]) => void,
 ): Promise<LoadedRun> {
+  return (await loadSelectedRun(signal, null, onStage, onIndex)).run;
+}
+
+/**
+ * Index → the requested run (`runId`, else the latest; selectRun) → its manifest. The Runs page's
+ * Run menu (A-16 PO note) reads an earlier run through the same path as the latest one.
+ */
+export async function loadSelectedRun(
+  signal: AbortSignal,
+  runId: string | null,
+  onStage?: (stage: RunStage) => void,
+  onIndex?: (index: LoadedRun["index"]) => void,
+): Promise<{ readonly run: LoadedRun; readonly selected: SelectedRun }> {
   onStage?.("index");
   let index: LoadedRun["index"];
   try {
@@ -74,7 +83,8 @@ export async function loadLatestRun(
     const reason = error instanceof RunIndexError ? runIndexText(error.reason) : String(error);
     throw new RunLoadFailure({ kind: "index", reason });
   }
-  const entry = latestRun(index);
+  const selected = selectRun(index, runId);
+  const { entry } = selected;
   // A-16 T045 (A13-3, LCP): the run list is known as soon as the index is read; the page paints
   // it while the (much larger) manifest is still being fetched.
   onIndex?.(index);
@@ -90,7 +100,7 @@ export async function loadLatestRun(
       reason: runErrorMessage(error),
     });
   }
-  return { index, entry, manifest, manifestCid, read };
+  return { run: { index, entry, manifest, manifestCid, read }, selected };
 }
 
 export function toRunLoadError(error: unknown): RunLoadError {
@@ -105,6 +115,18 @@ export function useLatestRun(): {
   /** The run index once it is read, before the manifest (A-16 LCP: the list paints first). */
   readonly index: LoadedRun["index"] | undefined;
 } {
+  return useRun(null);
+}
+
+/**
+ * The requested run (`runId`, else the latest) for a page. Choosing another run reloads only
+ * that run; the index already read stays on screen meanwhile, so the Run menu does not flicker.
+ */
+export function useRun(runId: string | null): {
+  readonly state: RunPageState;
+  readonly retry: () => void;
+  readonly index: LoadedRun["index"] | undefined;
+} {
   const [state, setState] = useState<RunPageState>({ kind: "loading", stage: "index" });
   const [index, setIndex] = useState<LoadedRun["index"] | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
@@ -112,9 +134,9 @@ export function useLatestRun(): {
     const controller = new AbortController();
     const live = (): boolean => !controller.signal.aborted;
     setState({ kind: "loading", stage: "index" });
-    setIndex(undefined);
-    loadLatestRun(
+    loadSelectedRun(
       controller.signal,
+      runId,
       (stage) => {
         if (live()) setState({ kind: "loading", stage });
       },
@@ -122,15 +144,15 @@ export function useLatestRun(): {
         if (live()) setIndex(read);
       },
     ).then(
-      (run) => {
-        if (live()) setState({ kind: "ready", run });
+      ({ run, selected }) => {
+        if (live()) setState({ kind: "ready", run, selected });
       },
       (error: unknown) => {
         if (live()) setState({ kind: "error", error: toRunLoadError(error) });
       },
     );
     return () => controller.abort();
-  }, [attempt]);
+  }, [attempt, runId]);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   return { state, retry, index: state.kind === "ready" ? state.run.index : index };
 }

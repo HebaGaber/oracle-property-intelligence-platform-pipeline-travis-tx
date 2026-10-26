@@ -4,7 +4,7 @@
 import { rawCid, type ExploreRow } from "@countylens/query-core";
 import { PAGE_TEXTS } from "@countylens/shared";
 import { QueryClient, QueryClientProvider, skipToken } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ReactElement, ReactNode } from "react";
