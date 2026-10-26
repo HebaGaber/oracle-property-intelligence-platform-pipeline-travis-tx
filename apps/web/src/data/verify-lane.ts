@@ -28,6 +28,9 @@ import { readCapped } from "./read-capped";
 
 export const PINATA_GATEWAY_HOST_KEY = "VITE_PINATA_GATEWAY_HOST";
 export const ORBITOR_GATEWAY_HOST_KEY = "VITE_ORBITOR_GATEWAY_HOST";
+/** Used when the build has no VITE_ORBITOR_GATEWAY_HOST yet (same default as infra web-stack), so a
+ *  web build that lands before the Web-stack deploy still shows both independent lanes. */
+export const DEFAULT_ORBITOR_GATEWAY_HOST = "ipfs.orbitor.dev";
 export const VERIFY_BACKOFF_MS = [2000, 4000, 8000] as const;
 export const VERIFY_TIMEOUT_MS = 30_000;
 export const VERIFY_MAX_BYTES = 50 * 1024 * 1024;
@@ -90,7 +93,7 @@ export function verifyUrlsFromEnv(env: WebEnv = viteEnv): ReadPathUrls {
     cidCopyHost: need(CID_COPY_HOST_KEY),
     filebaseGatewayHost: need(FILEBASE_GATEWAY_HOST_KEY),
     pinataGatewayHost: need(PINATA_GATEWAY_HOST_KEY),
-    orbitorGatewayHost: need(ORBITOR_GATEWAY_HOST_KEY),
+    orbitorGatewayHost: env(ORBITOR_GATEWAY_HOST_KEY) ?? DEFAULT_ORBITOR_GATEWAY_HOST,
   });
 }
 
