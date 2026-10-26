@@ -126,10 +126,11 @@ table.log td {
   line-height: var(--md-sys-typescale-body-small-line-height);
 }
 
-/* Compact widths (no 390 Log board; D-6): each event is a small card instead of a table row
-   squeezed to a few characters per column: time and status on top, then run, event, source and
+/* Compact and medium widths up to 839 px (D-6, review B-4): each event is a small card, so Count and
+   Status are never hidden behind a sideways scroll at 768 (real run IDs and source names are longer
+   than the board samples). The card shows time and status on top, then run, event, source and
    count. The table roles stay for assistive tech; the header row is visually hidden. */
-@media (max-width: 599px) {
+@media (max-width: 839px) {
   .log thead {
     position: absolute;
     width: 1px;

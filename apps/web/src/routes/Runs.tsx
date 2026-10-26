@@ -403,7 +403,7 @@ function PipelineSteps({
               {manifest.sources.length} of {manifest.sources.length} done
             </span>
           </span>
-          <ul aria-label="Fetched sources">
+          <ul aria-label="Fetch step: records per feed">
             {manifest.sources.map((source) => (
               <li key={source.name} data-fetch-source={source.name}>
                 <Icon name="check_circle" size="small" />
