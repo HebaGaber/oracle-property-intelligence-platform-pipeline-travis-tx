@@ -316,6 +316,8 @@ a.sheetItem:hover {
 }
 
 .soon {
+  flex: none;
+  white-space: nowrap;
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-sys-typescale-label-small-font);
   font-size: var(--md-sys-typescale-label-small-size);
@@ -383,6 +385,108 @@ a.sheetItem:hover {
     width: calc(var(--space-10) * 5);
     max-height: none;
     border-radius: 0 var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0;
+  }
+}
+
+/* Shell1440 board: the search box between the location chip and the actions, from 1024 px. */
+.search {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .search {
+    display: flex;
+    flex: 0 1 calc(var(--space-10) * 8);
+    align-items: center;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: var(--space-9);
+    padding: 0 var(--space-4);
+    border-radius: var(--md-sys-shape-corner-full);
+    background: var(--md-sys-color-surface-container-high);
+    color: var(--md-sys-color-on-surface-variant);
+  }
+
+  .search:focus-within {
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 2px;
+  }
+}
+
+.searchInput {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: var(--space-9);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-body-large-font);
+  font-size: var(--md-sys-typescale-body-large-size);
+}
+
+.searchInput:focus-visible {
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* Shell390More board: a grabber on the compact bottom sheet, an icon on every row (drawn over the
+   link's start padding, so the whole row stays one 48 px link) and the legal links as a footer. */
+.sheet {
+  display: grid;
+  align-content: start;
+}
+
+.grabber {
+  justify-self: center;
+  width: var(--space-7);
+  height: var(--space-1);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-outline-variant);
+}
+
+.sheetRow {
+  position: relative;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.sheetRow > :global(.material-symbols-rounded) {
+  position: absolute;
+  top: calc(50% - var(--space-3));
+  left: var(--space-3);
+  pointer-events: none;
+}
+
+.sheetRow > .sheetItem {
+  padding-left: var(--space-9);
+}
+
+.sheetFoot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-4);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.sheetFootLink {
+  display: inline-flex;
+  align-items: center;
+  min-width: var(--space-9);
+  min-height: var(--space-9);
+  color: var(--md-sys-color-primary);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+}
+
+@media (min-width: 600px) {
+  .grabber {
+    display: none;
   }
 }
 

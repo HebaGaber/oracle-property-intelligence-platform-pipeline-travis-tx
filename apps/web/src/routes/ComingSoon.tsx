@@ -8,6 +8,7 @@ import { PAGE_TEXTS } from "@countylens/shared/texts";
 import type { ReactElement } from "react";
 import { Link, useParams } from "react-router";
 import { ComingSoonSkeleton } from "../components/ComingSoonSkeleton";
+import { Icon } from "../components/Icon";
 import { comingSoonItem } from "../content/coming-soon";
 import styles from "./ComingSoon.module.css";
 
@@ -16,14 +17,21 @@ export function Component(): ReactElement {
 
   if (county !== undefined && county !== "travis") {
     return (
+      // Shell390ComingSoon board: a card with the clock icon, the title, the Travis-only sentence
+      // and a filled "Stay on Travis County" button at its end.
       <section aria-label="Other county" data-route="other-county" className={styles.page}>
-        <h2 className={styles.title}>Other counties</h2>
-        <p className={styles.sentence} data-county-message="">
-          {PAGE_TEXTS.travisOnly}
-        </p>
-        <Link to={ROUTES.explore} className={styles.link}>
-          Open Travis County Explore
-        </Link>
+        <div className={styles.countyCard}>
+          <span className={styles.clock}>
+            <Icon name="schedule" />
+          </span>
+          <h2 className={styles.title}>Other counties</h2>
+          <p className={styles.sentence} data-county-message="">
+            {PAGE_TEXTS.travisOnly}
+          </p>
+          <Link to={ROUTES.explore} className={styles.filled}>
+            Stay on Travis County
+          </Link>
+        </div>
       </section>
     );
   }

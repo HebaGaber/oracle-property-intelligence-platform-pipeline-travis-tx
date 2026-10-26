@@ -106,59 +106,69 @@ export function Component(): ReactElement {
         content ID you can check yourself.
       </p>
 
-      <div className={styles.chipRow} role="status">
-        {chip.kind === "loading" ? (
-          <>
-            <span className={styles.chipSkeleton} data-chip-skeleton="" aria-hidden="true" />
-            <span className={styles.visuallyHidden}>Loading latest run</span>
-          </>
-        ) : null}
-        {chip.kind === "ready" ? (
-          <StatusPill status="info" icon="history" text={chip.text} />
-        ) : null}
-        {chip.kind === "error" ? (
-          <span role="alert" className={styles.errorChip}>
-            <StatusPill status="error" text={RUNS_TEXTS.indexUnavailable(chip.reason)} />{" "}
-            <a className={styles.link} href="/runs/index.json">
-              /runs/index.json
-            </a>
-          </span>
-        ) : null}
-      </div>
-
-      {links.demoVideoUrl === undefined && links.prUrl === undefined ? null : (
-        <div className={styles.heroActions}>
-          {links.demoVideoUrl === undefined ? null : (
-            <a
-              className={styles.filled}
-              href={links.demoVideoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Watch demo
-            </a>
-          )}
-          {links.prUrl === undefined ? null : (
-            <a
-              className={styles.outlined}
-              href={links.prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              PR
-            </a>
-          )}
+      <div className={styles.heroRow}>
+        <div className={styles.chipRow} role="status">
+          {chip.kind === "loading" ? (
+            <>
+              <span className={styles.chipSkeleton} data-chip-skeleton="" aria-hidden="true" />
+              <span className={styles.visuallyHidden}>Loading latest run</span>
+            </>
+          ) : null}
+          {chip.kind === "ready" ? (
+            <StatusPill status="info" icon="history" text={chip.text} />
+          ) : null}
+          {chip.kind === "error" ? (
+            <span role="alert" className={styles.errorChip}>
+              <StatusPill status="error" text={RUNS_TEXTS.indexUnavailable(chip.reason)} />{" "}
+              <a className={styles.link} href="/runs/index.json">
+                /runs/index.json
+              </a>
+            </span>
+          ) : null}
         </div>
-      )}
+
+        {links.demoVideoUrl === undefined && links.prUrl === undefined ? null : (
+          <div className={styles.heroActions}>
+            {links.demoVideoUrl === undefined ? null : (
+              <a
+                className={styles.filled}
+                href={links.demoVideoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icon name="play_arrow" size="medium" />
+                Watch demo
+              </a>
+            )}
+            {links.prUrl === undefined ? null : (
+              <a
+                className={styles.outlined}
+                href={links.prUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                PR
+              </a>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className={styles.cards}>
         <article className={styles.card} aria-labelledby="hub-countylens">
           <div>
-            <h3 id="hub-countylens" className={styles.cardTitle}>
-              CountyLens
-            </h3>
-            <p className={styles.cardSub}>Property data explorer</p>
-            <StatusPill status="verified" icon="cloud_done" text="Live · Travis County" />
+            <div className={styles.cardHead}>
+              <span className={styles.appIcon}>
+                <Icon name="map" />
+              </span>
+              <span className={styles.cardName}>
+                <h3 id="hub-countylens" className={styles.cardTitle}>
+                  CountyLens
+                </h3>
+                <p className={styles.cardSub}>Property data explorer</p>
+              </span>
+              <StatusPill status="verified" icon="cloud_done" text="Live · Travis County" />
+            </div>
             <p className={styles.cardBody}>
               Find properties by area, roof age, permits and owner location. Ask in plain English or
               SQL, and check where each value came from.
@@ -167,9 +177,10 @@ export function Component(): ReactElement {
           </div>
           <div className={styles.actions}>
             <Link to={ROUTES.explore} className={styles.filled}>
+              <Icon name="arrow_forward" size="medium" />
               Open
             </Link>
-            <Link to={ROUTES.helpMcp} className={styles.outlined}>
+            <Link to={ROUTES.helpMcp} className={styles.text}>
               What can I ask?
             </Link>
           </div>
@@ -177,10 +188,20 @@ export function Component(): ReactElement {
 
         <article className={styles.card} aria-labelledby="hub-crm">
           <div>
-            <h3 id="hub-crm" className={styles.cardTitle}>
-              Roofing CRM
-            </h3>
-            <p className={styles.cardSub}>Leads and follow-up</p>
+            <div className={styles.cardHead}>
+              <span className={`${styles.appIcon} ${styles.appIconCrm}`}>
+                <Icon name="roofing" />
+              </span>
+              <span className={styles.cardName}>
+                <h3 id="hub-crm" className={styles.cardTitle}>
+                  Roofing CRM
+                </h3>
+                <p className={styles.cardSub}>Leads and follow-up</p>
+              </span>
+              {links.crmUrl === undefined ? (
+                <StatusPill status="unavailable" icon="schedule" text={PAGE_TEXTS.comingSoon} />
+              ) : null}
+            </div>
             <p className={styles.cardBody}>
               {links.crmUrl === undefined
                 ? PAGE_TEXTS.comingSoonNotDeployed
@@ -191,6 +212,7 @@ export function Component(): ReactElement {
           <div className={styles.actions}>
             {links.crmUrl === undefined ? (
               <button type="button" className={styles.filled} disabled aria-disabled="true">
+                <Icon name="schedule" size="medium" />
                 Open CRM
               </button>
             ) : (
@@ -225,21 +247,23 @@ export function Component(): ReactElement {
         </div>
       </section>
 
-      <p className={styles.counties}>
-        Counties: Travis County, TX live · other counties coming soon
-      </p>
+      <div className={styles.footRow}>
+        <p className={styles.counties}>
+          Counties: Travis County, TX live · other counties coming soon
+        </p>
 
-      <nav className={styles.links} aria-label="More about CountyLens">
-        <Link className={styles.link} to={ROUTES.legalTerms}>
-          Terms
-        </Link>
-        <Link className={styles.link} to={ROUTES.legalPrivacy}>
-          Privacy
-        </Link>
-        <Link className={styles.link} to={ROUTES.legalData}>
-          Data licences
-        </Link>
-      </nav>
+        <nav className={styles.links} aria-label="More about CountyLens">
+          <Link className={styles.link} to={ROUTES.legalTerms}>
+            Terms
+          </Link>
+          <Link className={styles.link} to={ROUTES.legalPrivacy}>
+            Privacy
+          </Link>
+          <Link className={styles.link} to={ROUTES.legalData}>
+            Data licences
+          </Link>
+        </nav>
+      </div>
     </section>
   );
 }

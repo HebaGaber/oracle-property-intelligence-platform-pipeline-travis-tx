@@ -15,11 +15,12 @@ import {
   useEffect,
   useRef,
   useState,
+  type FormEvent,
   type KeyboardEvent,
   type ReactElement,
   type UIEvent,
 } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { COMING_SOON_ITEMS } from "../content/coming-soon";
 import { MORE_PAGES } from "../routes/route-list";
 
@@ -62,15 +63,68 @@ export const DESTINATIONS: readonly Destination[] = [
 
 /** More sheet rows shown only below 600 px (Shell390More board: Coverage; the SQL row was removed
  *  with the Explore SQL tab by PO decision, A-16). */
-const COMPACT_MORE: readonly { readonly to: string; readonly label: string }[] = [
-  { to: ROUTES.coverage, label: "Coverage" },
+const COMPACT_MORE: readonly {
+  readonly to: string;
+  readonly label: string;
+  readonly icon: string;
+}[] = [{ to: ROUTES.coverage, label: "Coverage", icon: "donut_small" }];
+
+/** Shell390More board: every row carries its icon; pages without one fall back to `description`. */
+const MORE_ICONS: Readonly<Record<string, string>> = {
+  [ROUTES.dataCatalog]: "menu_book",
+  [ROUTES.runsLog]: "view_list",
+  [ROUTES.runsCompare]: "compare_arrows",
+  [ROUTES.helpMcp]: "integration_instructions",
+};
+
+/** Shell390More board: the legal pages sit in the sheet's footer line, not in the list. */
+const LEGAL_LINKS: readonly { readonly to: string; readonly label: string }[] = [
+  { to: ROUTES.legalTerms, label: "Terms" },
+  { to: ROUTES.legalPrivacy, label: "Privacy" },
+  { to: ROUTES.legalData, label: "Data licences" },
 ];
+const LEGAL_PATHS: readonly string[] = LEGAL_LINKS.map((l) => l.to);
 
 function Glyph({ name }: { readonly name: string }): ReactElement {
   return (
     <span className={`material-symbols-rounded ${styles.glyph}`} aria-hidden="true">
       {name}
     </span>
+  );
+}
+
+/** Shell1440 board: the app bar's search box (from 1024 px). It hands the text to Explore's AI tab
+ *  (`?mode=ai&q=`), which fills its question box; nothing is sent until the person presses Ask. */
+export const SEARCH_LABEL = "Ask about Travis County properties";
+
+function HeaderSearch(): ReactElement {
+  const navigate = useNavigate();
+  const [text, setText] = useState("");
+  const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    const q = text.trim();
+    const target = q === "" ? ASK_PATH : `${ASK_PATH}&q=${encodeURIComponent(q)}`;
+    setText("");
+    // The AI tab reads `q` when it mounts; already on it, a fresh load is the way to refill it.
+    const { pathname, search } = window.location;
+    if (pathname === ROUTES.explore && new URLSearchParams(search).get("mode") === "ai") {
+      window.location.assign(target);
+      return;
+    }
+    void navigate(target);
+  };
+  return (
+    <form role="search" aria-label="Search" className={styles.search} onSubmit={onSubmit}>
+      <Icon name="auto_awesome" size="medium" />
+      <input
+        type="search"
+        className={styles.searchInput}
+        aria-label={SEARCH_LABEL}
+        placeholder={SEARCH_LABEL}
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+      />
+    </form>
   );
 }
 
@@ -118,20 +172,24 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
       className={styles.sheet}
       onKeyDown={onKeyDown}
     >
+      <span className={styles.grabber} aria-hidden="true" />
       <h2 className={styles.sheetTitle}>Pages</h2>
       <ul className={styles.sheetList}>
         {COMPACT_MORE.map((page) => (
-          <li key={page.to} className={styles.compactOnly}>
+          <li key={page.to} className={`${styles.sheetRow} ${styles.compactOnly}`}>
+            <Icon name={page.icon} />
             <Link to={page.to} className={styles.sheetItem} onClick={onClose}>
               {page.label}
             </Link>
           </li>
         ))}
-        <li className={styles.compactOnly}>
+        <li className={`${styles.sheetRow} ${styles.compactOnly}`}>
+          <Icon name="admin_panel_settings" />
           <AdminMoreLink className={styles.sheetItem} onClick={onClose} />
         </li>
-        {MORE_PAGES.map((page) => (
-          <li key={page.path}>
+        {MORE_PAGES.filter((page) => !LEGAL_PATHS.includes(page.path)).map((page) => (
+          <li key={page.path} className={styles.sheetRow}>
+            <Icon name={MORE_ICONS[page.path] ?? "description"} />
             <Link to={page.path} className={styles.sheetItem} onClick={onClose}>
               {page.title}
             </Link>
@@ -141,7 +199,8 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
       <h2 className={styles.sheetTitle}>Planned</h2>
       <ul className={styles.sheetList}>
         {COMING_SOON_ITEMS.map((item) => (
-          <li key={item.id}>
+          <li key={item.id} className={styles.sheetRow}>
+            <Icon name="schedule" />
             {item.linked ? (
               <Link to={comingSoonPath(item.id)} className={styles.sheetItem} onClick={onClose}>
                 <span>{item.title}</span>
@@ -156,6 +215,13 @@ function MoreSheet({ onClose }: { readonly onClose: () => void }): ReactElement 
           </li>
         ))}
       </ul>
+      <nav className={styles.sheetFoot} aria-label="Legal">
+        {LEGAL_LINKS.map((link) => (
+          <Link key={link.to} to={link.to} className={styles.sheetFootLink} onClick={onClose}>
+            {link.label}
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }
@@ -205,6 +271,7 @@ export function AppShell(): ReactElement {
               <CountySelect />
             </div>
           ) : null}
+          <HeaderSearch />
           <div className={styles.actions}>
             <AdminChip className={styles.adminChip} />
             {staticPage ? null : (
