@@ -4,7 +4,7 @@ Updated every 15 minutes by the main session. Times are EEST (UTC+3). Session ta
 
 Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the PO · 🛑 PO decision · ⚠️ at risk
 
-**Last update:** 05:25 EEST · **Revised target:** G7 ≈ 06:00; bridge live test on hold until Run 3.1 is done
+**Last update:** 05:40 EEST · **Revised target:** G7 ≈ 06:15 (PO: Explore 20 rows/page + Task B listing added 05:30); bridge live test on hold until Run 3.1 is done
 
 ## Rounds
 
@@ -39,6 +39,7 @@ Status: ✅ done · 🔄 running · ⏳ waiting on a dependency · ✋ needs the
 | EV | Evidence `docs/evidence/A-16.md` (Closure table), cost/limits final + ✋ billing screenshot, statuses, PR body, kit-usage, converge | Me (+ PO screenshot) | R3 | T1, BR | 15 m (parallel with FX) | 03:40 | 🔄 closure table, PR gaps, review log done; test report after final CI |
 | UI1 | PO UI notes: fluid layout, Runs switcher, remove SQL tab + tests (builder B); short missing pills, Manifest run picker (builder A) | 2 builders | R3 | — | 30 m | 03:45 | ✅ builders A + B merged (891fc5a pushed 03:39); SQL tab removed with 5 tests by PO decision |
 | UI2 | Parallel responsive review + fix round, 5 agents by page family, local build; then one push + final smeargle review | 5 agents | R3 | UI1 merged | 40 m | 04:20 | ✅ 5 families merged + Task B search/property port; bundle gate 310 KB (PO); pushed 5554665 04:37 |
+| UI3 | PO: Explore 20 rows per page, Task B listing style and order | F2 agent | R3 | CI on 2ef20ab closed | 30 m | 06:00 | 🔄 |
 | G7 | G7 pre-check → 🛑 G7 → merge `--no-ff` → `progress.sh` → push | Me + PO | R3 | FX, EV | 10 m | 05:15 | ⏳ |
 
 ## Decisions and actions still needed from the PO
