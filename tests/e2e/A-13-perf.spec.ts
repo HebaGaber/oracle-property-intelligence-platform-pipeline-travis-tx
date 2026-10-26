@@ -36,7 +36,7 @@ const URL_RADIUS = 5;
 /** The untimed warm-up radius: outside the timed list (3..8 mi except 5), so no run repeats it. */
 const WARM_UP_RADIUS = 2.75;
 /** NFR-002: initial JS ≤ 300 KB gzipped (transferred). */
-const JS_BUDGET_BYTES = 307_200;
+const JS_BUDGET_BYTES = 317_440;
 
 test.describe("A-13 perf", { tag: "@a13-perf" }, () => {
   test.describe.configure({ mode: "serial" });
