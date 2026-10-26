@@ -278,3 +278,109 @@ Loads: one per page per width, plus one extra Explore load per width to open the
 ### Remaining differences (exception, PO scope "demo path first")
 
 Not built in A-16: header search and apps grid; native county select; More sheet icons; Hub demo/PR buttons; Explore compact 9-column table with small pages (the product keeps 200-row pages for the full county and field cards at 768/390); drawer Google Maps link and Permit/Owner/Location sections; Runs two-column layout; Compare summary cards; Catalog field table and Copy schema; Verify file picker; Help MCP schema table. Each is a design difference, not a broken state; none hides data or a missing reason.
+
+
+## Final hosted review (preview `03c0ebc`, 2026-10-26 07:20 EEST)
+
+After the PO's UI notes, the responsive round (5 families), the board-by-board round reusing Task B layouts, the style pass from the PO's design screenshots and the run-numbering decision: **21 Match / 6 Justified / 25 Differs** on the same 52 cells (was 10/6/36, then 16/6/30); 27/6/33 on all 66 cells. No horizontal page scroll; panels use the width; AI answers render as formatted text; run names read Run 1–3 and Pilot slice everywhere. The broken states and PO-rule items it found were fixed in the next build (`2d17339`): Catalog and Coverage use the shared run dropdown; bare `/data/verify` opens the latest manifest; the Permits pager no longer covers rows; "SQL checks" removed; year built and owner on cards; no debug lines or raw field names in AI answers; no story IDs in page copy. Remaining differences are features the boards show and the product does not have (AI three-pane layout with editable "Read as" chips, Save, Area/Sort dropdowns, Manifest pager, Verify file chips and button, Log newest-first while TC-057 pins oldest-first, Gantt timeline, per-area heatmap, reconciliation) — recorded as the exception "prototype parity beyond the PO's style-only scope". Side-by-side images are kept with the review outside the repo.
+
+# A-16 AC-12 parity, final review round 2 (read-only)
+
+Preview: https://016-cost-and-admin.d2lx0utip89u18.amplifyapp.com. `/build.json` sha `03c0ebc…` (live about 8 minutes after polling started). Light theme, 2026-10-26.
+
+**Boards:** baseline captures in `scratchpad/parity/board/` (`design/prototype` is unchanged since `3f4de6f`), plus the PO screenshots 6–14.png for Catalog, Verify, Manifest, Coverage, Runs, Explore Filters and Explore AI.
+
+**Images:**
+- Side-by-sides (board left, preview right) are in `img/<family>-<width>.png`. They live in `parity-final2/img/`, next to this file, not in `../img/`.
+- Crops are in `img/crop-*.png`.
+- Raw captures are in `app/`; `-tall` is the full scroll, capped at 7000 px.
+- Text dumps are in `txt/`, metrics in `metrics.json`, and the scripts are `cap2.mjs`, `cap2v.mjs` and `sbs2.mjs`.
+
+**Loads:** one per page per width. Verify had a second load per width because the bare `/data/verify` URL turned out to be a broken route (see B-6); the real page is `/data/verify/<cid>`. The README AI question was asked **once**, at 1440. The test-admin password was read from the env file and never printed.
+
+## Global checks
+- **Horizontal page scroll:** none at any width. Document and `main` widths equal the viewport.
+- **Panels use the width:** yes. The right gap is 24 px (1440/768) and 16 px (390) on every page.
+- **Inner sideways scroll:** none. B-4 is fixed: Log and Manifest at 768 now fit, with Manifest stacked as cards.
+- **Targets < 48 px:** one, Catalog's "10 files" summary (46×48) at all widths. Inline links are ignored.
+- **Console errors:**
+  - `GET /api/trpc/admin.runs.live` 404 after admin sign-in, at all widths. The page handles it ("Bridge offline").
+  - The React Router default ErrorBoundary on bare `/data/verify` (B-6).
+  - Nothing else.
+- **Page heights (px):**
+
+  | Page | 1440 | 768 | 390 | Before |
+  |---|---|---|---|---|
+  | Explore | 3,042 | 3,222 | 4,509 | 15–39k |
+  | Manifest | 1,348 | 1,467 | 1,941 | 19–61k |
+  | Permits | 53,264 | 73,208 | 70,605 | 47–130k |
+  | Coverage | 4,876 | 9,730 | 13,084 | |
+  | Runs | 2,818 | 4,827 | 6,968 | |
+  | AI after the answer | 16,313 | | | |
+
+- **Raw markdown:** none anywhere. The AI answer renders as `P/STRONG/H4/A` with bar-quoted notes. There is no `**`, `###` or `|---|`.
+
+## PO rules
+| Rule | Result |
+|---|---|
+| Run lists use the shared dropdown | **Partly.** RunSelect is on Runs, Compare (two pickers), Log (with "All runs") and Manifest. Switching works on Runs (`?run=travis-full-run2-20261024`, content changes) and Manifest at all widths. **Two violations:** Catalog uses its own native `<select>` with different labels ("Run 3 · current", "Run 2 · Oct 24", no year). On Coverage, "Run 3 · Oct 25 · current ▾" is a link to `/runs` styled as a dropdown. |
+| Runs read Run 1–3 and "Pilot slice", never "Run 4" | **Pass on every page.** The options are Run 3 · Oct 25, 2026 · latest / Run 2 / Run 1 / Pilot slice · Oct 21, 2026. Compare leaves the Pilot slice out of its pickers, which is reasonable. |
+| Panels use the width | Pass. |
+| Short missing-data pills | **Mostly pass.** Coverage · Cost has "Filebase usage: not available" (B-1 fixed). Permits pills name the field ("Expiry date: not in the data model"). **Still long or technical:** Coverage Loaded-vs-total pills say "denominator not in this run's manifest · A-01 source austin-3syk-w9eu". In the AI answer, each of 50 sources lists 7–16 raw snake_case lines ("unnormalized_address: Not included in the published tables"). The drawer has a raw "Not published: unnormalized_address, city_name, …" list. |
+| Contractor names where the data has them | **Not shown on page 1 of Permits.** All 200 rows (the oldest permits, 1978 onward) read "Contractor name: not on record" and "Contractor company: not on record". Sorting oldest first hides any named contractor. The AI and drawer paths were not exercised with a contractor question (one AI question only). |
+| Year built and owner names where present | **The drawer passes:** "Basis: Year built 1934 (no reroof permit found)", "Owner: William Smith", last sale 1997-04-01. **The Explore cards** show neither, only "Roof 92 yrs · Confidence low · Owned 29 yrs". **The AI answer list** shows only CIDs, distance and ages ("[1] · 1.19 mi · ~126 yrs · 4 yrs · baguqeer…"). |
+| "Address not in the published export" | **The drawer passes**, both in the header and in Location. The cards use the short pill "No address", which is fine. **The AI answer and drawer "Not published" lists** say "Not included in the published tables" instead. |
+| No SQL wording | **One violation:** the More sheet at 768/390 lists "SQL checks · Coming soon". The Hub, What-can-I-ask, Privacy and Activity SQL copy (C-1) is fixed. **Borderline:** Catalog says "views.sql defines them…" and "In MCP, use the views". Explore says "DuckDB on the server · same views". Permits says "DuckDB-WASM in your browser · read-only". |
+
+## Matrix (1440 / 768 / 390)
+
+| Family | 1440 | 768 | 390 |
+|---|---|---|---|
+| Shell / header / More | **Match:** one-row bar with search, Run chip, help, Ask and the Apps menu; the rail nests Filters, Builder and AI under Explore | Differs (low): no header search; the More sheet has "SQL checks" | Differs (low): the More sheet items differ from the board and include "SQL checks · Coming soon" |
+| Search box | Match: "Austin" → "Austin city · Place" → `?place=4805000` | Differs (low): only inside Explore | Differs (low): same |
+| Hub | Differs (low): no Watch demo / Pull requests; SQL copy fixed | Differs (low) | Differs (low) |
+| Welcome / What-can-I-ask | Match (carried over; SQL copy gone) | Match | Match |
+| Explore Filters | Differs (low). Filter pane per 13.png, Task B card list, 20 per page ("Showing 1–20 of 98,180", pager 1 2 … 4909). Remaining: a row of four "Coming soon" links above the results; the sticky pager lets cards show below it; no radius slider or download in the footer; header "98180 within 5 mi" without a separator; "Owned 0 yrs"; "· preset ooa78753"; "(owner_area_class)" in the help | **Match:** 20 cards with the pager | Differs (low): the four Coming-soon links and the Filters button push the list down; no Edit-query FAB; cards about 170 px tall |
+| Property drawer | Match: beside the list, owner, year built, evidence chain | Differs (low): bottom sheet; the board shows a full page | Match: bottom sheet with grabber |
+| Explore AI (answered at 1440, idle at 768/390) | Differs: single column (form, chips, answer) instead of 14.png's three panes (query + "Read as" chips / answer / numbered result table). The answer is formatted, but its list has no addresses and it shows "built_year" and debug lines ("1 tool call(s), 1 result(s) / 0 tool call(s), 0 result(s)") | Differs (low) | Differs (low) |
+| Runs (+ RunSelect) | Differs (low). Header RunSelect, Sync status, pipeline strip, Timeline/Latest events and What-changed all follow 12.png. The run-detail block is still below (D-8). Counts print without separators ("2381886", "3341281") | Differs (low) | Differs (low): 6,968 px, with the detail block, Data groups and Limitations below |
+| Runs · Compare | Match | Match | Match |
+| Runs · Log | Differs (low): still sorted oldest first (D-6) | Differs (low): fits now (B-4 fixed); sort as at 1440 | Match |
+| Coverage | Differs. Fixed: head, KPI tiles and the Cost list match 9–11.png. Remaining: Loaded-vs-total uses raw source IDs ("austin-3syk-w9eu") with "A-01 source …" pills; the "Counts by record kind" cards repeat the table (D-9); the run chip is a link, not a dropdown; the area grid shows "Not available" (justified by the data) | Differs | Differs (13k px) |
+| Data · Manifest (+ RunSelect) | Differs (low). Title, RunSelect, manifest.json, run-chain cards with arrows and the table columns follow 8.png. All 285 artifacts sit in a 70vh inner-scroll panel instead of the board's pager (D-10) | Differs (low): stacked cards | Differs (low) |
+| Data · Catalog | Differs (low). Table list, header card with Search in Explore and Copy schema, field table and views card follow 6.png. Remaining: a native run select (PO rule); a stray "table export not in this run's manifest" line at the top; counts without separators; "not described in contract/v1" | Differs (low) | Differs (low): the field table sits below the long list and the views card |
+| Data · Verify (`/data/verify/<cid>`) | Differs (low): run-manifest card plus Pinata and Filebase lanes (justified); no file chips or Verify button (7.png, D-12) | Differs (low) | Differs (low) |
+| Permits | Differs: fits the card, field-named pills (B-2 fixed). Still 200 per page with 9 pills per row (53k px) | Differs (73k px) | Differs: "Show 11" folds the pills, but the sticky pager covers about 130 px of the card (B-7); 70k px |
+| Help · MCP | Match: example request added (D-13 fixed) | Match | Match |
+| Admin sign-in | Justified (email + password, AC-6 amended); signs in to `/runs` | Justified | Justified |
+| Activity | Justified (carried over; not re-loaded) | Justified | Justified |
+| Legal · Data / Privacy / Terms | Match ×3 | Match ×3 | Match ×3 |
+| Coming soon (`/tx/williamson/explore`) | Match | Match | Match |
+
+### Counts
+- **Same 52 cells as before:** **Match 21 · Justified 6 · Differs 25** (before: 16 / 6 / 30). Moved to Match: Shell 1440, Explore 768, Log 390 (kept), and MCP ×3. Nothing regressed to Differs.
+- **All 66 cells** (adds Search ×3, AI ×3, Permits ×3, Coming soon ×3, Privacy/Terms 390): **Match 27 · Justified 6 · Differs 33** (before: 22 / 6 / 38).
+
+## Broken states
+- **B-6 (new): bare `/data/verify`** shows React Router's developer page, "Unexpected Application Error! 404 Not Found 💿 Hey developer 👋", with a console error, at all widths. There is no catch-all or errorElement. The in-app Verify tab links to `/data/verify/<cid>`, so only a typed or shared URL hits it. Any unknown route probably does the same.
+- **B-7: sticky pagers overlap content.**
+  - Permits 390: the pager block (about 130 px) covers a card.
+  - Explore 1440: card content shows below the floating pager bar.
+- **B-5: `admin.runs.live` 404** after sign-in (handled in the UI as "Bridge offline").
+- **B-3 (partly fixed): Permits** is still 53k–73k px (200 rows per page × 9 pills each). Explore and Manifest are fixed.
+- **B-8: the AI answer debug text.** "1 tool call(s), 1 result(s)" and "0 tool call(s), 0 result(s)" print under the answer. The 50 sources each repeat 7–16 raw field-name lines, which makes the page 16k px.
+- Fixed since the last round: B-1 (Coverage pills), B-2 (Permits width and unnamed pills), B-4 (768 inner scroll), and the "…000Z UTC" dates.
+
+## Top remaining differences
+1. PO rule: Catalog's native run select and Coverage's fake run dropdown.
+2. PO rule: "SQL checks · Coming soon" in the More sheet.
+3. The Explore AI layout is one column, not 14.png's three panes. Its result list has no addresses, owner names or year built, and it shows raw field names and debug lines.
+4. Permits: 200 rows per page, oldest first, with no contractor names on page 1.
+5. Manifest has no pager (inner scroll of 285 rows). Verify has no file chips or Verify button. Log sorts oldest first. Runs still has the detail block below the board layout.
+6. Copy:
+   - Counts print without separators ("98180", "2381886", "851166").
+   - "Owned 0 yrs".
+   - "· preset ooa78753".
+   - "(owner_area_class)".
+   - Internal IDs in user copy: "A-01 source …" (Coverage) and "the A-03 pilot slice" (Compare).
+   - "table export not in this run's manifest" (Catalog).
