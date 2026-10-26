@@ -70,7 +70,7 @@ The README criterion-by-criterion matrix is [`docs/traceability.md`](https://git
 | Unit and integration tests | About **2,800 passed, 0 failed** across the workspace on the branch head (breakdown under Validation and testing) |
 | Hosted end-to-end (Playwright on the live URL) | **102 passed, 0 failed**, 5 skipped by design, in seven shards on the last green run: Explorer 27, pages 24, isolated (performance, verify, gateways) 19, site 17, permits 9, manifest 3, scan 3 |
 | Pipeline gates on every run | Identity gate (no published property or permit CID lost, changed or remapped between runs), remote identity gate from the public CID copy, two-gateway readback of every upload, `verify-manifest` on Pinata and orbitor |
-| Agent | Both README prompts answered live on Run 4: 75,432 properties within 5 mi of Austin with roofs ≥ 15 years (nearest first, with addresses); 298 roofing permits open ≥ 5 years with the contractor as printed and the BBB status with its reason |
+| Agent | Both README prompts answered live on Run 4: 75,433 properties within 5 mi of Austin with roofs ≥ 15 years (nearest first, with addresses); 286 roofing permits open ≥ 5 years (225 properties) with the contractor as printed and the BBB status with its reason |
 | Code review | Every story scored by its reviewer agents at 75 or higher before G7, plus `/code-review medium` rounds; scores in [`docs/kit-usage.md`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/blob/feature/oracle-pipeline/docs/kit-usage.md) |
 | Defects | 79 defect records, each with a root cause and a fix or a PO decision ([`docs/defects/`](https://github.com/HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx/tree/feature/oracle-pipeline/docs/defects)) |
 
