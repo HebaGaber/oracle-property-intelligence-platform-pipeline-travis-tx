@@ -443,7 +443,12 @@ describe("filebase step", () => {
     const units = uploadUnits(ctx.manifest);
     const mine = units.slice(-1).map((u) => u.id);
     h.deps.filebase.units = mine;
-    const r = await runPublish({ ctx, impls: createPublishSteps(h.deps), dryRun: false, step: "filebase" });
+    const r = await runPublish({
+      ctx,
+      impls: createPublishSteps(h.deps),
+      dryRun: false,
+      step: "filebase",
+    });
     // The step stays strict: units left to other runners are reported, so a split job checks its own
     // receipts instead of the exit code.
     expect(r.ok).toBe(false);

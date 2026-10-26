@@ -460,7 +460,9 @@ export async function bindManifest(
       : [];
     const has = (name: string) => cols.some((c) => String(c.column_name) === name);
     const field = (name: string) =>
-      has(name) ? `CAST(any_value(${name}) AS VARCHAR) AS ${name}` : `CAST(NULL AS VARCHAR) AS ${name}`;
+      has(name)
+        ? `CAST(any_value(${name}) AS VARCHAR) AS ${name}`
+        : `CAST(NULL AS VARCHAR) AS ${name}`;
     await engine.run(
       cols.length > 0
         ? `CREATE OR REPLACE TABLE meta.address_fields AS SELECT cid, ${["unnormalized_address", "postal_code", "state_code"].map(field).join(", ")} FROM county.address GROUP BY cid`

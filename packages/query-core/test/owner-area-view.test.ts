@@ -49,11 +49,23 @@ function tables(withZip: boolean): FixtureTables {
   const state = (zip: string | null) => (zip === null ? null : zip.startsWith("1") ? "NY" : "TX");
   const addr = (cid: string, zip: string | null): Row =>
     withZip
-      ? { cid, request_identifier: "x", postal_code: zip, state_code: state(zip), unnormalized_address: null }
+      ? {
+          cid,
+          request_identifier: "x",
+          postal_code: zip,
+          state_code: state(zip),
+          unnormalized_address: null,
+        }
       : { cid, request_identifier: "x" };
   const situs = (cid: string, text: string): Row =>
     withZip
-      ? { cid, request_identifier: "x", postal_code: null, state_code: null, unnormalized_address: text }
+      ? {
+          cid,
+          request_identifier: "x",
+          postal_code: null,
+          state_code: null,
+          unnormalized_address: text,
+        }
       : { cid, request_identifier: "x" };
   return {
     county: {

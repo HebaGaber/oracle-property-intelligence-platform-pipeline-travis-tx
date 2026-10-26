@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { UNCARRIED, VIEWS, type ViewName } from "@countylens/contract";
+import { UNCARRIED, VIEWS, type UncarriedField, type ViewName } from "@countylens/contract";
 import {
   checkCarrierEmission,
   leadingCarrier,
@@ -59,14 +59,17 @@ function viewCarriers(): CarrierRef[] {
 
 /** UNCARRIED fields with reason not_in_export, with the carrier they would have. */
 function notInExport(): (CarrierRef & { view: string })[] {
-  return Object.entries(UNCARRIED).flatMap(([view, fields]) =>
-    fields
-      .filter((u) => u.reason === "not_in_export")
-      .map((u) => {
-        const ref = leadingCarrier(u.carrier);
-        if (!ref) throw new Error(`UNCARRIED ${view}.${u.field} names no class.property`);
-        return { view, field: u.field, ...ref };
-      }),
+  // Widened to the general field type: since v1.2 (ERR-74) no field has this reason, and the
+  // literal types of UNCARRIED would otherwise make the filtered list `never`.
+  return Object.entries(UNCARRIED as Record<string, readonly UncarriedField[]>).flatMap(
+    ([view, fields]) =>
+      fields
+        .filter((u) => u.reason === "not_in_export")
+        .map((u) => {
+          const ref = leadingCarrier(u.carrier);
+          if (!ref) throw new Error(`UNCARRIED ${view}.${u.field} names no class.property`);
+          return { view, field: u.field, ...ref };
+        }),
   );
 }
 

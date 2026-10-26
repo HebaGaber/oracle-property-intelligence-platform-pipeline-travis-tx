@@ -400,7 +400,9 @@ export async function buildRunManifest(
     if (config.addressPointsReceipt === undefined)
       throw new Error("carryAddressPoints needs addressPointsReceipt");
     if (!base.sources.some((s) => s.name === ADDRESS_POINT_SOURCE))
-      throw new Error(`carryAddressPoints: the base manifest has no ${ADDRESS_POINT_SOURCE} source`);
+      throw new Error(
+        `carryAddressPoints: the base manifest has no ${ADDRESS_POINT_SOURCE} source`,
+      );
   }
   const baseSources = base.sources.filter((s) => carryPoints || s.name !== ADDRESS_POINT_SOURCE);
   const sourceLimits = config.sourceLimitations ?? {};
@@ -424,7 +426,9 @@ export async function buildRunManifest(
     for (const [state, n] of Object.entries(report.byState)) {
       const got = coverage[`contractor_${state}`]?.count;
       if (got !== n)
-        throw new Error(`coverage contractor_${state} is ${String(got)} but contractorCoverage says ${n}`);
+        throw new Error(
+          `coverage contractor_${state} is ${String(got)} but contractorCoverage says ${n}`,
+        );
     }
   }
   const receiptFor = (name: string): string =>

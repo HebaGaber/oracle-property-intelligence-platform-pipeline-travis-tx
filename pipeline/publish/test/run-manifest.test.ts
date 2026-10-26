@@ -411,7 +411,12 @@ describe("address-point source (Run 3, ADR 0004)", () => {
       "austin-address-points",
     ]);
     const a = m.sources[2];
-    expect(a).toMatchObject({ watermark: receipt.layer_last_edit_date, added: 0, changed: 0, removed: 0 });
+    expect(a).toMatchObject({
+      watermark: receipt.layer_last_edit_date,
+      added: 0,
+      changed: 0,
+      removed: 0,
+    });
     expect(a?.limitations).toEqual(run3.manifest.sources[2]?.limitations);
   });
 

@@ -156,7 +156,11 @@ describe("columns", () => {
 
   it("v1.2 publishes the situs line and the owner mailing ZIP/state; the situs city and ZIP stay gaps (ERR-74)", () => {
     const names = columnNames("v_property");
-    for (const f of ["unnormalized_address", "owner_mailing_postal_code", "owner_mailing_state_code"])
+    for (const f of [
+      "unnormalized_address",
+      "owner_mailing_postal_code",
+      "owner_mailing_state_code",
+    ])
       expect(names).toContain(f);
     for (const f of ["city_name", "postal_code"]) expect(names).not.toContain(f);
     expect(UNCARRIED.v_property.map((u) => [u.field, u.reason])).toEqual([

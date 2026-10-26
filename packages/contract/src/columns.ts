@@ -746,13 +746,15 @@ export const UNCARRIED = {
     {
       field: "city_name",
       reason: "source_missing",
-      carrier: "address.city_name via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate city",
+      carrier:
+        "address.city_name via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate city",
       fallback: "the city is inside unnormalized_address (v1.2)",
     },
     {
       field: "postal_code",
       reason: "source_missing",
-      carrier: "address.postal_code via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate ZIP",
+      carrier:
+        "address.postal_code via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate ZIP",
       fallback: "the ZIP is inside unnormalized_address (v1.2)",
     },
   ],
