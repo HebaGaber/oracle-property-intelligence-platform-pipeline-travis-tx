@@ -1,11 +1,17 @@
 // County selector (A-13 T042, US10, AC-13, FR-013; TC-061, TC-071): the shell's location slot
 // under `/tx/…`. Travis County, TX is the active county and the only one with data; choosing any
 // other county shows "CountyLens has data for Travis County, TX only", changes nothing and leaves
-// the URL alone. A link points to the Coming soon item for other counties and states. The counties
-// listed besides Travis are plain names, no data. Render-only apart from the message state.
+// the URL alone. The counties listed besides Travis are plain names, no data.
+// Shell boards (A-16): an outlined chip (pin, county, drop-down caret; Task B's county chip) from
+// 600 px; below 600 px the pin alone, a 48 px icon control with the same select laid over it
+// (Welcome390 board), so the bar keeps one row. Next to the chip, a clock icon link opens the
+// Coming soon item "Other counties and states" (also listed in More). Render-only apart from the
+// message state.
+import { comingSoonPath } from "@countylens/shared/routes";
 import { PAGE_TEXTS } from "@countylens/shared/texts";
 import { useState, type ChangeEvent, type ReactElement } from "react";
-import { ComingSoonEntry } from "./ComingSoonEntry";
+import { Link } from "react-router";
+import { comingSoonItem } from "../content/coming-soon";
 import { Icon } from "./Icon";
 import styles from "./CountySelect.module.css";
 
@@ -17,14 +23,17 @@ const COUNTIES = Object.freeze([
   { value: "williamson", label: "Williamson County, TX" },
 ]);
 
+const OTHER_COUNTIES = "other-counties";
+
 export function CountySelect(): ReactElement {
   const [other, setOther] = useState(false);
   const onChange = (event: ChangeEvent<HTMLSelectElement>): void => {
     setOther(event.currentTarget.value !== "travis");
   };
+  const otherItem = comingSoonItem(OTHER_COUNTIES);
   return (
     <div className={styles.location}>
-      <label className={styles.label} htmlFor="county-select">
+      <label className={styles.hidden} htmlFor="county-select">
         County
       </label>
       <span className={styles.chip}>
@@ -43,10 +52,22 @@ export function CountySelect(): ReactElement {
             </option>
           ))}
         </select>
+        <span className={styles.caret}>
+          <Icon name="arrow_drop_down" size="medium" />
+        </span>
       </span>
-      <span className={styles.entry}>
-        <ComingSoonEntry id="other-counties" />
-      </span>
+      {otherItem?.linked === true ? (
+        <Link
+          to={comingSoonPath(otherItem.id)}
+          className={styles.entry}
+          data-coming-soon-entry={otherItem.id}
+          title={`${otherItem.title} · ${PAGE_TEXTS.comingSoon}`}
+        >
+          <Icon name="schedule" size="medium" />
+          <span className={styles.hidden}>{otherItem.title}</span>
+          <span className={styles.hidden}>{PAGE_TEXTS.comingSoon}</span>
+        </Link>
+      ) : null}
       {other ? (
         <p className={styles.message} role="status" data-county-message="">
           {PAGE_TEXTS.travisOnly}

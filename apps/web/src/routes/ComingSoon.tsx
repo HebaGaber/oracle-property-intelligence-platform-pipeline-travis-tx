@@ -12,22 +12,42 @@ import { Icon } from "../components/Icon";
 import { comingSoonItem } from "../content/coming-soon";
 import styles from "./ComingSoon.module.css";
 
+/** "williamson" → "Williamson"; anything that is not a plain county slug gives null. */
+function countyName(slug: string): string | null {
+  if (!/^[a-z]+(-[a-z]+)*$/.test(slug)) return null;
+  return slug
+    .split("-")
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(" ");
+}
+
 export function Component(): ReactElement {
   const { item: itemId, county } = useParams();
 
   if (county !== undefined && county !== "travis") {
+    const name = countyName(county);
     return (
-      // Shell390ComingSoon board: a card with the clock icon, the title, the Travis-only sentence
-      // and a filled "Stay on Travis County" button at its end.
-      <section aria-label="Other county" data-route="other-county" className={styles.page}>
+      // Shell390ComingSoon board: a dialog-style card centred in the page with the clock icon,
+      // "{County}, TX is coming soon", the Travis-only sentence, why there is nothing to show, and
+      // a filled "Stay on Travis County" button at its end. The county name comes from the URL.
+      <section aria-label="Other county" data-route="other-county" className={styles.countyPage}>
         <div className={styles.countyCard}>
           <span className={styles.clock}>
             <Icon name="schedule" />
           </span>
-          <h2 className={styles.title}>Other counties</h2>
-          <p className={styles.sentence} data-county-message="">
-            {PAGE_TEXTS.travisOnly}
-          </p>
+          <h2 className={styles.title}>
+            {name === null ? "Other counties" : `${name} County, TX is coming soon`}
+          </h2>
+          <div className={styles.body}>
+            <p className={styles.sentence} data-county-message="">
+              {PAGE_TEXTS.travisOnly}
+            </p>
+            <p className={styles.sentence}>
+              {name === null
+                ? "No pipeline run covers this county yet, so there is nothing to show."
+                : `No pipeline run covers ${name} County yet, so there is nothing to show.`}
+            </p>
+          </div>
           <Link to={ROUTES.explore} className={styles.filled}>
             Stay on Travis County
           </Link>

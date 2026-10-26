@@ -1,14 +1,15 @@
-/* County selector as the app bar's location chip (Shell boards; A-13 T042, A-16 T050): a 48 px
-   outlined chip with the location pin and the county name; tokens only. The "County" label stays
-   for assistive tech; the Other counties entry shows from 1024 px (also listed in More). */
+/* County selector as the app bar's location chip (Shell boards; A-13 T042, A-16 T050; Task B's
+   county chip): from 600 px an outlined chip, corner-small, label-large, pin + county + caret;
+   below 600 px the pin alone as a 48 px control with the select laid over it (Welcome390). The
+   "County" label stays for assistive tech. Tokens only. */
 .location {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-2) var(--space-3);
+  gap: var(--space-1);
 }
 
-.label {
+.hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -17,15 +18,16 @@
   white-space: nowrap;
 }
 
+/* Compact: a 48 px icon control; the transparent select covers it, so a tap opens the picker. */
 .chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   box-sizing: border-box;
+  min-width: var(--space-9);
   min-height: var(--space-9);
-  padding: 0 var(--space-2) 0 var(--space-3);
-  border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-full);
-  background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface-variant);
 }
 
@@ -34,20 +36,16 @@
   outline-offset: 2px;
 }
 
-.pin {
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  overflow: hidden;
-  white-space: nowrap;
-  font-size: var(--md-sys-typescale-title-medium-size);
-}
-
 .select {
+  position: absolute;
+  inset: 0;
   box-sizing: border-box;
+  width: 100%;
   min-height: var(--space-9);
-  padding: 0 var(--space-2);
+  padding: 0;
   border: 0;
+  opacity: 0;
+  appearance: none;
   background: transparent;
   color: var(--md-sys-color-on-surface);
   font-family: var(--md-sys-typescale-label-large-font);
@@ -61,8 +59,33 @@
   outline: none;
 }
 
+.caret {
+  display: none;
+}
+
+/* Other counties and states (Coming soon): a 48 px icon link next to the chip, from 600 px. */
 .entry {
   display: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: var(--space-9);
+  min-height: var(--space-9);
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.entry:hover {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) calc(var(--md-sys-state-hover-opacity) * 100%),
+    transparent
+  );
+}
+
+.entry:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 /* The Travis-only message floats under the chip as an inverse-surface snackbar (Atlas § 7). */
@@ -71,6 +94,7 @@
   z-index: 3;
   top: calc(100% + var(--space-1));
   left: 0;
+  width: max-content;
   max-width: calc(var(--space-10) * 5);
   margin: 0;
   padding: var(--space-3) var(--space-4);
@@ -83,8 +107,31 @@
   line-height: var(--md-sys-typescale-body-medium-line-height);
 }
 
-/* From 1280 px: below it the app bar also holds the search box. */
-@media (min-width: 1280px) {
+/* From 600 px: the outlined chip with the county name and its caret (Shell1440 board). */
+@media (min-width: 600px) {
+  .chip {
+    gap: var(--space-1);
+    padding: 0 0 0 var(--space-3);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-small);
+    background: var(--md-sys-color-surface);
+  }
+
+  .select {
+    position: static;
+    width: auto;
+    padding: 0 var(--space-7) 0 var(--space-1);
+    opacity: 1;
+  }
+
+  /* The caret is drawn over the select's end padding; a tap on it still reaches the select. */
+  .caret {
+    position: absolute;
+    right: var(--space-2);
+    display: inline-flex;
+    pointer-events: none;
+  }
+
   .entry {
     display: inline-flex;
   }
