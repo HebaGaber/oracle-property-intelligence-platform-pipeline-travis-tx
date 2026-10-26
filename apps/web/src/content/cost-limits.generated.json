@@ -143,9 +143,9 @@
     "rows": [
       {
         "source": "TCAD 2026 certified JSON export (tcad_certified)",
-        "throughput": "Download 328.2 MB/min (A-01, 2026-10-19). Streaming scan about 10 min. Load into the Query DB 260 to 382 records/s (2,000-record chunks, 3 in flight, 1 s pause)",
+        "throughput": "Download 328.2 MB/min. Streaming scan about 10 min. Load into the Query DB 260 to 382 records/s (2,000-record chunks, 3 in flight, 1 s pause)",
         "pageSize": "One zip file, 3,554,021,795 B (29.86 GB unzipped), 493,246 records, key pID, SHA-256 6f7a7585...2346",
-        "fullCapture": "Download 10.8 min (649.8 s, one range resume after a first attempt ended at 1,287,539,237 B). Full load 21.7 min (A-04 run, 2026-10-22 05:26 to 05:48Z)",
+        "fullCapture": "Download 10.8 min (649.8 s, one range resume after a first attempt ended at 1,287,539,237 B). Full load 21.7 min",
         "rateLimit": "One identified request per file; no new download without a stop; a 403 or a SHA-256 mismatch ends in WAITING_HUMAN; never a retry with another identity",
         "antiBot": "None seen (HTTP 200, 3 requests)",
         "optimisation": "Download once, keep on disk; resume by range; chunked load with a health gate",
@@ -155,11 +155,11 @@
       },
       {
         "source": "TCAD supplemental exports (tcad_supplemental, /publicinformation)",
-        "throughput": "Not measured: listed, not downloaded in A-01",
+        "throughput": "Not measured: listed, not downloaded in",
         "pageSize": "Zip files listed on the public-information page",
-        "fullCapture": "Not measured (reason: the A-11 incremental path reads Austin, not the supplement)",
+        "fullCapture": "Not measured (reason: the incremental path reads Austin, not the supplement)",
         "rateLimit": "One identified request",
-        "antiBot": "The story context records HTTP 403 on publicinformation (2026-10-17 and 2026-10-19); the A-01 catalog shows the listing as available. The 403 evidence file was not found under docs/evidence/blocked/, so the 403 stays unconfirmed here",
+        "antiBot": "The story context records HTTP 403 on publicinformation (2026-10-17 and 2026-10-19); the catalog shows the listing as available. The 403 evidence file was not found under docs/evidence/blocked/, so the 403 stays unconfirmed here",
         "optimisation": "Not used as a feed",
         "status": "blocked",
         "blockedDates": ["2026-10-17", "2026-10-19"],
@@ -172,14 +172,14 @@
         "fullCapture": "81.6 s for 187 pages, 373,683 features, concurrency 2 (GitHub-hosted US runner, run 39684063596, 2026-10-22)",
         "rateLimit": "Concurrency at most 2; only OBJECTID, PROP_ID, geo_id requested",
         "antiBot": "Blocked from the operator machine: TCP connect to gis.traviscountytx.gov:443 never completes from egress EG (2026-10-17 to 2026-10-20: docs/evidence/blocked/tcad_gis-20261019T210845Z.md, ...212423Z.md, ...20261020T053344Z.md, ...072223Z.md, last one current); answers from a US runner, no challenge",
-        "optimisation": "Capture from a GitHub Actions US runner (DEC-A-04-gis-runner); POST bodies; 60 s timeout, then page retry",
+        "optimisation": "Capture from a GitHub Actions US runner (DEC--gis-runner); POST bodies; 60 s timeout, then page retry",
         "status": "measured",
         "blockedDates": [],
         "missingReason": null
       },
       {
         "source": "Austin Socrata permits 3syk-w9eu",
-        "throughput": "A-01: 120,043 rows/min (median of 3 pages). A-04 backfill: 1,313.84 rows/s (about 78,800/min)",
+        "throughput": ": 120,043 rows/min (median of 3 pages). backfill: 1,313.84 rows/s (about 78,800/min)",
         "pageSize": "Keyset pages $order=:id, 50,000 rows per page (about 88 MB), no app token",
         "fullCapture": "Backfill: 48 pages, 2,381,226 rows, 1,812 s (about 31 min), 2026-10-21. Incremental Run 3 (2026-10-25): 48 pages, 2,381,886 rows read, about 36 min, 10,582 rows written, relink about 6 min",
         "rateLimit": "At most 1 request/s, project User-Agent, page timeout 5 min, up to 5 attempts with backoff (1 s base, 60 s cap, full jitter)",
@@ -203,9 +203,9 @@
       },
       {
         "source": "Texas Comptroller franchise-tax holders 9cir-efmm",
-        "throughput": "327,439 rows/min (median of 3 pages, A-01)",
+        "throughput": "327,439 rows/min (median of 3 pages, )",
         "pageSize": "Socrata, 50,000 rows per page, no app token",
-        "fullCapture": "Projected 0.017 h for 342,334 Travis-coded rows (A-01); registry load of 342,333 rows ran as job travis-a07-identity-registry-20261022184652 (duration not recorded here)",
+        "fullCapture": "Projected 0.017 h for 342,334 Travis-coded rows; registry load of 342,333 rows ran as job travis-a07-identity-registry-20261022184652 (duration not recorded here)",
         "rateLimit": "Same Socrata etiquette; incremental by :updated_at",
         "antiBot": "None seen (5 requests)",
         "optimisation": "Travis-only lookup set (342,333 of 3,487,662 statewide rows), recorded as a manifest limitation",
@@ -219,7 +219,7 @@
         "pageSize": "Category listing page",
         "fullCapture": "Blocked: HTTP 403 Cloudflare challenge (cf-mitigated: challenge) on 2026-10-17 and 2026-10-19 21:08:55Z; again 2026-10-20 (docs/evidence/blocked/bbb-20261019T210855Z.md, bbb-20261020T072323Z.md)",
         "rateLimit": "At most 1 request per 3 s, concurrency 1 (architecture constitution); stop on the first 403",
-        "antiBot": "Cloudflare challenge; never solved, no identity change, no retry; 0 requests since (A-07 gap, PO decision 2026-10-22)",
+        "antiBot": "Cloudflare challenge; never solved, no identity change, no retry; 0 requests since",
         "optimisation": "None possible; the official API application is not filed (PO decision 2026-10-20)",
         "status": "blocked",
         "blockedDates": ["2026-10-17", "2026-10-19", "2026-10-20"],
@@ -227,7 +227,7 @@
       },
       {
         "source": "Overture places",
-        "throughput": "Not measured (reason: optional source, licence gate decided in A-09)",
+        "throughput": "Not measured (reason: optional source, licence gate decided in )",
         "pageSize": "Bulk files",
         "fullCapture": "Not measured",
         "rateLimit": "n/a",
@@ -235,7 +235,7 @@
         "optimisation": "Bulk download only",
         "status": "not_measured",
         "blockedDates": [],
-        "missingReason": "optional source, licence gate decided in A-09"
+        "missingReason": "optional source, licence gate decided in"
       },
       {
         "source": "Contractor licensing (TDLR)",
@@ -303,13 +303,13 @@
       },
       {
         "step": "Hosted SQL panel, first query",
-        "measured": "about 97 s on the full county (A-13)",
+        "measured": "about 97 s on the full county",
         "limit": "Later queries are fast"
       },
       {
         "step": "API Lambda, Explore search on the full county",
         "measured": "Out of memory at 1 GB, then HTTP 500 at the 29 s limit (2 GB DuckDB cap)",
-        "limit": "A-13 gap carried to A-16"
+        "limit": "gap carried to"
       },
       {
         "step": "Agent model (Bedrock Claude Sonnet 4.6)",

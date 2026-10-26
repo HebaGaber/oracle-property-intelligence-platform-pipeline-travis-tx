@@ -24,7 +24,7 @@ export const RUNS_TEXTS = Object.freeze({
   firstRun: "first run · nothing to compare against",
   /** The numbering contract of `a`/`b` on Compare, the Hub chip and every "Run N" (PO 2026-10-26): the non-pilot runs of runs/index.json numbered 1..n by finishedAt; A-03's pilot slice is listed but never numbered. */
   numbering:
-    "Run n is the n-th full run in runs/index.json, by finish time; the A-03 pilot slice is listed as Pilot slice and not numbered",
+    "Run n is the n-th full-county run in runs/index.json, by finish time; the first small test slice is listed as Pilot slice and not numbered",
   indexUnavailable: (reason: string): string => `Run index unavailable · ${reason}`,
   manifestUnavailable: (cid: string, reason: string): string =>
     `Manifest unavailable · ${cid} · ${reason}`,
@@ -99,7 +99,7 @@ export const COVERAGE_TEXTS = Object.freeze({
   kindAbsent: "not in this run's coverage section",
   denominatorMissing: "denominator not in this run's manifest",
   denominatorMissingFor: (source: string): string =>
-    `denominator not in this run's manifest · A-01 source ${source}`,
+    `denominator not in this run's manifest · source ${source}`,
 });
 
 /** Hub, Catalog, Coming soon, county selector and Help · MCP. */
