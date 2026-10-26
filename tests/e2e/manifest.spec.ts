@@ -19,7 +19,10 @@ import {
 } from "./lib/manifest.js";
 import { fetchByCid, readCommittedManifest, sha256Hex, type FetchedByCid } from "./lib/runtime.js";
 
-const AUSTIN_LIMITATION = "Comptroller baseline not loaded (A-07)";
+// The Austin source states the Comptroller registry: "not loaded" up to Run 3; from Run 3.1 (ERR-73)
+// the run states the loaded registry it matched the published contractor names against.
+const AUSTIN_LIMITATION =
+  /^(Comptroller baseline not loaded \(A-07\)|Comptroller registry loaded \d{4}-\d{2}-\d{2} \(\d+ rows, .*)$/;
 const TCAD_LIMITATION = /^Confidential owner records redacted \(Texas Tax Code §25\.025\): \d+$/;
 const DATA_GROUPS = ["county", "property_improvement"];
 
@@ -167,7 +170,10 @@ test.describe("A-03 run manifest (FR-001)", () => {
       // Step 4: the two limitation notes, verbatim (FR-001, P0-15).
       const [austin, tcad] = manifest.sources;
       expect(austin?.name).toBe("austin-3syk-w9eu");
-      expect(austin?.limitations).toContain(AUSTIN_LIMITATION);
+      expect(
+        (austin?.limitations ?? []).filter((l) => AUSTIN_LIMITATION.test(l)),
+        "exactly one Comptroller registry note on the Austin source",
+      ).toHaveLength(1);
       expect(tcad?.name).toBe("tcad-2026-certified-json");
       expect(tcad?.limitations.filter((note) => TCAD_LIMITATION.test(note))).toHaveLength(1);
     });

@@ -180,8 +180,11 @@ function resolvePermitContractor(
   permitNumber: string,
   identity: ContractorIdentityInput,
 ): ResolverState {
-  const raw = row.contractor_company_name;
-  const rawContractorName = raw !== undefined && raw !== null && raw.trim() !== "" ? raw : null;
+  // The name the permit publishes (ERR-72: the company, else the contractor person; placeholders
+  // such as N/A count as none), so the run's five-state totals describe the published names.
+  const rawContractorName =
+    publishedContractorName(row.contractor_company_name) ??
+    publishedContractorName(row.contractor_full_name);
   return resolveContractor({
     permitKey: permitNumber,
     rawContractorName,
@@ -260,8 +263,10 @@ export interface PropertyImprovementCounts {
   by_skip: Partial<Record<SkipReason, number>>;
   /** Emitted permits only, by A-07's five-state verdict (AD-24's manifest-coverage rollup). */
   by_contractor_state: Partial<Record<ResolverState, number>>;
-  /** Emitted permits whose printed company name is published as company.name (ERR-66). */
+  /** Emitted permits whose printed contractor name is published as company.name (ERR-66, ERR-72). */
   contractor_companies_printed: number;
+  /** Of those, permits that print only a contractor person, published as company.name (ERR-72). */
+  contractor_persons_printed: number;
 }
 
 export interface PropertyImprovementOutput {
@@ -291,6 +296,7 @@ export function transformAustinPropertyImprovement(
     by_skip: {},
     by_contractor_state: {},
     contractor_companies_printed: 0,
+    contractor_persons_printed: 0,
   };
   const permitFiles: Record<string, string> = {};
   const links: { "/": string }[] = [];
@@ -337,10 +343,16 @@ export function transformAustinPropertyImprovement(
     // PO decision 2026-10-25 (ERR-66): the company the permit PRINTS, "as printed, unverified".
     // A company record linked by property_improvement_has_contractor, with the permit's own request
     // as provenance and NO sunbiz_document_number: a name is evidence, not identity, so
-    // contractor_resolution stays unresolved (never a registry id from a name match). No person,
-    // phone or address is written, and a person-only contractor is not published.
-    const printedName = publishedContractorName(capture.row.contractor_company_name);
+    // contractor_resolution stays unresolved (never a registry id from a name match). No phone or
+    // address is written.
+    // PO decision 2026-10-26 (ERR-72): when the permit prints no company but does print a
+    // contractor person (contractor_full_name), that name is published the same way, as the
+    // contractor company's name as printed. The lexicon links a permit's contractor to a company
+    // only, so no person record is written. A printed company always wins over the person.
+    const companyName = publishedContractorName(capture.row.contractor_company_name);
+    const printedName = companyName ?? publishedContractorName(capture.row.contractor_full_name);
     if (printedName !== null) {
+      if (companyName === null) counts.contractor_persons_printed += 1;
       const company = `company_${n}.json`;
       permitFiles[company] = jsonFile({
         source_http_request: {

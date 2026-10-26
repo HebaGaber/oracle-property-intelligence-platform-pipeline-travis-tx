@@ -288,15 +288,72 @@ describe("printed contractor company (ERR-66, PO decision 2026-10-25)", () => {
     expect(Object.keys(files).some((f) => /^(person|license)/.test(f))).toBe(false);
   });
 
-  it("writes no contractor for a placeholder, an empty name or a person-only permit", () => {
+  it("writes no contractor when neither a company nor a person is printed (placeholders count as none)", () => {
     for (const name of ["N/A", "OWNER", "SELF", "", "   ", null]) {
-      const files = planOne({ contractor_company_name: name, contractor_full_name: "Pat Person" });
+      const files = planOne({ contractor_company_name: name, contractor_full_name: name });
       expect(Object.keys(files).some((f) => /company|contractor/.test(f))).toBe(false);
       const root = read(files, `${CIDS.propertyImprovement}.json`) as {
         relationships: Record<string, unknown>;
       };
       expect(root.relationships).not.toHaveProperty("property_improvement_has_contractor");
     }
+  });
+
+  it("publishes a person-only contractor as company.name as printed (ERR-72, PO 2026-10-26)", () => {
+    for (const name of ["N/A", "OWNER", "", null]) {
+      const plan = planPropertyImprovementGroup(
+        [
+          {
+            parcel: parcelRow(100008, "0100030105"),
+            permits: [
+              permitRow(100008, "2026-100001 BP", {
+                contractor_company_name: name,
+                contractor_full_name: "  Pat   Person ",
+                contractor_phone: "5125550100",
+              }),
+            ],
+          },
+        ],
+        CIDS,
+        STUB,
+      );
+      const files = plan.groups[0]?.files ?? {};
+      expect(read(files, "company_1.json")).toEqual({
+        source_http_request: {
+          method: "GET",
+          url: AUSTIN_DATASET_URL,
+          multiValueQueryString: { permit_number: ["2026-100001 BP"] },
+        },
+        request_identifier: "2026-100001 BP",
+        name: "Pat Person",
+        sunbiz_document_number: null,
+      });
+      expect(Object.keys(files).some((f) => /^person/.test(f))).toBe(false);
+      expect(Object.values(files).join("\n")).not.toMatch(/5125550100/);
+      expect(plan.groups[0]?.counts.contractor_companies_printed).toBe(1);
+      expect(plan.groups[0]?.counts.contractor_persons_printed).toBe(1);
+    }
+  });
+
+  it("keeps the printed company when both a company and a person are printed", () => {
+    const plan = planPropertyImprovementGroup(
+      [
+        {
+          parcel: parcelRow(100008, "0100030105"),
+          permits: [
+            permitRow(100008, "2026-100001 BP", {
+              contractor_company_name: "Alpha Roofing",
+              contractor_full_name: "Pat Person",
+            }),
+          ],
+        },
+      ],
+      CIDS,
+      STUB,
+    );
+    const files = plan.groups[0]?.files ?? {};
+    expect(read(files, "company_1.json").name).toBe("Alpha Roofing");
+    expect(plan.groups[0]?.counts.contractor_persons_printed).toBe(0);
   });
 
   it("numbers one company per emitted permit, in permit order", () => {

@@ -437,6 +437,62 @@ describe("filebase step", () => {
     expect(h.cli).toHaveBeenCalledTimes(units.length);
   });
 
+  it("a runner limited to PUBLISH_FILEBASE_UNITS uploads only those units and writes no other receipt", async () => {
+    const { ctx } = await realContext();
+    const h = harness(ctx);
+    const units = uploadUnits(ctx.manifest);
+    // the last batch's CAR and its tables folder (a folder waits for its own CAR's receipt)
+    const mine = units.slice(-2).map((u) => u.id);
+    h.deps.filebase.units = mine;
+    const r = await runPublish({
+      ctx,
+      impls: createPublishSteps(h.deps),
+      dryRun: false,
+      step: "filebase",
+    });
+    // The step stays strict: units left to other runners are reported, so a split job checks its own
+    // receipts instead of the exit code.
+    expect(r.ok).toBe(false);
+    const others = units.map((u) => u.id).filter((id) => !mine.includes(id));
+    expect(r.steps.at(-1)?.error).toContain(`${others.length} item(s) still have no receipt`);
+    expect(h.cli).toHaveBeenCalledTimes(mine.length);
+    for (const u of units)
+      expect(existsSync(join(ctx.receiptsDir, `${u.id}.json`)), u.id).toBe(mine.includes(u.id));
+  });
+
+  it("refuses PUBLISH_FILEBASE_UNITS names that are not units of the manifest", async () => {
+    const { ctx } = await realContext();
+    const h = harness(ctx);
+    h.deps.filebase.units = ["county-b5-tables"];
+    const r = await runPublish({
+      ctx,
+      impls: createPublishSteps(h.deps),
+      dryRun: false,
+      step: "filebase",
+    });
+    expect(r.ok).toBe(false);
+    expect(JSON.stringify(r.steps)).toContain(
+      "names units the manifest does not have: county-b5-tables",
+    );
+    expect(h.cli).not.toHaveBeenCalled();
+  });
+
+  it("a tables folder waits until its batch CAR has a receipt", async () => {
+    const { ctx } = await realContext();
+    const h = harness(ctx);
+    const tables = uploadUnits(ctx.manifest).filter((u) => u.kind === "tables");
+    h.deps.filebase.units = tables.map((u) => u.id);
+    const r = await runPublish({
+      ctx,
+      impls: createPublishSteps(h.deps),
+      dryRun: false,
+      step: "filebase",
+    });
+    expect(r.ok).toBe(false);
+    expect(h.cli).not.toHaveBeenCalled();
+    for (const u of tables) expect(existsSync(join(ctx.receiptsDir, `${u.id}.json`))).toBe(false);
+  });
+
   it("skips an artifact that an existing top-level receipt (Run 1 style) already records", async () => {
     const { ctx } = await realContext();
     const [first] = uploadUnits(ctx.manifest);

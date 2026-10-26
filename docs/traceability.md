@@ -149,6 +149,7 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | G6 | testplans/A-14-test-cases.md | v1.0 | PASS 9/9, `docs/gates/G6-A-14-precheck.md` | Approved (HebaGaber) | 2026-10-22 |
 | G7 | A-14 (branch `014-agent-and-mcp` @ `ad7d14d`, hosted results on `40808ca`) | Agent, AI tab and MCP server deployed to `CountyLensApi`; golden G1 to G6 6 of 6 and MCP 12 passed on the small run; reviewers alakazam 80, ash 84, oracle 80, donphan 80; CI run `40227521852` green on `9e98772` | FAIL on the strict rule (C-01, C-04, C-10), `docs/gates/G7-A-14-precheck.md`, 2026-10-25; PO exceptions: E1 full-county gap (`DEC-A-14-agent-mcp-full-county.md`), E2 ten convergence tasks to A-16, E3 MCP burst 503 (`DEC-A-14-mcp-burst-503.md`, ERR-64), E4 TC-011, TC-017, TC-028 not executed | Approved with exceptions (HebaGaber); merged `283bf51` | 2026-10-25 |
 | G7 | A-11 Run 3 corrections (branch `011c-run3-integrated`) | 2026-10-25 | pre-check FAIL (6), `docs/gates/G7-A-11-run3-precheck.md`; fixes: ERR-65..71 renumbered and closed on the Run 3 numbers (ERR-66 closed 2026-10-26 after the PO checked the BBB link), reviewers oracle 76, donphan 78, machamp 78, porygon 80, evidence and reports updated; hosted Run 3 checks after the index step | Merged on PO approval 2026-10-25 ("if ci is green merge"); hosted checks closed 2026-10-26 (CI run 40246843539, Runs page shows Run 3); re-check PASS | |
+| G7 | A-11 Run 3.1 corrections (branch `011e-run3-1-permit-contractors`) | 2026-10-26 | PASS, `docs/gates/G7-A-11-run3-1-precheck.md`; reviewers oracle 80, donphan 77, machamp 78, porygon 82; CI `40272932002` all jobs success (hosted on the Amplify branch URL, sha `49d6f41`); Run 3.1 published | Approved in advance (HebaGaber, 2026-10-26, merge without further approval if the pre-check passes) | 2026-10-26 |
 | G4–G7 | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
 
@@ -176,3 +177,16 @@ Source: `README.md` at `e778d6f`. AC numbers follow the README's order, one per 
 | Real incremental refresh | n/a | AC-15, AC-31 | Austin: 660 added, 9,922 changed, 0 removed; watermark from Run 2 |
 
 Evidence: `docs/evidence/A-11.md` § Run 3, `specs/011-publish-and-runs/run3/run3-evidence.json`; reviews `docs/reviews/CR-A-11.md` § 4 and § 5.
+
+## Run 3.1 correction (A-11, 2026-10-26)
+
+Raised by the Roofing CRM's 13 Run 3 data-gap questions. Run `travis-full-run3-1-20261025`, manifest `bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai`; no new source capture, County CARs identical to Run 3.
+
+| Decision (PO) | Defect | README criterion | Evidence (Run 3 → Run 3.1) |
+| --- | --- | --- | --- |
+| Address in the Parquet tables, option A: patch `export-tables` for oneOf classes, re-export from the unchanged CARs (contract v1.2) | ERR-74 | AC-1 (situs address), owner area | situs text 0 → 441,940 of 441,961; owner mailing ZIP 0 → 408,780 properties |
+| Person-only contractor names published as printed | ERR-72 | AC-38 (contractor) | 4,139 → 4,552 permits naming a contractor |
+| Contractor counts from the loaded Comptroller registry, in a Run 3.1 manifest | ERR-73 | AC-38 | candidate 130, conflicting 112, resolved 0 (was "registry not loaded") |
+| Owner-name fix rejected for this run (no county re-run) | known gap | owner fields | 32,572 properties still read `no_owner_record` |
+
+Evidence: `docs/evidence/A-11.md` § Run 3.1; `specs/011-publish-and-runs/run3-1/` (config, table comparison, logs); reviews `docs/reviews/CR-A-11-run3-1.md` (oracle 80, donphan 77, machamp 78, porygon 82); G7 `docs/gates/G7-A-11-run3-1-precheck.md`.

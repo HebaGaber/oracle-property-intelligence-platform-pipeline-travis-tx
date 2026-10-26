@@ -77,12 +77,12 @@ export const GROUP_COVERAGE_KEYS: Record<
     ["permits_ambiguous_geoid", "aggregate_match"],
     ["permits_address_unmatched", "aggregate_match"],
     ["permits_ambiguous_address", "aggregate_match"],
-    // AD-05's five contractor-identity states (A-07), collapsed to three manifest-coverage
-    // buckets per ADR-0002 #6: there is no lexicon carrier on property_improvement or company
-    // for anything short of a `resolved` match (AD-06), so ambiguous/conflicting/unresolved
-    // are not distinguished in the published coverage either. The producer is
-    // run-month.ts's `contractorCoverage` (oracle-runtime), fed by
-    // transformAustinPropertyImprovement's `PropertyImprovementCounts.by_contractor_state`.
+    // AD-05's five contractor-identity states (A-07). These three are required in every run;
+    // a run that resolved its published names against the loaded registry (Run 3.1, ERR-73)
+    // also states contractor_ambiguous and contractor_conflicting. Run-level counts only: no
+    // per-permit state is published (ADR-0002 #6, AD-06). Producers: run-month.ts's
+    // `contractorCoverage` for a monthly run, pipeline/local-stack/scripts/contractor-coverage.ts
+    // for a re-export.
     ["contractor_resolved", "aggregate_match"],
     ["contractor_candidate", "aggregate_match"],
     ["contractor_unresolved", "aggregate_match"],
@@ -109,11 +109,14 @@ export function confidentialLimitation(ownersRedacted: number): string {
   return `Confidential owner records redacted (Texas Tax Code §25.025): ${ownersRedacted}`;
 }
 
-/** The fixed note of a source in SOURCE_ORDER. */
-function fixedLimitation(name: string, ownersRedacted: number): string {
+/**
+ * The fixed note of a source in SOURCE_ORDER. `registryNote` replaces the Austin source's
+ * "baseline not loaded" note for a run that did resolve against the loaded registry (ERR-73).
+ */
+function fixedLimitation(name: string, ownersRedacted: number, registryNote?: string): string {
   switch (name) {
     case SOURCE_ORDER[0]:
-      return COMPTROLLER_LIMITATION;
+      return registryNote ?? COMPTROLLER_LIMITATION;
     case SOURCE_ORDER[1]:
       return confidentialLimitation(ownersRedacted);
     case ADDRESS_POINT_SOURCE:
@@ -197,6 +200,11 @@ export interface BuildManifestInput {
    * `validate` (P0-15). Written into the TCAD source's limitation note; never defaulted.
    */
   ownersRedacted: number;
+  /**
+   * The Austin source's registry note when the run resolved its permits against the loaded
+   * Comptroller registry (ERR-73); omitted, the note says the baseline is not loaded.
+   */
+  registryNote?: string;
   limitations: string[];
   /**
    * A-16 #6: how many captured Austin permits linked to a TCAD property (Query DB). It is not
@@ -401,6 +409,12 @@ function source(input: ManifestSourceInput, fixedNote: string): ManifestSource {
   // via sourceInputFromDelta/computeSourceDelta); otherwise A-03's walking-skeleton default —
   // the first run of this contract, where everything this capture reports is new.
   const delta = input.delta ?? { added: records, changed: 0, removed: 0 };
+  // A run that states its own registry note (ERR-73) drops a carried "baseline not loaded" note,
+  // so the two never stand side by side.
+  const carried =
+    fixedNote !== COMPTROLLER_LIMITATION
+      ? input.limitations.filter((l) => l !== COMPTROLLER_LIMITATION)
+      : [...input.limitations];
   return {
     name: input.name,
     url: input.url,
@@ -410,9 +424,7 @@ function source(input: ManifestSourceInput, fixedNote: string): ManifestSource {
     added: delta.added,
     changed: delta.changed,
     removed: delta.removed,
-    limitations: input.limitations.includes(fixedNote)
-      ? [...input.limitations]
-      : [...input.limitations, fixedNote],
+    limitations: carried.includes(fixedNote) ? carried : [...carried, fixedNote],
   };
 }
 
@@ -559,7 +571,9 @@ export async function buildManifest(input: BuildManifestInput): Promise<BuiltMan
     startedAt: input.startedAt,
     finishedAt: input.finishedAt,
     previousManifestCid: input.previousManifestCid,
-    sources: input.sources.map((s) => source(s, fixedLimitation(s.name, input.ownersRedacted))),
+    sources: input.sources.map((s) =>
+      source(s, fixedLimitation(s.name, input.ownersRedacted, input.registryNote)),
+    ),
     artifacts,
     profiles: input.profiles,
     coverage: input.coverage,

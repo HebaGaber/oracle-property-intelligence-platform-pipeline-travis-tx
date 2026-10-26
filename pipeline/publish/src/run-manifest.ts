@@ -95,6 +95,31 @@ export const RunManifestConfig = z
     /** Run 1's Run 2 default; an incremental run states its own note instead (see below). */
     correctionNote: z.string().min(1).optional(),
     /**
+     * A correction run on the same captures (Run 3.1, ERR-73): carried run-level limitations that
+     * start with one of these prefixes are dropped, because the correction note restates them.
+     */
+    dropLimitationPrefixes: z.array(z.string().min(1)).optional(),
+    /**
+     * A correction run on the same captures: replaces a carried source's limitations by name
+     * (for example the Austin source's stale "Comptroller baseline not loaded"). Each named
+     * source must exist in the base manifest.
+     */
+    sourceLimitations: z.record(z.string().min(1), z.array(z.string().min(1))).optional(),
+    /** Replaces the Austin source's "Comptroller baseline not loaded" note (ERR-73). */
+    registryNote: z.string().min(1).optional(),
+    /**
+     * A correction run that reuses the base run's County artifacts (Run 3.1): the base's
+     * address-point source is carried like the other sources (delta 0, its limitations kept),
+     * because the reused coordinates still come from it. Needs `addressPointsReceipt`.
+     */
+    carryAddressPoints: z.boolean().optional(),
+    /**
+     * The report written by pipeline/local-stack/scripts/contractor-coverage.ts (ERR-73). With it,
+     * every contractor_* coverageOverrides count must equal the report's five-state totals, and the
+     * totals must add up to the published permits, so hand-copied counts cannot drift.
+     */
+    contractorCoverage: Dir.optional(),
+    /**
      * An incremental run (Run 3): the facts file written by
      * pipeline/local-stack/scripts/incremental-facts.ts for the Austin permits source. With it
      * the Austin source gets the new watermark, the real delta and the new capture-time total;
@@ -369,9 +394,60 @@ export async function buildRunManifest(
   };
 
   // The address-point source belongs to the run that used the layer; it is never carried over.
-  const baseSources = base.sources.filter((s) => s.name !== ADDRESS_POINT_SOURCE);
+  const carryPoints = config.carryAddressPoints === true;
+  if (carryPoints) {
+    if (facts !== null) throw new Error("carryAddressPoints is for a run with no new capture");
+    if (config.addressPointsReceipt === undefined)
+      throw new Error("carryAddressPoints needs addressPointsReceipt");
+    if (!base.sources.some((s) => s.name === ADDRESS_POINT_SOURCE))
+      throw new Error(
+        `carryAddressPoints: the base manifest has no ${ADDRESS_POINT_SOURCE} source`,
+      );
+  }
+  const baseSources = base.sources.filter((s) => carryPoints || s.name !== ADDRESS_POINT_SOURCE);
+  const sourceLimits = config.sourceLimitations ?? {};
+  for (const name of Object.keys(sourceLimits)) {
+    if (!baseSources.some((s) => s.name === name))
+      throw new Error(`sourceLimitations names ${name}, which the base manifest does not carry`);
+  }
+  const dropPrefixes = config.dropLimitationPrefixes ?? [];
+  for (const p of dropPrefixes) {
+    if (!base.limitations.some((l) => l.startsWith(p)))
+      throw new Error(`dropLimitationPrefixes: no carried limitation starts with "${p}"`);
+  }
+  if (config.contractorCoverage !== undefined) {
+    const report = JSON.parse(
+      readFileSync(resolvePath(repoRoot, config.contractorCoverage), "utf8"),
+    ) as { permits: number; byState: Record<string, number> };
+    const STATES = ["resolved", "candidate", "ambiguous", "conflicting", "unresolved"];
+    const missing = STATES.filter((s) => typeof report.byState?.[s] !== "number");
+    if (missing.length > 0)
+      throw new Error(`contractorCoverage has no count for: ${missing.join(", ")}`);
+    const sum = STATES.reduce((n, s) => n + (report.byState[s] as number), 0);
+    if (sum !== report.permits)
+      throw new Error(`contractorCoverage states sum to ${sum}, not its ${report.permits} permits`);
+    if (report.permits !== emitted.total)
+      throw new Error(
+        `contractorCoverage counts ${report.permits} permits but ${emitted.total} are published`,
+      );
+    for (const state of STATES) {
+      const n = report.byState[state];
+      const got = coverage[`contractor_${state}`]?.count;
+      if (got !== n)
+        throw new Error(
+          `coverage contractor_${state} is ${String(got)} but contractorCoverage says ${n}`,
+        );
+    }
+  }
   const receiptFor = (name: string): string =>
-    resolvePath(repoRoot, name.startsWith("austin") ? config.austinReceipt : config.tcadReceipt);
+    resolvePath(
+      repoRoot,
+      name === ADDRESS_POINT_SOURCE && config.addressPointsReceipt !== undefined
+        ? config.addressPointsReceipt
+        : name.startsWith("austin")
+          ? config.austinReceipt
+          : config.tcadReceipt,
+    );
   const input: BuildManifestInput = {
     runId: config.runId,
     county: base.county,
@@ -390,7 +466,7 @@ export async function buildRunManifest(
             url: s.url,
             watermark: s.watermark,
             receipts: receiptFor(s.name),
-            limitations: [...s.limitations],
+            limitations: [...(sourceLimits[s.name] ?? s.limitations)],
             // No new capture: nothing added, changed or removed since the base run.
             delta: { added: 0, changed: 0, removed: 0 },
           };
@@ -405,16 +481,18 @@ export async function buildRunManifest(
           ? austinSourceInput(facts, carried)
           : unchangedSourceInput({ ...carried, watermark: s.watermark });
       }),
-      ...(config.addressPointsReceipt === undefined
+      ...(config.addressPointsReceipt === undefined || carryPoints
         ? []
         : [addressPointSourceInput(resolvePath(repoRoot, config.addressPointsReceipt))]),
     ],
     profiles: withGazetteerProfile(base.profiles, (deps.gitCommit ?? shortCommit)(repoRoot)),
     coverage,
     ownersRedacted: ownersRedactedOf(base),
+    ...(config.registryNote === undefined ? {} : { registryNote: config.registryNote }),
     limitations: [
       ...base.limitations
         .filter((l) => !l.startsWith(DRAFT_LIMITATION_PREFIX))
+        .filter((l) => !dropPrefixes.some((p) => l.startsWith(p)))
         // an incremental run is not a correction run: drop the earlier run's own notes
         .filter(
           (l) =>

@@ -176,9 +176,10 @@ permit whose \`improvement_status\` is null, whose \`source_http_request\` host 
 ## Location, ZIP search and value
 
 The Travis export reaches a property's point only through **property_has_parcel → parcel_has_geometry → geometry**
-(the TCAD point). There is no \`address_has_geometry\` and no \`property_has_tax\` in the export, and
-\`address\` properties are not emitted, so there is no situs text, situs ZIP or owner mailing
-address in v1. A ZIP or place search therefore uses the travis-places gazetteer point of the ZIP
+(the TCAD point). There is no \`address_has_geometry\` and no \`property_has_tax\` in the export.
+From v1.2 (Run 3.1) the situs text (\`unnormalized_address\`) and the owner mailing ZIP/state are
+columns, but there is no separate situs ZIP column (TCAD prints the situs as one line). A ZIP or
+place search therefore uses the travis-places gazetteer point of the ZIP
 or place and a bounding box around it over \`latitude\`/\`longitude\`; it never matches a ZIP
 column. Market value is absent: no assessed or market value is published in v1.
 
@@ -204,15 +205,19 @@ then the companies (by name), each once, separated by \`; \`. A property with no
 \`owner_unparsed\`, \`owner_confidential\` (TCAD confidentiality flag, P0-15) or \`no_owner_record\`,
 read from the manifest \`coverage\` counts \`owner_unparsed\`, \`owner_confidential\` and
 \`owner_no_record\` (when more than one is non-zero the row cannot be told apart and lists
-\`needs_review\`). \`no_dated_sale\` is a tenure reason only. A run written before Run 3 has no
+\`needs_review\`). **Known gap (Runs 3 and 3.1, PO decision):** their manifests carry none of these
+three counts, so every property without an owner reads \`no_owner_record\`, including the 15,410
+§25.025 confidential owners (counted in the TCAD source limitation) and about 17,160 owner names the
+Run 3 splitter could not parse. \`no_dated_sale\` is a tenure reason only. A run written before Run 3 has no
 property-owner edges: its current owners are the persons and companies of the latest dated sale
 (the latest dated sale is the current owner), so the same rows keep reading.
 
 ## Contractor
 
 \`contractor_resolution\` is \`resolved\` only when the permit has exactly one
-\`property_improvement_has_contractor\` edge; with several edges no company is picked: the row is
-\`unresolved\` and lists \`{field: "contractor_company_cid", reason: "needs_review"}\`. The AD-24
+\`property_improvement_has_contractor\` edge **and** that company carries an official registry id
+(see v1.1: a name as printed never does, so every Austin permit reads \`unresolved\`); with several
+edges no company is picked: the row is \`unresolved\` and lists \`{field: "contractor_company_cid", reason: "needs_review"}\`. The AD-24
 five-state totals (\`contractor_resolved\`, \`contractor_candidate\`, \`contractor_ambiguous\`,
 \`contractor_conflicting\`, \`contractor_unresolved\`) are in the manifest \`coverage\`.
 
@@ -224,10 +229,14 @@ run published before Run 3 binds them as null with a reason. The permit's printe
 with the permit's own request as provenance and **no** \`sunbiz_document_number\` (PO decision
 2026-10-25). It is **as printed, unverified**: a name is evidence, not identity, so
 \`contractor_resolution\` stays \`unresolved\` (it becomes \`resolved\` only when the company carries an
-official registry id, which no Austin permit prints). No person, phone or address is published; a
-permit that prints only a person name has no contractor.
+official registry id, which no Austin permit prints). No phone or address is published. From Run
+3.1 (PO decision 2026-10-26, ERR-72), a permit that prints no company but prints a contractor
+person (\`contractor_full_name\`) publishes that person's name the same way, as \`company.name\` as
+printed (the lexicon links a permit's contractor to a company only, so no person record is
+written); a printed company always wins. \`company.name\` can therefore hold an individual's name.
+ERR-72 itself adds no column.
 
-On \`v_roofing_permit\`: \`contractor_name_as_printed\` (the company name, null with
+On \`v_roofing_permit\`: \`contractor_name_as_printed\` (the printed contractor name, null with
 \`contractor_unresolved\`), \`bbb_status\` = \`blocked\` with \`bbb_status_reason\` = \`bbb_blocked\` when a
 name exists (else \`not_checked\` / \`contractor_unresolved\`), \`bbb_rating\` always null (missing
 reason \`bbb_blocked\`; the UI says "BBB rating not published (BBB blocked the lookup)"), and \`bbb_url\`,
@@ -237,6 +246,28 @@ contractor"; null with \`source_missing\` when there is no name). The link is ne
 \`contractor_company_cid\` now means the company as printed. \`contractor_name_raw\` is replaced by
 \`contractor_name_as_printed\`. Not published (still \`no_lexicon_carrier\`): \`status_raw\`,
 \`expiry_date\`. Details: \`docs/defects/ERR-66-contractor-name-and-bbb-link-missing.md\`.
+
+### v1.2 (additive): property address and owner mailing ZIP
+
+Backward compatible: three new nullable \`v_property\` columns, every earlier column unchanged.
+\`unnormalized_address\` is the situs as TCAD prints it, one line with street, city, state and ZIP
+(\`address.unnormalized_address\` via \`property_has_address\`). \`owner_mailing_postal_code\` and
+\`owner_mailing_state_code\` are the current owners' mailing ZIP (first 5 digits) and state
+(\`address.postal_code\` / \`address.state_code\` via \`person_has_mailing_address\` /
+\`company_has_mailing_address\`), distinct values sorted and \`; \`-separated when co-owners mail from
+different places; the same ZIPs now drive \`owner_area_class\`. The fields come from the published
+\`address\` table: from Run 3.1, \`export-tables\` runs with a small patch
+(\`pipeline/publish/patches/elephant-cli-export-oneof.patch\`) that gives the top-level \`oneOf\`
+\`address\` class the columns of its two shapes; the CAR files are unchanged. An earlier run binds
+the three columns as null with \`not_in_export\`. The situs \`city_name\` and \`postal_code\` stay gaps
+with \`source_missing\`: TCAD prints the situs as one line, so they are inside
+\`unnormalized_address\`; a run whose export has no address fields (Runs 1 to 3) still lists them
+as \`not_in_export\`. An owner whose mailing address lacks a ZIP or state reads \`source_missing\` on
+\`owner_mailing_*\` and \`owner_area_class\`; \`no_mailing_address\` means the owner has none; with no
+owner the owner reason is passed through. Run 3.1 fill: situs text on 441,940 of 441,961 properties;
+an owner mailing ZIP on 408,780 properties (409,389 have an owner); 24,532 mailing addresses carry a
+state other than TX, a few of them foreign provinces, whose postal code is still cut to 5 characters.
+Details: \`docs/defects/ERR-74-address-not-in-tables.md\`.
 
 ## Manifest coverage and profiles for consumers
 
@@ -279,11 +310,12 @@ ${gaps()}
 
 Two further notes from the pilot export:
 
-- **\`address\` properties are not emitted.** The lexicon \`address\` class is a top-level \`oneOf\`,
-  and \`export-tables\` writes only \`cid\`, \`property_cid\`, \`data_group_cid\` and
-  \`request_identifier\` for it. Situs text, city, ZIP and the owner mailing ZIP/state are therefore
-  not v1 columns (\`not_in_export\`); \`owner_area_class\` is \`unknown\` and \`owner_is_out_of_area\`
-  is null with reason \`not_in_export\`. Coordinates come from \`geometry\` (\`coordinate_source = gis_centroid\`).
+- **\`address\` properties in the pilot export.** The lexicon \`address\` class is a top-level
+  \`oneOf\`, and the unpatched \`export-tables\` writes only \`cid\`, \`property_cid\`,
+  \`data_group_cid\` and \`request_identifier\` for it, so on the pilot (and Runs 1 to 3) the v1.2
+  address columns are null with \`not_in_export\`, \`owner_area_class\` is \`unknown\` and
+  \`owner_is_out_of_area\` is null with reason \`not_in_export\`. From Run 3.1 the tables are
+  exported with the oneOf-columns patch and carry them (v1.2). Coordinates come from \`geometry\`.
 - **\`property_cid\`** is the property record's CID (\`property.cid\`, the \`from_cid\` of every
   \`property_has_*\` edge). The export's extra column also named \`property_cid\` is the Seed root
   CID, a different value; it is not used.

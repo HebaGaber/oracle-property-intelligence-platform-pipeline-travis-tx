@@ -70,7 +70,7 @@ describe("parquet-meta Range guard", () => {
     const parts = [0, 1, 2].map((i) => ({ name: `p${i}`, cid: `c${i}`, size: PARQUET.length }));
     const meta = await readTableMeta(parts, (p) => `https://h.test/${p.name}`, { fetch: f });
     expect(meta.rows).toBe(60);
-    expect(meta.columns).toHaveLength(58); // contract v1.1 (A-11 Run 3) adds contractor_name_as_printed, bbb_rating, bbb_url
+    expect(meta.columns).toHaveLength(61); // contract v1.2 (A-11 Run 3.1) adds unnormalized_address, owner_mailing_postal_code, owner_mailing_state_code to v1.1's 58
     expect(peak).toBe(1);
   });
 });
