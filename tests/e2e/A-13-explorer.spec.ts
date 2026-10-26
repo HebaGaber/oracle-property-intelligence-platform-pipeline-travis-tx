@@ -35,6 +35,8 @@ import {
   sqlScalar,
   test,
   type A13Oracle,
+  PARKED_GAPS,
+  parkGap,
 } from "./lib/a13-fixtures.js";
 import {
   CONTRACTOR_STATES,
@@ -339,6 +341,7 @@ test.describe("A-13 explorer · demo lines", () => {
   });
 
   test(scenario("004"), async ({ page, oracle }) => {
+    parkGap(PARKED_GAPS.sqlFirstQuery);
     // Runs 1 and 2 publish no `parcels_published` coverage key; the county group is R-only with
     // 441,961 properties (docs/evidence/A-04.md: v_property rows = distinct property_cid = Query DB R accounts).
     const expected = oracle.M.coverage.parcels_published?.count ?? COUNTY_PROPERTY_ROWS;

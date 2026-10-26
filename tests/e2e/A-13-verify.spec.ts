@@ -17,6 +17,8 @@ import {
   sqlScalar,
   test,
   type A13Oracle,
+  PARKED_GAPS,
+  parkGap,
 } from "./lib/a13-fixtures.js";
 import {
   SEL,
@@ -315,6 +317,7 @@ test.describe("A-13 verify", { tag: "@a13-verify" }, () => {
   });
 
   test(scenario("023"), async ({ page, oracle }) => {
+    parkGap(PARKED_GAPS.sqlFirstQuery);
     const artifact = verifyFileArtifact(oracle.M);
     const aborted = new Map<string, number>();
     // "No request reached the aborted host again after the first failure per file" holds within

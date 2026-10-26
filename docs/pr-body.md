@@ -83,6 +83,9 @@ Everything carried into A-16 is listed once in [`docs/evidence/A-16.md` § Closu
 | County counts in the manifest coverage section | Run manifests are immutable; Run 3's coverage carries permit keys only. The Coverage page names the documented 441,961 | Written by the manifest builder from Run 4 |
 | Out-of-area owner filter | Owner mailing location is not published in any run; the page and the agent say so instead of returning rows | A future run that publishes owner ZIP |
 | Six-case golden grader on the full county | The grader re-binds the run locally and the CID copy refuses its unsigned fetch; the two README prompts were answered live on Run 3 instead | Grader reads parts through the signed path |
+| SQL panel first query on the full county | The panel now binds only the views a query names and the tab renders, but the first full-county query still exceeds 4 min on the CI runner (TC-004, TC-023 parked, PO 2026-10-26) | Read one footer per table and only the queried columns |
+| Page speed on Catalog and Manifest (Run 3) | LCP 3.1–3.3 s against 2.5 s; CLS 0.12–0.25 on Runs, Coverage, Manifest (TC-081 parked, PO 2026-10-26) | Reserve layout space; load the artifact table on demand |
+| Run 3 size: Catalog footers and Filebase fallback | 255 parts, 983 MB (parked by the Run 3 session) | Footer-only Catalog read |
 | Atlas registration | No Atlas access in this environment; an external dependency | — |
 | Demo video | Recorded at release step R7 | R7 |
 

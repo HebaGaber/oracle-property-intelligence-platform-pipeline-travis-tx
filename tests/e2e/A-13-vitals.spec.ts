@@ -5,7 +5,7 @@
 // TC-082 (initial JS size) lives in A-13-perf.spec.ts.
 import { ROUTES } from "@countylens/shared";
 import { writeEvidenceSection } from "./lib/a13-evidence.js";
-import { expect, noteBranch, test } from "./lib/a13-fixtures.js";
+import { PARKED_GAPS, expect, noteBranch, parkGap, test } from "./lib/a13-fixtures.js";
 import { median } from "./lib/a13-routes.js";
 import { scenario } from "./lib/a13-ui.js";
 import {
@@ -46,6 +46,7 @@ test.describe("A-13 vitals", { tag: "@a13-vitals" }, () => {
   });
 
   test(scenario("081"), async ({ browser }) => {
+    parkGap(PARKED_GAPS.runsLogLcp);
     test.setTimeout(60 * 60_000);
     const pages = [
       ROUTES.hub,

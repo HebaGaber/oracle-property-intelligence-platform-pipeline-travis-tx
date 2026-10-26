@@ -329,8 +329,9 @@ export const PARKED_GAPS = {
   /** Explore search returns HTTP 500 after ~29 s on the full county. */
   exploreSearch:
     "A-16 gap 1: Explore search does not run on the full county (HTTP 500 after ~29 s)",
-  /** The SQL panel's first query binds 225 table parts (~97 s; fails on the CI runner). */
-  sqlFirstQuery: "A-16 gap 2: the SQL panel's first query on the full county takes ~97 s",
+  /** A-16 exception (PO 2026-10-26): lazy binding renders the tab, but a full-county query still returns no result within 4 min on CI. */
+  sqlFirstQuery:
+    "A-16 exception (PO 2026-10-26): the SQL panel's first full-county query returns no result within 4 min on the CI runner (lazy binding shipped; the remaining cost is the parts the query reads)",
   /** Five manifest-driven pages exceed the 2.5 s LCP limit on the full county; Manifest CLS 0.132. */
   /** The SQL tab binds every Run 3 table on load: ~96 s against the 60 s wait (2026-10-26). */
   sqlTabBind: "A-16 item 18: the Explore SQL tab binds Run 3 in about 96 s; the tests wait 60 s",
@@ -338,7 +339,7 @@ export const PARKED_GAPS = {
   catalogFooters:
     "A-16 item 19: on Run 3 (255 parts, 983 MB) the Catalog's Parquet footers do not all arrive within the 2-minute test budget",
   runsLogLcp:
-    "A-16 gap 3: LCP is 2.7-3.4 s against the 2.5 s limit on Runs, Runs · Log, Coverage, Catalog and Manifest, and Manifest CLS is 0.132 against 0.1",
+    "A-16 exception (PO 2026-10-26): on Run 3 Catalog LCP 3.1 s and Manifest LCP 3.3 s (limit 2.5 s); CLS Runs 0.124, Coverage 0.115, Manifest 0.250 (limit 0.1)",
 } as const;
 
 /**
