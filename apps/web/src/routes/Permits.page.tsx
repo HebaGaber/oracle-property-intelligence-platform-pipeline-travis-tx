@@ -188,13 +188,15 @@ function FieldValue({
 /**
  * The contractor: the resolution pill, the name as printed on the permit (never verified), the
  * BBB search link built from it (BBB blocks automated lookups, so it is a link, never a rating)
- * and the row's own missing reasons. With no printed name and no reason entry for it, the cell
- * says the permit printed none (data audit 2026-10-26, rows 1, 9, 17).
+ * and the row's own missing reasons. With no printed name (or no BBB link) and no reason entry
+ * for it, the cell says the permit printed none (or that BBB blocks lookups); a row's own reason
+ * pill is never repeated as a note (data audit 2026-10-26, rows 1, 9, 17).
  */
 function ContractorCell({ row }: { readonly row: PermitListRow }): ReactElement {
   const status: StatusKind = row.contractor_resolution === "resolved" ? "verified" : "unavailable";
   const name = row.contractor_name_as_printed;
   const nameReason = row.missing.some((m) => m.field === "contractor_name_as_printed");
+  const bbbReason = row.missing.some((m) => m.field === "bbb_url");
   return (
     <span className={styles.contractor}>
       <span className={styles.value}>
@@ -215,7 +217,7 @@ function ContractorCell({ row }: { readonly row: PermitListRow }): ReactElement 
         >
           {BBB_SEARCH_LINK_LABEL}
         </a>
-      ) : (
+      ) : bbbReason ? null : (
         <span className={styles.note} data-bbb-blocked="">
           {EXPLORE_TEXTS.bbbBlocked}
         </span>
