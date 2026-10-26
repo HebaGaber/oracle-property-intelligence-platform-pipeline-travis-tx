@@ -14,6 +14,7 @@
 // clock. `toExploreRow` maps an engine row to the ExploreRow of data-model.md: provenance on
 // every row and a `missing` reason for every gap, never a guessed value.
 import { METRES_PER_MILE, MAX_ROWS, geoSql } from "./builders.js";
+import { bbbReasonFor, contractorGapReason, noContractorPrinted } from "./contractor-gaps.js";
 import type { Row } from "./engine.js";
 
 export const EXPLORE_DEFAULT_LIMIT = 200;
@@ -121,8 +122,10 @@ export function exploreSearchSql(input: ExploreSearchInput): ExploreSql {
   const perm = `perm AS (
   SELECT property_cid AS permit_property_cid, permit_cid, permit_number,
     improvement_status AS permit_status, status_class AS permit_status_class,
-    open_days AS permit_open_days, contractor_resolution, contractor_company_cid,
-    bbb_status, bbb_status_reason, table_cid AS permit_table_cid, missing AS permit_missing,
+    open_days AS permit_open_days, issue_date AS permit_issue_date,
+    final_date AS permit_final_date, contractor_resolution, contractor_company_cid,
+    contractor_name_as_printed, bbb_url, bbb_status, bbb_status_reason,
+    table_cid AS permit_table_cid, missing AS permit_missing,
     row_number() OVER (
       PARTITION BY property_cid
       ORDER BY (status_class IN ('open', 'stalled')) DESC NULLS LAST, open_days DESC NULLS LAST,
@@ -152,7 +155,8 @@ ${perm},
 base AS (
   SELECT b.*, ${distance} AS distance_m,
     k.permit_cid, k.permit_number, k.permit_status, k.permit_status_class, k.permit_open_days,
-    k.contractor_resolution, k.contractor_company_cid, k.bbb_status, k.bbb_status_reason,
+    k.permit_issue_date, k.permit_final_date, k.contractor_resolution, k.contractor_company_cid,
+    k.contractor_name_as_printed, k.bbb_url, k.bbb_status, k.bbb_status_reason,
     k.permit_table_cid, k.permit_missing
   FROM box b
   ${join} k ON k.permit_property_cid = b.property_cid AND k.permit_rank = 1${
@@ -210,13 +214,23 @@ export interface ExplorePermit {
   /** The exact `open_days` of v_roofing_permit (an integer); `open_years` is its rounded-down view. */
   readonly open_days: number | null;
   readonly table_cid: string | null;
+  /** A-16: v_roofing_permit `issue_date` / `final_date` (YYYY-MM-DD); null with the view's reason. */
+  readonly issue_date?: string | null;
+  readonly final_date?: string | null;
+  /** A-16: the printed contractor name and the BBB search link, on the permit (the Explore UI
+   *  reads these; `contractor.name_as_printed` / `contractor.bbb_url` carry the same values). */
+  readonly contractor_name_as_printed?: string | null;
+  readonly bbb_url?: string | null;
 }
 
 export interface ExploreContractor {
-  /** The name as printed on the permit: no lexicon carrier (ADR-0002), so null with a reason. */
-  readonly name_as_printed: null;
+  /** Contract v1.1: the name as printed on the permit (unverified); null with the view's reason
+   *  (`source_missing`: the permit printed no contractor). */
+  readonly name_as_printed: string | null;
   readonly resolution: string | null;
   readonly company_cid: string | null;
+  /** A-16: the BBB SEARCH link built from the printed name (never fetched); null when none. */
+  readonly bbb_url?: string | null;
 }
 
 export interface ExploreRow {
@@ -238,6 +252,12 @@ export interface ExploreRow {
   readonly tenure_years: number | null;
   readonly tenure_basis: string | null;
   readonly owner_area_class: string | null;
+  /** A-16: v_property `property_structure_built_year` (the year behind basis `built_year`). */
+  readonly year_built?: number | null;
+  /** A-16: v_property owner fields; null with the view's reason in `missing`. */
+  readonly owner_name?: string | null;
+  readonly owner_kind?: string | null;
+  readonly last_ownership_transfer_date?: string | null;
   readonly provenance: ExploreProvenance;
   readonly missing: readonly MissingEntry[];
 }
@@ -299,17 +319,29 @@ export function toExploreRow(row: Row, centre: { lat: number; lon: number }): Ex
   const lon = num(row.longitude) ?? 0;
   const hasPermit = str(row.permit_cid) !== null || str(row.permit_number) !== null;
   const openDays = num(row.permit_open_days);
+  const contractorName = str(row.contractor_name_as_printed);
+  // A-16: an index built before the derive.ts fix says contractor_unresolved for "none printed".
+  const noContractor = hasPermit && noContractorPrinted(contractorName, row.contractor_company_cid);
 
   const missing: MissingEntry[] = [
     ...missingList(row.missing),
     { field: "address", reason: "not_in_export" },
   ];
   if (hasPermit) {
-    missing.push(
-      ...missingList(row.permit_missing, "permit."),
-      { field: "permit.status_raw", reason: "no_lexicon_carrier" },
-      { field: "contractor.name_as_printed", reason: "no_lexicon_carrier" },
-    );
+    const permitMissing = missingList(row.permit_missing).map((m) => ({
+      field: `permit.${m.field}`,
+      reason: contractorGapReason(m.field, m.reason, noContractor),
+    }));
+    missing.push(...permitMissing, { field: "permit.status_raw", reason: "no_lexicon_carrier" });
+    // The contractor section's own entry, with the view's real reason (never no_lexicon_carrier:
+    // contract v1.1 publishes the printed name).
+    if (contractorName === null) {
+      const viewEntry = permitMissing.find((m) => m.field === "permit.contractor_name_as_printed");
+      missing.push({
+        field: "contractor.name_as_printed",
+        reason: viewEntry?.reason ?? "source_missing",
+      });
+    }
   }
   const seen = new Set<string>();
   const unique = missing.filter((m) => (seen.has(m.field) ? false : (seen.add(m.field), true)));
@@ -333,20 +365,29 @@ export function toExploreRow(row: Row, centre: { lat: number; lon: number }): Ex
           open_years: openDays === null ? null : Math.floor((openDays / DAYS_PER_YEAR) * 10) / 10,
           open_days: openDays === null ? null : Math.trunc(openDays),
           table_cid: str(row.permit_table_cid),
+          issue_date: str(row.permit_issue_date),
+          final_date: str(row.permit_final_date),
+          contractor_name_as_printed: contractorName,
+          bbb_url: str(row.bbb_url),
         }
       : null,
     contractor: hasPermit
       ? {
-          name_as_printed: null,
+          name_as_printed: contractorName,
           resolution: str(row.contractor_resolution),
           company_cid: str(row.contractor_company_cid),
+          bbb_url: str(row.bbb_url),
         }
       : null,
     bbb_status: str(row.bbb_status),
-    bbb_status_reason: str(row.bbb_status_reason),
+    bbb_status_reason: str(bbbReasonFor(row.bbb_status_reason, noContractor)),
     tenure_years: num(row.tenure_years),
     tenure_basis: str(row.tenure_basis),
     owner_area_class: str(row.owner_area_class),
+    year_built: num(row.property_structure_built_year),
+    owner_name: str(row.owner_name),
+    owner_kind: str(row.owner_kind),
+    last_ownership_transfer_date: str(row.last_ownership_transfer_date),
     provenance: {
       cid: str(row.cid),
       source_url: str(row.source_url),

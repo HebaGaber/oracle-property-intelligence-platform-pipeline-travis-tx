@@ -192,12 +192,13 @@ describe("ListRunsInput / GetSchemaInput", () => {
 });
 
 describe("EmptyReason", () => {
-  it("is the closed five-value enum", () => {
+  it("is the closed six-value enum", () => {
     expect(EmptyReason.options).toEqual([
       "out_of_scope",
       "not_found",
       "no_match",
       "field_not_published",
+      "field_unknown",
       "run_not_found",
     ]);
   });
