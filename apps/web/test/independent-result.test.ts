@@ -3,7 +3,11 @@
 // "bytes differ on X" (mismatch) or "no verified answer from X" (anything else).
 import { VERIFY_TEXTS } from "@countylens/shared";
 import { describe, expect, it } from "vitest";
-import { independentResult, type LaneState } from "../src/data/verify-lane";
+import {
+  independentResult,
+  independentResultStatus,
+  type LaneState,
+} from "../src/data/verify-lane";
 
 const verified: LaneState = { kind: "verified", size: 1, sha256: "a" };
 const mismatch: LaneState = {
@@ -53,6 +57,7 @@ describe("independentResult (counted lanes only)", () => {
     expect(independentResult({ pinata: verified, orbitor: mismatch, filebase: verified })).toEqual({
       kind: "not_verified",
       text: "Not verified on two public gateways · bytes differ on orbitor",
+      bytesDiffer: true,
     });
   });
 
@@ -71,5 +76,24 @@ describe("independentResult (counted lanes only)", () => {
       text: VERIFY_TEXTS.viaCar,
     });
     expect(independentResult({ pinata: viaCar }).kind).toBe("pending");
+  });
+
+  it("pill status: error only when bytes differ; a lane out of retries is a warning", () => {
+    const retriesOnly = independentResult({ pinata: failed, orbitor: verified });
+    expect(retriesOnly).toMatchObject({ kind: "not_verified", bytesDiffer: false });
+    expect(independentResultStatus(retriesOnly)).toBe("warning");
+    expect(independentResultStatus(independentResult({ pinata: failed, orbitor: failed }))).toBe(
+      "warning",
+    );
+    const differ = independentResult({ pinata: mismatch, orbitor: failed });
+    expect(differ).toMatchObject({ kind: "not_verified", bytesDiffer: true });
+    expect(independentResultStatus(differ)).toBe("error");
+    expect(
+      independentResultStatus(independentResult({ pinata: verified, orbitor: verified })),
+    ).toBe("verified");
+    expect(independentResultStatus(independentResult({}))).toBe("info");
+    expect(independentResultStatus(independentResult({ pinata: viaCar, orbitor: viaCar }))).toBe(
+      "info",
+    );
   });
 });

@@ -26,45 +26,45 @@ import { readFileSync } from "node:fs";
 import { RunManifestV1, type ManifestArtifact } from "@countylens/contract";
 import { cidOfBytes } from "./cid.js";
 import { jcsBytes } from "./jcs.js";
+import { backoffDelayMs } from "./backoff.js";
+import {
+  ALLOWED_GATEWAY_HOSTS,
+  COUNTED_GATEWAY_HOSTS,
+  FALLBACK_GATEWAY_HOSTS,
+  GATEWAY_LABELS,
+  STORAGE_HOST_LABEL,
+  gatewayLabel as labelOf,
+  gatewayRefusalText,
+  gatewayRole as roleOf,
+} from "./gateways.js";
 
-/** Config key `PINATA_GATEWAY_HOST`: an independent public gateway. */
-export const PINATA_GATEWAY_HOST = "gateway.pinata.cloud";
-/** Config key `ORBITOR_GATEWAY_HOST`: the second independent public gateway (AM-10). */
-export const ORBITOR_GATEWAY_HOST = "ipfs.orbitor.dev";
-/** Config key `FILEBASE_GATEWAY_HOST`: the pin host's gateway (fallback, never independent). */
-export const FILEBASE_GATEWAY_HOST = "ipfs.filebase.io";
-/** The independent gateways (AM-10). Success needs every host in it. */
-export const VERIFY_GATEWAYS: readonly string[] = [PINATA_GATEWAY_HOST, ORBITOR_GATEWAY_HOST];
-/** The storage host's gateway: reported alongside, never counted (AM-10). */
-export const VERIFY_FALLBACK_GATEWAYS: readonly string[] = [FILEBASE_GATEWAY_HOST];
+// Roles, labels and the refusal text live in ./gateways.ts (one definition, shared with
+// scripts/verify-manifest.ts); re-exported here under this module's established names.
+export {
+  FILEBASE_GATEWAY_HOST,
+  ORBITOR_GATEWAY_HOST,
+  PINATA_GATEWAY_HOST,
+  STORAGE_HOST_LABEL,
+} from "./gateways.js";
+/** The counted gateways (AM-10). Success needs every host in it. */
+export const VERIFY_GATEWAYS: readonly string[] = COUNTED_GATEWAY_HOSTS;
+/** Our main storage host's gateway: reported alongside, never counted (AM-10). */
+export const VERIFY_FALLBACK_GATEWAYS: readonly string[] = FALLBACK_GATEWAY_HOSTS;
 /** Every host verify may read. */
-export const VERIFY_ALLOWED_GATEWAYS: readonly string[] = [
-  ...VERIFY_GATEWAYS,
-  ...VERIFY_FALLBACK_GATEWAYS,
-];
-export const STORAGE_HOST_LABEL = "our main storage host · fallback, not counted";
+export const VERIFY_ALLOWED_GATEWAYS: readonly string[] = ALLOWED_GATEWAY_HOSTS;
 /** The plain-facts label for each host (PO wording 2026-10-26). */
-export const VERIFY_GATEWAY_LABELS: Readonly<Record<string, string>> = {
-  [PINATA_GATEWAY_HOST]: "public gateway · also holds our second copy",
-  [ORBITOR_GATEWAY_HOST]: "public gateway · holds no copy of ours",
-  [FILEBASE_GATEWAY_HOST]: STORAGE_HOST_LABEL,
-};
+export const VERIFY_GATEWAY_LABELS: Readonly<Record<string, string>> = GATEWAY_LABELS;
 
-function labelOf(host: string): string {
-  return VERIFY_GATEWAY_LABELS[host] ?? "unknown gateway";
-}
 /** Per request; the first fetch after an upload is slow (plan R5). */
 export const TIMEOUT_MS = 120_000;
 export const MAX_ATTEMPTS = 5;
 export const CONCURRENCY_PER_GATEWAY = 2;
 export const ALL_VERIFIED_TEXT = "ALL ARTIFACTS VERIFIED";
 const BACKOFF_BASE_MS = 1000;
-const BACKOFF_CAP_MS = 60_000;
 
 /** The exact refusal (plan § "Fixed texts", TC-042). */
 export function refusedGatewayText(host: string): string {
-  const named = VERIFY_ALLOWED_GATEWAYS.map((g) => `${g} (${labelOf(g)})`);
-  return `Refused gateway ${host}: verify-manifest only uses ${named.slice(0, -1).join(", ")} and ${named.at(-1) ?? ""}`;
+  return gatewayRefusalText(host);
 }
 
 /** Throws the refusal for the first host outside the allowlist. Runs before any request. */
@@ -88,14 +88,7 @@ export function retryDelayMs(
   random: () => number = Math.random,
   now: () => number = Date.now,
 ): number {
-  if (retryAfter !== null) {
-    const trimmed = retryAfter.trim();
-    if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
-    const at = Date.parse(trimmed);
-    if (!Number.isNaN(at)) return Math.max(0, at - now());
-  }
-  const ceiling = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** (attempt - 1));
-  return Math.max(1, Math.round(random() * ceiling));
+  return backoffDelayMs(attempt, retryAfter, { baseMs: BACKOFF_BASE_MS, random, now });
 }
 
 export type VerifyField = "cid" | "carCid" | "manifest";
@@ -128,6 +121,8 @@ export interface VerifyReport {
   artifacts: VerifyCheck[];
   /** Every URL requested, in request order (TC-040 step 3). */
   requests: string[];
+  /** Loud but non-failing findings, e.g. the fallback serving other manifest bytes. */
+  warnings: string[];
 }
 
 export interface VerifyOptions {
@@ -334,10 +329,6 @@ function formatLine(c: VerifyCheck): string {
   return `${body} [${labelOf(c.gateway)}]`;
 }
 
-function roleOf(host: string): "counted" | "fallback" {
-  return VERIFY_FALLBACK_GATEWAYS.includes(host) ? "fallback" : "counted";
-}
-
 /** Which CID the byte check fetches (TC-043): never the dag-json root of a car or directory. */
 function target(a: ManifestArtifact): { field: VerifyField; cid: string | null } {
   if (a.kind === "table") return { field: "cid", cid: a.cid };
@@ -404,12 +395,21 @@ export async function verifyManifest(options: VerifyOptions): Promise<VerifyRepo
     manifest: manifestChecks,
     artifacts: [],
     requests: t.requests,
+    warnings: [],
   };
-  // A gateway that answered 200 with other bytes for this CID is a broken gateway: stop here.
+  // A counted gateway that answered 200 with other bytes for this CID is broken: stop here.
+  // The fallback (our storage host) serving other bytes is worth a loud WARNING, but it does not
+  // stop the run: it is never counted.
   const differing = manifestChecks.filter((c) => c.status === 200 && !c.ok);
-  if (differing.length > 0) {
+  for (const c of differing.filter((d) => d.role === "fallback")) {
+    const warning = `WARNING ${c.gateway} (${STORAGE_HOST_LABEL}) served other bytes for the manifest CID ${manifestCid}: ${c.reason ?? "bytes differ"}`;
+    report.warnings.push(warning);
+    log(warning);
+  }
+  const countedDiffering = differing.filter((c) => c.role === "counted");
+  if (countedDiffering.length > 0) {
     log(
-      `VERIFICATION FAILED: manifest bytes differ on ${differing.map((c) => c.gateway).join(", ")}; artifacts not checked`,
+      `VERIFICATION FAILED: manifest bytes differ on ${countedDiffering.map((c) => c.gateway).join(", ")}; artifacts not checked`,
     );
     return report;
   }

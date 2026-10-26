@@ -238,6 +238,23 @@ describe("Compare with two runs (FR-001a, TC-007, TC-015)", () => {
     expect(await screen.findByText(RUNS_TEXTS.oldManifestResolves)).toBeDefined();
   });
 
+  it("a counted gateway with no readable answer shows no error pill on the old-manifest check", async () => {
+    installFetch([run1, run2], {
+      orbitor: (cid) =>
+        cid === run1.cid ? new Response(null, { status: 504 }) : new Response(run2.bytes),
+    });
+    await renderCompare("?a=1&b=2");
+    const check = await screen.findByRole("region", { name: /old manifest/i });
+    await waitFor(() =>
+      expect(check.querySelector('[data-gateway="orbitor"]')?.getAttribute("data-check")).toBe(
+        "fails",
+      ),
+    );
+    // Only the pill is withheld; a gateway miss is never shown as an error (no bytes differed).
+    expect(check.querySelector('[data-status="error"]')).toBeNull();
+    expect(screen.queryByText(RUNS_TEXTS.oldManifestResolves)).toBeNull();
+  });
+
   it("a Filebase failure does not withhold the text; Filebase is listed as the fallback (AM-10)", async () => {
     installFetch([run1, run2], {
       filebase: (cid) =>

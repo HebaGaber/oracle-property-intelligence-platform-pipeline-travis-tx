@@ -19,6 +19,7 @@ import {
   ALL_VERIFIED_TEXT,
   ALLOWED_GATEWAYS,
   EVIDENCE_SCHEMA,
+  RESUMED_TEXT,
   FALLBACK_GATEWAYS,
   GATEWAYS,
   NEVER_GATEWAYS,
@@ -554,6 +555,17 @@ describe("resume (--resume-from)", () => {
     });
   });
 
+  it("never seeds a resume from a line that was itself resumed", async () => {
+    const lines = [
+      `ok   ${PINATA} t/a cid=bafkreifresh size=1 match sha256 match [public gateway · also holds our second copy]`,
+      `ok   ${PINATA} t/b cid=bafkreiold ${RESUMED_TEXT} [public gateway · also holds our second copy]`,
+    ];
+    const skip = parseResumeLog(lines.join("\n"));
+    expect(skip.has(resumeKey(PINATA, "t/a", "bafkreifresh"))).toBe(true);
+    expect(skip.has(resumeKey(PINATA, "t/b", "bafkreiold"))).toBe(false);
+    expect(skip.size).toBe(1);
+  });
+
   it("re-fetches a check whose CID changed since the prior log", async () => {
     const f = await fixture();
     const lines = [
@@ -667,11 +679,36 @@ describe("AM-10: Filebase is a reported fallback, never a counted check", () => 
     expect(exitCodeFor(report)).toBe(1);
   });
 
-  it("stops before any artifact when Filebase answers 200 with other manifest bytes", async () => {
+  it("Filebase answering 200 with other manifest bytes is a loud WARNING, not a stop", async () => {
+    const f = await fixture();
+    const lines: string[] = [];
+    const { fetchImpl } = fakeGateways(f.published, {
+      serve: (host, cid, bytes) =>
+        host === "ipfs.filebase.io" && cid === f.manifestCid ? new Uint8Array([1, 2, 3]) : bytes,
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      log: (l) => lines.push(l),
+    });
+    expect(report.ok).toBe(true);
+    expect(report.artifacts.length).toBeGreaterThan(0);
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0]).toMatch(
+      /^WARNING https:\/\/ipfs\.filebase\.io .*served other bytes/,
+    );
+    expect(lines.some((l) => l.startsWith("WARNING"))).toBe(true);
+    expect(lines.at(-1)).toBe(ALL_VERIFIED_TEXT);
+    expect(buildEvidence(report).summary.warnings).toEqual(report.warnings);
+  });
+
+  it("a counted gateway answering other manifest bytes still stops before any artifact", async () => {
     const f = await fixture();
     const { fetchImpl, requests } = fakeGateways(f.published, {
       serve: (host, cid, bytes) =>
-        host === "ipfs.filebase.io" && cid === f.manifestCid ? new Uint8Array([1, 2, 3]) : bytes,
+        host === "ipfs.orbitor.dev" && cid === f.manifestCid ? new Uint8Array([1, 2, 3]) : bytes,
     });
     const report = await verifyManifest({
       manifestPath: f.manifestPath,
@@ -730,8 +767,8 @@ describe("AM-10: Filebase is a reported fallback, never a counted check", () => 
   });
 });
 
-describe("--sample: the CAR is a storage-host read, not a counted check", () => {
-  it("reads the CAR from Filebase only, says so, and exits 0", async () => {
+describe("--sample: the CAR has ONE counted gateway (orbitor)", () => {
+  it("reads the CAR from orbitor and Filebase (Pinata skipped), says so, and exits 0", async () => {
     const f = await fixture();
     const lines: string[] = [];
     const { fetchImpl, requests } = fakeGateways(f.published);
@@ -747,17 +784,53 @@ describe("--sample: the CAR is a storage-host read, not a counted check", () => 
     expect(exitCodeFor(report)).toBe(0);
     const car = report.verdicts.find((v) => v.kind === "car");
     expect(car?.independentCheck).toBe(false);
-    expect(car?.checks.map((c) => c.gateway)).toEqual([FILEBASE]);
+    expect(car?.countedGateways).toEqual([ORBITOR]);
+    expect(car?.checks.map((c) => c.gateway).sort()).toEqual([FILEBASE, ORBITOR].sort());
     const carCid = car?.cid ?? "\u0000";
-    expect(requests.filter((u) => u.includes(carCid)).every((u) => u.startsWith(FILEBASE))).toBe(
-      true,
+    expect(requests.filter((u) => u.includes(carCid)).some((u) => u.startsWith(PINATA))).toBe(
+      false,
     );
-    expect(lines.some((l) => /NOT a counted check/.test(l) && l.includes(car?.name ?? ""))).toBe(
-      true,
+    expect(
+      lines.some((l) => /ONE counted gateway in a sample/.test(l) && l.includes(car?.name ?? "")),
+    ).toBe(true);
+    expect(lines.at(-1)).toBe(
+      "SAMPLE VERIFIED 2 of 2 artifacts (the CAR on orbitor and Filebase only)",
     );
-    expect(lines.at(-1)).toBe("SAMPLE VERIFIED 2 of 2 artifacts (the CAR on Filebase only)");
+    const ev = buildEvidence(report);
+    expect(ev.artifacts.find((a) => a.kind === "car")?.counted_gateways).toEqual([ORBITOR]);
+    expect(ev.summary.one_counted_gateway).toBe(1);
     const table = report.verdicts.find((v) => v.kind === "table");
     expect(table).toMatchObject({ independentCheck: true, independentOk: true });
+  });
+
+  it("fails the sample when orbitor misses the CAR, even if Filebase matches", async () => {
+    const f = await fixture();
+    const probe = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fakeGateways(f.published).fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      sample: true,
+      log: () => {},
+    });
+    const carCid = probe.verdicts.find((v) => v.kind === "car")?.cid ?? "";
+    const { fetchImpl } = fakeGateways(f.published, {
+      statuses: (host, cid) => (host === "ipfs.orbitor.dev" && cid === carCid ? [404] : []),
+    });
+    const report = await verifyManifest({
+      manifestPath: f.manifestPath,
+      fetch: fetchImpl,
+      sleep: noSleep,
+      random: noJitter,
+      sample: true,
+      log: () => {},
+    });
+    expect(report.ok).toBe(false);
+    expect(report.verdicts.find((v) => v.kind === "car")).toMatchObject({
+      independentOk: false,
+      fallbackOk: true,
+      ok: false,
+    });
   });
 });
 
@@ -832,7 +905,8 @@ describe("--json evidence (T078)", () => {
       artifacts_checked: 2,
       independent_ok: 3,
       independent_failed: 0,
-      storage_host_only: 0,
+      one_counted_gateway: 0,
+      warnings: [],
       fallback_checks: 3,
       fallback_ok: 2,
       resumed: 0,

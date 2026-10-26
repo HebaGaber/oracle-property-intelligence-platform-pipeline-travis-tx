@@ -398,6 +398,22 @@ describe("manifest byte-compare first (AM-05, TC-040 step 1b)", () => {
   });
 });
 
+describe("fallback serving other manifest bytes (review 2026-10-26)", () => {
+  it("is a loud WARNING, not a failure, when both counted gateways match", async () => {
+    const f = await fixture();
+    const other = new TextEncoder().encode("not the manifest");
+    const { report, lines } = await run(f, {
+      serve: (host, cid, bytes) => (host === FILEBASE && cid === f.manifestCid ? other : bytes),
+    });
+    expect(report.ok).toBe(true);
+    expect(report.artifacts.length).toBeGreaterThan(0);
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0]).toMatch(/^WARNING ipfs\.filebase\.io .* served other bytes/);
+    expect(lines.some((l) => l.startsWith("WARNING") && l.includes(FILEBASE))).toBe(true);
+    expect(lines.at(-1)).toBe(ALL_VERIFIED_TEXT);
+  });
+});
+
 describe("which CID is fetched (TC-043)", () => {
   it("fetches car and directory artifacts by carCid, tables by cid, and never a dag-json root as a file", async () => {
     const f = await fixture();

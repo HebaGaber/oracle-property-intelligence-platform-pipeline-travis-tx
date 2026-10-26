@@ -20,7 +20,7 @@ import { FallbackChip } from "../components/FallbackChip";
 import { LinearProgress } from "../components/LinearProgress";
 import { Provenance } from "../components/Provenance";
 import { Skeleton } from "../components/Skeleton";
-import { StatusPill, type StatusKind } from "../components/StatusPill";
+import { StatusPill } from "../components/StatusPill";
 import { VerifyLane } from "../components/VerifyLane";
 import { loadRunChain } from "../data/run-chain";
 import type { LoadedRun } from "../data/run-loader";
@@ -28,9 +28,9 @@ import {
   VERIFY_FALLBACK_GATEWAYS,
   VERIFY_INDEPENDENT_GATEWAYS,
   independentResult,
+  independentResultStatus,
   verifyLaneUrl,
   verifyUrlsFromEnv,
-  type IndependentResult,
   type LaneState,
   type VerifyGateway,
   type VerifyTarget,
@@ -214,13 +214,6 @@ function VerifyView({ run, cid }: { readonly run: LoadedRun; readonly cid: strin
   );
 }
 
-const RESULT_STATUS: Readonly<Record<IndependentResult["kind"], StatusKind>> = {
-  pending: "info",
-  verified: "verified",
-  not_verified: "error",
-  via_car: "info",
-};
-
 /** The page result (independent lanes only), the independent lanes, then the fallback lane. */
 function Lanes({
   urls,
@@ -252,7 +245,7 @@ function Lanes({
         aria-live="polite"
         data-verify-result={result.kind}
       >
-        <StatusPill status={RESULT_STATUS[result.kind]} text={result.text} />
+        <StatusPill status={independentResultStatus(result)} text={result.text} />
       </p>
       <h3 className={runStyles.sectionTitle}>{VERIFY_TEXTS.countedLanesTitle}</h3>
       <div className={styles.lanes} data-lanes="independent">

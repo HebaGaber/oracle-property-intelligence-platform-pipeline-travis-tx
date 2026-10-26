@@ -717,3 +717,91 @@ describe("pinata-copy: 429 backoff and JWT redaction", () => {
     expect(await main([...args, "--kinds", "car"], { PINATA_JWT: JWT }, io)).toBe(2);
   });
 });
+
+describe("pinata-copy: review batch 2", () => {
+  it("an upload ERROR on the run manifest stops the run before any table upload", async () => {
+    const f = await fixture();
+    const gw = fakePinata({ uploadStatuses: (n) => (n === MANIFEST_NAME ? [500] : []) });
+    const result = await runPinataCopy(base(f, gw.fetch, []));
+    expect(result.exitCode).toBe(1);
+    expect(gw.uploads).toEqual([]);
+    expect(gw.attempts.get(MANIFEST_NAME)).toBe(1);
+    expect(result.summary.stopped).toBe("error");
+    expect(result.summary.counts.left_stopped).toBe(3);
+    expect(result.summary.left[0]?.reason).toMatch(/upload error on runs\//);
+  });
+
+  it("refunds the budget of an upload that errored, so later files still fit", async () => {
+    const f = await fixture([1000, 1000, 1000]);
+    const gw = fakePinata({ uploadStatuses: (n) => (n === tbl(f, 0).name ? [500] : []) });
+    const manifestSize = readFileSync(f.manifestPath).length;
+    const result = await runPinataCopy(
+      base(f, gw.fetch, [], { budgetBytes: manifestSize + 2000, concurrency: 1 }),
+    );
+    expect(result.summary.counts.error).toBe(1);
+    expect(gw.uploads).toEqual([MANIFEST_NAME, tbl(f, 1).name, tbl(f, 2).name]);
+    expect(result.summary.stopped).toBeNull();
+  });
+
+  it("refunds the budget of a mismatching pin that was unpinned", async () => {
+    const f = await fixture([1000, 1000, 1000]);
+    const gw = fakePinata({
+      answer: (name, real) => (name === tbl(f, 0).name ? "bafkreiwrongcid" : real),
+    });
+    const manifestSize = readFileSync(f.manifestPath).length;
+    const result = await runPinataCopy(
+      base(f, gw.fetch, [], { budgetBytes: manifestSize + 2000, concurrency: 1 }),
+    );
+    expect(result.summary.counts.mismatch_unpinned).toBe(1);
+    expect(result.summary.counts.pinned).toBe(3);
+    expect(result.summary.stopped).toBeNull();
+  });
+
+  it("does not refund a mismatching pin whose unpin failed (it still uses quota)", async () => {
+    const f = await fixture([1000, 1000, 1000]);
+    const gw = fakePinata({
+      answer: (name, real) => (name === tbl(f, 0).name ? "bafkreiwrongcid" : real),
+      unpinStatus: 400,
+    });
+    const manifestSize = readFileSync(f.manifestPath).length;
+    const result = await runPinataCopy(
+      base(f, gw.fetch, [], { budgetBytes: manifestSize + 2000, concurrency: 1 }),
+    );
+    expect(result.summary.counts.mismatch_unpin_failed).toBe(1);
+    expect(result.summary.stopped).toBe("budget");
+    expect(result.summary.left.map((l) => l.name)).toEqual([tbl(f, 2).name]);
+  });
+
+  it("skips and reports an unsafe runId from runs/index.json (no path is built from it)", async () => {
+    const f = await fixture();
+    const index = JSON.parse(readFileSync(f.indexPath, "utf8")) as {
+      runs: Array<{ runId: string; manifestCid: string }>;
+    };
+    index.runs.push({ runId: "../../etc", manifestCid: f.manifestCid });
+    writeFileSync(f.indexPath, JSON.stringify(index));
+    const gw = fakePinata();
+    const result = await runPinataCopy(base(f, gw.fetch, [], { kinds: ["manifest"] }));
+    expect(gw.uploads).toEqual([MANIFEST_NAME]);
+    expect(result.summary.skipped).toEqual([
+      expect.objectContaining({
+        reason: "unsafe run id in runs/index.json",
+        status: "skipped_local",
+      }),
+    ]);
+  });
+
+  it("compares against the JCS bytes of the parsed RunManifestV1 (as verify.ts does)", async () => {
+    const f = await fixture();
+    const parsed = JSON.parse(readFileSync(f.manifestPath, "utf8")) as unknown;
+    // Same content, not canonical bytes: refused.
+    writeFileSync(f.manifestPath, JSON.stringify(parsed, null, 2));
+    const gw = fakePinata();
+    await expect(runPinataCopy(base(f, gw.fetch, []))).rejects.toThrow(
+      /not the exact JCS bytes of its own content/,
+    );
+    // Canonical bytes of the parsed manifest: accepted (CID from runs/index.json still matches).
+    writeFileSync(f.manifestPath, jcsBytes(parsed));
+    const ok = await runPinataCopy(base(f, gw.fetch, [], { firstOnly: true }));
+    expect(ok.exitCode).toBe(0);
+  });
+});

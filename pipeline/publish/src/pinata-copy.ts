@@ -40,6 +40,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { RunManifestV1 } from "@countylens/contract";
 import { cidOfBytes } from "./cid.js";
 import { jcsBytes } from "./jcs.js";
+import { backoffDelayMs } from "./backoff.js";
 import {
   PinataHttpError,
   isPinned,
@@ -59,7 +60,8 @@ export const DEFAULT_QUOTA_FILES = 500;
 export const MAX_CONCURRENCY = 3;
 export const MAX_ATTEMPTS = 5;
 const BACKOFF_BASE_MS = 2000;
-const BACKOFF_CAP_MS = 60_000;
+/** The same safe-run-id rule for --run-id and every runId read from runs/index.json. */
+export const SAFE_RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 export const DEFAULT_RECEIPTS_ROOT = "specs/016-cost-and-admin/pinata-receipts";
 
 export type CopyKind = "manifest" | "table";
@@ -185,7 +187,7 @@ export interface CopySummary {
   skipped: SkippedItem[];
   left: SkippedItem[];
   errors: Array<{ name: string; cid: string; reason: string }>;
-  stopped: null | "mismatch" | "budget";
+  stopped: null | "mismatch" | "error" | "budget";
   ok: boolean;
   finished_at: string;
 }
@@ -209,21 +211,14 @@ export function safeName(name: string): string {
   return name.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+/, "") || "artifact";
 }
 
-/** Retry-After (seconds or HTTP-date) when sent, else full jitter over a capped exponential. */
+/** Retry-After (capped) when sent, else capped full jitter; the shared rule in ./backoff.ts. */
 export function backoffMs(
   attempt: number,
   retryAfter: string | null,
   random: () => number = Math.random,
   now: () => number = Date.now,
 ): number {
-  if (retryAfter !== null) {
-    const trimmed = retryAfter.trim();
-    if (/^\d+$/.test(trimmed)) return Math.min(BACKOFF_CAP_MS, Number(trimmed) * 1000);
-    const at = Date.parse(trimmed);
-    if (!Number.isNaN(at)) return Math.min(BACKOFF_CAP_MS, Math.max(0, at - now()));
-  }
-  const ceiling = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** (attempt - 1));
-  return Math.max(1, Math.round(random() * ceiling));
+  return backoffDelayMs(attempt, retryAfter, { baseMs: BACKOFF_BASE_MS, random, now });
 }
 
 function retryable(err: unknown, write: boolean): err is PinataHttpError {
@@ -299,7 +294,8 @@ async function checkManifest(
   const out: CheckedManifest = { item, runId, artifacts: parsed.data.artifacts };
   const fromIndex = index.get(parsed.data.runId);
   const expected = expectedCid ?? fromIndex;
-  if (!bytes.equals(Buffer.from(jcsBytes(raw)))) {
+  // The same comparison src/verify.ts makes: the exact JCS bytes of the PARSED RunManifestV1.
+  if (!bytes.equals(Buffer.from(jcsBytes(parsed.data)))) {
     out.problem = "not the exact JCS bytes of its own content";
   } else if (expected === undefined) {
     out.problem = `no expected CID: runs/index.json does not list ${parsed.data.runId}; pass the CID on the command line`;
@@ -356,7 +352,7 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
   const jwt = options.jwt;
   const dryRun = options.dryRun ?? false;
   if (!dryRun && !jwt) throw new PreconditionError("PINATA_JWT is not set in the environment");
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(options.runId))
+  if (!SAFE_RUN_ID.test(options.runId))
     throw new PreconditionError(`--run-id ${options.runId} is not a safe run id`);
   const kinds = [...new Set(options.kinds ?? COPY_KINDS)];
   for (const k of kinds)
@@ -411,13 +407,26 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
     // Older runs from runs/index.json (default), then explicit --extra-manifest, deduplicated.
     const extras: ExtraManifest[] = [];
     if ((options.indexManifests ?? true) && options.runsIndexPath !== undefined)
-      for (const [runId, cid] of index)
-        if (runId !== options.runId)
-          extras.push({
-            path: join(dirname(options.runsIndexPath), runId, "manifest.json"),
+      for (const [runId, cid] of index) {
+        if (runId === options.runId) continue;
+        if (!SAFE_RUN_ID.test(runId)) {
+          // Never build a path from an unsafe id (e.g. "../x"): skip and report it.
+          skipped.push({
+            kind: "manifest",
+            name: `runs/index.json runId ${JSON.stringify(runId)}`,
             cid,
-            cidSource: "runs/index.json",
+            status: "skipped_local",
+            reason: "unsafe run id in runs/index.json",
           });
+          log(`skip runs/index.json runId ${JSON.stringify(runId)}: unsafe run id`);
+          continue;
+        }
+        extras.push({
+          path: join(dirname(options.runsIndexPath), runId, "manifest.json"),
+          cid,
+          cidSource: "runs/index.json",
+        });
+      }
     for (const extra of options.extraManifests ?? []) {
       const at = extras.findIndex((e) => resolve(e.path) === resolve(extra.path));
       if (at >= 0) extras.splice(at, 1);
@@ -541,13 +550,19 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
     };
   }
 
-  /** Uploads one item; returns false when the run must stop (a stop-on-mismatch). */
-  async function copyOne(item: CopyItem): Promise<boolean> {
+  /** Gives back the budget reserved for an item that did not end up adding a pin of ours. */
+  function refund(item: CopyItem): void {
+    bytesLeft += item.size;
+    filesLeft += 1;
+  }
+
+  /** Uploads one item; returns the reason when the run must stop, else null. */
+  async function copyOne(item: CopyItem): Promise<null | "mismatch" | "error"> {
     if (dryRun) {
       counts.planned += 1;
       receipts.push(receiptOf(item, "planned"));
       log(`plan ${item.kind} ${item.name} cid=${item.cid} size=${item.size}`);
-      return true;
+      return null;
     }
     let uploaded: UploadResult;
     try {
@@ -560,7 +575,10 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
       errors.push({ name: item.name, cid: item.cid, reason });
       writeReceipt(receiptOf(item, "error", { reason }));
       log(`FAIL ${item.name}: ${reason}`);
-      return true;
+      refund(item);
+      // A manifest that could not be copied stops the run before any table upload, exactly like
+      // a manifest mismatch (unless --no-stop-on-mismatch).
+      return item.kind === "manifest" && stopManifest ? "error" : null;
     }
     const match = uploaded.cid === item.cid;
     const pinFields = {
@@ -576,7 +594,7 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
       pinSizeUploaded += uploaded.pinSize ?? item.size;
       writeReceipt(receiptOf(item, "pinned", pinFields));
       log(`ok   ${item.kind} ${item.name} cid=${item.cid} pinata=${uploaded.cid} match`);
-      return true;
+      return null;
     }
     let reason = `Pinata returned ${uploaded.cid}, manifest says ${item.cid}`;
     const preexisting = uploaded.isDuplicate === true;
@@ -596,6 +614,9 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
         status = "mismatch_unpin_failed";
       }
     }
+    // Unpinned, or a pin that predates this run: nothing of this upload stays, so its budget
+    // goes back. A failed unpin leaves the pin, and the quota it uses, in place.
+    if (status !== "mismatch_unpin_failed") refund(item);
     counts[status] += 1;
     mismatches.push({
       name: item.name,
@@ -607,7 +628,7 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
     writeReceipt(receiptOf(item, status, { ...pinFields, reason }));
     log(`FAIL MISMATCH ${item.name}: ${reason}${unpinned ? " (unpinned)" : ""}`);
     const stop = item.kind === "manifest" ? stopManifest : stopTable;
-    return !stop;
+    return stop ? "mismatch" : null;
   }
 
   // 3. Dispatch: manifests one at a time (first), then tables at `concurrency`. The budget is
@@ -629,7 +650,7 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
   }
   /** Stops dispatching: everything not yet claimed is reported as left, with the reason. */
   function haltRun(
-    why: "budget" | "mismatch",
+    why: "budget" | "mismatch" | "error",
     status: ItemStatus,
     reason: string,
     first?: CopyItem,
@@ -684,8 +705,13 @@ export async function runPinataCopy(options: PinataCopyOptions): Promise<CopyRes
   }
 
   async function copyAndMaybeHalt(item: CopyItem): Promise<void> {
-    const cont = await copyOne(item);
-    if (!cont) haltRun("mismatch", "left_stopped", `stopped after the mismatch on ${item.name}`);
+    const why = await copyOne(item);
+    if (why !== null)
+      haltRun(
+        why,
+        "left_stopped",
+        `stopped after the ${why === "error" ? "upload error" : "mismatch"} on ${item.name}`,
+      );
   }
 
   // Manifests first, one at a time; --first-only stops after the run manifest.

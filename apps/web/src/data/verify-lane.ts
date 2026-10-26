@@ -111,7 +111,13 @@ export function verifyUrlsFromEnv(env: WebEnv = viteEnv): ReadPathUrls {
 export type IndependentResult =
   | { readonly kind: "pending"; readonly text: string }
   | { readonly kind: "verified"; readonly text: string }
-  | { readonly kind: "not_verified"; readonly text: string }
+  | {
+      readonly kind: "not_verified";
+      readonly text: string;
+      /** True only when a counted lane's bytes differ (a mismatch); false when lanes only ran out
+       *  of retries or got no readable answer, so the page shows a warning, not an error. */
+      readonly bytesDiffer: boolean;
+    }
   | { readonly kind: "via_car"; readonly text: string };
 
 const FINAL_KINDS: ReadonlySet<LaneState["kind"]> = new Set([
@@ -150,7 +156,29 @@ export function independentResult(
     ...(differ === "" ? [] : [VERIFY_TEXTS.bytesDiffer(differ)]),
     ...(noAnswer === "" ? [] : [VERIFY_TEXTS.noVerifiedAnswer(noAnswer)]),
   ].join("; ");
-  return { kind: "not_verified", text: VERIFY_TEXTS.independentNotVerified(details) };
+  return {
+    kind: "not_verified",
+    text: VERIFY_TEXTS.independentNotVerified(details),
+    bytesDiffer: differ !== "",
+  };
+}
+
+/**
+ * The page result's pill status: `error` only when a counted lane's bytes differ; a counted lane
+ * that ran out of retries (rate limit, no readable answer) is a `warning`, like its own lane pill.
+ */
+export function independentResultStatus(
+  result: IndependentResult,
+): "verified" | "warning" | "error" | "info" {
+  switch (result.kind) {
+    case "verified":
+      return "verified";
+    case "not_verified":
+      return result.bytesDiffer ? "error" : "warning";
+    case "pending":
+    case "via_car":
+      return "info";
+  }
 }
 
 export interface RunVerifyLaneOptions {

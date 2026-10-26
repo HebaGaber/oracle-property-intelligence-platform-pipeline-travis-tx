@@ -31,10 +31,10 @@
 // below, then only two artifacts: the smallest table part and the smallest CAR (by size, then
 // name). A full-county run lists 225 table parts and 15 CARs (about 2.8 GB of CARs) and a full
 // check took about two hours locally because Pinata answers 429, so the hosted job checks a
-// sample. In a sample the CAR is read from Filebase only (Pinata's gateway answers 429 to CAR
-// downloads, and AM-10 keeps the CARs on Filebase plus the GitHub Release, not on Pinata); the
-// output says so plainly: a Filebase-only CAR read is a storage-host read, NOT a counted check.
-// The manifest and the table part are still read from both counted gateways. A sample prints
+// sample. In a sample the CAR skips Pinata (its gateway answers 429 to CAR downloads, and AM-10
+// keeps the CARs on Filebase plus the GitHub Release, not on Pinata): it is read from orbitor and
+// Filebase, so it has ONE counted gateway (orbitor), and the output and evidence say so
+// (`counted_gateways`). The manifest and the table part are read from both counted gateways. A sample prints
 // SAMPLE VERIFIED, never ALL ARTIFACTS VERIFIED, and exits 0 when it passes, like a full run (the
 // wording carries the difference; an exit code of 3 broke hosted TC-040, A11-16): 1 = a check
 // failed; 2 = usage. The default (no flag) is the full check the operator runs after a publish.
@@ -45,8 +45,8 @@
 //
 // Order: the manifest itself, by its own raw-leaves CIDv1, from every gateway, compared
 // byte-for-byte with the local file; the run stops before any artifact is checked when either
-// counted gateway does not match, or when any gateway (fallback included) answers 200 with
-// other bytes. Then every artifact: tables by `cid`, car/directory artifacts by `carCid` (never
+// counted gateway does not match. The fallback answering 200 with other bytes is a loud WARNING
+// (log + evidence `summary.warnings`), never a stop: it is not counted. Then every artifact: tables by `cid`, car/directory artifacts by `carCid` (never
 // the dag-json root as a file). Every GET retries 429/504/timeout up to MAX_ATTEMPTS (5) with
 // backoff honouring `Retry-After`; TIMEOUT_MS (default 300000 ms) bounds each attempt. A redirect
 // is followed only when its target stays on the same gateway's domain (host-generic: covers a
@@ -61,6 +61,22 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { cidOfBytes } from "../pipeline/publish/src/cid.js";
 import { jcsBytes } from "../pipeline/publish/src/jcs.js";
+import { backoffDelayMs } from "../pipeline/publish/src/backoff.js";
+import {
+  ALLOWED_GATEWAY_HOSTS,
+  COUNTED_GATEWAY_HOSTS,
+  FALLBACK_GATEWAY_HOSTS,
+  FILEBASE_GATEWAY_HOST,
+  NEVER_GATEWAY_HOSTS,
+  ORBITOR_GATEWAY_HOST,
+  PINATA_GATEWAY_HOST,
+  STORAGE_HOST_LABEL,
+  gatewayLabel,
+  gatewayRefusalText,
+  gatewayRole,
+  holdsOurCopy,
+  type GatewayRole,
+} from "../pipeline/publish/src/gateways.js";
 
 // This script lives outside every workspace package (scripts/ is not in pnpm-workspace.yaml),
 // so it cannot resolve "@countylens/contract" the way pipeline/publish's own modules do (Node
@@ -92,44 +108,33 @@ function isManifestLike(value: unknown): value is ManifestLike {
   );
 }
 
-export const PINATA_GATEWAY = "https://gateway.pinata.cloud";
-export const ORBITOR_GATEWAY = "https://ipfs.orbitor.dev";
-export const FILEBASE_GATEWAY = "https://ipfs.filebase.io";
+// Roles, labels and the refusal text are defined once in pipeline/publish/src/gateways.ts (shared
+// with src/verify.ts); this script speaks in https:// URLs.
+const url = (host: string): string => `https://${host}`;
+export const PINATA_GATEWAY = url(PINATA_GATEWAY_HOST);
+export const ORBITOR_GATEWAY = url(ORBITOR_GATEWAY_HOST);
+export const FILEBASE_GATEWAY = url(FILEBASE_GATEWAY_HOST);
 
 /** The counted gateways (AM-10, 2026-10-26, amends AM-01 and P0-14): public gateways CountyLens
  *  does not operate. An artifact passes only when every one of these matches size + SHA-256. */
-export const GATEWAYS: readonly string[] = [PINATA_GATEWAY, ORBITOR_GATEWAY];
+export const GATEWAYS: readonly string[] = COUNTED_GATEWAY_HOSTS.map(url);
 /** Our main storage host's gateway (AM-10): reported alongside, never counted. */
-export const FALLBACK_GATEWAYS: readonly string[] = [FILEBASE_GATEWAY];
+export const FALLBACK_GATEWAYS: readonly string[] = FALLBACK_GATEWAY_HOSTS.map(url);
 /** Every gateway this script may read; anything else is refused before the first request. */
-export const ALLOWED_GATEWAYS: readonly string[] = [...GATEWAYS, ...FALLBACK_GATEWAYS];
+export const ALLOWED_GATEWAYS: readonly string[] = ALLOWED_GATEWAY_HOSTS.map(url);
 /** Named for the record (and the tests): never valid, whatever the allowlist says. */
-export const NEVER_GATEWAYS: readonly string[] = [
-  "https://ipfs.io",
-  "https://dweb.link",
-  "https://w3s.link",
-  "https://storacha.link",
-];
-export const STORAGE_HOST_LABEL = "our main storage host · fallback, not counted";
-/** The plain-facts label printed with every line for each gateway (PO wording 2026-10-26). */
-export const GATEWAY_LABELS: Readonly<Record<string, string>> = {
-  [PINATA_GATEWAY]: "public gateway · also holds our second copy",
-  [ORBITOR_GATEWAY]: "public gateway · holds no copy of ours",
-  [FILEBASE_GATEWAY]: STORAGE_HOST_LABEL,
-};
-/** Whether the gateway's operator holds a copy of our files (Pinata: the AM-10 second copy). */
-export const HOLDS_OUR_COPY: Readonly<Record<string, boolean>> = {
-  [PINATA_GATEWAY]: true,
-  [ORBITOR_GATEWAY]: false,
-  [FILEBASE_GATEWAY]: true,
-};
+export const NEVER_GATEWAYS: readonly string[] = NEVER_GATEWAY_HOSTS.map(url);
+export { STORAGE_HOST_LABEL };
+export type { GatewayRole };
 
 export function labelOf(gateway: string): string {
-  return GATEWAY_LABELS[gateway] ?? "unknown gateway";
+  return gatewayLabel(gateway);
 }
 export const TIMEOUT_MS_DEFAULT = 300_000;
 export const MAX_ATTEMPTS = 5;
 export const ALL_VERIFIED_TEXT = "ALL ARTIFACTS VERIFIED";
+/** Marks a check line taken from a prior log; such a line never seeds another resume. */
+export const RESUMED_TEXT = "resumed from a prior run, not re-fetched";
 
 /** The `--sample` selection: the smallest table part and the smallest CAR (size, then name). */
 export function selectSample<T extends ManifestArtifactLike>(artifacts: readonly T[]): T[] {
@@ -143,12 +148,10 @@ export function selectSample<T extends ManifestArtifactLike>(artifacts: readonly
  *  special code path — the same streaming hash runs for every size. */
 export const STREAM_THRESHOLD_BYTES = 50 * 1024 * 1024;
 const BACKOFF_BASE_MS = 1000;
-const BACKOFF_CAP_MS = 60_000;
 const RETRYABLE_STATUS = new Set([429, 504]);
 
 export function refusedGatewayText(gateway: string): string {
-  const named = ALLOWED_GATEWAYS.map((g) => `${g} (${labelOf(g)})`);
-  return `Refused gateway ${gateway}: verify-manifest only uses ${named.slice(0, -1).join(", ")} and ${named.at(-1) ?? ""}`;
+  return gatewayRefusalText(gateway, url);
 }
 
 /** Throws before the first request when `gateways` names anything outside the fixed allowlist. */
@@ -159,11 +162,8 @@ export function assertAllowedGateways(gateways: readonly string[]): void {
   }
 }
 
-/** "counted" = Pinata and orbitor (both must match); "fallback" = Filebase (shown, not counted). */
-export type GatewayRole = "counted" | "fallback";
-
 export function roleOf(gateway: string): GatewayRole {
-  return FALLBACK_GATEWAYS.includes(gateway) ? "fallback" : "counted";
+  return gatewayRole(gateway);
 }
 
 /** The wait before the next attempt: `Retry-After` when sent, else full jitter over a capped
@@ -174,18 +174,8 @@ export function retryDelayMs(
   random: () => number = Math.random,
   now: () => number = Date.now,
 ): number {
-  if (retryAfter !== null) {
-    const trimmed = retryAfter.trim();
-    // Honor the server's Retry-After, but capped: Pinata has been observed (2026-10-24) to
-    // return values over 2800s under sustained load, which would make a single artifact check
-    // wait most of an hour per attempt. Capping at BACKOFF_CAP_MS keeps us a good citizen
-    // (still waiting, never hammering immediately) without making the tool impractical.
-    if (/^\d+$/.test(trimmed)) return Math.min(BACKOFF_CAP_MS, Number(trimmed) * 1000);
-    const at = Date.parse(trimmed);
-    if (!Number.isNaN(at)) return Math.min(BACKOFF_CAP_MS, Math.max(0, at - now()));
-  }
-  const ceiling = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** (attempt - 1));
-  return Math.max(1, Math.round(random() * ceiling));
+  // Retry-After is honoured but capped at 60 s (pipeline/publish/src/backoff.ts says why).
+  return backoffDelayMs(attempt, retryAfter, { baseMs: BACKOFF_BASE_MS, random, now });
 }
 
 function sameGatewayHost(gateway: string, host: string): boolean {
@@ -436,9 +426,12 @@ export interface ArtifactVerdict {
   independentOk: boolean;
   /** The fallback (storage host) matched; null when it was not read. */
   fallbackOk: boolean | null;
-  /** False only for a `--sample` CAR, which is read from the storage host alone. */
+  /** The counted gateways this artifact must match on: both, except a `--sample` CAR, which
+   *  skips Pinata (it answers 429 to CAR downloads) and so has ONE counted gateway, orbitor. */
+  countedGateways: string[];
+  /** True when every counted gateway was required (false only for a sample CAR). */
   independentCheck: boolean;
-  /** independentOk, or — for a sample CAR only — the storage-host read matched. */
+  /** independentOk: every required counted gateway matched. */
   ok: boolean;
 }
 
@@ -459,6 +452,8 @@ export interface VerifyReport {
   artifactsListed: number;
   /** Checks taken from a prior run's log instead of fetched (--resume-from). */
   resumed: number;
+  /** Loud but non-failing findings, e.g. the fallback serving other manifest bytes. */
+  warnings: string[];
   /** The final verdict line, as printed. */
   verdictText: string;
 }
@@ -496,6 +491,8 @@ export function parseResumeLog(text: string): Set<string> {
   const skip = new Set<string>();
   const re = /^ok\s+(\S+)\s+(\S+)\s+(?:cid|carCid)=(\S+)/;
   for (const line of text.split("\n")) {
+    // Only a fresh fetch can seed a resume: a line that was itself resumed proves nothing new.
+    if (line.includes(RESUMED_TEXT)) continue;
     const m = re.exec(line);
     if (m) skip.add(resumeKey(m[1] as string, m[2] as string, m[3] as string));
   }
@@ -515,18 +512,30 @@ function formatLine(c: VerifyCheck): string {
   return `${body} [${labelOf(c.gateway)}]`;
 }
 
-/** Folds one artifact's checks into its verdict (AM-10: both counted GATEWAYS hosts must match). */
+/** Folds one artifact's checks into its verdict (AM-10: every required counted gateway must match;
+ *  the fallback is reported, never counted). */
 export function verdictOf(
-  item: Omit<ArtifactVerdict, "independentOk" | "fallbackOk" | "ok" | "independentCheck">,
-  independentCheck: boolean,
+  item: Omit<
+    ArtifactVerdict,
+    "independentOk" | "fallbackOk" | "ok" | "independentCheck" | "countedGateways"
+  >,
+  countedGateways: readonly string[] = GATEWAYS,
 ): ArtifactVerdict {
-  const independentOk = GATEWAYS.every((g) =>
-    item.checks.some((c) => c.gateway === g && c.role === "counted" && c.ok),
-  );
+  const independentOk =
+    countedGateways.length > 0 &&
+    countedGateways.every((g) =>
+      item.checks.some((c) => c.gateway === g && c.role === "counted" && c.ok),
+    );
   const fallback = item.checks.filter((c) => c.role === "fallback");
   const fallbackOk = fallback.length === 0 ? null : fallback.every((c) => c.ok);
-  const ok = independentCheck ? independentOk : fallbackOk === true;
-  return { ...item, independentOk, fallbackOk, independentCheck, ok };
+  return {
+    ...item,
+    countedGateways: [...countedGateways],
+    independentOk,
+    fallbackOk,
+    independentCheck: GATEWAYS.every((g) => countedGateways.includes(g)),
+    ok: independentOk,
+  };
 }
 
 export async function verifyManifest(options: VerifyManifestOptions): Promise<VerifyReport> {
@@ -594,7 +603,7 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
       sha256: manifestSha,
       checks: manifestChecks,
     },
-    true,
+    GATEWAYS,
   );
   const report: VerifyReport = {
     ok: false,
@@ -609,16 +618,22 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
     verdicts: [],
     artifactsListed: manifest.artifacts.length,
     resumed: 0,
+    warnings: [],
     verdictText: "",
   };
-  // Stop when the counted pair does not hold the manifest, or when ANY gateway (fallback
-  // included) answers 200 with other bytes for its CID: that gateway is broken.
-  const wrongBytes = manifestChecks.filter((c) => c.status === 200 && !c.ok);
-  if (!manifestVerdict.independentOk || wrongBytes.length > 0) {
+  // The fallback (our storage host) answering 200 with other bytes for the manifest CID is a
+  // loud WARNING (worth knowing), but never counted: it does not stop the run.
+  for (const c of manifestChecks.filter(
+    (m) => m.role === "fallback" && m.status === 200 && !m.ok,
+  )) {
+    const warning = `WARNING ${c.gateway} (${STORAGE_HOST_LABEL}) served other bytes for the manifest CID ${manifestCid}: ${c.reason ?? "bytes differ"}`;
+    report.warnings.push(warning);
+    log(warning);
+  }
+  // Stop when the counted pair does not hold the manifest (unreachable, or other bytes).
+  if (!manifestVerdict.independentOk) {
     const where = [
-      ...manifestChecks
-        .filter((c) => !c.ok && (c.role === "counted" || c.status === 200))
-        .map((c) => c.gateway),
+      ...manifestChecks.filter((c) => !c.ok && c.role === "counted").map((c) => c.gateway),
       ...GATEWAYS.filter((g) => !gateways.includes(g)).map((g) => `${g} (not checked)`),
     ];
     report.verdictText = `VERIFICATION FAILED: manifest bytes differ or are unreachable on ${where.join(", ")}; artifacts not checked`;
@@ -651,13 +666,15 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
   const selected = options.sample ? selectSample(manifest.artifacts) : manifest.artifacts;
   if (options.sample)
     report.sample = { checked: selected.length, total: manifest.artifacts.length };
-  /** A sample CAR is read from the storage host only: never a counted check (AM-10). */
-  const storageOnly = (a: ManifestArtifactLike): boolean =>
+  /** A sample CAR skips Pinata (429s on CAR downloads): orbitor is its ONE counted gateway. */
+  const pinataSkipped = (a: ManifestArtifactLike): boolean =>
     options.sample === true && a.kind === "car";
+  const countedFor = (a: ManifestArtifactLike): readonly string[] =>
+    pinataSkipped(a) ? GATEWAYS.filter((g) => !isPinataGateway(g)) : GATEWAYS;
   let idx = 0;
   for (const artifact of selected) {
     for (const gateway of gateways) {
-      if (storageOnly(artifact) && roleOf(gateway) === "counted") continue;
+      if (pinataSkipped(artifact) && isPinataGateway(gateway)) continue;
       const { field, cid } = target(artifact);
       const fetchedCid = cid ?? artifact.cid;
       if (
@@ -681,7 +698,7 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
         artifactChecks[idx] = check;
         report.resumed += 1;
         log(
-          `ok   ${gateway} ${artifact.name} ${field === "manifest" ? "cid" : field}=${check.cid} resumed from a prior run, not re-fetched [${labelOf(gateway)}]`,
+          `ok   ${gateway} ${artifact.name} ${field === "manifest" ? "cid" : field}=${check.cid} ${RESUMED_TEXT} [${labelOf(gateway)}]`,
         );
         idx += 1;
         continue;
@@ -769,7 +786,7 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
         sha256: artifact.sha256,
         checks: report.artifacts.filter((c) => c.name === artifact.name),
       },
-      !storageOnly(artifact),
+      countedFor(artifact),
     );
   });
 
@@ -786,20 +803,20 @@ export async function verifyManifest(options: VerifyManifestOptions): Promise<Ve
     log(
       `fallback ${fallbackGateways.join(", ")} (${STORAGE_HOST_LABEL}): ${fallbackChecks.filter((c) => c.ok).length} of ${fallbackChecks.length} checks matched; not counted`,
     );
-  const storageOnlyVerdicts = report.verdicts.filter((v) => !v.independentCheck);
-  for (const v of storageOnlyVerdicts)
+  const fewerCounted = report.verdicts.filter((v) => !v.independentCheck);
+  for (const v of fewerCounted)
     log(
-      `note ${v.name} was read from ${FALLBACK_GATEWAYS.join(", ")} only (${STORAGE_HOST_LABEL}): NOT a counted check`,
+      `note ${v.name}: ONE counted gateway in a sample (${v.countedGateways.join(", ") || "none"}); Pinata is skipped for CARs (it answers 429 to CAR downloads), ${FALLBACK_GATEWAYS.join(", ")} is read but not counted`,
     );
 
   const verdicts = [manifestVerdict, ...report.verdicts];
   const failed = verdicts.filter((v) => !v.ok).length;
   report.ok = failed === 0 && missing.length === 0;
   if (report.ok && report.sample)
-    // The exact text the hosted e2e (A-03-TC-040/043) asserts; the "NOT a counted check"
-    // note for the Filebase-only CAR is printed on its own line just above.
+    // The exact text the hosted e2e (A-03-TC-040/043) asserts; the "ONE counted gateway" note
+    // for the sampled CAR is printed on its own line just above.
     report.verdictText = `SAMPLE VERIFIED ${report.sample.checked} of ${report.sample.total} artifacts${
-      storageOnlyVerdicts.length > 0 ? " (the CAR on Filebase only)" : ""
+      fewerCounted.length > 0 ? " (the CAR on orbitor and Filebase only)" : ""
     }`;
   else if (report.ok) report.verdictText = ALL_VERIFIED_TEXT;
   else
@@ -849,6 +866,8 @@ export interface EvidenceArtifact {
   independent_ok: boolean;
   fallback_ok: boolean | null;
   independent_check: boolean;
+  /** The counted gateways this artifact had to match on (one for a sample CAR: orbitor). */
+  counted_gateways: string[];
   ok: boolean;
 }
 
@@ -869,7 +888,10 @@ export interface Evidence {
     artifacts_checked: number;
     independent_ok: number;
     independent_failed: number;
-    storage_host_only: number;
+    /** Artifacts with fewer than both counted gateways (a sample CAR: orbitor only). */
+    one_counted_gateway: number;
+    /** Loud, non-failing findings (e.g. the fallback serving other manifest bytes). */
+    warnings: string[];
     fallback_checks: number;
     fallback_ok: number;
     /** Checks taken from a prior run's log, not fetched this run. */
@@ -882,7 +904,7 @@ function evidenceArtifact(v: ArtifactVerdict): EvidenceArtifact {
   for (const c of v.checks)
     gateways[c.gateway] = {
       role: c.role,
-      holds_our_copy: HOLDS_OUR_COPY[c.gateway] ?? false,
+      holds_our_copy: holdsOurCopy(c.gateway),
       label: labelOf(c.gateway),
       resumed: c.resumed === true,
       status: c.status,
@@ -903,6 +925,7 @@ function evidenceArtifact(v: ArtifactVerdict): EvidenceArtifact {
     independent_ok: v.independentOk,
     fallback_ok: v.fallbackOk,
     independent_check: v.independentCheck,
+    counted_gateways: v.countedGateways,
     ok: v.ok,
   };
 }
@@ -932,7 +955,8 @@ export function buildEvidence(report: VerifyReport, generatedAt: Date = new Date
       artifacts_checked: report.verdicts.length,
       independent_ok: verdicts.filter((v) => v.independentOk).length,
       independent_failed: verdicts.filter((v) => v.independentCheck && !v.independentOk).length,
-      storage_host_only: verdicts.filter((v) => !v.independentCheck).length,
+      one_counted_gateway: verdicts.filter((v) => !v.independentCheck).length,
+      warnings: report.warnings,
       fallback_checks: fallback.length,
       fallback_ok: fallback.filter((c) => c.ok).length,
       resumed: report.resumed,

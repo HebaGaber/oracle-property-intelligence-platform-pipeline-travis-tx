@@ -5,7 +5,7 @@
 // about 2.8 GB) a full verification takes hours, so the hosted cases run `--sample` (PO 2026-10-25):
 // the manifest and the smallest table part on Pinata + orbitor (AM-10; Filebase as fallback) plus the smallest CAR on Filebase
 // (Pinata rate-limits CAR downloads, story A-16 item 14), ending with
-// `SAMPLE VERIFIED 2 of N artifacts (the CAR on Filebase only)`, never ALL ARTIFACTS VERIFIED. The two negative cases run
+// `SAMPLE VERIFIED 2 of N artifacts (the CAR on orbitor and Filebase only)`, never ALL ARTIFACTS VERIFIED. The two negative cases run
 // verifyManifest in-process: a tampered manifest has a CID no gateway holds, so the script could
 // never reach the artifact checks (it only waits for gateway timeouts); the in-process run serves
 // the tampered manifest itself and reads every artifact from the real gateways.
@@ -25,7 +25,8 @@ import { lines, run, type RunResult } from "./lib/spawn.js";
 
 const SCRIPT = "scripts/verify-manifest.ts";
 const SUCCESS = "ALL ARTIFACTS VERIFIED";
-const SAMPLE_SUCCESS = /^SAMPLE VERIFIED 2 of \d+ artifacts \(the CAR on Filebase only\)$/;
+const SAMPLE_SUCCESS =
+  /^SAMPLE VERIFIED 2 of \d+ artifacts \(the CAR on orbitor and Filebase only\)$/;
 const RETIRED_HOSTS = ["ipfs.io", "dweb.link", "w3s.link"];
 
 function refusalText(host: string): string {
@@ -156,7 +157,7 @@ test.describe("A-03 verify-manifest (FR-006)", () => {
       expect(result.code, "exit code 0").toBe(0);
       expect(lastLine(result), "the last line").toMatch(SAMPLE_SUCCESS);
       expect(lastLine(result), "states how many of how many").toBe(
-        `SAMPLE VERIFIED 2 of ${run.manifest.artifacts.length} artifacts (the CAR on Filebase only)`,
+        `SAMPLE VERIFIED 2 of ${run.manifest.artifacts.length} artifacts (the CAR on orbitor and Filebase only)`,
       );
       expect(result.output, "a sample is never reported as a full verification").not.toContain(
         SUCCESS,
@@ -185,7 +186,9 @@ test.describe("A-03 verify-manifest (FR-006)", () => {
       for (const artifact of [sampled.table, sampled.car]) {
         const cid = publicCid(artifact);
         const hosts =
-          artifact.kind === "car" ? [harnessConfig().FILEBASE_GATEWAY_HOST] : gateways();
+          artifact.kind === "car"
+            ? [harnessConfig().ORBITOR_GATEWAY_HOST, harnessConfig().FILEBASE_GATEWAY_HOST]
+            : gateways();
         for (const host of hosts) {
           if (!out.some((line) => line.includes(cid) && line.includes(host))) {
             missing.push(`${artifact.name} (${cid}) on ${host}`);
@@ -276,11 +279,16 @@ test.describe("A-03 verify-manifest (FR-006)", () => {
       expect(lastLine(result)).toMatch(SAMPLE_SUCCESS);
       const out = lines(result.output);
       const carCid = publicCid(car);
-      const carHost = harnessConfig().FILEBASE_GATEWAY_HOST;
-      expect(
-        out.some((line) => line.includes(`/ipfs/${carCid}`) && line.includes(carHost)),
-        `${car.name}: fetched /ipfs/${carCid} from ${carHost}`,
-      ).toBe(true);
+      // AM-10: a sample reads the CAR from orbitor (counted) and Filebase (fallback), never Pinata.
+      for (const carHost of [
+        harnessConfig().ORBITOR_GATEWAY_HOST,
+        harnessConfig().FILEBASE_GATEWAY_HOST,
+      ]) {
+        expect(
+          out.some((line) => line.includes(`/ipfs/${carCid}`) && line.includes(carHost)),
+          `${car.name}: fetched /ipfs/${carCid} from ${carHost}`,
+        ).toBe(true);
+      }
       expect(
         out.some((line) => line.includes(`/ipfs/${carCid}`) && line.includes("pinata")),
         `${car.name}: a sample does not pull the CAR from Pinata`,

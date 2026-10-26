@@ -244,10 +244,26 @@ describe("Data · Verify page (AC-3, FR-003, TC-006, TC-022)", () => {
     expect(result().textContent).toBe(
       "Not verified on two public gateways · bytes differ on Pinata; no verified answer from orbitor",
     );
+    // Bytes differ on a counted lane: the page result is the error pill.
+    expect(result().querySelector("[data-status]")?.getAttribute("data-status")).toBe("error");
     expect(document.body.textContent).not.toContain(VERIFY_TEXTS.independentVerified);
     expect(lane("filebase").textContent).toContain(VERIFY_TEXTS.fallbackVerified);
     expect(lane("filebase").textContent).not.toContain(VERIFY_TEXTS.verified);
     expect(lane("filebase").querySelector('[aria-label="verified"]')).toBeNull();
+  });
+
+  it("a counted lane with no readable answer (no mismatch) gives a warning page result, not an error", async () => {
+    install({ orbitor: () => new Response(null, { status: 404 }) });
+    await renderVerify(fileCid);
+
+    await waitFor(() => expect(lane("pinata").getAttribute("data-state")).toBe("verified"));
+    await waitFor(() => expect(lane("orbitor").getAttribute("data-state")).toBe("failed"));
+    await waitFor(() => expect(result().getAttribute("data-verify-result")).toBe("not_verified"));
+    expect(result().textContent).toBe(
+      "Not verified on two public gateways · no verified answer from orbitor",
+    );
+    expect(result().querySelector("[data-status]")?.getAttribute("data-status")).toBe("warning");
+    expect(result().textContent).not.toMatch(/bytes differ/);
   });
 
   it("orders the headings: Counted gateways (Pinata, orbitor as h4), then the fallback group (Filebase h4)", async () => {
