@@ -437,6 +437,23 @@ describe("filebase step", () => {
     expect(h.cli).toHaveBeenCalledTimes(units.length);
   });
 
+  it("a runner limited to PUBLISH_FILEBASE_UNITS uploads only those units and writes no other receipt", async () => {
+    const { ctx } = await realContext();
+    const h = harness(ctx);
+    const units = uploadUnits(ctx.manifest);
+    const mine = units.slice(-1).map((u) => u.id);
+    h.deps.filebase.units = mine;
+    const r = await runPublish({ ctx, impls: createPublishSteps(h.deps), dryRun: false, step: "filebase" });
+    // The step stays strict: units left to other runners are reported, so a split job checks its own
+    // receipts instead of the exit code.
+    expect(r.ok).toBe(false);
+    const others = units.map((u) => u.id).filter((id) => !mine.includes(id));
+    expect(r.steps.at(-1)?.error).toContain(`${others.length} item(s) still have no receipt`);
+    expect(h.cli).toHaveBeenCalledTimes(mine.length);
+    for (const u of units)
+      expect(existsSync(join(ctx.receiptsDir, `${u.id}.json`)), u.id).toBe(mine.includes(u.id));
+  });
+
   it("skips an artifact that an existing top-level receipt (Run 1 style) already records", async () => {
     const { ctx } = await realContext();
     const [first] = uploadUnits(ctx.manifest);

@@ -395,6 +395,8 @@ export interface FilebaseStepDeps {
   reverse?: boolean;
   /** Upload only these unit kinds (for example only "car" while the provider's dag/import of tables hangs). */
   kinds?: readonly string[];
+  /** Upload only these unit ids (one runner of a split job); every other unit is left for another worker. */
+  units?: readonly string[];
 }
 
 /** Whether a unit of `kind` is uploaded by a worker limited to `kinds` (no limit when empty). */
@@ -473,6 +475,10 @@ function filebaseStep(deps: FilebaseStepDeps): StepImpl {
         if (unit === undefined) throw new Error(`no upload unit ${item.id}`);
         if (!unitSelected(unit.kind, deps.kinds)) {
           deps.log(`skip ${unit.id} (this worker uploads only ${(deps.kinds ?? []).join(", ")})`);
+          continue;
+        }
+        if (!unitSelected(unit.id, deps.units)) {
+          deps.log(`skip ${unit.id} (another runner uploads it)`);
           continue;
         }
         const final = join(ctx.receiptsDir, `${unit.id}.json`);
