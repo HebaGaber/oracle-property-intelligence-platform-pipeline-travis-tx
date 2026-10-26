@@ -18,7 +18,7 @@ import styles from "./FilterSheet.module.css";
 export const FILTER_DEFINITIONS = Object.freeze({
   tenure:
     "Tenure: years since the latest dated sale on record; properties without one are left out and counted.",
-  ooa: "Out-of-area owner: the owner's mailing ZIP is outside the Travis County area (owner_area_class).",
+  ooa: "Out-of-area owner: the owner's mailing ZIP is outside the Travis County area.",
 });
 
 export const SORT_OPTIONS = Object.freeze([
